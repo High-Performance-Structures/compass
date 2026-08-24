@@ -22,6 +22,7 @@ import {
 import {
   REPLY_RESERVATION_RESULT,
   assertBridgeReservationOwnership,
+  isBridgeReservationOwnershipError,
   renewBridgeReservation,
 } from "@/lib/jarvis/bridge-reservation"
 
@@ -66,17 +67,6 @@ function replyTarget(payload: string): ReplyTarget | null {
   }
 
   return { organizationId, channelId, messageId }
-}
-
-function isOwnershipAssertionError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  return (
-    error.message.includes("UNIQUE constraint failed: jarvis_bridge_events.id") ||
-    error.message.includes(
-      "UNIQUE constraint failed: jarvis_bridge_events.idempotency_key",
-    ) ||
-    error.message.includes("NOT NULL constraint failed: jarvis_bridge_events.id")
-  )
 }
 
 async function deterministicReplyId(key: string): Promise<string> {
@@ -391,7 +381,7 @@ export async function POST(request: Request): Promise<Response> {
       ])
     }
   } catch (error) {
-    if (isOwnershipAssertionError(error)) {
+    if (isBridgeReservationOwnershipError(error)) {
       return Response.json(
         { error: "Event claim is no longer active" },
         { status: 409 },

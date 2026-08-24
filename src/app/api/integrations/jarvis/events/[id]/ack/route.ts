@@ -10,6 +10,7 @@ import {
 } from "@/lib/jarvis/auth"
 import {
   ACKNOWLEDGEMENT_RESERVATION_RESULT,
+  isBridgeReservationOwnershipError,
   renewBridgeReservation,
 } from "@/lib/jarvis/bridge-reservation"
 import { knownFeedbackStatus } from "@/lib/jarvis/feedback-lifecycle"
@@ -211,6 +212,9 @@ export async function POST(
         reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
       })
     } catch (error) {
+      if (isBridgeReservationOwnershipError(error)) {
+        return inactiveClaimResponse()
+      }
       const notificationRetryAt = new Date(
         now.getTime() + 30_000,
       ).toISOString()
@@ -272,6 +276,9 @@ export async function POST(
         }
       }
     } catch (error) {
+      if (isBridgeReservationOwnershipError(error)) {
+        return inactiveClaimResponse()
+      }
       const failureRetryAt = new Date(now.getTime() + 30_000).toISOString()
       const retried = await db
         .update(jarvisBridgeEvents)

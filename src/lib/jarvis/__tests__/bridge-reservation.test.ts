@@ -30,8 +30,8 @@ function reservationDatabase() {
       available_at TEXT NOT NULL,
       claim_token TEXT,
       claimed_at TEXT,
-      feedback_desk_item_id TEXT,
       completed_at TEXT,
+      feedback_desk_item_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -276,6 +276,70 @@ describe("bridge side-effect reservations", () => {
       expect(fixture.sqlite.prepare(
         "SELECT status FROM notification_deliveries WHERE id = ?",
       ).get("delivery-2")).toEqual({ status: "sent" })
+    } finally {
+      fixture.sqlite.close()
+    }
+  })
+
+  it("rejects a paused provider attempt after lease replacement", async () => {
+    const fixture = reservationDatabase()
+    let providerCalls = 0
+    let renewalReachedResolve: (() => void) | undefined
+    let releasePauseResolve: (() => void) | undefined
+    const renewalReached = new Promise<void>((resolve) => {
+      renewalReachedResolve = resolve
+    })
+    const pause = new Promise<void>((resolve) => {
+      releasePauseResolve = resolve
+    })
+
+    try {
+      const staleWorker = runClaimFencedBridgeEffect(
+        fixture.db,
+        [{
+          eventId: "event-1",
+          claimToken: "replacement-claim",
+          reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+        }],
+        () => {
+          providerCalls += 1
+          return "sent"
+        },
+        {
+          beforeProviderAttempt: async () => {
+            renewalReachedResolve?.()
+            await pause
+          },
+        },
+      )
+
+      await renewalReached
+      fixture.sqlite.prepare(`
+        UPDATE jarvis_bridge_events
+        SET claim_token = 'replacement-claim-2',
+            claimed_at = '2026-08-22T03:06:00.000Z'
+        WHERE id = 'event-1'
+      `).run()
+      releasePauseResolve?.()
+
+      await expect(staleWorker).rejects.toThrow(
+        "Event claim is no longer active",
+      )
+      expect(providerCalls).toBe(0)
+
+      await expect(runClaimFencedBridgeEffect(
+        fixture.db,
+        [{
+          eventId: "event-1",
+          claimToken: "replacement-claim-2",
+          reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+        }],
+        () => {
+          providerCalls += 1
+          return "sent"
+        },
+      )).resolves.toBe("sent")
+      expect(providerCalls).toBe(1)
     } finally {
       fixture.sqlite.close()
     }

@@ -15,16 +15,33 @@ export const RECLAIMABLE_RESERVATION_RESULTS = [
   REPLY_RESERVATION_RESULT,
 ] as const
 
+export function isBridgeReservationOwnershipError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message
+  return (
+    message.includes("NOT NULL constraint failed: jarvis_bridge_events.id") ||
+    message.includes("UNIQUE constraint failed: jarvis_bridge_events.id") ||
+    message.includes(
+      "UNIQUE constraint failed: jarvis_bridge_events.idempotency_key",
+    )
+  )
+}
+
 export type BridgeReservationOwnership = Readonly<{
   eventId: string
   claimToken: string
   reservationResult: string | null
 }>
 
+type BridgeProviderAttemptOptions = Readonly<{
+  beforeProviderAttempt?: () => void | Promise<void>
+}>
+
 type ReservationDb = Readonly<{
   update: (table: typeof jarvisBridgeEvents) => Readonly<{
     set: (values: Readonly<{
       claimedAt: string
+      result?: string | null
       updatedAt: string
     }>) => Readonly<{
       where: (condition: SQL | undefined) => Readonly<{
@@ -72,6 +89,7 @@ export async function runClaimFencedBridgeEffect<TResult>(
   db: ReservationDb,
   reservations: readonly BridgeReservationOwnership[],
   effect: () => TResult | Promise<TResult>,
+  options: BridgeProviderAttemptOptions = {},
 ): Promise<TResult> {
   const now = new Date().toISOString()
   for (const reservation of reservations) {
@@ -81,7 +99,84 @@ export async function runClaimFencedBridgeEffect<TResult>(
     })
     if (!renewed) throw new Error("Event claim is no longer active")
   }
-  return await effect()
+
+  await options.beforeProviderAttempt?.()
+
+  const providerAttemptResult = `provider-attempt:${crypto.randomUUID()}`
+  const providerAttemptAt = new Date().toISOString()
+  const acquired: BridgeReservationOwnership[] = []
+  try {
+    for (const reservation of reservations) {
+      const reserved = await db
+        .update(jarvisBridgeEvents)
+        .set({
+          claimedAt: providerAttemptAt,
+          result: providerAttemptResult,
+          updatedAt: providerAttemptAt,
+        })
+        .where(and(
+          eq(jarvisBridgeEvents.id, reservation.eventId),
+          eq(jarvisBridgeEvents.direction, "outbound"),
+          eq(jarvisBridgeEvents.status, "processing"),
+          eq(jarvisBridgeEvents.claimToken, reservation.claimToken),
+          reservation.reservationResult === null
+            ? isNull(jarvisBridgeEvents.result)
+            : eq(jarvisBridgeEvents.result, reservation.reservationResult),
+        ))
+        .returning({ id: jarvisBridgeEvents.id })
+        .get()
+      if (reserved === undefined || reserved === null) {
+        throw new Error("Event claim is no longer active")
+      }
+      acquired.push(reservation)
+    }
+
+    const result = await effect()
+    const releasedAt = new Date().toISOString()
+    for (const reservation of acquired) {
+      const released = await db
+        .update(jarvisBridgeEvents)
+        .set({
+          claimedAt: releasedAt,
+          result: reservation.reservationResult,
+          updatedAt: releasedAt,
+        })
+        .where(and(
+          eq(jarvisBridgeEvents.id, reservation.eventId),
+          eq(jarvisBridgeEvents.direction, "outbound"),
+          eq(jarvisBridgeEvents.status, "processing"),
+          eq(jarvisBridgeEvents.claimToken, reservation.claimToken),
+          eq(jarvisBridgeEvents.result, providerAttemptResult),
+        ))
+        .returning({ id: jarvisBridgeEvents.id })
+        .get()
+      if (released === undefined || released === null) {
+        throw new Error("Event claim is no longer active")
+      }
+    }
+    return result
+  } catch (error) {
+    const releasedAt = new Date().toISOString()
+    for (const reservation of acquired) {
+      await db
+        .update(jarvisBridgeEvents)
+        .set({
+          claimedAt: releasedAt,
+          result: reservation.reservationResult,
+          updatedAt: releasedAt,
+        })
+        .where(and(
+          eq(jarvisBridgeEvents.id, reservation.eventId),
+          eq(jarvisBridgeEvents.direction, "outbound"),
+          eq(jarvisBridgeEvents.status, "processing"),
+          eq(jarvisBridgeEvents.claimToken, reservation.claimToken),
+          eq(jarvisBridgeEvents.result, providerAttemptResult),
+        ))
+        .returning({ id: jarvisBridgeEvents.id })
+        .get()
+    }
+    throw error
+  }
 }
 
 export function assertBridgeReservationOwnership<
@@ -106,13 +201,13 @@ export function assertBridgeReservationOwnership<
         ${jarvisBridgeEvents.idempotencyKey},
         ${jarvisBridgeEvents.payload},
         ${jarvisBridgeEvents.result},
-        ${jarvisBridgeEvents.lastError},
         ${jarvisBridgeEvents.attemptCount},
         ${jarvisBridgeEvents.availableAt},
         ${jarvisBridgeEvents.claimToken},
         ${jarvisBridgeEvents.claimedAt},
         ${jarvisBridgeEvents.feedbackDeskItemId},
         ${jarvisBridgeEvents.completedAt},
+        ${jarvisBridgeEvents.lastError},
         ${jarvisBridgeEvents.createdAt},
         ${jarvisBridgeEvents.updatedAt}
       FROM ${jarvisBridgeEvents}
@@ -126,8 +221,8 @@ export function assertBridgeReservationOwnership<
       UNION ALL
       SELECT
         NULL, NULL, 'outbound', 'bridge-assertion', 'bridge.ownership_missing',
-        'failed', ${`missing:${input.eventId}`}, '{}', NULL, NULL, 0, '',
-        NULL, NULL, NULL, NULL, '', ''
+        'failed', ${`missing:${input.eventId}`}, '{}', NULL, 0, '',
+        NULL, NULL, NULL, NULL, NULL, '', ''
       WHERE NOT EXISTS (
         SELECT 1 FROM ${jarvisBridgeEvents}
         WHERE ${jarvisBridgeEvents.id} = ${input.eventId}
@@ -165,8 +260,8 @@ export function assertBridgeReservationsOwnership<
   return db.insert(jarvisBridgeEvents).select(
     sql`SELECT
         NULL, NULL, 'outbound', 'bridge-assertion', 'bridge.ownership_missing',
-        'failed', ${`bridge.ownership_missing:${reservations.map((reservation) => reservation.eventId).join(",")}`}, '{}', NULL, NULL, 0, '',
-        NULL, NULL, NULL, NULL, '', ''
+        'failed', ${`bridge.ownership_missing:${reservations.map((reservation) => reservation.eventId).join(",")}`}, '{}', NULL, 0, '',
+        NULL, NULL, NULL, NULL, NULL, '', ''
       WHERE ${missingReservation}`,
   )
 }
