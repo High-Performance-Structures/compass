@@ -205,10 +205,10 @@ const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
   },
   {
     departments: ["N"],
-    label: "Nu-Tech PO Order Manager",
-    description: "Google-side order intake while Compass PO tools mature.",
+    label: "Nu-Tech Order Process",
+    description: "Block sales, bracing rentals, pricing, and Airlite orders.",
     kind: "link",
-    href: "/dashboard/automations",
+    href: "/dashboard/nutech",
   },
   {
     departments: ["D"],

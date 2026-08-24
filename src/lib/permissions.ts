@@ -151,6 +151,14 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "project",
   },
   {
+    id: "nutech-orders",
+    group: "Operations",
+    label: "Nu-Tech Orders",
+    description:
+      "Fox Blocks catalog, takeoffs, pricing, bracing rentals, Airlite orders, and invoice release.",
+    resource: "project",
+  },
+  {
     id: "change-orders",
     group: "Operations",
     label: "Change Orders",

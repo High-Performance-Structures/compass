@@ -26,6 +26,15 @@ export type GoogleSheetAppendResult = {
   readonly updatedRange: string | null
 }
 
+export type GoogleSheetValueUpdate = {
+  readonly range: string
+  readonly values: ReadonlyArray<ReadonlyArray<unknown>>
+}
+
+export type GoogleSheetCreateResult = {
+  readonly sheetId: number
+}
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -204,5 +213,91 @@ export class SheetsClient {
     const payload = objectValue(await response.json())
     const updates = objectValue(payload?.updates)
     return { updatedRange: stringValue(updates?.updatedRange) }
+  }
+
+  async batchUpdateValues(
+    userEmail: string,
+    input: {
+      readonly spreadsheetId: string
+      readonly updates: readonly GoogleSheetValueUpdate[]
+    }
+  ): Promise<void> {
+    if (input.updates.length === 0) return
+    const token = await getAccessToken(this.serviceAccountKey, userEmail)
+    const response = await fetch(
+      `${GOOGLE_SHEETS_API}/${input.spreadsheetId}/values:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          valueInputOption: "RAW",
+          data: input.updates,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `Google Sheets API error (${response.status}): ${body.slice(0, 500)}`
+      )
+    }
+  }
+
+  async addSheet(
+    userEmail: string,
+    input: {
+      readonly spreadsheetId: string
+      readonly title: string
+      readonly rowCount: number
+      readonly columnCount: number
+    }
+  ): Promise<GoogleSheetCreateResult> {
+    const token = await getAccessToken(this.serviceAccountKey, userEmail)
+    const response = await fetch(
+      `${GOOGLE_SHEETS_API}/${input.spreadsheetId}:batchUpdate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              addSheet: {
+                properties: {
+                  title: input.title,
+                  gridProperties: {
+                    rowCount: input.rowCount,
+                    columnCount: input.columnCount,
+                    frozenRowCount: 4,
+                  },
+                },
+              },
+            },
+          ],
+        }),
+      }
+    )
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `Google Sheets API error (${response.status}): ${body.slice(0, 500)}`
+      )
+    }
+    const payload = objectValue(await response.json())
+    const replies = Array.isArray(payload?.replies) ? payload.replies : []
+    const reply = objectValue(replies[0])
+    const addedSheet = objectValue(reply?.addSheet)
+    const properties = objectValue(addedSheet?.properties)
+    const sheetId = numberValue(properties?.sheetId)
+    if (sheetId === null) {
+      throw new Error("Google Sheets did not return the created worksheet ID.")
+    }
+    return { sheetId }
   }
 }
