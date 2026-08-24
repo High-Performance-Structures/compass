@@ -15,6 +15,7 @@ export default defineConfig({
     "./src/db/schema-sage.ts",
     "./src/db/schema-buildertrend.ts",
     "./src/db/schema-estimates.ts",
+    "./src/db/schema-nutech.ts",
     "./src/db/schema-templates.ts",
     "./src/lib/sync/schema.ts",
   ],

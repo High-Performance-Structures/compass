@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
-import { IconArrowLeft, IconCalculator } from "@tabler/icons-react"
+import { IconArrowLeft, IconCalculator, IconPackageExport } from "@tabler/icons-react"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { getPublishedEstimateTemplateOptions } from "@/app/actions/estimate-templates"
@@ -36,7 +36,18 @@ export default async function ProjectEstimatePage({
             Department-specific client estimate, contract basis, approval, and budget handoff.
           </p>
         </div>
-        <ProjectContextSwitcher currentProjectId={id} targetSection="estimate" placeholder="Switch estimate project..." className="w-full sm:w-[280px]" />
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+          {workspace.department === "N" && (
+            <Link
+              href={`/dashboard/projects/${id}/nutech`}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-accent"
+            >
+              <IconPackageExport className="size-4" />
+              Nu-Tech process
+            </Link>
+          )}
+          <ProjectContextSwitcher currentProjectId={id} targetSection="estimate" placeholder="Switch estimate project..." className="w-full sm:w-[280px]" />
+        </div>
       </div>
       <ProjectEstimateWorkspacePanel
         projectId={id}

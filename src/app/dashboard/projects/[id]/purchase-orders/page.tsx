@@ -537,6 +537,14 @@ export default async function ProjectPurchaseOrdersPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {brand.department === "N" && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/dashboard/projects/${id}/nutech`}>
+                  Nu-Tech order process
+                  <IconExternalLink className="size-4" />
+                </Link>
+              </Button>
+            )}
             <Button asChild variant="outline" size="sm">
               <Link href="/dashboard/financials?tab=bills">
                 Financials

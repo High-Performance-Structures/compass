@@ -41,6 +41,7 @@ The construction-specific modules that make up HPS Compass.
 - [scheduling](modules/scheduling.md) -- Gantt charts, critical path analysis, dependency management, baselines, workday exceptions
 - [financials](modules/financials.md) -- invoices, vendor bills, payments, credit memos, with legacy NetSuite sync notes and HPS Sage direction
 - [contracts](modules/contracts.md) -- versioned contract library, project packet assembly, CA22 insertion, Foxit execution, and budget handoff
+- [Nu-Tech orders](modules/nutech.md) -- Fox Blocks catalog, takeoffs, bracing rentals, Airlite purchase orders, and Sage-ready product mappings
 - [mobile](modules/mobile.md) -- Capacitor native app, offline photo queue, push notifications, biometric auth
 - [desktop](modules/desktop.md) -- Electron desktop app, hosted Compass runtime, native shell bridge, packaged app distribution
 - [claude code](modules/claude-code.md) -- local bridge daemon, own Anthropic API key, filesystem + terminal tools, WebSocket protocol

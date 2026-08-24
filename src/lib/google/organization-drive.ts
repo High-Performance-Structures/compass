@@ -5,6 +5,7 @@ import { googleAuth } from "@/db/schema-google"
 import type { AuthUser } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { DriveClient } from "@/lib/google/client/drive-client"
+import { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   getGoogleConfig,
   getGoogleCryptoSalt,
@@ -13,6 +14,7 @@ import {
 
 export type OrganizationDriveContext = {
   readonly client: DriveClient
+  readonly sheetsClient: SheetsClient
   readonly userEmail: string
 }
 
@@ -30,9 +32,7 @@ export async function getOrganizationDriveContext(input: {
     .where(eq(googleAuth.organizationId, input.organizationId))
     .get()
   if (!auth) {
-    throw new Error(
-      "Connect Google Drive before saving estimate text templates."
-    )
+    throw new Error("Connect Google Drive before using organization Drive files.")
   }
 
   const config = getGoogleConfig(input.environment)
@@ -41,10 +41,12 @@ export async function getOrganizationDriveContext(input: {
     config.encryptionKey,
     getGoogleCryptoSalt()
   )
+  const serviceAccountKey = parseServiceAccountKey(serviceAccountJson)
   return {
     client: new DriveClient({
-      serviceAccountKey: parseServiceAccountKey(serviceAccountJson),
+      serviceAccountKey,
     }),
+    sheetsClient: new SheetsClient(serviceAccountKey),
     userEmail: input.user.googleEmail ?? input.user.email,
   }
 }
