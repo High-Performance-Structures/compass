@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition, type FormEvent } from "react"
 import {
   IconCopy,
-  IconDownload,
   IconFileDescription,
   IconPlus,
   IconPrinter,
@@ -46,12 +45,6 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -323,7 +316,6 @@ export function ProjectContractPacketWorkspacePanel({
   const [evidenceLabel, setEvidenceLabel] = useState("")
   const [signedAt, setSignedAt] = useState(localDateInput())
   const [attested, setAttested] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(false)
   const parsedDepositPercent = Number(depositPercent)
   const depositRateBasisPoints = Number.isFinite(parsedDepositPercent)
     ? Math.round(parsedDepositPercent * 100)
@@ -346,36 +338,68 @@ export function ProjectContractPacketWorkspacePanel({
     })
   }
 
+  async function saveCurrentContractInformation(
+    showSuccessMessage: boolean
+  ): Promise<boolean> {
+    if (!packet) return false
+    const result = await saveProjectContractPacket(projectId, packet.id, {
+      title,
+      legalEntityName,
+      contractDraftDate,
+      approximateCommencementDate: commencementDate,
+      approximateCompletionDate: completionDate,
+      depositPercent: parsedDepositPercent,
+      latePaymentPercent: Number(latePaymentRate),
+      details: {
+        ...packet.details,
+        projectName: workspace.projectName,
+        projectNumber: workspace.projectNumber ?? "",
+        projectAddress,
+        ownerName,
+        county,
+      },
+      clientSigners,
+      companySignerName: companySigner.name,
+      companySignerTitle: companySigner.title,
+      companySignerEmail: companySigner.email,
+      companySignerInitials: companySigner.initials || signerInitials(companySigner.name),
+    })
+    if (!result.success) {
+      toast.error(result.error)
+      return false
+    }
+    if (showSuccessMessage) {
+      toast.success(result.message)
+    }
+    return true
+  }
+
   function save(): void {
-    if (!packet) return
     startTransition(async () => {
-      const result = await saveProjectContractPacket(projectId, packet.id, {
-        title,
-        legalEntityName,
-        contractDraftDate,
-        approximateCommencementDate: commencementDate,
-        approximateCompletionDate: completionDate,
-        depositPercent: parsedDepositPercent,
-        latePaymentPercent: Number(latePaymentRate),
-        details: {
-          ...packet.details,
-          projectName: workspace.projectName,
-          projectNumber: workspace.projectNumber ?? "",
-          projectAddress,
-          ownerName,
-          county,
-        },
-        clientSigners,
-        companySignerName: companySigner.name,
-        companySignerTitle: companySigner.title,
-        companySignerEmail: companySigner.email,
-        companySignerInitials: companySigner.initials || signerInitials(companySigner.name),
-      })
-      if (!result.success) {
-        toast.error(result.error)
+      if (await saveCurrentContractInformation(true)) router.refresh()
+    })
+  }
+
+  function preview(): void {
+    if (!packet) return
+    const previewWindow = window.open("about:blank", "_blank")
+    if (previewWindow) {
+      previewWindow.opener = null
+      previewWindow.document.title = "Preparing contract packet preview"
+      previewWindow.document.body.textContent =
+        "Compass is saving the contract information and preparing the preview..."
+    }
+    startTransition(async () => {
+      if (editable && !(await saveCurrentContractInformation(false))) {
+        previewWindow?.close()
         return
       }
-      toast.success(result.message)
+      const previewUrl = `/print/projects/${projectId}/contract-packet?packetId=${packet.id}`
+      if (previewWindow) {
+        previewWindow.location.replace(previewUrl)
+      } else {
+        window.location.href = previewUrl
+      }
       router.refresh()
     })
   }
@@ -444,6 +468,10 @@ export function ProjectContractPacketWorkspacePanel({
         "Compass is assembling the numbered contract packet and Foxit fields..."
     }
     startTransition(async () => {
+      if (editable && !(await saveCurrentContractInformation(false))) {
+        foxitWindow?.close()
+        return
+      }
       const result = await prepareProjectContractPacketForSignature(
         projectId,
         packet.id
@@ -572,7 +600,7 @@ export function ProjectContractPacketWorkspacePanel({
             <Button variant="outline" onClick={duplicate} disabled={pending || !workspace.canEdit}>
               <IconCopy className="size-4" />Duplicate version
             </Button>
-            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+            <Button variant="outline" onClick={preview} disabled={pending}>
               <IconPrinter className="size-4" />Preview PDF
             </Button>
           </div>
@@ -615,31 +643,6 @@ export function ProjectContractPacketWorkspacePanel({
           <div className="space-y-1.5"><Label htmlFor="contract-late-rate">Late-payment annual rate (%)</Label><Input id="contract-late-rate" type="number" min="0" step="0.01" value={latePaymentRate} onChange={(event) => setLatePaymentRate(event.target.value)} disabled={!editable} /></div>
         </div>
       </section>
-
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="h-[92vh] max-w-[min(96vw,72rem)] grid-rows-[auto_1fr_auto] p-4">
-          <DialogHeader>
-            <DialogTitle>{packet.packetNumber} · contract packet preview</DialogTitle>
-          </DialogHeader>
-          <iframe
-            title={`${packet.packetNumber} contract packet PDF preview`}
-            src={previewOpen
-              ? `/api/projects/${projectId}/contract-packets/${packet.id}/pdf`
-              : undefined}
-            className="h-full min-h-0 w-full rounded-lg border bg-background"
-          />
-          <div className="flex justify-end">
-            <Button variant="outline" asChild>
-              <a
-                href={`/api/projects/${projectId}/contract-packets/${packet.id}/pdf`}
-                download={`${packet.packetNumber}-contract-v${packet.versionNumber}.pdf`}
-              >
-                <IconDownload className="size-4" />Download PDF
-              </a>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <section className="clarity-panel-strong p-4">
         <div className="flex items-start justify-between gap-3">

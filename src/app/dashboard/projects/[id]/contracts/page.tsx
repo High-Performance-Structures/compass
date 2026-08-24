@@ -33,7 +33,13 @@ export default async function ProjectContractsPage({
         </div>
         <ProjectContextSwitcher currentProjectId={id} targetSection="contracts" placeholder="Switch contract project..." className="w-full sm:w-[280px]" />
       </div>
-      <ProjectContractPacketWorkspacePanel projectId={id} workspace={workspace} />
+      <ProjectContractPacketWorkspacePanel
+        key={workspace.activePacket
+          ? `${workspace.activePacket.id}:${workspace.activePacket.updatedAt}`
+          : "new-contract-packet"}
+        projectId={id}
+        workspace={workspace}
+      />
     </div>
   )
 }
