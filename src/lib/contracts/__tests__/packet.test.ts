@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 
 import {
+  contractDepositCents,
   contractDocumentSchedule,
   dollarsInWords,
   fillContractTokens,
@@ -8,6 +9,10 @@ import {
 } from "@/lib/contracts/packet"
 
 describe("contract packet domain", () => {
+  test("calculates a deposit from the estimate total and percentage", () => {
+    expect(contractDepositCents(123_456_78, 1_250)).toBe(15_432_10)
+  })
+
   test("spells contract currency with cents", () => {
     expect(dollarsInWords(1_234_567_89)).toBe(
       "One million two hundred thirty-four thousand five hundred sixty-seven dollars and 89/100"

@@ -1,5 +1,9 @@
 import { getProjectContractPacketWorkspace } from "@/app/actions/contract-packets"
-import { base64PdfBytes, prepareContractPacketPdf } from "@/lib/contracts/packet-pdf"
+import {
+  base64PdfBytes,
+  loadContractPacketPdfBranding,
+  prepareContractPacketPdf,
+} from "@/lib/contracts/packet-pdf"
 import { getCloudflareContext } from "@/lib/db"
 
 async function renderEstimatePdf(input: {
@@ -52,13 +56,25 @@ export async function GET(
       return Response.json({ success: false, error: "Linked estimate not found." }, { status: 404 })
     }
     const { env } = await getCloudflareContext()
-    const estimatePdf = await renderEstimatePdf({
-      env,
-      origin: new URL(request.url).origin,
-      cookie: request.headers.get("cookie") ?? "",
-      projectId: id,
-      estimateId: estimate.id,
-    })
+    const assets = env.ASSETS
+    if (!assets) throw new Error("Cloudflare Assets is unavailable for contract branding.")
+    const origin = new URL(request.url).origin
+    const cookie = request.headers.get("cookie") ?? ""
+    const [estimatePdf, brand] = await Promise.all([
+      renderEstimatePdf({
+        env,
+        origin,
+        cookie,
+        projectId: id,
+        estimateId: estimate.id,
+      }),
+      loadContractPacketPdfBranding({
+        assets,
+        origin,
+        projectId: id,
+        projectNumber: workspace.projectNumber,
+      }),
+    ])
     const prepared = await prepareContractPacketPdf({
       packet,
       documents: workspace.documents,
@@ -66,6 +82,7 @@ export async function GET(
       projectName: workspace.projectName,
       projectNumber: workspace.projectNumber,
       projectAddress: workspace.projectAddress,
+      brand,
       estimatePdf,
     })
     const bytes = base64PdfBytes(prepared.pdfBase64)

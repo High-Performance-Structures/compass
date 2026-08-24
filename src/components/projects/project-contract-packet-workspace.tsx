@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useMemo, useState, useTransition, type FormEvent } from "react"
 import {
   IconCopy,
+  IconDownload,
   IconFileDescription,
   IconPlus,
   IconPrinter,
@@ -46,6 +47,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -53,7 +60,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { contractPacketCanBeEdited, signerInitials, type ContractPacketSigner } from "@/lib/contracts/packet"
+import {
+  contractDepositCents,
+  contractPacketCanBeEdited,
+  signerInitials,
+  type ContractPacketSigner,
+} from "@/lib/contracts/packet"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -270,12 +282,24 @@ export function ProjectContractPacketWorkspacePanel({
   const [estimateId, setEstimateId] = useState(workspace.estimateOptions[0]?.id ?? "")
   const packet = workspace.activePacket
   const editable = Boolean(packet && workspace.canEdit && contractPacketCanBeEdited(packet.status))
+  const linkedEstimate = workspace.estimateOptions.find(
+    (estimate) => estimate.id === packet?.estimateId
+  )
+  const initialDepositRateBasisPoints = packet?.depositRateBasisPoints || (
+    packet && linkedEstimate && linkedEstimate.estimateTotalCents > 0
+      ? Math.round(packet.depositCents * 10_000 / linkedEstimate.estimateTotalCents)
+      : 0
+  )
   const [title, setTitle] = useState(packet?.title ?? "Construction Contract")
   const [legalEntityName, setLegalEntityName] = useState(packet?.legalEntityName ?? "")
   const [contractDraftDate, setContractDraftDate] = useState(packet?.contractDraftDate ?? "")
   const [commencementDate, setCommencementDate] = useState(packet?.approximateCommencementDate ?? "")
   const [completionDate, setCompletionDate] = useState(packet?.approximateCompletionDate ?? "")
-  const [deposit, setDeposit] = useState(packet ? String(packet.depositCents / 100) : "0")
+  const [depositPercent, setDepositPercent] = useState(
+    initialDepositRateBasisPoints > 0
+      ? String(initialDepositRateBasisPoints / 100)
+      : ""
+  )
   const [latePaymentRate, setLatePaymentRate] = useState(packet ? String(packet.latePaymentRateBasisPoints / 100) : "12")
   const [projectAddress, setProjectAddress] = useState(packet?.details.projectAddress ?? workspace.projectAddress ?? "")
   const [county, setCounty] = useState(packet?.details.county ?? "")
@@ -299,6 +323,14 @@ export function ProjectContractPacketWorkspacePanel({
   const [evidenceLabel, setEvidenceLabel] = useState("")
   const [signedAt, setSignedAt] = useState(localDateInput())
   const [attested, setAttested] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const parsedDepositPercent = Number(depositPercent)
+  const depositRateBasisPoints = Number.isFinite(parsedDepositPercent)
+    ? Math.round(parsedDepositPercent * 100)
+    : 0
+  const calculatedDepositCents = linkedEstimate
+    ? contractDepositCents(linkedEstimate.estimateTotalCents, depositRateBasisPoints)
+    : 0
 
   function create(): void {
     if (!estimateId) return
@@ -323,7 +355,7 @@ export function ProjectContractPacketWorkspacePanel({
         contractDraftDate,
         approximateCommencementDate: commencementDate,
         approximateCompletionDate: completionDate,
-        depositDollars: Number(deposit),
+        depositPercent: parsedDepositPercent,
         latePaymentPercent: Number(latePaymentRate),
         details: {
           ...packet.details,
@@ -540,10 +572,8 @@ export function ProjectContractPacketWorkspacePanel({
             <Button variant="outline" onClick={duplicate} disabled={pending || !workspace.canEdit}>
               <IconCopy className="size-4" />Duplicate version
             </Button>
-            <Button variant="outline" asChild>
-              <Link href={`/api/projects/${projectId}/contract-packets/${packet.id}/pdf`} target="_blank">
-                <IconPrinter className="size-4" />Preview PDF
-              </Link>
+            <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+              <IconPrinter className="size-4" />Preview PDF
             </Button>
           </div>
         </div>
@@ -563,10 +593,53 @@ export function ProjectContractPacketWorkspacePanel({
           <div className="space-y-1.5"><Label htmlFor="contract-county">Project county *</Label><Input id="contract-county" value={county} onChange={(event) => setCounty(event.target.value)} disabled={!editable} /></div>
           <div className="space-y-1.5 md:col-span-2"><Label htmlFor="contract-address">Project location *</Label><Input id="contract-address" value={projectAddress} onChange={(event) => setProjectAddress(event.target.value)} disabled={!editable} /></div>
           <div className="space-y-1.5 md:col-span-2"><Label htmlFor="contract-owner">Owner / client name *</Label><Input id="contract-owner" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} disabled={!editable} /></div>
-          <div className="space-y-1.5"><Label htmlFor="contract-deposit">Deposit</Label><Input id="contract-deposit" type="number" min="0" step="0.01" value={deposit} onChange={(event) => setDeposit(event.target.value)} disabled={!editable} /></div>
+          <div className="space-y-1.5">
+            <Label htmlFor="contract-deposit-percent">Deposit (% of estimate) *</Label>
+            <Input
+              id="contract-deposit-percent"
+              type="number"
+              min="0.01"
+              max="100"
+              step="0.01"
+              value={depositPercent}
+              onChange={(event) => setDepositPercent(event.target.value)}
+              disabled={!editable}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              {linkedEstimate
+                ? `${money(calculatedDepositCents)} deposit from ${money(linkedEstimate.estimateTotalCents)} estimate total.`
+                : "The linked estimate total is unavailable."}
+            </p>
+          </div>
           <div className="space-y-1.5"><Label htmlFor="contract-late-rate">Late-payment annual rate (%)</Label><Input id="contract-late-rate" type="number" min="0" step="0.01" value={latePaymentRate} onChange={(event) => setLatePaymentRate(event.target.value)} disabled={!editable} /></div>
         </div>
       </section>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="h-[92vh] max-w-[min(96vw,72rem)] grid-rows-[auto_1fr_auto] p-4">
+          <DialogHeader>
+            <DialogTitle>{packet.packetNumber} · contract packet preview</DialogTitle>
+          </DialogHeader>
+          <iframe
+            title={`${packet.packetNumber} contract packet PDF preview`}
+            src={previewOpen
+              ? `/api/projects/${projectId}/contract-packets/${packet.id}/pdf`
+              : undefined}
+            className="h-full min-h-0 w-full rounded-lg border bg-background"
+          />
+          <div className="flex justify-end">
+            <Button variant="outline" asChild>
+              <a
+                href={`/api/projects/${projectId}/contract-packets/${packet.id}/pdf`}
+                download={`${packet.packetNumber}-contract-v${packet.versionNumber}.pdf`}
+              >
+                <IconDownload className="size-4" />Download PDF
+              </a>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <section className="clarity-panel-strong p-4">
         <div className="flex items-start justify-between gap-3">

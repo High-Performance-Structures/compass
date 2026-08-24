@@ -104,6 +104,9 @@ export const contractPackets = sqliteTable(
     contractDraftDate: text("contract_draft_date"),
     approximateCommencementDate: text("approximate_commencement_date"),
     approximateCompletionDate: text("approximate_completion_date"),
+    depositRateBasisPoints: integer("deposit_rate_basis_points")
+      .notNull()
+      .default(0),
     depositCents: integer("deposit_cents").notNull().default(0),
     latePaymentRateBasisPoints: integer("late_payment_rate_basis_points")
       .notNull()

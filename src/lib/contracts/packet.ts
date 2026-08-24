@@ -92,6 +92,15 @@ export function dollarsInWords(cents: number): string {
   return result.charAt(0).toUpperCase() + result.slice(1)
 }
 
+export function contractDepositCents(
+  estimateTotalCents: number,
+  depositRateBasisPoints: number
+): number {
+  if (!Number.isFinite(estimateTotalCents) || estimateTotalCents < 0) return 0
+  if (!Number.isFinite(depositRateBasisPoints) || depositRateBasisPoints < 0) return 0
+  return Math.round(estimateTotalCents * depositRateBasisPoints / 10_000)
+}
+
 export function signerInitials(name: string): string {
   return name
     .split(/\s+/)
