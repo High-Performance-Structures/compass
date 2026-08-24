@@ -44,7 +44,9 @@ without changing the global template.
 CA00's contract-document schedule is generated from the exact selected packet
 documents, including dates, revisions, reference treatment, and closeout
 treatment. Project department determines the default contractor legal entity.
-The entity remains editable on a draft packet.
+The entity remains editable on a draft packet. The deposit is entered as a
+required percentage of the linked estimate total; Compass calculates and stores
+the corresponding dollar amount so the contract text cannot drift from CA22.
 
 
 PDF and signature workflow
@@ -52,6 +54,9 @@ PDF and signature workflow
 
 Compass creates one letter-size PDF by rendering contract-stage Markdown,
 inserting the linked CA22 estimate, and appending a consolidated signature page.
+Every Compass-rendered contract page carries the project department's company
+logo and contact details. Draft previews open inside the Contract workspace,
+with a separate download action when a local copy is needed.
 The final pass adds `Page # of #` to every page, required Foxit initials fields
 to every page except the full-signature page, and signature plus system date
 fields for every owner signer and the company representative.
@@ -73,7 +78,8 @@ implementation map
 ---
 
 - Schema: `src/db/schema-contracts.ts`
-- Migration: `drizzle/0130_contract_packets.sql`
+- Migrations: `drizzle/0130_contract_packets.sql`,
+  `drizzle/0131_contract_deposit_rate.sql`
 - Template actions: `src/app/actions/contract-templates.ts`
 - Packet actions: `src/app/actions/contract-packets.ts`
 - Source normalization: `src/lib/contracts/source.ts`

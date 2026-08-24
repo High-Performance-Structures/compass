@@ -15,12 +15,16 @@ import {
 import { projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import {
+  contractDepositCents,
   contractPacketCanBeEdited,
   parsePacketSigners,
   signerInitials,
   type ContractPacketSigner,
 } from "@/lib/contracts/packet"
-import { prepareContractPacketPdf } from "@/lib/contracts/packet-pdf"
+import {
+  loadContractPacketPdfBranding,
+  prepareContractPacketPdf,
+} from "@/lib/contracts/packet-pdf"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { createFoxitPreparedEnvelope } from "@/lib/foxit/esign"
@@ -75,6 +79,7 @@ export type ProjectContractPacketSummary = {
   readonly contractDraftDate: string | null
   readonly approximateCommencementDate: string | null
   readonly approximateCompletionDate: string | null
+  readonly depositRateBasisPoints: number
   readonly depositCents: number
   readonly latePaymentRateBasisPoints: number
   readonly details: Readonly<Record<string, string>>
@@ -232,6 +237,7 @@ function packetSummary(
     contractDraftDate: row.contractDraftDate,
     approximateCommencementDate: row.approximateCommencementDate,
     approximateCompletionDate: row.approximateCompletionDate,
+    depositRateBasisPoints: row.depositRateBasisPoints,
     depositCents: row.depositCents,
     latePaymentRateBasisPoints: row.latePaymentRateBasisPoints,
     details: safeStringRecord(row.detailsJson),
@@ -574,7 +580,7 @@ export async function saveProjectContractPacket(
     readonly contractDraftDate: string | null
     readonly approximateCommencementDate: string | null
     readonly approximateCompletionDate: string | null
-    readonly depositDollars: number | null
+    readonly depositPercent: number | null
     readonly latePaymentPercent: number | null
     readonly details: Readonly<Record<string, string>>
     readonly clientSigners: readonly ContractPacketSigner[]
@@ -602,10 +608,14 @@ export async function saveProjectContractPacket(
         initials: (cleanText(signer.initials) ?? signerInitials(name)).toUpperCase(),
       }]
     })
-    const depositCents = Math.round((input.depositDollars ?? 0) * 100)
+    const depositRateBasisPoints = Math.round((input.depositPercent ?? 0) * 100)
     const latePaymentRateBasisPoints = Math.round((input.latePaymentPercent ?? 0) * 100)
-    if (!Number.isFinite(depositCents) || depositCents < 0) {
-      throw new Error("Deposit must be zero or greater.")
+    if (
+      !Number.isFinite(depositRateBasisPoints) ||
+      depositRateBasisPoints <= 0 ||
+      depositRateBasisPoints > 10_000
+    ) {
+      throw new Error("Deposit percentage is required and must be between 0% and 100%.")
     }
     if (
       !Number.isFinite(latePaymentRateBasisPoints) ||
@@ -614,6 +624,21 @@ export async function saveProjectContractPacket(
     ) {
       throw new Error("Late-payment rate must be between 0% and 10,000%.")
     }
+    const estimate = await access.db
+      .select({ estimateTotalCents: projectEstimates.estimateTotalCents })
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.id, packet.estimateId),
+          eq(projectEstimates.projectId, projectId)
+        )
+      )
+      .get()
+    if (!estimate) throw new Error("The linked CA22 estimate was not found.")
+    const depositCents = contractDepositCents(
+      estimate.estimateTotalCents,
+      depositRateBasisPoints
+    )
     const now = new Date().toISOString()
     await access.db
       .update(contractPackets)
@@ -623,6 +648,7 @@ export async function saveProjectContractPacket(
         contractDraftDate: cleanText(input.contractDraftDate),
         approximateCommencementDate: cleanText(input.approximateCommencementDate),
         approximateCompletionDate: cleanText(input.approximateCompletionDate),
+        depositRateBasisPoints,
         depositCents,
         latePaymentRateBasisPoints,
         detailsJson: JSON.stringify(input.details),
@@ -840,6 +866,7 @@ export async function duplicateProjectContractPacket(
         contractDraftDate: now.slice(0, 10),
         approximateCommencementDate: source.approximateCommencementDate,
         approximateCompletionDate: source.approximateCompletionDate,
+        depositRateBasisPoints: source.depositRateBasisPoints,
         depositCents: source.depositCents,
         latePaymentRateBasisPoints: source.latePaymentRateBasisPoints,
         detailsJson: source.detailsJson,
@@ -1001,6 +1028,19 @@ export async function prepareProjectContractPacketForSignature(
     if (!cleanText(packet.companySignerInitials)) {
       throw new Error("Add the company representative initials before signature.")
     }
+    if (
+      packet.depositRateBasisPoints <= 0 ||
+      packet.depositRateBasisPoints > 10_000
+    ) {
+      throw new Error("Add a deposit percentage between 0% and 100% before signature.")
+    }
+    const expectedDepositCents = contractDepositCents(
+      estimate.estimateTotalCents,
+      packet.depositRateBasisPoints
+    )
+    if (packet.depositCents !== expectedDepositCents) {
+      throw new Error("Save the contract information again so the deposit matches the estimate total.")
+    }
     const sourceHash = await sha256(JSON.stringify({
       packet: packetSummary(packet, false),
       documents: workspace.documents,
@@ -1011,11 +1051,22 @@ export async function prepareProjectContractPacketForSignature(
     if (!clientId || !clientSecret) {
       throw new Error("Foxit eSign credentials are not configured for Compass.")
     }
-    const estimatePdf = await renderContractEstimatePdf({
-      env: access.env,
-      projectId,
-      estimateId: estimate.id,
-    })
+    const origin = new URL(access.env.WORKOS_REDIRECT_URI).origin
+    const assets = access.env.ASSETS
+    if (!assets) throw new Error("Cloudflare Assets is unavailable for contract branding.")
+    const [estimatePdf, brand] = await Promise.all([
+      renderContractEstimatePdf({
+        env: access.env,
+        projectId,
+        estimateId: estimate.id,
+      }),
+      loadContractPacketPdfBranding({
+        assets,
+        origin,
+        projectId,
+        projectNumber: workspace.projectNumber,
+      }),
+    ])
     const prepared = await prepareContractPacketPdf({
       packet: packetSummary(packet, false),
       documents: workspace.documents,
@@ -1023,9 +1074,9 @@ export async function prepareProjectContractPacketForSignature(
       projectName: workspace.projectName,
       projectNumber: workspace.projectNumber,
       projectAddress: workspace.projectAddress,
+      brand,
       estimatePdf,
     })
-    const origin = new URL(access.env.WORKOS_REDIRECT_URI).origin
     const successUrl = new URL(`/dashboard/projects/${projectId}/contracts`, origin)
     successUrl.searchParams.set("packetId", packetId)
     successUrl.searchParams.set("foxit", "sent")

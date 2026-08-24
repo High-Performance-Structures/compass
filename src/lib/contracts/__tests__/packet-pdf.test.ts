@@ -23,6 +23,7 @@ describe("contract packet PDF", () => {
         contractDraftDate: "2026-08-23",
         approximateCommencementDate: "2026-09-01",
         approximateCompletionDate: "2027-08-31",
+        depositRateBasisPoints: 1_000,
         depositCents: 10_000_00,
         latePaymentRateBasisPoints: 1200,
         details: { projectAddress: "1 Main Street", county: "Teller", ownerName: "Alex Owner" },
@@ -64,6 +65,14 @@ describe("contract packet PDF", () => {
       projectName: "Compass Developer",
       projectNumber: "H-001",
       projectAddress: "1 Main Street",
+      brand: {
+        companyName: "High Performance Structures, Inc.",
+        contactLines: ["PO Box 1813", "Woodland Park, CO 80866", "Tel: 719.900.8850"],
+        logoBytes: new Uint8Array(Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvV1AAAAAElFTkSuQmCC",
+          "base64"
+        )),
+      },
       estimatePdf: estimateBuffer.buffer,
     })
     const finalPdf = await PDFDocument.load(base64PdfBytes(prepared.pdfBase64))

@@ -1,6 +1,7 @@
 import {
   PDFDocument,
   PDFFont,
+  PDFImage,
   PDFPage,
   StandardFonts,
   rgb,
@@ -20,6 +21,7 @@ import {
   prepareEstimateSignaturePdf,
   type PreparedEstimateSignaturePdf,
 } from "@/lib/estimates/signature-pdf"
+import { projectBrandFor, type ProjectDepartment } from "@/lib/project-branding"
 
 const PAGE_WIDTH = 612
 const PAGE_HEIGHT = 792
@@ -38,8 +40,16 @@ type Writer = {
   readonly document: PDFDocument
   readonly regular: PDFFont
   readonly bold: PDFFont
+  readonly brand: ContractPacketPdfBranding
+  readonly brandLogo: PDFImage
   page: PDFPage
   y: number
+}
+
+export type ContractPacketPdfBranding = {
+  readonly companyName: string
+  readonly contactLines: readonly string[]
+  readonly logoBytes: Uint8Array
 }
 
 function money(cents: number): string {
@@ -92,9 +102,76 @@ function wrappedLines(text: string, font: PDFFont, size: number, width: number):
   return lines
 }
 
+function drawBrandHeader(
+  writer: Writer,
+  context?: {
+    readonly title: string
+    readonly lines: readonly string[]
+  }
+): void {
+  const logoSize = 32
+  const logo = writer.brandLogo.scaleToFit(logoSize, logoSize)
+  const logoAreaY = PAGE_HEIGHT - MARGIN - 22
+  writer.page.drawImage(writer.brandLogo, {
+    x: MARGIN + (logoSize - logo.width) / 2,
+    y: logoAreaY + (logoSize - logo.height) / 2,
+    width: logo.width,
+    height: logo.height,
+  })
+  writer.page.drawText(writer.brand.companyName, {
+    x: MARGIN + logoSize + 12,
+    y: PAGE_HEIGHT - MARGIN + 1,
+    size: 11,
+    font: writer.bold,
+    color: rgb(0.08, 0.08, 0.08),
+  })
+  const contactWidth = context ? 275 : PAGE_WIDTH - MARGIN * 2 - logoSize - 12
+  const contactLines = wrappedLines(
+    writer.brand.contactLines.join(" · "),
+    writer.regular,
+    6.5,
+    contactWidth
+  ).slice(0, 2)
+  contactLines.forEach((line, index) => {
+    writer.page.drawText(line, {
+      x: MARGIN + logoSize + 12,
+      y: PAGE_HEIGHT - MARGIN - 12 - index * 9,
+      size: 6.5,
+      font: writer.regular,
+      color: rgb(0.25, 0.25, 0.25),
+    })
+  })
+  if (context) {
+    const x = 390
+    writer.page.drawText(context.title, {
+      x,
+      y: PAGE_HEIGHT - MARGIN + 1,
+      size: 10,
+      font: writer.bold,
+      color: rgb(0.08, 0.08, 0.08),
+    })
+    context.lines.slice(0, 2).forEach((line, index) => {
+      writer.page.drawText(line, {
+        x,
+        y: PAGE_HEIGHT - MARGIN - 12 - index * 9,
+        size: 6.5,
+        font: writer.regular,
+        color: rgb(0.25, 0.25, 0.25),
+      })
+    })
+  }
+  writer.page.drawLine({
+    start: { x: MARGIN, y: PAGE_HEIGHT - 80 },
+    end: { x: PAGE_WIDTH - MARGIN, y: PAGE_HEIGHT - 80 },
+    thickness: 1,
+    color: rgb(0.12, 0.12, 0.12),
+  })
+  writer.y = PAGE_HEIGHT - 110
+}
+
 function newPage(writer: Writer): void {
   writer.page = writer.document.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-  writer.y = PAGE_HEIGHT - MARGIN
+  drawBrandHeader(writer)
 }
 
 function ensureSpace(writer: Writer, height: number): void {
@@ -190,12 +267,23 @@ async function renderContractDocuments(input: {
   readonly projectName: string
   readonly projectNumber: string | null
   readonly projectAddress: string | null
-}): Promise<PDFDocument> {
+  readonly brand: ContractPacketPdfBranding
+}): Promise<{ readonly document: PDFDocument; readonly brandLogo: PDFImage }> {
   const document = await PDFDocument.create()
   const regular = await document.embedFont(StandardFonts.TimesRoman)
   const bold = await document.embedFont(StandardFonts.TimesRomanBold)
+  const brandLogo = await document.embedPng(input.brand.logoBytes)
   const first = document.addPage([PAGE_WIDTH, PAGE_HEIGHT])
-  const writer: Writer = { document, regular, bold, page: first, y: PAGE_HEIGHT - MARGIN }
+  const writer: Writer = {
+    document,
+    regular,
+    bold,
+    brand: input.brand,
+    brandLogo,
+    page: first,
+    y: 0,
+  }
+  drawBrandHeader(writer)
   const schedule = contractDocumentSchedule(input.documents)
   const values = {
     "project.name": input.projectName,
@@ -210,6 +298,7 @@ async function renderContractDocuments(input: {
     "contract.completion_date": displayDate(input.packet.approximateCompletionDate),
     "contract.deposit": money(input.packet.depositCents),
     "contract.deposit_words": dollarsInWords(input.packet.depositCents),
+    "contract.deposit_percent": percent(input.packet.depositRateBasisPoints),
     "contract.late_payment_percent": percent(input.packet.latePaymentRateBasisPoints),
     "estimate.date": displayDate(input.estimate.estimateDate),
     "estimate.total": money(input.estimate.estimateTotalCents),
@@ -239,7 +328,7 @@ async function renderContractDocuments(input: {
     })
     drawMarkdown(writer, fillContractTokens(item.contentMarkdown, values))
   }
-  return document
+  return { document, brandLogo }
 }
 
 async function appendEstimateWithoutSignaturePage(
@@ -260,14 +349,30 @@ async function appendPacketSignaturePage(input: {
   readonly document: PDFDocument
   readonly packet: ProjectContractPacketSummary
   readonly estimate: ProjectContractPacketEstimateOption
+  readonly brand: ContractPacketPdfBranding
+  readonly brandLogo: PDFImage
 }): Promise<void> {
   const page = input.document.addPage([PAGE_WIDTH, PAGE_HEIGHT])
   const regular = await input.document.embedFont(StandardFonts.Helvetica)
   const bold = await input.document.embedFont(StandardFonts.HelveticaBold)
-  page.drawText("Contract packet signatures", { x: 40, y: 752, size: 18, font: bold })
-  page.drawText(`${input.packet.packetNumber} · version ${input.packet.versionNumber}`, { x: 40, y: 732, size: 10, font: regular })
-  page.drawText(`CA22 estimate: ${input.estimate.estimateNumber} · version ${input.estimate.versionNumber}`, { x: 40, y: 716, size: 9, font: regular })
-  page.drawText("By signing, each party acknowledges the complete numbered contract packet.", { x: 40, y: 700, size: 9, font: regular })
+  drawBrandHeader(
+    {
+      document: input.document,
+      regular,
+      bold,
+      brand: input.brand,
+      brandLogo: input.brandLogo,
+      page,
+      y: 0,
+    },
+    {
+      title: "Contract packet signatures",
+      lines: [
+        `${input.packet.packetNumber} · version ${input.packet.versionNumber}`,
+        `CA22 ${input.estimate.estimateNumber} · version ${input.estimate.versionNumber}`,
+      ],
+    }
+  )
   const signers = [
     ...input.packet.clientSigners.map((signer, index) => ({
       label: `Owner ${index + 1}`,
@@ -306,6 +411,7 @@ export async function prepareContractPacketPdf(input: {
   readonly projectName: string
   readonly projectNumber: string | null
   readonly projectAddress: string | null
+  readonly brand: ContractPacketPdfBranding
   readonly estimatePdf: ArrayBuffer
 }): Promise<PreparedEstimateSignaturePdf> {
   if (!input.documents.some((item) => item.code === "CA00")) {
@@ -315,13 +421,15 @@ export async function prepareContractPacketPdf(input: {
     throw new Error("Add CA22 before preparing the full contract packet.")
   }
   const contract = await renderContractDocuments(input)
-  await appendEstimateWithoutSignaturePage(contract, input.estimatePdf)
+  await appendEstimateWithoutSignaturePage(contract.document, input.estimatePdf)
   await appendPacketSignaturePage({
-    document: contract,
+    document: contract.document,
     packet: input.packet,
     estimate: input.estimate,
+    brand: input.brand,
+    brandLogo: contract.brandLogo,
   })
-  const saved = await contract.save()
+  const saved = await contract.document.save()
   const copy = new Uint8Array(saved.byteLength)
   copy.set(saved)
   return prepareEstimateSignaturePdf({
@@ -331,6 +439,35 @@ export async function prepareContractPacketPdf(input: {
       "Company",
     ],
   })
+}
+
+function contractBrandLogoPath(department: ProjectDepartment, defaultPath: string): string {
+  return department === "H" ? "/hps-h-logo.png" : defaultPath
+}
+
+export async function loadContractPacketPdfBranding(input: {
+  readonly assets: Fetcher
+  readonly origin: string
+  readonly projectId: string
+  readonly projectNumber: string | null
+}): Promise<ContractPacketPdfBranding> {
+  const brand = projectBrandFor({
+    projectId: input.projectId,
+    projectNumber: input.projectNumber,
+  })
+  const url = new URL(
+    contractBrandLogoPath(brand.department, brand.logoSrc),
+    input.origin
+  )
+  const response = await input.assets.fetch(new Request(url))
+  if (!response.ok) {
+    throw new Error(`Unable to load ${brand.companyName} contract branding.`)
+  }
+  return {
+    companyName: brand.companyName,
+    contactLines: brand.contactLines,
+    logoBytes: new Uint8Array(await response.arrayBuffer()),
+  }
 }
 
 export function base64PdfBytes(value: string): Uint8Array {
