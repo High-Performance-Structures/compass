@@ -45,6 +45,7 @@ function sidebarCompanyName(activeOrgName: string | null): string {
   if (
     activeOrgName === null ||
     activeOrgName === "Open Range Construction" ||
+    activeOrgName === "Open Range Construction, Ltd." ||
     activeOrgName.startsWith("High Performance Structures")
   ) {
     return COMPASS_COMPANY_NAME

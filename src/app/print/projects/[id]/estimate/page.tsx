@@ -8,7 +8,7 @@ import { ProjectBrandContactDetails } from "@/components/projects/project-brand-
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
 import { clientEstimatePhases } from "@/lib/estimates/client-report"
-import { projectBrandFor } from "@/lib/project-branding"
+import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -57,6 +57,7 @@ export default async function ProjectEstimatePrintPage({
     projectId: id,
     projectNumber: workspace.projectNumber,
   })
+  const legalEntityName = projectLegalEntityName(brand.department)
 
   if (!estimate) {
     return <main className="p-8">Estimate not found.</main>
@@ -393,17 +394,23 @@ export default async function ProjectEstimatePrintPage({
                 <p className="mt-1 text-xs">Date</p>
               </div>
             ))}
-            <div>
-              <p className="font-semibold">{brand.companyName}</p>
-              <div className="mt-7 border-b border-black" />
-              <p className="mt-1 text-xs">Company representative signature</p>
-              <p className="mt-2 font-medium">
+            <div className="break-inside-avoid">
+              <p className="text-[8px] font-semibold leading-3">
+                {legalEntityName}
+              </p>
+              <div className="mt-7 flex items-end gap-2">
+                <span className="text-xs font-semibold">By:</span>
+                <div className="flex-1 border-b border-black" />
+              </div>
+              <p className="mt-2 text-xs">
+                <span className="font-semibold">Name:</span>{" "}
                 {estimate.companySignerName ?? "Company representative"}
               </p>
-              {estimate.companySignerTitle && (
-                <p className="text-xs">{estimate.companySignerTitle}</p>
-              )}
-              <div className="mt-4 border-b border-black" />
+              <p className="text-xs">
+                <span className="font-semibold">Title:</span>{" "}
+                {estimate.companySignerTitle ?? "Title required"}
+              </p>
+              <div className="mt-12 border-b border-black" />
               <p className="mt-1 text-xs">Date</p>
             </div>
           </div>

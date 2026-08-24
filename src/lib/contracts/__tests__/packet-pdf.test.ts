@@ -80,5 +80,13 @@ describe("contract packet PDF", () => {
     expect(prepared.fields.filter((field) => field.type === "initial")).toHaveLength(4)
     expect(prepared.fields.filter((field) => field.type === "signature")).toHaveLength(2)
     expect(prepared.fields.filter((field) => field.type === "date")).toHaveLength(2)
+    expect(
+      prepared.fields.find(
+        (field) => field.type === "signature" && field.party === 2
+      )
+    ).toMatchObject({ x: 339, width: 233 })
+    expect(
+      prepared.fields.find((field) => field.type === "date" && field.party === 2)
+    ).toMatchObject({ x: 321, width: 251, y: 205 })
   })
 })

@@ -52,6 +52,7 @@ export async function GET(
         ...estimate.clientSigners.map((_, index) => `Client ${index + 1}`),
         "Company",
       ],
+      corporateSignerIndex: estimate.clientSigners.length,
     })
     const binary = atob(preparedPdf.pdfBase64)
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))

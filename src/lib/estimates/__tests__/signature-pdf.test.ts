@@ -16,6 +16,7 @@ describe("estimate signature PDFs", () => {
     const prepared = await prepareEstimateSignaturePdf({
       pdf: copy.buffer,
       signerLabels: ["Client 1", "Client 2", "Company"],
+      corporateSignerIndex: 2,
     })
 
     expect(prepared.pdfBase64.length).toBeGreaterThan(0)
@@ -61,5 +62,17 @@ describe("estimate signature PDFs", () => {
             field.dateFormat === "MM-DD-YYYY"
         )
     ).toBe(true)
+    const clientSignature = prepared.fields.find(
+      (field) => field.type === "signature" && field.party === 1
+    )
+    const companySignature = prepared.fields.find(
+      (field) => field.type === "signature" && field.party === 3
+    )
+    const companyDate = prepared.fields.find(
+      (field) => field.type === "date" && field.party === 3
+    )
+    expect(clientSignature).toMatchObject({ x: 40, width: 251 })
+    expect(companySignature).toMatchObject({ x: 58, width: 233, y: 236, height: 27 })
+    expect(companyDate).toMatchObject({ x: 40, width: 251, y: 304 })
   })
 })

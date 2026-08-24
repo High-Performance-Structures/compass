@@ -57,7 +57,7 @@ type LinkInput = {
 function projectNumberPrefixName(prefix: string): string | null {
   switch (prefix) {
     case "O":
-      return "Open Range Construction"
+      return "Open Range Construction, Ltd."
     case "N":
       return "NuTech Systems"
     case "H":
@@ -88,7 +88,7 @@ function projectNumberValue(formData: FormData): UpdateResult | string | null {
     return {
       success: false,
       error:
-        "Project number must start with O (Open Range Construction), N (NuTech Systems), H (High Performance Structures), or D (Design only).",
+        "Project number must start with O (Open Range Construction, Ltd.), N (NuTech Systems), H (High Performance Structures), or D (Design only).",
     }
   }
 

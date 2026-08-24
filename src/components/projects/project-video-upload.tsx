@@ -59,7 +59,7 @@ function titleFromFileName(fileName: string): string {
 function channelLabel(channelKey: string): string {
   if (channelKey === "hps") return "High Performance Structures"
   if (channelKey === "nutech") return "Nu-Tech Systems"
-  return "Open Range Construction"
+  return "Open Range Construction, Ltd."
 }
 
 function uploadToGoogleDrive(input: {

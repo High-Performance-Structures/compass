@@ -21,9 +21,9 @@ const PROJECT_LEGAL_ENTITY_NAMES: Readonly<Record<ProjectDepartment, string>> = 
 type BrandIdentity = Omit<ProjectBrand, "contactLines" | "department">
 
 const ORC_BRAND: BrandIdentity = {
-  companyName: "Open Range Construction",
+  companyName: "Open Range Construction, Ltd.",
   email: "accounting@openrangeconstruction.com",
-  logoAlt: "Open Range Construction",
+  logoAlt: "Open Range Construction, Ltd.",
   logoSrc: "/department-logos/orc-mark.png",
   mailingAddress: ["PO Box 9046", "Woodland Park, CO 80866"],
   telephone: "719.630.8767",

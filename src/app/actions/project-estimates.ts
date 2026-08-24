@@ -2605,6 +2605,7 @@ async function renderEstimateSignaturePdf(input: {
   readonly projectId: string
   readonly estimateId: string
   readonly signerLabels: readonly string[]
+  readonly corporateSignerIndex: number
 }): Promise<PreparedEstimateSignaturePdf> {
   const quickAction = Reflect.get(input.env.BROWSER, "quickAction")
   if (typeof quickAction !== "function") {
@@ -2635,6 +2636,7 @@ async function renderEstimateSignaturePdf(input: {
   return prepareEstimateSignaturePdf({
     pdf: await rendered.arrayBuffer(),
     signerLabels: input.signerLabels,
+    corporateSignerIndex: input.corporateSignerIndex,
   })
 }
 
@@ -2687,6 +2689,9 @@ export async function prepareProjectEstimateForClientSignature(
       throw new Error(
         "Choose or type the company representative before signature."
       )
+    }
+    if (!cleanText(estimate.companySignerTitle)) {
+      throw new Error("Add the company representative title before signature.")
     }
     if (!cleanText(estimate.companySignerEmail)) {
       throw new Error("Add the company representative email before signature.")
@@ -2798,6 +2803,7 @@ export async function prepareProjectEstimateForClientSignature(
         ...clientSigners.map((_, index) => `Client ${index + 1}`),
         "Company",
       ],
+      corporateSignerIndex: clientSigners.length,
     })
     const origin = new URL(env.WORKOS_REDIRECT_URI).origin
     const returnUrl = new URL(
@@ -2886,6 +2892,9 @@ export async function markProjectEstimateSentOutsideCompass(
     }
     if (!cleanText(estimate.companySignerName)) {
       throw new Error("Add the company representative before signature.")
+    }
+    if (!cleanText(estimate.companySignerTitle)) {
+      throw new Error("Add the company representative title before signature.")
     }
     if (!cleanText(estimate.contractTerms)) {
       throw new Error("Add the contract terms before signature.")

@@ -81,8 +81,8 @@ describe("project branding", () => {
   })
 
   it.each([
-    ["O-202-595", "Open Range Construction", "/department-logos/orc-mark.png"],
-    ["D-18-00", "Open Range Construction", "/department-logos/orc-mark.png"],
+    ["O-202-595", "Open Range Construction, Ltd.", "/department-logos/orc-mark.png"],
+    ["D-18-00", "Open Range Construction, Ltd.", "/department-logos/orc-mark.png"],
     ["H-OFFICE", "High Performance Structures, Inc.", "/department-logos/hps-h-green.svg"],
     ["N-830-8220", "Nu-Tech Systems", "/department-logos/nu-tech-n.png"],
   ])(

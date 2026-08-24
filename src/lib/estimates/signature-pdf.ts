@@ -20,6 +20,8 @@ export type PreparedEstimateSignaturePdf = {
 export async function prepareEstimateSignaturePdf(input: {
   readonly pdf: ArrayBuffer
   readonly signerLabels: readonly string[]
+  readonly corporateSignerIndex?: number
+  readonly corporateDateFieldTop?: number
 }): Promise<PreparedEstimateSignaturePdf> {
   const document = await PDFDocument.load(input.pdf)
   const pages = document.getPages()
@@ -132,10 +134,22 @@ export async function prepareEstimateSignaturePdf(input: {
   input.signerLabels.forEach((signerLabel, signerIndex) => {
     const row = Math.floor(signerIndex / 2)
     const column = signerIndex % 2
-    const x =
+    const columnX =
       signatureMargin + column * (signatureColumnWidth + signatureColumnGap)
-    const signatureY = signatureFieldTop + row * signatureRowStride
-    const dateY = dateFieldTop + row * signatureRowStride
+    const isCorporateSigner = signerIndex === input.corporateSignerIndex
+    // Keep the corporate "By:" prefix visible beside the Foxit signature field.
+    const signaturePrefixWidth = isCorporateSigner ? 18 : 0
+    const signatureX = columnX + signaturePrefixWidth
+    const signatureWidth = signatureColumnWidth - signaturePrefixWidth
+    const signatureY =
+      (isCorporateSigner ? signatureFieldTop + 5 : signatureFieldTop) +
+      row * signatureRowStride
+    const signatureHeight = isCorporateSigner ? 27 : signatureFieldHeight
+    const dateY =
+      (isCorporateSigner
+        ? input.corporateDateFieldTop ?? dateFieldTop
+        : dateFieldTop) +
+      row * signatureRowStride
     if (
       dateY + dateFieldHeight >
       signaturePage.getHeight() - signaturePageBottomReserve
@@ -149,10 +163,10 @@ export async function prepareEstimateSignaturePdf(input: {
     fields.push(
       {
         type: "signature",
-        x,
+        x: signatureX,
         y: signatureY,
-        width: signatureColumnWidth,
-        height: signatureFieldHeight,
+        width: signatureWidth,
+        height: signatureHeight,
         documentNumber: 1,
         pageNumber: totalPages,
         tabOrder: tabOrder + 1,
@@ -164,7 +178,7 @@ export async function prepareEstimateSignaturePdf(input: {
       },
       {
         type: "date",
-        x,
+        x: columnX,
         y: dateY,
         width: signatureColumnWidth,
         height: dateFieldHeight,
