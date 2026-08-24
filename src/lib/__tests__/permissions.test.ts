@@ -5,6 +5,7 @@ import {
   canCreateProject,
   canManageWorkCalendarEvents,
   canUseAskCompass,
+  canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
 } from "@/lib/permissions"
@@ -163,6 +164,47 @@ describe("canUseOfficeTalk", () => {
 
   it("keeps the production meeting out of the demo workspace", () => {
     expect(canUseOfficeTalk(DEMO_USER)).toBe(false)
+  })
+})
+
+describe("canUseExecutiveAdmin", () => {
+  it.each([
+    "martine@hps-colorado.com",
+    "martine@openrangeconstruction.com",
+    "dan@hps-colorado.com",
+  ])("allows approved Executive Admin identity %s", (email) => {
+    expect(
+      canUseExecutiveAdmin({
+        ...userWithRole("office"),
+        email,
+      }),
+    ).toBe(true)
+  })
+
+  it("does not trust an administrator-editable Google email override", () => {
+    expect(
+      canUseExecutiveAdmin({
+        ...userWithRole("admin"),
+        googleEmail: "martine@hps-colorado.com",
+      }),
+    ).toBe(false)
+  })
+
+  it("does not grant access from a broad admin role", () => {
+    expect(canUseExecutiveAdmin(userWithRole("admin"))).toBe(false)
+  })
+
+  it("denies approved identities outside the active internal workspace", () => {
+    const martine = {
+      ...userWithRole("admin"),
+      email: "martine@hps-colorado.com",
+    }
+
+    expect(canUseExecutiveAdmin({ ...martine, isActive: false })).toBe(false)
+    expect(
+      canUseExecutiveAdmin({ ...martine, organizationType: "client" }),
+    ).toBe(false)
+    expect(canUseExecutiveAdmin(null)).toBe(false)
   })
 })
 

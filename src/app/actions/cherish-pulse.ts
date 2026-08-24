@@ -1,13 +1,14 @@
 "use server"
 
 import { and, desc, eq } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { cherishPulseResponses } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import { canUseExecutiveAdmin, canUseFieldDesk } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type CherishValue =
@@ -233,10 +234,10 @@ export async function getCherishPulseReviewQueue(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canManageProjectRegistry(user)) {
+    if (!canUseExecutiveAdmin(user)) {
       return {
         success: false,
-        error: "Only admins can review CHERISH Pulse responses.",
+        error: "Executive Admin access is required to review CHERISH responses.",
       }
     }
 
@@ -359,10 +360,10 @@ export async function getCherishPulseLeadershipStream(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canManageProjectRegistry(user)) {
+    if (!canUseExecutiveAdmin(user)) {
       return {
         success: false,
-        error: "Only admins can view private CHERISH concerns.",
+        error: "Executive Admin access is required to view private CHERISH concerns.",
       }
     }
 
@@ -424,10 +425,10 @@ export async function reviewCherishPulseResponse(
 ): Promise<ActionResult<{ readonly id: string; readonly reviewStatus: CherishPulseReviewStatus }>> {
   try {
     const user = await requireAuth()
-    if (!canManageProjectRegistry(user)) {
+    if (!canUseExecutiveAdmin(user)) {
       return {
         success: false,
-        error: "Only admins can review CHERISH Pulse responses.",
+        error: "Executive Admin access is required to review CHERISH responses.",
       }
     }
 
@@ -488,6 +489,9 @@ export async function reviewCherishPulseResponse(
       )
       .run()
 
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/executive-admin/cherish")
+
     return {
       success: true,
       data: {
@@ -507,13 +511,7 @@ export async function reviewCherishPulseResponse(
 }
 
 function canSubmitCherishPulse(user: AuthUser): boolean {
-  return (
-    user.isActive &&
-    (user.role === "admin" ||
-      user.role === "secondary_admin" ||
-      user.role === "office" ||
-      user.role === "field")
-  )
+  return canUseFieldDesk(user)
 }
 
 function canViewCherishPulse(user: AuthUser): boolean {

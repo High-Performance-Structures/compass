@@ -99,6 +99,7 @@ interface SidebarNavLinkSource {
   readonly projectPath?: string
   readonly internalOnly?: boolean
   readonly adminOnly?: boolean
+  readonly executiveAdminOnly?: boolean
 }
 
 interface SidebarNavSubgroupSource {
@@ -371,6 +372,20 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         internalOnly: true,
       },
       {
+        kind: "subgroup",
+        title: "Executive Admin",
+        icon: IconShieldCheck,
+        items: [
+          {
+            kind: "link",
+            title: "CHERISH Review",
+            url: "/dashboard/executive-admin/cherish",
+            icon: IconHeartHandshake,
+            executiveAdminOnly: true,
+          },
+        ],
+      },
+      {
         kind: "link",
         title: "Feedback Desk",
         url: "/dashboard/requests/manage",
@@ -385,10 +400,12 @@ function isNavLinkVisible(
   item: SidebarNavLinkSource,
   canViewActivity: boolean,
   canManageFeedback: boolean,
+  canUseExecutiveAdmin: boolean,
 ): boolean {
   return (
     (!item.internalOnly || canViewActivity) &&
-    (!item.adminOnly || canManageFeedback)
+    (!item.adminOnly || canManageFeedback) &&
+    (!item.executiveAdminOnly || canUseExecutiveAdmin)
   )
 }
 
@@ -416,17 +433,26 @@ function buildGroupChildren({
   activeProjectId,
   canViewActivity,
   canManageFeedback,
+  canUseExecutiveAdmin,
 }: {
   readonly items: ReadonlyArray<SidebarNavGroupChildSource>
   readonly activeProjectId: string | null
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
+  readonly canUseExecutiveAdmin: boolean
 }): ReadonlyArray<NavGroupChildItem> {
   const children: NavGroupChildItem[] = []
 
   for (const item of items) {
     if (item.kind === "link") {
-      if (isNavLinkVisible(item, canViewActivity, canManageFeedback)) {
+      if (
+        isNavLinkVisible(
+          item,
+          canViewActivity,
+          canManageFeedback,
+          canUseExecutiveAdmin,
+        )
+      ) {
         children.push(resolveNavLink(item, activeProjectId))
       }
       continue
@@ -440,7 +466,14 @@ function buildGroupChildren({
         continue
       }
 
-      if (isNavLinkVisible(child, canViewActivity, canManageFeedback)) {
+      if (
+        isNavLinkVisible(
+          child,
+          canViewActivity,
+          canManageFeedback,
+          canUseExecutiveAdmin,
+        )
+      ) {
         subgroupLinks.push(resolveNavLink(child, activeProjectId))
       }
     }
@@ -458,14 +491,16 @@ function buildGroupChildren({
   return children
 }
 
-function buildMainNavigation({
+export function buildMainNavigation({
   activeProjectId,
   canViewActivity,
   canManageFeedback,
+  canUseExecutiveAdmin,
 }: {
   readonly activeProjectId: string | null
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
+  readonly canUseExecutiveAdmin: boolean
 }): ReadonlyArray<NavItem> {
   return NAV_GROUPS.flatMap((group) => {
     const items = buildGroupChildren({
@@ -473,6 +508,7 @@ function buildMainNavigation({
       activeProjectId,
       canViewActivity,
       canManageFeedback,
+      canUseExecutiveAdmin,
     })
 
     return items.length > 0
@@ -485,10 +521,12 @@ function SidebarNav({
   canUseFieldDesk,
   canViewActivity,
   canManageFeedback,
+  canUseExecutiveAdmin,
 }: {
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
+  readonly canUseExecutiveAdmin: boolean
 }) {
   const pathname = usePathname()
   const { state } = useSidebar()
@@ -508,6 +546,7 @@ function SidebarNav({
     activeProjectId,
     canViewActivity,
     canManageFeedback,
+    canUseExecutiveAdmin,
   })
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
@@ -568,6 +607,7 @@ export function AppSidebar({
   canUseFieldDesk = false,
   canViewActivity = false,
   canManageFeedback = false,
+  canUseExecutiveAdmin = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser | null
@@ -576,6 +616,7 @@ export function AppSidebar({
   readonly canUseFieldDesk?: boolean
   readonly canViewActivity?: boolean
   readonly canManageFeedback?: boolean
+  readonly canUseExecutiveAdmin?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -593,6 +634,7 @@ export function AppSidebar({
           canUseFieldDesk={canUseFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
+          canUseExecutiveAdmin={canUseExecutiveAdmin}
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">

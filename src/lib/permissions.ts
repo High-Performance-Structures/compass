@@ -5,6 +5,12 @@ import {
   isInternalStaffRole,
 } from "@/lib/user-roles"
 
+const EXECUTIVE_ADMIN_EMAILS: readonly string[] = [
+  "dan@hps-colorado.com",
+  "martine@hps-colorado.com",
+  "martine@openrangeconstruction.com",
+]
+
 export type Resource =
   | "project"
   | "schedule"
@@ -524,6 +530,24 @@ export function canUseOfficeTalk(user: AuthUser | null): boolean {
     isInternalStaffRole(user.role) &&
     can(user, "channels", "read")
   )
+}
+
+/**
+ * Executive Admin includes confidential employee feedback, so access is
+ * intentionally tied to the approved people instead of a broad Compass role.
+ */
+export function canUseExecutiveAdmin(user: AuthUser | null): boolean {
+  if (
+    !user ||
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  ) {
+    return false
+  }
+
+  return EXECUTIVE_ADMIN_EMAILS.includes(user.email.trim().toLowerCase())
 }
 
 /**
