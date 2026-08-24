@@ -46,6 +46,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
+import { CherishRecognitionTicker } from "@/components/cherish/cherish-recognition-ticker"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Dialog,
@@ -72,6 +73,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import type { SidebarUser } from "@/lib/auth"
+import type { FieldCherishRecognition } from "@/lib/field/types"
 import {
   DESK_STATUS_LABELS,
   deskStatusForPresenceMessage,
@@ -1307,6 +1309,7 @@ export function DashboardLaunchpad({
   officeProjectId,
   canManageOfficeMaintenance,
   canReviewCherish,
+  cherishRecognitions,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1316,6 +1319,7 @@ export function DashboardLaunchpad({
   readonly officeProjectId: string | null
   readonly canManageOfficeMaintenance: boolean
   readonly canReviewCherish: boolean
+  readonly cherishRecognitions: readonly FieldCherishRecognition[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1378,6 +1382,8 @@ export function DashboardLaunchpad({
           />
         </div>
       </div>
+
+      <CherishRecognitionTicker items={cherishRecognitions} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1.28fr)]">
         <DeskHero

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { fieldOutboxSchema } from "../types"
+import { fieldCherishRecognitionSchema, fieldOutboxSchema } from "../types"
 
 describe("fieldOutboxSchema", () => {
   it("preserves daily log drafts queued by mobile builds before attachments", () => {
@@ -41,5 +41,30 @@ describe("fieldOutboxSchema", () => {
     ])
 
     expect(result.success).toBe(true)
+  })
+})
+
+describe("fieldCherishRecognitionSchema", () => {
+  it("accepts public recognition and rejects private concerns", () => {
+    const recognition = {
+      id: "recognition-1",
+      cherishValue: "Reliability",
+      message: "Thank you for keeping the delivery moving.",
+      submittedByName: "Martine",
+      createdAt: "2026-08-24T12:00:00.000Z",
+    }
+
+    expect(
+      fieldCherishRecognitionSchema.safeParse({
+        ...recognition,
+        responseType: "shoutout",
+      }).success,
+    ).toBe(true)
+    expect(
+      fieldCherishRecognitionSchema.safeParse({
+        ...recognition,
+        responseType: "concern",
+      }).success,
+    ).toBe(false)
   })
 })

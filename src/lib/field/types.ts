@@ -130,6 +130,15 @@ export const cherishResponseTypeSchema = z.enum([
   "concern",
 ])
 
+export const fieldCherishRecognitionSchema = z.object({
+  id: z.string(),
+  cherishValue: cherishValueSchema,
+  responseType: z.enum(["shoutout", "win"]),
+  message: z.string(),
+  submittedByName: z.string().nullable(),
+  createdAt: z.string(),
+})
+
 export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     id: z.string(),
@@ -174,4 +183,7 @@ export type FieldOutboxItem = z.infer<typeof fieldOutboxItemSchema>
 export type FieldCherishValue = z.infer<typeof cherishValueSchema>
 export type FieldCherishResponseType = z.infer<
   typeof cherishResponseTypeSchema
+>
+export type FieldCherishRecognition = z.infer<
+  typeof fieldCherishRecognitionSchema
 >
