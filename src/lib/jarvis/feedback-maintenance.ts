@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { feedback } from "@/db/schema"
@@ -19,7 +19,10 @@ import {
   type FeedbackDeskKind,
 } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
-import { feedbackFeatureGithubIssueCreationIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
+import {
+  feedbackFeatureGithubIssueApprovalIsStale,
+  feedbackFeatureGithubIssueCreationIsBlocked,
+} from "@/lib/jarvis/feedback-feature-priority"
 import { githubFeedbackIssueContent } from "@/lib/jarvis/feedback-github-content"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
 import { feedbackDeliveryGraphEvent } from "@/lib/jarvis/feedback-delivery"
@@ -35,6 +38,7 @@ export type FeedbackMaintenanceResult = Readonly<{
   recoveredCount: number
   linkedCount: number
   missingLinkReviewCount: number
+  staleIssueApprovalReconciledCount: number
   syncedCount: number
   deliveryRequestedCount: number
   scrubbedCount: number
@@ -49,9 +53,27 @@ export function feedbackGithubLinkAction(
   >,
 ): "repair" | "create" | "review" | "skip" {
   if (item.githubIssueUrl) return "repair"
+  if (feedbackFeatureGithubIssueApprovalIsStale(item)) return "review"
   if (item.githubIssueCreationApprovedAt && !feedbackFeatureGithubIssueCreationIsBlocked(item)) return "create"
   if (feedbackIsResolved(item.status)) return "skip"
   return "review"
+}
+
+export async function reconcileStaleFeatureGithubIssueApprovals(
+  db: CompassDb,
+  organizationId: string,
+): Promise<number> {
+  const rows = await db.update(feedbackDeskItems).set({
+    githubIssueCreationApprovedAt: null,
+    githubIssueCreationApprovedBy: null,
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    eq(feedbackDeskItems.organizationId, organizationId),
+    eq(feedbackDeskItems.kind, "feature"),
+    isNull(feedbackDeskItems.featurePriorityApprovedAt),
+    isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+  )).returning({ id: feedbackDeskItems.id })
+  return rows.length
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -330,6 +352,8 @@ export async function runFeedbackMaintenance(
     const recoveredCount =
       await recoverLegacyFeedback(db, organizationId) +
       await recoverConfirmedPrompts(db, organizationId)
+    const staleIssueApprovalReconciledCount =
+      await reconcileStaleFeatureGithubIssueApprovals(db, organizationId)
     const items = await db.select().from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.organizationId, organizationId),
       or(
@@ -383,6 +407,7 @@ export async function runFeedbackMaintenance(
       recoveredCount,
       linkedCount,
       missingLinkReviewCount,
+      staleIssueApprovalReconciledCount,
       syncedCount,
       deliveryRequestedCount,
       scrubbedCount: privacy.scrubbed,
@@ -394,7 +419,8 @@ export async function runFeedbackMaintenance(
       status: failedCount > 0 ? "partial" : "success",
       processedCount: result.processedCount,
       updatedCount:
-        recoveredCount + linkedCount + syncedCount + privacy.scrubbed +
+        recoveredCount + linkedCount + staleIssueApprovalReconciledCount +
+        syncedCount + privacy.scrubbed +
         slaBackfilledCount + deliveryRequestedCount,
       failedCount,
       summary: JSON.stringify(result),

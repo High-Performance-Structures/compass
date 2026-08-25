@@ -34,6 +34,20 @@ export function feedbackFeatureGithubIssueCreationIsBlocked(
   return item.kind === "feature" && item.featurePriorityApprovedAt === null
 }
 
+export function feedbackFeatureGithubIssueApprovalIsStale(
+  item: Readonly<{
+    kind: string
+    featurePriorityApprovedAt: string | null
+    githubIssueCreationApprovedAt: string | null
+  }>,
+): boolean {
+  return (
+    item.kind === "feature" &&
+    item.featurePriorityApprovedAt === null &&
+    item.githubIssueCreationApprovedAt !== null
+  )
+}
+
 export function feedbackFeatureTransitionIsBlocked(
   transition: FeedbackFeaturePriorityTransition & Readonly<{
     featurePriorityApprovedAt: string | null

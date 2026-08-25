@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNotNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
@@ -265,14 +265,28 @@ export async function setFeedbackGithubIssueCreationApproval(
       }
     }
     const now = new Date().toISOString()
-    await db.update(feedbackDeskItems).set({
+    // Re-check priority in the write predicate so revocation cannot race this read.
+    const approvalWhere = parsed.approved && item.kind === "feature"
+      ? and(
+          eq(feedbackDeskItems.id, item.id),
+          eq(feedbackDeskItems.organizationId, admin.organizationId),
+          isNotNull(feedbackDeskItems.featurePriorityApprovedAt),
+        )
+      : and(
+          eq(feedbackDeskItems.id, item.id),
+          eq(feedbackDeskItems.organizationId, admin.organizationId),
+        )
+    const updatedRows = await db.update(feedbackDeskItems).set({
       githubIssueCreationApprovedAt: parsed.approved ? now : null,
       githubIssueCreationApprovedBy: parsed.approved ? admin.id : null,
       updatedAt: now,
-    }).where(and(
-      eq(feedbackDeskItems.id, item.id),
-      eq(feedbackDeskItems.organizationId, admin.organizationId),
-    ))
+    }).where(approvalWhere).returning({ id: feedbackDeskItems.id })
+    if (parsed.approved && item.kind === "feature" && updatedRows.length === 0) {
+      return {
+        success: false,
+        error: "Approve this feature's priority before approving a new GitHub issue",
+      }
+    }
     revalidatePath("/dashboard/requests")
     revalidatePath("/dashboard/requests/manage")
     return { success: true }
