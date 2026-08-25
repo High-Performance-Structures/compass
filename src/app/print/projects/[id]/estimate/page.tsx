@@ -3,7 +3,6 @@ export const dynamic = "force-dynamic"
 import { Fragment } from "react"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
-import { getProjects } from "@/app/actions/projects"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
@@ -50,12 +49,8 @@ export default async function ProjectEstimatePrintPage({
   readonly searchParams: Promise<{ estimateId?: string }>
 }): Promise<React.ReactElement> {
   const [{ id }, query] = await Promise.all([params, searchParams])
-  const [workspace, projects] = await Promise.all([
-    getProjectEstimateWorkspace(id, query.estimateId),
-    getProjects(),
-  ])
+  const workspace = await getProjectEstimateWorkspace(id, query.estimateId)
   const estimate = workspace.activeEstimate
-  const project = projects.find((item) => item.id === id)
   const brand = projectBrandFor({
     projectId: id,
     projectNumber: workspace.projectNumber,
@@ -134,10 +129,11 @@ export default async function ProjectEstimatePrintPage({
             <p className="text-xs font-semibold uppercase tracking-wide">
               Project
             </p>
-            <p className="mt-1 font-semibold">
-              {project?.name ?? workspace.projectName}
-            </p>
-            <p>{workspace.projectNumber}</p>
+            <p className="mt-1 font-semibold">{workspace.projectName}</p>
+            {workspace.projectNumber && <p>{workspace.projectNumber}</p>}
+            {workspace.projectAddress && (
+              <p className="whitespace-pre-line">{workspace.projectAddress}</p>
+            )}
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide">
@@ -146,6 +142,13 @@ export default async function ProjectEstimatePrintPage({
             <p className="mt-1 font-semibold">
               {estimate.clientName ?? "Project client"}
             </p>
+            {(estimate.clientMailingAddress ??
+              workspace.projectMailingAddress) && (
+              <p className="whitespace-pre-line">
+                {estimate.clientMailingAddress ??
+                  workspace.projectMailingAddress}
+              </p>
+            )}
             <p className="mt-2 text-xs font-semibold uppercase tracking-wide">
               Estimate date
             </p>

@@ -97,6 +97,7 @@ export type ProjectEstimateSummary = {
   readonly status: string
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientMailingAddress: string | null
   readonly clientSignerContactId: string | null
   readonly clientSignerName: string | null
   readonly clientSignerTitle: string | null
@@ -271,6 +272,8 @@ export type ProjectEstimateWorkspace = {
   readonly canEdit: boolean
   readonly projectNumber: string | null
   readonly projectName: string
+  readonly projectAddress: string | null
+  readonly projectMailingAddress: string | null
   readonly department: ProjectDepartment
   readonly reportMode: EstimateClientReportMode
   readonly estimates: readonly ProjectEstimateSummary[]
@@ -316,6 +319,7 @@ export type ProjectEstimateHeaderInput = {
   readonly title: string | null
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientMailingAddress: string | null
   readonly clientSignerContactId: string | null
   readonly clientSignerName: string | null
   readonly clientSignerTitle: string | null
@@ -438,6 +442,9 @@ type EstimateAccess = {
   readonly user: AuthUser
   readonly projectNumber: string | null
   readonly projectName: string
+  readonly projectAddress: string | null
+  readonly projectMailingAddress: string | null
+  readonly projectClientName: string | null
   readonly organizationId: string | null
   readonly department: ProjectDepartment
   readonly canEdit: boolean
@@ -455,6 +462,9 @@ async function estimateAccess(
   const projectRows = await db
     .select({
       name: projects.name,
+      address: projects.address,
+      mailingAddress: projects.mailingAddress,
+      clientName: projects.clientName,
       organizationId: projects.organizationId,
     })
     .from(projects)
@@ -472,6 +482,9 @@ async function estimateAccess(
     user,
     projectNumber: access.projectNumber,
     projectName: project.name,
+    projectAddress: project.address,
+    projectMailingAddress: project.mailingAddress,
+    projectClientName: project.clientName,
     organizationId: project.organizationId,
     department: projectDepartment({
       projectId,
@@ -669,6 +682,7 @@ function estimateSummary(
     status: row.status,
     estimateDate: row.estimateDate,
     clientName: row.clientName,
+    clientMailingAddress: row.clientMailingAddress,
     clientSignerContactId: row.clientSignerContactId,
     clientSignerName: row.clientSignerName,
     clientSignerTitle: row.clientSignerTitle,
@@ -1171,6 +1185,8 @@ export async function getProjectEstimateWorkspace(
     canEdit,
     projectNumber: access.projectNumber,
     projectName: access.projectName,
+    projectAddress: access.projectAddress,
+    projectMailingAddress: access.projectMailingAddress,
     department: access.department,
     reportMode:
       selected?.clientReportMode ?? estimateClientReportMode(access.department),
@@ -1285,6 +1301,8 @@ export async function createProjectEstimateDraft(
       title: defaultEstimateTitle(access.department),
       status: "draft",
       estimateDate: now.slice(0, 10),
+      clientName: access.projectClientName,
+      clientMailingAddress: access.projectMailingAddress,
       clientSignerContactId: clientSigner?.contactId ?? null,
       clientSignerName: clientSigner?.name ?? null,
       clientSignerTitle: clientSigner?.title ?? null,
@@ -1361,7 +1379,8 @@ export async function duplicateProjectEstimate(
         .prepare(
           `INSERT INTO project_estimates (
              id, project_id, estimate_number, version_number, title, status,
-             estimate_date, client_name, client_signer_contact_id,
+             estimate_date, client_name, client_mailing_address,
+             client_signer_contact_id,
              client_signer_name, client_signer_title, client_signer_email,
              client_signers_json,
              company_signer_contact_id, company_signer_name,
@@ -1384,7 +1403,8 @@ export async function duplicateProjectEstimate(
              created_by, created_at, updated_at
            )
            SELECT ?, project_id, estimate_number, ?, title, 'draft', ?,
-             client_name, client_signer_contact_id, client_signer_name,
+             client_name, client_mailing_address, client_signer_contact_id,
+             client_signer_name,
              client_signer_title, client_signer_email, client_signers_json,
              company_signer_contact_id, company_signer_name,
              company_signer_title, company_signer_email,
@@ -1691,6 +1711,7 @@ export async function updateProjectEstimateHeader(
         title: requiredText(input.title, "Estimate title"),
         estimateDate: requiredText(input.estimateDate, "Estimate date"),
         clientName: cleanText(input.clientName),
+        clientMailingAddress: cleanText(input.clientMailingAddress),
         clientSignerContactId: primaryClientSigner?.contactId ?? null,
         clientSignerName: primaryClientSigner?.name ?? null,
         clientSignerTitle: primaryClientSigner?.title || null,
@@ -3208,6 +3229,10 @@ export async function prepareProjectEstimateForClientSignature(
       reportMode: isEstimateClientReportMode(estimate.clientReportMode)
         ? estimate.clientReportMode
         : estimateClientReportMode(access.department),
+      projectName: access.projectName,
+      projectAddress: access.projectAddress,
+      clientName: estimate.clientName,
+      clientMailingAddress: estimate.clientMailingAddress,
       introductionText: estimate.introductionText,
       contractTerms: estimate.contractTerms,
       closingText: estimate.closingText,

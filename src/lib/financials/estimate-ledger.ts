@@ -409,6 +409,10 @@ export async function estimateSourceHash(input: {
   readonly versionNumber: number
   readonly title: string
   readonly reportMode: string
+  readonly projectName: string
+  readonly projectAddress: string | null
+  readonly clientName: string | null
+  readonly clientMailingAddress: string | null
   readonly introductionText: string | null
   readonly contractTerms: string | null
   readonly closingText: string | null
@@ -490,6 +494,10 @@ export async function estimateSourceHash(input: {
       versionNumber: input.versionNumber,
       title: input.title,
       reportMode: input.reportMode,
+      projectName: input.projectName,
+      projectAddress: input.projectAddress,
+      clientName: input.clientName,
+      clientMailingAddress: input.clientMailingAddress,
       introductionText: input.introductionText,
       contractTerms: input.contractTerms,
       closingText: input.closingText,

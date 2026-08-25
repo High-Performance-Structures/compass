@@ -46,6 +46,7 @@ type ContractPacketAccess = {
   readonly projectName: string
   readonly projectNumber: string | null
   readonly projectAddress: string | null
+  readonly projectMailingAddress: string | null
   readonly projectClientName: string | null
   readonly organizationId: string
   readonly department: ProjectDepartment
@@ -123,6 +124,7 @@ export type ProjectContractPacketEstimateOption = {
   readonly status: string
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientMailingAddress: string | null
   readonly builderFeeCents: number
   readonly builderFeeRateBasisPoints: number
   readonly estimateTotalCents: number
@@ -142,6 +144,7 @@ export type ProjectContractPacketWorkspace = {
   readonly projectName: string
   readonly projectNumber: string | null
   readonly projectAddress: string | null
+  readonly projectMailingAddress: string | null
   readonly department: ProjectDepartment
   readonly packets: readonly ProjectContractPacketSummary[]
   readonly activePacket: ProjectContractPacketSummary | null
@@ -279,6 +282,7 @@ async function packetAccess(
       name: projects.name,
       number: projects.projectNumber,
       address: projects.address,
+      mailingAddress: projects.mailingAddress,
       clientName: projects.clientName,
       organizationId: projects.organizationId,
     })
@@ -295,6 +299,7 @@ async function packetAccess(
     projectName: project.name,
     projectNumber,
     projectAddress: project.address,
+    projectMailingAddress: project.mailingAddress,
     projectClientName: project.clientName,
     organizationId: project.organizationId,
     department: projectDepartment({ projectId, projectNumber }),
@@ -418,6 +423,7 @@ export async function getProjectContractPacketWorkspace(
         status: projectEstimates.status,
         estimateDate: projectEstimates.estimateDate,
         clientName: projectEstimates.clientName,
+        clientMailingAddress: projectEstimates.clientMailingAddress,
         builderFeeCents: projectEstimates.builderFeeCents,
         overheadRateBasisPoints: projectEstimates.overheadRateBasisPoints,
         marginRateBasisPoints: projectEstimates.marginRateBasisPoints,
@@ -455,6 +461,7 @@ export async function getProjectContractPacketWorkspace(
     projectName: access.projectName,
     projectNumber: access.projectNumber,
     projectAddress: access.projectAddress,
+    projectMailingAddress: access.projectMailingAddress,
     department: access.department,
     packets: packetRows.map((row) => packetSummary(row, canEdit)),
     activePacket: active ? packetSummary(active, canEdit) : null,
@@ -468,6 +475,7 @@ export async function getProjectContractPacketWorkspace(
       status: estimate.status,
       estimateDate: estimate.estimateDate,
       clientName: estimate.clientName,
+      clientMailingAddress: estimate.clientMailingAddress,
       builderFeeCents: estimate.builderFeeCents,
       builderFeeRateBasisPoints:
         estimate.overheadRateBasisPoints +
@@ -528,6 +536,8 @@ export async function createProjectContractPacket(
           projectNumber: access.projectNumber ?? "",
           projectAddress: access.projectAddress ?? "",
           ownerName: estimate.clientName ?? access.projectClientName ?? "",
+          ownerMailingAddress:
+            estimate.clientMailingAddress ?? access.projectMailingAddress ?? "",
           county: "",
         }),
         clientSignersJson: JSON.stringify(clientSigners),

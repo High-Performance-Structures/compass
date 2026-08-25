@@ -84,6 +84,7 @@ export const projectEstimates = sqliteTable(
     status: text("status").notNull().default("draft"),
     estimateDate: text("estimate_date"),
     clientName: text("client_name"),
+    clientMailingAddress: text("client_mailing_address"),
     clientSignerContactId: text("client_signer_contact_id").references(
       () => projectContacts.id,
       { onDelete: "set null" }

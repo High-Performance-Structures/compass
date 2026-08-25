@@ -295,6 +295,14 @@ async function renderContractDocuments(input: {
     "project.location": input.packet.details.projectAddress ?? input.projectAddress ?? "",
     "project.county": input.packet.details.county ?? "",
     "project.owner_name": input.packet.details.ownerName ?? input.estimate.clientName ?? "",
+    "project.owner_mailing_address":
+      input.packet.details.ownerMailingAddress ??
+      input.estimate.clientMailingAddress ??
+      "",
+    "project.mailing_address":
+      input.packet.details.ownerMailingAddress ??
+      input.estimate.clientMailingAddress ??
+      "",
     "contract.document_schedule": schedule,
     "contract.execution_date": displayDate(input.packet.contractDraftDate),
     "contract.commencement_date": displayDate(input.packet.approximateCommencementDate),

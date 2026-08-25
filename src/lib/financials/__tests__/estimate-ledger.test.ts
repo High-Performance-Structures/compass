@@ -259,6 +259,10 @@ describe("estimate ledger", () => {
       versionNumber: 1,
       title: "CA22 Construction Estimate",
       reportMode: "ca22",
+      projectName: "Founders Place - Litten Residence",
+      projectAddress: "1 Main Street\nWoodland Park, CO 80863",
+      clientName: "Alex Owner",
+      clientMailingAddress: "PO Box 100\nWoodland Park, CO 80866",
       introductionText: "Thank you for the opportunity to estimate the work.",
       contractTerms: "Base terms",
       closingText: "Please contact us with any questions.",
@@ -341,10 +345,15 @@ describe("estimate ledger", () => {
         company: { ...input.signers.company, name: "Taylor Builder" },
       },
     })
+    const differentPreparedForAddress = await estimateSourceHash({
+      ...input,
+      clientMailingAddress: "PO Box 200\nWoodland Park, CO 80866",
+    })
 
     expect(revised).not.toBe(original)
     expect(differentBasis).not.toBe(original)
     expect(differentPresentation).not.toBe(original)
     expect(differentSigner).not.toBe(original)
+    expect(differentPreparedForAddress).not.toBe(original)
   })
 })

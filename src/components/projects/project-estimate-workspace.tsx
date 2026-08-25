@@ -61,10 +61,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  SearchableCombobox,
-  SearchableComboboxField,
-} from "@/components/searchable-combobox"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Select,
   SelectContent,
@@ -196,6 +193,9 @@ export function ProjectEstimateWorkspacePanel({
   const lineEditorRef = useRef<HTMLFormElement>(null)
   const [startTemplateId, setStartTemplateId] = useState("")
   const [startTaxEntityId, setStartTaxEntityId] = useState("")
+  const [defaultTaxEntityId, setDefaultTaxEntityId] = useState(
+    estimate?.defaultTaxEntityId ?? ""
+  )
   const [termsTemplateId, setTermsTemplateId] = useState(
     estimate?.termsTemplateId ?? ""
   )
@@ -230,6 +230,7 @@ export function ProjectEstimateWorkspacePanel({
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
 
   useEffect(() => {
+    setDefaultTaxEntityId(estimate?.defaultTaxEntityId ?? "")
     setTermsTemplateId(estimate?.termsTemplateId ?? "")
     setContractTerms(estimate?.contractTerms ?? "")
     setIntroductionTemplateId(estimate?.introductionTemplateId ?? "")
@@ -246,6 +247,7 @@ export function ProjectEstimateWorkspacePanel({
     setCompanySignerInitials(estimate?.companySignerInitials ?? "")
   }, [
     estimate?.id,
+    estimate?.defaultTaxEntityId,
     estimate?.termsTemplateId,
     estimate?.contractTerms,
     estimate?.introductionTemplateId,
@@ -356,6 +358,7 @@ export function ProjectEstimateWorkspacePanel({
         title: formText(formData, "title"),
         estimateDate: formText(formData, "estimateDate"),
         clientName: formText(formData, "clientName"),
+        clientMailingAddress: formText(formData, "clientMailingAddress"),
         clientSignerContactId: clientSigners[0]?.contactId ?? null,
         clientSignerName: clientSigners[0]?.name ?? null,
         clientSignerTitle: clientSigners[0]?.title ?? null,
@@ -870,6 +873,26 @@ export function ProjectEstimateWorkspacePanel({
             />
           </div>
           <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="clientMailingAddress">
+              Prepared For mailing address
+            </Label>
+            <Textarea
+              id="clientMailingAddress"
+              name="clientMailingAddress"
+              defaultValue={
+                estimate.clientMailingAddress ??
+                workspace.projectMailingAddress ??
+                ""
+              }
+              rows={3}
+              disabled={!editable}
+            />
+            <p className="text-xs text-muted-foreground">
+              Defaults from the client mailing address on the project and can
+              be customized for this estimate.
+            </p>
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="sourceWorkbookUrl">Source CSI workbook</Label>
             <Input
               id="sourceWorkbookUrl"
@@ -1030,10 +1053,22 @@ export function ProjectEstimateWorkspacePanel({
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="defaultTaxEntityId">Project tax entity</Label>
-            <SearchableComboboxField
+            <input
+              type="hidden"
               name="defaultTaxEntityId"
+              value={defaultTaxEntityId}
+            />
+            <SearchableCombobox
               id="defaultTaxEntityId"
-              defaultValue={estimate.defaultTaxEntityId ?? undefined}
+              value={defaultTaxEntityId}
+              onValueChange={(value) => {
+                setDefaultTaxEntityId(value)
+                setLine((current) =>
+                  current.taxable && !current.taxEntityId
+                    ? { ...current, taxEntityId: value }
+                    : current
+                )
+              }}
               disabled={!editable}
               options={[
                 {
@@ -1388,6 +1423,7 @@ export function ProjectEstimateWorkspacePanel({
                           defaultTaxRateBasisPoints={
                             estimate.defaultTaxRateBasisPoints
                           }
+                          defaultTaxEntityId={defaultTaxEntityId}
                           editable={editable}
                         />
                       </div>
@@ -1519,7 +1555,21 @@ export function ProjectEstimateWorkspacePanel({
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-5">
               <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={line.taxable} disabled={lineUsesCostBreakdown} onCheckedChange={(checked) => setLine({ ...line, taxable: checked === true })} />
+                <Checkbox
+                  checked={line.taxable}
+                  disabled={lineUsesCostBreakdown}
+                  onCheckedChange={(checked) => {
+                    const taxable = checked === true
+                    setLine({
+                      ...line,
+                      taxable,
+                      taxEntityId:
+                        taxable && !line.taxEntityId
+                          ? defaultTaxEntityId
+                          : line.taxEntityId,
+                    })
+                  }}
+                />
                 Taxable line
               </label>
               <label className="flex items-center gap-2 text-sm">
