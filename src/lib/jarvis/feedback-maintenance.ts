@@ -72,6 +72,7 @@ export async function reconcileStaleFeatureGithubIssueApprovals(
     eq(feedbackDeskItems.kind, "feature"),
     isNull(feedbackDeskItems.featurePriorityApprovedAt),
     isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+    isNull(feedbackDeskItems.githubIssueCreationClaimToken),
   )).returning({ id: feedbackDeskItems.id })
   return rows.length
 }

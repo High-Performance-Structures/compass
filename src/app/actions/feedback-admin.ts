@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNotNull } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, notInArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
@@ -246,6 +246,8 @@ export async function setFeedbackGithubIssueCreationApproval(
       kind: feedbackDeskItems.kind,
       githubIssueUrl: feedbackDeskItems.githubIssueUrl,
       featurePriorityApprovedAt: feedbackDeskItems.featurePriorityApprovedAt,
+      githubIssueCreationClaimToken: feedbackDeskItems.githubIssueCreationClaimToken,
+      updatedAt: feedbackDeskItems.updatedAt,
     }).from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.id, parsed.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
@@ -265,26 +267,27 @@ export async function setFeedbackGithubIssueCreationApproval(
       }
     }
     const now = new Date().toISOString()
-    // Re-check priority in the write predicate so revocation cannot race this read.
-    const approvalWhere = parsed.approved && item.kind === "feature"
-      ? and(
-          eq(feedbackDeskItems.id, item.id),
-          eq(feedbackDeskItems.organizationId, admin.organizationId),
-          isNotNull(feedbackDeskItems.featurePriorityApprovedAt),
-        )
-      : and(
-          eq(feedbackDeskItems.id, item.id),
-          eq(feedbackDeskItems.organizationId, admin.organizationId),
-        )
+    const priorityFence = item.featurePriorityApprovedAt === null
+      ? isNull(feedbackDeskItems.featurePriorityApprovedAt)
+      : eq(feedbackDeskItems.featurePriorityApprovedAt, item.featurePriorityApprovedAt)
     const updatedRows = await db.update(feedbackDeskItems).set({
       githubIssueCreationApprovedAt: parsed.approved ? now : null,
       githubIssueCreationApprovedBy: parsed.approved ? admin.id : null,
       updatedAt: now,
-    }).where(approvalWhere).returning({ id: feedbackDeskItems.id })
-    if (parsed.approved && item.kind === "feature" && updatedRows.length === 0) {
+    }).where(and(
+      eq(feedbackDeskItems.id, item.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+      eq(feedbackDeskItems.updatedAt, item.updatedAt),
+      priorityFence,
+      isNull(feedbackDeskItems.githubIssueCreationClaimToken),
+      ...(parsed.approved && item.kind === "feature"
+        ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+        : []),
+    )).returning({ id: feedbackDeskItems.id })
+    if (updatedRows.length === 0) {
       return {
         success: false,
-        error: "Approve this feature's priority before approving a new GitHub issue",
+        error: "This request changed while its GitHub approval was being updated",
       }
     }
     revalidatePath("/dashboard/requests")
@@ -313,6 +316,9 @@ export async function setFeedbackFeaturePriorityApproval(
       id: feedbackDeskItems.id,
       kind: feedbackDeskItems.kind,
       status: feedbackDeskItems.status,
+      featurePriorityApprovedAt: feedbackDeskItems.featurePriorityApprovedAt,
+      githubIssueCreationClaimToken: feedbackDeskItems.githubIssueCreationClaimToken,
+      updatedAt: feedbackDeskItems.updatedAt,
     }).from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.id, parsed.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
@@ -328,7 +334,10 @@ export async function setFeedbackFeaturePriorityApproval(
       }
     }
     const now = new Date().toISOString()
-    await db.update(feedbackDeskItems).set({
+    const approvalFence = item.featurePriorityApprovedAt === null
+      ? isNull(feedbackDeskItems.featurePriorityApprovedAt)
+      : eq(feedbackDeskItems.featurePriorityApprovedAt, item.featurePriorityApprovedAt)
+    const updatedRows = await db.update(feedbackDeskItems).set({
       featurePriorityApprovedAt: parsed.approved ? now : null,
       featurePriorityApprovedBy: parsed.approved ? admin.id : null,
       ...(parsed.approved ? {} : {
@@ -339,7 +348,21 @@ export async function setFeedbackFeaturePriorityApproval(
     }).where(and(
       eq(feedbackDeskItems.id, item.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
-    ))
+      eq(feedbackDeskItems.updatedAt, item.updatedAt),
+      approvalFence,
+      isNull(feedbackDeskItems.githubIssueCreationClaimToken),
+      ...(parsed.approved
+        ? []
+        : [notInArray(feedbackDeskItems.status, ["planned", "in_progress", "testing", "deployed"])]),
+    )).returning({ id: feedbackDeskItems.id })
+    if (updatedRows.length === 0) {
+      return {
+        success: false,
+        error: parsed.approved
+          ? "This request changed while its priority decision was being saved"
+          : "A feature already in implementation cannot have its priority approval removed",
+      }
+    }
     revalidatePath("/dashboard/requests")
     revalidatePath("/dashboard/requests/manage")
     return { success: true }
