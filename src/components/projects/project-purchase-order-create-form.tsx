@@ -63,18 +63,10 @@ import {
 } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactSelection } from "@/lib/purchase-orders/site-contact"
 import { canRemovePurchaseOrderLine } from "@/lib/purchase-orders/draft-edit"
-
-type DraftPurchaseOrderLine = {
-  readonly id: string
-  readonly description: string
-  readonly phaseCode: string
-  readonly costCode: string
-  readonly quantity: string
-  readonly unitCost: string
-  readonly unit: string
-  readonly amount: string
-  readonly taxGroup: string
-}
+import {
+  draftLinesFromPurchaseOrder,
+  type DraftPurchaseOrderLine,
+} from "@/lib/purchase-orders/draft-lines"
 
 type TextLineField =
   | "description"
@@ -229,33 +221,6 @@ function newLine(): DraftPurchaseOrderLine {
   }
 }
 
-function textFromNumber(value: number): string {
-  return Number.isFinite(value) ? String(value) : ""
-}
-
-function draftLinesFromPurchaseOrder(
-  purchaseOrder: ProjectPurchaseOrderItem | null
-): readonly DraftPurchaseOrderLine[] {
-  if (purchaseOrder === null || purchaseOrder.lines.length === 0) {
-    return [newLine()]
-  }
-
-  return purchaseOrder.lines.map((line) => ({
-    id: line.id,
-    description: line.description,
-    phaseCode: line.phaseCode ?? "",
-    costCode: line.costCode ?? "",
-    quantity: textFromNumber(line.quantity),
-    unitCost: textFromNumber(line.unitCost),
-    unit: line.unit ?? "",
-    amount:
-      line.amount === line.quantity * line.unitCost
-        ? ""
-        : textFromNumber(line.amount),
-    taxGroup: line.taxGroup ?? "",
-  }))
-}
-
 function numberFromText(value: string): number | null {
   const trimmed = value.replaceAll(",", "").trim()
   if (trimmed.length === 0) return null
@@ -347,7 +312,7 @@ function ProjectPurchaseOrderForm(
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
   const [lines, setLines] = React.useState<readonly DraftPurchaseOrderLine[]>(
-    () => draftLinesFromPurchaseOrder(purchaseOrder)
+    () => draftLinesFromPurchaseOrder(purchaseOrder, newLine)
   )
   const [sageVendorId, setSageVendorId] = React.useState(
     purchaseOrder?.sageVendorId ?? ""
@@ -418,7 +383,7 @@ function ProjectPurchaseOrderForm(
     if (nextOpen) {
       setMessage(null)
       if (purchaseOrder !== null) {
-        setLines(draftLinesFromPurchaseOrder(purchaseOrder))
+        setLines(draftLinesFromPurchaseOrder(purchaseOrder, newLine))
         setSageVendorId(purchaseOrder.sageVendorId ?? "")
         setCompanyName(purchaseOrder.companyName ?? "")
         setAssigneeName(purchaseOrder.assigneeName ?? "")
