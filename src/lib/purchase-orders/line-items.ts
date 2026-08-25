@@ -21,10 +21,6 @@ export type NormalizedPurchaseOrderLine = {
   readonly taxGroup: string | null
 }
 
-type NormalizePurchaseOrderLinesOptions = {
-  readonly allowEmpty?: boolean
-}
-
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   return trimmed.length > 0 ? trimmed : null
@@ -37,7 +33,7 @@ function numberOrDefault(value: number | null, fallback: number): number {
 export function normalizePurchaseOrderLines(
   lines: readonly PurchaseOrderLineInput[],
   fallbackDescription: string,
-  options: NormalizePurchaseOrderLinesOptions = {},
+  allowEmpty = false,
 ): readonly NormalizedPurchaseOrderLine[] {
   const normalized = lines
     .map((line, index) => {
@@ -76,7 +72,7 @@ export function normalizePurchaseOrderLines(
       (line): line is NormalizedPurchaseOrderLine => line !== null,
     )
 
-  if (normalized.length > 0 || options.allowEmpty === true) return normalized
+  if (normalized.length > 0 || allowEmpty) return normalized
 
   return [
     {

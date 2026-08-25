@@ -15,11 +15,12 @@ import {
   scheduleTasks,
   vendors,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
+import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import {
@@ -37,10 +38,6 @@ import {
 } from "@/lib/project-operations/status"
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { linkedScheduleTaskId } from "@/lib/schedule/linked-todos"
-import {
-  normalizePurchaseOrderLines,
-  type NormalizedPurchaseOrderLine,
-} from "@/lib/purchase-orders/line-items"
 import {
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
@@ -363,6 +360,18 @@ type SagePurchaseOrderPayload = {
   }[]
 }
 
+type NormalizedPurchaseOrderLine = {
+  readonly lineNumber: number
+  readonly description: string
+  readonly costCode: string | null
+  readonly phaseCode: string | null
+  readonly quantity: number
+  readonly unitCost: number
+  readonly unit: string | null
+  readonly amount: number
+  readonly taxGroup: string | null
+}
+
 type NormalizedRfqScopeLine = {
   readonly lineNumber: number
   readonly description: string
@@ -378,11 +387,20 @@ type NormalizedRfqDocumentLink = {
   readonly notes: string | null
 }
 
+function ensureActiveInternalPurchaseOrderStaff(user: AuthUser): void {
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
+}
+
 async function verifyProjectAccess(
   projectId: string,
   featureId: string = "project-hub"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
+  if (featureId === "purchase-orders") {
+    ensureActiveInternalPurchaseOrderStaff(user)
+  }
   await requireFeaturePermission(user, featureId, "read")
   const orgId = requireOrg(user)
 
@@ -407,6 +425,9 @@ async function verifyProjectUpdateAccess(
   featureId: string = "project-hub"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
+  if (featureId === "purchase-orders") {
+    ensureActiveInternalPurchaseOrderStaff(user)
+  }
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
@@ -589,6 +610,69 @@ function syncQueueStatus(item: {
   if (item.syncDirection !== "write") return "blocked"
   if (item.sageWriteStatus === "not_ready") return "blocked"
   return "ready"
+}
+
+function numberOrDefault(value: number | null, fallback: number): number {
+  return value === null || !Number.isFinite(value) ? fallback : value
+}
+
+function normalizePurchaseOrderLines(
+  lines: readonly CreatePurchaseOrderLineInput[],
+  fallbackDescription: string,
+  allowEmpty = false
+): readonly NormalizedPurchaseOrderLine[] {
+  const normalized = lines
+    .map((line, index) => {
+      const description = cleanText(line.description)
+      const costCode = cleanText(line.costCode)
+      const phaseCode = cleanText(line.phaseCode)
+      const taxGroup = cleanText(line.taxGroup)
+      const unit = cleanText(line.unit)
+      const quantity = numberOrDefault(line.quantity, 1)
+      const unitCost = numberOrDefault(line.unitCost, 0)
+      const amount = numberOrDefault(line.amount, quantity * unitCost)
+      const hasMeaningfulValue =
+        description !== null ||
+        costCode !== null ||
+        phaseCode !== null ||
+        taxGroup !== null ||
+        unit !== null ||
+        amount > 0 ||
+        unitCost > 0
+
+      if (!hasMeaningfulValue) return null
+
+      return {
+        lineNumber: index + 1,
+        description: description ?? fallbackDescription,
+        costCode,
+        phaseCode,
+        quantity,
+        unitCost,
+        unit,
+        amount,
+        taxGroup,
+      }
+    })
+    .filter(
+      (line): line is NormalizedPurchaseOrderLine => line !== null
+    )
+
+  if (normalized.length > 0 || allowEmpty) return normalized
+
+  return [
+    {
+      lineNumber: 1,
+      description: fallbackDescription,
+      costCode: null,
+      phaseCode: null,
+      quantity: 1,
+      unitCost: 0,
+      unit: null,
+      amount: 0,
+      taxGroup: null,
+    },
+  ]
 }
 
 function normalizeRfqScopeLines(
@@ -1346,9 +1430,8 @@ export async function queueProjectOperationsForSageSync(
 export async function getProjectPurchaseOrders(
   projectId: string
 ): Promise<readonly ProjectPurchaseOrderItem[]> {
-  const user = await requireAuth()
-  const orgId = requireOrg(user)
   const db = await verifyProjectAccess(projectId, "purchase-orders")
+  const orgId = requireOrg(await requireAuth())
   const rows = await db
     .select()
     .from(projectOperations)
@@ -1567,10 +1650,10 @@ export async function updateProjectOperationStatus(
   requestedStatus: string
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(
-      projectId,
-      operationKind === "purchase_order" ? "purchase-orders" : "rfqs"
-    )
+    const db =
+      operationKind === "purchase_order"
+        ? await verifyProjectUpdateAccess(projectId, "purchase-orders")
+        : await verifyProjectUpdateAccess(projectId, "rfqs")
     const statusIsValid =
       operationKind === "purchase_order"
         ? isPurchaseOrderStatus(requestedStatus)
@@ -1648,10 +1731,7 @@ export async function createPurchaseOrderRequest(
   input: CreatePurchaseOrderRequestInput
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(
-      projectId,
-      "purchase-orders"
-    )
+    const db = await verifyProjectUpdateAccess(projectId, "purchase-orders")
     const [project] = await db
       .select({
         projectNumber: projects.projectNumber,
@@ -1791,10 +1871,7 @@ export async function updatePurchaseOrderRequest(
   input: UpdatePurchaseOrderRequestInput
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(
-      projectId,
-      "purchase-orders"
-    )
+    const db = await verifyProjectUpdateAccess(projectId, "purchase-orders")
     const [existing] = await db
       .select()
       .from(projectOperations)
@@ -1835,7 +1912,7 @@ export async function updatePurchaseOrderRequest(
     const lines = normalizePurchaseOrderLines(
       input.lines,
       description ?? title,
-      { allowEmpty: true },
+      true,
     )
     const amount = lines.reduce((total, line) => total + line.amount, 0)
     const headerCostCode = lines.length === 1 ? lines[0]?.costCode ?? null : null
@@ -2064,10 +2141,7 @@ export async function deletePurchaseOrderRequest(
   purchaseOrderId: string
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(
-      projectId,
-      "purchase-orders"
-    )
+    const db = await verifyProjectUpdateAccess(projectId, "purchase-orders")
     const [existing] = await db
       .select({ id: projectOperations.id })
       .from(projectOperations)
@@ -2721,6 +2795,7 @@ export async function sendPurchaseOrderEmail(
 ): Promise<ProjectOperationEmailActionResult> {
   try {
     const user = await requireAuth()
+    ensureActiveInternalPurchaseOrderStaff(user)
     await requireFeaturePermission(user, "purchase-orders", "update")
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()

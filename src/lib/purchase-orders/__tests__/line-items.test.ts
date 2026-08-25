@@ -5,9 +5,7 @@ import { normalizePurchaseOrderLines } from "../line-items"
 describe("normalizePurchaseOrderLines", () => {
   it("keeps an edited purchase order empty when its final line is removed", () => {
     expect(
-      normalizePurchaseOrderLines([], "Purchase order scope", {
-        allowEmpty: true,
-      }),
+      normalizePurchaseOrderLines([], "Purchase order scope", true),
     ).toEqual([])
   })
 

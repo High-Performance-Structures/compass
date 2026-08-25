@@ -29,6 +29,7 @@ import {
 } from "@/lib/contact-identity-ownership"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { requirePermission } from "@/lib/permissions"
 import {
   projectContactAccessStatus,
@@ -36,7 +37,6 @@ import {
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
-import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectContactType =
   | "owner"
@@ -2003,6 +2003,9 @@ export async function getProjectPurchaseOrderSiteContactOptions(
   projectId: string
 ): Promise<readonly ProjectTaskAssigneeOption[]> {
   const user = await requireAuth()
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
   await requireFeaturePermission(user, "purchase-orders", "read")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
