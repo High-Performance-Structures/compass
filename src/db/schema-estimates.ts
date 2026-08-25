@@ -318,6 +318,44 @@ export const projectEstimateLines = sqliteTable(
   ]
 )
 
+export const projectEstimateLineCostItems = sqliteTable(
+  "project_estimate_line_cost_items",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id")
+      .notNull()
+      .references(() => projectEstimates.id, { onDelete: "cascade" }),
+    estimateLineId: text("estimate_line_id")
+      .notNull()
+      .references(() => projectEstimateLines.id, { onDelete: "cascade" }),
+    divisionCode: text("division_code").notNull(),
+    divisionName: text("division_name").notNull(),
+    costCode: text("cost_code").notNull(),
+    costCodeName: text("cost_code_name").notNull(),
+    description: text("description").notNull(),
+    quantity: real("quantity").notNull().default(1),
+    unit: text("unit").notNull().default(""),
+    unitCostCents: integer("unit_cost_cents").notNull().default(0),
+    totalCostCents: integer("total_cost_cents").notNull().default(0),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("project_estimate_line_cost_items_line_order_idx").on(
+      table.estimateLineId,
+      table.sortOrder
+    ),
+    index("project_estimate_line_cost_items_estimate_idx").on(
+      table.estimateId,
+      table.estimateLineId
+    ),
+  ]
+)
+
 export const projectEstimateBasisDocuments = sqliteTable(
   "project_estimate_basis_documents",
   {
@@ -473,6 +511,8 @@ export const projectContractBudgetAdjustments = sqliteTable(
 
 export type ProjectEstimate = typeof projectEstimates.$inferSelect
 export type ProjectEstimateLine = typeof projectEstimateLines.$inferSelect
+export type ProjectEstimateLineCostItem =
+  typeof projectEstimateLineCostItems.$inferSelect
 export type ProjectEstimateBasisDocument =
   typeof projectEstimateBasisDocuments.$inferSelect
 export type ProjectEstimatePhaseDescription =
