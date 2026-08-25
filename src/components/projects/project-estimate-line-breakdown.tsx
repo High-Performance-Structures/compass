@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition, type FormEvent } from "react"
+import { useMemo, useRef, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconChevronDown,
@@ -117,6 +117,7 @@ export function ProjectEstimateLineBreakdown({
   readonly editable: boolean
 }): React.ReactElement | null {
   const router = useRouter()
+  const editorRef = useRef<HTMLFormElement>(null)
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [draft, setDraft] = useState<CostCodeDraft>(() =>
@@ -195,6 +196,20 @@ export function ProjectEstimateLineBreakdown({
       setDraft(emptyCostCode(line))
       setOpen(true)
       router.refresh()
+    })
+  }
+
+  function editCostCode(item: ProjectEstimateLineCostItem): void {
+    setDraft(costCodeDraft(item))
+    // The shared editor follows the breakdown list, so bring it into view after
+    // React populates it with the selected item's values.
+    window.requestAnimationFrame(() => {
+      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      editorRef.current
+        ?.querySelector<HTMLInputElement>(
+          `#breakdown-description-${line.id}`
+        )
+        ?.focus({ preventScroll: true })
     })
   }
 
@@ -288,7 +303,7 @@ export function ProjectEstimateLineBreakdown({
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => setDraft(costCodeDraft(item))}
+                        onClick={() => editCostCode(item)}
                       >
                         Edit
                       </Button>
@@ -316,7 +331,11 @@ export function ProjectEstimateLineBreakdown({
         )}
 
         {editable && (
-          <form onSubmit={saveCostCode} className="mt-4 border-t pt-4">
+          <form
+            ref={editorRef}
+            onSubmit={saveCostCode}
+            className="mt-4 scroll-mt-4 border-t pt-4"
+          >
             <div className="mb-3 flex items-center justify-between gap-3">
               <h4 className="text-sm font-semibold">
                 {draft.id
