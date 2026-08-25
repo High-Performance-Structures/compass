@@ -20,7 +20,6 @@ import {
   IconChecklist,
   IconClipboardText,
   IconFileInvoice,
-  IconHeartHandshake,
   IconHome2,
   IconMapPin,
   IconMessageCircleQuestion,
@@ -588,12 +587,11 @@ function DeskHero({
               ))}
             </SelectContent>
           </Select>
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <IconHeartHandshake className="size-4 text-[#9d832c]" />
-            {isStatusPending
-              ? "Saving status..."
-              : statusMessage ?? "CHERISH notes will appear here"}
-          </span>
+          {isStatusPending || statusMessage ? (
+            <span className="text-xs text-muted-foreground">
+              {isStatusPending ? "Saving status..." : statusMessage}
+            </span>
+          ) : null}
         </div>
       </div>
     </section>
