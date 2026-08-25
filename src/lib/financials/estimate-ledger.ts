@@ -24,6 +24,11 @@ export type EstimateLineCalculation = {
   readonly lineTotalCents: number
 }
 
+export type EstimateLineCostItemInput = {
+  readonly quantity: number
+  readonly unitCostCents: number
+}
+
 export type EstimateLedgerLine = EstimateLineCalculation & {
   readonly id: string | null
   readonly divisionCode: string
@@ -116,6 +121,25 @@ export function calculateEstimateLine(
     taxCents,
     lineTotalCents: taxableSubtotal + taxCents,
   }
+}
+
+export function calculateEstimateLineCostItemTotal(
+  input: EstimateLineCostItemInput
+): number {
+  const quantity = Number.isFinite(input.quantity)
+    ? Math.max(0, input.quantity)
+    : 0
+  const unitCostCents = Math.max(0, safeInteger(input.unitCostCents))
+  return safeInteger(quantity * unitCostCents)
+}
+
+export function calculateEstimateLineBreakdownSubtotal(
+  items: readonly EstimateLineCostItemInput[]
+): number {
+  return items.reduce(
+    (total, item) => total + calculateEstimateLineCostItemTotal(item),
+    0
+  )
 }
 
 export function calculateEstimateTotals(

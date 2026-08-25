@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   buildContractBudget,
   calculateEstimateLine,
+  calculateEstimateLineBreakdownSubtotal,
+  calculateEstimateLineCostItemTotal,
   calculateEstimateTotals,
   estimateCanBeAccepted,
   estimateCanBeEdited,
@@ -60,6 +62,21 @@ describe("estimate ledger", () => {
       taxCents: 51_850,
       lineTotalCents: 1_051_850,
     })
+  })
+
+  it("rolls detailed cost codes into a parent line subtotal", () => {
+    expect(
+      calculateEstimateLineCostItemTotal({
+        quantity: 37.5,
+        unitCostCents: 1_289,
+      })
+    ).toBe(48_338)
+    expect(
+      calculateEstimateLineBreakdownSubtotal([
+        { quantity: 37.5, unitCostCents: 1_289 },
+        { quantity: 12, unitCostCents: 2_560 },
+      ])
+    ).toBe(79_058)
   })
 
   it("rolls estimate totals once across all lines", () => {

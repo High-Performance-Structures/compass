@@ -17,6 +17,7 @@ import {
   estimateTermsTemplates,
   projectEstimateAcknowledgements,
   projectEstimateBasisDocuments,
+  projectEstimateLineCostItems,
   projectEstimateLines,
   projectEstimatePhaseDescriptions,
   projectEstimates,
@@ -30,6 +31,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import {
   calculateEstimateLine,
+  calculateEstimateLineBreakdownSubtotal,
+  calculateEstimateLineCostItemTotal,
   calculateEstimateTotals,
   estimateCanBeEdited,
   estimateSourceHash,
@@ -175,6 +178,21 @@ export type ProjectEstimateLineItem = {
   readonly lineTotalCents: number
   readonly ownerVisible: boolean
   readonly includeInBuilderFee: boolean
+  readonly sortOrder: number
+  readonly costItems: readonly ProjectEstimateLineCostItem[]
+}
+
+export type ProjectEstimateLineCostItem = {
+  readonly id: string
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly costCode: string
+  readonly costCodeName: string
+  readonly description: string
+  readonly quantity: number
+  readonly unit: string
+  readonly unitCostCents: number
+  readonly totalCostCents: number
   readonly sortOrder: number
 }
 
@@ -322,6 +340,14 @@ export type ProjectEstimateLineInput = {
   readonly ownerVisible: boolean
   readonly includeInBuilderFee: boolean
   readonly insertAfterLineId: string | null
+}
+
+export type ProjectEstimateLineCostItemInput = {
+  readonly costCode: string | null
+  readonly description: string | null
+  readonly quantity: number | null
+  readonly unit: string | null
+  readonly unitCost: number | null
 }
 
 export type ProjectEstimateBuilderFeeInput = {
@@ -686,7 +712,8 @@ function estimateSummary(
 }
 
 function estimateLineItem(
-  row: typeof projectEstimateLines.$inferSelect
+  row: typeof projectEstimateLines.$inferSelect,
+  costItems: readonly (typeof projectEstimateLineCostItems.$inferSelect)[]
 ): ProjectEstimateLineItem {
   return {
     id: row.id,
@@ -712,6 +739,19 @@ function estimateLineItem(
     ownerVisible: row.ownerVisible,
     includeInBuilderFee: row.includeInBuilderFee,
     sortOrder: row.sortOrder,
+    costItems: costItems.map((item) => ({
+      id: item.id,
+      divisionCode: item.divisionCode,
+      divisionName: item.divisionName,
+      costCode: item.costCode,
+      costCodeName: item.costCodeName,
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+      unitCostCents: item.unitCostCents,
+      totalCostCents: item.totalCostCents,
+      sortOrder: item.sortOrder,
+    })),
   }
 }
 
@@ -960,6 +1000,7 @@ export async function getProjectEstimateWorkspace(
   const selected = activeEstimate(estimates, estimateId)
   const [
     lineRows,
+    costItemRows,
     basisRows,
     estimateCostCodes,
     taxRows,
@@ -977,6 +1018,16 @@ export async function getProjectEstimateWorkspace(
             .orderBy(
               asc(projectEstimateLines.divisionCode),
               asc(projectEstimateLines.sortOrder)
+            )
+        : Promise.resolve([]),
+      selected
+        ? access.db
+            .select()
+            .from(projectEstimateLineCostItems)
+            .where(eq(projectEstimateLineCostItems.estimateId, selected.id))
+            .orderBy(
+              asc(projectEstimateLineCostItems.estimateLineId),
+              asc(projectEstimateLineCostItems.sortOrder)
             )
         : Promise.resolve([]),
       selected
@@ -1051,6 +1102,16 @@ export async function getProjectEstimateWorkspace(
         ),
     ])
 
+  const costItemsByLine = new Map<
+    string,
+    (typeof projectEstimateLineCostItems.$inferSelect)[]
+  >()
+  for (const costItem of costItemRows) {
+    const items = costItemsByLine.get(costItem.estimateLineId) ?? []
+    items.push(costItem)
+    costItemsByLine.set(costItem.estimateLineId, items)
+  }
+
   const databaseTemplates = templateRows.flatMap(
     (row): readonly EstimateTextTemplateOption[] => {
       if (!isEstimateTextTemplateType(row.templateType)) return []
@@ -1093,7 +1154,9 @@ export async function getProjectEstimateWorkspace(
       selected?.clientReportMode ?? estimateClientReportMode(access.department),
     estimates,
     activeEstimate: selected,
-    lines: lineRows.map(estimateLineItem),
+    lines: lineRows.map((row) =>
+      estimateLineItem(row, costItemsByLine.get(row.id) ?? [])
+    ),
     basisDocuments: basisRows.map((row) => ({
       id: row.id,
       documentType: row.documentType,
@@ -1353,6 +1416,31 @@ export async function duplicateProjectEstimate(
            WHERE estimate_id = ? AND project_id = ?`
         )
         .bind(id, now, now, sourceEstimateId, projectId),
+      access.rawDb
+        .prepare(
+          `INSERT INTO project_estimate_line_cost_items (
+             id, project_id, estimate_id, estimate_line_id, division_code,
+             division_name, cost_code, cost_code_name, description, quantity,
+             unit, unit_cost_cents, total_cost_cents, sort_order, created_at,
+             updated_at
+           )
+           SELECT lower(hex(randomblob(16))), cost_item.project_id, ?,
+             copied_line.id, cost_item.division_code, cost_item.division_name,
+             cost_item.cost_code, cost_item.cost_code_name,
+             cost_item.description, cost_item.quantity, cost_item.unit,
+             cost_item.unit_cost_cents, cost_item.total_cost_cents,
+             cost_item.sort_order, ?, ?
+           FROM project_estimate_line_cost_items AS cost_item
+           INNER JOIN project_estimate_lines AS source_line
+             ON source_line.id = cost_item.estimate_line_id
+           INNER JOIN project_estimate_lines AS copied_line
+             ON copied_line.estimate_id = ?
+             AND copied_line.sort_order = source_line.sort_order
+             AND copied_line.cost_code = source_line.cost_code
+             AND copied_line.description = source_line.description
+           WHERE cost_item.estimate_id = ? AND cost_item.project_id = ?`
+        )
+        .bind(id, now, now, id, sourceEstimateId, projectId),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_basis_documents (
@@ -2243,6 +2331,29 @@ export async function saveProjectEstimateLine(
     if (!cost) {
       throw new Error("Choose a verified CSI/Sage catalog cost code.")
     }
+    const existingRows = lineId
+      ? await access.db
+          .select({ id: projectEstimateLines.id })
+          .from(projectEstimateLines)
+          .where(
+            and(
+              eq(projectEstimateLines.id, lineId),
+              eq(projectEstimateLines.estimateId, estimateId)
+            )
+          )
+          .limit(1)
+      : []
+    const existing = existingRows[0]
+    if (lineId && !existing) throw new Error("Estimate line not found.")
+    const breakdownRows = lineId
+      ? await access.db
+          .select({
+            quantity: projectEstimateLineCostItems.quantity,
+            unitCostCents: projectEstimateLineCostItems.unitCostCents,
+          })
+          .from(projectEstimateLineCostItems)
+          .where(eq(projectEstimateLineCostItems.estimateLineId, lineId))
+      : []
     const taxEntityId = cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
     const taxRows = taxEntityId
       ? await access.db
@@ -2255,8 +2366,11 @@ export async function saveProjectEstimateLine(
     if (input.taxable && !tax) {
       throw new Error("Choose the Sage tax entity for a taxable line.")
     }
-    const quantity = input.quantity ?? 1
-    const unitCostCents = Math.round((input.unitCost ?? 0) * 100)
+    const usesCostBreakdown = breakdownRows.length > 0
+    const quantity = usesCostBreakdown ? 1 : input.quantity ?? 1
+    const unitCostCents = usesCostBreakdown
+      ? calculateEstimateLineBreakdownSubtotal(breakdownRows)
+      : Math.round((input.unitCost ?? 0) * 100)
     const markupRateBasisPoints = Math.round((input.markupPercent ?? 0) * 100)
     const calculation = calculateEstimateLine({
       quantity,
@@ -2288,7 +2402,7 @@ export async function saveProjectEstimateLine(
       description: requiredText(input.description, "Description"),
       specifications: cleanText(input.specifications),
       quantity,
-      unit: cleanText(input.unit) ?? "LS",
+      unit: usesCostBreakdown ? "assembly" : cleanText(input.unit) ?? "LS",
       unitCostCents,
       ...calculation,
       markupRateBasisPoints,
@@ -2302,17 +2416,6 @@ export async function saveProjectEstimateLine(
       updatedAt: now,
     }
     if (lineId) {
-      const existing = await access.db
-        .select({ id: projectEstimateLines.id })
-        .from(projectEstimateLines)
-        .where(
-          and(
-            eq(projectEstimateLines.id, lineId),
-            eq(projectEstimateLines.estimateId, estimateId)
-          )
-        )
-        .limit(1)
-      if (!existing[0]) throw new Error("Estimate line not found.")
       await access.db
         .update(projectEstimateLines)
         .set(values)
@@ -2360,6 +2463,235 @@ export async function saveProjectEstimateLine(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to save estimate line.",
+    }
+  }
+}
+
+async function refreshEstimateLineFromCostItems(
+  db: CompassDb,
+  estimateId: string,
+  lineId: string,
+  now: string
+): Promise<void> {
+  const [lineRows, costItems] = await Promise.all([
+    db
+      .select()
+      .from(projectEstimateLines)
+      .where(
+        and(
+          eq(projectEstimateLines.id, lineId),
+          eq(projectEstimateLines.estimateId, estimateId)
+        )
+      )
+      .limit(1),
+    db
+      .select({
+        quantity: projectEstimateLineCostItems.quantity,
+        unitCostCents: projectEstimateLineCostItems.unitCostCents,
+      })
+      .from(projectEstimateLineCostItems)
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.estimateId, estimateId),
+          eq(projectEstimateLineCostItems.estimateLineId, lineId)
+        )
+      ),
+  ])
+  const line = lineRows[0]
+  if (!line) throw new Error("Estimate line not found.")
+  if (costItems.length === 0) {
+    await db
+      .update(projectEstimateLines)
+      .set({
+        quantity: 1,
+        unit: "LS",
+        unitCostCents: line.directCostCents,
+        updatedAt: now,
+      })
+      .where(eq(projectEstimateLines.id, lineId))
+      .run()
+    return
+  }
+  const directCostCents = calculateEstimateLineBreakdownSubtotal(costItems)
+  const calculation = calculateEstimateLine({
+    quantity: 1,
+    unitCostCents: directCostCents,
+    markupRateBasisPoints: line.markupRateBasisPoints,
+    taxable: line.taxable,
+    taxRateBasisPoints: line.taxRateBasisPoints,
+  })
+  await db
+    .update(projectEstimateLines)
+    .set({
+      quantity: 1,
+      unit: "assembly",
+      unitCostCents: directCostCents,
+      ...calculation,
+      updatedAt: now,
+    })
+    .where(eq(projectEstimateLines.id, lineId))
+    .run()
+}
+
+export async function saveProjectEstimateLineCostItem(
+  projectId: string,
+  estimateId: string,
+  lineId: string,
+  costItemId: string | null,
+  input: ProjectEstimateLineCostItemInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const lineRows = await access.db
+      .select({ id: projectEstimateLines.id })
+      .from(projectEstimateLines)
+      .where(
+        and(
+          eq(projectEstimateLines.id, lineId),
+          eq(projectEstimateLines.estimateId, estimateId),
+          eq(projectEstimateLines.projectId, projectId)
+        )
+      )
+      .limit(1)
+    const line = lineRows[0]
+    if (!line) throw new Error("Estimate line not found.")
+
+    const costCode = requiredText(input.costCode, "Cost code")
+    const catalog = await loadProjectEstimateCostCodes(access.db)
+    const catalogItem = catalog.find((item) => item.code === costCode)
+    if (!catalogItem) {
+      throw new Error("Choose a verified CSI/Sage catalog cost code.")
+    }
+
+    const description = requiredText(input.description, "Description")
+    if (description.length > 500) {
+      throw new Error("Description must be 500 characters or fewer.")
+    }
+    const quantity = input.quantity ?? 1
+    const unitCost = input.unitCost ?? 0
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error("Quantity must be greater than zero.")
+    }
+    if (!Number.isFinite(unitCost) || unitCost < 0) {
+      throw new Error("Unit cost cannot be negative.")
+    }
+    const unitCostCents = Math.round(unitCost * 100)
+    const totalCostCents = calculateEstimateLineCostItemTotal({
+      quantity,
+      unitCostCents,
+    })
+    if (totalCostCents <= 0) {
+      throw new Error("Enter a quantity and unit cost greater than zero.")
+    }
+    const unit = cleanText(input.unit) ?? ""
+    if (unit.length > 40) {
+      throw new Error("Unit must be 40 characters or fewer.")
+    }
+
+    const now = new Date().toISOString()
+    const id = costItemId ?? crypto.randomUUID()
+    const values = {
+      divisionCode: catalogItem.divisionCode,
+      divisionName: catalogItem.divisionDescription,
+      costCode: catalogItem.code,
+      costCodeName: catalogItem.description,
+      description,
+      quantity,
+      unit,
+      unitCostCents,
+      totalCostCents,
+      updatedAt: now,
+    }
+    if (costItemId) {
+      const existingRows = await access.db
+        .select({ id: projectEstimateLineCostItems.id })
+        .from(projectEstimateLineCostItems)
+        .where(
+          and(
+            eq(projectEstimateLineCostItems.id, costItemId),
+            eq(projectEstimateLineCostItems.estimateId, estimateId),
+            eq(projectEstimateLineCostItems.estimateLineId, lineId)
+          )
+        )
+        .limit(1)
+      if (!existingRows[0]) throw new Error("Cost item not found.")
+      await access.db
+        .update(projectEstimateLineCostItems)
+        .set(values)
+        .where(eq(projectEstimateLineCostItems.id, costItemId))
+        .run()
+    } else {
+      const priorRows = await access.db
+        .select({ sortOrder: projectEstimateLineCostItems.sortOrder })
+        .from(projectEstimateLineCostItems)
+        .where(eq(projectEstimateLineCostItems.estimateLineId, lineId))
+        .orderBy(desc(projectEstimateLineCostItems.sortOrder))
+        .limit(1)
+      await access.db.insert(projectEstimateLineCostItems).values({
+        id,
+        projectId,
+        estimateId,
+        estimateLineId: lineId,
+        ...values,
+        sortOrder: (priorRows[0]?.sortOrder ?? 0) + 1,
+        createdAt: now,
+      })
+    }
+
+    await refreshEstimateLineFromCostItems(access.db, estimateId, lineId, now)
+    await refreshEstimateTotals(access.db, estimateId, now)
+    revalidateEstimate(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save the line cost item.",
+    }
+  }
+}
+
+export async function deleteProjectEstimateLineCostItem(
+  projectId: string,
+  estimateId: string,
+  lineId: string,
+  costItemId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const existingRows = await access.db
+      .select({ id: projectEstimateLineCostItems.id })
+      .from(projectEstimateLineCostItems)
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.id, costItemId),
+          eq(projectEstimateLineCostItems.projectId, projectId),
+          eq(projectEstimateLineCostItems.estimateId, estimateId),
+          eq(projectEstimateLineCostItems.estimateLineId, lineId)
+        )
+      )
+      .limit(1)
+    if (!existingRows[0]) throw new Error("Cost item not found.")
+    await access.db
+      .delete(projectEstimateLineCostItems)
+      .where(eq(projectEstimateLineCostItems.id, costItemId))
+      .run()
+    const now = new Date().toISOString()
+    await refreshEstimateLineFromCostItems(access.db, estimateId, lineId, now)
+    await refreshEstimateTotals(access.db, estimateId, now)
+    revalidateEstimate(projectId)
+    return { success: true, id: costItemId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to delete the line cost item.",
     }
   }
 }

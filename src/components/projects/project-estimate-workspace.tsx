@@ -49,6 +49,7 @@ import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { ProjectEstimateClientReportSettings } from "@/components/projects/project-estimate-client-report-settings"
+import { ProjectEstimateLineBreakdown } from "@/components/projects/project-estimate-line-breakdown"
 import {
   ProjectEstimateSignerPicker,
   type ProjectEstimateSignerValue,
@@ -273,6 +274,10 @@ export function ProjectEstimateWorkspacePanel({
   }, [workspace.costCodes])
   const availableCostCodes = workspace.costCodes.filter(
     (option) => option.divisionCode === line.divisionCode
+  )
+  const lineUsesCostBreakdown = Boolean(
+    line.id &&
+      workspace.lines.find((item) => item.id === line.id)?.costItems.length
   )
   const mappedCostCodes = useMemo(
     () =>
@@ -1310,69 +1315,80 @@ export function ProjectEstimateWorkspacePanel({
                   </div>
                   <div className="divide-y">
                     {items.map((item) => (
-                      <div key={item.id} className="grid gap-2 py-3 lg:grid-cols-[minmax(0,1fr)_auto]">
-                        <div>
-                          <p className="text-sm font-medium">
-                            {item.costCode} · {item.description}
-                          </p>
-                          {!mappedCostCodes.has(item.costCode) && (
-                            <Badge variant="outline" className="mt-1">
-                              Sage mapping required
-                            </Badge>
-                          )}
-                          {!item.includeInBuilderFee && (
-                            <Badge variant="outline" className="mt-1 ml-1">
-                              Builder fee excluded
-                            </Badge>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {item.quantity} {item.unit} × {money(item.unitCostCents)} ·
-                            markup {percent(item.markupRateBasisPoints)}
-                            {item.taxable
-                              ? ` · ${item.taxCode ?? "tax"} ${percent(item.taxRateBasisPoints)}`
-                              : " · non-taxable"}
-                          </p>
+                      <div key={item.id} className="py-3">
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                          <div>
+                            <p className="text-sm font-medium">
+                              {item.costCode} · {item.description}
+                            </p>
+                            {!mappedCostCodes.has(item.costCode) && (
+                              <Badge variant="outline" className="mt-1">
+                                Sage mapping required
+                              </Badge>
+                            )}
+                            {!item.includeInBuilderFee && (
+                              <Badge variant="outline" className="mt-1 ml-1">
+                                Builder fee excluded
+                              </Badge>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {item.costItems.length > 0
+                                ? `${item.costItems.length} cost-code breakdown · direct cost ${money(item.directCostCents)}`
+                                : `${item.quantity} ${item.unit} × ${money(item.unitCostCents)}`}
+                              {` · markup ${percent(item.markupRateBasisPoints)}`}
+                              {item.taxable
+                                ? ` · ${item.taxCode ?? "tax"} ${percent(item.taxRateBasisPoints)}`
+                                : " · non-taxable"}
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="font-medium">{money(item.lineTotalCents)}</span>
+                            {editable && (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openLineEditor(lineDraft(item))}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    openLineEditor(
+                                      {
+                                        ...EMPTY_LINE,
+                                        divisionCode: item.divisionCode,
+                                      },
+                                      item.id
+                                    )
+                                  }
+                                >
+                                  Insert below
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label={`Delete ${item.description}`}
+                                  onClick={() => removeLine(item.id)}
+                                >
+                                  <IconTrash className="size-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="font-medium">{money(item.lineTotalCents)}</span>
-                          {editable && (
-                            <>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openLineEditor(lineDraft(item))}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() =>
-                                  openLineEditor(
-                                    {
-                                      ...EMPTY_LINE,
-                                      divisionCode: item.divisionCode,
-                                    },
-                                    item.id
-                                  )
-                                }
-                              >
-                                Insert below
-                              </Button>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                aria-label={`Delete ${item.description}`}
-                                onClick={() => removeLine(item.id)}
-                              >
-                                <IconTrash className="size-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                        <ProjectEstimateLineBreakdown
+                          projectId={projectId}
+                          estimateId={estimate.id}
+                          line={item}
+                          costCodes={workspace.costCodes}
+                          editable={editable}
+                        />
                       </div>
                     ))}
                   </div>
@@ -1441,7 +1457,7 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateUnit">Unit</Label>
-                <Input id="estimateUnit" name="unit" value={line.unit} onChange={(event) => setLine({ ...line, unit: event.target.value })} />
+                <Input id="estimateUnit" name="unit" value={line.unit} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unit: event.target.value })} />
               </div>
               <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
                 <Label htmlFor="estimateDescription">Description</Label>
@@ -1453,11 +1469,11 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateQuantity">Quantity</Label>
-                <Input id="estimateQuantity" name="quantity" inputMode="decimal" value={line.quantity} onChange={(event) => setLine({ ...line, quantity: event.target.value })} />
+                <Input id="estimateQuantity" name="quantity" inputMode="decimal" value={line.quantity} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, quantity: event.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateUnitCost">Unit cost</Label>
-                <Input id="estimateUnitCost" name="unitCost" inputMode="decimal" value={line.unitCost} onChange={(event) => setLine({ ...line, unitCost: event.target.value })} />
+                <Input id="estimateUnitCost" name="unitCost" inputMode="decimal" value={line.unitCost} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unitCost: event.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateMarkup">Line markup %</Label>
@@ -1486,6 +1502,13 @@ export function ProjectEstimateWorkspacePanel({
                   groupHeading="Active Sage tax entities"
                 />
               </div>
+              {lineUsesCostBreakdown && (
+                <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-4">
+                  Quantity, unit, and unit cost are calculated from this line&apos;s
+                  expanded cost-code breakdown. Edit those values inside the
+                  breakdown above.
+                </p>
+              )}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-5">
               <label className="flex items-center gap-2 text-sm">
