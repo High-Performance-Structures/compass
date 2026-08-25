@@ -31,8 +31,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import {
   calculateEstimateLine,
-  calculateEstimateLineBreakdownSubtotal,
-  calculateEstimateLineCostItemTotal,
+  calculateEstimateLineBreakdownRollup,
   calculateEstimateTotals,
   estimateCanBeEdited,
   estimateSourceHash,
@@ -192,6 +191,16 @@ export type ProjectEstimateLineCostItem = {
   readonly quantity: number
   readonly unit: string
   readonly unitCostCents: number
+  readonly directCostCents: number
+  readonly markupRateBasisPoints: number
+  readonly markupCents: number
+  readonly taxable: boolean
+  readonly taxEntityId: string | null
+  readonly taxCode: string | null
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+  readonly taxCents: number
+  readonly lineTotalCents: number
   readonly totalCostCents: number
   readonly sortOrder: number
 }
@@ -348,6 +357,9 @@ export type ProjectEstimateLineCostItemInput = {
   readonly quantity: number | null
   readonly unit: string | null
   readonly unitCost: number | null
+  readonly markupPercent: number | null
+  readonly taxable: boolean
+  readonly taxEntityId: string | null
 }
 
 export type ProjectEstimateBuilderFeeInput = {
@@ -749,6 +761,16 @@ function estimateLineItem(
       quantity: item.quantity,
       unit: item.unit,
       unitCostCents: item.unitCostCents,
+      directCostCents: item.directCostCents,
+      markupRateBasisPoints: item.markupRateBasisPoints,
+      markupCents: item.markupCents,
+      taxable: item.taxable,
+      taxEntityId: item.taxEntityId,
+      taxCode: item.taxCode,
+      taxName: item.taxName,
+      taxRateBasisPoints: item.taxRateBasisPoints,
+      taxCents: item.taxCents,
+      lineTotalCents: item.lineTotalCents,
       totalCostCents: item.totalCostCents,
       sortOrder: item.sortOrder,
     })),
@@ -1421,14 +1443,21 @@ export async function duplicateProjectEstimate(
           `INSERT INTO project_estimate_line_cost_items (
              id, project_id, estimate_id, estimate_line_id, division_code,
              division_name, cost_code, cost_code_name, description, quantity,
-             unit, unit_cost_cents, total_cost_cents, sort_order, created_at,
-             updated_at
+             unit, unit_cost_cents, direct_cost_cents,
+             markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
+             tax_code, tax_name, tax_rate_basis_points, tax_cents,
+             line_total_cents, total_cost_cents, sort_order, created_at, updated_at
            )
            SELECT lower(hex(randomblob(16))), cost_item.project_id, ?,
              copied_line.id, cost_item.division_code, cost_item.division_name,
              cost_item.cost_code, cost_item.cost_code_name,
              cost_item.description, cost_item.quantity, cost_item.unit,
-             cost_item.unit_cost_cents, cost_item.total_cost_cents,
+             cost_item.unit_cost_cents, cost_item.direct_cost_cents,
+             cost_item.markup_rate_basis_points, cost_item.markup_cents,
+             cost_item.taxable, cost_item.tax_entity_id, cost_item.tax_code,
+             cost_item.tax_name, cost_item.tax_rate_basis_points,
+             cost_item.tax_cents, cost_item.line_total_cents,
+             cost_item.total_cost_cents,
              cost_item.sort_order, ?, ?
            FROM project_estimate_line_cost_items AS cost_item
            INNER JOIN project_estimate_lines AS source_line
@@ -2348,13 +2377,29 @@ export async function saveProjectEstimateLine(
     const breakdownRows = lineId
       ? await access.db
           .select({
-            quantity: projectEstimateLineCostItems.quantity,
-            unitCostCents: projectEstimateLineCostItems.unitCostCents,
+            directCostCents: projectEstimateLineCostItems.directCostCents,
+            markupRateBasisPoints:
+              projectEstimateLineCostItems.markupRateBasisPoints,
+            markupCents: projectEstimateLineCostItems.markupCents,
+            taxable: projectEstimateLineCostItems.taxable,
+            taxEntityId: projectEstimateLineCostItems.taxEntityId,
+            taxCode: projectEstimateLineCostItems.taxCode,
+            taxName: projectEstimateLineCostItems.taxName,
+            taxRateBasisPoints:
+              projectEstimateLineCostItems.taxRateBasisPoints,
+            taxCents: projectEstimateLineCostItems.taxCents,
+            lineTotalCents: projectEstimateLineCostItems.lineTotalCents,
           })
           .from(projectEstimateLineCostItems)
           .where(eq(projectEstimateLineCostItems.estimateLineId, lineId))
       : []
-    const taxEntityId = cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
+    const usesCostBreakdown = breakdownRows.length > 0
+    const breakdownRollup = usesCostBreakdown
+      ? calculateEstimateLineBreakdownRollup(breakdownRows)
+      : null
+    const taxEntityId = usesCostBreakdown
+      ? null
+      : cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
     const taxRows = taxEntityId
       ? await access.db
           .select()
@@ -2363,22 +2408,25 @@ export async function saveProjectEstimateLine(
           .limit(1)
       : []
     const tax = taxRows[0]
-    if (input.taxable && !tax) {
+    if (!usesCostBreakdown && input.taxable && !tax) {
       throw new Error("Choose the Sage tax entity for a taxable line.")
     }
-    const usesCostBreakdown = breakdownRows.length > 0
     const quantity = usesCostBreakdown ? 1 : input.quantity ?? 1
     const unitCostCents = usesCostBreakdown
-      ? calculateEstimateLineBreakdownSubtotal(breakdownRows)
+      ? breakdownRollup?.directCostCents ?? 0
       : Math.round((input.unitCost ?? 0) * 100)
-    const markupRateBasisPoints = Math.round((input.markupPercent ?? 0) * 100)
-    const calculation = calculateEstimateLine({
-      quantity,
-      unitCostCents,
-      markupRateBasisPoints,
-      taxable: input.taxable,
-      taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
-    })
+    const markupRateBasisPoints = usesCostBreakdown
+      ? breakdownRollup?.markupRateBasisPoints ?? 0
+      : rateBasisPoints(input.markupPercent, "Line markup")
+    const calculation =
+      breakdownRollup ??
+      calculateEstimateLine({
+        quantity,
+        unitCostCents,
+        markupRateBasisPoints,
+        taxable: input.taxable,
+        taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
+      })
     if (calculation.lineTotalCents <= 0) {
       throw new Error("Enter a quantity and unit cost greater than zero.")
     }
@@ -2406,11 +2454,12 @@ export async function saveProjectEstimateLine(
       unitCostCents,
       ...calculation,
       markupRateBasisPoints,
-      taxable: input.taxable,
-      taxEntityId: tax?.id ?? null,
-      taxCode: tax?.code ?? null,
-      taxName: tax?.name ?? null,
-      taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
+      taxable: breakdownRollup?.taxable ?? input.taxable,
+      taxEntityId: breakdownRollup?.taxEntityId ?? tax?.id ?? null,
+      taxCode: breakdownRollup?.taxCode ?? tax?.code ?? null,
+      taxName: breakdownRollup?.taxName ?? tax?.name ?? null,
+      taxRateBasisPoints:
+        breakdownRollup?.taxRateBasisPoints ?? tax?.rateBasisPoints ?? 0,
       ownerVisible: input.ownerVisible,
       includeInBuilderFee: input.includeInBuilderFee,
       updatedAt: now,
@@ -2486,8 +2535,17 @@ async function refreshEstimateLineFromCostItems(
       .limit(1),
     db
       .select({
-        quantity: projectEstimateLineCostItems.quantity,
-        unitCostCents: projectEstimateLineCostItems.unitCostCents,
+        directCostCents: projectEstimateLineCostItems.directCostCents,
+        markupRateBasisPoints:
+          projectEstimateLineCostItems.markupRateBasisPoints,
+        markupCents: projectEstimateLineCostItems.markupCents,
+        taxable: projectEstimateLineCostItems.taxable,
+        taxEntityId: projectEstimateLineCostItems.taxEntityId,
+        taxCode: projectEstimateLineCostItems.taxCode,
+        taxName: projectEstimateLineCostItems.taxName,
+        taxRateBasisPoints: projectEstimateLineCostItems.taxRateBasisPoints,
+        taxCents: projectEstimateLineCostItems.taxCents,
+        lineTotalCents: projectEstimateLineCostItems.lineTotalCents,
       })
       .from(projectEstimateLineCostItems)
       .where(
@@ -2512,20 +2570,13 @@ async function refreshEstimateLineFromCostItems(
       .run()
     return
   }
-  const directCostCents = calculateEstimateLineBreakdownSubtotal(costItems)
-  const calculation = calculateEstimateLine({
-    quantity: 1,
-    unitCostCents: directCostCents,
-    markupRateBasisPoints: line.markupRateBasisPoints,
-    taxable: line.taxable,
-    taxRateBasisPoints: line.taxRateBasisPoints,
-  })
+  const calculation = calculateEstimateLineBreakdownRollup(costItems)
   await db
     .update(projectEstimateLines)
     .set({
       quantity: 1,
       unit: "assembly",
-      unitCostCents: directCostCents,
+      unitCostCents: calculation.directCostCents,
       ...calculation,
       updatedAt: now,
     })
@@ -2542,7 +2593,11 @@ export async function saveProjectEstimateLineCostItem(
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
-    await requireEditableEstimate(access.db, projectId, estimateId)
+    const estimate = await requireEditableEstimate(
+      access.db,
+      projectId,
+      estimateId
+    )
     const lineRows = await access.db
       .select({ id: projectEstimateLines.id })
       .from(projectEstimateLines)
@@ -2577,11 +2632,35 @@ export async function saveProjectEstimateLineCostItem(
       throw new Error("Unit cost cannot be negative.")
     }
     const unitCostCents = Math.round(unitCost * 100)
-    const totalCostCents = calculateEstimateLineCostItemTotal({
+    const markupRateBasisPoints = rateBasisPoints(
+      input.markupPercent,
+      "Cost item markup"
+    )
+    const taxEntityId = cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
+    const taxRows = taxEntityId
+      ? await access.db
+          .select()
+          .from(sageTaxEntities)
+          .where(
+            and(
+              eq(sageTaxEntities.id, taxEntityId),
+              eq(sageTaxEntities.active, true)
+            )
+          )
+          .limit(1)
+      : []
+    const tax = taxRows[0]
+    if (input.taxable && !tax) {
+      throw new Error("Choose the Sage tax entity for a taxable cost item.")
+    }
+    const calculation = calculateEstimateLine({
       quantity,
       unitCostCents,
+      markupRateBasisPoints,
+      taxable: input.taxable,
+      taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
     })
-    if (totalCostCents <= 0) {
+    if (calculation.lineTotalCents <= 0) {
       throw new Error("Enter a quantity and unit cost greater than zero.")
     }
     const unit = cleanText(input.unit) ?? ""
@@ -2600,7 +2679,14 @@ export async function saveProjectEstimateLineCostItem(
       quantity,
       unit,
       unitCostCents,
-      totalCostCents,
+      ...calculation,
+      markupRateBasisPoints,
+      taxable: input.taxable,
+      taxEntityId: tax?.id ?? null,
+      taxCode: tax?.code ?? null,
+      taxName: tax?.name ?? null,
+      taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
+      totalCostCents: calculation.lineTotalCents,
       updatedAt: now,
     }
     if (costItemId) {
@@ -2710,13 +2796,26 @@ export async function applyProjectEstimateLineMarkup(
       .from(projectEstimateLines)
       .where(eq(projectEstimateLines.estimateId, estimateId))
     if (rows.length === 0) throw new Error("Add an estimate line first.")
+    const costItems = await access.db
+      .select()
+      .from(projectEstimateLineCostItems)
+      .where(eq(projectEstimateLineCostItems.estimateId, estimateId))
 
     const now = new Date().toISOString()
     const legacyAdjustmentCodes = new Set<string>(
       CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.value)
     )
-    const statements = rows
-      .filter((row) => !legacyAdjustmentCodes.has(row.costCode))
+    const eligibleRows = rows.filter(
+      (row) => !legacyAdjustmentCodes.has(row.costCode)
+    )
+    const eligibleLineIds = new Set(eligibleRows.map((row) => row.id))
+    const breakdownLineIds = new Set(
+      costItems
+        .filter((item) => eligibleLineIds.has(item.estimateLineId))
+        .map((item) => item.estimateLineId)
+    )
+    const lineStatements = eligibleRows
+      .filter((row) => !breakdownLineIds.has(row.id))
       .map((row) => {
         const calculation = calculateEstimateLine({
           quantity: row.quantity,
@@ -2745,6 +2844,38 @@ export async function applyProjectEstimateLineMarkup(
             projectId
           )
       })
+    const costItemStatements = costItems
+      .filter((item) => eligibleLineIds.has(item.estimateLineId))
+      .map((item) => {
+        const calculation = calculateEstimateLine({
+          quantity: item.quantity,
+          unitCostCents: item.unitCostCents,
+          markupRateBasisPoints,
+          taxable: item.taxable,
+          taxRateBasisPoints: item.taxRateBasisPoints,
+        })
+        return access.rawDb
+          .prepare(
+            `UPDATE project_estimate_line_cost_items
+             SET markup_rate_basis_points = ?, direct_cost_cents = ?,
+               markup_cents = ?, tax_cents = ?, line_total_cents = ?,
+               total_cost_cents = ?, updated_at = ?
+             WHERE id = ? AND estimate_id = ? AND project_id = ?`
+          )
+          .bind(
+            markupRateBasisPoints,
+            calculation.directCostCents,
+            calculation.markupCents,
+            calculation.taxCents,
+            calculation.lineTotalCents,
+            calculation.lineTotalCents,
+            now,
+            item.id,
+            estimateId,
+            projectId
+          )
+      })
+    const statements = [...lineStatements, ...costItemStatements]
     if (statements.length === 0) {
       throw new Error("Add a CSI cost-code line before applying markup.")
     }
@@ -2755,6 +2886,14 @@ export async function applyProjectEstimateLineMarkup(
       if (results.some((result) => !result.success)) {
         throw new Error("The line markup update did not complete.")
       }
+    }
+    for (const breakdownLineId of breakdownLineIds) {
+      await refreshEstimateLineFromCostItems(
+        access.db,
+        estimateId,
+        breakdownLineId,
+        now
+      )
     }
     await refreshEstimateTotals(access.db, estimateId, now)
     revalidateEstimate(projectId)

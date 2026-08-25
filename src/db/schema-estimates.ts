@@ -339,6 +339,20 @@ export const projectEstimateLineCostItems = sqliteTable(
     quantity: real("quantity").notNull().default(1),
     unit: text("unit").notNull().default(""),
     unitCostCents: integer("unit_cost_cents").notNull().default(0),
+    directCostCents: integer("direct_cost_cents").notNull().default(0),
+    markupRateBasisPoints: integer("markup_rate_basis_points")
+      .notNull()
+      .default(0),
+    markupCents: integer("markup_cents").notNull().default(0),
+    taxable: integer("taxable", { mode: "boolean" }).notNull().default(false),
+    taxEntityId: text("tax_entity_id").references(() => sageTaxEntities.id, {
+      onDelete: "set null",
+    }),
+    taxCode: text("tax_code"),
+    taxName: text("tax_name"),
+    taxRateBasisPoints: integer("tax_rate_basis_points").notNull().default(0),
+    taxCents: integer("tax_cents").notNull().default(0),
+    lineTotalCents: integer("line_total_cents").notNull().default(0),
     totalCostCents: integer("total_cost_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull(),

@@ -29,6 +29,24 @@ export type EstimateLineCostItemInput = {
   readonly unitCostCents: number
 }
 
+export type EstimateLineBreakdownItem = EstimateLineCalculation & {
+  readonly markupRateBasisPoints: number
+  readonly taxable: boolean
+  readonly taxEntityId: string | null
+  readonly taxCode: string | null
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+}
+
+export type EstimateLineBreakdownRollup = EstimateLineCalculation & {
+  readonly markupRateBasisPoints: number
+  readonly taxable: boolean
+  readonly taxEntityId: string | null
+  readonly taxCode: string | null
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+}
+
 export type EstimateLedgerLine = EstimateLineCalculation & {
   readonly id: string | null
   readonly divisionCode: string
@@ -140,6 +158,52 @@ export function calculateEstimateLineBreakdownSubtotal(
     (total, item) => total + calculateEstimateLineCostItemTotal(item),
     0
   )
+}
+
+export function calculateEstimateLineBreakdownRollup(
+  items: readonly EstimateLineBreakdownItem[]
+): EstimateLineBreakdownRollup {
+  const firstItem = items[0]
+  const commonMarkupRate = firstItem
+    ? items.every(
+        (item) =>
+          item.markupRateBasisPoints === firstItem.markupRateBasisPoints
+      )
+      ? firstItem.markupRateBasisPoints
+      : 0
+    : 0
+  const taxableItems = items.filter((item) => item.taxable)
+  const firstTaxableItem = taxableItems[0]
+  const commonTaxEntity = firstTaxableItem
+    ? taxableItems.every(
+        (item) =>
+          item.taxEntityId === firstTaxableItem.taxEntityId &&
+          item.taxCode === firstTaxableItem.taxCode &&
+          item.taxName === firstTaxableItem.taxName &&
+          item.taxRateBasisPoints === firstTaxableItem.taxRateBasisPoints
+      )
+    : false
+
+  return {
+    directCostCents: items.reduce(
+      (total, item) => total + item.directCostCents,
+      0
+    ),
+    markupRateBasisPoints: commonMarkupRate,
+    markupCents: items.reduce((total, item) => total + item.markupCents, 0),
+    taxable: taxableItems.length > 0,
+    taxEntityId: commonTaxEntity ? firstTaxableItem?.taxEntityId ?? null : null,
+    taxCode: commonTaxEntity ? firstTaxableItem?.taxCode ?? null : null,
+    taxName: commonTaxEntity ? firstTaxableItem?.taxName ?? null : null,
+    taxRateBasisPoints: commonTaxEntity
+      ? firstTaxableItem?.taxRateBasisPoints ?? 0
+      : 0,
+    taxCents: items.reduce((total, item) => total + item.taxCents, 0),
+    lineTotalCents: items.reduce(
+      (total, item) => total + item.lineTotalCents,
+      0
+    ),
+  }
 }
 
 export function calculateEstimateTotals(
