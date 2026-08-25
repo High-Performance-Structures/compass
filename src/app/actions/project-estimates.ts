@@ -1495,10 +1495,18 @@ export async function updateProjectEstimateHeader(
       ? await access.db
           .select()
           .from(sageTaxEntities)
-          .where(eq(sageTaxEntities.id, input.defaultTaxEntityId))
+          .where(
+            and(
+              eq(sageTaxEntities.id, input.defaultTaxEntityId),
+              eq(sageTaxEntities.active, true)
+            )
+          )
           .limit(1)
       : []
     const taxEntity = taxEntityRows[0]
+    if (input.defaultTaxEntityId && !taxEntity) {
+      throw new Error("Choose an active Sage tax entity.")
+    }
     const [termsTemplate, introductionTemplate, closingTemplate] =
       await Promise.all([
         loadEstimateTextTemplate({

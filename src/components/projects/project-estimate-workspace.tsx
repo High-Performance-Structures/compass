@@ -59,7 +59,10 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { SearchableCombobox } from "@/components/searchable-combobox"
+import {
+  SearchableCombobox,
+  SearchableComboboxField,
+} from "@/components/searchable-combobox"
 import {
   Select,
   SelectContent,
@@ -276,6 +279,17 @@ export function ProjectEstimateWorkspacePanel({
           .map((option) => option.value)
       ),
     [workspace.costCodes]
+  )
+  const taxEntityOptions = useMemo(
+    () =>
+      workspace.taxEntities.map((option) => ({
+        value: option.value,
+        label: option.label,
+        selectedLabel: `${option.label} · ${percent(option.rateBasisPoints)}`,
+        description: `${percent(option.rateBasisPoints)} · Sage tax entity`,
+        keywords: `${option.code} ${option.rateBasisPoints / 100}`,
+      })),
+    [workspace.taxEntities]
   )
   const groupedLines = useMemo(() => {
     const groups = new Map<string, ProjectEstimateLineItem[]>()
@@ -670,21 +684,23 @@ export function ProjectEstimateWorkspacePanel({
                     ))}
                   </SelectContent>
                 </Select>
-                <Select
+                <SearchableCombobox
                   value={startTaxEntityId}
                   onValueChange={setStartTaxEntityId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Project tax entity, if applicable" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workspace.taxEntities.map((tax) => (
-                      <SelectItem key={tax.value} value={tax.value}>
-                        {tax.label} · {percent(tax.rateBasisPoints)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={[
+                    {
+                      value: "",
+                      label: "No project tax entity",
+                      keywords: "none clear non-taxable",
+                    },
+                    ...taxEntityOptions,
+                  ]}
+                  ariaLabel="Project tax entity for the new estimate"
+                  placeholder="Project tax entity, if applicable"
+                  searchPlaceholder="Search Sage tax entities..."
+                  emptyMessage="No matching Sage tax entities."
+                  groupHeading="Active Sage tax entities"
+                />
                 {selectedStartTemplate?.requiresProjectTaxEntity && (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
                     This template contains taxable lines. Select the project’s
@@ -1005,22 +1021,25 @@ export function ProjectEstimateWorkspacePanel({
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="defaultTaxEntityId">Project tax entity</Label>
-            <Select
+            <SearchableComboboxField
               name="defaultTaxEntityId"
+              id="defaultTaxEntityId"
               defaultValue={estimate.defaultTaxEntityId ?? undefined}
               disabled={!editable}
-            >
-              <SelectTrigger id="defaultTaxEntityId">
-                <SelectValue placeholder="Select a tax entity" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.taxEntities.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label} · {percent(option.rateBasisPoints)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                {
+                  value: "",
+                  label: "No project tax entity",
+                  keywords: "none clear non-taxable",
+                },
+                ...taxEntityOptions,
+              ]}
+              ariaLabel="Project tax entity"
+              placeholder="Select a Sage tax entity"
+              searchPlaceholder="Search Sage tax entities..."
+              emptyMessage="No matching Sage tax entities."
+              groupHeading="Active Sage tax entities"
+            />
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="termsTemplateId">Contract terms template</Label>
@@ -1443,14 +1462,26 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="space-y-1.5">
                 <Label>Tax entity</Label>
-                <Select value={line.taxEntityId} onValueChange={(value) => setLine({ ...line, taxEntityId: value })} disabled={!line.taxable}>
-                  <SelectTrigger><SelectValue placeholder="Project default" /></SelectTrigger>
-                  <SelectContent>
-                    {workspace.taxEntities.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label} · {percent(option.rateBasisPoints)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  value={line.taxEntityId}
+                  onValueChange={(value) =>
+                    setLine({ ...line, taxEntityId: value })
+                  }
+                  disabled={!line.taxable}
+                  options={[
+                    {
+                      value: "",
+                      label: "Use project tax entity",
+                      keywords: "default inherit clear",
+                    },
+                    ...taxEntityOptions,
+                  ]}
+                  ariaLabel="Estimate line tax entity"
+                  placeholder="Use project tax entity"
+                  searchPlaceholder="Search Sage tax entities..."
+                  emptyMessage="No matching Sage tax entities."
+                  groupHeading="Active Sage tax entities"
+                />
               </div>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-5">
