@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, notInArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
@@ -246,6 +246,8 @@ export async function setFeedbackGithubIssueCreationApproval(
       kind: feedbackDeskItems.kind,
       githubIssueUrl: feedbackDeskItems.githubIssueUrl,
       featurePriorityApprovedAt: feedbackDeskItems.featurePriorityApprovedAt,
+      githubIssueCreationClaimToken: feedbackDeskItems.githubIssueCreationClaimToken,
+      updatedAt: feedbackDeskItems.updatedAt,
     }).from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.id, parsed.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
@@ -265,14 +267,36 @@ export async function setFeedbackGithubIssueCreationApproval(
       }
     }
     const now = new Date().toISOString()
-    await db.update(feedbackDeskItems).set({
+    const priorityFence = item.featurePriorityApprovedAt === null
+      ? isNull(feedbackDeskItems.featurePriorityApprovedAt)
+      : eq(feedbackDeskItems.featurePriorityApprovedAt, item.featurePriorityApprovedAt)
+    const updatedRows = await db.update(feedbackDeskItems).set({
       githubIssueCreationApprovedAt: parsed.approved ? now : null,
       githubIssueCreationApprovedBy: parsed.approved ? admin.id : null,
       updatedAt: now,
     }).where(and(
       eq(feedbackDeskItems.id, item.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
-    ))
+      eq(feedbackDeskItems.updatedAt, item.updatedAt),
+      priorityFence,
+      ...(parsed.approved && item.kind === "feature"
+        ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+        : []),
+      ...(parsed.approved
+        ? []
+        : [
+            // Once the durable provider marker commits, the in-flight worker
+            // owns the external-effect boundary. Approval removal must fail
+            // until that attempt links or recovers, never succeed before POST.
+            isNull(feedbackDeskItems.githubIssueCreationProviderAttemptedAt),
+          ]),
+    )).returning({ id: feedbackDeskItems.id })
+    if (updatedRows.length === 0) {
+      return {
+        success: false,
+        error: "This request changed while its GitHub approval was being updated",
+      }
+    }
     revalidatePath("/dashboard/requests")
     revalidatePath("/dashboard/requests/manage")
     return { success: true }
@@ -299,6 +323,11 @@ export async function setFeedbackFeaturePriorityApproval(
       id: feedbackDeskItems.id,
       kind: feedbackDeskItems.kind,
       status: feedbackDeskItems.status,
+      featurePriorityApprovedAt: feedbackDeskItems.featurePriorityApprovedAt,
+      githubIssueCreationClaimToken: feedbackDeskItems.githubIssueCreationClaimToken,
+      githubIssueCreationProviderAttemptedAt:
+        feedbackDeskItems.githubIssueCreationProviderAttemptedAt,
+      updatedAt: feedbackDeskItems.updatedAt,
     }).from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.id, parsed.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
@@ -314,7 +343,10 @@ export async function setFeedbackFeaturePriorityApproval(
       }
     }
     const now = new Date().toISOString()
-    await db.update(feedbackDeskItems).set({
+    const approvalFence = item.featurePriorityApprovedAt === null
+      ? isNull(feedbackDeskItems.featurePriorityApprovedAt)
+      : eq(feedbackDeskItems.featurePriorityApprovedAt, item.featurePriorityApprovedAt)
+    const updatedRows = await db.update(feedbackDeskItems).set({
       featurePriorityApprovedAt: parsed.approved ? now : null,
       featurePriorityApprovedBy: parsed.approved ? admin.id : null,
       ...(parsed.approved ? {} : {
@@ -325,7 +357,26 @@ export async function setFeedbackFeaturePriorityApproval(
     }).where(and(
       eq(feedbackDeskItems.id, item.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
-    ))
+      eq(feedbackDeskItems.updatedAt, item.updatedAt),
+      approvalFence,
+      ...(parsed.approved
+        ? []
+        : [
+            notInArray(feedbackDeskItems.status, ["planned", "in_progress", "testing", "deployed"]),
+            // A committed provider marker owns the external-effect boundary. Do
+            // not report revocation success until that attempt has recovered or
+            // linked, otherwise the stale worker could POST after revocation.
+            isNull(feedbackDeskItems.githubIssueCreationProviderAttemptedAt),
+          ]),
+    )).returning({ id: feedbackDeskItems.id })
+    if (updatedRows.length === 0) {
+      return {
+        success: false,
+        error: parsed.approved
+          ? "This request changed while its priority decision was being saved"
+          : "A feature already in implementation cannot have its priority approval removed",
+      }
+    }
     revalidatePath("/dashboard/requests")
     revalidatePath("/dashboard/requests/manage")
     return { success: true }

@@ -28,6 +28,10 @@ export const feedbackDeskItems = sqliteTable(
     githubIssueNodeId: text("github_issue_node_id"),
     githubIssueCreationApprovedAt: text("github_issue_creation_approved_at"),
     githubIssueCreationApprovedBy: text("github_issue_creation_approved_by"),
+    githubIssueCreationClaimToken: text("github_issue_creation_claim_token"),
+    githubIssueCreationClaimedAt: text("github_issue_creation_claimed_at"),
+    githubIssueCreationClaimExpiresAt: text("github_issue_creation_claim_expires_at"),
+    githubIssueCreationProviderAttemptedAt: text("github_issue_creation_provider_attempted_at"),
     featurePriorityApprovedAt: text("feature_priority_approved_at"),
     featurePriorityApprovedBy: text("feature_priority_approved_by"),
     githubDraftPullRequestUrl: text("github_draft_pull_request_url"),
@@ -69,6 +73,11 @@ export const feedbackDeskItems = sqliteTable(
       table.organizationId,
       table.githubIssueUrl,
       table.githubIssueCreationApprovedAt,
+    ),
+    index("feedback_desk_github_claim_idx").on(
+      table.organizationId,
+      table.githubIssueUrl,
+      table.githubIssueCreationClaimToken,
     ),
   ],
 )

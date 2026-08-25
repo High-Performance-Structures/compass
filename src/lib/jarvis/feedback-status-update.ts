@@ -1,4 +1,4 @@
-import { and, eq, or, sql } from "drizzle-orm"
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { organizationMembers, users } from "@/db/schema"
@@ -17,7 +17,10 @@ import {
   feedbackStatusUsesEmail,
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
-import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
+import {
+  feedbackFeatureTransitionIsBlocked,
+  isFeatureImplementationStatus,
+} from "@/lib/jarvis/feedback-feature-priority"
 import {
   feedbackDeliveryGraphEvent,
   shouldRequestFeedbackDeliveryGraph,
@@ -94,13 +97,21 @@ export type FeedbackLifecycleUpdate = Readonly<{
 
 export async function applyFeedbackLifecycleUpdate(
   db: CompassDb,
-  item: FeedbackDeskItem,
+  itemSnapshot: FeedbackDeskItem,
   update: FeedbackLifecycleUpdate,
 ): Promise<Readonly<{
   changed: boolean
   notifiedUserCount: number
   requesterUpdateQueued: boolean
 }>> {
+  const item = await db.select().from(feedbackDeskItems).where(and(
+    eq(feedbackDeskItems.id, itemSnapshot.id),
+    itemSnapshot.organizationId === null
+      ? isNull(feedbackDeskItems.organizationId)
+      : eq(feedbackDeskItems.organizationId, itemSnapshot.organizationId),
+  )).get()
+  if (!item) throw new Error("Feedback request not found")
+
   if (feedbackFeatureTransitionIsBlocked({
     currentStatus: item.status,
     featurePriorityApprovedAt: item.featurePriorityApprovedAt,
@@ -205,33 +216,6 @@ export async function applyFeedbackLifecycleUpdate(
       : feedbackStatusMessage(update.status, item.title)
   )
 
-  const updateStatement = db.update(feedbackDeskItems).set({
-    status: update.status,
-    priority,
-    githubIssueUrl: issueUrl,
-    githubIssueNodeId: issueNodeId,
-    githubDraftPullRequestUrl: draftUrl,
-    assignedToUserId,
-    assignedToName,
-    internalSummary,
-    deliveryGraphId,
-    deliveryGraphStatus,
-    deliveryGraphImplementationTaskId,
-    deliveryGraphReviewTaskId,
-    deliveryGraphReleaseTaskId,
-    deliveryGraphLastError,
-    deliveryGraphUpdatedAt,
-    slaTargetAt:
-      item.slaTargetAt === null || priorityChanged
-        ? feedbackSlaTarget(priority)
-        : item.slaTargetAt,
-    triagedAt: firstTriage ? now : item.triagedAt,
-    resolvedAt: firstResolution ? now : item.resolvedAt,
-    lastRequesterUpdateAt: requesterUpdateKind ? now : item.lastRequesterUpdateAt,
-    lastGithubSyncAt: update.actorSource === "github" ? now : item.lastGithubSyncAt,
-    updatedAt: now,
-  }).where(eq(feedbackDeskItems.id, item.id))
-
   const recipients = requesterUpdateKind
     ? await requesterRecipients(db, item)
     : []
@@ -260,27 +244,69 @@ export async function applyFeedbackLifecycleUpdate(
     notificationKind: requesterUpdateKind,
     updatedAt: now,
   })
-  const inboundStatement = db.insert(jarvisBridgeEvents).values({
-    id: crypto.randomUUID(),
-    organizationId: item.organizationId,
-    direction: "inbound",
-    source: update.actorSource,
-    eventType: "feedback.status_updated",
-    status: "completed",
-    idempotencyKey: update.idempotencyKey,
-    feedbackDeskItemId: item.id,
-    payload,
-    result: payload,
-    availableAt: now,
-    completedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  }).onConflictDoNothing()
   const deliveryEvent = shouldRequestFeedbackDeliveryGraph(item, update.status)
     ? feedbackDeliveryGraphEvent(item)
     : null
-  const deliveryStatement = deliveryEvent
-    ? db.insert(jarvisBridgeEvents).values({
+  const rowIdentity = item.organizationId === null
+    ? isNull(feedbackDeskItems.organizationId)
+    : eq(feedbackDeskItems.organizationId, item.organizationId)
+  const finalFence = item.kind === "feature" && isFeatureImplementationStatus(update.status)
+    ? isNotNull(feedbackDeskItems.featurePriorityApprovedAt)
+    : undefined
+  await db.transaction(async (tx) => {
+    const persisted = await tx.update(feedbackDeskItems).set({
+      status: update.status,
+      priority,
+      githubIssueUrl: issueUrl,
+      githubIssueNodeId: issueNodeId,
+      githubDraftPullRequestUrl: draftUrl,
+      assignedToUserId,
+      assignedToName,
+      internalSummary,
+      deliveryGraphId,
+      deliveryGraphStatus,
+      deliveryGraphImplementationTaskId,
+      deliveryGraphReviewTaskId,
+      deliveryGraphReleaseTaskId,
+      deliveryGraphLastError,
+      deliveryGraphUpdatedAt,
+      slaTargetAt:
+        item.slaTargetAt === null || priorityChanged
+          ? feedbackSlaTarget(priority)
+          : item.slaTargetAt,
+      triagedAt: firstTriage ? now : item.triagedAt,
+      resolvedAt: firstResolution ? now : item.resolvedAt,
+      lastRequesterUpdateAt: requesterUpdateKind ? now : item.lastRequesterUpdateAt,
+      lastGithubSyncAt: update.actorSource === "github" ? now : item.lastGithubSyncAt,
+      updatedAt: now,
+    }).where(and(
+      eq(feedbackDeskItems.id, item.id),
+      rowIdentity,
+      eq(feedbackDeskItems.updatedAt, item.updatedAt),
+      ...(finalFence ? [finalFence] : []),
+    )).returning({ id: feedbackDeskItems.id }).get()
+    if (!persisted) {
+      throw new Error("Feedback request changed before the lifecycle update could be saved")
+    }
+
+    await tx.insert(jarvisBridgeEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: item.organizationId,
+      direction: "inbound",
+      source: update.actorSource,
+      eventType: "feedback.status_updated",
+      status: "completed",
+      idempotencyKey: update.idempotencyKey,
+      feedbackDeskItemId: item.id,
+      payload,
+      result: payload,
+      availableAt: now,
+      completedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing()
+    if (deliveryEvent) {
+      await tx.insert(jarvisBridgeEvents).values({
         id: crypto.randomUUID(),
         organizationId: item.organizationId,
         direction: "outbound",
@@ -293,31 +319,23 @@ export async function applyFeedbackLifecycleUpdate(
         createdAt: now,
         updatedAt: now,
       }).onConflictDoNothing()
-    : null
-  if (requesterUpdateKind) {
-    const outboundStatement = db.insert(jarvisBridgeEvents).values({
-      id: crypto.randomUUID(),
-      organizationId: item.organizationId,
-      direction: "outbound",
-      source: item.source,
-      eventType: "feedback.status_changed",
-      idempotencyKey: `notify:${update.idempotencyKey}`,
-      feedbackDeskItemId: item.id,
-      payload,
-      availableAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoNothing()
-    if (deliveryStatement) {
-      await db.batch([updateStatement, inboundStatement, outboundStatement, deliveryStatement])
-    } else {
-      await db.batch([updateStatement, inboundStatement, outboundStatement])
     }
-  } else if (deliveryStatement) {
-    await db.batch([updateStatement, inboundStatement, deliveryStatement])
-  } else {
-    await db.batch([updateStatement, inboundStatement])
-  }
+    if (requesterUpdateKind) {
+      await tx.insert(jarvisBridgeEvents).values({
+        id: crypto.randomUUID(),
+        organizationId: item.organizationId,
+        direction: "outbound",
+        source: item.source,
+        eventType: "feedback.status_changed",
+        idempotencyKey: `notify:${update.idempotencyKey}`,
+        feedbackDeskItemId: item.id,
+        payload,
+        availableAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoNothing()
+    }
+  })
 
   if (requesterUpdateKind && item.organizationId && recipients.length > 0) {
     try {

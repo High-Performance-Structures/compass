@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   feedbackFeatureGithubIssueCreationIsBlocked,
+  feedbackFeatureGithubIssueApprovalIsStale,
   feedbackFeatureTransitionRequiresPriorityApproval,
   feedbackFeatureTransitionIsBlocked,
   isFeatureImplementationStatus,
@@ -74,6 +75,24 @@ describe("Feedback Desk feature priority gate", () => {
     })).toBe(false)
     expect(feedbackFeatureGithubIssueCreationIsBlocked({
       featurePriorityApprovedAt: null,
+      kind: "bug",
+    })).toBe(false)
+  })
+
+  it("identifies a stale feature issue approval after priority revocation", () => {
+    expect(feedbackFeatureGithubIssueApprovalIsStale({
+      featurePriorityApprovedAt: null,
+      githubIssueCreationApprovedAt: "2026-08-12T00:00:00.000Z",
+      kind: "feature",
+    })).toBe(true)
+    expect(feedbackFeatureGithubIssueApprovalIsStale({
+      featurePriorityApprovedAt: "2026-08-12T00:00:00.000Z",
+      githubIssueCreationApprovedAt: "2026-08-12T00:00:00.000Z",
+      kind: "feature",
+    })).toBe(false)
+    expect(feedbackFeatureGithubIssueApprovalIsStale({
+      featurePriorityApprovedAt: null,
+      githubIssueCreationApprovedAt: "2026-08-12T00:00:00.000Z",
       kind: "bug",
     })).toBe(false)
   })
