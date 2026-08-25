@@ -282,6 +282,14 @@ export async function setFeedbackGithubIssueCreationApproval(
       ...(parsed.approved && item.kind === "feature"
         ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
         : []),
+      ...(parsed.approved
+        ? []
+        : [
+            // Once the durable provider marker commits, the in-flight worker
+            // owns the external-effect boundary. Approval removal must fail
+            // until that attempt links or recovers, never succeed before POST.
+            isNull(feedbackDeskItems.githubIssueCreationProviderAttemptedAt),
+          ]),
     )).returning({ id: feedbackDeskItems.id })
     if (updatedRows.length === 0) {
       return {
