@@ -89,7 +89,7 @@ function safeInteger(value: number): number {
 
 function safeRate(value: number): number {
   if (!Number.isFinite(value)) return 0
-  return Math.min(1_000_000, Math.max(0, Math.round(value)))
+  return Math.min(1_000_000, Math.max(0, value))
 }
 
 export function calculateEstimateLine(

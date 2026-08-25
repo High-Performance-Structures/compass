@@ -24,7 +24,8 @@ systemctl --user enable --now compass-sage-pay-application-poller.timer
 The secret broker must expose `HPS_SAGE_SQL_PASSWORD` and
 `SAGE_BRIDGE_SECRET`. The latter must match the Cloudflare Worker secret. The
 SQL account is read-only and the poller never sends SQL credentials to
-Compass.
+Compass. Each successful poll also sends a complete snapshot of Sage's
+combined tax districts so estimate selectors stay aligned with `dbo.taxdst`.
 
 Useful health checks:
 
@@ -34,4 +35,5 @@ journalctl --user -u compass-sage-pay-application-poller.service -n 50 --no-page
 ```
 
 The timer invokes a single, lock-protected poll each minute. A successful idle
-run reports `requested: 0` and `processed: 0`; that is a healthy state.
+run reports `requested: 0`, `processed: 0`, and the current `taxDistricts`
+count; that is a healthy state.

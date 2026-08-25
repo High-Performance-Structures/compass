@@ -26,12 +26,15 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/api/integrations/other/events")).toBe(false)
   })
 
-  it("allows only the two HMAC-authenticated Sage bridge endpoints", () => {
+  it("allows only the HMAC-authenticated Sage bridge endpoints", () => {
     expect(
       isPublicPath("/api/integrations/sage/pay-applications/requests")
     ).toBe(true)
     expect(
       isPublicPath("/api/integrations/sage/pay-applications/results")
+    ).toBe(true)
+    expect(
+      isPublicPath("/api/integrations/sage/tax-catalog/results")
     ).toBe(true)
     expect(
       isPublicPath("/api/integrations/sage/client-project-writes/requests")

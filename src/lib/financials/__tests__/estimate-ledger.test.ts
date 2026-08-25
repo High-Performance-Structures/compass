@@ -47,6 +47,21 @@ describe("estimate ledger", () => {
     })
   })
 
+  it("preserves fractional basis points from Sage tax districts", () => {
+    expect(
+      calculateEstimateLine({
+        quantity: 1,
+        unitCostCents: 1_000_000,
+        markupRateBasisPoints: 0,
+        taxable: true,
+        taxRateBasisPoints: 518.5,
+      })
+    ).toMatchObject({
+      taxCents: 51_850,
+      lineTotalCents: 1_051_850,
+    })
+  })
+
   it("rolls estimate totals once across all lines", () => {
     expect(
       calculateEstimateTotals([

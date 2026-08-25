@@ -33,6 +33,7 @@ DEFAULT_SAGE_DATABASE = "High Performance Structures Inc"
 DEFAULT_SAGE_USERNAME = "hps_jarvis_readonly"
 REQUESTS_TARGET = "/api/integrations/sage/pay-applications/requests?limit=10"
 RESULTS_TARGET = "/api/integrations/sage/pay-applications/results"
+TAX_CATALOG_RESULTS_TARGET = "/api/integrations/sage/tax-catalog/results"
 LOCK_PATH = Path("/tmp/compass-sage-pay-application-poller.lock")
 SNAPSHOT_MAPPING_VERSION = "v2"
 
@@ -160,6 +161,35 @@ def normalized_cost_code(value: Any) -> str:
     if isinstance(value, Decimal):
         return format(value, "f")
     return text(value) or "Unassigned"
+
+
+def build_tax_catalog_snapshot(
+    rows: Sequence[Mapping[str, Any]], captured_at: str
+) -> dict[str, Any]:
+    if not rows:
+        raise PollerError("The Sage tax district catalog is empty")
+
+    districts: list[dict[str, Any]] = []
+    for row in rows:
+        source_record_id = text(row.get("recnum"))
+        name = text(row.get("dstnme"))
+        rate = row.get("sumrte")
+        if source_record_id is None or name is None or rate is None:
+            raise PollerError("Sage returned an incomplete tax district")
+        districts.append(
+            {
+                "sourceRecordId": source_record_id,
+                "code": source_record_id,
+                "name": name,
+                "ratePercent": float(Decimal(str(rate))),
+            }
+        )
+
+    return {
+        "capturedAt": captured_at,
+        "complete": True,
+        "taxDistricts": districts,
+    }
 
 
 def build_snapshot(
@@ -378,6 +408,17 @@ def fetch_latest_application(cursor: Any, sage_job: int) -> tuple[dict[str, Any]
     return dict(header), [dict(line) for line in cursor.fetchall()]
 
 
+def fetch_tax_catalog(cursor: Any) -> list[dict[str, Any]]:
+    cursor.execute(
+        """
+        SELECT recnum, dstnme, sumrte
+        FROM dbo.taxdst WITH (NOLOCK)
+        ORDER BY recnum
+        """
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
 def connect_sage() -> Any:
     try:
         import pymssql
@@ -428,15 +469,48 @@ def process_requests(requests: Iterable[PollRequest], base_url: str, secret: str
     return processed
 
 
-def poll_once(base_url: str, secret: str) -> tuple[int, int]:
+def sync_tax_catalog(base_url: str, secret: str) -> int:
+    connection = connect_sage()
+    try:
+        cursor = connection.cursor(as_dict=True)
+        rows = fetch_tax_catalog(cursor)
+        captured_at = dt.datetime.now(dt.timezone.utc).isoformat()
+        snapshot = build_tax_catalog_snapshot(rows, captured_at)
+        signed_json_request(
+            base_url,
+            secret,
+            "POST",
+            TAX_CATALOG_RESULTS_TARGET,
+            snapshot,
+            timeout=45,
+        )
+        return len(rows)
+    finally:
+        connection.close()
+
+
+def sync_tax_catalog_safely(base_url: str, secret: str) -> tuple[int | None, str | None]:
+    try:
+        return sync_tax_catalog(base_url, secret), None
+    except PollerError as error:
+        return None, str(error)
+    except Exception as error:
+        # This ancillary sync must not take down the pay-application path.
+        # Report only the exception type so SQL or driver details cannot leak.
+        return None, f"Tax catalog sync failed: {type(error).__name__}"
+
+
+def poll_once(base_url: str, secret: str) -> tuple[int, int, int | None, str | None]:
+    # Catalog refresh is ancillary to pay applications. Run it before claiming
+    # work and contain expected failures so an invalid catalog cannot strand a
+    # claimed pay-application request.
+    tax_districts, tax_catalog_error = sync_tax_catalog_safely(base_url, secret)
     payload = signed_json_request(
         base_url, secret, "GET", REQUESTS_TARGET, timeout=30
     )
     requests = parse_poll_requests(payload)
-    if not requests:
-        return 0, 0
-    processed = process_requests(requests, base_url, secret)
-    return len(requests), processed
+    processed = process_requests(requests, base_url, secret) if requests else 0
+    return len(requests), processed, tax_districts, tax_catalog_error
 
 
 def acquire_lock() -> Any:
@@ -462,16 +536,20 @@ def main() -> int:
     lock = acquire_lock()
     try:
         while True:
-            requested, processed = poll_once(base_url, secret)
+            requested, processed, tax_districts, tax_catalog_error = poll_once(
+                base_url, secret
+            )
+            output = {
+                "status": "ok",
+                "requested": requested,
+                "processed": processed,
+                "taxDistricts": tax_districts,
+                "at": dt.datetime.now(dt.timezone.utc).isoformat(),
+            }
+            if tax_catalog_error is not None:
+                output["taxCatalogError"] = tax_catalog_error
             print(
-                json.dumps(
-                    {
-                        "status": "ok",
-                        "requested": requested,
-                        "processed": processed,
-                        "at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                    }
-                ),
+                json.dumps(output),
                 flush=True,
             )
             if args.once:
