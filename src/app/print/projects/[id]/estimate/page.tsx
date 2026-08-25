@@ -25,7 +25,10 @@ function quantity(value: number): string {
 }
 
 function percent(basisPoints: number): string {
-  return `${(basisPoints / 100).toFixed(2)}%`
+  return `${(basisPoints / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })}%`
 }
 
 function estimateDate(value: string | null, createdAt: string): string {

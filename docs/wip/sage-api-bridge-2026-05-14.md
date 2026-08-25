@@ -90,6 +90,7 @@ units are in `deploy/systemd/`. The deployed process:
 - receives the SQL password and HMAC secret from the host secret broker;
 - connects with a dedicated read-only Sage identity;
 - claims bounded Compass requests once per minute;
+- reads Sage's complete `taxdst` catalog and refreshes the estimate selector;
 - reads only the latest AIA header and its G703 lines;
 - derives total earned less retainage from populated Sage header totals when
   Sage's `ttlern` field is empty;

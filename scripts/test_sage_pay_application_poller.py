@@ -5,19 +5,63 @@ import sys
 import unittest
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sage_pay_application_poller import (
+    PollerError,
     PollRequest,
     build_snapshot,
+    build_tax_catalog_snapshot,
     parse_poll_requests,
     resolve_sage_job,
     signature,
+    sync_tax_catalog_safely,
 )
 
 
 class SagePayApplicationPollerTests(unittest.TestCase):
+    def test_build_tax_catalog_snapshot_preserves_sage_rate_precision(self) -> None:
+        snapshot = build_tax_catalog_snapshot(
+            [
+                {
+                    "recnum": 70206,
+                    "dstnme": "07-0206 Boulder County Combined",
+                    "sumrte": Decimal("5.1850"),
+                }
+            ],
+            "2026-08-25T18:00:00+00:00",
+        )
+
+        self.assertEqual(snapshot["complete"], True)
+        self.assertEqual(snapshot["taxDistricts"][0]["code"], "70206")
+        self.assertEqual(snapshot["taxDistricts"][0]["ratePercent"], 5.185)
+
+    def test_tax_catalog_failure_is_contained(self) -> None:
+        with mock.patch(
+            "sage_pay_application_poller.sync_tax_catalog",
+            side_effect=PollerError("catalog unavailable"),
+        ):
+            count, error = sync_tax_catalog_safely(
+                "https://compass.example", "a" * 32
+            )
+
+        self.assertIsNone(count)
+        self.assertEqual(error, "catalog unavailable")
+
+    def test_unexpected_tax_catalog_failure_is_contained_and_sanitized(self) -> None:
+        with mock.patch(
+            "sage_pay_application_poller.sync_tax_catalog",
+            side_effect=ValueError("sensitive driver detail"),
+        ):
+            count, error = sync_tax_catalog_safely(
+                "https://compass.example", "a" * 32
+            )
+
+        self.assertIsNone(count)
+        self.assertEqual(error, "Tax catalog sync failed: ValueError")
+
     def test_signature_matches_compass_contract(self) -> None:
         actual = signature(
             "a" * 32,
