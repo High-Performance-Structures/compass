@@ -11,10 +11,25 @@ import {
   nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
   paddingToIncludeDate,
+  persistGanttScrollPosition,
   synchronizedScrollTop,
 } from "../gantt-scroll"
 
 describe("Gantt dominant-axis scrolling", () => {
+  it("persists a seeded viewport before the scroll handler returns", () => {
+    const values = new Map<string, string>()
+    const storage = {
+      setItem(key: string, value: string): void {
+        values.set(key, value)
+      },
+    }
+    const position = { left: 640, top: 192, anchorDate: "2026-08-24" }
+
+    persistGanttScrollPosition(storage, "schedule-scroll", position)
+
+    expect(values.get("schedule-scroll")).toBe(JSON.stringify(position))
+  })
+
   it("removes incidental horizontal movement from a vertical gesture", () => {
     expect(lockWheelToDominantAxis(9, 64)).toEqual({
       deltaX: 0,

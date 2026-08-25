@@ -10,6 +10,28 @@ export interface GanttWheelIntent {
   readonly delta: number
 }
 
+interface GanttScrollStorage {
+  readonly setItem: (key: string, value: string) => void
+}
+
+interface PersistedGanttScrollPosition {
+  readonly left: number
+  readonly top: number
+  readonly anchorDate?: string
+}
+
+export function persistGanttScrollPosition(
+  storage: GanttScrollStorage,
+  key: string,
+  position: PersistedGanttScrollPosition
+): void {
+  try {
+    storage.setItem(key, JSON.stringify(position))
+  } catch {
+    // Scroll persistence is optional when storage is unavailable.
+  }
+}
+
 interface ScheduleRowDateRange {
   readonly startDate: string
   readonly endDate: string

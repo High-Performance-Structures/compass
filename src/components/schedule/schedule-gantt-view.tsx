@@ -99,6 +99,7 @@ import {
   ganttWheelIntent,
   nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
+  persistGanttScrollPosition,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
 
@@ -157,7 +158,6 @@ export function ScheduleGanttView({
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
   const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
-  const scrollStorageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
@@ -250,41 +250,18 @@ export function ScheduleGanttView({
   const rememberScrollPosition = useCallback(
     (position: GanttScrollPosition) => {
       scrollPositionRef.current = position
-      if (scrollStorageTimerRef.current) {
-        clearTimeout(scrollStorageTimerRef.current)
+      try {
+        persistGanttScrollPosition(
+          window.sessionStorage,
+          scrollStorageKey,
+          position
+        )
+      } catch {
+        // In-memory state still preserves this visit when storage is blocked.
       }
-      scrollStorageTimerRef.current = setTimeout(() => {
-        try {
-          window.sessionStorage.setItem(
-            scrollStorageKey,
-            JSON.stringify(scrollPositionRef.current)
-          )
-        } catch {
-          // In-memory state still preserves this visit.
-        }
-      }, 150)
     },
     [scrollStorageKey]
   )
-
-  const flushScrollPosition = useCallback(() => {
-    if (scrollStorageTimerRef.current) {
-      clearTimeout(scrollStorageTimerRef.current)
-      scrollStorageTimerRef.current = null
-    }
-    try {
-      window.sessionStorage.setItem(
-        scrollStorageKey,
-        JSON.stringify(scrollPositionRef.current)
-      )
-    } catch {
-      // Persisting the position is optional.
-    }
-  }, [scrollStorageKey])
-
-  useEffect(() => {
-    return flushScrollPosition
-  }, [flushScrollPosition])
 
   useEffect(() => {
     const taskList = taskListRef.current
