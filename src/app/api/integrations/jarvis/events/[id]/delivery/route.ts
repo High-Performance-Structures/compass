@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull, like, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { feedbackDeskItems, jarvisBridgeEvents } from "@/db/schema-jarvis"
@@ -11,6 +11,11 @@ import {
   feedbackStatusMessage,
   knownFeedbackStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { PROVIDER_ATTEMPT_PREFIX } from "@/lib/jarvis/bridge-reservation"
+
+const LEGACY_DELIVERY_RESERVATION_RESULT = JSON.stringify({
+  deliveryAttempt: "reserved",
+})
 
 function metadataActorId(metadata: string | null): string | null {
   if (!metadata) return null
@@ -84,7 +89,7 @@ export async function GET(
   const nowIso = new Date().toISOString()
   const replacementClaimToken = crypto.randomUUID()
   const db = getDb(env.DB)
-  const event = await db
+  let event = await db
     .update(jarvisBridgeEvents)
     .set({
       claimToken: replacementClaimToken,
@@ -98,6 +103,10 @@ export async function GET(
       eq(jarvisBridgeEvents.eventType, "feedback.status_changed"),
       eq(jarvisBridgeEvents.status, "processing"),
       eq(jarvisBridgeEvents.claimToken, claimToken),
+      or(
+        isNull(jarvisBridgeEvents.result),
+        eq(jarvisBridgeEvents.result, LEGACY_DELIVERY_RESERVATION_RESULT),
+      ),
     ))
     .returning({
       source: jarvisBridgeEvents.source,
@@ -107,6 +116,34 @@ export async function GET(
       claimToken: jarvisBridgeEvents.claimToken,
     })
     .get()
+  if (!event) {
+    event = await db
+      .update(jarvisBridgeEvents)
+      .set({
+        claimToken: replacementClaimToken,
+        claimedAt: nowIso,
+        updatedAt: nowIso,
+      })
+      .where(and(
+        eq(jarvisBridgeEvents.id, id),
+        eq(jarvisBridgeEvents.direction, "outbound"),
+        eq(jarvisBridgeEvents.eventType, "feedback.status_changed"),
+        eq(jarvisBridgeEvents.status, "processing"),
+        eq(jarvisBridgeEvents.claimToken, claimToken),
+        like(
+          jarvisBridgeEvents.result,
+          `${PROVIDER_ATTEMPT_PREFIX}%`,
+        ),
+      ))
+      .returning({
+        source: jarvisBridgeEvents.source,
+        eventType: jarvisBridgeEvents.eventType,
+        payload: jarvisBridgeEvents.payload,
+        feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
+        claimToken: jarvisBridgeEvents.claimToken,
+      })
+      .get()
+  }
   if (!event) {
     return Response.json(
       { error: "Event claim is no longer active" },

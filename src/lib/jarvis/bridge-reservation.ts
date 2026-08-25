@@ -9,6 +9,16 @@ export const ACKNOWLEDGEMENT_RESERVATION_RESULT =
 export const REPLY_RESERVATION_RESULT =
   JSON.stringify({ reply: "reserved" })
 
+export const PROVIDER_ATTEMPT_PREFIX = "provider-attempt:"
+
+export function providerAttemptResult(): string {
+  return `${PROVIDER_ATTEMPT_PREFIX}${crypto.randomUUID()}`
+}
+
+export function isProviderAttemptResult(value: string | null): boolean {
+  return value !== null && value.startsWith(PROVIDER_ATTEMPT_PREFIX)
+}
+
 // Only these non-terminal results may cross the stale-claim recovery boundary.
 export const RECLAIMABLE_RESERVATION_RESULTS = [
   ACKNOWLEDGEMENT_RESERVATION_RESULT,
@@ -102,7 +112,7 @@ export async function runClaimFencedBridgeEffect<TResult>(
 
   await options.beforeProviderAttempt?.()
 
-  const providerAttemptResult = `provider-attempt:${crypto.randomUUID()}`
+  const providerAttempt = providerAttemptResult()
   const providerAttemptAt = new Date().toISOString()
   const acquired: BridgeReservationOwnership[] = []
   try {
@@ -111,7 +121,7 @@ export async function runClaimFencedBridgeEffect<TResult>(
         .update(jarvisBridgeEvents)
         .set({
           claimedAt: providerAttemptAt,
-          result: providerAttemptResult,
+          result: providerAttempt,
           updatedAt: providerAttemptAt,
         })
         .where(and(
@@ -146,7 +156,7 @@ export async function runClaimFencedBridgeEffect<TResult>(
           eq(jarvisBridgeEvents.direction, "outbound"),
           eq(jarvisBridgeEvents.status, "processing"),
           eq(jarvisBridgeEvents.claimToken, reservation.claimToken),
-          eq(jarvisBridgeEvents.result, providerAttemptResult),
+          eq(jarvisBridgeEvents.result, providerAttempt),
         ))
         .returning({ id: jarvisBridgeEvents.id })
         .get()
@@ -170,7 +180,7 @@ export async function runClaimFencedBridgeEffect<TResult>(
           eq(jarvisBridgeEvents.direction, "outbound"),
           eq(jarvisBridgeEvents.status, "processing"),
           eq(jarvisBridgeEvents.claimToken, reservation.claimToken),
-          eq(jarvisBridgeEvents.result, providerAttemptResult),
+          eq(jarvisBridgeEvents.result, providerAttempt),
         ))
         .returning({ id: jarvisBridgeEvents.id })
         .get()

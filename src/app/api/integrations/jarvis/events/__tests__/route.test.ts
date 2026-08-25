@@ -408,4 +408,58 @@ describe("GET /api/integrations/jarvis/events", () => {
       sqlite.close()
     }
   })
+
+  it("reclaims an expired provider-attempt marker after a crash", async () => {
+    const sqlite = new Database(":memory:")
+    sqlite.exec(`
+      CREATE TABLE jarvis_bridge_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        organization_id TEXT,
+        direction TEXT NOT NULL,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload TEXT NOT NULL,
+        result TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        claim_token TEXT,
+        claimed_at TEXT,
+        feedback_desk_item_id TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO jarvis_bridge_events (
+        id, direction, source, event_type, status, idempotency_key, payload,
+        result, available_at, claim_token, claimed_at, created_at, updated_at
+      ) VALUES (
+        'event-provider-crash', 'outbound', 'telegram',
+        'feedback.status_changed', 'processing', 'status:event-provider-crash',
+        '{}', 'provider-attempt:crashed', '2020-01-01T00:00:00.000Z',
+        'crashed-owner', '2020-01-01T00:00:00.000Z',
+        '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'
+      );
+    `)
+    mocks.getDb.mockReturnValue(drizzle(sqlite))
+
+    try {
+      const response = await GET(new Request(
+        "https://compass.example/api/integrations/jarvis/events?eventType=feedback.status_changed",
+      ))
+
+      expect(response.status).toBe(200)
+      const body: unknown = await response.json()
+      const events = typeof body === "object" && body !== null
+        ? Reflect.get(body, "events")
+        : null
+      if (!Array.isArray(events)) throw new Error("Expected reclaimed event array")
+      expect(events).toHaveLength(1)
+      expect(Reflect.get(events[0], "claimToken")).not.toBe("crashed-owner")
+    } finally {
+      sqlite.close()
+    }
+  })
 })

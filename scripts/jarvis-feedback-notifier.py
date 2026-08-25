@@ -103,11 +103,11 @@ def allowed_target(method: str, target: str) -> bool:
     if normalized_method == "GET":
         suffix = "delivery"
     elif normalized_method == "POST":
-        suffix = "ack"
+        suffix = "ack|delivery/attempt"
     else:
         return False
     matched = re.fullmatch(
-        r"/api/integrations/jarvis/events/([^/]+)/" + suffix,
+        r"/api/integrations/jarvis/events/([^/]+)/(" + suffix + r")",
         parsed.path,
     )
     if matched is None or UUID_PATTERN.fullmatch(matched.group(1)) is None:
@@ -143,8 +143,10 @@ def compass_request(
     if not allowed_target(method, target):
         raise RuntimeError("Notifier bridge target is not allowlisted")
     if claim_token is not None and (
-        method.upper() != "GET"
-        or not target.endswith("/delivery")
+        not (
+            method.upper() == "GET" and target.endswith("/delivery")
+            or method.upper() == "POST" and target.endswith("/delivery/attempt")
+        )
         or not claim_token
         or len(claim_token) > 128
     ):
@@ -276,6 +278,41 @@ def delivery_details(event: dict[str, Any]) -> dict[str, Any]:
         or len(replacement_claim) > 128
     ):
         raise RetryableError("Compass returned invalid feedback delivery claim")
+    event["claimToken"] = replacement_claim
+    return response
+
+
+def reserve_provider_attempt(event: dict[str, Any]) -> dict[str, Any]:
+    event_id = event.get("id")
+    claim_token = event.get("claimToken")
+    if (
+        not isinstance(event_id, str)
+        or UUID_PATTERN.fullmatch(event_id) is None
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
+    ):
+        raise RuntimeError("Feedback lifecycle event has no active claim")
+    escaped_id = urllib.parse.quote(event_id, safe="")
+    response = compass_request(
+        "POST",
+        f"/api/integrations/jarvis/events/{escaped_id}/delivery/attempt",
+        claim_token=claim_token,
+    )
+    if not isinstance(response, dict):
+        raise RetryableError("Compass returned invalid provider attempt details")
+    outcome = response.get("outcome")
+    replacement_claim = response.get("claimToken")
+    provider_attempt = response.get("providerAttempt")
+    if (
+        outcome not in {"reserved", "unknown"}
+        or not isinstance(replacement_claim, str)
+        or not replacement_claim
+        or len(replacement_claim) > 128
+        or not isinstance(provider_attempt, str)
+        or not provider_attempt.startswith("provider-attempt:")
+    ):
+        raise RetryableError("Compass returned invalid provider attempt details")
     event["claimToken"] = replacement_claim
     return response
 
@@ -436,6 +473,10 @@ def deliver_event(
         telegram_target = telegram_delivery_target(normalized_payload)
         if telegram_target is None:
             raise RuntimeError("Telegram feedback has no valid reply target")
+        attempt = reserve_provider_attempt(event)
+        if attempt["outcome"] == "unknown":
+            event["providerOutcome"] = "unknown"
+            return True
         delivery_state[event_id] = "attempting"
         save_ledger(delivery_state)
         send_via_hermes(telegram_target, message)
@@ -450,6 +491,10 @@ def deliver_event(
         email_target = reporter_email(normalized_payload)
         if email_target is None:
             raise RuntimeError("Email feedback has no valid reply target")
+        attempt = reserve_provider_attempt(event)
+        if attempt["outcome"] == "unknown":
+            event["providerOutcome"] = "unknown"
+            return True
         delivery_state[event_id] = "attempting"
         save_ledger(delivery_state)
         send_via_hermes(f"email:{email_target}", message)
@@ -585,6 +630,15 @@ def handle_event(event: dict[str, Any], delivery_state: dict[str, str]) -> None:
         claim_token = event.get("claimToken")
         if not isinstance(claim_token, str):
             raise RuntimeError("Feedback delivery lost its active claim")
+        if event.get("providerOutcome") == "unknown":
+            acknowledge(event_id, claim_token, {
+                "status": "failed",
+                "error": (
+                    "External delivery outcome is ambiguous; "
+                    "duplicate send suppressed"
+                ),
+            })
+            return
         if external_delivery:
             delivery_state[event_id] = "delivered"
             save_ledger(delivery_state)

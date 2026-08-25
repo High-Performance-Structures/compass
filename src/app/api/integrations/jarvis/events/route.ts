@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, like, lt, lte, or, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
@@ -12,7 +12,10 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
-import { RECLAIMABLE_RESERVATION_RESULTS } from "@/lib/jarvis/bridge-reservation"
+import {
+  PROVIDER_ATTEMPT_PREFIX,
+  RECLAIMABLE_RESERVATION_RESULTS,
+} from "@/lib/jarvis/bridge-reservation"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
 import { jarvisPayloadForDelivery } from "@/lib/jarvis/visual-context"
@@ -132,6 +135,10 @@ export async function GET(request: Request): Promise<Response> {
                 jarvisBridgeEvents.result,
                 RECLAIMABLE_RESERVATION_RESULTS,
               ),
+              like(
+                jarvisBridgeEvents.result,
+                `${PROVIDER_ATTEMPT_PREFIX}%`,
+              ),
             ),
             lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
           ),
@@ -169,6 +176,10 @@ export async function GET(request: Request): Promise<Response> {
                 inArray(
                   jarvisBridgeEvents.result,
                   RECLAIMABLE_RESERVATION_RESULTS,
+                ),
+                like(
+                  jarvisBridgeEvents.result,
+                  `${PROVIDER_ATTEMPT_PREFIX}%`,
                 ),
               ),
               lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
