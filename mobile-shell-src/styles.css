@@ -122,6 +122,30 @@ button { cursor: pointer; }
 .auth-form { width: min(100%, 420px); margin-inline: auto; }
 .auth-error { color: #9b2c2c; }
 .block { margin-top: 28px; }
+.cherish-spotlight {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  margin-bottom: 20px;
+  border: 0;
+  border-left: 4px solid var(--green);
+  background: var(--green-light);
+  padding: 13px 14px;
+  color: inherit;
+  text-align: left;
+}
+.cherish-spotlight span { color: var(--green); font-size: 11px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.cherish-spotlight strong { font-size: 14px; line-height: 1.45; }
+.cherish-spotlight small { color: var(--muted); font-size: 11px; }
+.cherish-stream { margin-bottom: 28px; }
+.cherish-recognition-list { border-bottom: 1px solid var(--line); }
+.cherish-recognition { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.cherish-recognition:last-child { border-bottom: 0; }
+.cherish-recognition > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cherish-recognition span { color: var(--green); font-size: 11px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
+.cherish-recognition small, .cherish-recognition footer { color: var(--muted); font-size: 11px; }
+.cherish-recognition p { margin: 8px 0; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+.cherish-stream-status { margin: 0; padding: 24px 0; border-bottom: 1px dashed var(--line); color: var(--muted); text-align: center; font-size: 13px; }
 .profile-list { margin: 0; }
 .profile-list div { display: grid; grid-template-columns: 6rem 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .profile-list dt { color: var(--muted); }

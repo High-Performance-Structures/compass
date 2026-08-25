@@ -15,6 +15,7 @@ import {
   type CherishValue,
 } from "@/app/actions/cherish-pulse"
 import { useChatPanel } from "@/components/agent/chat-provider"
+import { CherishRecognitionTicker } from "@/components/cherish/cherish-recognition-ticker"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -30,6 +31,7 @@ import {
   FIELD_OUTBOX_CHANGED_EVENT,
   listFieldOutboxItems,
 } from "@/lib/field/offline-outbox"
+import type { FieldCherishRecognition } from "@/lib/field/types"
 import { cn } from "@/lib/utils"
 
 const CHERISH_VALUES: readonly CherishValue[] = [
@@ -54,9 +56,11 @@ const RESPONSE_TYPES: readonly {
 export function FieldDesk({
   offlineScopeKey,
   displayName,
+  cherishRecognitions,
 }: {
   readonly offlineScopeKey: string
   readonly displayName: string
+  readonly cherishRecognitions: readonly FieldCherishRecognition[]
 }): React.ReactElement {
   const chatPanel = useChatPanel()
   const [online, setOnline] = useState(true)
@@ -214,6 +218,11 @@ export function FieldDesk({
           </p>
         )}
       </header>
+
+      <CherishRecognitionTicker
+        items={cherishRecognitions}
+        className="mt-4"
+      />
 
       <section className="grid gap-3 border-b py-5 sm:grid-cols-[1fr_auto] sm:items-center">
         <div>

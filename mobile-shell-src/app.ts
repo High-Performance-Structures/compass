@@ -13,15 +13,17 @@ import { z } from "zod/v4"
 import {
   cherishResponseTypeSchema,
   cherishValueSchema,
+  fieldCherishRecognitionSchema,
   fieldOutboxSchema,
   fieldDocumentSchema,
   fieldProjectPacketSchema,
   fieldProjectSchema,
   fieldUserProfileSchema,
-  type FieldOutboxItem,
+  type FieldCherishRecognition,
   type FieldCherishResponseType,
   type FieldCherishValue,
   type FieldDocument,
+  type FieldOutboxItem,
   type FieldProject,
   type FieldProjectPacket,
   type FieldQueuedAttachment,
@@ -108,6 +110,11 @@ const nativeFieldFolderResponseSchema = z.object({
   folder: z.object({ id: z.string(), name: z.string() }).optional(),
   documents: z.array(fieldDocumentSchema).optional(),
 })
+const nativeCherishStreamResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  items: z.array(fieldCherishRecognitionSchema).optional(),
+})
 
 const app = document.querySelector<HTMLDivElement>("#app")
 let projects: Project[] = []
@@ -146,6 +153,10 @@ let cherishResponseType: FieldCherishResponseType = "shoutout"
 let cherishMessage = ""
 let cherishFeedback = ""
 let syncingCherish = false
+let cherishRecognitions: FieldCherishRecognition[] = []
+let cherishRecognitionError = ""
+let loadingCherishRecognitions = false
+let lastCherishRecognitionRefreshAt = 0
 let biometricEnabled = false
 let biometricLocked = false
 let backgroundedAt: number | null = null
@@ -286,7 +297,11 @@ function todayView(): string {
   const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
   const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
-  return sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
+  const latestRecognition = cherishRecognitions[0]
+  const cherishSpotlight = online && latestRecognition
+    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(latestRecognition.submittedByName ?? "Team member")}</small></button>`
+    : ""
+  return cherishSpotlight + sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
 
 function logView(): string {
@@ -476,7 +491,15 @@ function cherishView(): string {
     { value: "concern", label: "Private concern" },
   ]
 
-  return `${sectionHead("CHERISH feedback", "Save a shoutout, project win, or private concern without leaving Field Mode.")}
+  const recognitionRows = cherishRecognitions
+    .map(
+      (item) =>
+        `<article class="cherish-recognition"><div><span>${escapeHtml(item.cherishValue)}</span><small>${item.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(shortDate(item.createdAt))}</small></div><p>${escapeHtml(item.message)}</p><footer>Shared by ${escapeHtml(item.submittedByName ?? "a team member")}</footer></article>`,
+    )
+    .join("")
+  const recognitionStream = `<section class="cherish-stream">${sectionHead("Team recognition", "Approved shoutouts and project wins from across HPS.")}${loadingCherishRecognitions ? `<p class="cherish-stream-status">Loading team recognition...</p>` : recognitionRows ? `<div class="cherish-recognition-list">${recognitionRows}</div>` : `<p class="cherish-stream-status">${escapeHtml(cherishRecognitionError || (online ? "No approved recognition yet." : "Connect to load approved recognition."))}</p>`}</section>`
+
+  return `${recognitionStream}<section class="block">${sectionHead("CHERISH feedback", "Save a shoutout, project win, or private concern without leaving Field Mode.")}
     <form id="cherish-form" class="form">
       <label class="field">CHERISH value
         <select name="cherishValue" required>${valueOptions}</select>
@@ -489,7 +512,7 @@ function cherishView(): string {
       </label>
       ${cherishFeedback ? `<p class="${cherishFeedback.startsWith("Saved") || cherishFeedback.startsWith("Synced") ? "message-success" : "attachment-error"}" role="status">${escapeHtml(cherishFeedback)}</p>` : ""}
       <button class="primary" type="submit" ${syncingCherish ? "disabled" : ""}>${syncingCherish ? "Syncing" : online ? "Save and sync" : "Save for sync"}</button>
-    </form>`
+    </form></section>`
 }
 
 function settingsView(): string {
@@ -618,6 +641,7 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-cherish")?.addEventListener("click", openCherish)
+  document.querySelector<HTMLButtonElement>("#today-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
     activeTab = "notifications"
@@ -794,7 +818,11 @@ async function refreshFieldDataAfterNotification(): Promise<void> {
 
 async function refreshFieldDataAfterActivation(): Promise<void> {
   await refreshConnectivityAndSync()
-  if (packet && online) await refreshProjectPacket(false)
+  if (!online) return
+  await Promise.all([
+    packet ? refreshProjectPacket(false) : Promise.resolve(),
+    profile ? refreshCherishRecognition() : Promise.resolve(),
+  ])
 }
 
 function scheduleNotificationRefreshes(): void {
@@ -1169,6 +1197,51 @@ async function syncCherishOutbox(): Promise<void> {
     }
     syncingCherish = false
     render()
+    if (syncedCount > 0) void refreshCherishRecognition(true)
+  }
+}
+
+async function refreshCherishRecognition(force = false): Promise<void> {
+  if (!online || !profile || loadingCherishRecognitions) return
+  if (
+    !force &&
+    Date.now() - lastCherishRecognitionRefreshAt < 30_000
+  ) {
+    return
+  }
+
+  loadingCherishRecognitions = true
+  cherishRecognitionError = ""
+  if (activeTab === "cherish") render()
+  try {
+    const response = await CapacitorHttp.get({
+      url: `${LIVE_URL}/api/field/cherish?refresh=${Date.now()}`,
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+      responseType: "json",
+    })
+    const result = nativeCherishStreamResponseSchema.safeParse(
+      responseData(response.data),
+    )
+    if (!result.success || !result.data.success || !result.data.items) {
+      throw new Error(
+        result.success
+          ? result.data.error ?? "Unable to load team recognition."
+          : "Unable to load team recognition.",
+      )
+    }
+    cherishRecognitions = result.data.items
+    lastCherishRecognitionRefreshAt = Date.now()
+  } catch (error) {
+    cherishRecognitionError =
+      error instanceof Error
+        ? error.message
+        : "Unable to load team recognition."
+  } finally {
+    loadingCherishRecognitions = false
+    if (activeTab === "cherish" || activeTab === "today") render()
   }
 }
 
@@ -1598,6 +1671,7 @@ function openFullCompass(): void {
 function openCherish(): void {
   activeTab = "cherish"
   render()
+  if (online) void refreshCherishRecognition()
 }
 
 async function resumePendingSync(): Promise<void> {
@@ -1722,6 +1796,7 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   activeTab = packet ? "today" : "projects"
   render()
   if (pushToken) void persistPushToken(pushToken)
+  void refreshCherishRecognition(true)
   return true
 }
 
@@ -2033,6 +2108,7 @@ async function initialize(): Promise<void> {
     await handleAppUrl(launchUrl.url)
   }
   if (online && packet) void refreshProjectPacket()
+  if (online && profile) void refreshCherishRecognition(true)
   void resumePendingSync()
 
   await Network.addListener("networkStatusChange", () => void refreshConnectivityAndSync())
@@ -2055,6 +2131,9 @@ async function refreshConnectivityAndSync(): Promise<void> {
   void resumePendingSync()
   if (!previousOnline && online && pushToken && pushStatus !== "enabled") {
     void persistPushToken(pushToken)
+  }
+  if (!previousOnline && online && profile) {
+    void refreshCherishRecognition(true)
   }
   if (!previousOnline && online && activeTab === "chat") {
     void refreshProjectPacket()

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod/v4"
 
-import { submitCherishPulseResponse } from "@/app/actions/cherish-pulse"
+import {
+  getCherishPulseTeamStream,
+  submitCherishPulseResponse,
+} from "@/app/actions/cherish-pulse"
+import { toFieldCherishRecognitions } from "@/lib/field/cherish-recognition"
 import {
   cherishResponseTypeSchema,
   cherishValueSchema,
@@ -13,6 +17,38 @@ const requestSchema = z.object({
   responseType: cherishResponseTypeSchema,
   message: z.string().trim().min(3).max(1_200),
 })
+
+export async function GET(): Promise<Response> {
+  try {
+    const result = await getCherishPulseTeamStream()
+    if (!result.success) {
+      return NextResponse.json(result, { status: 403 })
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        items: toFieldCherishRecognitions(result.data),
+      },
+      {
+        headers: {
+          "Cache-Control": "private, no-store",
+        },
+      },
+    )
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load CHERISH recognition.",
+      },
+      { status: 500 },
+    )
+  }
+}
 
 export async function POST(request: Request): Promise<Response> {
   try {

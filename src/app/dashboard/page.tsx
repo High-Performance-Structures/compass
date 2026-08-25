@@ -1,6 +1,7 @@
 import type * as React from "react"
 import { redirect } from "next/navigation"
 
+import { getCherishPulseTeamStream } from "@/app/actions/cherish-pulse"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
 import { getProjects } from "@/app/actions/projects"
 import {
@@ -15,6 +16,7 @@ import {
   canManageProjectRegistry,
   canUseExecutiveAdmin,
 } from "@/lib/permissions"
+import { toFieldCherishRecognitions } from "@/lib/field/cherish-recognition"
 
 export default async function Page(): Promise<React.ReactElement> {
   const currentUser = await getCurrentUser()
@@ -42,11 +44,13 @@ export default async function Page(): Promise<React.ReactElement> {
     presenceResult,
     teamAvailabilityResult,
     workCalendar,
+    cherishResult,
   ] = await Promise.all([
     getDashboardOverview(),
     getCurrentUserPresence(),
     getOrganizationTeamAvailability(),
     getWorkCalendar(undefined, { eventsOnly: true }).catch(() => null),
+    getCherishPulseTeamStream(),
   ])
   const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
   const initialDeskStatusMessage = presenceResult.success
@@ -82,6 +86,11 @@ export default async function Page(): Promise<React.ReactElement> {
       officeProjectId={workCalendar?.defaultProjectId ?? null}
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
       canReviewCherish={canUseExecutiveAdmin(currentUser)}
+      cherishRecognitions={
+        cherishResult.success
+          ? toFieldCherishRecognitions(cherishResult.data)
+          : []
+      }
     />
   )
 }
