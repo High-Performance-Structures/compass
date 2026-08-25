@@ -67,6 +67,7 @@ export async function getConversationPanelData(channelId: string): Promise<
       readonly success: true
       readonly data: {
         readonly channel: ConversationPanelChannel
+        readonly currentUserId: string
         readonly messages: readonly ConversationPanelMessage[]
         readonly projectRecipients: readonly ConversationPanelProjectRecipient[]
       }
@@ -136,6 +137,7 @@ export async function getConversationPanelData(channelId: string): Promise<
         projectId: channel.projectId,
         archivedAt: channel.archivedAt,
       },
+      currentUserId: currentUser.id,
       messages,
       projectRecipients,
     },
