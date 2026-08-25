@@ -14,7 +14,6 @@ import type { DashboardOfficeEvent } from "@/components/dashboard/dashboard-laun
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import {
   canManageProjectRegistry,
-  canUseExecutiveAdmin,
 } from "@/lib/permissions"
 import { toFieldCherishRecognitions } from "@/lib/field/cherish-recognition"
 
@@ -85,7 +84,6 @@ export default async function Page(): Promise<React.ReactElement> {
       officeCalendarEvents={officeCalendarEvents}
       officeProjectId={workCalendar?.defaultProjectId ?? null}
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
-      canReviewCherish={canUseExecutiveAdmin(currentUser)}
       cherishRecognitions={
         cherishResult.success
           ? toFieldCherishRecognitions(cherishResult.data)

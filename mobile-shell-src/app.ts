@@ -564,9 +564,10 @@ function render(): void {
     { value: "log", symbol: "L", label: "Log" },
     { value: "documents", symbol: "D", label: "Documents" },
     { value: "chat", symbol: "M", label: "Messages" },
+    { value: "cherish", symbol: "C", label: "Cherish" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${activeTab === "cherish" ? "aria-current=page" : ""}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -618,6 +619,7 @@ function bindEvents(): void {
     if (isTab(button.dataset.tab)) activeTab = button.dataset.tab
     render()
     if (activeTab === "chat" && online) void refreshProjectPacket()
+    if (activeTab === "cherish" && online) void refreshCherishRecognition()
   }))
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
   document.querySelector("#project-company-filter")?.addEventListener("change", (event) => {
@@ -640,7 +642,6 @@ function bindEvents(): void {
   })
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
-  document.querySelector<HTMLButtonElement>("#open-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#today-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {

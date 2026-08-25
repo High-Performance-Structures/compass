@@ -20,25 +20,18 @@ import {
   IconChecklist,
   IconClipboardText,
   IconFileInvoice,
-  IconHeartHandshake,
   IconHome2,
   IconMapPin,
   IconMessageCircleQuestion,
   IconPhoto,
   IconPhotoEdit,
-  IconPlus,
   IconReceipt,
   IconSparkles,
-  IconUserHeart,
   IconUsers,
 } from "@tabler/icons-react"
 
 import type { DashboardOverview } from "@/app/actions/dashboard-overview"
 import { updateWorkspacePhoto } from "@/app/actions/profile"
-import {
-  submitCherishPulseResponse,
-  type CherishPulseResponseType,
-} from "@/app/actions/cherish-pulse"
 import {
   getOrganizationTeamAvailability,
   updatePresence,
@@ -48,14 +41,6 @@ import { Button } from "@/components/ui/button"
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { CherishRecognitionTicker } from "@/components/cherish/cherish-recognition-ticker"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -71,7 +56,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Textarea } from "@/components/ui/textarea"
 import type { SidebarUser } from "@/lib/auth"
 import type { FieldCherishRecognition } from "@/lib/field/types"
 import {
@@ -603,125 +587,14 @@ function DeskHero({
               ))}
             </SelectContent>
           </Select>
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <IconHeartHandshake className="size-4 text-[#9d832c]" />
-            {isStatusPending
-              ? "Saving status..."
-              : statusMessage ?? "CHERISH notes will appear here"}
-          </span>
+          {isStatusPending || statusMessage ? (
+            <span className="text-xs text-muted-foreground">
+              {isStatusPending ? "Saving status..." : statusMessage}
+            </span>
+          ) : null}
         </div>
       </div>
     </section>
-  )
-}
-
-function CherishComposer({
-  onSubmitted,
-}: {
-  readonly onSubmitted: () => void
-}): React.ReactElement {
-  const [open, setOpen] = useState(false)
-  const [responseType, setResponseType] =
-    useState<CherishPulseResponseType>("shoutout")
-  const [message, setMessage] = useState("")
-  const [resultMessage, setResultMessage] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-  const isPrivate = responseType === "concern"
-
-  function handleSubmit(): void {
-    const trimmedMessage = message.trim()
-    if (trimmedMessage.length === 0) return
-
-    startTransition(async () => {
-      const result = await submitCherishPulseResponse({
-        cherishValue: "Reliability",
-        responseType,
-        message: trimmedMessage,
-        source: "compass_dashboard",
-      })
-
-      if (!result.success) {
-        setResultMessage(result.error)
-        return
-      }
-
-      setMessage("")
-      onSubmitted()
-      setResultMessage(
-        isPrivate
-          ? "Your private concern was sent for leadership review."
-          : "Your feedback was added to the CHERISH review queue."
-      )
-    })
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" className="bg-[#2f5963] hover:bg-[#244750]">
-          <IconPlus className="size-4" />
-          Give CHERISH feedback
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Give CHERISH feedback</DialogTitle>
-          <DialogDescription>
-            Share team recognition or send a private concern to leadership.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 border">
-          <button
-            type="button"
-            onClick={() => setResponseType("shoutout")}
-            className={cn(
-              "px-3 py-2 text-sm font-medium transition-colors",
-              responseType !== "concern" && "bg-[#2f5963] text-white"
-            )}
-          >
-            Team recognition
-          </button>
-          <button
-            type="button"
-            onClick={() => setResponseType("concern")}
-            className={cn(
-              "border-l px-3 py-2 text-sm font-medium transition-colors",
-              responseType === "concern" && "bg-[#9d832c] text-white"
-            )}
-          >
-            Private concern
-          </button>
-        </div>
-
-        <Textarea
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          placeholder={
-            isPrivate
-              ? "What should leadership know?"
-              : "Who deserves recognition, and what did they do?"
-          }
-          className="min-h-28"
-        />
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            {isPrivate ? "Private to leadership" : "Team-visible after review"}
-          </p>
-          <Button
-            onClick={handleSubmit}
-            disabled={message.trim().length === 0 || isPending}
-          >
-            {isPending ? "Sending..." : "Send feedback"}
-          </Button>
-        </div>
-        {resultMessage ? (
-          <p className="border-l-2 border-emerald-700 pl-2 text-xs text-muted-foreground">
-            {resultMessage}
-          </p>
-        ) : null}
-      </DialogContent>
-    </Dialog>
   )
 }
 
@@ -1230,14 +1103,8 @@ function ProjectWorkspace({
 
 function TeamPulseDrawer({
   overview,
-  canReviewCherish,
-  cherishRefreshKey,
-  onCherishSubmitted,
 }: {
   readonly overview: DashboardOverview
-  readonly canReviewCherish: boolean
-  readonly cherishRefreshKey: number
-  readonly onCherishSubmitted: () => void
 }): React.ReactElement {
   return (
     <Sheet>
@@ -1255,23 +1122,7 @@ function TeamPulseDrawer({
           </SheetDescription>
         </SheetHeader>
         <div className="space-y-5 px-4 pb-6">
-          <div className="border-y py-4">
-            <div className="flex items-center gap-2">
-              <IconUserHeart className="size-5 text-emerald-700" />
-              <h3 className="text-sm font-semibold">CHERISH</h3>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Recognize a teammate or privately let leadership know where help
-              is needed.
-            </p>
-            <div className="mt-3">
-              <CherishComposer onSubmitted={onCherishSubmitted} />
-            </div>
-          </div>
-          <CherishPulseStream
-            canReview={canReviewCherish}
-            refreshKey={cherishRefreshKey}
-          />
+          <CherishPulseStream canReview={false} refreshKey={0} />
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Today at a glance
@@ -1308,7 +1159,6 @@ export function DashboardLaunchpad({
   officeCalendarEvents,
   officeProjectId,
   canManageOfficeMaintenance,
-  canReviewCherish,
   cherishRecognitions,
 }: {
   readonly overview: DashboardOverview
@@ -1318,19 +1168,12 @@ export function DashboardLaunchpad({
   readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
   readonly officeProjectId: string | null
   readonly canManageOfficeMaintenance: boolean
-  readonly canReviewCherish: boolean
   readonly cherishRecognitions: readonly FieldCherishRecognition[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
     deskStatusForPresenceMessage(initialDeskStatusMessage)
   )
-  const [cherishRefreshKey, setCherishRefreshKey] = useState(0)
-
-  function handleCherishSubmitted(): void {
-    setCherishRefreshKey((current) => current + 1)
-  }
-
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
       <div className="flex flex-col gap-3 border-b pb-3 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-center">
@@ -1373,13 +1216,7 @@ export function DashboardLaunchpad({
           {canManageOfficeMaintenance ? (
             <OfficeMaintenanceDrawer projects={overview.projects} />
           ) : null}
-          <CherishComposer onSubmitted={handleCherishSubmitted} />
-          <TeamPulseDrawer
-            overview={overview}
-            canReviewCherish={canReviewCherish}
-            cherishRefreshKey={cherishRefreshKey}
-            onCherishSubmitted={handleCherishSubmitted}
-          />
+          <TeamPulseDrawer overview={overview} />
         </div>
       </div>
 

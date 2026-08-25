@@ -517,6 +517,21 @@ export function buildMainNavigation({
   })
 }
 
+export function buildCherishNavigation(
+  canUseFieldDesk: boolean,
+): ReadonlyArray<NavLinkItem> {
+  return canUseFieldDesk
+    ? [
+        {
+          kind: "link",
+          title: "CHERISH",
+          url: "/dashboard/cherish",
+          icon: IconHeartHandshake,
+        },
+      ]
+    : []
+}
+
 function SidebarNav({
   canUseFieldDesk,
   canViewActivity,
@@ -558,16 +573,7 @@ function SidebarNav({
         },
       ]
     : []
-  const fieldNav: ReadonlyArray<NavLinkItem> = canUseFieldDesk
-    ? [
-        {
-          kind: "link",
-          title: "CHERISH",
-          url: "/dashboard/field",
-          icon: IconHeartHandshake,
-        },
-      ]
-    : []
+  const cherishNav = buildCherishNavigation(canUseFieldDesk)
   const persistentNav: ReadonlyArray<NavItem> = [
     DASHBOARD_NAV,
     ...staffMessageDeskNav,
@@ -577,7 +583,7 @@ function SidebarNav({
       icon: IconCalendarStats,
       items: projectScopedPlanningNav,
     },
-    ...fieldNav,
+    ...cherishNav,
   ]
 
   return (

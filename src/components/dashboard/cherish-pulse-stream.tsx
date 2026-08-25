@@ -85,7 +85,15 @@ export function CherishPulseStream({
     }
 
     setReviewItems((current) => current.filter((entry) => entry.id !== item.id))
-    if (decision === "approve" && item.visibility === "team") {
+    if (decision === "archive") {
+      setTeamItems((current) => current.filter((entry) => entry.id !== item.id))
+      setPrivateItems((current) => current.filter((entry) => entry.id !== item.id))
+      setMessage(
+        item.reviewStatus === "approved" && item.visibility === "team"
+          ? "Archived and removed from the team CHERISH stream."
+          : "Archived from the CHERISH review queue.",
+      )
+    } else if (item.visibility === "team") {
       setTeamItems((current) => [
         { ...item, reviewStatus: "approved" },
         ...current.filter((entry) => entry.id !== item.id),
@@ -97,8 +105,6 @@ export function CherishPulseStream({
         ...current.filter((entry) => entry.id !== item.id),
       ])
       setMessage("Acknowledged and retained in the leadership-only history.")
-    } else {
-      setMessage("Archived from the CHERISH review queue.")
     }
     setReviewingId(null)
   }
@@ -234,6 +240,20 @@ export function CherishPulseStream({
               <p className="mt-2 text-[11px] text-muted-foreground">
                 Shared by {item.submittedByName ?? "a team member"}
               </p>
+              {canReview ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => void review(item, "archive")}
+                  disabled={reviewingId !== null}
+                >
+                  {reviewingId === item.id
+                    ? "Archiving…"
+                    : "Archive from team stream"}
+                </Button>
+              ) : null}
             </article>
           ))}
         </div>
