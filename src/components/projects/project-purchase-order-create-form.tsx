@@ -62,6 +62,7 @@ import {
   type PurchaseOrderShipToState,
 } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactSelection } from "@/lib/purchase-orders/site-contact"
+import { canRemovePurchaseOrderLine } from "@/lib/purchase-orders/draft-edit"
 
 type DraftPurchaseOrderLine = {
   readonly id: string
@@ -390,7 +391,9 @@ function ProjectPurchaseOrderForm(
 
   function removeLine(id: string): void {
     setLines((current) =>
-      current.length === 1 ? current : current.filter((line) => line.id !== id)
+      !canRemovePurchaseOrderLine(current.length, purchaseOrder !== null)
+        ? current
+        : current.filter((line) => line.id !== id)
     )
   }
 
@@ -824,7 +827,7 @@ function ProjectPurchaseOrderForm(
                     variant="ghost"
                     size="icon"
                     className="size-9"
-                    disabled={lines.length === 1}
+                    disabled={!canRemovePurchaseOrderLine(lines.length, purchaseOrder !== null)}
                     onClick={() => removeLine(line.id)}
                     aria-label={`Remove line ${index + 1}`}
                   >

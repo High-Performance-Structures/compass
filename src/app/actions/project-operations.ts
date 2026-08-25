@@ -38,6 +38,10 @@ import {
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { linkedScheduleTaskId } from "@/lib/schedule/linked-todos"
 import {
+  normalizePurchaseOrderLines,
+  type NormalizedPurchaseOrderLine,
+} from "@/lib/purchase-orders/line-items"
+import {
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
 } from "@/lib/purchase-orders/email"
@@ -359,18 +363,6 @@ type SagePurchaseOrderPayload = {
   }[]
 }
 
-type NormalizedPurchaseOrderLine = {
-  readonly lineNumber: number
-  readonly description: string
-  readonly costCode: string | null
-  readonly phaseCode: string | null
-  readonly quantity: number
-  readonly unitCost: number
-  readonly unit: string | null
-  readonly amount: number
-  readonly taxGroup: string | null
-}
-
 type NormalizedRfqScopeLine = {
   readonly lineNumber: number
   readonly description: string
@@ -597,66 +589,6 @@ function syncQueueStatus(item: {
   if (item.syncDirection !== "write") return "blocked"
   if (item.sageWriteStatus === "not_ready") return "blocked"
   return "ready"
-}
-
-function numberOrDefault(value: number | null, fallback: number): number {
-  return value === null || !Number.isFinite(value) ? fallback : value
-}
-
-function normalizePurchaseOrderLines(
-  lines: readonly CreatePurchaseOrderLineInput[],
-  fallbackDescription: string
-): readonly NormalizedPurchaseOrderLine[] {
-  const normalized = lines
-    .map((line, index) => {
-      const description = cleanText(line.description)
-      const costCode = cleanText(line.costCode)
-      const phaseCode = cleanText(line.phaseCode)
-      const taxGroup = cleanText(line.taxGroup)
-      const unit = cleanText(line.unit)
-      const quantity = numberOrDefault(line.quantity, 1)
-      const unitCost = numberOrDefault(line.unitCost, 0)
-      const amount = numberOrDefault(line.amount, quantity * unitCost)
-      const hasMeaningfulValue =
-        description !== null ||
-        costCode !== null ||
-        phaseCode !== null ||
-        taxGroup !== null ||
-        unit !== null ||
-        amount > 0 ||
-        unitCost > 0
-
-      if (!hasMeaningfulValue) return null
-
-      return {
-        lineNumber: index + 1,
-        description: description ?? fallbackDescription,
-        costCode,
-        phaseCode,
-        quantity,
-        unitCost,
-        unit,
-        amount,
-        taxGroup,
-      }
-    })
-    .filter((line) => line !== null)
-
-  if (normalized.length > 0) return normalized
-
-  return [
-    {
-      lineNumber: 1,
-      description: fallbackDescription,
-      costCode: null,
-      phaseCode: null,
-      quantity: 1,
-      unitCost: 0,
-      unit: null,
-      amount: 0,
-      taxGroup: null,
-    },
-  ]
 }
 
 function normalizeRfqScopeLines(
@@ -1900,7 +1832,11 @@ export async function updatePurchaseOrderRequest(
     const shipTo = cleanText(input.shipTo)
     const orderDate = cleanDate(input.orderDate, "P.O. date")
     const dueDate = cleanDate(input.dueDate, "Required date")
-    const lines = normalizePurchaseOrderLines(input.lines, description ?? title)
+    const lines = normalizePurchaseOrderLines(
+      input.lines,
+      description ?? title,
+      { allowEmpty: true },
+    )
     const amount = lines.reduce((total, line) => total + line.amount, 0)
     const headerCostCode = lines.length === 1 ? lines[0]?.costCode ?? null : null
     const headerPhaseCode = lines.length === 1 ? lines[0]?.phaseCode ?? null : null
