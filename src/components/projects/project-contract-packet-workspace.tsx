@@ -297,6 +297,9 @@ export function ProjectContractPacketWorkspacePanel({
   const [projectAddress, setProjectAddress] = useState(packet?.details.projectAddress ?? workspace.projectAddress ?? "")
   const [county, setCounty] = useState(packet?.details.county ?? "")
   const [ownerName, setOwnerName] = useState(packet?.details.ownerName ?? "")
+  const [ownerMailingAddress, setOwnerMailingAddress] = useState(
+    packet?.details.ownerMailingAddress ?? workspace.projectMailingAddress ?? ""
+  )
   const [clientSigners, setClientSigners] = useState<readonly ContractPacketSigner[]>(packet?.clientSigners ?? [])
   const [companySigner, setCompanySigner] = useState<ContractPacketSigner>({
     contactId: null,
@@ -356,6 +359,7 @@ export function ProjectContractPacketWorkspacePanel({
         projectNumber: workspace.projectNumber ?? "",
         projectAddress,
         ownerName,
+        ownerMailingAddress,
         county,
       },
       clientSigners,
@@ -621,6 +625,22 @@ export function ProjectContractPacketWorkspacePanel({
           <div className="space-y-1.5"><Label htmlFor="contract-county">Project county *</Label><Input id="contract-county" value={county} onChange={(event) => setCounty(event.target.value)} disabled={!editable} /></div>
           <div className="space-y-1.5 md:col-span-2"><Label htmlFor="contract-address">Project location *</Label><Input id="contract-address" value={projectAddress} onChange={(event) => setProjectAddress(event.target.value)} disabled={!editable} /></div>
           <div className="space-y-1.5 md:col-span-2"><Label htmlFor="contract-owner">Owner / client name *</Label><Input id="contract-owner" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} disabled={!editable} /></div>
+          <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="contract-owner-mailing-address">
+              Prepared For mailing address
+            </Label>
+            <Textarea
+              id="contract-owner-mailing-address"
+              value={ownerMailingAddress}
+              onChange={(event) => setOwnerMailingAddress(event.target.value)}
+              rows={3}
+              disabled={!editable}
+            />
+            <p className="text-xs text-muted-foreground">
+              Defaults from the linked estimate or client project information
+              and remains editable for this packet.
+            </p>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="contract-deposit-percent">Deposit (% of estimate) *</Label>
             <Input

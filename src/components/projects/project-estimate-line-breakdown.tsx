@@ -69,7 +69,10 @@ type CostCodeDraft = {
   readonly taxEntityId: string
 }
 
-function emptyCostCode(line: ProjectEstimateLineItem): CostCodeDraft {
+function emptyCostCode(
+  line: ProjectEstimateLineItem,
+  defaultTaxEntityId: string
+): CostCodeDraft {
   return {
     id: null,
     divisionCode: line.divisionCode,
@@ -80,7 +83,7 @@ function emptyCostCode(line: ProjectEstimateLineItem): CostCodeDraft {
     unitCost: "",
     markupPercent: String(line.markupRateBasisPoints / 100),
     taxable: line.taxable,
-    taxEntityId: line.taxEntityId ?? "",
+    taxEntityId: line.taxEntityId ?? defaultTaxEntityId,
   }
 }
 
@@ -106,6 +109,7 @@ export function ProjectEstimateLineBreakdown({
   costCodes,
   taxEntities,
   defaultTaxRateBasisPoints,
+  defaultTaxEntityId,
   editable,
 }: {
   readonly projectId: string
@@ -114,6 +118,7 @@ export function ProjectEstimateLineBreakdown({
   readonly costCodes: readonly ProjectEstimateCostCodeOption[]
   readonly taxEntities: readonly ProjectEstimateTaxOption[]
   readonly defaultTaxRateBasisPoints: number
+  readonly defaultTaxEntityId: string
   readonly editable: boolean
 }): React.ReactElement | null {
   const router = useRouter()
@@ -121,7 +126,7 @@ export function ProjectEstimateLineBreakdown({
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [draft, setDraft] = useState<CostCodeDraft>(() =>
-    emptyCostCode(line)
+    emptyCostCode(line, defaultTaxEntityId)
   )
   const divisions = useMemo(() => {
     const options = new Map<string, string>()
@@ -193,7 +198,7 @@ export function ProjectEstimateLineBreakdown({
           ? "Breakdown cost code updated"
           : "Breakdown cost code added"
       )
-      setDraft(emptyCostCode(line))
+      setDraft(emptyCostCode(line, defaultTaxEntityId))
       setOpen(true)
       router.refresh()
     })
@@ -233,7 +238,7 @@ export function ProjectEstimateLineBreakdown({
         return
       }
       if (draft.id === item.id) {
-        setDraft(emptyCostCode(line))
+        setDraft(emptyCostCode(line, defaultTaxEntityId))
       }
       toast.success("Breakdown cost code deleted")
       router.refresh()
@@ -493,9 +498,17 @@ export function ProjectEstimateLineBreakdown({
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={draft.taxable}
-                  onCheckedChange={(checked) =>
-                    setDraft({ ...draft, taxable: checked === true })
-                  }
+                  onCheckedChange={(checked) => {
+                    const taxable = checked === true
+                    setDraft({
+                      ...draft,
+                      taxable,
+                      taxEntityId:
+                        taxable && !draft.taxEntityId
+                          ? defaultTaxEntityId
+                          : draft.taxEntityId,
+                    })
+                  }}
                 />
                 Taxable cost item
               </label>
@@ -504,7 +517,9 @@ export function ProjectEstimateLineBreakdown({
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={() => setDraft(emptyCostCode(line))}
+                    onClick={() =>
+                      setDraft(emptyCostCode(line, defaultTaxEntityId))
+                    }
                   >
                     Cancel
                   </Button>

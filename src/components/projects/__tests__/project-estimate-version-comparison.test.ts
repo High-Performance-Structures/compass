@@ -21,6 +21,7 @@ function estimate(
     status: versionNumber === 1 ? "superseded" : "draft",
     estimateDate,
     clientName: "Example Client",
+    clientMailingAddress: "PO Box 100, Example, CO 80000",
     clientSignerContactId: null,
     clientSignerName: "Alex Owner",
     clientSignerTitle: "Owner",
