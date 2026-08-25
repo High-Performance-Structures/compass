@@ -490,6 +490,8 @@ export async function reviewCherishPulseResponse(
       .run()
 
     revalidatePath("/dashboard")
+    revalidatePath("/dashboard/cherish")
+    revalidatePath("/dashboard/field")
     revalidatePath("/dashboard/executive-admin/cherish")
 
     return {
