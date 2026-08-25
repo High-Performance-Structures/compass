@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildContractBudget,
   calculateEstimateLine,
+  calculateEstimateLineBreakdownRollup,
   calculateEstimateLineBreakdownSubtotal,
   calculateEstimateLineCostItemTotal,
   calculateEstimateTotals,
@@ -77,6 +78,57 @@ describe("estimate ledger", () => {
         { quantity: 12, unitCostCents: 2_560 },
       ])
     ).toBe(79_058)
+  })
+
+  it("rolls mixed taxable Fox items into the parent without taxing twice", () => {
+    const taxableFoxItem = calculateEstimateLine({
+      quantity: 1,
+      unitCostCents: 100_000,
+      markupRateBasisPoints: 1_000,
+      taxable: true,
+      taxRateBasisPoints: 513,
+    })
+    const nonTaxableFoxItem = calculateEstimateLine({
+      quantity: 1,
+      unitCostCents: 100_000,
+      markupRateBasisPoints: 0,
+      taxable: false,
+      taxRateBasisPoints: 0,
+    })
+
+    expect(
+      calculateEstimateLineBreakdownRollup([
+        {
+          ...taxableFoxItem,
+          markupRateBasisPoints: 1_000,
+          taxable: true,
+          taxEntityId: "littens-tax",
+          taxCode: "LITTEN",
+          taxName: "Litten tax district",
+          taxRateBasisPoints: 513,
+        },
+        {
+          ...nonTaxableFoxItem,
+          markupRateBasisPoints: 0,
+          taxable: false,
+          taxEntityId: null,
+          taxCode: null,
+          taxName: null,
+          taxRateBasisPoints: 0,
+        },
+      ])
+    ).toEqual({
+      directCostCents: 200_000,
+      markupRateBasisPoints: 0,
+      markupCents: 10_000,
+      taxable: true,
+      taxEntityId: "littens-tax",
+      taxCode: "LITTEN",
+      taxName: "Litten tax district",
+      taxRateBasisPoints: 513,
+      taxCents: 5_643,
+      lineTotalCents: 215_643,
+    })
   })
 
   it("rolls estimate totals once across all lines", () => {

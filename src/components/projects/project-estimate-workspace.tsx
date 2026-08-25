@@ -48,6 +48,7 @@ import {
 import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { EstimateUnitInput } from "@/components/estimate-unit-input"
 import { ProjectEstimateClientReportSettings } from "@/components/projects/project-estimate-client-report-settings"
 import { ProjectEstimateLineBreakdown } from "@/components/projects/project-estimate-line-breakdown"
 import {
@@ -1333,12 +1334,8 @@ export function ProjectEstimateWorkspacePanel({
                             )}
                             <p className="text-xs text-muted-foreground">
                               {item.costItems.length > 0
-                                ? `${item.costItems.length} cost-code breakdown · direct cost ${money(item.directCostCents)}`
-                                : `${item.quantity} ${item.unit} × ${money(item.unitCostCents)}`}
-                              {` · markup ${percent(item.markupRateBasisPoints)}`}
-                              {item.taxable
-                                ? ` · ${item.taxCode ?? "tax"} ${percent(item.taxRateBasisPoints)}`
-                                : " · non-taxable"}
+                                ? `${item.costItems.length} cost-code breakdown · direct ${money(item.directCostCents)} · markup ${money(item.markupCents)} · tax ${money(item.taxCents)}`
+                                : `${item.quantity} ${item.unit} × ${money(item.unitCostCents)} · markup ${percent(item.markupRateBasisPoints)}${item.taxable ? ` · ${item.taxCode ?? "tax"} ${percent(item.taxRateBasisPoints)}` : " · non-taxable"}`}
                             </p>
                           </div>
                           <div className="flex items-center justify-end gap-2">
@@ -1387,6 +1384,10 @@ export function ProjectEstimateWorkspacePanel({
                           estimateId={estimate.id}
                           line={item}
                           costCodes={workspace.costCodes}
+                          taxEntities={workspace.taxEntities}
+                          defaultTaxRateBasisPoints={
+                            estimate.defaultTaxRateBasisPoints
+                          }
                           editable={editable}
                         />
                       </div>
@@ -1456,8 +1457,14 @@ export function ProjectEstimateWorkspacePanel({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="estimateUnit">Unit</Label>
-                <Input id="estimateUnit" name="unit" value={line.unit} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unit: event.target.value })} />
+                <Label htmlFor="estimateUnit">Unit type</Label>
+                <EstimateUnitInput
+                  id="estimateUnit"
+                  name="unit"
+                  value={line.unit}
+                  disabled={lineUsesCostBreakdown}
+                  onValueChange={(value) => setLine({ ...line, unit: value })}
+                />
               </div>
               <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
                 <Label htmlFor="estimateDescription">Description</Label>
@@ -1477,7 +1484,7 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateMarkup">Line markup %</Label>
-                <Input id="estimateMarkup" name="markupPercent" inputMode="decimal" value={line.markupPercent} onChange={(event) => setLine({ ...line, markupPercent: event.target.value })} />
+                <Input id="estimateMarkup" name="markupPercent" inputMode="decimal" value={line.markupPercent} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, markupPercent: event.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label>Tax entity</Label>
@@ -1486,7 +1493,7 @@ export function ProjectEstimateWorkspacePanel({
                   onValueChange={(value) =>
                     setLine({ ...line, taxEntityId: value })
                   }
-                  disabled={!line.taxable}
+                  disabled={!line.taxable || lineUsesCostBreakdown}
                   options={[
                     {
                       value: "",
@@ -1504,15 +1511,15 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               {lineUsesCostBreakdown && (
                 <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-4">
-                  Quantity, unit, and unit cost are calculated from this line&apos;s
-                  expanded cost-code breakdown. Edit those values inside the
-                  breakdown above.
+                  Quantity, unit, unit cost, markup, and tax are calculated from
+                  this line&apos;s expanded cost-code breakdown. Edit those pricing
+                  values inside the breakdown above.
                 </p>
               )}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-5">
               <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={line.taxable} onCheckedChange={(checked) => setLine({ ...line, taxable: checked === true })} />
+                <Checkbox checked={line.taxable} disabled={lineUsesCostBreakdown} onCheckedChange={(checked) => setLine({ ...line, taxable: checked === true })} />
                 Taxable line
               </label>
               <label className="flex items-center gap-2 text-sm">

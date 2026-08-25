@@ -17,9 +17,12 @@ import {
   type ProjectEstimateCostCodeOption,
   type ProjectEstimateLineCostItem,
   type ProjectEstimateLineItem,
+  type ProjectEstimateTaxOption,
 } from "@/app/actions/project-estimates"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { EstimateUnitInput } from "@/components/estimate-unit-input"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
@@ -34,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -48,6 +52,10 @@ function numericValue(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function percent(basisPoints: number): string {
+  return `${basisPoints / 100}%`
+}
+
 type CostCodeDraft = {
   readonly id: string | null
   readonly divisionCode: string
@@ -56,17 +64,23 @@ type CostCodeDraft = {
   readonly quantity: string
   readonly unit: string
   readonly unitCost: string
+  readonly markupPercent: string
+  readonly taxable: boolean
+  readonly taxEntityId: string
 }
 
-function emptyCostCode(divisionCode: string): CostCodeDraft {
+function emptyCostCode(line: ProjectEstimateLineItem): CostCodeDraft {
   return {
     id: null,
-    divisionCode,
+    divisionCode: line.divisionCode,
     costCode: "",
     description: "",
     quantity: "1",
     unit: "",
     unitCost: "",
+    markupPercent: String(line.markupRateBasisPoints / 100),
+    taxable: line.taxable,
+    taxEntityId: line.taxEntityId ?? "",
   }
 }
 
@@ -79,6 +93,9 @@ function costCodeDraft(item: ProjectEstimateLineCostItem): CostCodeDraft {
     quantity: String(item.quantity),
     unit: item.unit,
     unitCost: String(item.unitCostCents / 100),
+    markupPercent: String(item.markupRateBasisPoints / 100),
+    taxable: item.taxable,
+    taxEntityId: item.taxEntityId ?? "",
   }
 }
 
@@ -87,19 +104,23 @@ export function ProjectEstimateLineBreakdown({
   estimateId,
   line,
   costCodes,
+  taxEntities,
+  defaultTaxRateBasisPoints,
   editable,
 }: {
   readonly projectId: string
   readonly estimateId: string
   readonly line: ProjectEstimateLineItem
   readonly costCodes: readonly ProjectEstimateCostCodeOption[]
+  readonly taxEntities: readonly ProjectEstimateTaxOption[]
+  readonly defaultTaxRateBasisPoints: number
   readonly editable: boolean
 }): React.ReactElement | null {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [draft, setDraft] = useState<CostCodeDraft>(() =>
-    emptyCostCode(line.divisionCode)
+    emptyCostCode(line)
   )
   const divisions = useMemo(() => {
     const options = new Map<string, string>()
@@ -113,11 +134,33 @@ export function ProjectEstimateLineBreakdown({
   const availableCostCodes = costCodes.filter(
     (option) => option.divisionCode === draft.divisionCode
   )
+  const taxEntityOptions = useMemo(
+    () =>
+      taxEntities.map((option) => ({
+        value: option.value,
+        label: option.label,
+        selectedLabel: `${option.label} · ${percent(option.rateBasisPoints)}`,
+        description: `${percent(option.rateBasisPoints)} · Sage tax entity`,
+        keywords: `${option.code} ${option.rateBasisPoints / 100}`,
+      })),
+    [taxEntities]
+  )
   const previewQuantity = numericValue(draft.quantity) ?? 0
   const previewUnitCost = numericValue(draft.unitCost) ?? 0
-  const previewTotalCents = Math.round(
-    Math.max(0, previewQuantity) * Math.max(0, previewUnitCost) * 100
+  const previewMarkupRateBasisPoints = Math.round(
+    (numericValue(draft.markupPercent) ?? 0) * 100
   )
+  const selectedTaxEntity = taxEntities.find(
+    (option) => option.value === draft.taxEntityId
+  )
+  const preview = calculateEstimateLine({
+    quantity: previewQuantity,
+    unitCostCents: Math.round(Math.max(0, previewUnitCost) * 100),
+    markupRateBasisPoints: previewMarkupRateBasisPoints,
+    taxable: draft.taxable,
+    taxRateBasisPoints:
+      selectedTaxEntity?.rateBasisPoints ?? defaultTaxRateBasisPoints,
+  })
 
   if (!editable && line.costItems.length === 0) return null
 
@@ -135,6 +178,9 @@ export function ProjectEstimateLineBreakdown({
           quantity: numericValue(draft.quantity),
           unit: draft.unit,
           unitCost: numericValue(draft.unitCost),
+          markupPercent: numericValue(draft.markupPercent),
+          taxable: draft.taxable,
+          taxEntityId: draft.taxEntityId,
         }
       )
       if (!result.success) {
@@ -146,7 +192,7 @@ export function ProjectEstimateLineBreakdown({
           ? "Breakdown cost code updated"
           : "Breakdown cost code added"
       )
-      setDraft(emptyCostCode(line.divisionCode))
+      setDraft(emptyCostCode(line))
       setOpen(true)
       router.refresh()
     })
@@ -156,7 +202,7 @@ export function ProjectEstimateLineBreakdown({
     const finalItem = line.costItems.length === 1
     const confirmed = window.confirm(
       finalItem
-        ? `Delete ${item.costCode}? This removes the breakdown and returns the parent line to simple lump-sum pricing at its current direct cost.`
+        ? `Delete ${item.costCode}? This removes the breakdown and returns the parent line to simple lump-sum pricing at its current calculated amount.`
         : `Delete ${item.costCode} from this line's cost breakdown?`
     )
     if (!confirmed) return
@@ -172,7 +218,7 @@ export function ProjectEstimateLineBreakdown({
         return
       }
       if (draft.id === item.id) {
-        setDraft(emptyCostCode(line.divisionCode))
+        setDraft(emptyCostCode(line))
       }
       toast.success("Breakdown cost code deleted")
       router.refresh()
@@ -190,7 +236,7 @@ export function ProjectEstimateLineBreakdown({
           )}
           {line.costItems.length === 0
             ? "Build cost breakdown"
-            : `${line.costItems.length} breakdown ${line.costItems.length === 1 ? "cost code" : "cost codes"} · ${money(line.directCostCents)}`}
+            : `${line.costItems.length} breakdown ${line.costItems.length === 1 ? "cost code" : "cost codes"} · ${money(line.lineTotalCents)}`}
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-2 border-t pt-3">
@@ -198,13 +244,14 @@ export function ProjectEstimateLineBreakdown({
           <div>
             <p className="text-sm font-medium">Line cost breakdown</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Choose CSI/Sage cost codes just like a parent estimate line. The
-              detailed subtotal becomes this line&apos;s direct cost; its markup,
-              tax, and builder-fee settings still apply at the parent level.
+              Choose CSI/Sage cost codes just like a parent estimate line. Set
+              the unit type, markup, and taxability for each item. The parent
+              line becomes a summary of those calculated amounts; builder-fee
+              eligibility remains on the parent line.
             </p>
           </div>
           <p className="text-sm font-semibold">
-            Direct cost {money(line.directCostCents)}
+            Line total {money(line.lineTotalCents)}
           </p>
         </div>
 
@@ -223,10 +270,17 @@ export function ProjectEstimateLineBreakdown({
                     {item.divisionCode} · {item.divisionName} · {item.quantity}{" "}
                     {item.unit} × {money(item.unitCostCents)}
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    Direct {money(item.directCostCents)} · Markup{" "}
+                    {percent(item.markupRateBasisPoints)} ({money(item.markupCents)}) ·{" "}
+                    {item.taxable
+                      ? `${item.taxName ?? item.taxCode ?? "Taxable"} ${percent(item.taxRateBasisPoints)} (${money(item.taxCents)})`
+                      : "Not taxable"}
+                  </p>
                 </div>
                 <div className="flex items-center justify-end gap-2">
                   <span className="text-sm font-medium">
-                    {money(item.totalCostCents)}
+                    {money(item.lineTotalCents)}
                   </span>
                   {editable && (
                     <>
@@ -270,7 +324,7 @@ export function ProjectEstimateLineBreakdown({
                   : "Add breakdown cost code"}
               </h4>
               <p className="text-xs text-muted-foreground">
-                Calculated amount {money(previewTotalCents)}
+                Calculated amount {money(preview.lineTotalCents)}
               </p>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -352,14 +406,13 @@ export function ProjectEstimateLineBreakdown({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor={`breakdown-unit-${line.id}`}>Unit</Label>
-                <Input
+                <Label htmlFor={`breakdown-unit-${line.id}`}>Unit type</Label>
+                <EstimateUnitInput
                   id={`breakdown-unit-${line.id}`}
                   value={draft.unit}
-                  onChange={(event) =>
-                    setDraft({ ...draft, unit: event.target.value })
+                  onValueChange={(value) =>
+                    setDraft({ ...draft, unit: value })
                   }
-                  placeholder="EA, SF, LF, HR..."
                 />
               </div>
               <div className="space-y-1.5">
@@ -379,12 +432,60 @@ export function ProjectEstimateLineBreakdown({
                   required
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`breakdown-markup-${line.id}`}>
+                  Markup %
+                </Label>
+                <Input
+                  id={`breakdown-markup-${line.id}`}
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={draft.markupPercent}
+                  onChange={(event) =>
+                    setDraft({ ...draft, markupPercent: event.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Tax entity</Label>
+                <SearchableCombobox
+                  value={draft.taxEntityId}
+                  onValueChange={(value) =>
+                    setDraft({ ...draft, taxEntityId: value })
+                  }
+                  disabled={!draft.taxable}
+                  options={[
+                    {
+                      value: "",
+                      label: "Use project tax entity",
+                      keywords: "default inherit clear",
+                    },
+                    ...taxEntityOptions,
+                  ]}
+                  ariaLabel="Breakdown cost item tax entity"
+                  placeholder="Use project tax entity"
+                  searchPlaceholder="Search Sage tax entities..."
+                  emptyMessage="No matching Sage tax entities."
+                  groupHeading="Active Sage tax entities"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.taxable}
+                  onCheckedChange={(checked) =>
+                    setDraft({ ...draft, taxable: checked === true })
+                  }
+                />
+                Taxable cost item
+              </label>
               <div className="flex items-end justify-end gap-2">
                 {draft.id && (
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={() => setDraft(emptyCostCode(line.divisionCode))}
+                    onClick={() => setDraft(emptyCostCode(line))}
                   >
                     Cancel
                   </Button>
@@ -392,7 +493,7 @@ export function ProjectEstimateLineBreakdown({
                 <Button
                   type="submit"
                   disabled={
-                    isPending || !draft.costCode || previewTotalCents <= 0
+                    isPending || !draft.costCode || preview.lineTotalCents <= 0
                   }
                 >
                   {draft.id ? (
