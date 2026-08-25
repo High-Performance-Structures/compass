@@ -18,6 +18,7 @@ function line(
     divisionCode: "03",
     divisionName: "Concrete",
     costCode: "03 30 00",
+    costCodeName: "Cast-in-Place Concrete",
     description: "Cast-in-place concrete",
     specifications: null,
     quantity: 2,

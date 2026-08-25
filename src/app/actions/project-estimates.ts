@@ -2067,7 +2067,7 @@ export async function importProjectEstimateFromGoogleSheet(
         divisionCode: line.divisionCode,
         divisionName: line.divisionName,
         costCode: line.costCode,
-        costCodeName: line.description,
+        costCodeName: line.costCodeName,
         description: line.description,
         specifications: [line.specifications, mappingNote]
           .filter(Boolean)
@@ -3257,6 +3257,7 @@ export async function prepareProjectEstimateForClientSignature(
         id: line.id,
         divisionCode: line.divisionCode,
         costCode: line.costCode,
+        costCodeName: line.costCodeName,
         description: line.description,
         specifications: line.specifications,
         quantity: line.quantity,

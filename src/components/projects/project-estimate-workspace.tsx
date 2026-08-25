@@ -1355,8 +1355,14 @@ export function ProjectEstimateWorkspacePanel({
                         <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
                           <div>
                             <p className="text-sm font-medium">
-                              {item.costCode} · {item.description}
+                              {item.costCode} · {item.costCodeName}
                             </p>
+                            {item.description.trim() !==
+                              item.costCodeName.trim() && (
+                              <p className="mt-0.5 text-sm text-muted-foreground">
+                                {item.description}
+                              </p>
+                            )}
                             {!mappedCostCodes.has(item.costCode) && (
                               <Badge variant="outline" className="mt-1">
                                 Sage mapping required

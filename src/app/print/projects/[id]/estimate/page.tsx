@@ -130,7 +130,6 @@ export default async function ProjectEstimatePrintPage({
               Project
             </p>
             <p className="mt-1 font-semibold">{workspace.projectName}</p>
-            {workspace.projectNumber && <p>{workspace.projectNumber}</p>}
             {workspace.projectAddress && (
               <p className="whitespace-pre-line">{workspace.projectAddress}</p>
             )}
@@ -204,8 +203,7 @@ export default async function ProjectEstimatePrintPage({
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-black text-left text-xs font-semibold uppercase tracking-wide">
-                  <th className="pb-1 pr-2">Cost code</th>
-                  <th className="pb-1 pr-2">Description</th>
+                  <th className="pb-1 pr-2">Cost code item</th>
                   <th className="pb-1 pr-2 text-right">Quantity</th>
                   <th className="pb-1 pr-2">Unit</th>
                   <th className="pb-1 pr-2 text-right">Unit cost</th>
@@ -216,7 +214,7 @@ export default async function ProjectEstimatePrintPage({
             {phases.map((phase) => (
               <Fragment key={phase.divisionCode}>
                 <tr className="break-inside-avoid border-b bg-neutral-100 font-semibold">
-                  <td className="py-2 pr-2" colSpan={6}>
+                  <td className="py-2 pr-2" colSpan={5}>
                     {phase.divisionCode} · {phase.description}
                   </td>
                 </tr>
@@ -226,12 +224,15 @@ export default async function ProjectEstimatePrintPage({
                       className="break-inside-avoid border-b"
                     >
                       <td className="py-2 pr-2 align-top font-medium">
-                        {line.costCode}
-                      </td>
-                      <td className="py-2 pr-2 align-top">
-                        <p>{line.description}</p>
+                        <p>{line.costCode} · {line.costCodeName}</p>
+                        {line.description.trim() !==
+                          line.costCodeName.trim() && (
+                          <p className="mt-1 font-normal text-neutral-700">
+                            {line.description}
+                          </p>
+                        )}
                         {!line.includeInBuilderFee && (
-                          <p className="mt-1 text-xs italic text-neutral-600">
+                          <p className="mt-1 text-xs font-normal italic text-neutral-600">
                             Included in project cost; excluded from builder-fee calculation.
                           </p>
                         )}
@@ -249,7 +250,7 @@ export default async function ProjectEstimatePrintPage({
                     </tr>
                   ))}
                 <tr className="break-inside-avoid border-b-2 border-black font-semibold">
-                  <td className="py-2" colSpan={5}>
+                  <td className="py-2" colSpan={4}>
                     Total: {phase.divisionCode} · {phase.description}
                   </td>
                   <td className="py-2 text-right">
@@ -321,7 +322,12 @@ export default async function ProjectEstimatePrintPage({
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               {builderFeeExclusions.map((line) => (
-                <li key={line.id}>{line.costCode} · {line.description}</li>
+                <li key={line.id}>
+                  {line.costCode} · {line.costCodeName}
+                  {line.description.trim() !== line.costCodeName.trim()
+                    ? ` — ${line.description}`
+                    : ""}
+                </li>
               ))}
             </ul>
           </section>
