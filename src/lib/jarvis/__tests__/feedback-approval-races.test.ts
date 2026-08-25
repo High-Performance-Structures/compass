@@ -12,12 +12,13 @@ type Sqlite = InstanceType<typeof Database>
 function createD1(sqlite: Sqlite, pauseAfterRead?: {
   readonly paused: Promise<void>
   readonly shouldPause: () => boolean
-}): unknown {
+}, shouldFailWrite?: () => boolean): unknown {
   function statementFor(query: string, values: readonly unknown[] = []): Record<string, unknown> {
     const statement = sqlite.prepare(query)
     const result = {
       bind: (...nextValues: unknown[]): unknown => statementFor(query, nextValues),
       run: async (): Promise<unknown> => {
+        if (shouldFailWrite?.()) throw new Error("simulated crash")
         const info = statement.run(...values)
         return {
           success: true,
@@ -31,11 +32,13 @@ function createD1(sqlite: Sqlite, pauseAfterRead?: {
         }
       },
       all: async (): Promise<unknown> => {
+        if (shouldFailWrite?.()) throw new Error("simulated crash")
         const results = statement.all(...values)
         if (pauseAfterRead?.shouldPause()) await pauseAfterRead.paused
         return { success: true, results }
       },
       raw: async (): Promise<unknown> => {
+        if (shouldFailWrite?.()) throw new Error("simulated crash")
         const results = statement.raw().all(...values)
         if (pauseAfterRead?.shouldPause()) await pauseAfterRead.paused
         return results
@@ -89,6 +92,7 @@ function createSchema(sqlite: Sqlite): void {
       github_issue_creation_approved_by TEXT,
       github_issue_creation_claim_token TEXT,
       github_issue_creation_claimed_at TEXT,
+      github_issue_creation_claim_expires_at TEXT,
       feature_priority_approved_at TEXT,
       feature_priority_approved_by TEXT,
       github_draft_pull_request_url TEXT,
@@ -178,12 +182,17 @@ describe("Feedback Desk real approval race fences", () => {
     const item = await actorOne.select().from(feedbackDeskItems)
       .where(eq(feedbackDeskItems.id, "feature-1")).get()
     if (!item) throw new Error("seed row missing")
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        html_url: "https://github.com/example/compass/issues/42",
-        node_id: "issue-node-42",
-      }),
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/search/issues")) {
+        return { ok: true, json: async () => ({ items: [] }) }
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          html_url: "https://github.com/example/compass/issues/42",
+          node_id: "issue-node-42",
+        }),
+      }
     }))
     const fetchMock = vi.mocked(fetch)
     const env = Object.assign(Object.create(null), {
@@ -206,6 +215,234 @@ describe("Feedback Desk real approval race fences", () => {
     const stored = await actorOne.select().from(feedbackDeskItems)
       .where(eq(feedbackDeskItems.id, "feature-1")).get()
     expect(stored?.githubIssueUrl).toBe("https://github.com/example/compass/issues/42")
+    expect(stored?.githubIssueCreationClaimToken).toBeNull()
+    sqlite.close()
+  })
+
+  it("reclaims an expired claim by recovering the provider issue without a duplicate POST", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    sqlite.prepare(`
+      UPDATE feedback_desk_items
+      SET github_issue_creation_claim_token = ?,
+          github_issue_creation_claimed_at = ?,
+          github_issue_creation_claim_expires_at = ?
+      WHERE id = ?
+    `).run(
+      "orphaned-claim",
+      "2026-08-24T17:00:00.000Z",
+      "2026-08-24T17:01:00.000Z",
+      "feature-1",
+    )
+    const client = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actor = getDb(client)
+    const item = await actor.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [{
+          html_url: "https://github.com/example/compass/issues/42",
+          node_id: "issue-node-42",
+          title: "[Compass feedback] feature · CFD-feature-1",
+        }],
+      }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    const result = await linkFeedbackDeskItemToGithub(actor, env, item)
+
+    expect(result).toBe("https://github.com/example/compass/issues/42")
+    expect(fetchMock.mock.calls.filter((call) => {
+      const options = call[1]
+      return typeof call[0] === "string" && call[0].endsWith("/issues") &&
+        typeof options === "object" && options !== null &&
+        Reflect.get(options, "method") === "POST"
+    })).toHaveLength(0)
+    const stored = await actor.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    expect(stored?.githubIssueUrl).toBe("https://github.com/example/compass/issues/42")
+    expect(stored?.githubIssueCreationClaimToken).toBeNull()
+    sqlite.close()
+  })
+
+  it("fails closed without a provider recovery lookup instead of risking a duplicate POST", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    const client = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actor = getDb(client)
+    const item = await actor.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    const result = await linkFeedbackDeskItemToGithub(actor, env, item)
+
+    expect(result).toBeNull()
+    expect(fetchMock.mock.calls).toHaveLength(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/search/issues")
+    const stored = await actor.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    expect(stored?.githubIssueUrl).toBeNull()
+    expect(stored?.githubIssueCreationClaimToken).toBeNull()
+    sqlite.close()
+  })
+
+  it("recovers a provider issue when the process crashes after POST before linking locally", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    let failWrites = false
+    const clientOne = createD1(sqlite, undefined, () => failWrites)
+    const clientTwo = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorOne = getDb(clientOne)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorTwo = getDb(clientTwo)
+    const item = await actorOne.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    let providerIssueCreated = false
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes("/search/issues")) {
+        return {
+          ok: true,
+          json: async () => ({
+            items: providerIssueCreated
+              ? [{
+                  html_url: "https://github.com/example/compass/issues/44",
+                  node_id: "issue-node-44",
+                  title: "[Compass feedback] feature · CFD-feature-1",
+                }]
+              : [],
+          }),
+        }
+      }
+      if (init?.method === "POST") {
+        providerIssueCreated = true
+        failWrites = true
+        return {
+          ok: true,
+          json: async () => ({
+            html_url: "https://github.com/example/compass/issues/44",
+            node_id: "issue-node-44",
+          }),
+        }
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    await expect(linkFeedbackDeskItemToGithub(actorOne, env, item))
+      .rejects.toThrow()
+    failWrites = false
+    await actorTwo.update(feedbackDeskItems).set({
+      githubIssueCreationClaimExpiresAt: "2026-08-24T17:01:00.000Z",
+    }).where(eq(feedbackDeskItems.id, "feature-1")).run()
+    const retryItem = await actorTwo.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!retryItem) throw new Error("retry row missing")
+
+    const result = await linkFeedbackDeskItemToGithub(actorTwo, env, retryItem)
+
+    expect(result).toBe("https://github.com/example/compass/issues/44")
+    expect(fetchMock.mock.calls.filter((call) => {
+      const options = call[1]
+      return typeof call[0] === "string" && call[0].endsWith("/issues") &&
+        typeof options === "object" && options !== null &&
+        Reflect.get(options, "method") === "POST"
+    })).toHaveLength(1)
+    const stored = await actorTwo.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    expect(stored?.githubIssueUrl).toBe("https://github.com/example/compass/issues/44")
+    expect(stored?.githubIssueCreationClaimToken).toBeNull()
+    sqlite.close()
+  })
+
+  it("does not let a claimed issue create or link after priority is revoked by another actor", async () => {
+    let releaseSearch: () => void = () => undefined
+    const searchPaused = new Promise<void>((resolve) => {
+      releaseSearch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    const clientOne = createD1(sqlite)
+    const clientTwo = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorOne = getDb(clientOne)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorTwo = getDb(clientTwo)
+    const item = await actorOne.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? "GET"
+      if (url.includes("/search/issues")) {
+        await searchPaused
+        return {
+          ok: true,
+          json: async () => ({ items: [] }),
+        }
+      }
+      if (method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            html_url: "https://github.com/example/compass/issues/43",
+            node_id: "issue-node-43",
+          }),
+        }
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    const linkPromise = linkFeedbackDeskItemToGithub(actorOne, env, item)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    await actorTwo.update(feedbackDeskItems).set({
+      featurePriorityApprovedAt: null,
+      featurePriorityApprovedBy: null,
+      githubIssueCreationApprovedAt: null,
+      githubIssueCreationApprovedBy: null,
+      updatedAt: "2026-08-24T19:00:00.000Z",
+    }).where(eq(feedbackDeskItems.id, "feature-1")).run()
+    releaseSearch()
+
+    expect(await linkPromise).toBeNull()
+    expect(fetchMock.mock.calls.filter((call) => {
+      const options = call[1]
+      return typeof options === "object" && options !== null &&
+        Reflect.get(options, "method") === "POST"
+    })).toHaveLength(0)
+    const stored = await actorTwo.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    expect(stored?.githubIssueUrl).toBeNull()
+    expect(stored?.featurePriorityApprovedAt).toBeNull()
     expect(stored?.githubIssueCreationClaimToken).toBeNull()
     sqlite.close()
   })

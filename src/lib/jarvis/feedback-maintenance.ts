@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, or } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, lt, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { feedback } from "@/db/schema"
@@ -59,6 +59,28 @@ export function feedbackGithubLinkAction(
   return "review"
 }
 
+export async function reclaimStaleGithubIssueCreationClaims(
+  db: CompassDb,
+  organizationId: string,
+): Promise<number> {
+  const now = new Date().toISOString()
+  const rows = await db.update(feedbackDeskItems).set({
+    githubIssueCreationClaimToken: null,
+    githubIssueCreationClaimedAt: null,
+    githubIssueCreationClaimExpiresAt: null,
+    updatedAt: now,
+  }).where(and(
+    eq(feedbackDeskItems.organizationId, organizationId),
+    isNull(feedbackDeskItems.githubIssueUrl),
+    isNotNull(feedbackDeskItems.githubIssueCreationClaimToken),
+    or(
+      isNull(feedbackDeskItems.githubIssueCreationClaimExpiresAt),
+      lt(feedbackDeskItems.githubIssueCreationClaimExpiresAt, now),
+    ),
+  )).returning({ id: feedbackDeskItems.id })
+  return rows.length
+}
+
 export async function reconcileStaleFeatureGithubIssueApprovals(
   db: CompassDb,
   organizationId: string,
@@ -72,7 +94,6 @@ export async function reconcileStaleFeatureGithubIssueApprovals(
     eq(feedbackDeskItems.kind, "feature"),
     isNull(feedbackDeskItems.featurePriorityApprovedAt),
     isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
-    isNull(feedbackDeskItems.githubIssueCreationClaimToken),
   )).returning({ id: feedbackDeskItems.id })
   return rows.length
 }
@@ -351,6 +372,7 @@ export async function runFeedbackMaintenance(
   let failedCount = 0
   try {
     const recoveredCount =
+      await reclaimStaleGithubIssueCreationClaims(db, organizationId) +
       await recoverLegacyFeedback(db, organizationId) +
       await recoverConfirmedPrompts(db, organizationId)
     const staleIssueApprovalReconciledCount =

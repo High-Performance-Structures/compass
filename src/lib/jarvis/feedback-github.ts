@@ -1,4 +1,4 @@
-import { and, eq, isNull, isNotNull, ne, or } from "drizzle-orm"
+import { and, eq, isNull, isNotNull, lt, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/lib/jarvis/feedback-feature-priority"
 import {
   GITHUB_FEEDBACK_PROJECT_TITLE,
+  feedbackReference,
   githubFeedbackIssueContent,
 } from "@/lib/jarvis/feedback-github-content"
 
@@ -25,7 +26,15 @@ type GitHubFeedbackConfig = Readonly<{
 type GitHubIssueResponse = Readonly<{
   html_url?: unknown
   node_id?: unknown
+  title?: unknown
   state?: unknown
+}>
+
+const GITHUB_ISSUE_CLAIM_LEASE_MS = 5 * 60 * 1_000
+
+type GitHubIssueLookup = Readonly<{
+  available: boolean
+  issue: GitHubIssueResponse | null
 }>
 
 type GraphqlResponse = Readonly<{
@@ -137,6 +146,92 @@ async function addIssueToFeedbackProject(
   }
 }
 
+function issueResponse(value: unknown): GitHubIssueResponse | null {
+  if (typeof value !== "object" || value === null) return null
+  const htmlUrl = Reflect.get(value, "html_url")
+  const nodeId = Reflect.get(value, "node_id")
+  const title = Reflect.get(value, "title")
+  return {
+    html_url: typeof htmlUrl === "string" ? htmlUrl : undefined,
+    node_id: typeof nodeId === "string" ? nodeId : undefined,
+    title: typeof title === "string" ? title : undefined,
+  }
+}
+
+function issueUrlForRepo(value: unknown, repo: string): string | null {
+  if (typeof value !== "string") return null
+  const escapedRepo = repo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return new RegExp(
+    `^https://github\\.com/${escapedRepo}/issues/\\d+(?:/|$)`,
+  ).test(value)
+    ? value
+    : null
+}
+
+async function findGithubIssueByReference(
+  config: GitHubFeedbackConfig,
+  item: Pick<FeedbackDeskItem, "id" | "kind">,
+): Promise<GitHubIssueLookup> {
+  // GitHub's issue-create endpoint has no documented idempotency contract.
+  // Recover by the opaque Compass reference, and fail closed if the lookup is
+  // unavailable so a retry never creates an unverified second issue.
+  const reference = feedbackReference(item.id)
+  const query = encodeURIComponent(
+    `repo:${config.repo} is:issue in:title "${reference}"`,
+  )
+  try {
+    const response = await fetch(
+      `https://api.github.com/search/issues?q=${query}&per_page=10`,
+      { headers: githubHeaders(config.token) },
+    )
+    if (!response.ok) return { available: false, issue: null }
+    const payload: unknown = await response.json()
+    if (typeof payload !== "object" || payload === null) {
+      return { available: false, issue: null }
+    }
+    const items = Reflect.get(payload, "items")
+    if (!Array.isArray(items)) return { available: false, issue: null }
+    const expectedTitle = githubFeedbackIssueContent(item).title
+    for (const candidate of items) {
+      const issue = issueResponse(candidate)
+      if (
+        issue?.title === expectedTitle &&
+        issueUrlForRepo(issue.html_url, config.repo)
+      ) {
+        return { available: true, issue }
+      }
+    }
+    return { available: true, issue: null }
+  } catch {
+    return { available: false, issue: null }
+  }
+}
+
+function rowIdentity(
+  item: Pick<FeedbackDeskItem, "organizationId">,
+): ReturnType<typeof eq> {
+  return item.organizationId === null
+    ? isNull(feedbackDeskItems.organizationId)
+    : eq(feedbackDeskItems.organizationId, item.organizationId)
+}
+
+async function clearGithubIssueCreationClaim(
+  db: CompassDb,
+  item: Pick<FeedbackDeskItem, "id" | "organizationId">,
+  claimToken: string,
+): Promise<void> {
+  await db.update(feedbackDeskItems).set({
+    githubIssueCreationClaimToken: null,
+    githubIssueCreationClaimedAt: null,
+    githubIssueCreationClaimExpiresAt: null,
+    updatedAt: new Date().toISOString(),
+  }).where(and(
+    eq(feedbackDeskItems.id, item.id),
+    rowIdentity(item),
+    eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+  ))
+}
+
 export async function linkFeedbackDeskItemToGithub(
   db: CompassDb,
   env: CloudflareEnv,
@@ -197,36 +292,102 @@ export async function linkFeedbackDeskItemToGithub(
 
   const claimToken = crypto.randomUUID()
   const claimedAt = new Date().toISOString()
+  const claimExpiresAt = new Date(
+    Date.now() + GITHUB_ISSUE_CLAIM_LEASE_MS,
+  ).toISOString()
   const claimRows = await db.update(feedbackDeskItems).set({
     githubIssueCreationClaimToken: claimToken,
     githubIssueCreationClaimedAt: claimedAt,
+    githubIssueCreationClaimExpiresAt: claimExpiresAt,
     updatedAt: claimedAt,
   }).where(and(
     eq(feedbackDeskItems.id, currentItem.id),
-    currentItem.organizationId === null
-      ? isNull(feedbackDeskItems.organizationId)
-      : eq(feedbackDeskItems.organizationId, currentItem.organizationId),
+    rowIdentity(currentItem),
     isNull(feedbackDeskItems.githubIssueUrl),
-    isNull(feedbackDeskItems.githubIssueCreationClaimToken),
     or(
-      ne(feedbackDeskItems.kind, "feature"),
-      isNotNull(feedbackDeskItems.featurePriorityApprovedAt),
+      isNull(feedbackDeskItems.githubIssueCreationClaimToken),
+      isNull(feedbackDeskItems.githubIssueCreationClaimExpiresAt),
+      lt(feedbackDeskItems.githubIssueCreationClaimExpiresAt, claimedAt),
     ),
+    isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+    ...(currentItem.kind === "feature"
+      ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+      : []),
   )).returning({ id: feedbackDeskItems.id })
   if (claimRows.length === 0) return null
 
-  const issueContent = githubFeedbackIssueContent(currentItem)
+  const claimedItem = await db.select().from(feedbackDeskItems).where(and(
+    eq(feedbackDeskItems.id, currentItem.id),
+    rowIdentity(currentItem),
+    eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+    isNull(feedbackDeskItems.githubIssueUrl),
+    isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+    ...(currentItem.kind === "feature"
+      ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+      : []),
+  )).get()
+  if (!claimedItem) {
+    await clearGithubIssueCreationClaim(db, currentItem, claimToken)
+    return null
+  }
+
+  const issueContent = githubFeedbackIssueContent(claimedItem)
   const releaseClaim = async (): Promise<void> => {
-    await db.update(feedbackDeskItems).set({
-      githubIssueCreationClaimToken: null,
-      githubIssueCreationClaimedAt: null,
-      updatedAt: new Date().toISOString(),
-    }).where(and(
-      eq(feedbackDeskItems.id, currentItem.id),
-      eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
-    ))
+    await clearGithubIssueCreationClaim(db, currentItem, claimToken)
   }
   try {
+    const recoveredLookup = await findGithubIssueByReference(config, claimedItem)
+    if (!recoveredLookup.available) {
+      await releaseClaim()
+      return null
+    }
+    const recoveredIssue = recoveredLookup.issue
+    const recoveredUrl = issueUrlForRepo(recoveredIssue?.html_url, config.repo)
+    if (recoveredIssue && recoveredUrl) {
+      const recoveredRows = await db.update(feedbackDeskItems).set({
+        githubIssueUrl: recoveredUrl,
+        githubIssueNodeId:
+          typeof recoveredIssue.node_id === "string" ? recoveredIssue.node_id : null,
+        githubIssueCreationClaimToken: null,
+        githubIssueCreationClaimedAt: null,
+        githubIssueCreationClaimExpiresAt: null,
+        updatedAt: new Date().toISOString(),
+      }).where(and(
+        eq(feedbackDeskItems.id, claimedItem.id),
+        rowIdentity(claimedItem),
+        isNull(feedbackDeskItems.githubIssueUrl),
+        eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+        isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+        ...(claimedItem.kind === "feature"
+          ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+          : []),
+      )).returning({ id: feedbackDeskItems.id })
+      if (recoveredRows.length === 0) {
+        await releaseClaim()
+        return null
+      }
+      if (typeof recoveredIssue.node_id === "string") {
+        await addIssueToFeedbackProject(config, recoveredIssue.node_id)
+      }
+      return recoveredUrl
+    }
+
+    const stillApproved = await db.select({ id: feedbackDeskItems.id })
+      .from(feedbackDeskItems).where(and(
+        eq(feedbackDeskItems.id, claimedItem.id),
+        rowIdentity(claimedItem),
+        isNull(feedbackDeskItems.githubIssueUrl),
+        eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+        isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+        ...(claimedItem.kind === "feature"
+          ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+          : []),
+      )).get()
+    if (!stillApproved) {
+      await releaseClaim()
+      return null
+    }
+
     const response = await fetch(
       `https://api.github.com/repos/${config.repo}/issues`,
       {
@@ -243,8 +404,9 @@ export async function linkFeedbackDeskItemToGithub(
       })
       return null
     }
-    const issue = await response.json() as GitHubIssueResponse
-    if (typeof issue.html_url !== "string") {
+    const issue = issueResponse(await response.json())
+    const issueUrl = issueUrlForRepo(issue?.html_url, config.repo)
+    if (!issue || !issueUrl) {
       await releaseClaim()
       return null
     }
@@ -252,16 +414,23 @@ export async function linkFeedbackDeskItemToGithub(
     const linkedRows = await db
       .update(feedbackDeskItems)
       .set({
-        githubIssueUrl: issue.html_url,
+        githubIssueUrl: issueUrl,
         githubIssueNodeId:
           typeof issue.node_id === "string" ? issue.node_id : null,
         githubIssueCreationClaimToken: null,
         githubIssueCreationClaimedAt: null,
+        githubIssueCreationClaimExpiresAt: null,
         updatedAt: new Date().toISOString(),
       })
       .where(and(
-        eq(feedbackDeskItems.id, currentItem.id),
+        eq(feedbackDeskItems.id, claimedItem.id),
+        rowIdentity(claimedItem),
+        isNull(feedbackDeskItems.githubIssueUrl),
         eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+        isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+        ...(claimedItem.kind === "feature"
+          ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+          : []),
       ))
       .returning({ id: feedbackDeskItems.id })
 
@@ -270,7 +439,7 @@ export async function linkFeedbackDeskItemToGithub(
     if (typeof issue.node_id === "string") {
       await addIssueToFeedbackProject(config, issue.node_id)
     }
-    return issue.html_url
+    return issueUrl
   } catch (error) {
     await releaseClaim()
     console.error("feedback_github_issue_failed", {

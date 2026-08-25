@@ -37,6 +37,7 @@ const staleFeature: FeedbackDeskItem = {
   githubIssueCreationApprovedBy: "admin-1",
   githubIssueCreationClaimToken: null,
   githubIssueCreationClaimedAt: null,
+  githubIssueCreationClaimExpiresAt: null,
   featurePriorityApprovedAt: null,
   featurePriorityApprovedBy: null,
   githubDraftPullRequestUrl: null,

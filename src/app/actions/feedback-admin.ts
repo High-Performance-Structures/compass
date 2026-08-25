@@ -279,7 +279,6 @@ export async function setFeedbackGithubIssueCreationApproval(
       eq(feedbackDeskItems.organizationId, admin.organizationId),
       eq(feedbackDeskItems.updatedAt, item.updatedAt),
       priorityFence,
-      isNull(feedbackDeskItems.githubIssueCreationClaimToken),
       ...(parsed.approved && item.kind === "feature"
         ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
         : []),
@@ -350,7 +349,6 @@ export async function setFeedbackFeaturePriorityApproval(
       eq(feedbackDeskItems.organizationId, admin.organizationId),
       eq(feedbackDeskItems.updatedAt, item.updatedAt),
       approvalFence,
-      isNull(feedbackDeskItems.githubIssueCreationClaimToken),
       ...(parsed.approved
         ? []
         : [notInArray(feedbackDeskItems.status, ["planned", "in_progress", "testing", "deployed"])]),

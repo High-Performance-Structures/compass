@@ -37,6 +37,7 @@ const item: FeedbackDeskItem = {
   githubIssueCreationApprovedBy: null,
   githubIssueCreationClaimToken: null,
   githubIssueCreationClaimedAt: null,
+  githubIssueCreationClaimExpiresAt: null,
   featurePriorityApprovedAt: null,
   featurePriorityApprovedBy: null,
   githubDraftPullRequestUrl: null,

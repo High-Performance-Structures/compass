@@ -30,6 +30,7 @@ export const feedbackDeskItems = sqliteTable(
     githubIssueCreationApprovedBy: text("github_issue_creation_approved_by"),
     githubIssueCreationClaimToken: text("github_issue_creation_claim_token"),
     githubIssueCreationClaimedAt: text("github_issue_creation_claimed_at"),
+    githubIssueCreationClaimExpiresAt: text("github_issue_creation_claim_expires_at"),
     featurePriorityApprovedAt: text("feature_priority_approved_at"),
     featurePriorityApprovedBy: text("feature_priority_approved_by"),
     githubDraftPullRequestUrl: text("github_draft_pull_request_url"),
