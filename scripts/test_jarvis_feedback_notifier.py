@@ -46,6 +46,11 @@ class RoutingTests(unittest.TestCase):
                     "deliveryTarget": {"externalActorId": "123456"},
                 },
             ),
+            patch.object(
+                MODULE,
+                "reserve_provider_attempt",
+                return_value={"outcome": "reserved", "claimToken": "telegram-claim", "providerAttempt": "provider-attempt:test"},
+            ),
             patch.object(MODULE, "send_via_hermes") as sender,
             patch.object(MODULE, "save_ledger"),
         ):
@@ -75,6 +80,11 @@ class RoutingTests(unittest.TestCase):
                     "deliveryTarget": {"externalActorId": "telegram:martinevogel"},
                 },
             ),
+            patch.object(
+                MODULE,
+                "reserve_provider_attempt",
+                return_value={"outcome": "reserved", "claimToken": "username-claim", "providerAttempt": "provider-attempt:test"},
+            ),
             patch.object(MODULE, "send_via_hermes") as sender,
             patch.object(MODULE, "save_ledger"),
         ):
@@ -103,6 +113,11 @@ class RoutingTests(unittest.TestCase):
                     "message": "Your request is ready for testing.",
                     "deliveryTarget": {"email": "staff@example.com"},
                 },
+            ),
+            patch.object(
+                MODULE,
+                "reserve_provider_attempt",
+                return_value={"outcome": "reserved", "claimToken": "email-claim", "providerAttempt": "provider-attempt:test"},
             ),
             patch.object(MODULE, "send_via_hermes") as sender,
             patch.object(MODULE, "save_ledger"),
@@ -245,6 +260,11 @@ class RoutingTests(unittest.TestCase):
                 ),
                 patch.object(
                     MODULE,
+                    "reserve_provider_attempt",
+                    return_value={"outcome": "reserved", "claimToken": "attempt-claim", "providerAttempt": "provider-attempt:test"},
+                ),
+                patch.object(
+                    MODULE,
                     "send_via_hermes",
                     side_effect=assert_reserved,
                 ),
@@ -373,6 +393,77 @@ class RoutingTests(unittest.TestCase):
             "123e4567-e89b-12d3-a456-426614174000/delivery",
             claim_token="old claim",
         )
+
+    def test_external_send_requires_a_server_provider_attempt_reservation(self) -> None:
+        event = {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "claimToken": "delivery-claim",
+            "eventType": "feedback.status_changed",
+            "source": "telegram",
+            "payload": {},
+        }
+        def reserve(event_to_reserve: dict[str, object]) -> dict[str, str]:
+            event_to_reserve["claimToken"] = "provider-claim"
+            return {
+                "outcome": "reserved",
+                "claimToken": "provider-claim",
+                "providerAttempt": "provider-attempt:one",
+            }
+        with (
+            patch.object(
+                MODULE,
+                "delivery_details",
+                return_value={
+                    "message": "Update",
+                    "deliveryTarget": {"externalActorId": "123456"},
+                },
+            ),
+            patch.object(
+                MODULE,
+                "reserve_provider_attempt",
+                side_effect=reserve,
+            ) as reserve,
+            patch.object(MODULE, "send_via_hermes") as sender,
+            patch.object(MODULE, "save_ledger"),
+        ):
+            MODULE.deliver_event(event, {})
+
+        reserve.assert_called_once_with(event)
+        sender.assert_called_once()
+        self.assertEqual(event["claimToken"], "provider-claim")
+
+    def test_recovered_unknown_provider_attempt_never_sends_again(self) -> None:
+        event = {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "claimToken": "replacement-claim",
+            "eventType": "feedback.status_changed",
+            "source": "telegram",
+            "payload": {},
+        }
+        with (
+            patch.object(
+                MODULE,
+                "delivery_details",
+                return_value={
+                    "message": "Update",
+                    "deliveryTarget": {"externalActorId": "123456"},
+                },
+            ),
+            patch.object(
+                MODULE,
+                "reserve_provider_attempt",
+                return_value={
+                    "outcome": "unknown",
+                    "claimToken": "replacement-claim",
+                    "providerAttempt": "provider-attempt:crashed",
+                },
+            ),
+            patch.object(MODULE, "send_via_hermes") as sender,
+        ):
+            MODULE.deliver_event(event, {})
+
+        sender.assert_not_called()
+        self.assertEqual(event["providerOutcome"], "unknown")
 
     def test_compass_reply_refreshes_the_claim_used_by_ack(self) -> None:
         event = {

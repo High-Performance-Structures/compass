@@ -94,7 +94,7 @@ describe("GET /api/integrations/jarvis/events/:id/delivery", () => {
     })
 
     expect(response.status).toBe(409)
-    expect(state.update).toHaveBeenCalledOnce()
+    expect(state.update).toHaveBeenCalledTimes(2)
     expect(state.select).not.toHaveBeenCalled()
   })
 
@@ -122,6 +122,37 @@ describe("GET /api/integrations/jarvis/events/:id/delivery", () => {
       claimedAt: expect.any(String),
       result: null,
     }))
+  })
+
+  it("preserves a provider-attempt marker while refreshing a recovered claim", async () => {
+    const state = database({
+      source: "telegram",
+      eventType: "feedback.status_changed",
+      payload: JSON.stringify({ status: "testing" }),
+      feedbackDeskItemId: "feedback-1",
+      claimToken: "replacement-claim",
+    })
+    state.mutationGet
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        source: "telegram",
+        eventType: "feedback.status_changed",
+        payload: JSON.stringify({ status: "testing" }),
+        feedbackDeskItemId: "feedback-1",
+        claimToken: "replacement-claim",
+      })
+    mocks.getDb.mockReturnValue(state.db)
+
+    const response = await GET(request(ACTIVE_CLAIM), {
+      params: Promise.resolve({ id: EVENT_ID }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(state.set).toHaveBeenCalledTimes(2)
+    expect(state.set).toHaveBeenNthCalledWith(
+      2,
+      expect.not.objectContaining({ result: expect.anything() }),
+    )
   })
 
   it("lets the active replacement claim clear a legacy delivery reservation", async () => {
