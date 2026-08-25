@@ -5,7 +5,7 @@ import { getDb } from "@/db"
 import { feedbackDeskItems, jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
-import { eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 
 type Sqlite = InstanceType<typeof Database>
 
@@ -508,6 +508,76 @@ describe("Feedback Desk real approval race fences", () => {
       return typeof options === "object" && options !== null &&
         Reflect.get(options, "method") === "POST"
     })).toHaveLength(0)
+    sqlite.close()
+  })
+
+  it("does not let a successful revocation race past a committed provider marker", async () => {
+    let releaseProviderMarker: () => void = () => undefined
+    const providerMarkerPaused = new Promise<void>((resolve) => {
+      releaseProviderMarker = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    const clientOne = createD1(sqlite, {
+      paused: providerMarkerPaused,
+      shouldPause: (query) =>
+        query?.startsWith('update "feedback_desk_items"') === true &&
+        query.includes("provider_attempted_at"),
+    })
+    const clientTwo = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorOne = getDb(clientOne)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorTwo = getDb(clientTwo)
+    const item = await actorOne.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    let providerPostCount = 0
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes("/search/issues")) {
+        return { ok: true, json: async () => ({ items: [] }) }
+      }
+      if (init?.method === "POST") {
+        if (url.endsWith("/issues")) providerPostCount += 1
+        return {
+          ok: true,
+          json: async () => ({
+            html_url: "https://github.com/example/compass/issues/47",
+            node_id: "issue-node-47",
+          }),
+        }
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    const linkPromise = linkFeedbackDeskItemToGithub(actorOne, env, item)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    const revocationRows = await actorTwo.update(feedbackDeskItems).set({
+      featurePriorityApprovedAt: null,
+      featurePriorityApprovedBy: null,
+      githubIssueCreationApprovedAt: null,
+      githubIssueCreationApprovedBy: null,
+      updatedAt: "2026-08-24T19:00:00.000Z",
+    }).where(and(
+      eq(feedbackDeskItems.id, "feature-1"),
+      isNull(feedbackDeskItems.githubIssueCreationProviderAttemptedAt),
+    )).returning({ id: feedbackDeskItems.id })
+    expect(revocationRows).toHaveLength(0)
+    releaseProviderMarker()
+
+    expect(await linkPromise).toBe("https://github.com/example/compass/issues/47")
+    expect(providerPostCount).toBe(1)
+    const stored = await actorTwo.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    expect(stored?.featurePriorityApprovedAt).toBe("2026-08-24T17:00:00.000Z")
+    expect(stored?.githubIssueUrl).toBe("https://github.com/example/compass/issues/47")
     sqlite.close()
   })
 

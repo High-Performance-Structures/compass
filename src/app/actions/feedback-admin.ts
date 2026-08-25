@@ -317,6 +317,8 @@ export async function setFeedbackFeaturePriorityApproval(
       status: feedbackDeskItems.status,
       featurePriorityApprovedAt: feedbackDeskItems.featurePriorityApprovedAt,
       githubIssueCreationClaimToken: feedbackDeskItems.githubIssueCreationClaimToken,
+      githubIssueCreationProviderAttemptedAt:
+        feedbackDeskItems.githubIssueCreationProviderAttemptedAt,
       updatedAt: feedbackDeskItems.updatedAt,
     }).from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.id, parsed.id),
@@ -351,7 +353,13 @@ export async function setFeedbackFeaturePriorityApproval(
       approvalFence,
       ...(parsed.approved
         ? []
-        : [notInArray(feedbackDeskItems.status, ["planned", "in_progress", "testing", "deployed"])]),
+        : [
+            notInArray(feedbackDeskItems.status, ["planned", "in_progress", "testing", "deployed"]),
+            // A committed provider marker owns the external-effect boundary. Do
+            // not report revocation success until that attempt has recovered or
+            // linked, otherwise the stale worker could POST after revocation.
+            isNull(feedbackDeskItems.githubIssueCreationProviderAttemptedAt),
+          ]),
     )).returning({ id: feedbackDeskItems.id })
     if (updatedRows.length === 0) {
       return {
