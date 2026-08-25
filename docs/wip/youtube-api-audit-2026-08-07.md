@@ -119,6 +119,10 @@ remove an already-published video in YouTube Studio.
 Compass contains a fail-closed `YOUTUBE_API_AUDIT_APPROVED` feature switch.
 Production must leave it unset until Google confirms approval. After approval:
 
+YouTube API Services confirmed on 2026-08-25 that the compliance review was
+complete and that no further action was required. The approval correspondence
+is preserved in the original compliance-review email thread.
+
 1. Set `YOUTUBE_API_AUDIT_APPROVED=true` in the production Worker environment.
 2. Reconnect each managed YouTube channel if Google requires refreshed consent.
 3. Re-upload videos that Google locked private; existing locked uploads cannot be

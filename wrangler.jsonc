@@ -92,6 +92,7 @@
 		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback",
 		"WORKOS_COOKIE_MAX_AGE": "34560000",
 		"JARVIS_AGENT_BRIDGE_ENABLED": "true",
-		"SAGE_CLIENT_PROJECT_WRITES_ENABLED": "true"
+		"SAGE_CLIENT_PROJECT_WRITES_ENABLED": "true",
+		"YOUTUBE_API_AUDIT_APPROVED": "true"
 	}
 }
