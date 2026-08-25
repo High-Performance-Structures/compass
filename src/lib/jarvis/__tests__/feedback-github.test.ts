@@ -35,6 +35,8 @@ const staleFeature: FeedbackDeskItem = {
   githubIssueNodeId: null,
   githubIssueCreationApprovedAt: "2026-08-12T00:00:00.000Z",
   githubIssueCreationApprovedBy: "admin-1",
+  githubIssueCreationClaimToken: null,
+  githubIssueCreationClaimedAt: null,
   featurePriorityApprovedAt: null,
   featurePriorityApprovedBy: null,
   githubDraftPullRequestUrl: null,
@@ -88,8 +90,18 @@ describe("Feedback Desk GitHub export", () => {
   })
 
   it("fails closed at the GitHub creation primitive for stale feature approval", async () => {
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            get: async () => staleFeature,
+          }),
+        }),
+      }),
+    }
     const result = await linkFeedbackDeskItemToGithub(
-      Object.create(null),
+      // @ts-expect-error This unit test only exercises the current-row read.
+      db,
       Object.create(null),
       staleFeature,
     )

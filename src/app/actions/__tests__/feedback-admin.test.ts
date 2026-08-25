@@ -82,6 +82,8 @@ describe("setFeedbackGithubIssueCreationApproval concurrency gate", () => {
       kind: "feature",
       githubIssueUrl: null,
       featurePriorityApprovedAt: "2026-08-12T00:00:00.000Z",
+      githubIssueCreationClaimToken: null,
+      updatedAt: "2026-08-12T00:00:00.000Z",
     })
     const updateChain = { set: vi.fn(), where: vi.fn(), returning: vi.fn() }
     updateChain.set.mockReturnValue(updateChain)
@@ -102,7 +104,7 @@ describe("setFeedbackGithubIssueCreationApproval concurrency gate", () => {
 
     expect(result).toEqual({
       success: false,
-      error: "Approve this feature's priority before approving a new GitHub issue",
+      error: "This request changed while its GitHub approval was being updated",
     })
   })
 })
