@@ -11,14 +11,14 @@ type Sqlite = InstanceType<typeof Database>
 
 function createD1(sqlite: Sqlite, pauseAfterRead?: {
   readonly paused: Promise<void>
-  readonly shouldPause: () => boolean
-}, shouldFailWrite?: () => boolean): unknown {
+  readonly shouldPause: (query?: string) => boolean
+}, shouldFailWrite?: (query?: string) => boolean): unknown {
   function statementFor(query: string, values: readonly unknown[] = []): Record<string, unknown> {
     const statement = sqlite.prepare(query)
     const result = {
       bind: (...nextValues: unknown[]): unknown => statementFor(query, nextValues),
       run: async (): Promise<unknown> => {
-        if (shouldFailWrite?.()) throw new Error("simulated crash")
+        if (shouldFailWrite?.(query)) throw new Error("simulated crash")
         const info = statement.run(...values)
         return {
           success: true,
@@ -32,15 +32,15 @@ function createD1(sqlite: Sqlite, pauseAfterRead?: {
         }
       },
       all: async (): Promise<unknown> => {
-        if (shouldFailWrite?.()) throw new Error("simulated crash")
+        if (shouldFailWrite?.(query)) throw new Error("simulated crash")
         const results = statement.all(...values)
-        if (pauseAfterRead?.shouldPause()) await pauseAfterRead.paused
+        if (pauseAfterRead?.shouldPause(query)) await pauseAfterRead.paused
         return { success: true, results }
       },
       raw: async (): Promise<unknown> => {
-        if (shouldFailWrite?.()) throw new Error("simulated crash")
+        if (shouldFailWrite?.(query)) throw new Error("simulated crash")
         const results = statement.raw().all(...values)
-        if (pauseAfterRead?.shouldPause()) await pauseAfterRead.paused
+        if (pauseAfterRead?.shouldPause(query)) await pauseAfterRead.paused
         return results
       },
       first: async (): Promise<unknown> => {
@@ -93,6 +93,7 @@ function createSchema(sqlite: Sqlite): void {
       github_issue_creation_claim_token TEXT,
       github_issue_creation_claimed_at TEXT,
       github_issue_creation_claim_expires_at TEXT,
+      github_issue_creation_provider_attempted_at TEXT,
       feature_priority_approved_at TEXT,
       feature_priority_approved_by TEXT,
       github_draft_pull_request_url TEXT,
@@ -352,8 +353,7 @@ describe("Feedback Desk real approval race fences", () => {
       GITHUB_REPO: "example/compass",
     })
 
-    await expect(linkFeedbackDeskItemToGithub(actorOne, env, item))
-      .rejects.toThrow()
+    expect(await linkFeedbackDeskItemToGithub(actorOne, env, item)).toBeNull()
     failWrites = false
     await actorTwo.update(feedbackDeskItems).set({
       githubIssueCreationClaimExpiresAt: "2026-08-24T17:01:00.000Z",
@@ -444,6 +444,132 @@ describe("Feedback Desk real approval race fences", () => {
     expect(stored?.githubIssueUrl).toBeNull()
     expect(stored?.featurePriorityApprovedAt).toBeNull()
     expect(stored?.githubIssueCreationClaimToken).toBeNull()
+    sqlite.close()
+  })
+
+  it("fences the provider request start when revocation wins after the approval read", async () => {
+    let releaseApprovalRead: () => void = () => undefined
+    const approvalReadPaused = new Promise<void>((resolve) => {
+      releaseApprovalRead = resolve
+    })
+    let pauseApprovalRead = false
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    const clientOne = createD1(sqlite, {
+      paused: approvalReadPaused,
+      shouldPause: () => pauseApprovalRead,
+    })
+    const clientTwo = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorOne = getDb(clientOne)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorTwo = getDb(clientTwo)
+    const item = await actorOne.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes("/search/issues")) {
+        pauseApprovalRead = true
+        return { ok: true, json: async () => ({ items: [] }) }
+      }
+      if (init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            html_url: "https://github.com/example/compass/issues/45",
+            node_id: "issue-node-45",
+          }),
+        }
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    const linkPromise = linkFeedbackDeskItemToGithub(actorOne, env, item)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    await actorTwo.update(feedbackDeskItems).set({
+      featurePriorityApprovedAt: null,
+      featurePriorityApprovedBy: null,
+      githubIssueCreationApprovedAt: null,
+      githubIssueCreationApprovedBy: null,
+      updatedAt: "2026-08-24T19:00:00.000Z",
+    }).where(eq(feedbackDeskItems.id, "feature-1")).run()
+    releaseApprovalRead()
+
+    expect(await linkPromise).toBeNull()
+    expect(fetchMock.mock.calls.filter((call) => {
+      const options = call[1]
+      return typeof options === "object" && options !== null &&
+        Reflect.get(options, "method") === "POST"
+    })).toHaveLength(0)
+    sqlite.close()
+  })
+
+  it("preserves post uncertainty instead of clearing the claim for a duplicate retry", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    let failLinkWrite = false
+    const clientOne = createD1(
+      sqlite,
+      undefined,
+      (query) => failLinkWrite &&
+        query?.startsWith('update "feedback_desk_items"') === true &&
+        query.includes('set "github_issue_url"') === true,
+    )
+    const clientTwo = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorOne = getDb(clientOne)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const actorTwo = getDb(clientTwo)
+    const item = await actorOne.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+    failLinkWrite = true
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes("/search/issues")) {
+        return { ok: true, json: async () => ({ items: [] }) }
+      }
+      if (init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            html_url: "https://github.com/example/compass/issues/46",
+            node_id: "issue-node-46",
+          }),
+        }
+      }
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const env = Object.assign(Object.create(null), {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    })
+
+    expect(await linkFeedbackDeskItemToGithub(actorOne, env, item)).toBeNull()
+    failLinkWrite = false
+    await actorTwo.update(feedbackDeskItems).set({
+      githubIssueCreationClaimExpiresAt: "2026-08-24T17:01:00.000Z",
+    }).where(eq(feedbackDeskItems.id, "feature-1")).run()
+    const retryItem = await actorTwo.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!retryItem) throw new Error("retry row missing")
+
+    expect(await linkFeedbackDeskItemToGithub(actorTwo, env, retryItem)).toBeNull()
+    expect(fetchMock.mock.calls.filter((call) => {
+      const options = call[1]
+      return typeof call[0] === "string" && call[0].endsWith("/issues") &&
+        typeof options === "object" && options !== null &&
+        Reflect.get(options, "method") === "POST"
+    })).toHaveLength(1)
     sqlite.close()
   })
 

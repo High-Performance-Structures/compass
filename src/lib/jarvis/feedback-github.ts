@@ -335,6 +335,7 @@ export async function linkFeedbackDeskItemToGithub(
   const releaseClaim = async (): Promise<void> => {
     await clearGithubIssueCreationClaim(db, currentItem, claimToken)
   }
+  let providerRequestStarted = false
   try {
     const recoveredLookup = await findGithubIssueByReference(config, claimedItem)
     if (!recoveredLookup.available) {
@@ -351,12 +352,14 @@ export async function linkFeedbackDeskItemToGithub(
         githubIssueCreationClaimToken: null,
         githubIssueCreationClaimedAt: null,
         githubIssueCreationClaimExpiresAt: null,
+        githubIssueCreationProviderAttemptedAt: null,
         updatedAt: new Date().toISOString(),
       }).where(and(
         eq(feedbackDeskItems.id, claimedItem.id),
         rowIdentity(claimedItem),
         isNull(feedbackDeskItems.githubIssueUrl),
         eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+        eq(feedbackDeskItems.updatedAt, claimedItem.updatedAt),
         isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
         ...(claimedItem.kind === "feature"
           ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
@@ -372,12 +375,20 @@ export async function linkFeedbackDeskItemToGithub(
       return recoveredUrl
     }
 
+    if (claimedItem.githubIssueCreationProviderAttemptedAt) {
+      // A prior POST may have succeeded even if the provider lookup is still
+      // eventually consistent. Never create a second issue without recovery.
+      await releaseClaim()
+      return null
+    }
+
     const stillApproved = await db.select({ id: feedbackDeskItems.id })
       .from(feedbackDeskItems).where(and(
         eq(feedbackDeskItems.id, claimedItem.id),
         rowIdentity(claimedItem),
         isNull(feedbackDeskItems.githubIssueUrl),
         eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+        eq(feedbackDeskItems.updatedAt, claimedItem.updatedAt),
         isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
         ...(claimedItem.kind === "feature"
           ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
@@ -388,6 +399,26 @@ export async function linkFeedbackDeskItemToGithub(
       return null
     }
 
+    const providerAttemptedAt = new Date().toISOString()
+    const providerStartRows = await db.update(feedbackDeskItems).set({
+      githubIssueCreationProviderAttemptedAt: providerAttemptedAt,
+    }).where(and(
+      eq(feedbackDeskItems.id, claimedItem.id),
+      rowIdentity(claimedItem),
+      isNull(feedbackDeskItems.githubIssueUrl),
+      eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+      eq(feedbackDeskItems.updatedAt, claimedItem.updatedAt),
+      isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
+      ...(claimedItem.kind === "feature"
+        ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
+        : []),
+    )).returning({ id: feedbackDeskItems.id })
+    if (providerStartRows.length === 0) {
+      await releaseClaim()
+      return null
+    }
+    providerRequestStarted = true
+
     const response = await fetch(
       `https://api.github.com/repos/${config.repo}/issues`,
       {
@@ -397,7 +428,6 @@ export async function linkFeedbackDeskItemToGithub(
       },
     )
     if (!response.ok) {
-      await releaseClaim()
       console.error("feedback_github_issue_failed", {
         feedbackDeskItemId: item.id,
         status: response.status,
@@ -407,7 +437,6 @@ export async function linkFeedbackDeskItemToGithub(
     const issue = issueResponse(await response.json())
     const issueUrl = issueUrlForRepo(issue?.html_url, config.repo)
     if (!issue || !issueUrl) {
-      await releaseClaim()
       return null
     }
 
@@ -420,6 +449,7 @@ export async function linkFeedbackDeskItemToGithub(
         githubIssueCreationClaimToken: null,
         githubIssueCreationClaimedAt: null,
         githubIssueCreationClaimExpiresAt: null,
+        githubIssueCreationProviderAttemptedAt: null,
         updatedAt: new Date().toISOString(),
       })
       .where(and(
@@ -427,6 +457,7 @@ export async function linkFeedbackDeskItemToGithub(
         rowIdentity(claimedItem),
         isNull(feedbackDeskItems.githubIssueUrl),
         eq(feedbackDeskItems.githubIssueCreationClaimToken, claimToken),
+        eq(feedbackDeskItems.updatedAt, claimedItem.updatedAt),
         isNotNull(feedbackDeskItems.githubIssueCreationApprovedAt),
         ...(claimedItem.kind === "feature"
           ? [isNotNull(feedbackDeskItems.featurePriorityApprovedAt)]
@@ -441,7 +472,7 @@ export async function linkFeedbackDeskItemToGithub(
     }
     return issueUrl
   } catch (error) {
-    await releaseClaim()
+    if (!providerRequestStarted) await releaseClaim()
     console.error("feedback_github_issue_failed", {
       feedbackDeskItemId: currentItem.id,
       error: error instanceof Error ? error.message : "Unknown error",

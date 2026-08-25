@@ -1,0 +1,4 @@
+ALTER TABLE feedback_desk_items ADD github_issue_creation_provider_attempted_at text;
+
+CREATE INDEX IF NOT EXISTS feedback_desk_github_provider_attempt_idx
+  ON feedback_desk_items (organization_id, github_issue_url, github_issue_creation_provider_attempted_at);
