@@ -21,6 +21,15 @@ describe("parseProjectTotalsRows", () => {
     expect(result.success).toBe(true)
     if (!result.success) return
     expect(result.lines).toHaveLength(2)
+    expect(result.lines[0]).toMatchObject({
+      costCodeName: "Cast-in-Place Concrete",
+      description: "Foundation scope",
+      specifications: null,
+    })
+    expect(result.lines[1]).toMatchObject({
+      costCodeName: "Rough Carpentry",
+      description: "Rough Carpentry",
+    })
     expect(result.displayedTotalCents).toBe(16_701)
     expect(result.projectSubtotalCents).toBe(15_001)
     expect(result.lines.reduce((sum, line) => sum + line.amountCents, 0)).toBe(

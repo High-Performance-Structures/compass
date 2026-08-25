@@ -437,6 +437,7 @@ export async function estimateSourceHash(input: {
     readonly id: string
     readonly divisionCode: string
     readonly costCode: string
+    readonly costCodeName: string
     readonly description: string
     readonly specifications: string | null
     readonly quantity: number

@@ -34,6 +34,7 @@ export type ClientEstimateLine = {
   readonly divisionCode: string
   readonly divisionName: string
   readonly costCode: string
+  readonly costCodeName: string
   readonly description: string
   readonly specifications: string | null
   readonly quantity: number

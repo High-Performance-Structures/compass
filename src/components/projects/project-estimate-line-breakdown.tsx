@@ -284,8 +284,13 @@ export function ProjectEstimateLineBreakdown({
               >
                 <div>
                   <p className="text-sm font-medium">
-                    {item.costCode} · {item.description}
+                    {item.costCode} · {item.costCodeName}
                   </p>
+                  {item.description.trim() !== item.costCodeName.trim() && (
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {item.description}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {item.divisionCode} · {item.divisionName} · {item.quantity}{" "}
                     {item.unit} × {money(item.unitCostCents)}

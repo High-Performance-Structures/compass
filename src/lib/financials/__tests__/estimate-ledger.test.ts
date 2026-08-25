@@ -288,6 +288,7 @@ describe("estimate ledger", () => {
           id: "line-1",
           divisionCode: "03",
           costCode: "03 11 13",
+          costCodeName: "Concrete Forming",
           description: "Concrete forming",
           specifications: "Per architectural plans",
           quantity: 1,

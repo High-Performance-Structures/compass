@@ -2,6 +2,7 @@ export type ProjectTotalsImportLine = {
   readonly costCode: string
   readonly divisionCode: string
   readonly divisionName: string
+  readonly costCodeName: string
   readonly description: string
   readonly specifications: string | null
   readonly amountCents: number
@@ -124,8 +125,8 @@ export function parseProjectTotalsRows(
 ): ProjectTotalsImportResult {
   const parsedLines: Array<{
     readonly costCode: string
+    readonly costCodeName: string
     readonly description: string
-    readonly specifications: string | null
     readonly rawAmount: number
   }> = []
   const adjustments = new Map<string, number>()
@@ -172,8 +173,8 @@ export function parseProjectTotalsRows(
 
     parsedLines.push({
       costCode: parsedCostCode?.code ?? "",
-      description: parsedCostCode?.description ?? label,
-      specifications: cleanText(row[1]),
+      costCodeName: parsedCostCode?.description ?? label,
+      description: cleanText(row[1]) ?? parsedCostCode?.description ?? label,
       rawAmount: amount,
     })
   }
@@ -236,15 +237,14 @@ export function parseProjectTotalsRows(
   const lines = parsedLines.map((line, index): ProjectTotalsImportLine => {
     const adjustment = index === targetIndex ? roundingAdjustmentCents : 0
     const divisionCode = line.costCode.slice(0, 2)
-    const note = adjustment === 0
-      ? line.specifications
-      : [line.specifications, roundingNote(adjustment)].filter(Boolean).join(" ")
     return {
       costCode: line.costCode,
       divisionCode,
       divisionName: DIVISION_NAMES[divisionCode] ?? "Project Estimate",
+      costCodeName: line.costCodeName,
       description: line.description,
-      specifications: note || null,
+      specifications:
+        adjustment === 0 ? null : roundingNote(adjustment),
       amountCents: Math.round(line.rawAmount * 100) + adjustment,
       sortOrder: index + 1,
     }
