@@ -10,12 +10,14 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sage_pay_application_poller import (
+    CompassHttpError,
     PollerError,
     PollRequest,
     build_snapshot,
     build_tax_catalog_snapshot,
     parse_poll_requests,
     resolve_sage_job,
+    signed_json_request_with_fallback,
     signature,
     sync_tax_catalog_safely,
 )
@@ -44,7 +46,7 @@ class SagePayApplicationPollerTests(unittest.TestCase):
             side_effect=PollerError("catalog unavailable"),
         ):
             count, error = sync_tax_catalog_safely(
-                "https://compass.example", "a" * 32
+                "https://compass.example", ["a" * 32]
             )
 
         self.assertIsNone(count)
@@ -56,7 +58,7 @@ class SagePayApplicationPollerTests(unittest.TestCase):
             side_effect=ValueError("sensitive driver detail"),
         ):
             count, error = sync_tax_catalog_safely(
-                "https://compass.example", "a" * 32
+                "https://compass.example", ["a" * 32]
             )
 
         self.assertIsNone(count)
@@ -212,6 +214,36 @@ class SagePayApplicationPollerTests(unittest.TestCase):
             claim_token="22222222-2222-4222-8222-222222222222",
         )
         self.assertEqual(resolve_sage_job(request), 620)
+
+    def test_shared_secret_fallback_only_runs_after_unauthorized(self) -> None:
+        with mock.patch(
+            "sage_pay_application_poller.signed_json_request",
+            side_effect=[CompassHttpError(401, "invalid"), {"requests": []}],
+        ) as request:
+            payload = signed_json_request_with_fallback(
+                "https://compass.example",
+                ["dedicated", "shared"],
+                "GET",
+                "/requests",
+            )
+
+        self.assertEqual(payload, {"requests": []})
+        self.assertEqual(request.call_count, 2)
+
+    def test_shared_secret_fallback_does_not_mask_server_errors(self) -> None:
+        with mock.patch(
+            "sage_pay_application_poller.signed_json_request",
+            side_effect=CompassHttpError(500, "failed"),
+        ) as request:
+            with self.assertRaises(CompassHttpError):
+                signed_json_request_with_fallback(
+                    "https://compass.example",
+                    ["dedicated", "shared"],
+                    "GET",
+                    "/requests",
+                )
+
+        self.assertEqual(request.call_count, 1)
 
 
 if __name__ == "__main__":

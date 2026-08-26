@@ -1,8 +1,9 @@
 [Unit]
 Description=Compass Sage pay-application read-only poll
-After=network-online.target signet-daemon-2645508.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/jarvis/.bun/install/global/node_modules/signetai-linux-x64/bin/signet secret exec --secret HPS_SAGE_SQL_PASSWORD --secret SAGE_BRIDGE_SECRET --timeout 55 /usr/bin/python3 /home/jarvis/.local/lib/compass/sage_pay_application_poller.py --once
+TimeoutStartSec=75
+ExecStart=/usr/bin/python3 /home/jarvis/.local/lib/compass/wait_for_signet_secret_exec.py --signet /home/jarvis/.bun/install/global/node_modules/signetai-linux-x64/bin/signet --secret HPS_SAGE_SQL_PASSWORD --secret SAGE_PAY_APPLICATION_BRIDGE_SECRET --secret SAGE_BRIDGE_SECRET --timeout 55 /usr/bin/python3 /home/jarvis/.local/lib/compass/sage_pay_application_poller.py --once

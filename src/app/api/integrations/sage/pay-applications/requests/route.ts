@@ -7,7 +7,7 @@ import {
 } from "@/db/schema-sage"
 import { getCloudflareContext } from "@/lib/db"
 import {
-  getSageBridgeSecret,
+  getSagePayApplicationBridgeSecret,
   SAGE_BRIDGE_REQUEST_ID_HEADER,
   verifySageBridgeRequest,
 } from "@/lib/sage/bridge-auth"
@@ -23,7 +23,7 @@ function unauthorized(error: string): Response {
 
 export async function GET(request: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
-  const secret = getSageBridgeSecret(env)
+  const secret = getSagePayApplicationBridgeSecret(env)
   if (!secret) {
     return Response.json(
       { error: "Sage bridge is not configured" },

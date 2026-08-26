@@ -434,12 +434,16 @@ function DashboardCommandCenter({
     },
     {
       label: "Sage Sync",
-      value: overview.sageBridge.configured ? "Connected" : "Needs setup",
-      note: overview.sageBridge.configured
-        ? `${overview.sageBridge.mappedProjectCount} jobs mapped · ${formatDateTime(overview.sageBridge.lastSyncedAt)}`
+      value: overview.sageBridge.online
+        ? "Online"
+        : overview.sageBridge.configured
+          ? "Offline"
+          : "Needs setup",
+      note: overview.sageBridge.online
+        ? `${overview.sageBridge.mappedProjectCount} jobs mapped · heartbeat ${formatDateTime(overview.sageBridge.lastSeenAt)}`
         : overview.sageBridge.message,
       href: "/dashboard/automations",
-      tone: overview.sageBridge.configured ? "green" : "red",
+      tone: overview.sageBridge.online ? "green" : "red",
       icon: <IconDatabaseImport className="size-4" />,
     },
   ]
@@ -1398,7 +1402,11 @@ function CompassDashboard({
       {
         key: "automations",
         label: "Automations",
-        value: overview.sageBridge.configured ? "Ready" : "Needs setup",
+        value: overview.sageBridge.online
+          ? "Ready"
+          : overview.sageBridge.configured
+            ? "Sage offline"
+            : "Needs setup",
         note: "Scripts, Sage bridge, and handoffs",
         href: "/dashboard/automations",
         icon: <IconAutomation className="size-4" />,
@@ -1426,13 +1434,15 @@ function CompassDashboard({
           </p>
           <Badge
             className="mt-3"
-            variant={overview.sageBridge.configured ? "secondary" : "outline"}
+            variant={overview.sageBridge.online ? "secondary" : "destructive"}
           >
-            {overview.sageBridge.configured
+            {overview.sageBridge.online
               ? overview.sageBridge.readOnly
                 ? "Sage read-only"
                 : "Sage write-gated"
-              : "Sage needs secrets"}
+              : overview.sageBridge.configured
+                ? "Sage offline"
+                : "Sage needs secrets"}
           </Badge>
         </div>
 
@@ -1791,14 +1801,16 @@ export function OperationalDashboard({
                   <h2 className="text-sm font-medium">Sage API bridge</h2>
                   <Badge
                     variant={
-                      overview.sageBridge.configured ? "secondary" : "outline"
+                      overview.sageBridge.online ? "secondary" : "destructive"
                     }
                   >
-                    {overview.sageBridge.configured
+                    {overview.sageBridge.online
                       ? overview.sageBridge.readOnly
                         ? "Read-only"
                         : "Write-gated"
-                      : "Needs secrets"}
+                      : overview.sageBridge.configured
+                        ? "Offline"
+                        : "Needs secrets"}
                   </Badge>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -1820,9 +1832,9 @@ export function OperationalDashboard({
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Last sync</p>
+              <p className="text-xs text-muted-foreground">Last heartbeat</p>
               <p className="mt-0.5 text-sm font-medium">
-                {formatDateTime(overview.sageBridge.lastSyncedAt)}
+                {formatDateTime(overview.sageBridge.lastSeenAt)}
               </p>
             </div>
           </CardContent>

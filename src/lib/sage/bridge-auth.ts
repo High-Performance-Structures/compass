@@ -136,9 +136,23 @@ export async function readBoundedSageBridgeBody(
   return { success: true, rawBody: parts.join("") }
 }
 
-export function getSageBridgeSecret(env: CloudflareEnv): string | null {
+export function getSageBridgeSecret(env: object): string | null {
   const value: unknown = Reflect.get(env, "SAGE_BRIDGE_SECRET")
   if (typeof value !== "string") return null
   const trimmed = value.trim()
   return trimmed.length >= 32 ? trimmed : null
+}
+
+export function getSagePayApplicationBridgeSecret(
+  env: object
+): string | null {
+  const dedicated: unknown = Reflect.get(
+    env,
+    "SAGE_PAY_APPLICATION_BRIDGE_SECRET"
+  )
+  if (typeof dedicated === "string") {
+    const trimmed = dedicated.trim()
+    if (trimmed.length >= 32) return trimmed
+  }
+  return getSageBridgeSecret(env)
 }

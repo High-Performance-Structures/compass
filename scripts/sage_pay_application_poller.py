@@ -81,6 +81,12 @@ class PollerError(RuntimeError):
     pass
 
 
+class CompassHttpError(PollerError):
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(f"Compass returned HTTP {status}: {detail}")
+        self.status = status
+
+
 @dataclass(frozen=True)
 class PollRequest:
     run_id: str
@@ -321,7 +327,7 @@ def signed_json_request(
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")[:1000]
-        raise PollerError(f"Compass returned HTTP {error.code}: {detail}") from error
+        raise CompassHttpError(error.code, detail) from error
     except urllib.error.URLError as error:
         raise PollerError(f"Compass request failed: {error.reason}") from error
 
@@ -450,7 +456,28 @@ def connect_sage() -> Any:
         ) from error
 
 
-def process_requests(requests: Iterable[PollRequest], base_url: str, secret: str) -> int:
+def signed_json_request_with_fallback(
+    base_url: str,
+    secrets: Sequence[str],
+    method: str,
+    target: str,
+    body: Mapping[str, Any] | None = None,
+    timeout: int = 30,
+) -> Any:
+    for index, secret in enumerate(secrets):
+        try:
+            return signed_json_request(
+                base_url, secret, method, target, body, timeout
+            )
+        except CompassHttpError as error:
+            if error.status != 401 or index == len(secrets) - 1:
+                raise
+    raise PollerError("No Sage bridge secret is available")
+
+
+def process_requests(
+    requests: Iterable[PollRequest], base_url: str, secrets: Sequence[str]
+) -> int:
     processed = 0
     connection = connect_sage()
     try:
@@ -460,8 +487,8 @@ def process_requests(requests: Iterable[PollRequest], base_url: str, secret: str
             header, lines = fetch_latest_application(cursor, sage_job)
             captured_at = dt.datetime.now(dt.timezone.utc).isoformat()
             snapshot = build_snapshot(request, header, lines, captured_at)
-            signed_json_request(
-                base_url, secret, "POST", RESULTS_TARGET, snapshot, timeout=45
+            signed_json_request_with_fallback(
+                base_url, secrets, "POST", RESULTS_TARGET, snapshot, timeout=45
             )
             processed += 1
     finally:
@@ -469,16 +496,16 @@ def process_requests(requests: Iterable[PollRequest], base_url: str, secret: str
     return processed
 
 
-def sync_tax_catalog(base_url: str, secret: str) -> int:
+def sync_tax_catalog(base_url: str, secrets: Sequence[str]) -> int:
     connection = connect_sage()
     try:
         cursor = connection.cursor(as_dict=True)
         rows = fetch_tax_catalog(cursor)
         captured_at = dt.datetime.now(dt.timezone.utc).isoformat()
         snapshot = build_tax_catalog_snapshot(rows, captured_at)
-        signed_json_request(
+        signed_json_request_with_fallback(
             base_url,
-            secret,
+            secrets,
             "POST",
             TAX_CATALOG_RESULTS_TARGET,
             snapshot,
@@ -489,9 +516,11 @@ def sync_tax_catalog(base_url: str, secret: str) -> int:
         connection.close()
 
 
-def sync_tax_catalog_safely(base_url: str, secret: str) -> tuple[int | None, str | None]:
+def sync_tax_catalog_safely(
+    base_url: str, secrets: Sequence[str]
+) -> tuple[int | None, str | None]:
     try:
-        return sync_tax_catalog(base_url, secret), None
+        return sync_tax_catalog(base_url, secrets), None
     except PollerError as error:
         return None, str(error)
     except Exception as error:
@@ -500,16 +529,18 @@ def sync_tax_catalog_safely(base_url: str, secret: str) -> tuple[int | None, str
         return None, f"Tax catalog sync failed: {type(error).__name__}"
 
 
-def poll_once(base_url: str, secret: str) -> tuple[int, int, int | None, str | None]:
+def poll_once(
+    base_url: str, secrets: Sequence[str]
+) -> tuple[int, int, int | None, str | None]:
     # Catalog refresh is ancillary to pay applications. Run it before claiming
     # work and contain expected failures so an invalid catalog cannot strand a
     # claimed pay-application request.
-    tax_districts, tax_catalog_error = sync_tax_catalog_safely(base_url, secret)
-    payload = signed_json_request(
-        base_url, secret, "GET", REQUESTS_TARGET, timeout=30
+    tax_districts, tax_catalog_error = sync_tax_catalog_safely(base_url, secrets)
+    payload = signed_json_request_with_fallback(
+        base_url, secrets, "GET", REQUESTS_TARGET, timeout=30
     )
     requests = parse_poll_requests(payload)
-    processed = process_requests(requests, base_url, secret) if requests else 0
+    processed = process_requests(requests, base_url, secrets) if requests else 0
     return len(requests), processed, tax_districts, tax_catalog_error
 
 
@@ -529,15 +560,26 @@ def main() -> int:
     args = parser.parse_args()
 
     base_url = os.environ.get("COMPASS_BASE_URL", DEFAULT_COMPASS_BASE_URL).strip()
-    secret = os.environ.get("SAGE_BRIDGE_SECRET", "").strip()
-    if len(secret) < 32:
-        raise PollerError("SAGE_BRIDGE_SECRET is not available or is too short")
+    secrets = list(
+        dict.fromkeys(
+            value
+            for value in (
+                os.environ.get("SAGE_PAY_APPLICATION_BRIDGE_SECRET", "").strip(),
+                os.environ.get("SAGE_BRIDGE_SECRET", "").strip(),
+            )
+            if len(value) >= 32
+        )
+    )
+    if not secrets:
+        raise PollerError(
+            "SAGE_PAY_APPLICATION_BRIDGE_SECRET is not available or is too short"
+        )
 
     lock = acquire_lock()
     try:
         while True:
             requested, processed, tax_districts, tax_catalog_error = poll_once(
-                base_url, secret
+                base_url, secrets
             )
             output = {
                 "status": "ok",

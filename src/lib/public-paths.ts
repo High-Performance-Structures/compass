@@ -38,6 +38,7 @@ const scheduledMaintenancePaths = [
   "/api/email/gmail-sync",
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
+  "/api/operations/sage/health",
 ]
 
 export function isPublicPath(pathname: string): boolean {

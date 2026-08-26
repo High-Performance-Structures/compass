@@ -12,6 +12,7 @@ import {
   projects,
   scheduleTasks,
 } from "@/db/schema"
+import { sageBridgeStatus } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -23,6 +24,7 @@ import {
   type ProjectWorkflowRoleId,
 } from "@/lib/project-workflow-roles"
 import { getSageBridgeStatus } from "@/lib/sage/config"
+import { isSageBridgeHeartbeatOnline } from "@/lib/sage/bridge-health"
 
 type DashboardTask = {
   readonly id: string
@@ -121,10 +123,12 @@ export type DashboardOverview = {
   }
   readonly sageBridge: {
     readonly configured: boolean
+    readonly online: boolean
     readonly readOnly: boolean
     readonly mode: "sql-server"
     readonly mappedProjectCount: number
     readonly mappedOperationCount: number
+    readonly lastSeenAt: string | null
     readonly lastSyncedAt: string | null
     readonly missingConfigKeys: readonly string[]
     readonly message: string
@@ -157,10 +161,12 @@ function emptyOverview(): DashboardOverview {
     },
     sageBridge: {
       configured: false,
+      online: false,
       readOnly: true,
       mode: "sql-server",
       mappedProjectCount: 0,
       mappedOperationCount: 0,
+      lastSeenAt: null,
       lastSyncedAt: null,
       missingConfigKeys: [],
       message: "Sage bridge status is unavailable.",
@@ -260,6 +266,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       allOwnerUpdateRows,
       allOperationRows,
       allRfiRows,
+      bridgeHeartbeatRows,
     ] = await db.batch([
       db
         .select({
@@ -364,6 +371,11 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         .innerJoin(projects, eq(projectRfis.projectId, projects.id))
         .where(eq(projects.organizationId, orgId))
         .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber)),
+      db
+        .select({ lastSeenAt: sageBridgeStatus.lastSeenAt })
+        .from(sageBridgeStatus)
+        .where(eq(sageBridgeStatus.id, "pay-application-poller"))
+        .limit(1),
     ])
 
     const tasksByProject = groupByProjectId(allTaskRows)
@@ -566,6 +578,15 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const safeDefaultRoleId = allowedRoleIds.includes(defaultRoleId)
       ? defaultRoleId
       : (allowedRoleIds[0] ?? "project-manager")
+    const bridgeLastSeenAt = bridgeHeartbeatRows[0]?.lastSeenAt ?? null
+    const bridgeOnline = isSageBridgeHeartbeatOnline(bridgeLastSeenAt)
+    const bridgeMessage = !sageBridgeConfig.configured
+      ? sageBridgeConfig.message
+      : bridgeOnline
+        ? "The private read-only Sage bridge is online."
+        : bridgeLastSeenAt
+          ? `The private Sage bridge has been offline since ${bridgeLastSeenAt}.`
+          : "The private Sage bridge has not reported a heartbeat."
 
     return {
       today,
@@ -587,13 +608,15 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       },
       sageBridge: {
         configured: sageBridgeConfig.configured,
+        online: bridgeOnline,
         readOnly: sageBridgeConfig.readOnly,
         mode: sageBridgeConfig.mode,
         mappedProjectCount,
         mappedOperationCount,
+        lastSeenAt: bridgeLastSeenAt,
         lastSyncedAt: lastSageSyncedAt,
         missingConfigKeys: sageBridgeConfig.missingConfigKeys,
-        message: sageBridgeConfig.message,
+        message: bridgeMessage,
       },
       projects: dashboardProjects,
       upcomingTasks: sortedUpcomingTasks,
