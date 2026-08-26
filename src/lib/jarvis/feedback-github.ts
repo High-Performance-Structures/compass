@@ -219,11 +219,15 @@ async function clearGithubIssueCreationClaim(
   db: CompassDb,
   item: Pick<FeedbackDeskItem, "id" | "organizationId">,
   claimToken: string,
+  clearProviderAttempt = false,
 ): Promise<void> {
   await db.update(feedbackDeskItems).set({
     githubIssueCreationClaimToken: null,
     githubIssueCreationClaimedAt: null,
     githubIssueCreationClaimExpiresAt: null,
+    ...(clearProviderAttempt
+      ? { githubIssueCreationProviderAttemptedAt: null }
+      : {}),
     updatedAt: new Date().toISOString(),
   }).where(and(
     eq(feedbackDeskItems.id, item.id),
@@ -432,6 +436,7 @@ export async function linkFeedbackDeskItemToGithub(
         feedbackDeskItemId: item.id,
         status: response.status,
       })
+      await clearGithubIssueCreationClaim(db, currentItem, claimToken, true)
       return null
     }
     const issue = issueResponse(await response.json())

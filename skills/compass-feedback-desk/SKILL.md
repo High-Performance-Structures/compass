@@ -44,14 +44,18 @@ payload or handling an API error.
 
    ```bash
    python scripts/compass_feedback_bridge.py reply \
+     --event-id EVENT_ID \
+     --claim-token CLAIM_TOKEN_FROM_PULL \
      --payload-file /absolute/path/to/reply.json
    ```
 
-6. Acknowledge the source event only after the reply succeeds:
+6. The reply response returns a refreshed `claimToken`. Acknowledge the source
+   event only after the reply succeeds, using that refreshed value:
 
    ```bash
    python scripts/compass_feedback_bridge.py ack \
      --event-id EVENT_ID \
+     --claim-token REFRESHED_CLAIM_TOKEN \
      --payload-file /absolute/path/to/ack.json
    ```
 
@@ -122,7 +126,9 @@ Run event polling, deduplication, and acknowledgements deterministically:
 python scripts/compass_feedback_bridge.py pull --limit 20
 ```
 
-Do not invoke a model when the response contains no events.
+Do not invoke a model when the response contains no events. Keep each event's
+opaque `claimToken` bound to that event only; every reply or acknowledgement
+must echo the current token, and a reply can replace it with a refreshed token.
 
 ## Update a Feedback Desk lifecycle status
 
@@ -150,6 +156,24 @@ or call the generic request function directly. The helper constructs only
 injected `JARVIS_BRIDGE_SECRET`, and retries at most once with the same
 idempotency key. Compass remains responsible for organization authorization,
 evidence gates, D1 persistence, and source-specific requester delivery.
+
+## Durable private-runtime executor
+
+The existing private runtime has a separate systemd user service for approved
+lifecycle handoffs. It polls only `feedback.lifecycle_requested` through the
+signed Compass event queue and invokes the co-installed constrained helper.
+Unknown fields, feature requests, malformed IDs/statuses, arbitrary targets,
+non-production raw origins, redirects, and oversized data are rejected. Network
+failures are acknowledged with a bounded retry delay; endpoint rejection and
+policy failures are terminal and remain visible in the protected queue. The
+event's original idempotency key is reused on every retry, so a process restart
+cannot create a second lifecycle update.
+
+The macOS scheduler must not invoke remote commands, use local bridge
+credentials, impersonate a browser session, copy payload files, or write D1.
+The executor runs only on the authorized private runtime using the existing
+primary bridge secret. Do not change the existing agent poller or requester
+notifier service.
 
 The command prints only a compact JSON result containing endpoint acceptance,
 duplicate status, lifecycle status, notification count, and whether a

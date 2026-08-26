@@ -272,4 +272,37 @@ describe("GitHub issue approval revocation provider fence", () => {
     expect(stored?.githubIssueUrl).toBe("https://github.com/example/compass/issues/48")
     sqlite.close()
   })
+
+  it("clears the provider-attempt fence after a definitive GitHub rejection", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedApprovedFeature(sqlite)
+    const client = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(client, { schema: { feedbackDeskItems } })
+    const item = await actor.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/search/issues")) {
+        return { ok: true, json: async () => ({ items: [] }) }
+      }
+      if (init?.method === "POST") return { ok: false, status: 403 }
+      throw new Error(`unexpected fetch ${String(input)}`)
+    }))
+
+    // @ts-expect-error The focused actor contains the schema used by this integration path.
+    const result = await linkFeedbackDeskItemToGithub(actor, {
+      GITHUB_TOKEN: "token",
+      GITHUB_REPO: "example/compass",
+    }, item)
+
+    expect(result).toBeNull()
+    const stored = await actor.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    expect(stored?.githubIssueCreationProviderAttemptedAt).toBeNull()
+    expect(stored?.githubIssueCreationClaimToken).toBeNull()
+    sqlite.close()
+  })
 })

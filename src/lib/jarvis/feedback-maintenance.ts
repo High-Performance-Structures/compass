@@ -26,6 +26,7 @@ import {
 import { githubFeedbackIssueContent } from "@/lib/jarvis/feedback-github-content"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
 import { feedbackDeliveryGraphEvent } from "@/lib/jarvis/feedback-delivery"
+import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 import {
   feedbackIsResolved,
   feedbackSlaTarget,
@@ -41,6 +42,7 @@ export type FeedbackMaintenanceResult = Readonly<{
   staleIssueApprovalReconciledCount: number
   syncedCount: number
   deliveryRequestedCount: number
+  responseClosedCount: number
   scrubbedCount: number
   slaBackfilledCount: number
   failedCount: number
@@ -311,6 +313,36 @@ async function ensureFeedbackDeliveryGraphRequests(
   return requestedCount
 }
 
+async function ensureFeedbackResponseClosures(
+  db: CompassDb,
+  items: readonly FeedbackDeskItem[],
+): Promise<number> {
+  let closedCount = 0
+  for (const item of items) {
+    if (
+      item.kind === "bug" ||
+      item.kind === "feature" ||
+      item.status !== "triaged"
+    ) continue
+    const engineeringRequest = await db.select({ id: jarvisBridgeEvents.id })
+      .from(jarvisBridgeEvents)
+      .where(and(
+        eq(jarvisBridgeEvents.feedbackDeskItemId, item.id),
+        eq(jarvisBridgeEvents.eventType, "feedback.delivery_requested"),
+      ))
+      .get()
+    if (engineeringRequest) continue
+    const result = await applyFeedbackLifecycleUpdate(db, item, {
+      status: "closed",
+      assignedToName: item.assignedToName ?? "Feedback Desk",
+      actorSource: "feedback-maintenance",
+      idempotencyKey: `feedback-response-closure:${item.id}`,
+    })
+    if (result.changed) closedCount += 1
+  }
+  return closedCount
+}
+
 export async function recordFeedbackServiceHealth(
   db: CompassDb,
   input: Readonly<{
@@ -414,6 +446,10 @@ export async function runFeedbackMaintenance(
           ...item,
           slaTargetAt: feedbackSlaTarget(item.priority, new Date(item.createdAt)),
         })
+    const responseClosedCount = await ensureFeedbackResponseClosures(
+      db,
+      itemsWithSla,
+    )
     const deliveryRequestedCount = await ensureFeedbackDeliveryGraphRequests(
       db,
       itemsWithSla,
@@ -433,6 +469,7 @@ export async function runFeedbackMaintenance(
       staleIssueApprovalReconciledCount,
       syncedCount,
       deliveryRequestedCount,
+      responseClosedCount,
       scrubbedCount: privacy.scrubbed,
       slaBackfilledCount,
       failedCount,
@@ -444,7 +481,7 @@ export async function runFeedbackMaintenance(
       updatedCount:
         recoveredCount + linkedCount + staleIssueApprovalReconciledCount +
         syncedCount + privacy.scrubbed +
-        slaBackfilledCount + deliveryRequestedCount,
+        slaBackfilledCount + deliveryRequestedCount + responseClosedCount,
       failedCount,
       summary: JSON.stringify(result),
       completedAt,

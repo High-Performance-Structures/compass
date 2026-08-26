@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm"
+import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { organizationMembers, users } from "@/db/schema"
@@ -8,13 +8,14 @@ import {
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
 import {
-  feedbackDraftPullRequestMessage,
   feedbackIsResolved,
   feedbackRequesterUpdateKind,
   feedbackSlaTarget,
   feedbackStatusLabel,
   feedbackStatusMessage,
   feedbackStatusUsesEmail,
+  feedbackNonEngineeringTransitionIsBlocked,
+  knownFeedbackStatus,
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
 import {
@@ -23,11 +24,21 @@ import {
 } from "@/lib/jarvis/feedback-feature-priority"
 import {
   feedbackDeliveryGraphEvent,
+  feedbackDeskOutboundPayload,
+  feedbackRequesterNotificationEvent,
+  feedbackDeliveryRoute,
   shouldRequestFeedbackDeliveryGraph,
   type FeedbackDeliveryGraphUpdate,
+  type FeedbackDeliveryRoute,
 } from "@/lib/jarvis/feedback-delivery"
-import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
-import { createSystemNotificationEvent } from "@/lib/notifications/events"
+import {
+  feedbackEngineeringTransitionIsBlocked,
+} from "@/lib/jarvis/feedback-lifecycle-evidence"
+import {
+  assertBridgeReservationOwnership,
+  type BridgeReservationOwnership,
+} from "@/lib/jarvis/bridge-reservation"
+import { createStrictSystemNotificationEvent } from "@/lib/notifications/events"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -45,7 +56,7 @@ function metadataActorId(metadata: string | null): string | null {
   }
 }
 
-async function requesterRecipients(
+export async function requesterRecipients(
   db: CompassDb,
   item: FeedbackDeskItem,
 ): Promise<readonly { readonly userId: string; readonly email: string }[]> {
@@ -78,6 +89,237 @@ async function requesterRecipients(
       eq(users.isActive, true),
       filter,
     ))
+    .all()
+}
+
+type FeedbackRequesterNotificationSource = Readonly<{
+  id: string
+  idempotencyKey: string
+  feedbackDeskItemId: string | null
+}>
+
+type FeedbackRequesterNotificationResult = Readonly<{
+  queued: boolean
+  claimed: boolean
+  notifiedUserCount: number
+}>
+
+const NOTIFICATION_CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
+
+function notificationPayload(value: string): Readonly<{
+  status: FeedbackDeskStatus
+  notificationKind: string | null
+}> | null {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (typeof parsed !== "object" || parsed === null) return null
+    const rawStatus = Reflect.get(parsed, "status")
+    const rawKind = Reflect.get(parsed, "notificationKind")
+    return {
+      status: knownFeedbackStatus(
+        typeof rawStatus === "string" ? rawStatus : "new",
+      ),
+      notificationKind: typeof rawKind === "string" ? rawKind : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function requesterNotificationMessage(
+  item: FeedbackDeskItem,
+  notificationKind: string | null,
+  status: FeedbackDeskStatus,
+): string {
+  if (notificationKind === "delivery_graph_created") {
+    return "Your Compass request now has accountable engineering work."
+  }
+  if (notificationKind === "delivery_graph_failed") {
+    return "Your Compass request could not enter engineering work yet and will be retried."
+  }
+  return feedbackStatusMessage(status, item.title, item.kind)
+}
+
+async function markNotificationRetryable(
+  db: CompassDb,
+  eventId: string,
+  claimToken: string,
+  now: string,
+  error: string,
+): Promise<boolean> {
+  const updated = await db
+    .update(jarvisBridgeEvents)
+    .set({
+      status: "pending",
+      lastError: error.slice(0, 2_000),
+      availableAt: new Date(
+        Date.parse(now) + 30_000,
+      ).toISOString(),
+      claimToken: null,
+      claimedAt: null,
+      completedAt: null,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(jarvisBridgeEvents.id, eventId),
+      eq(jarvisBridgeEvents.claimToken, claimToken),
+      eq(jarvisBridgeEvents.status, "processing"),
+    ))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+  return updated !== undefined && updated !== null
+}
+
+export async function processFeedbackRequesterNotification(
+  db: CompassDb,
+  sourceEvent: FeedbackRequesterNotificationSource,
+  persistNotification: typeof createStrictSystemNotificationEvent =
+    createStrictSystemNotificationEvent,
+  bridgeReservation?: BridgeReservationOwnership,
+): Promise<FeedbackRequesterNotificationResult> {
+  if (!sourceEvent.feedbackDeskItemId) {
+    return { queued: false, claimed: false, notifiedUserCount: 0 }
+  }
+
+  const notificationEvent = await db
+    .select({
+      id: jarvisBridgeEvents.id,
+      status: jarvisBridgeEvents.status,
+      payload: jarvisBridgeEvents.payload,
+    })
+    .from(jarvisBridgeEvents)
+    .where(eq(
+      jarvisBridgeEvents.idempotencyKey,
+      `feedback-requester-notification:${sourceEvent.idempotencyKey}`,
+    ))
+    .get()
+  if (!notificationEvent) {
+    return { queued: false, claimed: false, notifiedUserCount: 0 }
+  }
+  if (notificationEvent.status === "completed") {
+    return { queued: true, claimed: false, notifiedUserCount: 0 }
+  }
+
+  const now = new Date()
+  const nowIso = now.toISOString()
+  const staleClaimIso = new Date(
+    now.getTime() - NOTIFICATION_CLAIM_RETRY_MILLISECONDS,
+  ).toISOString()
+  const claimToken = crypto.randomUUID()
+  const claimed = await db
+    .update(jarvisBridgeEvents)
+    .set({
+      status: "processing",
+      claimToken,
+      claimedAt: nowIso,
+      attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
+      updatedAt: nowIso,
+    })
+    .where(and(
+      eq(jarvisBridgeEvents.id, notificationEvent.id),
+      or(
+        eq(jarvisBridgeEvents.status, "pending"),
+        and(
+          eq(jarvisBridgeEvents.status, "processing"),
+          lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
+        ),
+      ),
+    ))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+  if (!claimed) {
+    throw new Error("Feedback requester notification is already processing")
+  }
+
+  try {
+    const item = await db
+      .select()
+      .from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, sourceEvent.feedbackDeskItemId))
+      .get()
+    if (!item) throw new Error("Feedback request for notification was not found")
+    const payload = notificationPayload(notificationEvent.payload)
+    if (!payload) throw new Error("Feedback requester notification is invalid")
+    const recipients = await requesterRecipients(db, item)
+    if (recipients.length > 0 && item.organizationId) {
+      if (bridgeReservation) {
+        await db.batch([
+          assertBridgeReservationOwnership(db, bridgeReservation),
+          assertBridgeReservationOwnership(db, {
+            eventId: notificationEvent.id,
+            claimToken,
+            reservationResult: null,
+          }),
+        ])
+      }
+      await persistNotification({
+        idempotencyKey: notificationEvent.id,
+        organizationId: item.organizationId,
+        projectId: null,
+        eventType: `feedback.status.${payload.status}`,
+        sourceType: "feedback",
+        sourceId: item.id,
+        title: `Request update: ${feedbackStatusLabel(payload.status)}`,
+        body: requesterNotificationMessage(
+          item,
+          payload.notificationKind,
+          payload.status,
+        ),
+        href: `/dashboard/requests/${encodeURIComponent(item.id)}`,
+        priority: payload.status === "needs_info" ? "high" : "normal",
+        audience: "requester",
+        recipients,
+        delivery: {
+          inApp: true,
+          email: feedbackStatusUsesEmail(payload.status),
+          push: feedbackStatusUsesEmail(payload.status),
+        },
+      }, {
+        eventId: notificationEvent.id,
+        claimToken,
+        reservationResult: null,
+      }, bridgeReservation ? [bridgeReservation] : undefined)
+    }
+    const completed = await db
+      .update(jarvisBridgeEvents)
+      .set({
+        status: "completed",
+        result: JSON.stringify({ notifiedUserCount: recipients.length }),
+        lastError: null,
+        claimToken: null,
+        claimedAt: null,
+        completedAt: nowIso,
+        updatedAt: nowIso,
+      })
+      .where(and(
+        eq(jarvisBridgeEvents.id, notificationEvent.id),
+        eq(jarvisBridgeEvents.claimToken, claimToken),
+        eq(jarvisBridgeEvents.status, "processing"),
+      ))
+      .returning({ id: jarvisBridgeEvents.id })
+      .get()
+    if (completed === undefined || completed === null) {
+      return { queued: true, claimed: false, notifiedUserCount: 0 }
+    }
+    return {
+      queued: true,
+      claimed: true,
+      notifiedUserCount: recipients.length,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    const retryScheduled = await markNotificationRetryable(
+      db,
+      notificationEvent.id,
+      claimToken,
+      nowIso,
+      message,
+    )
+    if (!retryScheduled) {
+      return { queued: true, claimed: false, notifiedUserCount: 0 }
+    }
+    throw error
+  }
 }
 
 export type FeedbackLifecycleUpdate = Readonly<{
@@ -89,6 +331,7 @@ export type FeedbackLifecycleUpdate = Readonly<{
   githubIssueNodeId?: string | null
   draftPullRequestUrl?: string | null
   deliveryGraph?: FeedbackDeliveryGraphUpdate
+  deliveryRoute?: FeedbackDeliveryRoute
   assignedToUserId?: string | null
   assignedToName?: string | null
   actorSource: string
@@ -99,19 +342,32 @@ export async function applyFeedbackLifecycleUpdate(
   db: CompassDb,
   itemSnapshot: FeedbackDeskItem,
   update: FeedbackLifecycleUpdate,
+  bridgeReservation?: BridgeReservationOwnership,
 ): Promise<Readonly<{
   changed: boolean
   notifiedUserCount: number
   requesterUpdateQueued: boolean
 }>> {
-  const item = await db.select().from(feedbackDeskItems).where(and(
-    eq(feedbackDeskItems.id, itemSnapshot.id),
-    itemSnapshot.organizationId === null
-      ? isNull(feedbackDeskItems.organizationId)
-      : eq(feedbackDeskItems.organizationId, itemSnapshot.organizationId),
-  )).get()
+  const item = await db
+    .select()
+    .from(feedbackDeskItems)
+    .where(and(
+      eq(feedbackDeskItems.id, itemSnapshot.id),
+      itemSnapshot.organizationId === null
+        ? isNull(feedbackDeskItems.organizationId)
+        : eq(feedbackDeskItems.organizationId, itemSnapshot.organizationId),
+    ))
+    .get()
   if (!item) throw new Error("Feedback request not found")
 
+  const duplicate = await db
+    .select({ id: jarvisBridgeEvents.id })
+    .from(jarvisBridgeEvents)
+    .where(eq(jarvisBridgeEvents.idempotencyKey, update.idempotencyKey))
+    .get()
+  if (duplicate) {
+    return { changed: false, notifiedUserCount: 0, requesterUpdateQueued: false }
+  }
   if (feedbackFeatureTransitionIsBlocked({
     currentStatus: item.status,
     featurePriorityApprovedAt: item.featurePriorityApprovedAt,
@@ -163,7 +419,19 @@ export async function applyFeedbackLifecycleUpdate(
   const deliveryGraphUpdatedAt = update.deliveryGraph
     ? new Date().toISOString()
     : item.deliveryGraphUpdatedAt
-  const evidenceError = feedbackBugTransitionIsBlocked({
+  const deliveryRoute = update.deliveryRoute ?? (
+    item.deliveryGraphId !== null
+      ? "engineering"
+      : feedbackDeliveryRoute(item)
+  )
+  const nonEngineeringError = feedbackNonEngineeringTransitionIsBlocked({
+    kind: item.kind,
+    status: item.status,
+    nextStatus: update.status,
+    deliveryRoute,
+  })
+  if (nonEngineeringError) throw new Error(nonEngineeringError)
+  const evidenceError = feedbackEngineeringTransitionIsBlocked({
     kind: item.kind,
     status: item.status,
     nextStatus: update.status,
@@ -173,6 +441,7 @@ export async function applyFeedbackLifecycleUpdate(
     deliveryGraphReviewTaskId,
     deliveryGraphReleaseTaskId,
     githubDraftPullRequestUrl: draftUrl,
+    deliveryRoute,
   })
   if (evidenceError) throw new Error(evidenceError)
   const lifecycleUpdateKind = feedbackRequesterUpdateKind(
@@ -180,6 +449,7 @@ export async function applyFeedbackLifecycleUpdate(
     update.status,
     item.githubDraftPullRequestUrl,
     draftUrl,
+    update.deliveryGraph?.status ?? null,
   )
   const requesterUpdateKind = lifecycleUpdateKind ?? (
     update.message?.trim() ? "status_changed" : null
@@ -209,83 +479,94 @@ export async function applyFeedbackLifecycleUpdate(
   const firstTriage = item.triagedAt === null && update.status !== "new"
   const firstResolution = item.resolvedAt === null && feedbackIsResolved(update.status)
   const priorityChanged = item.priority !== priority
-  const hasDraftUpdate = draftUrl !== null && draftUrl !== item.githubDraftPullRequestUrl
-  const message = update.message ?? (
-    hasDraftUpdate
-      ? feedbackDraftPullRequestMessage(item.title, draftUrl)
-      : feedbackStatusMessage(update.status, item.title)
-  )
+  const eventMessage = requesterUpdateKind === "delivery_graph_created"
+    ? "Your Compass request now has accountable engineering work."
+    : requesterUpdateKind === "delivery_graph_failed"
+      ? "Your Compass request could not enter engineering work yet and will be retried."
+      : `Your Compass request was updated: ${feedbackStatusLabel(update.status)}.`
 
-  const recipients = requesterUpdateKind
-    ? await requesterRecipients(db, item)
-    : []
-  const payload = JSON.stringify({
-    schemaVersion: 1,
-    feedbackDeskItemId: item.id,
-    source: item.source,
-    sourceId: item.sourceId,
-    status: update.status,
-    title: item.title,
-    message,
-    reporter: {
-      name: item.reporterName,
-      email: item.reporterEmail,
-      externalActorId: metadataActorId(item.metadata),
-    },
-    compass: {
-      organizationId: item.organizationId,
-      channelId: item.channelId,
-      messageId: item.messageId,
-      threadId: item.threadId,
-    },
-    metadata: item.metadata,
-    githubIssueUrl: issueUrl,
-    draftPullRequestUrl: draftUrl,
-    notificationKind: requesterUpdateKind,
-    updatedAt: now,
-  })
-  const deliveryEvent = shouldRequestFeedbackDeliveryGraph(item, update.status)
-    ? feedbackDeliveryGraphEvent(item)
-    : null
   const rowIdentity = item.organizationId === null
     ? isNull(feedbackDeskItems.organizationId)
     : eq(feedbackDeskItems.organizationId, item.organizationId)
   const finalFence = item.kind === "feature" && isFeatureImplementationStatus(update.status)
     ? isNotNull(feedbackDeskItems.featurePriorityApprovedAt)
     : undefined
+  const updateValues = {
+    status: update.status,
+    priority,
+    githubIssueUrl: issueUrl,
+    githubIssueNodeId: issueNodeId,
+    githubDraftPullRequestUrl: draftUrl,
+    assignedToUserId,
+    assignedToName,
+    internalSummary,
+    deliveryGraphId,
+    deliveryGraphStatus,
+    deliveryGraphImplementationTaskId,
+    deliveryGraphReviewTaskId,
+    deliveryGraphReleaseTaskId,
+    deliveryGraphLastError,
+    deliveryGraphUpdatedAt,
+    slaTargetAt:
+      item.slaTargetAt === null || priorityChanged
+        ? feedbackSlaTarget(priority)
+        : item.slaTargetAt,
+    triagedAt: firstTriage ? now : item.triagedAt,
+    resolvedAt: firstResolution ? now : item.resolvedAt,
+    lastRequesterUpdateAt: requesterUpdateKind ? now : item.lastRequesterUpdateAt,
+    lastGithubSyncAt: update.actorSource === "github" ? now : item.lastGithubSyncAt,
+    updatedAt: now,
+  }
+
+  const recipients = requesterUpdateKind
+    ? await requesterRecipients(db, item)
+    : []
+  const deliveryPayload = feedbackDeskOutboundPayload({
+    id: item.id,
+    kind: item.kind,
+    status: update.status,
+    notificationKind: requesterUpdateKind,
+  })
+  const payload = JSON.stringify(deliveryPayload)
+  const timelineResult = JSON.stringify({
+    ...deliveryPayload,
+    message: eventMessage,
+    updatedAt: now,
+  })
+  const deliveryEvent = shouldRequestFeedbackDeliveryGraph(
+    item,
+    update.status,
+    deliveryRoute,
+  )
+    ? feedbackDeliveryGraphEvent(item)
+    : null
+  const notificationEvent = requesterUpdateKind &&
+    item.organizationId &&
+    recipients.length > 0
+    ? feedbackRequesterNotificationEvent({
+        id: item.id,
+        kind: item.kind,
+        status: update.status,
+        notificationKind: requesterUpdateKind,
+        idempotencyKey: `notify:${update.idempotencyKey}`,
+      })
+    : null
+
   await db.transaction(async (tx) => {
-    const persisted = await tx.update(feedbackDeskItems).set({
-      status: update.status,
-      priority,
-      githubIssueUrl: issueUrl,
-      githubIssueNodeId: issueNodeId,
-      githubDraftPullRequestUrl: draftUrl,
-      assignedToUserId,
-      assignedToName,
-      internalSummary,
-      deliveryGraphId,
-      deliveryGraphStatus,
-      deliveryGraphImplementationTaskId,
-      deliveryGraphReviewTaskId,
-      deliveryGraphReleaseTaskId,
-      deliveryGraphLastError,
-      deliveryGraphUpdatedAt,
-      slaTargetAt:
-        item.slaTargetAt === null || priorityChanged
-          ? feedbackSlaTarget(priority)
-          : item.slaTargetAt,
-      triagedAt: firstTriage ? now : item.triagedAt,
-      resolvedAt: firstResolution ? now : item.resolvedAt,
-      lastRequesterUpdateAt: requesterUpdateKind ? now : item.lastRequesterUpdateAt,
-      lastGithubSyncAt: update.actorSource === "github" ? now : item.lastGithubSyncAt,
-      updatedAt: now,
-    }).where(and(
-      eq(feedbackDeskItems.id, item.id),
-      rowIdentity,
-      eq(feedbackDeskItems.updatedAt, item.updatedAt),
-      ...(finalFence ? [finalFence] : []),
-    )).returning({ id: feedbackDeskItems.id }).get()
-    if (!persisted) {
+    if (bridgeReservation) {
+      await assertBridgeReservationOwnership(tx, bridgeReservation).run()
+    }
+    const persisted = await tx.update(feedbackDeskItems)
+      .set(updateValues)
+      .where(and(
+        eq(feedbackDeskItems.id, item.id),
+        rowIdentity,
+        eq(feedbackDeskItems.updatedAt, item.updatedAt),
+        ...(finalFence ? [finalFence] : []),
+      ))
+      .returning({ id: feedbackDeskItems.id })
+      .get()
+    if (persisted === undefined || persisted === null) {
       throw new Error("Feedback request changed before the lifecycle update could be saved")
     }
 
@@ -299,12 +580,13 @@ export async function applyFeedbackLifecycleUpdate(
       idempotencyKey: update.idempotencyKey,
       feedbackDeskItemId: item.id,
       payload,
-      result: payload,
+      result: timelineResult,
       availableAt: now,
       completedAt: now,
       createdAt: now,
       updatedAt: now,
     }).onConflictDoNothing()
+
     if (deliveryEvent) {
       await tx.insert(jarvisBridgeEvents).values({
         id: crypto.randomUUID(),
@@ -320,6 +602,7 @@ export async function applyFeedbackLifecycleUpdate(
         updatedAt: now,
       }).onConflictDoNothing()
     }
+
     if (requesterUpdateKind) {
       await tx.insert(jarvisBridgeEvents).values({
         id: crypto.randomUUID(),
@@ -335,35 +618,23 @@ export async function applyFeedbackLifecycleUpdate(
         updatedAt: now,
       }).onConflictDoNothing()
     }
-  })
 
-  if (requesterUpdateKind && item.organizationId && recipients.length > 0) {
-    try {
-      await createSystemNotificationEvent({
+    if (notificationEvent) {
+      await tx.insert(jarvisBridgeEvents).values({
+        id: crypto.randomUUID(),
         organizationId: item.organizationId,
-        projectId: null,
-        eventType: `feedback.status.${update.status}`,
-        sourceType: "feedback",
-        sourceId: item.id,
-        title: `Request update: ${feedbackStatusLabel(update.status)}`,
-        body: message,
-        href: `/dashboard/requests/${encodeURIComponent(item.id)}`,
-        priority: update.status === "needs_info" ? "high" : "normal",
-        audience: "requester",
-        recipients,
-        delivery: {
-          inApp: true,
-          email: feedbackStatusUsesEmail(update.status),
-          push: feedbackStatusUsesEmail(update.status),
-        },
-      })
-    } catch (error) {
-      console.error("feedback_lifecycle_notification_failed", {
+        direction: "outbound",
+        source: "feedback-desk",
+        eventType: notificationEvent.eventType,
+        idempotencyKey: notificationEvent.idempotencyKey,
         feedbackDeskItemId: item.id,
-        error: error instanceof Error ? error.message : "Unknown error",
-      })
+        payload: JSON.stringify(notificationEvent.payload),
+        availableAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoNothing()
     }
-  }
+  })
 
   return {
     changed: true,
