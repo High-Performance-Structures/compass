@@ -18,6 +18,11 @@ import type {
 } from "@/lib/email/gmail-message-parser"
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import {
+  gotoInboundSmsSubject,
+  shouldRouteInternalProjectSms,
+  type GotoProjectMatchReason,
+} from "@/lib/goto/internal-project-routing"
 import { gotoAttachmentMimeType } from "@/lib/goto/mime-type"
 import { isKnownInternalSmsSender } from "@/lib/goto/internal-sender"
 import {
@@ -33,10 +38,6 @@ import {
 } from "@/lib/photos/upload-limits"
 
 type Db = ReturnType<typeof getDb>
-
-function regexEscape(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
 
 async function isInternalSender(input: {
   readonly db: Db
@@ -78,6 +79,7 @@ async function projectForMessage(input: {
       readonly kind: "found"
       readonly id: string
       readonly projectNumber: string | null
+      readonly reason: GotoProjectMatchReason
     }
   | { readonly kind: "missing" | "ambiguous" }
 > {
@@ -133,6 +135,7 @@ async function projectForMessage(input: {
     kind: "found",
     id: match.id,
     projectNumber: match.projectNumber,
+    reason: match.reason,
   }
 }
 
@@ -212,12 +215,28 @@ export async function processGotoInboundMessage(input: {
     | "internal_sender"
     | null
 }> {
+  const internalSender = await isInternalSender({
+    db: input.db,
+    organizationId: input.organizationId,
+    senderPhone: input.message.senderPhone,
+  })
+  const project = await projectForMessage({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+    body: input.message.body,
+    senderPhone: input.message.senderPhone,
+    ownerTouchpoint: input.message.ownerTouchpoint,
+    conversationId: input.message.conversationId,
+  })
   if (
-    await isInternalSender({
-      db: input.db,
-      organizationId: input.organizationId,
-      senderPhone: input.message.senderPhone,
-    })
+    internalSender &&
+    (project.kind !== "found" ||
+      !shouldRouteInternalProjectSms({
+        body: input.message.body,
+        projectNumber: project.projectNumber,
+        matchReason: project.reason,
+      }))
   ) {
     const senderDigits = input.message.senderPhone.replace(/\D/g, "")
     console.info("[goto-inbound] Internal staff SMS auto-dismissed", {
@@ -231,15 +250,6 @@ export async function processGotoInboundMessage(input: {
     }
   }
 
-  const project = await projectForMessage({
-    env: input.env,
-    db: input.db,
-    organizationId: input.organizationId,
-    body: input.message.body,
-    senderPhone: input.message.senderPhone,
-    ownerTouchpoint: input.message.ownerTouchpoint,
-    conversationId: input.message.conversationId,
-  })
   if (project.kind !== "found") {
     console.warn("[goto-inbound] SMS needs review", {
       messageId: input.message.messageId,
@@ -284,15 +294,10 @@ export async function processGotoInboundMessage(input: {
     env: input.env,
     message: input.message,
   })
-  const firstLine = input.message.body.split(/\r?\n/, 1)[0]?.trim() ?? ""
-  const subject = (project.projectNumber
-    ? firstLine.replace(
-        new RegExp(`(^|\\s)${regexEscape(project.projectNumber)}(?=\\s|$)`, "i"),
-        " "
-      )
-    : firstLine)
-    .replace(/\s{2,}/g, " ")
-    .trim()
+  const subject = gotoInboundSmsSubject({
+    body: input.message.body,
+    projectNumber: project.projectNumber,
+  })
   const candidate: InboundCandidate = {
     gmailMessageId: input.message.messageId,
     gmailThreadId: input.message.conversationId,
