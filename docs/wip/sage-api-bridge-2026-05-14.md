@@ -33,6 +33,10 @@ The prior Sage work established that HPS Sage access is through Sage 100 Contrac
 - `SAGE_BRIDGE_SECRET` is a separate HMAC secret shared between Compass and the
   private poller. SQL credentials remain tailnet-only and are never sent to
   Compass.
+- `SAGE_PAY_APPLICATION_BRIDGE_SECRET` is the preferred, dedicated HMAC key for
+  the read-only pay-application poller. Compass temporarily falls back to
+  `SAGE_BRIDGE_SECRET` during migration so read and write bridge keys can be
+  rotated independently without taking both services offline.
 
 The live connector should start with read-only sync jobs. Writes back to Sage should require a visible user action, idempotency key, diff/conflict review, and audit log entry.
 
@@ -100,6 +104,15 @@ units are in `deploy/systemd/`. The deployed process:
 Operational installation and health-check commands are documented in
 `deploy/systemd/README.md`. Do not place SQL credentials or the shared HMAC
 secret in a unit file, command history, repository file, or application log.
+The systemd wrapper waits for Signet's asynchronous secret-exec result and
+propagates poller failures to systemd instead of treating a queued job as a
+successful poll.
+
+Compass checks recorded Sage heartbeats every ten minutes. When a bridge has
+not made an authenticated request for five minutes, Compass creates one
+high-priority in-app notification for active administrators for that outage.
+The next successful heartbeat changes the incident identity, so a later outage
+can notify again without repeating alerts during the same outage.
 
 ### Production validation checklist
 

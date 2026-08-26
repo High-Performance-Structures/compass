@@ -3,7 +3,7 @@ Description=Poll Compass for Sage pay-application read requests
 
 [Timer]
 OnBootSec=30s
-OnUnitActiveSec=60s
+OnUnitInactiveSec=60s
 AccuracySec=5s
 Persistent=true
 Unit=compass-sage-pay-application-poller.service

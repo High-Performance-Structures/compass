@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   createSageBridgeSignature,
+  getSagePayApplicationBridgeSecret,
   MAX_SAGE_BRIDGE_BODY_BYTES,
   readBoundedSageBridgeBody,
   verifySageBridgeRequest,
@@ -99,5 +100,19 @@ describe("Sage bridge HMAC authentication", () => {
       success: false,
       error: "Request body is too large",
     })
+  })
+
+  it("prefers a dedicated pay-application secret and supports migration fallback", () => {
+    const shared = "shared-sage-bridge-secret-with-32-characters"
+    const dedicated = "dedicated-pay-app-secret-with-32-characters"
+    expect(
+      getSagePayApplicationBridgeSecret({
+        SAGE_BRIDGE_SECRET: shared,
+        SAGE_PAY_APPLICATION_BRIDGE_SECRET: dedicated,
+      })
+    ).toBe(dedicated)
+    expect(
+      getSagePayApplicationBridgeSecret({ SAGE_BRIDGE_SECRET: shared })
+    ).toBe(shared)
   })
 })

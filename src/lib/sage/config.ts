@@ -9,12 +9,7 @@ export type SageBridgeStatus = {
   readonly message: string
 }
 
-const REQUIRED_SAGE_CONFIG_KEYS = [
-  "SAGE_SQL_SERVER",
-  "SAGE_SQL_DATABASE",
-  "SAGE_SQL_USER",
-  "SAGE_SQL_PASSWORD",
-] as const
+const REQUIRED_SAGE_CONFIG_KEYS = ["SAGE_PAY_APPLICATION_BRIDGE_SECRET"]
 
 function readEnv(
   env: Record<string, string | undefined>,
@@ -27,9 +22,13 @@ function readEnv(
 export function getSageBridgeStatus(
   env: Record<string, string | undefined>
 ): SageBridgeStatus {
-  const missingConfigKeys = REQUIRED_SAGE_CONFIG_KEYS.filter(
-    (key) => !readEnv(env, key)
+  const hasBridgeSecret = Boolean(
+    readEnv(env, "SAGE_PAY_APPLICATION_BRIDGE_SECRET") ??
+      readEnv(env, "SAGE_BRIDGE_SECRET")
   )
+  const missingConfigKeys = hasBridgeSecret
+    ? []
+    : REQUIRED_SAGE_CONFIG_KEYS
   const readOnly = readEnv(env, "SAGE_READ_ONLY") !== "false"
   const configured = missingConfigKeys.length === 0
 
@@ -41,8 +40,8 @@ export function getSageBridgeStatus(
     requiredConfigKeys: REQUIRED_SAGE_CONFIG_KEYS,
     message: configured
       ? readOnly
-        ? "Sage bridge is configured for read-only sync."
-        : "Sage bridge is configured; writes still require explicit Compass confirmation."
-      : "Sage bridge is waiting on server/database credentials.",
+        ? "Sage bridge authentication is configured for read-only sync."
+        : "Sage bridge authentication is configured; writes still require explicit Compass confirmation."
+      : "Sage bridge is waiting on its private-host authentication secret.",
   }
 }
