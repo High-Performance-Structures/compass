@@ -46,7 +46,7 @@ import {
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
-import { ProjectEmailAddressCard } from "@/components/projects/project-email-address-card"
+import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
 import {
   allowedWorkflowRoleIds,
@@ -57,6 +57,7 @@ import {
   projectClientStatusLabel,
   projectJobStatusLabel,
 } from "@/lib/project-profile"
+import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -156,6 +157,7 @@ export default async function ProjectSummaryPage({
   let developerModeEnabled = false
   let userRole: string | null = null
   let projectRole: string | null = null
+  let projectTextPhoneNumber: string | null = null
 
   try {
     const currentUser = await getCurrentUser()
@@ -213,6 +215,10 @@ export default async function ProjectSummaryPage({
       jobStatusId: found.jobStatusId,
       customLabel: foundRow.customJobStatusLabel,
     })
+    projectTextPhoneNumber = gotoSenderNumberForProject(
+      env,
+      found.projectNumber
+    )
 
     if (found.googleDriveFolderId) {
       project = { ...found, jobStatusLabel }
@@ -415,9 +421,16 @@ export default async function ProjectSummaryPage({
           </p>
         </div>
 
-        <div className="mb-4 sm:mb-5">
-          <ProjectEmailAddressCard projectId={id} compact />
-        </div>
+        {projectTextPhoneNumber && (
+          <div className="mb-4 sm:mb-5">
+            <ProjectCommunicationInstructions
+              projectId={id}
+              projectNumber={project?.projectNumber ?? null}
+              textPhoneNumber={projectTextPhoneNumber}
+              compact
+            />
+          </div>
+        )}
 
         <div className="mb-4 sm:mb-5">
           <Link

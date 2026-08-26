@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
 import { ProjectAudienceSwitcher } from "@/components/projects/project-audience-switcher"
-import { ProjectEmailAddressCard } from "@/components/projects/project-email-address-card"
+import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
@@ -692,7 +692,11 @@ function OwnerProjectPreview({
         )}
 
         {section === "overview" && (
-          <ProjectEmailAddressCard projectId={data.project.id} />
+          <ProjectCommunicationInstructions
+            projectId={data.project.id}
+            projectNumber={data.project.projectNumber}
+            textPhoneNumber={data.project.textPhoneNumber}
+          />
         )}
 
         {(section === "overview" || section === "updates") && (
@@ -962,7 +966,11 @@ export function ProjectAudiencePreview({
         )}
 
         {section === "overview" && (
-          <ProjectEmailAddressCard projectId={data.project.id} />
+          <ProjectCommunicationInstructions
+            projectId={data.project.id}
+            projectNumber={data.project.projectNumber}
+            textPhoneNumber={data.project.textPhoneNumber}
+          />
         )}
 
         {section === "overview" && (

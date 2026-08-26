@@ -44,6 +44,7 @@ import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
+import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
 import {
   isPortalVisibleRfqStatus,
   parsePortalRfqPayload,
@@ -189,6 +190,7 @@ export type ProjectAudiencePreview = {
     readonly id: string
     readonly name: string
     readonly projectNumber: string | null
+    readonly textPhoneNumber: string
     readonly address: string | null
     readonly clientName: string | null
     readonly projectManager: string | null
@@ -210,6 +212,7 @@ async function verifyProjectAccess(
   audience: ProjectAudience
 ): Promise<{
   readonly db: ReturnType<typeof getDb>
+  readonly env: unknown
   readonly organizationId: string
   readonly viewerIsInternal: boolean
   readonly viewer: {
@@ -249,6 +252,7 @@ async function verifyProjectAccess(
 
   return {
     db,
+    env,
     organizationId: project.organizationId,
     viewerIsInternal,
     viewer: {
@@ -297,7 +301,7 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
-  const { db, organizationId, viewerIsInternal, viewer } =
+  const { db, env, organizationId, viewerIsInternal, viewer } =
     await verifyProjectAccess(projectId, audience)
 
   const [project] = await db
@@ -825,6 +829,7 @@ export async function getProjectAudiencePreview(
       id: project.id,
       name: project.name,
       projectNumber: project.projectNumber,
+      textPhoneNumber: gotoSenderNumberForProject(env, project.projectNumber),
       address: project.address,
       clientName: project.clientName,
       projectManager: project.projectManager,
