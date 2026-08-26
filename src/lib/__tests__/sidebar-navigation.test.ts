@@ -1,6 +1,25 @@
 import { expect, test } from "vitest"
 
-import { getSidebarContextMode } from "@/lib/sidebar-navigation"
+import {
+  getProjectTargetSection,
+  getSidebarContextMode,
+} from "@/lib/sidebar-navigation"
+
+test("keeps the current project section when switching projects", () => {
+  expect(
+    getProjectTargetSection(
+      "/dashboard/projects/project-123/estimate/compare",
+    ),
+  ).toBe("estimate")
+  expect(
+    getProjectTargetSection(
+      "/dashboard/projects/project-123/preview/owner",
+    ),
+  ).toBe("preview/owner")
+  expect(getProjectTargetSection("/dashboard/projects/project-123")).toBe(
+    undefined,
+  )
+})
 
 test("keeps the main grouped menu when a project is selected", () => {
   expect(

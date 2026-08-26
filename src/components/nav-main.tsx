@@ -181,9 +181,11 @@ function NavLink({
 function NavSubmenu({
   item,
   activeUrl,
+  header,
 }: {
   readonly item: NavGroupItem
   readonly activeUrl: string | null
+  readonly header?: React.ReactNode
 }) {
   const { state, setOpen } = useSidebar()
   const hasActiveItem = flattenNavLinks(item.items).some(
@@ -213,6 +215,7 @@ function NavSubmenu({
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
+          {header}
           <SidebarMenuSub>
             {item.items.map((child) => (
               child.kind === "subgroup" ? (
@@ -302,8 +305,10 @@ function NavNestedSubmenu({
 
 export function NavMain({
   items,
+  groupHeaders,
 }: {
   readonly items: ReadonlyArray<NavItem>
+  readonly groupHeaders?: Readonly<Record<string, React.ReactNode>>
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -326,6 +331,7 @@ export function NavMain({
                 key={item.title}
                 item={item}
                 activeUrl={activeUrl}
+                header={groupHeaders?.[item.title]}
               />
             ) : (
               <NavLink

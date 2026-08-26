@@ -45,13 +45,20 @@ import { NavFiles } from "@/components/nav-files"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
-import { useActiveProject } from "@/components/project-list-provider"
+import {
+  useActiveProject,
+  useProjectList,
+} from "@/components/project-list-provider"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import type { SidebarUser } from "@/lib/auth"
-import { getSidebarContextMode } from "@/lib/sidebar-navigation"
+import {
+  getProjectTargetSection,
+  getSidebarContextMode,
+} from "@/lib/sidebar-navigation"
 import {
   Sidebar,
   SidebarContent,
@@ -140,6 +147,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "All Projects",
         url: "/dashboard/projects",
         icon: IconFolder,
+      },
+      {
+        kind: "link",
+        title: "Overview",
+        url: "/dashboard/projects/select",
+        icon: IconHome2,
+        projectPath: "",
       },
       {
         kind: "subgroup",
@@ -420,9 +434,11 @@ function resolveNavLink(
       typeof item.projectPath === "string"
         ? activeProjectId
           ? `/dashboard/projects/${activeProjectId}${item.projectPath}`
-          : `/dashboard/projects/select?target=${encodeURIComponent(
-              item.projectPath.replace(/^\//, ""),
-            )}`
+          : item.projectPath.length === 0
+            ? "/dashboard/projects/select"
+            : `/dashboard/projects/select?target=${encodeURIComponent(
+                item.projectPath.replace(/^\//, ""),
+              )}`
         : item.url,
     icon: item.icon,
   }
@@ -547,7 +563,9 @@ function SidebarNav({
   const { state } = useSidebar()
   const isExpanded = state === "expanded"
   const { activeProjectId } = useActiveProject()
+  const projects = useProjectList()
   const mode = getSidebarContextMode(pathname, isExpanded)
+  const projectTargetSection = getProjectTargetSection(pathname)
 
   const projectScopedPlanningNav = PLANNING_NAV.map((item) =>
     item.title === "To-Dos" && activeProjectId
@@ -600,7 +618,22 @@ function SidebarNav({
         </React.Suspense>
       )}
       {mode === "main" && (
-        <NavMain items={navMain} />
+        <NavMain
+          items={navMain}
+          groupHeaders={{
+            Projects: (
+              <div className="px-2 pt-1 pb-2">
+                <ProjectQuickSwitcher
+                  projects={projects}
+                  currentProjectId={activeProjectId}
+                  targetSection={projectTargetSection}
+                  placeholder="Select project..."
+                  className="h-9 w-full border-sidebar-border/70 bg-sidebar-accent/35 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                />
+              </div>
+            ),
+          }}
+        />
       )}
     </div>
   )
