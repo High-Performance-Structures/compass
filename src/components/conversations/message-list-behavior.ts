@@ -39,3 +39,10 @@ export function isAtNewestEdge(
 ): boolean {
   return scrollHeight - (scrollTop + clientHeight) <= threshold
 }
+
+export function isHistoryRequestCurrent(
+  requestId: number,
+  currentRequestId: number,
+): boolean {
+  return requestId === currentRequestId
+}
