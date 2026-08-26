@@ -13,6 +13,7 @@ import { useRealtimeChannel } from "@/hooks/use-realtime-channel"
 import {
   getNewestScrollTop,
   getPreservedScrollTop,
+  isHistoryRequestCurrent,
   isAtNewestEdge,
 } from "./message-list-behavior"
 
@@ -122,6 +123,9 @@ export function MessageList({
 
   const scrollToNewest = React.useCallback(
     (behavior: ScrollBehavior): void => {
+      historyRequestIdRef.current += 1
+      prependScrollRef.current = null
+      setLoading(false)
       const viewport = getScrollViewport()
       if (viewport) {
         viewport.scrollTo({
@@ -139,6 +143,7 @@ export function MessageList({
     historyRequestIdRef.current += 1
     prependScrollRef.current = null
     pendingNewestScrollRef.current = false
+    setLoading(false)
     setAtNewestEdge(true)
     setMessages([...initialMessages].reverse())
     setHasMore(true)
@@ -212,8 +217,7 @@ export function MessageList({
       cursor: oldestMessage.createdAt,
     })
 
-    if (requestId !== historyRequestIdRef.current) {
-      setLoading(false)
+    if (!isHistoryRequestCurrent(requestId, historyRequestIdRef.current)) {
       return
     }
 
