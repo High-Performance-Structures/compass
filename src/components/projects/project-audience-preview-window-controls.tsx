@@ -3,10 +3,15 @@
 import { IconX } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
+import { closeProjectAudiencePreviewWindow } from "@/lib/project-audience-preview-window"
 
-export function ProjectAudiencePreviewWindowControls(): React.ReactElement {
+export function ProjectAudiencePreviewWindowControls({
+  fallbackHref,
+}: {
+  readonly fallbackHref: string
+}): React.ReactElement {
   function closePreview(): void {
-    window.close()
+    closeProjectAudiencePreviewWindow(fallbackHref)
   }
 
   return (

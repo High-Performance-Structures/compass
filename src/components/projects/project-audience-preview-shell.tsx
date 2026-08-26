@@ -310,7 +310,9 @@ export function ProjectAudiencePreviewShell({
                     Sub/vendor
                   </Link>
                 </Button>
-                <ProjectAudiencePreviewWindowControls />
+                <ProjectAudiencePreviewWindowControls
+                  fallbackHref={`/dashboard/projects/${encodeURIComponent(projectId)}`}
+                />
               </div>
             </div>
           </div>

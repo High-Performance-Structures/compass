@@ -13,6 +13,19 @@ type PreviewWindow = {
   focus: () => void
 }
 
+type PreviewWindowController = {
+  readonly closed: boolean
+  close: () => void
+  readonly location: {
+    replace: (href: string) => void
+  }
+}
+
+type PreviewCloseScheduler = (
+  callback: () => void,
+  delayMilliseconds: number
+) => void
+
 type PreviewWindowOpener = (
   href: string,
   target: string,
@@ -40,4 +53,28 @@ export function openProjectAudiencePreviewWindow(
   if (!previewWindow) return false
   previewWindow.focus()
   return true
+}
+
+export function closeProjectAudiencePreviewWindow(
+  fallbackHref: string,
+  targetWindow?: PreviewWindowController,
+  scheduleFallback?: PreviewCloseScheduler
+): void {
+  const previewWindow =
+    targetWindow ?? (typeof window === "undefined" ? null : window)
+  if (!previewWindow) return
+
+  previewWindow.close()
+
+  const schedule =
+    scheduleFallback ??
+    ((callback: () => void, delayMilliseconds: number): void => {
+      window.setTimeout(callback, delayMilliseconds)
+    })
+
+  // Direct sidebar navigation can place preview mode in a normal browser tab,
+  // which browsers refuse to close. Replace that tab with the internal project.
+  schedule(() => {
+    if (!previewWindow.closed) previewWindow.location.replace(fallbackHref)
+  }, 100)
 }
