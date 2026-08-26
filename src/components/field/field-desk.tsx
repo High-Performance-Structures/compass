@@ -17,6 +17,7 @@ import {
 import { useChatPanel } from "@/components/agent/chat-provider"
 import { CherishRecognitionTicker } from "@/components/cherish/cherish-recognition-ticker"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -70,6 +71,7 @@ export function FieldDesk({
   const [responseType, setResponseType] =
     useState<CherishPulseResponseType>("shoutout")
   const [message, setMessage] = useState("")
+  const [anonymous, setAnonymous] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -114,12 +116,14 @@ export function FieldDesk({
         cherishValue,
         responseType,
         message: trimmedMessage,
+        anonymous,
       }),
     )
   }
 
   function resetForm(): void {
     setMessage("")
+    setAnonymous(false)
     setFeedback(null)
   }
 
@@ -157,6 +161,7 @@ export function FieldDesk({
           message: trimmedMessage,
           source: "compass_mobile",
           clientSubmissionId: submissionId,
+          anonymous,
         })
         if (!result.success) {
           setFeedback(result.error)
@@ -165,9 +170,11 @@ export function FieldDesk({
 
         resetForm()
         setFeedback(
-          responseType === "concern"
-            ? "Saved privately for leadership review."
-            : "Saved to the CHERISH review queue.",
+          anonymous
+            ? "Saved anonymously to the CHERISH review queue."
+            : responseType === "concern"
+              ? "Saved privately for leadership review."
+              : "Saved to the CHERISH review queue.",
         )
       } catch {
         if (queueCherishResponse(trimmedMessage, submissionId)) {
@@ -322,6 +329,22 @@ export function FieldDesk({
           className="min-h-28 resize-y"
           maxLength={1_200}
         />
+        <label className="mt-3 flex items-start gap-3 border-y py-3 text-sm">
+          <Checkbox
+            checked={anonymous}
+            onCheckedChange={(checked) => setAnonymous(checked === true)}
+            aria-describedby="field-cherish-anonymous-description"
+          />
+          <span>
+            <span className="block font-medium">Submit anonymously</span>
+            <span
+              id="field-cherish-anonymous-description"
+              className="mt-0.5 block text-muted-foreground"
+            >
+              Your name will not appear in review or team recognition.
+            </span>
+          </span>
+        </label>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <p
             className={cn(

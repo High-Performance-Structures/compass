@@ -69,6 +69,7 @@ describe("field offline outbox", () => {
       cherishValue: "Integrity",
       responseType: "concern",
       message: "Please review this privately.",
+      anonymous: true,
       createdAt: new Date().toISOString(),
     }
 
@@ -86,9 +87,11 @@ describe("field offline outbox", () => {
       cherishValue: "Integrity",
       responseType: "concern",
       message: "Please review this privately.",
+      anonymous: true,
     })
 
     expect(item.id).toBe(id)
+    expect(item.anonymous).toBe(true)
   })
 
   it("rejects malformed items and recovers from corrupt storage", () => {

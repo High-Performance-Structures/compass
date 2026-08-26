@@ -61,6 +61,9 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   }),
   submittedByName: text("submitted_by_name"),
   submittedByEmail: text("submitted_by_email"),
+  isAnonymous: integer("is_anonymous", { mode: "boolean" })
+    .notNull()
+    .default(false),
   weekStart: text("week_start").notNull(),
   cherishValue: text("cherish_value").notNull(),
   responseType: text("response_type").notNull(),

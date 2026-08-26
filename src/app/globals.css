@@ -1355,6 +1355,7 @@ em-emoji-picker {
 }
 
 .cherish-recognition-track {
+  padding-left: 100%;
   animation: cherish-recognition-scroll 42s linear infinite;
 }
 
@@ -1365,6 +1366,7 @@ em-emoji-picker {
 @media (prefers-reduced-motion: reduce) {
   .cherish-recognition-track {
     animation: none;
+    padding-left: 0;
   }
 
   .cherish-recognition-marquee > div:last-child {

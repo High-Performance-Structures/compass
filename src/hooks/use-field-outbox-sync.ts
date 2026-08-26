@@ -108,6 +108,7 @@ export function useFieldOutboxSync(input: {
         message: pendingItem.message,
         source: "compass_mobile",
         clientSubmissionId: pendingItem.id,
+        anonymous: pendingItem.anonymous,
       })
       completed = result.success
     }

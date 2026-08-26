@@ -8,6 +8,7 @@ import {
   type CherishValue,
 } from "@/app/actions/cherish-pulse"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -43,6 +44,7 @@ export function CherishFeedbackForm(): React.ReactElement {
   const [responseType, setResponseType] =
     useState<CherishPulseResponseType>("shoutout")
   const [message, setMessage] = useState("")
+  const [anonymous, setAnonymous] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -65,6 +67,7 @@ export function CherishFeedbackForm(): React.ReactElement {
         responseType,
         message: trimmedMessage,
         source: "compass_dashboard",
+        anonymous,
       })
 
       if (!result.success) {
@@ -73,10 +76,13 @@ export function CherishFeedbackForm(): React.ReactElement {
       }
 
       setMessage("")
+      setAnonymous(false)
       setFeedback(
-        responseType === "concern"
-          ? "Saved privately for leadership review."
-          : "Saved to the CHERISH review queue.",
+        anonymous
+          ? "Saved anonymously to the CHERISH review queue."
+          : responseType === "concern"
+            ? "Saved privately for leadership review."
+            : "Saved to the CHERISH review queue.",
       )
     })
   }
@@ -157,6 +163,24 @@ export function CherishFeedbackForm(): React.ReactElement {
           maxLength={1_200}
         />
       </div>
+
+      <label className="flex items-start gap-3 border-y py-3 text-sm">
+        <Checkbox
+          checked={anonymous}
+          onCheckedChange={(checked) => setAnonymous(checked === true)}
+          aria-describedby="cherish-anonymous-description"
+        />
+        <span>
+          <span className="block font-medium">Submit anonymously</span>
+          <span
+            id="cherish-anonymous-description"
+            className="mt-0.5 block text-muted-foreground"
+          >
+            Your name will not appear in Executive Admin review, the ticker,
+            or Field App recognition.
+          </span>
+        </span>
+      </label>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
         <p

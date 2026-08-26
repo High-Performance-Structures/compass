@@ -16,6 +16,7 @@ const requestSchema = z.object({
   cherishValue: cherishValueSchema,
   responseType: cherishResponseTypeSchema,
   message: z.string().trim().min(3).max(1_200),
+  anonymous: z.boolean().default(false),
 })
 
 export async function GET(): Promise<Response> {
@@ -66,6 +67,7 @@ export async function POST(request: Request): Promise<Response> {
       message: parsed.data.message,
       source: "compass_mobile",
       clientSubmissionId: parsed.data.id,
+      anonymous: parsed.data.anonymous,
     })
 
     return NextResponse.json(result, { status: result.success ? 200 : 403 })
