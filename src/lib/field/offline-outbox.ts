@@ -16,6 +16,7 @@ export type FieldOutboxCherishPulse = {
   readonly cherishValue: CherishValue
   readonly responseType: CherishPulseResponseType
   readonly message: string
+  readonly anonymous: boolean
   readonly createdAt: string
 }
 
@@ -112,6 +113,7 @@ function parseItem(value: unknown): FieldOutboxItem | null {
       cherishValue: value.cherishValue,
       responseType: value.responseType,
       message: value.message,
+      anonymous: value.anonymous === true,
       createdAt: value.createdAt,
     }
   }
@@ -228,6 +230,7 @@ export function createCherishPulseOutboxItem(input: {
   readonly cherishValue: CherishValue
   readonly responseType: CherishPulseResponseType
   readonly message: string
+  readonly anonymous: boolean
 }): FieldOutboxCherishPulse {
   return {
     id: input.id ?? crypto.randomUUID(),
@@ -235,6 +238,7 @@ export function createCherishPulseOutboxItem(input: {
     cherishValue: input.cherishValue,
     responseType: input.responseType,
     message: input.message.trim(),
+    anonymous: input.anonymous,
     createdAt: new Date().toISOString(),
   }
 }

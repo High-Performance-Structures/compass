@@ -146,6 +146,10 @@ button { cursor: pointer; }
 .cherish-recognition small, .cherish-recognition footer { color: var(--muted); font-size: 11px; }
 .cherish-recognition p { margin: 8px 0; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
 .cherish-stream-status { margin: 0; padding: 24px 0; border-bottom: 1px dashed var(--line); color: var(--muted); text-align: center; font-size: 13px; }
+.cherish-anonymous { display: flex; align-items: flex-start; gap: 10px; padding: 12px 0; border-block: 1px solid var(--line); font-size: 13px; }
+.cherish-anonymous input { margin-top: 2px; }
+.cherish-anonymous span { display: grid; gap: 2px; }
+.cherish-anonymous small { color: var(--muted); line-height: 1.4; }
 .profile-list { margin: 0; }
 .profile-list div { display: grid; grid-template-columns: 6rem 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .profile-list dt { color: var(--muted); }

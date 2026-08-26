@@ -135,6 +135,7 @@ export const fieldCherishRecognitionSchema = z.object({
   cherishValue: cherishValueSchema,
   responseType: z.enum(["shoutout", "win"]),
   message: z.string(),
+  isAnonymous: z.boolean().default(false),
   submittedByName: z.string().nullable(),
   createdAt: z.string(),
 })
@@ -165,6 +166,7 @@ export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
     cherishValue: cherishValueSchema,
     responseType: cherishResponseTypeSchema,
     message: z.string().trim().min(3).max(1_200),
+    anonymous: z.boolean().default(false),
     createdAt: z.string(),
   }),
 ])

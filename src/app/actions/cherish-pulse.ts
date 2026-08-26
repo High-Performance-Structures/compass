@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -42,6 +42,7 @@ export type CherishPulseReviewItem = {
   readonly source: CherishPulseSource
   readonly visibility: CherishPulseVisibility
   readonly reviewStatus: CherishPulseReviewStatus
+  readonly isAnonymous: boolean
   readonly submittedByName: string | null
   readonly submittedByEmail: string | null
   readonly weekStart: string
@@ -54,6 +55,11 @@ export type SubmitCherishPulseInput = {
   readonly message: string
   readonly source?: CherishPulseSource
   readonly clientSubmissionId?: string
+  readonly anonymous?: boolean
+}
+
+export type SearchCherishPulseArchiveInput = {
+  readonly query?: string
 }
 
 export type ReviewCherishPulseInput = {
@@ -151,6 +157,7 @@ export async function submitCherishPulseResponse(
           source: cherishPulseResponses.source,
           visibility: cherishPulseResponses.visibility,
           reviewStatus: cherishPulseResponses.reviewStatus,
+          isAnonymous: cherishPulseResponses.isAnonymous,
           submittedByName: cherishPulseResponses.submittedByName,
           submittedByEmail: cherishPulseResponses.submittedByEmail,
           weekStart: cherishPulseResponses.weekStart,
@@ -177,6 +184,8 @@ export async function submitCherishPulseResponse(
 
     const now = new Date().toISOString()
     const visibility = visibilityForType(input.responseType)
+    const isAnonymous = input.anonymous === true
+    const submittedByName = nameForUser(user)
     const item: CherishPulseReviewItem = {
       id: clientSubmissionId ?? crypto.randomUUID(),
       cherishValue: input.cherishValue,
@@ -185,8 +194,9 @@ export async function submitCherishPulseResponse(
       source,
       visibility,
       reviewStatus: "needs_review",
-      submittedByName: nameForUser(user),
-      submittedByEmail: user.email,
+      isAnonymous,
+      submittedByName: isAnonymous ? null : submittedByName,
+      submittedByEmail: isAnonymous ? null : user.email,
       weekStart: weekStartForDate(new Date()),
       createdAt: now,
     }
@@ -197,8 +207,11 @@ export async function submitCherishPulseResponse(
         id: item.id,
         organizationId,
         submittedBy: user.id,
-        submittedByName: item.submittedByName,
-        submittedByEmail: item.submittedByEmail,
+        // Keep ownership for audit/recovery while masking it from every
+        // user-facing query when the submitter asks to be anonymous.
+        submittedByName,
+        submittedByEmail: user.email,
+        isAnonymous,
         weekStart: item.weekStart,
         cherishValue: item.cherishValue,
         responseType: item.responseType,
@@ -260,6 +273,7 @@ export async function getCherishPulseReviewQueue(): Promise<
         source: cherishPulseResponses.source,
         visibility: cherishPulseResponses.visibility,
         reviewStatus: cherishPulseResponses.reviewStatus,
+        isAnonymous: cherishPulseResponses.isAnonymous,
         submittedByName: cherishPulseResponses.submittedByName,
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
@@ -321,6 +335,7 @@ export async function getCherishPulseTeamStream(): Promise<
         source: cherishPulseResponses.source,
         visibility: cherishPulseResponses.visibility,
         reviewStatus: cherishPulseResponses.reviewStatus,
+        isAnonymous: cherishPulseResponses.isAnonymous,
         submittedByName: cherishPulseResponses.submittedByName,
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
@@ -386,6 +401,7 @@ export async function getCherishPulseLeadershipStream(): Promise<
         source: cherishPulseResponses.source,
         visibility: cherishPulseResponses.visibility,
         reviewStatus: cherishPulseResponses.reviewStatus,
+        isAnonymous: cherishPulseResponses.isAnonymous,
         submittedByName: cherishPulseResponses.submittedByName,
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
@@ -416,6 +432,105 @@ export async function getCherishPulseLeadershipStream(): Promise<
         error instanceof Error
           ? error.message
           : "Unable to load private CHERISH concerns.",
+    }
+  }
+}
+
+export async function searchCherishPulseArchive(
+  input: SearchCherishPulseArchiveInput = {},
+): Promise<ActionResult<readonly CherishPulseReviewItem[]>> {
+  try {
+    const user = await requireAuth()
+    if (!canUseExecutiveAdmin(user)) {
+      return {
+        success: false,
+        error: "Executive Admin access is required to search CHERISH archives.",
+      }
+    }
+
+    const query = input.query?.trim().toLocaleLowerCase() ?? ""
+    if (query.length > 100) {
+      return {
+        success: false,
+        error: "Keep archive searches under 100 characters.",
+      }
+    }
+
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) {
+      return {
+        success: false,
+        error: "Compass storage is not available right now.",
+      }
+    }
+
+    const archiveSearch = query.length > 0
+      ? or(
+          sql`instr(lower(${cherishPulseResponses.message}), ${query}) > 0`,
+          sql`instr(lower(${cherishPulseResponses.cherishValue}), ${query}) > 0`,
+          sql`instr(lower(${cherishPulseResponses.responseType}), ${query}) > 0`,
+          sql`instr(
+            CASE ${cherishPulseResponses.responseType}
+              WHEN 'shoutout' THEN 'team shoutout'
+              WHEN 'win' THEN 'project win'
+              WHEN 'concern' THEN 'private concern'
+              ELSE ''
+            END,
+            ${query}
+          ) > 0`,
+          sql`instr(lower(${cherishPulseResponses.source}), ${query}) > 0`,
+          and(
+            eq(cherishPulseResponses.isAnonymous, false),
+            or(
+              sql`instr(lower(coalesce(${cherishPulseResponses.submittedByName}, '')), ${query}) > 0`,
+              sql`instr(lower(coalesce(${cherishPulseResponses.submittedByEmail}, '')), ${query}) > 0`,
+            ),
+          ),
+        )
+      : undefined
+
+    const db = getDb(env.DB)
+    const rows = await db
+      .select({
+        id: cherishPulseResponses.id,
+        cherishValue: cherishPulseResponses.cherishValue,
+        responseType: cherishPulseResponses.responseType,
+        message: cherishPulseResponses.message,
+        source: cherishPulseResponses.source,
+        visibility: cherishPulseResponses.visibility,
+        reviewStatus: cherishPulseResponses.reviewStatus,
+        isAnonymous: cherishPulseResponses.isAnonymous,
+        submittedByName: cherishPulseResponses.submittedByName,
+        submittedByEmail: cherishPulseResponses.submittedByEmail,
+        weekStart: cherishPulseResponses.weekStart,
+        createdAt: cherishPulseResponses.createdAt,
+      })
+      .from(cherishPulseResponses)
+      .where(
+        and(
+          eq(cherishPulseResponses.organizationId, organizationId),
+          eq(cherishPulseResponses.reviewStatus, "archived"),
+          archiveSearch,
+        ),
+      )
+      .orderBy(
+        desc(cherishPulseResponses.reviewedAt),
+        desc(cherishPulseResponses.createdAt),
+      )
+      .limit(100)
+
+    return {
+      success: true,
+      data: rows.map(rowToReviewItem),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to search the CHERISH archive.",
     }
   }
 }
@@ -570,11 +685,13 @@ function rowToReviewItem(row: {
   readonly source: string
   readonly visibility: string
   readonly reviewStatus: string
+  readonly isAnonymous: boolean
   readonly submittedByName: string | null
   readonly submittedByEmail: string | null
   readonly weekStart: string
   readonly createdAt: string
 }): CherishPulseReviewItem {
+  const isAnonymous = row.isAnonymous
   return {
     id: row.id,
     cherishValue: normalizeCherishValue(row.cherishValue),
@@ -583,8 +700,9 @@ function rowToReviewItem(row: {
     source: normalizeCherishPulseSource(row.source),
     visibility: normalizeVisibility(row.visibility),
     reviewStatus: normalizeReviewStatus(row.reviewStatus),
-    submittedByName: row.submittedByName,
-    submittedByEmail: row.submittedByEmail,
+    isAnonymous,
+    submittedByName: isAnonymous ? null : row.submittedByName,
+    submittedByEmail: isAnonymous ? null : row.submittedByEmail,
     weekStart: row.weekStart,
     createdAt: row.createdAt,
   }

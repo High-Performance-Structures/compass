@@ -21,7 +21,6 @@ describe("fieldOutboxSchema", () => {
 
     expect(result.success).toBe(true)
     if (!result.success) return
-
     expect(result.data[0]).toMatchObject({
       remoteDailyLogId: null,
       attachments: [],
@@ -41,6 +40,8 @@ describe("fieldOutboxSchema", () => {
     ])
 
     expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data[0]).toMatchObject({ anonymous: false })
   })
 })
 
@@ -51,6 +52,7 @@ describe("fieldCherishRecognitionSchema", () => {
       cherishValue: "Reliability",
       message: "Thank you for keeping the delivery moving.",
       submittedByName: "Martine",
+      isAnonymous: false,
       createdAt: "2026-08-24T12:00:00.000Z",
     }
 

@@ -25,7 +25,7 @@ export function CherishRecognitionTicker({
       </div>
       <div className="min-w-0 flex-1 overflow-hidden">
         <div
-          className={`flex w-max items-center gap-8 pr-8${items.length > 1 ? " cherish-recognition-track" : ""}`}
+          className="cherish-recognition-track flex w-max items-center gap-8 pr-8"
         >
           {items.map((item) => (
             <p key={item.id} className="max-w-[42rem] shrink-0 text-sm">
@@ -34,7 +34,10 @@ export function CherishRecognitionTicker({
               </strong>
               {item.message}
               <span className="ml-2 text-xs text-muted-foreground">
-                — {item.submittedByName ?? "Team member"}
+                —{" "}
+                {item.isAnonymous
+                  ? "Anonymous"
+                  : item.submittedByName ?? "Team member"}
               </span>
             </p>
           ))}

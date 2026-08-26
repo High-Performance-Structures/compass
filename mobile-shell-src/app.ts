@@ -151,6 +151,7 @@ let pushSetupStarted = false
 let cherishValue: FieldCherishValue = "Reliability"
 let cherishResponseType: FieldCherishResponseType = "shoutout"
 let cherishMessage = ""
+let cherishAnonymous = false
 let cherishFeedback = ""
 let syncingCherish = false
 let cherishRecognitions: FieldCherishRecognition[] = []
@@ -299,7 +300,7 @@ function todayView(): string {
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
   const latestRecognition = cherishRecognitions[0]
   const cherishSpotlight = online && latestRecognition
-    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(latestRecognition.submittedByName ?? "Team member")}</small></button>`
+    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
     : ""
   return cherishSpotlight + sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
@@ -494,7 +495,7 @@ function cherishView(): string {
   const recognitionRows = cherishRecognitions
     .map(
       (item) =>
-        `<article class="cherish-recognition"><div><span>${escapeHtml(item.cherishValue)}</span><small>${item.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(shortDate(item.createdAt))}</small></div><p>${escapeHtml(item.message)}</p><footer>Shared by ${escapeHtml(item.submittedByName ?? "a team member")}</footer></article>`,
+        `<article class="cherish-recognition"><div><span>${escapeHtml(item.cherishValue)}</span><small>${item.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(shortDate(item.createdAt))}</small></div><p>${escapeHtml(item.message)}</p><footer>${item.isAnonymous ? "Shared anonymously" : `Shared by ${escapeHtml(item.submittedByName ?? "a team member")}`}</footer></article>`,
     )
     .join("")
   const recognitionStream = `<section class="cherish-stream">${sectionHead("Team recognition", "Approved shoutouts and project wins from across HPS.")}${loadingCherishRecognitions ? `<p class="cherish-stream-status">Loading team recognition...</p>` : recognitionRows ? `<div class="cherish-recognition-list">${recognitionRows}</div>` : `<p class="cherish-stream-status">${escapeHtml(cherishRecognitionError || (online ? "No approved recognition yet." : "Connect to load approved recognition."))}</p>`}</section>`
@@ -510,6 +511,7 @@ function cherishView(): string {
       <label class="field">What would you like to share?
         <textarea name="message" minlength="3" maxlength="1200" required placeholder="Add a little detail">${escapeHtml(cherishMessage)}</textarea>
       </label>
+      <label class="cherish-anonymous"><input name="anonymous" type="checkbox" ${cherishAnonymous ? "checked" : ""}> <span><strong>Submit anonymously</strong><small>Your name will not appear in review or team recognition.</small></span></label>
       ${cherishFeedback ? `<p class="${cherishFeedback.startsWith("Saved") || cherishFeedback.startsWith("Synced") ? "message-success" : "attachment-error"}" role="status">${escapeHtml(cherishFeedback)}</p>` : ""}
       <button class="primary" type="submit" ${syncingCherish ? "disabled" : ""}>${syncingCherish ? "Syncing" : online ? "Save and sync" : "Save for sync"}</button>
     </form></section>`
@@ -669,6 +671,9 @@ function bindEvents(): void {
   })
   document.querySelector<HTMLTextAreaElement>("#cherish-form textarea[name='message']")?.addEventListener("input", (event) => {
     if (event.currentTarget instanceof HTMLTextAreaElement) cherishMessage = event.currentTarget.value
+  })
+  document.querySelector<HTMLInputElement>("#cherish-form input[name='anonymous']")?.addEventListener("change", (event) => {
+    if (event.currentTarget instanceof HTMLInputElement) cherishAnonymous = event.currentTarget.checked
   })
   document.querySelector<HTMLButtonElement>("#native-sign-in")?.addEventListener("click", () => void beginNativeSignIn())
   document.querySelector<HTMLButtonElement>("#password-sign-in")?.addEventListener("click", beginPasswordSignIn)
@@ -1132,16 +1137,19 @@ async function queueCherish(event: SubmitEvent): Promise<void> {
 
   cherishValue = parsedValue.data
   cherishResponseType = parsedResponseType.data
+  cherishAnonymous = form.get("anonymous") === "on"
   outbox.push({
     id: crypto.randomUUID(),
     kind: "cherish_pulse",
     cherishValue,
     responseType: cherishResponseType,
     message,
+    anonymous: cherishAnonymous,
     createdAt: new Date().toISOString(),
   })
   await writeJson(OUTBOX_KEY, outbox)
   cherishMessage = ""
+  cherishAnonymous = false
   cherishFeedback = online
     ? "Saved on this device. Syncing now."
     : "Saved on this device. It will sync when service returns."
@@ -1168,6 +1176,7 @@ async function syncCherishOutbox(): Promise<void> {
             cherishValue: item.cherishValue,
             responseType: item.responseType,
             message: item.message,
+            anonymous: item.anonymous,
           },
           responseType: "json",
         })

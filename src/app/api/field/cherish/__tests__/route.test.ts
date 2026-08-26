@@ -10,7 +10,7 @@ vi.mock("@/app/actions/cherish-pulse", () => ({
   submitCherishPulseResponse: mocks.submitCherishPulseResponse,
 }))
 
-import { GET } from "../route"
+import { GET, POST } from "../route"
 
 describe("GET /api/field/cherish", () => {
   beforeEach(() => {
@@ -29,6 +29,7 @@ describe("GET /api/field/cherish", () => {
           source: "compass_dashboard",
           visibility: "team",
           reviewStatus: "approved",
+          isAnonymous: true,
           submittedByName: "Martine",
           submittedByEmail: "martine@example.com",
           weekStart: "2026-08-24",
@@ -42,6 +43,7 @@ describe("GET /api/field/cherish", () => {
           source: "compass_dashboard",
           visibility: "private",
           reviewStatus: "approved",
+          isAnonymous: false,
           submittedByName: "Team member",
           submittedByEmail: "private@example.com",
           weekStart: "2026-08-24",
@@ -63,7 +65,8 @@ describe("GET /api/field/cherish", () => {
           cherishValue: "Excellence",
           responseType: "win",
           message: "The team passed inspection on the first visit.",
-          submittedByName: "Martine",
+          isAnonymous: true,
+          submittedByName: null,
           createdAt: "2026-08-24T12:00:00.000Z",
         },
       ],
@@ -79,5 +82,37 @@ describe("GET /api/field/cherish", () => {
     const response = await GET()
 
     expect(response.status).toBe(403)
+  })
+})
+
+describe("POST /api/field/cherish", () => {
+  beforeEach(() => {
+    mocks.submitCherishPulseResponse.mockReset()
+  })
+
+  it("passes the anonymous choice through the authenticated Field API", async () => {
+    mocks.submitCherishPulseResponse.mockResolvedValue({
+      success: true,
+      data: { id: "d8bfa307-c18e-4317-a3ba-4e581a318a10" },
+    })
+
+    const response = await POST(
+      new Request("https://compass.example/api/field/cherish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: "d8bfa307-c18e-4317-a3ba-4e581a318a10",
+          cherishValue: "Honor",
+          responseType: "shoutout",
+          message: "Thank you for helping the team.",
+          anonymous: true,
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(mocks.submitCherishPulseResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ anonymous: true }),
+    )
   })
 })

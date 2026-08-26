@@ -9,6 +9,7 @@ type CherishRecognitionSource = {
   readonly cherishValue: FieldCherishValue
   readonly responseType: FieldCherishResponseType
   readonly message: string
+  readonly isAnonymous: boolean
   readonly submittedByName: string | null
   readonly createdAt: string
 }
@@ -29,7 +30,8 @@ export function toFieldCherishRecognitions(
             cherishValue: item.cherishValue,
             responseType: item.responseType,
             message: item.message,
-            submittedByName: item.submittedByName,
+            isAnonymous: item.isAnonymous,
+            submittedByName: item.isAnonymous ? null : item.submittedByName,
             createdAt: item.createdAt,
           },
         ],
