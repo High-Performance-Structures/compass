@@ -4,6 +4,7 @@ import {
   getMessageAlignmentClass,
   getNewestScrollTop,
   getPreservedScrollTop,
+  isHistoryRequestCurrent,
   isAtNewestEdge,
 } from "../message-list-behavior"
 
@@ -37,5 +38,10 @@ describe("message list behavior", () => {
     expect(
       isAtNewestEdge({ scrollTop: 576, clientHeight: 400, scrollHeight: 1_000 }, 24),
     ).toBe(true)
+  })
+
+  it("ignores history completions invalidated by newest navigation", () => {
+    expect(isHistoryRequestCurrent(4, 4)).toBe(true)
+    expect(isHistoryRequestCurrent(4, 5)).toBe(false)
   })
 })
