@@ -5,7 +5,41 @@ import {
   summarizeBuildertrendDailyLogRegisterImport,
 } from "../../scripts/lib/buildertrend-daily-log-register-import.mjs"
 
-function fixture() {
+type DailyLogRegisterFixture = {
+  organizationId: string
+  projectId: string
+  projectNumber: string
+  buildertrendJobId: string
+  capturedAt: string
+  sourceLabel: string
+  expectedExistingOperationalCount: number
+  existingMappings: Array<{
+    sourceId: string
+    existingDailyLogId: string
+    existingSourceSystem: string
+    existingSourceExternalId: string | null
+    method: string
+  }>
+  records: Array<{
+    sourceId: string
+    title: string
+    author: string
+    visibility: string[]
+    tags: string[]
+    weather: string[]
+    notes: string
+    rawText: string
+    displayedMedia: Array<{
+      fileName: string
+      previewUrl: string
+      testId: string
+    }>
+    documentNames: string[]
+    mediaCount: number
+  }>
+}
+
+function fixture(): DailyLogRegisterFixture {
   return {
     organizationId: "org-1",
     projectId: "project-1",
