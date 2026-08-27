@@ -16,6 +16,11 @@ import {
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import {
+  getExportExtension,
+  getExportMimeType,
+  isGoogleNativeFile,
+} from "@/lib/google/mapper"
+import {
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
@@ -154,7 +159,22 @@ export async function GET(
     const serviceAccountKey = parseServiceAccountKey(keyJson)
     const client = new DriveClient({ serviceAccountKey })
     const googleEmail = downloadUserEmail(env)
-    const response = await client.downloadFile(googleEmail, photo.driveFileId)
+    const exportMimeType = isGoogleNativeFile(photo.mimeType)
+      ? getExportMimeType(photo.mimeType)
+      : null
+    if (isGoogleNativeFile(photo.mimeType) && exportMimeType === null) {
+      return new Response("This Google file type cannot be downloaded", {
+        status: 415,
+      })
+    }
+    const response =
+      exportMimeType === null
+        ? await client.downloadFile(googleEmail, photo.driveFileId)
+        : await client.exportFile(
+            googleEmail,
+            photo.driveFileId,
+            exportMimeType
+          )
     if (!response.ok) {
       console.error("Audience photo download failed", {
         projectId,
@@ -166,10 +186,16 @@ export async function GET(
       })
     }
 
+    const responseMimeType = exportMimeType ?? photo.mimeType
+    const responseFileName =
+      exportMimeType === null
+        ? photo.fileName
+        : `${photo.fileName.replace(/\.[^.]+$/, "")}${getExportExtension(photo.mimeType)}`
+
     return new Response(response.body, {
       headers: {
-        "Content-Type": photo.mimeType,
-        "Content-Disposition": `${photo.mimeType.startsWith("image/") ? "inline" : "attachment"}; filename="${safeFileName(photo.fileName)}"`,
+        "Content-Type": responseMimeType,
+        "Content-Disposition": `${responseMimeType.startsWith("image/") ? "inline" : "attachment"}; filename="${safeFileName(responseFileName)}"`,
         "Cache-Control": "private, max-age=300",
         "X-Content-Type-Options": "nosniff",
       },
