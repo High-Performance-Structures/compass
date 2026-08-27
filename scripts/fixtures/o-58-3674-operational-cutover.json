@@ -10172,6 +10172,9 @@
         {
           "driveFileId": "18AEiWBed2msPc3x6DCc3E9Xxv0NgIN_U",
           "title": "PO 1541 original order form",
+          "fileName": "PO 1541 LaCasse Fox Blocks Order Form.xls",
+          "mimeType": "application/vnd.ms-excel",
+          "fileSize": 163328,
           "url": "https://docs.google.com/spreadsheets/d/18AEiWBed2msPc3x6DCc3E9Xxv0NgIN_U/edit?usp=drivesdk"
         }
       ]
@@ -10186,11 +10189,17 @@
         {
           "driveFileId": "15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE",
           "title": "Project Lead Tracking row 243 / PO 1541",
+          "fileName": "Project Lead Tracking",
+          "mimeType": "application/vnd.google-apps.spreadsheet",
+          "fileSize": 811261,
           "url": "https://docs.google.com/spreadsheets/d/15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE/edit#gid=1407034193&range=A243:O243"
         },
         {
           "driveFileId": "1_VZdtfLDb5LAD7TkSLserzdzcEPqBWjW",
           "title": "Archived PO order-tracking workbook",
+          "fileName": "NuTechPOs_and-orderTracking.xlsx",
+          "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "fileSize": 156187,
           "url": "https://docs.google.com/spreadsheets/d/1_VZdtfLDb5LAD7TkSLserzdzcEPqBWjW/edit"
         }
       ]
@@ -10205,11 +10214,17 @@
         {
           "driveFileId": "1xd2arVjekJxPhFdpZgCnUAekZhXIfIOe",
           "title": "Airlite acknowledgement 78145-EPS",
+          "fileName": "Airlite acknowledgement 78145-EPS.pdf",
+          "mimeType": "application/pdf",
+          "fileSize": 211441,
           "url": "https://drive.google.com/file/d/1xd2arVjekJxPhFdpZgCnUAekZhXIfIOe/view?usp=drivesdk"
         },
         {
           "driveFileId": "1xbkZje26rFQuDerUVXSVcZHzXmnKwVLy",
           "title": "Airlite acknowledgement 78146-EPS",
+          "fileName": "Airlite acknowledgement 78146-EPS.pdf",
+          "mimeType": "application/pdf",
+          "fileSize": 210755,
           "url": "https://drive.google.com/file/d/1xbkZje26rFQuDerUVXSVcZHzXmnKwVLy/view?usp=drivesdk"
         }
       ]
@@ -10224,6 +10239,9 @@
         {
           "driveFileId": "15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE",
           "title": "Project Lead Tracking row 243 / PO 1541",
+          "fileName": "Project Lead Tracking",
+          "mimeType": "application/vnd.google-apps.spreadsheet",
+          "fileSize": 811261,
           "url": "https://docs.google.com/spreadsheets/d/15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE/edit#gid=1407034193&range=A243:O243"
         }
       ]
@@ -10238,16 +10256,25 @@
         {
           "driveFileId": "15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE",
           "title": "Project Lead Tracking row 243 / PO 1541",
+          "fileName": "Project Lead Tracking",
+          "mimeType": "application/vnd.google-apps.spreadsheet",
+          "fileSize": 811261,
           "url": "https://docs.google.com/spreadsheets/d/15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE/edit#gid=1407034193&range=A243:O243"
         },
         {
           "driveFileId": "1xd2arVjekJxPhFdpZgCnUAekZhXIfIOe",
           "title": "Airlite acknowledgement 78145-EPS",
+          "fileName": "Airlite acknowledgement 78145-EPS.pdf",
+          "mimeType": "application/pdf",
+          "fileSize": 211441,
           "url": "https://drive.google.com/file/d/1xd2arVjekJxPhFdpZgCnUAekZhXIfIOe/view?usp=drivesdk"
         },
         {
           "driveFileId": "1xbkZje26rFQuDerUVXSVcZHzXmnKwVLy",
           "title": "Airlite acknowledgement 78146-EPS",
+          "fileName": "Airlite acknowledgement 78146-EPS.pdf",
+          "mimeType": "application/pdf",
+          "fileSize": 210755,
           "url": "https://drive.google.com/file/d/1xbkZje26rFQuDerUVXSVcZHzXmnKwVLy/view?usp=drivesdk"
         }
       ]
@@ -10262,11 +10289,17 @@
         {
           "driveFileId": "1aboejTppo9yh7Hu6RSrzH52ypJcL05YQ",
           "title": "Airlite invoice 189194-EPS",
+          "fileName": "Airlite invoice 189194-EPS.pdf",
+          "mimeType": "application/pdf",
+          "fileSize": 154893,
           "url": "https://drive.google.com/file/d/1aboejTppo9yh7Hu6RSrzH52ypJcL05YQ/view"
         },
         {
           "driveFileId": "1aXD9PbYrrmi_yNJuym4K9XxfFpgZEd--",
           "title": "Airlite invoice 189195-EPS",
+          "fileName": "Airlite invoice 189195-EPS.pdf",
+          "mimeType": "application/pdf",
+          "fileSize": 154085,
           "url": "https://drive.google.com/file/d/1aXD9PbYrrmi_yNJuym4K9XxfFpgZEd--/view"
         }
       ]
@@ -10281,6 +10314,9 @@
         {
           "driveFileId": "15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE",
           "title": "Project Lead Tracking row 243 / PO 1541",
+          "fileName": "Project Lead Tracking",
+          "mimeType": "application/vnd.google-apps.spreadsheet",
+          "fileSize": 811261,
           "url": "https://docs.google.com/spreadsheets/d/15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE/edit#gid=1407034193&range=A243:O243"
         }
       ]

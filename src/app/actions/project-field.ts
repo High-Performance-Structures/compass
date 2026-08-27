@@ -18,6 +18,7 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
+import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -1095,6 +1096,7 @@ export async function getProjectFieldSummary(
       workCompleted: dailyLogs.workCompleted,
       reviewStatus: dailyLogs.reviewStatus,
       isClientVisible: dailyLogs.isClientVisible,
+      tags: dailyLogs.tags,
       authorDisplayName: users.displayName,
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
@@ -1209,11 +1211,14 @@ export async function getProjectFieldSummary(
           workCompleted: latestLog.workCompleted,
           reviewStatus: latestLog.reviewStatus,
           isClientVisible: latestLog.isClientVisible,
-          authorName: displayName({
-            displayName: latestLog.authorDisplayName,
-            firstName: latestLog.authorFirstName,
-            lastName: latestLog.authorLastName,
-            email: latestLog.authorEmail,
+          authorName: dailyLogAuthorName({
+            compassAuthorName: displayName({
+              displayName: latestLog.authorDisplayName,
+              firstName: latestLog.authorFirstName,
+              lastName: latestLog.authorLastName,
+              email: latestLog.authorEmail,
+            }),
+            tags: latestLog.tags,
           }),
         }
       : null,
@@ -1351,6 +1356,7 @@ export async function getProjectDailyLogWorkspace(
       isClientVisible: dailyLogs.isClientVisible,
       reviewStatus: dailyLogs.reviewStatus,
       syncStatus: dailyLogs.syncStatus,
+      tags: dailyLogs.tags,
       authorDisplayName: users.displayName,
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
@@ -1548,11 +1554,14 @@ export async function getProjectDailyLogWorkspace(
       isClientVisible: row.isClientVisible,
       reviewStatus: row.reviewStatus,
       syncStatus: row.syncStatus,
-      authorName: displayName({
-        displayName: row.authorDisplayName,
-        firstName: row.authorFirstName,
-        lastName: row.authorLastName,
-        email: row.authorEmail,
+      authorName: dailyLogAuthorName({
+        compassAuthorName: displayName({
+          displayName: row.authorDisplayName,
+          firstName: row.authorFirstName,
+          lastName: row.authorLastName,
+          email: row.authorEmail,
+        }),
+        tags: row.tags,
       }),
       photos: photosByLogId.get(row.id) ?? [],
       scheduleItems: scheduleItemsByLogId.get(row.id) ?? [],
@@ -2236,6 +2245,7 @@ export async function getOwnerProjectUpdateDocument(
       notes: dailyLogs.notes,
       reviewStatus: dailyLogs.reviewStatus,
       isClientVisible: dailyLogs.isClientVisible,
+      tags: dailyLogs.tags,
       authorDisplayName: users.displayName,
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
@@ -2308,11 +2318,14 @@ export async function getOwnerProjectUpdateDocument(
       nextSteps: ownerFacingDailyLogNotes(
         normalizeDailyLogNotes(row.workCompleted, row.notes)
       ),
-      authorName: displayName({
-        displayName: row.authorDisplayName,
-        firstName: row.authorFirstName,
-        lastName: row.authorLastName,
-        email: row.authorEmail,
+      authorName: dailyLogAuthorName({
+        compassAuthorName: displayName({
+          displayName: row.authorDisplayName,
+          firstName: row.authorFirstName,
+          lastName: row.authorLastName,
+          email: row.authorEmail,
+        }),
+        tags: row.tags,
       }),
       reviewStatus: row.reviewStatus,
       isClientVisible: row.isClientVisible,

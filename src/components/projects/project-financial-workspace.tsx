@@ -402,7 +402,8 @@ export function ProjectFinancialWorkspace({
                         </Button>
                       )}
                       {item.type === "owner_pay_application" &&
-                        item.sourceRecordId && (
+                        item.sourceRecordId &&
+                        item.paymentBreakdown !== null && (
                           <Button
                             asChild
                             size="sm"

@@ -121,6 +121,14 @@ function validateFixture(input) {
     if (!Array.isArray(event.attachments) || event.attachments.length === 0) {
       throw new Error(`Procurement event ${sourceKey} requires a source attachment`)
     }
+    for (const attachment of event.attachments) {
+      requiredString(attachment.driveFileId, "procurement attachment Drive ID")
+      requiredString(attachment.fileName, "procurement attachment file name")
+      requiredString(attachment.mimeType, "procurement attachment MIME type")
+      if (!Number.isSafeInteger(attachment.fileSize) || attachment.fileSize < 1) {
+        throw new Error(`Invalid procurement attachment size for ${sourceKey}`)
+      }
+    }
     procurementKeys.add(sourceKey)
   }
 
@@ -319,7 +327,7 @@ export function generateO583674OperationalCutover(input) {
     for (const [index, attachment] of event.attachments.entries()) {
       const attachmentId = `fox-source-${fingerprint({ event: event.id, source: attachment.driveFileId }).slice(0, 24)}`
       statements.push(
-        `INSERT INTO daily_log_photos (id, project_id, daily_log_id, uploaded_by, source_system, source_external_id, file_name, file_size, mime_type, drive_file_id, drive_url, thumbnail_url, caption, captured_at, gps_lat, gps_lng, upload_status, review_status, owner_visible, sub_vendor_visible, public_shareable, photo_kind, schedule_phase_override, sort_order, created_at, updated_at) SELECT ${sql(attachmentId)}, ${sql(PROJECT_ID)}, ${sql(event.id)}, NULL, 'google_drive_reference', ${sql(attachment.driveFileId)}, ${sql(attachment.title)}, NULL, NULL, ${sql(attachment.driveFileId)}, ${sql(attachment.url)}, NULL, 'Operational procurement source reference; no credentials or download token stored.', ${sql(event.date)}, NULL, NULL, 'linked', 'approved', 0, 0, 0, 'document_reference', NULL, ${sql(index)}, ${sql(importedAt)}, ${sql(importedAt)} WHERE EXISTS (SELECT 1 FROM daily_logs WHERE id=${sql(event.id)} AND project_id=${sql(PROJECT_ID)}) ON CONFLICT(id) DO UPDATE SET drive_url=excluded.drive_url, file_name=excluded.file_name, caption=excluded.caption WHERE daily_log_photos.project_id=excluded.project_id AND daily_log_photos.daily_log_id=excluded.daily_log_id;`
+        `INSERT INTO daily_log_photos (id, project_id, daily_log_id, uploaded_by, source_system, source_external_id, file_name, file_size, mime_type, drive_file_id, drive_url, thumbnail_url, caption, captured_at, gps_lat, gps_lng, upload_status, review_status, owner_visible, sub_vendor_visible, public_shareable, photo_kind, schedule_phase_override, sort_order, created_at, updated_at) SELECT ${sql(attachmentId)}, ${sql(PROJECT_ID)}, ${sql(event.id)}, NULL, 'google_drive_reference', ${sql(attachment.driveFileId)}, ${sql(attachment.fileName)}, ${sql(attachment.fileSize)}, ${sql(attachment.mimeType)}, ${sql(attachment.driveFileId)}, ${sql(attachment.url)}, NULL, ${sql(attachment.title)}, ${sql(event.date)}, NULL, NULL, 'linked', 'approved', 0, 0, 0, 'document_reference', NULL, ${sql(index)}, ${sql(importedAt)}, ${sql(importedAt)} WHERE EXISTS (SELECT 1 FROM daily_logs WHERE id=${sql(event.id)} AND project_id=${sql(PROJECT_ID)}) ON CONFLICT(id) DO UPDATE SET drive_url=excluded.drive_url, file_name=excluded.file_name, file_size=excluded.file_size, mime_type=excluded.mime_type, caption=excluded.caption WHERE daily_log_photos.project_id=excluded.project_id AND daily_log_photos.daily_log_id=excluded.daily_log_id;`
       )
     }
   }
