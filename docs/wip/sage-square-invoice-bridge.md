@@ -1,0 +1,93 @@
+# Sage to Square invoice bridge
+
+The private Sage bridge can create Square invoices from Sage 100 Contractor
+A/R invoices without granting Compass or Cloudflare direct access to Sage SQL
+or Square credentials.
+
+## Routing
+
+The Sage job-number prefix selects the Square location:
+
+| Sage job prefix | Square location |
+| --- | --- |
+| `H-` | HPS |
+| `O-` | ORC |
+| `N-` | Nu-Tech |
+| `D-` | ORC |
+
+The job prefix is authoritative because the live Sage `actrec.dptmnt` field is
+often blank. When `dptmnt` contains a recognized historical value, the bridge
+also checks it and stops if it conflicts with the job prefix. Unknown job
+prefixes always fail closed.
+
+## Safety model
+
+- Sage access is read-only and uses the existing restricted SQL login.
+- Secrets are injected at runtime; they are never command-line values or
+  checked-in configuration.
+- Preview is the default and performs no Square writes.
+- Creating a draft and publishing are separate explicit operations.
+- Every write requires the operator to repeat the exact current Sage invoice
+  number.
+- Deterministic Square idempotency keys and a Sage source marker prevent
+  duplicate invoices on retries.
+- A draft must still match the Sage total, Square location, confirmed customer,
+  and invoice number before it can be published.
+- Existing Square invoice numbers without the Sage source marker stop the run
+  for manual review.
+
+## Required secrets
+
+- `HPS_SAGE_SQL_PASSWORD`
+- `HPS_SQUARE_PRODUCTION_ACCESS_TOKEN` for production
+- `HPS_SQUARE_SANDBOX_ACCESS_TOKEN` for sandbox testing
+
+## Operator flow
+
+Run the script through the approved secret injector on the private bridge host.
+The examples use placeholders deliberately.
+
+Preview:
+
+```bash
+signet secret exec \
+  -s HPS_SAGE_SQL_PASSWORD \
+  -s HPS_SQUARE_PRODUCTION_ACCESS_TOKEN \
+  -- python3 sage_square_invoice_bridge.py \
+  --sage-invoice-id SAGE_RECORD_ID \
+  --recipient-email RECIPIENT_EMAIL \
+  --environment production
+```
+
+Create a non-sending draft after reviewing the preview:
+
+```bash
+signet secret exec \
+  -s HPS_SAGE_SQL_PASSWORD \
+  -s HPS_SQUARE_PRODUCTION_ACCESS_TOKEN \
+  -- python3 sage_square_invoice_bridge.py \
+  --sage-invoice-id SAGE_RECORD_ID \
+  --recipient-email RECIPIENT_EMAIL \
+  --environment production \
+  --create-draft \
+  --confirm-invoice-number 'EXACT CURRENT SAGE INVOICE NUMBER'
+```
+
+Publish only after re-running preview and confirming the recipient, amount, due
+date, job prefix, location, and draft status:
+
+```bash
+signet secret exec \
+  -s HPS_SAGE_SQL_PASSWORD \
+  -s HPS_SQUARE_PRODUCTION_ACCESS_TOKEN \
+  -- python3 sage_square_invoice_bridge.py \
+  --sage-invoice-id SAGE_RECORD_ID \
+  --recipient-email RECIPIENT_EMAIL \
+  --environment production \
+  --publish \
+  --confirm-invoice-number 'EXACT CURRENT SAGE INVOICE NUMBER'
+```
+
+Publishing instructs Square to email the customer and activates the hosted
+payment page. It is an external financial communication and requires explicit
+operator approval.
