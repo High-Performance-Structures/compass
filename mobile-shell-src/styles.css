@@ -137,16 +137,16 @@ button { cursor: pointer; }
   overflow: hidden;
 }
 .cherish-ticker-label { flex: 0 0 auto; border-right: 1px solid var(--line); padding: 14px 12px; color: var(--green); font-size: 11px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
-.cherish-ticker-window { min-width: 0; flex: 1; overflow: hidden; }
-.cherish-ticker-track { display: flex; width: max-content; align-items: center; gap: 32px; padding: 12px 32px 12px 100%; animation: field-cherish-scroll 42s linear infinite; }
-.cherish-ticker-item { max-width: min(78vw, 42rem); flex: 0 0 auto; font-size: 14px; line-height: 1.45; }
+.cherish-ticker-window { min-width: 0; height: 76px; flex: 1; overflow: hidden; }
+.cherish-ticker-track { display: grid; width: 100%; gap: 18px; padding-inline: 14px; animation: field-cherish-scroll var(--cherish-ticker-duration, 24s) linear infinite; }
+.cherish-ticker-item { display: block; width: 100%; padding-block: 10px; font-size: 14px; line-height: 1.45; }
 .cherish-ticker-item strong { margin-right: 8px; color: var(--green); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .cherish-ticker-item small { margin-left: 4px; color: var(--muted); font-size: 11px; }
 .cherish-spotlight:focus-visible .cherish-ticker-track { animation-play-state: paused; }
-@keyframes field-cherish-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+@keyframes field-cherish-scroll { from { transform: translateY(76px); } to { transform: translateY(-100%); } }
 @media (prefers-reduced-motion: reduce) {
-  .cherish-ticker-window { overflow-x: auto; }
-  .cherish-ticker-track { padding-left: 12px; animation: none; }
+  .cherish-ticker-window { overflow-y: auto; }
+  .cherish-ticker-track { animation: none; }
 }
 .cherish-stream { margin-bottom: 28px; }
 .cherish-recognition-list { border-bottom: 1px solid var(--line); }

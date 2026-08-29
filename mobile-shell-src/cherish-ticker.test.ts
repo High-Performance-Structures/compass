@@ -39,6 +39,7 @@ describe("renderCherishTicker", () => {
     ], escapeHtml)
 
     expect(markup).toContain("cherish-ticker-track")
+    expect(markup).toContain("--cherish-ticker-duration: 18s")
     expect(markup).toContain("First message")
     expect(markup).toContain("Second message")
     expect(markup).toContain("— Isabel")
@@ -57,5 +58,15 @@ describe("renderCherishTicker", () => {
 
   it("does not render an empty ticker", () => {
     expect(renderCherishTicker([], escapeHtml)).toBe("")
+  })
+
+  it("allows more time when the recognition stream is longer", () => {
+    const items = Array.from({ length: 4 }, (_, index) =>
+      recognition(String(index), `Message ${index}`, "Team member"),
+    )
+
+    expect(renderCherishTicker(items, escapeHtml)).toContain(
+      "--cherish-ticker-duration: 32s",
+    )
   })
 })
