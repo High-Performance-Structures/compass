@@ -3,11 +3,13 @@
 import * as React from "react"
 import { formatDistanceToNow, format, parseISO } from "date-fns"
 import {
+  Flag,
   MessageSquare,
   Smile,
   Trash2,
   Paperclip,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,7 +24,9 @@ import { useConversations } from "@/contexts/conversations-context"
 import {
   addReaction,
   deleteMessage,
+  reportConversationMessage,
   removeReaction,
+  type ConversationMessageReportReason,
 } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
@@ -99,6 +103,7 @@ export const MessageItem = React.memo(function MessageItem({
   const [isFocused, setIsFocused] = React.useState(false)
   const [reactionOpen, setReactionOpen] = React.useState(false)
   const [reactionPending, setReactionPending] = React.useState(false)
+  const [reportPending, setReportPending] = React.useState(false)
   const { openThread } = useConversations()
   const router = useRouter()
 
@@ -123,6 +128,33 @@ export const MessageItem = React.memo(function MessageItem({
 
   const handleReply = () => {
     openThread(message.id, message)
+  }
+
+  async function handleReport(): Promise<void> {
+    if (reportPending) return
+    const answer = window.prompt(
+      "Why are you reporting this message? Enter abuse, spam, privacy, or other.",
+      "abuse"
+    )
+    if (answer === null) return
+    const normalized = answer.trim().toLowerCase()
+    const reason: ConversationMessageReportReason =
+      normalized === "spam"
+        ? "spam_or_deception"
+        : normalized === "privacy"
+          ? "privacy_or_safety"
+          : normalized === "other"
+            ? "other"
+            : "abuse_or_harassment"
+
+    setReportPending(true)
+    const result = await reportConversationMessage(message.id, reason)
+    setReportPending(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Message reported to a Compass administrator")
   }
 
   async function toggleReaction(
@@ -259,7 +291,7 @@ export const MessageItem = React.memo(function MessageItem({
         )}
       </div>
 
-      {(isHovered || isFocused || reactionOpen) && (
+      {(isHovered || isFocused || reactionOpen || reportPending) && (
         <div className="absolute right-4 top-2 flex gap-1 rounded-md border bg-background p-1 shadow-sm">
           {showThreadAction && (
             <Button
@@ -312,6 +344,16 @@ export const MessageItem = React.memo(function MessageItem({
               })}
             </PopoverContent>
           </Popover>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => void handleReport()}
+            disabled={reportPending}
+            aria-label="Report message"
+          >
+            <Flag className="h-3.5 w-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"

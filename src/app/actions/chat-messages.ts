@@ -56,6 +56,12 @@ import { recordActivityEvent } from "@/lib/activity-log"
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d\uFE0F]+$/u
 
+export type ConversationMessageReportReason =
+  | "abuse_or_harassment"
+  | "spam_or_deception"
+  | "privacy_or_safety"
+  | "other"
+
 type MessageAttachmentItem = {
   readonly id: string
   readonly fileName: string
@@ -954,6 +960,81 @@ export async function deleteMessage(messageId: string) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to delete message",
+    }
+  }
+}
+
+/**
+ * Send a member report to the existing Feedback Desk moderation queue. The
+ * source ID makes retries idempotent while still allowing different members
+ * to report the same message independently.
+ */
+export async function reportConversationMessage(
+  messageId: string,
+  reason: ConversationMessageReportReason
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: "Unauthorized" }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const message = await db
+      .select({
+        id: messages.id,
+        channelId: messages.channelId,
+        threadId: messages.threadId,
+        userId: messages.userId,
+        deletedAt: messages.deletedAt,
+      })
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!message || message.deletedAt) {
+      return { success: false, error: "Message not found" }
+    }
+    if (message.userId === user.id) {
+      return { success: false, error: "You cannot report your own message" }
+    }
+
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: message.channelId,
+    })
+    if (!channel) {
+      return { success: false, error: "Not a member of this channel" }
+    }
+
+    const organizationId = requireOrg(user)
+    await enqueueFeedbackDeskItem(db, {
+      organizationId,
+      source: "compass-conversation",
+      sourceId: `moderation:${user.id}:${message.id}`,
+      kind: "assistance",
+      title: "Reported conversation message",
+      description:
+        `Reason: ${reason}. Review the referenced message in Compass.`,
+      reporterName: user.displayName,
+      reporterEmail: user.email,
+      channelId: message.channelId,
+      messageId: message.id,
+      threadId: message.threadId,
+      metadata: {
+        externalActorId: user.id,
+        moderationReport: true,
+        reportedUserId: message.userId,
+        reason,
+      },
+    })
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to report message",
     }
   }
 }

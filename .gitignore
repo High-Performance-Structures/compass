@@ -25,6 +25,11 @@ release/
 .DS_Store
 *.tsbuildinfo
 *.png
+!public/compass-app-icon-192.png
+!public/compass-app-icon-512.png
+!store-assets/app-icon-candidate-v1.png
+!store-assets/google-play-feature-graphic.png
+!store-assets/phone-screenshots/*.png
 
 # dev tools
 .playwright-mcp

@@ -554,7 +554,7 @@ function settingsView(): string {
   const pushButton = pushStatus === "enabled" || pushStatus === "checking"
     ? ""
     : `<button id="enable-push" class="secondary" type="button">Try notification setup again</button>`
-  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Account and privacy")}<div class="guide-copy"><p>Manage account privacy or request permanent account deletion in Full Compass.</p><button id="manage-account" class="secondary" type="button" ${online ? "" : "disabled"}>Manage account</button></div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
 }
 
 function view(): string {
@@ -574,7 +574,7 @@ function render(): void {
     app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
     document.querySelector<HTMLButtonElement>("#unlock-compass")?.addEventListener("click", () => void unlockCompass())
     document.querySelector<HTMLButtonElement>("#unlock-with-password")?.addEventListener("click", () => {
-      if (online) window.location.assign(`${LIVE_URL}/login`)
+      if (online) window.location.assign(liveAppUrl("/login"))
     })
     return
   }
@@ -683,6 +683,9 @@ function bindEvents(): void {
   })
   document.querySelector<HTMLButtonElement>("#enable-push")?.addEventListener("click", () => {
     void setupPushNotifications()
+  })
+  document.querySelector<HTMLButtonElement>("#manage-account")?.addEventListener("click", () => {
+    if (online) window.location.assign(liveAppUrl("/dashboard/account"))
   })
   document.querySelector<HTMLFormElement>("#cherish-form")?.addEventListener("submit", (event) => void queueCherish(event))
   document.querySelector("#cherish-form select[name='cherishValue']")?.addEventListener("change", (event) => {

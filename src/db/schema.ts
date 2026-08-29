@@ -28,6 +28,39 @@ export const users = sqliteTable("users", {
   updatedAt: text("updated_at").notNull(),
 })
 
+// Account deletion is intentionally request-based: project and financial
+// records may have contractual retention requirements, so an operator must
+// review dependencies before removing the WorkOS identity and personal data.
+export const accountDeletionRequests = sqliteTable(
+  "account_deletion_requests",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Snapshots support ownership verification while a request is open and
+    // must be cleared when deletion completes.
+    emailSnapshot: text("email_snapshot"),
+    displayNameSnapshot: text("display_name_snapshot"),
+    status: text("status").notNull().default("pending"),
+    requestedAt: text("requested_at").notNull(),
+    processingStartedAt: text("processing_started_at"),
+    completedAt: text("completed_at"),
+    cancelledAt: text("cancelled_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("account_deletion_requests_user_status_idx").on(
+      table.userId,
+      table.status
+    ),
+    index("account_deletion_requests_status_requested_idx").on(
+      table.status,
+      table.requestedAt
+    ),
+  ]
+)
+
 export const organizations = sqliteTable("organizations", {
   id: text("id").primaryKey(), // workos org id
   name: text("name").notNull(),
@@ -2501,6 +2534,10 @@ export type NewFeedback = typeof feedback.$inferInsert
 // Auth and user management types
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
+export type AccountDeletionRequest =
+  typeof accountDeletionRequests.$inferSelect
+export type NewAccountDeletionRequest =
+  typeof accountDeletionRequests.$inferInsert
 export type Organization = typeof organizations.$inferSelect
 export type NewOrganization = typeof organizations.$inferInsert
 export type OrganizationMember = typeof organizationMembers.$inferSelect

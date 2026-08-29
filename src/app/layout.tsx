@@ -25,10 +25,10 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
 	title: "Compass",
-	description: "Construction project management by High Performance Structures",
+	description: "Project management for connected teams",
 	icons: {
-		icon: "/hps-icon-64.png",
-		apple: "/hps-icon-512.png",
+		icon: "/favicon.png",
+		apple: "/apple-touch-icon.png",
 	},
 	manifest: "/manifest.json",
 };

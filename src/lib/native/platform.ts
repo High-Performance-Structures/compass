@@ -99,7 +99,7 @@ export function getPlatform(): Platform {
 }
 
 // Legacy function for backward compatibility
-export function getMobilePlatform(): MobilePlatform {
+export function getNativeMobilePlatform(): MobilePlatform {
   const cap = getCapacitor()
   const capacitorPlatform = cap?.isNativePlatform()
     ? cap.getPlatform()
@@ -130,15 +130,29 @@ export function getMobilePlatform(): MobilePlatform {
   } catch {
     // Fall back to web when storage is unavailable.
   }
+  return resolveMobilePlatform(
+    capacitorPlatform,
+    hintedPlatform,
+    storedPlatform,
+  )
+}
+
+// Includes mobile browsers as a fallback for UI that should adapt to the
+// physical device even when Compass is not running in its native shell.
+export function getMobilePlatform(): MobilePlatform {
+  const nativePlatform = getNativeMobilePlatform()
+  if (nativePlatform !== "web") return nativePlatform
+
+  if (typeof window === "undefined") return "web"
   const browserPlatform = inferMobileBrowserPlatform(
     window.navigator.userAgent,
     window.navigator.platform,
     window.navigator.maxTouchPoints,
   )
   return resolveMobilePlatform(
-    capacitorPlatform,
-    hintedPlatform,
-    storedPlatform,
+    null,
+    null,
+    null,
     browserPlatform,
   )
 }

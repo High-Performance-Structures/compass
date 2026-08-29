@@ -8,6 +8,7 @@ import {
   IconBrandGithub,
   IconBrandApple,
 } from "@tabler/icons-react"
+import { getNativeMobilePlatform } from "@/lib/native/platform"
 
 const providers = [
   { id: "GoogleOAuth", label: "Google", icon: IconBrandGoogle },
@@ -23,6 +24,10 @@ const providers = [
 export function SocialLoginButtons() {
   const searchParams = useSearchParams()
   const from = searchParams.get("from")
+  const isIosApp = getNativeMobilePlatform() === "ios"
+  const availableProviders = isIosApp
+    ? providers.filter(({ id }) => id !== "GoogleOAuth")
+    : providers
 
   const handleSSOLogin = (provider: string) => {
     const params = new URLSearchParams({ provider })
@@ -31,18 +36,26 @@ export function SocialLoginButtons() {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {providers.map(({ id, label, icon: Icon }) => (
-        <Button
-          key={id}
-          variant="outline"
-          className="h-10"
-          onClick={() => handleSSOLogin(id)}
-        >
-          <Icon className="mr-2 size-4" />
-          {label}
-        </Button>
-      ))}
+    <div className="space-y-2">
+      {isIosApp && (
+        <p className="text-sm text-muted-foreground">
+          Google sign-in is not available inside the iPhone app. Continue
+          with email below.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {availableProviders.map(({ id, label, icon: Icon }) => (
+          <Button
+            key={id}
+            variant="outline"
+            className="h-10"
+            onClick={() => handleSSOLogin(id)}
+          >
+            <Icon className="mr-2 size-4" />
+            {label}
+          </Button>
+        ))}
+      </div>
     </div>
   )
 }

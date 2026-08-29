@@ -1,5 +1,8 @@
 # Mobile release readiness — 2026-08-17
 
+> Status updated August 28, 2026. Distribution is public App Store and public
+> Google Play, with Compass organization access remaining account-controlled.
+
 This is the shortest path from the current Capacitor apps to field-test and store-ready iOS and Android releases.
 
 ## Current state
@@ -16,16 +19,49 @@ This is the shortest path from the current Capacitor apps to field-test and stor
 - Android disables cleartext traffic and excludes cached project data from cloud backup and device transfer.
 - Android declares the Android 13+ notification permission required by the runtime push prompt.
 - The server now uses Firebase service-account OAuth for Android FCM delivery and direct APNs provider-token delivery for iOS.
-- An APNs authentication key has been created for the HPS Apple team with sandbox and production access; its encrypted Worker-secret installation is pending explicit transmission approval.
+- Production Worker secrets include the APNs key/team credentials and Firebase
+  service-account credentials required by the native push providers.
+- Firebase project `compass-hps` contains the Android app
+  `com.hpscolorado.compass`; the release build includes its local,
+  source-controlled-excluded `google-services.json` configuration.
 - Play App Signing is active. `assetlinks.json` includes both the upload certificate and the Play App Signing certificate (`99:FE:73:BD:...:BC:6C`).
+- The corrected Apple and Android association files are deployed and return
+  `200 application/json` from the production domain.
+- The production privacy policy and account-deletion information URLs are
+  public. Signed-in users can initiate and cancel a reviewed account-deletion
+  request from Account Settings.
+- Android compiles and targets API 36. Xcode 26 is required for the iOS upload.
+- The iOS app target contains the required-reason privacy manifest entries for
+  Capacitor Preferences (`CA92.1`) and Filesystem (`C617.1`).
+- Signed store candidates build successfully: iOS `1.0` build `38` archives
+  with the HPS App Store profile, and Android `1.0.0` version code `18`
+  produces signed APK and AAB artifacts targeting API 36.
+- A durable WorkOS reviewer identity has access only to the Open Range
+  Construction demonstration organization and Apple Review Sample Project.
+- Production D1 migration `0139_account_deletion_requests.sql` is applied and
+  the reviewed web release is deployed. The public privacy, account-deletion,
+  and community-guidelines URLs return `200`; signed-out Account Settings
+  redirects to login as expected.
+- iOS `1.0` build `38` uploaded successfully and is processing in App Store
+  Connect/TestFlight.
+- The reviewed web release is deployed as Worker version
+  `bc5f2b76-d18e-4fb8-97be-f66e65fbf918`; the final account-deletion
+  cancellation uses a pending-state compare-and-set, and native iOS login
+  reliably suppresses Google SSO without changing iPhone Safari.
+- Google Play has six of 11 initial setup tasks saved. Listing copy, icon,
+  feature graphic, and two non-production phone screenshots are staged pending
+  the final AI-asset declaration and store-listing save.
 
 ## P0 release blockers
 
-1. Deploy the corrected association files. The live domain still serves the previous package ID and placeholders, so Universal Links and Android App Links cannot verify until the web deployment includes the updated files.
-2. Configure push credentials. Add Firebase to the existing `compass-hps` Google Cloud project, register `com.hpscolorado.compass`, add `google-services.json`, and store `FIREBASE_SERVICE_ACCOUNT_JSON` in Cloudflare. Store the newly created Apple key as `APNS_KEY_ID`, `APNS_TEAM_ID`, and `APNS_PRIVATE_KEY` in Cloudflare.
-3. Complete Apple signing. Confirm the App Store provisioning profile for team `78SM7S793Z`, the Push Notifications entitlement, and the Associated Domains entitlement, then produce a signed archive and upload it to TestFlight.
-4. Select the Play internal-test audience, upload the signed AAB, and roll out the first internal release.
-5. Run the physical-device field matrix below. Simulators validate packaging and basic UI, but not camera capture, gallery persistence, biometrics, push delivery, background upload, or low-connectivity behavior.
+1. Complete App Store Connect processing, metadata, privacy, and compliance
+   checks for iOS `1.0` build `38`.
+2. Select the Play internal-test audience, upload Android `1.0.0` version code
+   `18`, and roll out the first internal release.
+3. Run the physical-device field matrix below. Simulators validate packaging and basic UI, but not camera capture, gallery persistence, biometrics, push delivery, background upload, or low-connectivity behavior.
+4. Complete the public store metadata, privacy disclosures, reviewer access,
+   screenshots, and manual-release settings in
+   `docs/wip/mobile-store-submission-2026-08-28.md`.
 
 ## Physical-device field matrix
 

@@ -139,11 +139,18 @@ export default function PrivacyPolicyPage(): React.ReactElement {
             >
               Google Account permissions
             </a>
-            . Users may request deletion or correction through their Compass
-            administrator. Removing a Compass connection does not automatically
-            delete videos already published to a company YouTube channel; a
-            channel manager can remove those videos in YouTube Studio or request
-            assistance.
+            . Users may request correction through their Compass administrator.
+            Users can request account and personal-data deletion from Account
+            Settings or through the public{" "}
+            <Link
+              className="text-primary underline underline-offset-4"
+              href="/account-deletion"
+            >
+              account deletion page
+            </Link>
+            . Removing a Compass connection does not automatically delete videos
+            already published to a company YouTube channel; a channel manager can
+            remove those videos in YouTube Studio or request assistance.
           </p>
         </section>
 

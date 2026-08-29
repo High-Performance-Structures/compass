@@ -10,7 +10,9 @@ import {
   useRef,
   useState,
 } from "react"
-import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki"
+import type { BundledLanguage, ShikiTransformer } from "shiki"
+import { createHighlighterCore, type HighlighterCore } from "shiki/core"
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -27,6 +29,69 @@ interface CodeBlockContextType {
 const CodeBlockContext = createContext<CodeBlockContextType>({
   code: "",
 })
+
+type HighlightedLanguage =
+  | "typescript"
+  | "javascript"
+  | "jsx"
+  | "tsx"
+  | "json"
+  | "python"
+  | "bash"
+  | "css"
+  | "html"
+  | "sql"
+  | "yaml"
+  | "markdown"
+
+let highlighterPromise: Promise<HighlighterCore> | null = null
+
+function getHighlighter(): Promise<HighlighterCore> {
+  if (!highlighterPromise) {
+    highlighterPromise = createHighlighterCore({
+      themes: [
+        import("@shikijs/themes/one-light"),
+        import("@shikijs/themes/one-dark-pro"),
+      ],
+      langs: [
+        import("@shikijs/langs/typescript"),
+        import("@shikijs/langs/javascript"),
+        import("@shikijs/langs/jsx"),
+        import("@shikijs/langs/tsx"),
+        import("@shikijs/langs/json"),
+        import("@shikijs/langs/python"),
+        import("@shikijs/langs/bash"),
+        import("@shikijs/langs/css"),
+        import("@shikijs/langs/html"),
+        import("@shikijs/langs/sql"),
+        import("@shikijs/langs/yaml"),
+        import("@shikijs/langs/markdown"),
+      ],
+      engine: createJavaScriptRegexEngine(),
+    })
+  }
+  return highlighterPromise
+}
+
+function highlightedLanguage(language: BundledLanguage): HighlightedLanguage | "text" {
+  switch (language) {
+    case "typescript":
+    case "javascript":
+    case "jsx":
+    case "tsx":
+    case "json":
+    case "python":
+    case "bash":
+    case "css":
+    case "html":
+    case "sql":
+    case "yaml":
+    case "markdown":
+      return language
+    default:
+      return "text"
+  }
+}
 
 const lineNumberTransformer: ShikiTransformer = {
   name: "line-numbers",
@@ -55,15 +120,17 @@ export async function highlightCode(
   showLineNumbers = false,
 ) {
   const transformers: ShikiTransformer[] = showLineNumbers ? [lineNumberTransformer] : []
+  const highlighter = await getHighlighter()
+  const lang = highlightedLanguage(language)
 
   return await Promise.all([
-    codeToHtml(code, {
-      lang: language,
+    highlighter.codeToHtml(code, {
+      lang,
       theme: "one-light",
       transformers,
     }),
-    codeToHtml(code, {
-      lang: language,
+    highlighter.codeToHtml(code, {
+      lang,
       theme: "one-dark-pro",
       transformers,
     }),

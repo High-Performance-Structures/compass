@@ -4,6 +4,7 @@ import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
+  accountDeletionRequests,
   customers,
   projectAccessInvitations,
   projectContacts,
@@ -11,7 +12,7 @@ import {
   vendorContacts,
   vendors,
 } from "@/db/schema"
-import { and, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import {
@@ -24,6 +25,11 @@ import {
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
   | { success: false; error: string }
+
+export type AccountDeletionRequestState = {
+  readonly status: "pending" | "processing"
+  readonly requestedAt: string
+}
 
 const HIDDEN_WORKSPACE_PHOTO = "__hidden__"
 const MAX_WORKSPACE_PHOTO_LENGTH = 680_000
@@ -374,6 +380,164 @@ export async function changePassword(
     }
 
     return { success: false, error: errorMessage }
+  }
+}
+
+async function activeAccountDeletionRequest(
+  userId: string
+): Promise<AccountDeletionRequestState | null> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const request = await db
+    .select({
+      status: accountDeletionRequests.status,
+      requestedAt: accountDeletionRequests.requestedAt,
+    })
+    .from(accountDeletionRequests)
+    .where(
+      and(
+        eq(accountDeletionRequests.userId, userId),
+        or(
+          eq(accountDeletionRequests.status, "pending"),
+          eq(accountDeletionRequests.status, "processing")
+        )
+      )
+    )
+    .orderBy(desc(accountDeletionRequests.requestedAt))
+    .limit(1)
+    .get()
+
+  if (!request) return null
+  return {
+    status: request.status === "processing" ? "processing" : "pending",
+    requestedAt: request.requestedAt,
+  }
+}
+
+/**
+ * Return the signed-in user's active deletion request, if one exists.
+ */
+export async function getAccountDeletionRequest(): Promise<
+  ActionResult<AccountDeletionRequestState | null>
+> {
+  try {
+    const currentUser = await requireAuth()
+    return {
+      success: true,
+      data: await activeAccountDeletionRequest(currentUser.id),
+    }
+  } catch (error) {
+    console.error("Error loading account deletion request:", error)
+    return {
+      success: false,
+      error: "Unable to load the account deletion request status.",
+    }
+  }
+}
+
+/**
+ * Start a reviewed account-deletion workflow. Records with contractual,
+ * financial, security, or legal retention duties are handled during review;
+ * the user's removable personal data and WorkOS identity are then deleted.
+ */
+export async function requestAccountDeletion(
+  confirmation: string
+): Promise<ActionResult<AccountDeletionRequestState>> {
+  try {
+    if (confirmation.trim() !== "DELETE") {
+      return { success: false, error: 'Type "DELETE" to confirm.' }
+    }
+
+    const currentUser = await requireAuth()
+    const existing = await activeAccountDeletionRequest(currentUser.id)
+    if (existing) return { success: true, data: existing }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const now = new Date().toISOString()
+    await db
+      .insert(accountDeletionRequests)
+      .values({
+        id: crypto.randomUUID(),
+        userId: currentUser.id,
+        emailSnapshot: currentUser.email,
+        displayNameSnapshot: currentUser.displayName,
+        status: "pending",
+        requestedAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    revalidatePath("/dashboard/settings")
+    return {
+      success: true,
+      data: { status: "pending", requestedAt: now },
+    }
+  } catch (error) {
+    console.error("Error requesting account deletion:", error)
+    return {
+      success: false,
+      error: "Unable to submit the account deletion request.",
+    }
+  }
+}
+
+/**
+ * Let a user recover from a deletion request until processing begins.
+ */
+export async function cancelAccountDeletionRequest(): Promise<ActionResult> {
+  try {
+    const currentUser = await requireAuth()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const request = await db
+      .select({ id: accountDeletionRequests.id })
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          eq(accountDeletionRequests.userId, currentUser.id),
+          eq(accountDeletionRequests.status, "pending")
+        )
+      )
+      .orderBy(desc(accountDeletionRequests.requestedAt))
+      .limit(1)
+      .get()
+
+    if (!request) {
+      return {
+        success: false,
+        error: "This request is already being processed or is no longer active.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    const updateResult = await db
+      .update(accountDeletionRequests)
+      .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(accountDeletionRequests.id, request.id),
+          eq(accountDeletionRequests.userId, currentUser.id),
+          eq(accountDeletionRequests.status, "pending")
+        )
+      )
+      .run()
+
+    if ((updateResult.meta.changes ?? 0) !== 1) {
+      return {
+        success: false,
+        error: "This request is already being processed or is no longer active.",
+      }
+    }
+
+    revalidatePath("/dashboard/settings")
+    return { success: true }
+  } catch (error) {
+    console.error("Error cancelling account deletion:", error)
+    return {
+      success: false,
+      error: "Unable to cancel the account deletion request.",
+    }
   }
 }
 

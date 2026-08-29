@@ -14,8 +14,8 @@ export default function AuthLayout({
         {/* logo */}
         <div className="mb-8 text-center">
           <Image
-            src="/department-logos/hps-h-green.svg"
-            alt="High Performance Structures"
+            src="/compass-app-icon-192.png"
+            alt="Compass"
             width={56}
             height={56}
             className="mx-auto mb-3 size-14 rounded-md object-contain"
@@ -24,7 +24,7 @@ export default function AuthLayout({
           />
           <h1 className="text-2xl font-bold text-primary">Compass</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Construction Project Management
+            Project management for connected teams
           </p>
         </div>
 
@@ -35,7 +35,7 @@ export default function AuthLayout({
 
         {/* footer */}
         <div className="text-muted-foreground mt-4 flex items-center justify-center gap-3 text-xs">
-          <span>High Performance Structures</span>
+          <span>Compass</span>
           <a href="/privacy" className="underline underline-offset-4">
             Privacy
           </a>

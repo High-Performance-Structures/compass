@@ -8,6 +8,8 @@ const publicPaths = [
   "/callback",
   "/demo",
   "/privacy",
+  "/account-deletion",
+  "/community-guidelines",
   "/terms",
   "/manifest.json",
   "/api/mobile/health",
