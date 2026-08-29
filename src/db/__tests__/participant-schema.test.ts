@@ -25,6 +25,8 @@ describe("normalized participant schema", () => {
   it("keeps multiple assignees in a child relation and leaves legacy assigned_to intact", async () => {
     expect(scheduleTaskAssignees.scheduleTaskId.name).toBe("schedule_task_id")
     expect(scheduleTaskAssignees.participantId.name).toBe("participant_id")
+    expect(scheduleTaskAssignees.assignedUserId.name).toBe("assigned_user_id")
+    expect(scheduleTaskAssignees.projectContactId.name).toBe("project_contact_id")
     expect(scheduleTaskAssignees.participantRole.name).toBe("participant_role")
     expect(scheduleTaskAssignees.sourceStartDate.name).toBe("source_start_date")
     expect(scheduleTaskAssignees.sourceWorkdays.name).toBe("source_workdays")
@@ -57,5 +59,12 @@ describe("normalized participant schema", () => {
     expect(migration).toContain("`participant_id` text NOT NULL")
     expect(migration).not.toContain("ALTER TABLE `schedule_tasks`")
     expect(migration).not.toContain("DROP COLUMN `assigned_to`")
+
+    const targetMigration = await readFile(
+      resolve(process.cwd(), "drizzle/0141_schedule_task_assignee_targets.sql"),
+      "utf8",
+    )
+    expect(targetMigration).toContain("assigned_user_id")
+    expect(targetMigration).toContain("project_contact_id")
   })
 })

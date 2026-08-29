@@ -12,6 +12,7 @@ import {
   taskDependencies,
   workdayExceptions,
 } from "@/db/schema"
+import { scheduleTaskAssignees } from "@/db/schema-participants"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
   sendPublishedScheduleAssignment,
@@ -27,6 +28,7 @@ import {
   parsePublishedScheduleSnapshot,
   publishedScheduleSnapshotSchema,
 } from "@/lib/schedule/publications"
+import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
 
 export type SchedulePublicationStatus = {
   readonly hasPublishedSchedule: boolean
@@ -162,6 +164,23 @@ export async function publishSchedule(
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, projectId))
       .orderBy(asc(scheduleTasks.sortOrder))
+    const assigneeRows = await db
+      .select({
+        scheduleTaskId: scheduleTaskAssignees.scheduleTaskId,
+        participantId: scheduleTaskAssignees.participantId,
+      })
+      .from(scheduleTaskAssignees)
+      .innerJoin(
+        scheduleTasks,
+        eq(scheduleTasks.id, scheduleTaskAssignees.scheduleTaskId)
+      )
+      .where(eq(scheduleTasks.projectId, projectId))
+    const assigneeIdsByTask = new Map<string, string[]>()
+    for (const row of assigneeRows) {
+      const ids = assigneeIdsByTask.get(row.scheduleTaskId) ?? []
+      ids.push(row.participantId)
+      assigneeIdsByTask.set(row.scheduleTaskId, ids)
+    }
     const taskIds = new Set(tasks.map((task) => task.id))
     const dependencies = (await db.select().from(taskDependencies)).filter(
       (dependency) =>
@@ -175,7 +194,10 @@ export async function publishSchedule(
       .orderBy(asc(workdayExceptions.startDate))
     const snapshot = publishedScheduleSnapshotSchema.parse({
       version: 1,
-      tasks,
+      tasks: tasks.map((task) => ({
+        ...task,
+        assigneeParticipantIds: assigneeIdsByTask.get(task.id) ?? [],
+      })),
       dependencies,
       exceptions,
     })
@@ -208,6 +230,31 @@ export async function publishSchedule(
     })
     for (const task of tasks) {
       const previousTask = previousTasksById.get(task.id)
+      const assigneeParticipantIds = assigneeIdsByTask.get(task.id) ?? []
+      if (assigneeParticipantIds.length > 0) {
+        const normalizedAssignmentChanged =
+          !previousTask ||
+          !sameScheduleAssigneeSet(
+            previousTask.assigneeParticipantIds,
+            assigneeParticipantIds,
+          ) ||
+          previousTask.startDate !== task.startDate ||
+          previousTask.workdays !== task.workdays ||
+          previousTask.confirmationRequired !== task.confirmationRequired
+        if (
+          normalizedAssignmentChanged &&
+          (!previousPublication || previousSnapshot)
+        ) {
+          const notification = await sendPublishedScheduleAssignment(task.id)
+          if (!notification.success) {
+            console.error(
+              `Unable to notify published schedule assignees for ${task.id}:`,
+              notification.error,
+            )
+          }
+        }
+        continue
+      }
       const assignmentChanged =
         task.assignedTo !== null &&
         (previousTask?.assignedTo !== task.assignedTo ||

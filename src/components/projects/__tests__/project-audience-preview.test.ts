@@ -29,6 +29,7 @@ function scheduleItem(
     proposedWorkdays: null,
     proposalNote: null,
     proposalSubmittedAt: null,
+    assignees: [],
   }
 }
 

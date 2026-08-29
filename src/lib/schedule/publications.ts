@@ -15,6 +15,9 @@ const publishedTaskSchema = z.object({
   percentComplete: z.number(),
   assignedTo: z.string().nullable(),
   assignedUserId: z.string().nullable().default(null),
+  // Participant IDs are server-side publication metadata used to prevent
+  // unpublished child-assignee changes from appearing in external previews.
+  assigneeParticipantIds: z.array(z.string()).default([]),
   ownerVisible: z.boolean().optional(),
   subVendorVisible: z.boolean().optional(),
   confirmationRequired: z.boolean().default(false),
@@ -97,6 +100,7 @@ export const DRAFT_SCHEDULE_ACTIONS = [
   "schedule.item_deleted",
   "schedule.items_completed",
   "schedule.items_assigned",
+  "schedule.assignees_updated",
   "schedule.items_deleted",
   "schedule.items_reordered",
   "schedule.item_status_changed",

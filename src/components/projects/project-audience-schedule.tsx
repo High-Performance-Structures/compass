@@ -17,9 +17,13 @@ import { toast } from "sonner"
 
 import {
   proposeScheduleTaskChange,
+  respondToScheduleTaskAssignee,
   respondToScheduleTaskConfirmation,
 } from "@/app/actions/schedule-confirmations"
-import type { AudienceScheduleItem } from "@/app/actions/project-audience-preview"
+import type {
+  AudienceScheduleAssignee,
+  AudienceScheduleItem,
+} from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -308,6 +312,108 @@ function ScheduleConfirmationControl({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function ScheduleAssigneeControl({
+  item,
+  assignee,
+}: {
+  readonly item: AudienceScheduleItem
+  readonly assignee: AudienceScheduleAssignee
+}): React.ReactElement {
+  const router = useRouter()
+  const [pending, startTransition] = React.useTransition()
+  const [proposalOpen, setProposalOpen] = React.useState(false)
+  const [startDate, setStartDate] = React.useState(
+    assignee.proposedStartDate ?? item.startDate,
+  )
+  const [workdays, setWorkdays] = React.useState(
+    assignee.proposedWorkdays ?? item.workdays,
+  )
+  const [message, setMessage] = React.useState(assignee.responseMessage ?? "")
+  const respond = (response: "confirmed" | "declined"): void => {
+    startTransition(async () => {
+      const result = await respondToScheduleTaskAssignee(assignee.id, {
+        response,
+        message,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(response === "confirmed" ? "Commitment confirmed." : "The team has been notified.")
+      router.refresh()
+    })
+  }
+  const submitProposal = (): void => {
+    startTransition(async () => {
+      const result = await respondToScheduleTaskAssignee(assignee.id, {
+        response: "proposed",
+        proposedStartDate: startDate,
+        proposedWorkdays: workdays,
+        message,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setProposalOpen(false)
+      toast.success("Your proposal was sent to the project team.")
+      router.refresh()
+    })
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs text-muted-foreground">
+        {assignee.displayName ?? "Assigned participant"}
+      </span>
+      <Badge variant={assignee.responseStatus === "confirmed" ? "secondary" : "outline"}>
+        {confirmationLabel(assignee.responseStatus)}
+      </Badge>
+      {assignee.viewerCanRespond && assignee.responseStatus !== "confirmed" && (
+        <>
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => respond("confirmed")}>
+            <IconCheck className="size-4" /> Approve
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => respond("declined")}>
+            <IconX className="size-4" /> Cannot commit
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setProposalOpen(true)}>
+            <IconPencil className="size-4" /> Suggest date
+          </Button>
+          <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Suggest a new schedule date</DialogTitle>
+                <DialogDescription>
+                  The proposal is recorded for this assignee only and does not
+                  change the published schedule.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-2">
+                <div className="grid gap-2">
+                  <Label htmlFor={`assignee-proposal-start-${assignee.id}`}>Start date</Label>
+                  <Input id={`assignee-proposal-start-${assignee.id}`} type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor={`assignee-proposal-duration-${assignee.id}`}>Duration (workdays)</Label>
+                  <Input id={`assignee-proposal-duration-${assignee.id}`} type="number" min={1} max={3650} value={workdays} onChange={(event) => setWorkdays(Number(event.target.value))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor={`assignee-response-message-${assignee.id}`}>Message (optional)</Label>
+                  <Textarea id={`assignee-response-message-${assignee.id}`} maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" disabled={pending} onClick={() => setProposalOpen(false)}>Cancel</Button>
+                <Button type="button" disabled={pending} onClick={submitProposal}>{pending ? "Sending…" : "Send proposal"}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
     </div>
   )
 }
@@ -923,7 +1029,19 @@ export function ProjectAudienceSchedule({
                       ? "Milestone"
                       : `${item.percentComplete}%`}
                 </Badge>
-                <ScheduleConfirmationControl item={item} />
+                {item.assignees.length > 0 ? (
+                  <div className="flex flex-col items-end gap-2">
+                    {item.assignees.map((assignee) => (
+                      <ScheduleAssigneeControl
+                        key={assignee.id}
+                        item={item}
+                        assignee={assignee}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <ScheduleConfirmationControl item={item} />
+                )}
               </div>
             </article>
           ))}
