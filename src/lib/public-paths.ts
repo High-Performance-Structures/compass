@@ -25,11 +25,14 @@ const sageBridgePaths = [
   "/api/integrations/sage/tax-catalog/results",
   "/api/integrations/sage/client-project-writes/requests",
   "/api/integrations/sage/client-project-writes/results",
+  "/api/integrations/sage/square-payments/requests",
+  "/api/integrations/sage/square-payments/results",
 ]
 
 const webhookPaths = [
   "/api/integrations/goto/inbound",
   "/api/integrations/foxit/webhook",
+  "/api/integrations/square/webhook",
 ]
 
 // These routes bypass WorkOS only so their own bearer/HMAC checks can run.

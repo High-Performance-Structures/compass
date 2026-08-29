@@ -42,6 +42,12 @@ describe("middleware public routes", () => {
     expect(
       isPublicPath("/api/integrations/sage/client-project-writes/results")
     ).toBe(true)
+    expect(
+      isPublicPath("/api/integrations/sage/square-payments/requests")
+    ).toBe(true)
+    expect(
+      isPublicPath("/api/integrations/sage/square-payments/results")
+    ).toBe(true)
     expect(isPublicPath("/api/integrations/sage/admin")).toBe(false)
     expect(
       isPublicPath("/api/integrations/sage/pay-applications/requests/extra")
@@ -50,6 +56,8 @@ describe("middleware public routes", () => {
 
   it("allows the secret-protected GoTo webhook through WorkOS middleware", () => {
     expect(isPublicPath("/api/integrations/goto/inbound")).toBe(true)
+    expect(isPublicPath("/api/integrations/square/webhook")).toBe(true)
+    expect(isPublicPath("/api/integrations/square/webhook/extra")).toBe(false)
     expect(isPublicPath("/api/integrations/goto/setup")).toBe(false)
   })
 

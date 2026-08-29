@@ -37,6 +37,7 @@ export function isSageBridgeHeartbeatOnline(
 function bridgeLabel(id: string): string {
   if (id === "pay-application-poller") return "Sage pay-application bridge"
   if (id === "client-project-writer") return "Sage client/project writer"
+  if (id === "square-payment-writer") return "Sage Square payment writer"
   return "Sage bridge"
 }
 
