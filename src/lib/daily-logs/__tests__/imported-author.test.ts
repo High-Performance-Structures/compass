@@ -29,4 +29,13 @@ describe("imported daily-log authors", () => {
       })
     ).toBe("Current User")
   })
+
+  it("falls back when the linked Compass user name is blank", () => {
+    expect(
+      dailyLogAuthorName({
+        compassAuthorName: "   ",
+        tags: JSON.stringify({ buildertrendAuthor: "Imported User" }),
+      })
+    ).toBe("Imported User")
+  })
 })

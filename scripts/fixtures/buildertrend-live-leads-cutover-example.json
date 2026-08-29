@@ -1,0 +1,47 @@
+{
+  "runKey": "live-lead-cutover-example",
+  "sourceLabel": "Buildertrend live lead capture",
+  "capturedAt": "2026-08-28T12:00:00.000Z",
+  "leads": [
+    {
+      "buildertrendLeadId": "2001",
+      "stableProjectKey": "D-100-example",
+      "projectName": "Example Design Project",
+      "googleDriveProjectFolderId": "drive-folder-example",
+      "title": "Example Design Project lead",
+      "href": "/app/leads/opportunities/Lead/2001",
+      "clientName": "Example Owner",
+      "contacts": [
+        {
+          "buildertrendContactId": "601",
+          "name": "Example Owner",
+          "email": "owner@example.test"
+        }
+      ]
+    },
+    {
+      "buildertrendLeadId": "2002",
+      "stableProjectKey": "D-100-example",
+      "projectName": "Example Design Project",
+      "googleDriveProjectFolderId": "drive-folder-example",
+      "title": "Example Design Project continuation",
+      "href": "/app/leads/opportunities/Lead/2002",
+      "contacts": [
+        {
+          "buildertrendContactId": "601",
+          "name": "Example Owner",
+          "phone": "555-0101"
+        }
+      ]
+    },
+    {
+      "buildertrendLeadId": "3001",
+      "stableProjectKey": "D-200-existing",
+      "existingProjectId": "existing-project",
+      "title": "Existing Compass conversion",
+      "href": "/app/leads/opportunities/Lead/3001",
+      "contactName": "Converted Owner",
+      "contactEmail": "converted@example.test"
+    }
+  ]
+}
