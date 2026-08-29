@@ -194,6 +194,78 @@ export const sageBridgeStatus = sqliteTable("sage_bridge_status", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const sageSquareWebhookEvents = sqliteTable(
+  "sage_square_webhook_events",
+  {
+    eventId: text("event_id").primaryKey(),
+    eventType: text("event_type").notNull(),
+    squareObjectId: text("square_object_id"),
+    squareCreatedAt: text("square_created_at").notNull(),
+    status: text("status").notNull().default("processing"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    errorMessage: text("error_message"),
+    receivedAt: text("received_at").notNull(),
+    processedAt: text("processed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("sage_square_webhook_events_status_idx").on(
+      table.status,
+      table.updatedAt
+    ),
+  ]
+)
+
+export const sageSquarePaymentOperations = sqliteTable(
+  "sage_square_payment_operations",
+  {
+    id: text("id").primaryKey(),
+    operationType: text("operation_type").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    squarePaymentId: text("square_payment_id").notNull(),
+    squareInvoiceId: text("square_invoice_id").notNull(),
+    squareOrderId: text("square_order_id").notNull(),
+    squareLocationId: text("square_location_id").notNull(),
+    department: text("department").notNull(),
+    sageInvoiceId: text("sage_invoice_id").notNull(),
+    sageInvoiceNumber: text("sage_invoice_number").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    depositAccountNumber: integer("deposit_account_number").notNull(),
+    merchantFeeAccountNumber: integer("merchant_fee_account_number").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    status: text("status").notNull().default("queued"),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    sageRecordId: text("sage_record_id"),
+    sageRecordNumber: text("sage_record_number"),
+    errorMessage: text("error_message"),
+    paymentCompletedAt: text("payment_completed_at").notNull(),
+    requestedAt: text("requested_at").notNull(),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_square_payment_operations_idempotency_idx").on(
+      table.idempotencyKey
+    ),
+    index("sage_square_payment_operations_claim_idx").on(
+      table.status,
+      table.claimedAt,
+      table.requestedAt
+    ),
+    index("sage_square_payment_operations_payment_idx").on(
+      table.squarePaymentId,
+      table.operationType
+    ),
+    index("sage_square_payment_operations_invoice_idx").on(
+      table.squareInvoiceId,
+      table.status
+    ),
+  ]
+)
+
 export type SagePayApplicationSyncRun =
   typeof sagePayApplicationSyncRuns.$inferSelect
 export type SagePayApplicationSnapshot =
@@ -201,3 +273,7 @@ export type SagePayApplicationSnapshot =
 export type SageWriteApproval = typeof sageWriteApprovals.$inferSelect
 export type SageClientProjectWriteOperation =
   typeof sageClientProjectWriteOperations.$inferSelect
+export type SageSquareWebhookEvent =
+  typeof sageSquareWebhookEvents.$inferSelect
+export type SageSquarePaymentOperation =
+  typeof sageSquarePaymentOperations.$inferSelect

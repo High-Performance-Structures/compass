@@ -91,3 +91,9 @@ signet secret exec \
 Publishing instructs Square to email the customer and activates the hosted
 payment page. It is an external financial communication and requires explicit
 operator approval.
+
+Completed payments for bridge-owned invoices are handled by the separate
+[Square to Sage payment posting runbook](sage-square-payment-posting.md). The
+payment workflow uses `jarvis.api`, posts all Square settlement activity to FSB
+Project Checking, and sends Compass notifications for exceptions rather than
+requiring another payment approval.
