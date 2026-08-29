@@ -203,6 +203,10 @@ function trustedBuildertrendUrl(candidate: string): URL | undefined {
   }
 }
 
+export function isTrustedBuildertrendUrl(candidate: string): boolean {
+  return trustedBuildertrendUrl(candidate) !== undefined
+}
+
 function trustedBuildertrendEntityUrl(
   href: string | undefined,
   fallbackPath: string,

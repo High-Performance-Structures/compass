@@ -20,5 +20,8 @@ export function dailyLogAuthorName(input: {
   readonly compassAuthorName: string | null
   readonly tags: string | null
 }): string | null {
-  return input.compassAuthorName ?? importedDailyLogAuthor(input.tags)
+  const compassAuthorName = input.compassAuthorName?.trim() ?? ""
+  return compassAuthorName.length > 0
+    ? compassAuthorName
+    : importedDailyLogAuthor(input.tags)
 }

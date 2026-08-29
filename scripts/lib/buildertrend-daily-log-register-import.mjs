@@ -78,7 +78,16 @@ function normalizedRecord(record, capturedAt) {
   const sourceId = requiredString(record.sourceId, "sourceId")
   if (!/^\d+$/.test(sourceId)) throw new Error(`Invalid sourceId: ${sourceId}`)
   const title = requiredString(record.title, `title for ${sourceId}`)
-  const author = requiredString(record.author, `author for ${sourceId}`)
+  const authorValue = record.author
+  if (
+    typeof authorValue !== "string" ||
+    authorValue.trim().length === 0
+  ) {
+    throw new Error(
+      `Buildertrend human-authored daily log ${sourceId} is missing its source author`
+    )
+  }
+  const author = requiredString(authorValue, `author for ${sourceId}`)
   const visibility = stringArray(record.visibility, `visibility for ${sourceId}`)
   const tags = stringArray(record.tags, `tags for ${sourceId}`)
   const weather = stringArray(record.weather, `weather for ${sourceId}`)
@@ -268,6 +277,7 @@ export function generateBuildertrendDailyLogRegisterImportSql(input) {
       buildertrendDisplayTitle: record.title,
       buildertrendVisibility: record.visibility,
       buildertrendTags: record.tags,
+      buildertrendWeather: record.weather,
       buildertrendMediaCount: record.mediaCount,
       buildertrendPhotoPreviewNames: record.displayedMedia.map((entry) => entry.fileName).filter(Boolean),
       buildertrendDocuments: record.documentNames,
@@ -279,8 +289,15 @@ export function generateBuildertrendDailyLogRegisterImportSql(input) {
   }
 
   for (const mapping of fixture.existingMappings) {
+    const record = fixture.records.find(
+      (candidate) => candidate.sourceId === mapping.sourceId,
+    )
+    if (!record) {
+      throw new Error(`Mapping references unknown sourceId: ${mapping.sourceId}`)
+    }
     statements.push(
       `UPDATE daily_logs SET tags=json_remove(tags, '$.sourceUrl'), updated_at=${sql(fixture.capturedAt)} WHERE id=${sql(mapping.existingDailyLogId)} AND project_id=${sql(fixture.projectId)} AND json_valid(tags) AND json_type(tags, '$.sourceUrl') IS NOT NULL;`,
+      `UPDATE daily_logs SET tags=json_set(CASE WHEN json_valid(tags) THEN CASE WHEN json_type(tags)='object' THEN tags ELSE json_object('legacyTags', tags) END ELSE CASE WHEN tags IS NULL OR trim(tags)='' THEN '{}' ELSE json_object('legacyTags', tags) END END, '$.buildertrendAuthor', ${sql(record.author)}, '$.buildertrendWeather', json(${sql(JSON.stringify(record.weather))})), updated_at=${sql(fixture.capturedAt)} WHERE id=${sql(mapping.existingDailyLogId)} AND project_id=${sql(fixture.projectId)};`,
     )
   }
 

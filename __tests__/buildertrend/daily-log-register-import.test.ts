@@ -112,6 +112,8 @@ describe("Buildertrend daily-log register import", () => {
     expect(output).toContain("Owner''s requested work was completed.")
     expect(output).toContain("Owner''s requested work was completed.', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 'needs_review'")
     expect(output).toContain("'Client'")
+    expect(output).toContain('buildertrendWeather')
+    expect(output).toContain('["91°F↑","64°F↓"]')
     expect(output).not.toContain("buildertrend.net")
     expect(output).not.toContain("/api/files/")
     expect(output).not.toContain("previewUrl")
@@ -149,6 +151,14 @@ describe("Buildertrend daily-log register import", () => {
     input.records[1].title = "Thu, Smarch 42 | Invalid"
     expect(() => generateBuildertrendDailyLogRegisterImportSql(input)).toThrow(
       "Cannot parse daily-log month",
+    )
+  })
+
+  it("rejects a human-authored record without a source author", () => {
+    const input = fixture()
+    input.records[1].author = "   "
+    expect(() => generateBuildertrendDailyLogRegisterImportSql(input)).toThrow(
+      "missing its source author",
     )
   })
 
