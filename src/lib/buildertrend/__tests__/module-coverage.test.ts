@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  BUILDERTREND_MODULES,
   moduleForArchiveFileType,
   moduleForSourceRecordType,
   summarizeBuildertrendModuleCoverage,
@@ -132,5 +133,14 @@ describe("Buildertrend module coverage", () => {
     expect(moduleForArchiveFileType("owner_update_photo")).toBe("photos")
     expect(moduleForArchiveFileType("document")).toBe("files")
     expect(moduleForSourceRecordType("job")).toBeNull()
+  })
+
+  it("treats contact records as a first-class audited module", () => {
+    expect(moduleForSourceRecordType("contact")).toBe("contacts")
+    expect(moduleForSourceRecordType("project_contact")).toBe("contacts")
+    expect(moduleForSourceRecordType("contact_directory")).toBe("contacts")
+    expect(BUILDERTREND_MODULES.some((module) => module.key === "contacts")).toBe(
+      true,
+    )
   })
 })

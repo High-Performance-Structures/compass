@@ -17,6 +17,7 @@ import * as nuTechSchema from "./schema-nutech"
 import * as templateSchema from "./schema-templates"
 import * as warrantySchema from "./schema-warranty"
 import * as contractSchema from "./schema-contracts"
+import * as participantSchema from "./schema-participants"
 
 const allSchemas = {
   ...schema,
@@ -37,6 +38,7 @@ const allSchemas = {
   ...templateSchema,
   ...warrantySchema,
   ...contractSchema,
+  ...participantSchema,
 }
 
 // Legacy function - kept for backwards compatibility

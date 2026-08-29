@@ -3,6 +3,7 @@ export type BuildertrendModuleKey =
   | "photos"
   | "videos"
   | "messages"
+  | "contacts"
   | "schedules"
   | "tasks"
   | "rfis"
@@ -37,6 +38,7 @@ export const BUILDERTREND_MODULES: readonly BuildertrendModuleDefinition[] = [
   { key: "photos", label: "Photos" },
   { key: "videos", label: "Videos" },
   { key: "messages", label: "Messages" },
+  { key: "contacts", label: "Contacts" },
   { key: "schedules", label: "Schedules" },
   { key: "tasks", label: "To-dos" },
   { key: "rfis", label: "RFIs" },
@@ -249,6 +251,13 @@ export function moduleForSourceRecordType(
   if (sourceRecordType === "photo_folder") return "photos"
   if (sourceRecordType === "video") return "videos"
   if (sourceRecordType === "message") return "messages"
+  if (
+    sourceRecordType === "contact" ||
+    sourceRecordType === "project_contact" ||
+    sourceRecordType === "contact_directory"
+  ) {
+    return "contacts"
+  }
   if (sourceRecordType === "schedule_item" || sourceRecordType === "schedule_summary") {
     return "schedules"
   }
