@@ -176,8 +176,8 @@ export function CherishFeedbackForm(): React.ReactElement {
             id="cherish-anonymous-description"
             className="mt-0.5 block text-muted-foreground"
           >
-            Your name will not appear in Executive Admin review, the ticker,
-            or Field App recognition.
+            Your name will not appear in Executive Admin review, dashboard
+            stories, or Field App recognition.
           </span>
         </span>
       </label>

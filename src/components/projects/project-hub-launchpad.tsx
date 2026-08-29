@@ -127,8 +127,8 @@ function ProjectHealth({
 
   if (!health) {
     return (
-      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <IconCheck className="size-3.5 text-emerald-700" />
+      <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+        <IconCheck className="size-3.5" />
         No priority flags
       </span>
     )
@@ -153,8 +153,8 @@ function ProjectHealth({
   }
 
   return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <IconCheck className="size-3.5 text-emerald-700" />
+    <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+      <IconCheck className="size-3.5" />
       On track · {health.progress}%
     </span>
   )
@@ -267,7 +267,7 @@ function ProjectCard({
           asChild
           variant="ghost"
           size="sm"
-          className="mt-2 h-7 w-full justify-between px-0 text-xs hover:bg-transparent"
+          className="mt-2 h-7 w-full justify-between px-0 text-xs text-primary hover:bg-transparent hover:text-primary/80"
         >
           <Link href={`/dashboard/projects/${project.id}`}>
             Open project hub
@@ -391,12 +391,12 @@ export function ProjectHubLaunchpad({
                 }}
                 className={cn(
                   "flex h-10 shrink-0 items-center gap-2 bg-background px-3 text-sm font-medium transition-colors hover:bg-muted",
-                  department === item.id && "bg-[#2f5963] text-white hover:bg-[#2f5963]"
+                  department === item.id && "bg-primary/[0.07] text-primary ring-1 ring-inset ring-primary hover:bg-primary/[0.11]"
                 )}
               >
                 {item.icon}
                 {item.label}
-                <span className={cn("text-xs tabular-nums text-muted-foreground", department === item.id && "text-white/75")}>
+                <span className={cn("text-xs tabular-nums text-muted-foreground", department === item.id && "text-primary/80")}>
                   {departmentCounts.get(item.id) ?? 0}
                 </span>
               </button>
@@ -427,17 +427,22 @@ export function ProjectHubLaunchpad({
                 }}
                 className={cn(
                   "flex h-8 items-center gap-2 border px-3 text-sm transition-colors hover:bg-muted",
-                  status === value && "border-[#2f5963] bg-[#2f5963]/[0.07] font-semibold"
+                  status === value && "border-primary bg-primary/[0.07] font-semibold text-primary"
                 )}
               >
                 <span
                   className={cn(
                     "size-2 rounded-full border",
-                    status === value && "border-[#2f5963] bg-[#2f5963]"
+                    status === value && "border-primary bg-primary"
                   )}
                 />
                 {label}
-                <span className="text-xs tabular-nums text-muted-foreground">
+                <span
+                  className={cn(
+                    "text-xs tabular-nums text-muted-foreground",
+                    status === value && "text-primary/80"
+                  )}
+                >
                   {statusCounts[value]}
                 </span>
               </button>
@@ -599,9 +604,12 @@ export function ProjectHubLaunchpad({
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
-        <span>Live Compass project and job-health data</span>
+        <span className="flex items-center gap-2">
+          <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+          Live Compass project and job-health data
+        </span>
         <div className="flex gap-4">
-          <Link href="/dashboard" className="font-medium hover:text-foreground">
+          <Link href="/dashboard" className="font-medium text-primary hover:text-primary/80">
             Dashboard
           </Link>
         </div>

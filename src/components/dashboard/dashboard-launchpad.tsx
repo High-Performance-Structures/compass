@@ -340,7 +340,7 @@ function Horizon({
     <section className="min-w-0 border-y border-border/70 bg-background">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <IconCalendarWeek className="size-4 shrink-0 text-[#2f5963]" />
+          <IconCalendarWeek className="size-4 shrink-0 text-primary" />
           <div>
             <h2 className="text-sm font-semibold">Five-day horizon</h2>
             <p className="text-xs text-muted-foreground">
@@ -350,7 +350,7 @@ function Horizon({
             </p>
           </div>
         </div>
-        <Button asChild variant="ghost" size="sm" className="shrink-0">
+        <Button asChild variant="ghost" size="sm" className="shrink-0 text-primary hover:text-primary/80">
           <Link
             href={
               mode === "office"
@@ -376,7 +376,7 @@ function Horizon({
               className={cn(
                 "min-h-36 border-border/60 px-3 py-2.5",
                 index > 0 && "border-l",
-                index === 0 && "bg-[#2f5963]/[0.06]"
+                index === 0 && "bg-primary/[0.06]"
               )}
             >
               <div className="flex items-start justify-between gap-2">
@@ -387,7 +387,7 @@ function Horizon({
                   <p className="text-sm font-semibold">{formatMonthDay(day)}</p>
                 </div>
                 {index === 0 ? (
-                  <span className="text-[10px] font-semibold uppercase text-[#2f5963]">
+                  <span className="text-[10px] font-semibold uppercase text-primary">
                     Today
                   </span>
                 ) : null}
@@ -398,7 +398,7 @@ function Horizon({
                   <Link
                     key={`${day}-${task.id}`}
                     href={task.href}
-                    className="block border-l-2 border-[#2f5963] pl-2 text-xs transition-colors hover:text-primary"
+                    className="block border-l-2 border-primary pl-2 text-xs transition-colors hover:text-primary"
                   >
                     <span className="line-clamp-1 font-medium">{task.title}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
@@ -519,7 +519,7 @@ function DeskHero({
 
   return (
     <section className="grid min-h-52 overflow-hidden border-y border-border/70 bg-background sm:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
-      <div className="group/desk-photo relative min-h-40 overflow-hidden bg-muted">
+      <div className="group/desk-photo relative min-h-40 overflow-hidden bg-muted after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-10 after:w-16 after:bg-gradient-to-r after:from-transparent after:to-background">
         {deskPhotoUrl && !deskPhotoFailed ? (
           <Image
             src={deskPhotoUrl}
@@ -531,8 +531,8 @@ function DeskHero({
             onError={() => setDeskPhotoFailed(true)}
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-gradient-to-br from-[#2f5963]/15 via-muted to-[#9d832c]/10">
-            <IconHome2 className="size-10 text-[#2f5963]/60" />
+          <div className="flex h-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-brand-nutech-gold/10">
+            <IconHome2 className="size-10 text-primary/60" />
           </div>
         )}
         {user ? (
@@ -551,8 +551,9 @@ function DeskHero({
 
       <div className="flex min-w-0 flex-col justify-center px-5 py-4">
         <p className="text-xs text-muted-foreground">{formatLongDate(today)}</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          {greetingForNow()}, {firstName}
+        <h1 className="mt-1 font-serif text-2xl font-semibold tracking-tight">
+          <span>{greetingForNow()},</span>{" "}
+          <span className="italic sm:block">{firstName}</span>
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Here is what needs your attention today.
@@ -676,7 +677,7 @@ function OfficeTaskList({
             Reviews and follow-ups requiring action
           </p>
         </div>
-        <Button asChild variant="ghost" size="sm">
+        <Button asChild variant="ghost" size="sm" className="text-primary hover:text-primary/80">
           <Link href="/dashboard/schedule?focus=tasks">All to-dos</Link>
         </Button>
       </div>
@@ -706,7 +707,7 @@ function OfficeTaskList({
         ))}
         {tasks.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <IconCheck className="mx-auto size-5 text-emerald-700" />
+            <IconCheck className="mx-auto size-5 text-primary" />
             <p className="mt-2 text-sm font-medium">Office queue is clear</p>
           </div>
         ) : null}
@@ -884,7 +885,7 @@ function OfficeAlerts({
           >
             <span className="text-muted-foreground">{alert.icon}</span>
             <span className="flex-1 text-sm">{alert.label}</span>
-            <span className="font-semibold tabular-nums">{alert.value}</span>
+            <span className="font-semibold tabular-nums text-primary">{alert.value}</span>
             <IconArrowRight className="size-4 text-muted-foreground" />
           </Link>
         ))}
@@ -934,7 +935,7 @@ function QuickDock(): React.ReactElement {
               index > 1 && "border-t"
             )}
           >
-            <span className="text-[#2f5963]">{action.icon}</span>
+            <span className="text-primary">{action.icon}</span>
             {action.label}
           </Link>
         ))}
@@ -1051,7 +1052,7 @@ function ProjectWorkspace({
       <section className="min-w-0 border-y border-border/70 bg-background xl:col-span-2">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
-            <IconPhoto className="size-4 text-[#2f5963]" />
+            <IconPhoto className="size-4 text-primary" />
             <div>
               <h2 className="text-sm font-semibold">Recent site activity</h2>
               <p className="text-xs text-muted-foreground">
@@ -1179,7 +1180,7 @@ export function DashboardLaunchpad({
       <div className="flex flex-col gap-3 border-b pb-3 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-center">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <IconSparkles className="size-4 text-[#9d832c]" />
+            <IconSparkles className="size-4 text-brand-nutech-gold" />
             <p className="text-sm font-semibold">Morning launchpad</p>
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -1238,18 +1239,18 @@ export function DashboardLaunchpad({
       </div>
 
       {mode === "office" ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.5fr)_minmax(15rem,0.5fr)]">
           <OfficeTaskList
             overview={overview}
             officeCalendarEvents={officeCalendarEvents}
             officeProjectId={officeProjectId}
           />
+          <OfficePresence
+            initialAvailability={initialTeamAvailability}
+            user={user}
+            status={deskStatus}
+          />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <OfficePresence
-              initialAvailability={initialTeamAvailability}
-              user={user}
-              status={deskStatus}
-            />
             <OfficeAlerts overview={overview} />
             <QuickDock />
           </div>
@@ -1263,7 +1264,7 @@ export function DashboardLaunchpad({
           <IconMapPin className="size-3.5" />
           Live Compass dashboard data
         </span>
-        <Link href="/dashboard/projects" className="font-medium hover:text-foreground">
+        <Link href="/dashboard/projects" className="font-medium text-primary hover:text-primary/80">
           Open Project Hub
         </Link>
       </div>
