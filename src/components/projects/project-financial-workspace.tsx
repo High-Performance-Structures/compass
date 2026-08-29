@@ -69,6 +69,10 @@ function dateText(value: string | null): string {
 function workflowLabel(type: ProjectFinancialWorkflowItem["type"]): string {
   if (type === "vendor_bill") return "Vendor bill"
   if (type === "owner_pay_application") return "Owner pay app"
+  if (type === "owner_invoice") return "Owner invoice"
+  if (type === "payment") return "Payment"
+  if (type === "deposit") return "Deposit"
+  if (type === "credit_memo") return "Credit memo"
   return "RFQ"
 }
 
@@ -332,8 +336,8 @@ export function ProjectFinancialWorkspace({
             <h2 className="text-sm font-semibold">Project Financial Queue</h2>
             <p className="text-xs text-muted-foreground">
               {developerModeEnabled
-                ? "Drafts entered here feed developer-mode Sage sync review."
-                : "Review project financial drafts and their current status."}
+                ? "Review current drafts and read-only historical owner billing."
+                : "Review project financial records and their current status."}
             </p>
           </div>
           <Badge variant="outline">{items.length} records</Badge>
@@ -368,6 +372,9 @@ export function ProjectFinancialWorkspace({
                         <span className="font-medium">
                           {workflowLabel(item.type)}
                         </span>
+                        {item.sourceLabel && (
+                          <Badge variant="secondary">{item.sourceLabel}</Badge>
+                        )}
                         {item.number && (
                           <span className="text-xs text-muted-foreground">
                             {item.number}
@@ -432,6 +439,9 @@ export function ProjectFinancialWorkspace({
                     <span>{dateText(item.dueDate)}</span>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{item.status}</Badge>
+                      {item.readOnly && (
+                        <Badge variant="outline">Read only</Badge>
+                      )}
                       {developerModeEnabled && (
                         <Badge variant="secondary">{syncLabel(item)}</Badge>
                       )}
