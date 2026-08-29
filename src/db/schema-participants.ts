@@ -87,6 +87,16 @@ export const scheduleTaskAssignees = sqliteTable(
       .references(() => projectSourceRecordParticipants.id, {
         onDelete: "cascade",
       }),
+    // Denormalized target keys make the assignment boundary explicit and let
+    // callers address a user/contact without resolving source metadata first.
+    // participant_id remains required for imported-source provenance.
+    assignedUserId: text("assigned_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    projectContactId: text("project_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" },
+    ),
     participantRole: text("participant_role").notNull().default("assignee"),
     // Snapshot the source schedule so an assignee response cannot rewrite it.
     sourceStartDate: text("source_start_date").notNull(),
@@ -116,6 +126,14 @@ export const scheduleTaskAssignees = sqliteTable(
     uniqueIndex("schedule_task_assignees_task_participant_unique").on(
       table.scheduleTaskId,
       table.participantId,
+    ),
+    uniqueIndex("schedule_task_assignees_task_user_unique").on(
+      table.scheduleTaskId,
+      table.assignedUserId,
+    ),
+    uniqueIndex("schedule_task_assignees_task_contact_unique").on(
+      table.scheduleTaskId,
+      table.projectContactId,
     ),
     index("schedule_task_assignees_participant_idx").on(table.participantId),
   ],

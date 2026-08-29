@@ -21,6 +21,7 @@ import {
   scheduleTemplateDependencies,
   scheduleTemplateItems
 } from "@/db/schema-templates"
+import { scheduleTaskAssignees } from "@/db/schema-participants"
 import { eq, asc, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { calculateEndDate } from "@/lib/schedule/business-days"
@@ -60,6 +61,7 @@ import type {
   ExceptionCategory,
   ExceptionRecurrence,
   ScheduleData,
+  ScheduleTaskAssigneeData,
   ScopedScheduleData,
   WorkdayExceptionData,
   WorkdayExceptionType
@@ -85,8 +87,10 @@ async function persistScheduleDateUpdates(
   updatedAt: string
 ): Promise<void> {
   const entries = [...updates]
-  // Two statements are required per item. Keep batches below D1's statement
+  // Three statements are required per item. Keep batches below D1's statement
   // ceiling while preserving the linked-to-do update before its schedule row.
+  // Every propagated date change invalidates responses frozen against the old
+  // dates, not just the task that initiated the dependency cascade.
   for (const entryChunk of chunkValues(entries, 40)) {
     const statements = entryChunk.flatMap(([taskId, dates]) => [
       linkedTodoDateUpdateStatement(database, {
@@ -107,6 +111,32 @@ async function persistScheduleDateUpdates(
           updatedAt,
           taskId,
           projectId
+        ),
+      database
+        .prepare(
+          `UPDATE schedule_task_assignees
+           SET source_start_date = ?,
+               source_end_date = ?,
+               response_status = 'pending',
+               date_response_status = 'pending',
+               duration_response_status = 'pending',
+               proposed_start_date = NULL,
+               proposed_workdays = NULL,
+               proposed_end_date = NULL,
+               response_message = NULL,
+               responded_at = NULL,
+               responded_by_user_id = NULL,
+               response_source = NULL,
+               assigned_at = ?,
+               updated_at = ?
+           WHERE schedule_task_id = ?`
+        )
+        .bind(
+          dates.startDate,
+          dates.endDateCalculated,
+          updatedAt,
+          updatedAt,
+          taskId
         ),
     ])
     const results = await database.batch(statements)
@@ -322,6 +352,18 @@ export async function getSchedule(projectId: string): Promise<ScheduleData> {
     .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.sortOrder))
 
+  const assigneeRows = await db
+    .select()
+    .from(scheduleTaskAssignees)
+    .where(inArray(scheduleTaskAssignees.scheduleTaskId, tasks.map((task) => task.id)))
+    .catch(() => [])
+  const assigneesByTask = new Map<string, ScheduleTaskAssigneeData[]>()
+  for (const row of assigneeRows) {
+    const existing = assigneesByTask.get(row.scheduleTaskId) ?? []
+    existing.push(row)
+    assigneesByTask.set(row.scheduleTaskId, existing)
+  }
+
   const deps = await db.select().from(taskDependencies)
   const exceptions = await fetchExceptions(db, projectId)
 
@@ -335,7 +377,8 @@ export async function getSchedule(projectId: string): Promise<ScheduleData> {
         ...t,
         status,
         phase: t.phase,
-        percentComplete: effectivePercentComplete(status, t.percentComplete)
+        percentComplete: effectivePercentComplete(status, t.percentComplete),
+        assignees: assigneesByTask.get(t.id) ?? [],
       }
     }),
     dependencies: projectDeps.map((d) => ({
@@ -1186,6 +1229,8 @@ export async function updateTask(
       assignmentChanged ||
       (data.confirmationRequired !== undefined &&
         data.confirmationRequired !== task.confirmationRequired)
+    const scheduleDatesChanged =
+      startDate !== task.startDate || workdays !== task.workdays
     const acceptChangeProposal =
       data.acceptChangeProposal === true &&
       task.proposedStartDate !== null &&
@@ -1197,7 +1242,8 @@ export async function updateTask(
       now
     })
 
-    // propagate date changes to downstream tasks
+    // Only propagate and invalidate assignee responses when the schedule dates
+    // actually changed. Ordinary metadata edits must preserve confirmations.
     const updatedTask = {
       ...task,
       status: progress.status,
@@ -1207,16 +1253,29 @@ export async function updateTask(
       endDateCalculated: endDate
     }
     const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
-    const { updatedTasks } = propagateDates(taskId, allTasks, schedule.dependencies, exceptions)
-    const dateUpdates = new Map(updatedTasks)
-    dateUpdates.set(taskId, {
-      startDate,
-      endDateCalculated: endDate,
-    })
+    const dateUpdates = new Map<
+      string,
+      { readonly startDate: string; readonly endDateCalculated: string }
+    >()
+    if (scheduleDatesChanged) {
+      const { updatedTasks } = propagateDates(
+        taskId,
+        allTasks,
+        schedule.dependencies,
+        exceptions
+      )
+      for (const [updatedTaskId, dates] of updatedTasks) {
+        dateUpdates.set(updatedTaskId, dates)
+      }
+      dateUpdates.set(taskId, {
+        startDate,
+        endDateCalculated: endDate,
+      })
+    }
 
     // Leave dates untouched until the paired D1 batch below. Linked to-dos
     // must calculate their offsets from the previous schedule dates.
-    await db
+    const taskUpdate = db
       .update(scheduleTasks)
       .set({
         ...(data.title && { title: data.title }),
@@ -1272,6 +1331,43 @@ export async function updateTask(
         updatedAt: now
       })
       .where(eq(scheduleTasks.id, taskId))
+    if (assignmentChanged) {
+      // Legacy scalar assignment changes invalidate normalized assignees. The
+      // child rows carry independent response authority and cannot be left
+      // attached to a newly assigned scalar task.
+      await db.batch([
+        taskUpdate,
+        db
+          .delete(scheduleTaskAssignees)
+          .where(eq(scheduleTaskAssignees.scheduleTaskId, taskId)),
+      ])
+    } else if (scheduleDatesChanged || resetConfirmation) {
+      await db.batch([
+        taskUpdate,
+        db
+          .update(scheduleTaskAssignees)
+          .set({
+            sourceStartDate: startDate,
+            sourceWorkdays: workdays,
+            sourceEndDate: endDate,
+            responseStatus: "pending",
+            dateResponseStatus: "pending",
+            durationResponseStatus: "pending",
+            proposedStartDate: null,
+            proposedWorkdays: null,
+            proposedEndDate: null,
+            responseMessage: null,
+            respondedAt: null,
+            respondedByUserId: null,
+            responseSource: null,
+            assignedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(scheduleTaskAssignees.scheduleTaskId, taskId)),
+      ])
+    } else {
+      await taskUpdate
+    }
     await persistScheduleDateUpdates(
       env.DB,
       task.projectId,
@@ -1502,19 +1598,28 @@ export async function assignScheduleTasks(
     }
 
     const now = new Date().toISOString()
-    for (const task of matchingTasks) {
-      await db
-        .update(scheduleTasks)
-        .set({
-          assignedTo: assignedTo?.trim() || null,
-          assignedUserId: null,
-          confirmationStatus: task.confirmationRequired ? "unavailable" : "not_requested",
-          confirmationRequestedAt: task.confirmationRequired ? now : null,
-          confirmationRespondedAt: null,
-          reminderSentAt: null,
-          updatedAt: now
-        })
-        .where(and(eq(scheduleTasks.id, task.id), eq(scheduleTasks.projectId, projectId)))
+    // Pair each legacy scalar update with removal of its normalized assignees.
+    // Chunking keeps every atomic D1 batch below the statement ceiling.
+    for (const taskChunk of chunkValues(matchingTasks, 40)) {
+      const [firstStatement, ...remainingStatements] = taskChunk.flatMap((task) => [
+          db
+            .delete(scheduleTaskAssignees)
+            .where(eq(scheduleTaskAssignees.scheduleTaskId, task.id)),
+          db
+            .update(scheduleTasks)
+            .set({
+              assignedTo: assignedTo?.trim() || null,
+              assignedUserId: null,
+              confirmationStatus: task.confirmationRequired ? "unavailable" : "not_requested",
+              confirmationRequestedAt: task.confirmationRequired ? now : null,
+              confirmationRespondedAt: null,
+              reminderSentAt: null,
+              updatedAt: now
+            })
+            .where(and(eq(scheduleTasks.id, task.id), eq(scheduleTasks.projectId, projectId)))
+        ])
+      if (!firstStatement) continue
+      await db.batch([firstStatement, ...remainingStatements])
     }
 
     await recordActivityEvent({

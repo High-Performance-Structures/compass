@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -15,6 +15,7 @@ import {
   schedulePublications,
   scheduleTasks,
 } from "@/db/schema"
+import { scheduleTaskAssignees, projectSourceRecordParticipants } from "@/db/schema-participants"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -43,6 +44,7 @@ import {
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
+import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
 import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
 import {
@@ -88,6 +90,21 @@ export type AudienceScheduleItem = {
   readonly proposedWorkdays: number | null
   readonly proposalNote: string | null
   readonly proposalSubmittedAt: string | null
+  readonly assignees: readonly AudienceScheduleAssignee[]
+}
+
+export type AudienceScheduleAssignee = {
+  readonly id: string
+  readonly assignedUserId: string | null
+  readonly projectContactId: string | null
+  readonly displayName: string | null
+  readonly responseStatus: string
+  readonly dateResponseStatus: string
+  readonly durationResponseStatus: string
+  readonly proposedStartDate: string | null
+  readonly proposedWorkdays: number | null
+  readonly responseMessage: string | null
+  readonly viewerCanRespond: boolean
 }
 
 export type AudienceOperationItem = {
@@ -363,12 +380,20 @@ export async function getProjectAudiencePreview(
             }))
         )
 
-  const viewerContact =
-    audience === "sub_vendor" && !viewerIsInternal
+  const resolvedViewerContact =
+    !viewerIsInternal
       ? await getProjectAudienceViewerContact(db, projectId, {
           id: viewer.id,
           email: viewer.email,
         })
+      : null
+  const viewerContact =
+    resolvedViewerContact &&
+    ((audience === "owner" && resolvedViewerContact.contactType === "owner") ||
+      (audience === "sub_vendor" &&
+        (resolvedViewerContact.contactType === "supplier" ||
+          resolvedViewerContact.contactType === "subcontractor")))
+      ? resolvedViewerContact
       : null
 
   const visibilityFilter =
@@ -439,6 +464,61 @@ export async function getProjectAudiencePreview(
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+  // External viewers only receive the child row that they can answer. This
+  // keeps another assignee's private response message and proposal private.
+  const scheduleAssigneeRows = await db
+    .select({
+      id: scheduleTaskAssignees.id,
+      scheduleTaskId: scheduleTaskAssignees.scheduleTaskId,
+      participantId: scheduleTaskAssignees.participantId,
+      assignedUserId: scheduleTaskAssignees.assignedUserId,
+      projectContactId: scheduleTaskAssignees.projectContactId,
+      responseStatus: scheduleTaskAssignees.responseStatus,
+      dateResponseStatus: scheduleTaskAssignees.dateResponseStatus,
+      durationResponseStatus: scheduleTaskAssignees.durationResponseStatus,
+      proposedStartDate: scheduleTaskAssignees.proposedStartDate,
+      proposedWorkdays: scheduleTaskAssignees.proposedWorkdays,
+      responseMessage: scheduleTaskAssignees.responseMessage,
+      displayName: projectSourceRecordParticipants.sourceContactName,
+    })
+    .from(scheduleTaskAssignees)
+    .innerJoin(
+      projectSourceRecordParticipants,
+      eq(
+        projectSourceRecordParticipants.id,
+        scheduleTaskAssignees.participantId,
+      ),
+    )
+    .where(
+      inArray(
+        scheduleTaskAssignees.scheduleTaskId,
+        currentScheduleRows.map((task) => task.id),
+      ),
+    )
+    .catch(() => [])
+  const scheduleAssigneesByTask = new Map<string, typeof scheduleAssigneeRows>()
+  for (const row of scheduleAssigneeRows) {
+    const existing = scheduleAssigneesByTask.get(row.scheduleTaskId) ?? []
+    existing.push(row)
+    scheduleAssigneesByTask.set(row.scheduleTaskId, existing)
+  }
+  const visibleScheduleAssigneesByTask = new Map<
+    string,
+    typeof scheduleAssigneeRows
+  >()
+  for (const row of scheduleAssigneeRows) {
+    if (
+      !viewerIsInternal &&
+      row.assignedUserId !== viewer.id &&
+      row.projectContactId !== viewerContact?.id
+    ) {
+      continue
+    }
+    const existing =
+      visibleScheduleAssigneesByTask.get(row.scheduleTaskId) ?? []
+    existing.push(row)
+    visibleScheduleAssigneesByTask.set(row.scheduleTaskId, existing)
+  }
   const publishedSchedule = await db
     .select({ snapshotData: schedulePublications.snapshotData })
     .from(schedulePublications)
@@ -458,6 +538,12 @@ export async function getProjectAudiencePreview(
     ? publishedSnapshot
       ? publishedSnapshot.tasks.map((task) => {
           const currentTask = currentScheduleById.get(task.id)
+          const assigneeSetMatches = sameScheduleAssigneeSet(
+            (scheduleAssigneesByTask.get(task.id) ?? []).map(
+              (assignee) => assignee.participantId,
+            ),
+            task.assigneeParticipantIds,
+          )
           // External dates always come from the immutable publication. Only
           // response state may move live, and only while that publication
           // still describes the current assignment and dates.
@@ -465,7 +551,8 @@ export async function getProjectAudiencePreview(
             currentTask?.assignedUserId === task.assignedUserId &&
             currentTask.confirmationRequired === task.confirmationRequired &&
             currentTask.startDate === task.startDate &&
-            currentTask.workdays === task.workdays
+            currentTask.workdays === task.workdays &&
+            assigneeSetMatches
           return {
             id: task.id,
             title: task.title,
@@ -504,10 +591,20 @@ export async function getProjectAudiencePreview(
             proposalSubmittedAt: canOverlayResponse
               ? currentTask.proposalSubmittedAt
               : task.proposalSubmittedAt,
+            legacyResponseAllowed:
+              canOverlayResponse && task.assigneeParticipantIds.length === 0,
+            assignees: canOverlayResponse
+              ? visibleScheduleAssigneesByTask.get(task.id) ?? []
+              : [],
           }
         })
       : []
-    : currentScheduleRows
+    : currentScheduleRows.map((task) => ({
+        ...task,
+        legacyResponseAllowed:
+          (scheduleAssigneesByTask.get(task.id) ?? []).length === 0,
+        assignees: visibleScheduleAssigneesByTask.get(task.id) ?? [],
+      }))
   const scheduleRows = [...scheduleRowsUnsorted].sort(
     (left, right) =>
       left.startDate.localeCompare(right.startDate) ||
@@ -703,19 +800,62 @@ export async function getProjectAudiencePreview(
     isMilestone: item.isMilestone,
     confirmationRequired: item.confirmationRequired,
     confirmationStatus: item.confirmationStatus,
-    viewerCanConfirm: audience === "sub_vendor" && canViewerConfirmScheduleTask({
-      viewerIsInternal,
-      viewerId: viewer.id,
-      assignedUserId: item.assignedUserId,
-      confirmationRequired: item.confirmationRequired,
-    }),
+    viewerCanConfirm: item.legacyResponseAllowed && item.assignees.length === 0 && audience === "sub_vendor" &&
+      canViewerConfirmScheduleTask({
+        viewerIsInternal,
+        viewerId: viewer.id,
+        assignedUserId: item.assignedUserId,
+        confirmationRequired: item.confirmationRequired,
+      }),
     proposedStartDate:
-      item.assignedUserId === viewer.id ? item.proposedStartDate : null,
+      item.legacyResponseAllowed &&
+      item.assignees.length === 0 &&
+      item.assignedUserId === viewer.id
+        ? item.proposedStartDate
+        : null,
     proposedWorkdays:
-      item.assignedUserId === viewer.id ? item.proposedWorkdays : null,
-    proposalNote: item.assignedUserId === viewer.id ? item.proposalNote : null,
+      item.legacyResponseAllowed &&
+      item.assignees.length === 0 &&
+      item.assignedUserId === viewer.id
+        ? item.proposedWorkdays
+        : null,
+    proposalNote:
+      item.legacyResponseAllowed &&
+      item.assignees.length === 0 &&
+      item.assignedUserId === viewer.id
+        ? item.proposalNote
+        : null,
     proposalSubmittedAt:
-      item.assignedUserId === viewer.id ? item.proposalSubmittedAt : null,
+      item.legacyResponseAllowed &&
+      item.assignees.length === 0 &&
+      item.assignedUserId === viewer.id
+        ? item.proposalSubmittedAt
+        : null,
+    assignees: item.assignees.map((assignee) => {
+      const viewerOwnsAssignee =
+        assignee.assignedUserId === viewer.id ||
+        assignee.projectContactId === viewerContact?.id
+      return {
+        id: assignee.id,
+        assignedUserId: assignee.assignedUserId,
+        projectContactId: assignee.projectContactId,
+        displayName: assignee.displayName,
+        responseStatus: assignee.responseStatus,
+        dateResponseStatus: assignee.dateResponseStatus,
+        durationResponseStatus: assignee.durationResponseStatus,
+        proposedStartDate: viewerOwnsAssignee
+          ? assignee.proposedStartDate
+          : null,
+        proposedWorkdays: viewerOwnsAssignee
+          ? assignee.proposedWorkdays
+          : null,
+        responseMessage: viewerOwnsAssignee
+          ? assignee.responseMessage
+          : null,
+        viewerCanRespond:
+          item.confirmationRequired && !viewerIsInternal && viewerOwnsAssignee,
+      }
+    }),
   })
   const audienceScheduleItems: readonly AudienceScheduleItem[] =
     ownerScheduleView === "phases"
@@ -728,6 +868,7 @@ export async function getProjectAudiencePreview(
           proposedWorkdays: null,
           proposalNote: null,
           proposalSubmittedAt: null,
+          assignees: [],
         }))
       : audienceScheduleRows.map(visibleScheduleItem)
 

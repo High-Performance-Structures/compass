@@ -58,6 +58,23 @@ export interface ScheduleTaskData {
   sortOrder: number
   createdAt: string
   updatedAt: string
+  assignees?: readonly ScheduleTaskAssigneeData[]
+}
+
+export interface ScheduleTaskAssigneeData {
+  id: string
+  participantId: string
+  assignedUserId: string | null
+  projectContactId: string | null
+  participantRole: string
+  responseStatus: string
+  dateResponseStatus: string
+  durationResponseStatus: string
+  proposedStartDate: string | null
+  proposedWorkdays: number | null
+  proposedEndDate: string | null
+  responseMessage: string | null
+  respondedAt: string | null
 }
 
 export interface TaskDependencyData {
