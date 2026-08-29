@@ -265,7 +265,6 @@ export function ProjectContactsPanel({
     )
   }
 
-  const previewContacts = summary.allContacts.slice(0, 6)
   const reviewCount = summary.unmatchedSourceCount + summary.reviewSourceCount
   const displayGroups = buildDisplayGroups(summary.allContacts)
 
@@ -366,26 +365,6 @@ export function ProjectContactsPanel({
             ))}
           </div>
         </div>
-      )}
-
-      {previewContacts.length > 0 ? (
-        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {previewContacts.map((contact) => (
-            <ContactCard
-              key={contact.id}
-              contact={contact}
-              projectId={projectId}
-              projectLabel={projectLabel}
-              compact
-              directoryOptions={directoryOptions}
-              sageOptions={sageOptions}
-            />
-          ))}
-        </div>
-      ) : (
-        <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-          No contacts have been mapped to this project yet.
-        </p>
       )}
 
       <DeveloperOnly>
