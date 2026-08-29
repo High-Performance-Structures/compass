@@ -88,6 +88,7 @@ type LaunchpadTask = {
     | "Invoice"
     | "Owner update"
     | "Field review"
+    | "Social"
 }
 
 export type DashboardOfficeEvent = {
@@ -659,9 +660,22 @@ function OfficeTaskList({
             category: "Field review",
           }]
         : []
+    const socialTasks: readonly LaunchpadTask[] =
+      overview.socialReminder.needed && overview.socialReminder.projectId
+        ? [{
+            id: "weekly-social-post",
+            title: "Create this week’s project post",
+            detail: overview.socialReminder.projectLabel
+              ? `No social draft yet · Suggested: ${overview.socialReminder.projectLabel}`
+              : "No social draft has been created this week",
+            href: `/dashboard/projects/${overview.socialReminder.projectId}/social`,
+            category: "Social",
+          }]
+        : []
 
     return [
       ...eventTasks,
+      ...socialTasks,
       ...ownerUpdateTasks,
       ...operationTasks,
       ...photoTasks,

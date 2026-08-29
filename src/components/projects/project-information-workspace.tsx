@@ -63,6 +63,12 @@ export function ProjectInformationWorkspace({
   const [mailingAddress, setMailingAddress] = useState(
     information.project.mailingAddress ?? "",
   )
+  const [publicTitle, setPublicTitle] = useState(
+    information.project.publicTitle ?? "",
+  )
+  const [publicLocationCity, setPublicLocationCity] = useState(
+    information.project.publicLocationCity ?? "",
+  )
   const [clientStatus, setClientStatus] = useState(information.project.clientStatus)
   const [jobStatusId, setJobStatusId] = useState(information.project.jobStatusId)
   const [addressSuffix, setAddressSuffix] = useState(
@@ -103,6 +109,8 @@ export function ProjectInformationWorkspace({
         projectId: information.project.id,
         projectAddress,
         mailingAddress,
+        publicTitle,
+        publicLocationCity,
         clientStatus,
         jobStatusId,
         addressSuffix: information.project.projectNumber ? addressSuffix : null,
@@ -278,6 +286,34 @@ export function ProjectInformationWorkspace({
               <option value="lead">Lead</option>
               <option value="customer">Customer</option>
             </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="public-title">Privacy-safe public title</Label>
+            <Input
+              id="public-title"
+              value={publicTitle}
+              maxLength={80}
+              onChange={(event) => setPublicTitle(event.target.value)}
+              placeholder="For example: Mountain View Renovation"
+              aria-describedby="public-title-help"
+            />
+            <p id="public-title-help" className="text-xs text-muted-foreground">
+              Short and descriptive. Do not use a client name, street, house number, or internal job name.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="public-location-city">Public town / city</Label>
+            <Input
+              id="public-location-city"
+              value={publicLocationCity}
+              maxLength={80}
+              onChange={(event) => setPublicLocationCity(event.target.value)}
+              placeholder="Woodland Park"
+              aria-describedby="public-location-help"
+            />
+            <p id="public-location-help" className="text-xs text-muted-foreground">
+              Town or city only—no street, ZIP code, coordinates, neighborhood, or subdivision.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="job-status">Approved job status</Label>

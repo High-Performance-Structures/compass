@@ -53,6 +53,9 @@ export function isPublicPath(pathname: string): boolean {
     scheduledMaintenancePaths.includes(pathname) ||
     pathname.startsWith("/.well-known/") ||
     pathname.startsWith("/api/auth/") ||
+    // Signed, short-lived URLs let Meta fetch only approved public photos.
+    // The route performs its own HMAC and current-visibility checks.
+    pathname.startsWith("/api/social/media/") ||
     pathname.startsWith("/api/integrations/jarvis/") ||
     pathname.startsWith("/api/netsuite/") ||
     pathname.startsWith("/api/google/")

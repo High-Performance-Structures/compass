@@ -115,6 +115,14 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "project",
   },
   {
+    id: "social-publishing",
+    group: "Marketing",
+    label: "Social Publishing",
+    description:
+      "Privacy-safe project post drafts, AI suggestions, department destinations, and publishing approval.",
+    resource: "project",
+  },
+  {
     id: "schedule",
     group: "Operations",
     label: "Project Schedule",

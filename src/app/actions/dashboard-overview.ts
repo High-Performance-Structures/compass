@@ -1,6 +1,6 @@
 "use server"
 
-import { asc, desc, eq, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -13,6 +13,7 @@ import {
   scheduleTasks,
 } from "@/db/schema"
 import { sageBridgeStatus } from "@/db/schema-sage"
+import { socialPosts } from "@/db/schema-social"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -120,6 +121,12 @@ export type DashboardOverview = {
     readonly openRfis: number
     readonly openPoAmount: number
     readonly draftOwnerUpdates: number
+    readonly socialPostsThisWeek: number
+  }
+  readonly socialReminder: {
+    readonly needed: boolean
+    readonly projectId: string | null
+    readonly projectLabel: string | null
   }
   readonly sageBridge: {
     readonly configured: boolean
@@ -158,6 +165,12 @@ function emptyOverview(): DashboardOverview {
       openRfis: 0,
       openPoAmount: 0,
       draftOwnerUpdates: 0,
+      socialPostsThisWeek: 0,
+    },
+    socialReminder: {
+      needed: true,
+      projectId: null,
+      projectLabel: null,
     },
     sageBridge: {
       configured: false,
@@ -225,6 +238,14 @@ function groupByProjectId<T extends { readonly projectId: string }>(
   return grouped
 }
 
+function currentWeekStartIso(now = new Date()): string {
+  const start = new Date(now)
+  const day = start.getUTCDay()
+  start.setUTCDate(start.getUTCDate() - (day === 0 ? 6 : day - 1))
+  start.setUTCHours(0, 0, 0, 0)
+  return start.toISOString()
+}
+
 export async function getDashboardOverview(): Promise<DashboardOverview> {
   try {
     const user = await requireAuth()
@@ -267,6 +288,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       allOperationRows,
       allRfiRows,
       bridgeHeartbeatRows,
+      socialRowsThisWeek,
     ] = await db.batch([
       db
         .select({
@@ -376,6 +398,16 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         .from(sageBridgeStatus)
         .where(eq(sageBridgeStatus.id, "pay-application-poller"))
         .limit(1),
+      db
+        .select({ id: socialPosts.id })
+        .from(socialPosts)
+        .where(
+          and(
+            eq(socialPosts.organizationId, orgId),
+            gte(socialPosts.createdAt, currentWeekStartIso()),
+            isNull(socialPosts.deletedAt),
+          ),
+        ),
     ])
 
     const tasksByProject = groupByProjectId(allTaskRows)
@@ -578,6 +610,9 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const safeDefaultRoleId = allowedRoleIds.includes(defaultRoleId)
       ? defaultRoleId
       : (allowedRoleIds[0] ?? "project-manager")
+    const suggestedSocialProject = dashboardProjects.find(
+      (project) => !isClosedStatus(project.status),
+    ) ?? null
     const bridgeLastSeenAt = bridgeHeartbeatRows[0]?.lastSeenAt ?? null
     const bridgeOnline = isSageBridgeHeartbeatOnline(bridgeLastSeenAt)
     const bridgeMessage = !sageBridgeConfig.configured
@@ -605,6 +640,14 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         openRfis: openRfis.length,
         openPoAmount,
         draftOwnerUpdates,
+        socialPostsThisWeek: socialRowsThisWeek.length,
+      },
+      socialReminder: {
+        needed: socialRowsThisWeek.length === 0,
+        projectId: suggestedSocialProject?.id ?? null,
+        projectLabel: suggestedSocialProject
+          ? projectLabel(suggestedSocialProject)
+          : null,
       },
       sageBridge: {
         configured: sageBridgeConfig.configured,

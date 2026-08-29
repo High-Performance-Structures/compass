@@ -10,6 +10,7 @@ export const ACTIVITY_CATEGORIES = [
   "financial",
   "presence",
   "schedule",
+  "social",
   "warranty",
 ] as const
 

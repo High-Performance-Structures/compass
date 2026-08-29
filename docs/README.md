@@ -45,6 +45,7 @@ The construction-specific modules that make up HPS Compass.
 - [mobile](modules/mobile.md) -- Capacitor native app, offline photo queue, push notifications, biometric auth
 - [desktop](modules/desktop.md) -- Electron desktop app, hosted Compass runtime, native shell bridge, packaged app distribution
 - [claude code](modules/claude-code.md) -- local bridge daemon, own Anthropic API key, filesystem + terminal tools, WebSocket protocol
+- [social publishing](modules/social-publishing.md) -- department-routed Facebook, Instagram, and X project posts with AI drafts and privacy review
 
 
 development

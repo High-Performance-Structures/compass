@@ -548,6 +548,9 @@ export const projects = sqliteTable("projects", {
   ownerUpdateChannel: text("owner_update_channel").notNull().default("compass"),
   ownerUpdateCadence: text("owner_update_cadence").notNull().default("weekly"),
   ownerScheduleView: text("owner_schedule_view").notNull().default("items"),
+  // Public-facing copy must not reuse the internal project name or full address.
+  publicTitle: text("public_title"),
+  publicLocationCity: text("public_location_city"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 })
