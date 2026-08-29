@@ -2,13 +2,11 @@ import {
   IconAddressBook,
   IconBuildingStore,
   IconExternalLink,
-  IconGitMerge,
   IconHome,
   IconMail,
   IconMapPin,
   IconPhone,
   IconShieldCheck,
-  IconUsers,
 } from "@tabler/icons-react"
 import Link from "next/link"
 
@@ -21,7 +19,6 @@ import type {
 import { ProjectContactEditor } from "@/components/projects/project-contact-management"
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
-import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { projectContactCanInvite } from "@/lib/project-contact-access-status"
 
@@ -50,7 +47,7 @@ function buildDisplayGroups(
   return [
     {
       id: "customers",
-      label: "Customers",
+      label: "Owners",
       contacts: contacts.filter((contact) => contact.contactType === "owner"),
     },
     {
@@ -265,7 +262,6 @@ export function ProjectContactsPanel({
     )
   }
 
-  const reviewCount = summary.unmatchedSourceCount + summary.reviewSourceCount
   const displayGroups = buildDisplayGroups(summary.allContacts)
 
   return (
@@ -277,7 +273,7 @@ export function ProjectContactsPanel({
             <h2 className="text-sm font-medium">Project Contacts</h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Customers, vendors, and internal team members mapped to this job.
+            Owners, vendors, and internal team members mapped to this job.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -294,33 +290,6 @@ export function ProjectContactsPanel({
               projectLabel={projectLabel}
               contacts={summary.allContacts}
             />
-          )}
-          <Badge variant="secondary">{summary.totalCount} contacts</Badge>
-          <DeveloperOnly>
-            <Badge variant="outline">
-              {summary.matchedSourceCount} Sage/schedule links
-            </Badge>
-          </DeveloperOnly>
-          {reviewCount > 0 && (
-            <Badge variant="outline">
-              {reviewCount} to review
-            </Badge>
-          )}
-          {summary.pendingAssignmentSourceCount > 0 && (
-            <Badge variant="outline">
-              {summary.pendingAssignmentSourceCount} TBD
-            </Badge>
-          )}
-          {reviewCount > 0 && (
-            <DeveloperOnly>
-              <Link
-                href={`/dashboard/projects/${projectId}/contacts/review`}
-                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-              >
-                <IconGitMerge className="size-4" />
-                Review matches
-              </Link>
-            </DeveloperOnly>
           )}
           {showOpenLink && (
             <Link
@@ -352,30 +321,6 @@ export function ProjectContactsPanel({
         ))}
       </div>
 
-      {summary.csiGroups.length > 0 && (
-        <div className="mt-4 rounded-md border bg-background p-3">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Estimating scopes
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {summary.csiGroups.slice(0, 8).map((group) => (
-              <Badge key={group.csiDivision} variant="outline">
-                {group.csiDivision} {group.csiDivisionName} · {group.count}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <DeveloperOnly>
-        <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
-          <IconUsers className="mt-0.5 size-4 shrink-0" />
-          <p>
-            This layer will reconcile Buildertrend contacts, Sage vendors, Sage
-            job assignments, and Compass users before granting portal access.
-          </p>
-        </div>
-      </DeveloperOnly>
     </section>
   )
 }
