@@ -61,7 +61,20 @@ button { cursor: pointer; }
   font-weight: 800;
 }
 
-.shell { width: 100%; max-width: 100%; min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.shell { position: relative; width: 100%; max-width: 100%; min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.shell::before {
+  position: fixed;
+  z-index: 0;
+  top: 51%;
+  left: 18%;
+  width: min(118vw, 680px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: url("./compass-watermark.png") center / contain no-repeat;
+  content: "";
+  opacity: .04;
+  pointer-events: none;
+}
 .shell-header {
   position: sticky;
   top: 0;
@@ -88,7 +101,7 @@ button { cursor: pointer; }
 @keyframes icon-spin { to { transform: rotate(360deg); } }
 .notification-state { color: var(--green); font-size: 12px; font-weight: 800; }
 
-.content { width: min(100%, 760px); max-width: 100%; min-width: 0; margin: 0 auto; padding: 20px 18px 32px; }
+.content { position: relative; z-index: 1; width: min(100%, 760px); max-width: 100%; min-width: 0; margin: 0 auto; padding: 20px 18px 32px; }
 .section-head { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .section-head h2 { margin: 0; font-size: 20px; }
 .section-head p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
@@ -230,15 +243,20 @@ button { cursor: pointer; }
   background: #fff;
 }
 .tab {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
   min-width: 0;
   border: 0;
   background: transparent;
+  padding: 7px 2px 5px;
   color: #6a746d;
   font-size: 11px;
   font-weight: 750;
 }
-.tab.active { color: var(--green); background: var(--green-light); }
-.tab-symbol { display: block; margin-bottom: 4px; font-size: 17px; font-weight: 900; }
+.tab.active { box-shadow: inset 0 2px 0 var(--green); background: var(--green-light); color: var(--green); }
+.tab-icon { display: block; width: 21px; height: 21px; }
 
 .chat-list { min-height: 42vh; }
 .message-start { display: grid; gap: 10px; padding: 18px 0 22px; border-bottom: 1px solid var(--line); }
@@ -278,6 +296,7 @@ button { cursor: pointer; }
   :root { color-scheme: dark; background: #111713; color: #edf3ef; --green-light: #1e3529; --line: #35423a; --muted: #a7b2aa; }
   body, .shell-header, .chat-compose { background: #111713; }
   .tabbar { background: #151d18; }
+  .shell::before { filter: invert(1); opacity: .055; }
   .field input, .field textarea, .field select, .direct-reply-form textarea, .chat-compose textarea { background: #19231c; border-color: #546158; color: #edf3ef; }
   .live-button { color: #8dd2aa; }
 }

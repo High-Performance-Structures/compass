@@ -34,6 +34,10 @@ import { isTaskAssignedToFieldUser } from "@/lib/field/task-assignment"
 import { assertFieldProjectMembership } from "@/lib/field/project-access"
 import { orderDirectConversationsByActivity } from "@/lib/field/direct-conversations"
 import {
+  isReviewSampleProject,
+  reviewSampleDocuments,
+} from "@/lib/field/review-sample"
+import {
   isInternalStaffRole,
   userRoleLabel,
 } from "@/lib/user-roles"
@@ -221,6 +225,7 @@ export async function getFieldProjectPacket(
       result: await getMessages(directChannel.id, { limit: 12 }),
     })
   }
+  const sampleDocuments = reviewSampleDocuments(projectId)
   const scheduleItems: FieldProjectPacket["tasks"] = schedule.tasks.map(
     (task) => ({
       id: task.id,
@@ -239,7 +244,11 @@ export async function getFieldProjectPacket(
     })
   )
   const assignedTaskItems: FieldProjectPacket["tasks"] = operationTasks
-    .filter((task) => isTaskAssignedToFieldUser(task.assigneeName, user))
+    .filter(
+      (task) =>
+        isReviewSampleProject(projectId) ||
+        isTaskAssignedToFieldUser(task.assigneeName, user)
+    )
     .map((task) => ({
       id: task.id,
       kind: "task",
@@ -273,16 +282,18 @@ export async function getFieldProjectPacket(
       authorName: log.authorName,
       syncStatus: log.syncStatus,
     })),
-    documents: fileResult.success
-      ? fileResult.files.slice(0, 100).map((file) => ({
-          id: file.id,
-          name: file.name,
-          type: file.type,
-          mimeType: file.mimeType ?? null,
-          modifiedAt: file.modifiedAt,
-          webViewLink: file.webViewLink ?? null,
-        }))
-      : [],
+    documents: sampleDocuments.length > 0
+      ? [...sampleDocuments]
+      : fileResult.success
+        ? fileResult.files.slice(0, 100).map((file) => ({
+            id: file.id,
+            name: file.name,
+            type: file.type,
+            mimeType: file.mimeType ?? null,
+            modifiedAt: file.modifiedAt,
+            webViewLink: file.webViewLink ?? null,
+          }))
+        : [],
     channel: channel ? { id: channel.id, name: channel.name } : null,
     messages: messageResult?.success && messageResult.data
       ? messageResult.data

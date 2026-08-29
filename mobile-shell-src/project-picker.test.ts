@@ -4,6 +4,8 @@ import type { FieldProject } from "../src/lib/field/types"
 import {
   filterFieldProjects,
   isProjectCompanyFilter,
+  isReviewSampleWorkspace,
+  projectCompanyOptionsForProjects,
   projectCompanyLabel,
 } from "./project-picker"
 
@@ -41,5 +43,41 @@ describe("mobile project picker", () => {
     expect(projectCompanyLabel(projects[3])).toBe("Design")
     expect(isProjectCompanyFilter("N")).toBe(true)
     expect(isProjectCompanyFilter("other")).toBe(false)
+  })
+
+  it("uses neutral department labels for an isolated review workspace", () => {
+    const reviewProjects: readonly FieldProject[] = [
+      {
+        id: "proj-bt-sample-job",
+        name: "Compass Review Sample Project",
+        projectNumber: "TEST-001",
+        address: "100 Example Street",
+      },
+    ]
+
+    expect(isReviewSampleWorkspace(reviewProjects)).toBe(true)
+    expect(projectCompanyLabel(reviewProjects[0], true)).toBe("General")
+    expect(projectCompanyOptionsForProjects(reviewProjects)).toEqual([])
+    expect(filterFieldProjects(reviewProjects, "all", "General", true)).toEqual(
+      reviewProjects
+    )
+  })
+
+  it("keeps normal department labels when review and real projects are mixed", () => {
+    const mixedProjects: readonly FieldProject[] = [
+      projects[1],
+      {
+        id: "proj-bt-sample-job",
+        name: "Compass Review Sample Project",
+        projectNumber: "TEST-001",
+        address: "100 Example Street",
+      },
+    ]
+
+    expect(isReviewSampleWorkspace(mixedProjects)).toBe(false)
+    expect(projectCompanyLabel(mixedProjects[1])).toBe("HPS")
+    expect(projectCompanyOptionsForProjects(mixedProjects)).toEqual(
+      expect.arrayContaining([{ value: "H", label: "HPS" }])
+    )
   })
 })

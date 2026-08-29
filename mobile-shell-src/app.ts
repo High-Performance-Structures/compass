@@ -52,10 +52,16 @@ import {
 import {
   filterFieldProjects,
   isProjectCompanyFilter,
-  PROJECT_COMPANY_OPTIONS,
+  isReviewSampleProject,
+  isReviewSampleWorkspace,
+  projectCompanyOptionsForProjects,
   projectCompanyLabel,
   type ProjectCompanyFilter,
 } from "./project-picker"
+import {
+  renderFieldTabIcon,
+  type FieldTabIcon,
+} from "./tab-icons"
 
 const LIVE_URL = "https://compass.openrangeconstruction.ltd"
 const PROJECTS_KEY = "compass_field_projects_v1"
@@ -218,11 +224,17 @@ function projectLabel(project: Project): string {
 }
 
 function filteredProjectList(): readonly Project[] {
-  return filterFieldProjects(projects, projectCompanyFilter, projectSearch)
+  return filterFieldProjects(
+    projects,
+    projectCompanyFilter,
+    projectSearch,
+    isReviewSampleWorkspace(projects)
+  )
 }
 
 function projectPickerResults(): string {
   const filteredProjects = filteredProjectList()
+  const neutralReviewWorkspace = isReviewSampleWorkspace(projects)
   const hasFilter = projectCompanyFilter !== "all" || projectSearch.trim().length > 0
   const summary = filteredProjects.length === projects.length
     ? `${projects.length} projects`
@@ -237,14 +249,18 @@ function projectPickerResults(): string {
 
   return `<div class="project-result-summary"><span>${escapeHtml(summary)}</span>${clearButton}</div><div class="rows project-results">${filteredProjects.map((project) => `
     <button class="row project-row" data-project-id="${escapeHtml(project.id)}" type="button">
-      <div class="row-main"><div class="project-row-heading"><p class="row-title">${escapeHtml(projectLabel(project))}</p><span class="project-company-badge">${escapeHtml(projectCompanyLabel(project))}</span></div><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
+      <div class="row-main"><div class="project-row-heading"><p class="row-title">${escapeHtml(projectLabel(project))}</p><span class="project-company-badge">${escapeHtml(projectCompanyLabel(project, neutralReviewWorkspace))}</span></div><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
       <strong>${packet?.project.id === project.id ? "Selected" : "Open"}</strong>
     </button>`).join("")}</div>`
 }
 
 function projectCompanyOptions(): string {
-  return PROJECT_COMPANY_OPTIONS.map((option) => {
-    const count = projects.filter((project) => projectCompanyLabel(project) === option.label).length
+  const neutralReviewWorkspace = isReviewSampleWorkspace(projects)
+  return projectCompanyOptionsForProjects(projects).map((option) => {
+    const count = projects.filter(
+      (project) =>
+        projectCompanyLabel(project, neutralReviewWorkspace) === option.label
+    ).length
     const selected = projectCompanyFilter === option.value ? " selected" : ""
     return `<option value="${option.value}"${selected}>${escapeHtml(option.label)} (${count})</option>`
   }).join("")
@@ -303,22 +319,24 @@ function projectsView(): string {
 function todayView(): string {
   if (!packet) return empty("Select a project to begin.")
   const today = new Date().toISOString().slice(0, 10)
+  const reviewSample = isReviewSampleProject(packet.project)
   const open = packet.tasks.filter((task) => !["COMPLETE", "complete", "closed", "cancelled"].includes(task.status))
   const assigned = open
     .filter(
       (task) =>
         task.kind === "task" &&
-        profile !== null &&
-        isTaskAssignedToFieldUser(task.assignedTo, {
-          email: profile.email,
-          displayName: profile.name,
-          firstName: null,
-          lastName: null,
-        })
+        (reviewSample ||
+          (profile !== null &&
+            isTaskAssignedToFieldUser(task.assignedTo, {
+              email: profile.email,
+              displayName: profile.name,
+              firstName: null,
+              lastName: null,
+            })))
     )
     .slice(0, 12)
   const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
-  const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
+  const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(reviewSample ? task.description ?? "Sample field task" : task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
   const cherishSpotlight = online
     ? renderCherishTicker(cherishRecognitions, escapeHtml)
@@ -519,7 +537,7 @@ function cherishView(): string {
         `<article class="cherish-recognition"><div><span>${escapeHtml(item.cherishValue)}</span><small>${item.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(shortDate(item.createdAt))}</small></div><p>${escapeHtml(item.message)}</p><footer>${item.isAnonymous ? "Shared anonymously" : `Shared by ${escapeHtml(item.submittedByName ?? "a team member")}`}</footer></article>`,
     )
     .join("")
-  const recognitionStream = `<section class="cherish-stream">${sectionHead("Team recognition", "Approved shoutouts and project wins from across HPS.")}${loadingCherishRecognitions ? `<p class="cherish-stream-status">Loading team recognition...</p>` : recognitionRows ? `<div class="cherish-recognition-list">${recognitionRows}</div>` : `<p class="cherish-stream-status">${escapeHtml(cherishRecognitionError || (online ? "No approved recognition yet." : "Connect to load approved recognition."))}</p>`}</section>`
+  const recognitionStream = `<section class="cherish-stream">${sectionHead("Team recognition", "Approved shoutouts and project wins from across the team.")}${loadingCherishRecognitions ? `<p class="cherish-stream-status">Loading team recognition...</p>` : recognitionRows ? `<div class="cherish-recognition-list">${recognitionRows}</div>` : `<p class="cherish-stream-status">${escapeHtml(cherishRecognitionError || (online ? "No approved recognition yet." : "Connect to load approved recognition."))}</p>`}</section>`
 
   return `${recognitionStream}<section class="block">${sectionHead("CHERISH feedback", "Save a shoutout, project win, or private concern without leaving Field Mode.")}
     <form id="cherish-form" class="form">
@@ -581,13 +599,16 @@ function render(): void {
   const title = packet ? projectLabel(packet.project) : "Compass"
   const queued = outbox.length > 0 ? ` - ${outbox.length} waiting to sync` : ""
   const unreadNotifications = packet?.notifications.filter((notification) => notification.readAt === null).length ?? 0
-  const tabs: { value: Tab; symbol: string; label: string }[] = [
-    { value: "projects", symbol: "P", label: "Projects" },
-    { value: "today", symbol: "T", label: "Today" },
-    { value: "log", symbol: "L", label: "Log" },
-    { value: "documents", symbol: "D", label: "Documents" },
-    { value: "chat", symbol: "M", label: "Messages" },
-    { value: "cherish", symbol: "C", label: "Cherish" },
+  const tabs: {
+    readonly value: FieldTabIcon
+    readonly label: string
+  }[] = [
+    { value: "projects", label: "Projects" },
+    { value: "today", label: "Today" },
+    { value: "log", label: "Log" },
+    { value: "documents", label: "Documents" },
+    { value: "chat", label: "Messages" },
+    { value: "cherish", label: "Cherish" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
   const connectionLabel = authenticationRequired
@@ -595,7 +616,7 @@ function render(): void {
     : online
       ? "Network available"
       : "Offline"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online && !authenticationRequired ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online && !authenticationRequired ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : connectionLabel}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online && !authenticationRequired ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online && !authenticationRequired ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : connectionLabel}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar" aria-label="Field Mode navigation">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}" ${activeTab === tab.value ? 'aria-current="page"' : ""}>${renderFieldTabIcon(tab.value)}<span>${tab.label}</span></button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -829,9 +850,16 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
           : "Unable to refresh project messages."
       )
     }
-    packet = result.data.packet
+    const refreshedPacket = result.data.packet
+    packet = refreshedPacket
+    projects = projects.map((project) =>
+      project.id === projectId ? refreshedPacket.project : project
+    )
     lastProjectRefreshAt = Date.now()
-    await writeJson(packetKey(projectId), packet)
+    await Promise.all([
+      writeJson(packetKey(projectId), packet),
+      writeJson(PROJECTS_KEY, projects),
+    ])
   } catch (error) {
     messageActionError =
       error instanceof Error ? error.message : "Unable to refresh project messages."

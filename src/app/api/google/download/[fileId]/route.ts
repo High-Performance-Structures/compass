@@ -21,6 +21,7 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
+import { reviewSampleFile } from "@/lib/field/review-sample"
 
 export async function GET(
   request: NextRequest,
@@ -45,9 +46,22 @@ export async function GET(
     let allowedParentId: string | null = null
 
     const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const { fileId } = await params
+    const sampleFile = reviewSampleFile(projectId, fileId)
+    if (sampleFile && projectId) {
+      await assertProjectAccess(db, user, projectId)
+      return new Response(sampleFile.content, {
+        headers: {
+          "Content-Type": sampleFile.document.mimeType ?? "text/plain",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(sampleFile.document.name)}"`,
+          "Cache-Control": "private, max-age=300",
+        },
+      })
+    }
+
     const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
 
     const auth = await db
       .select()
@@ -94,8 +108,6 @@ export async function GET(
     )
     const serviceAccountKey = parseServiceAccountKey(keyJson)
     const client = new DriveClient({ serviceAccountKey })
-
-    const { fileId } = await params
 
     // get file metadata to determine type
     const fileMeta = await client.getFile(
