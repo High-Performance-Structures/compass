@@ -39,7 +39,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
-import { CherishRecognitionTicker } from "@/components/cherish/cherish-recognition-ticker"
+import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invitation"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Select,
@@ -57,7 +57,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import type { SidebarUser } from "@/lib/auth"
-import type { FieldCherishRecognition } from "@/lib/field/types"
+import type { CherishStory } from "@/app/actions/cherish-stories"
 import {
   DESK_STATUS_LABELS,
   deskStatusForPresenceMessage,
@@ -1168,7 +1168,7 @@ export function DashboardLaunchpad({
   readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
   readonly officeProjectId: string | null
   readonly canManageOfficeMaintenance: boolean
-  readonly cherishRecognitions: readonly FieldCherishRecognition[]
+  readonly cherishRecognitions: readonly CherishStory[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1220,7 +1220,7 @@ export function DashboardLaunchpad({
         </div>
       </div>
 
-      <CherishRecognitionTicker items={cherishRecognitions} />
+      <CherishStoryInvitation items={cherishRecognitions} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1.28fr)]">
         <DeskHero

@@ -1344,32 +1344,3 @@ em-emoji-picker {
     transform: translateX(410%);
   }
 }
-
-@keyframes cherish-recognition-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-100%);
-  }
-}
-
-.cherish-recognition-track {
-  padding-left: 100%;
-  animation: cherish-recognition-scroll 42s linear infinite;
-}
-
-.cherish-recognition-marquee:hover .cherish-recognition-track {
-  animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cherish-recognition-track {
-    animation: none;
-    padding-left: 0;
-  }
-
-  .cherish-recognition-marquee > div:last-child {
-    overflow-x: auto;
-  }
-}
