@@ -10,7 +10,9 @@ import {
   useRef,
   useState,
 } from "react"
-import { type BundledLanguage, codeToHtml, type ShikiTransformer } from "shiki"
+import type { BundledLanguage, ShikiTransformer } from "shiki"
+import { createHighlighterCore, type HighlighterCore } from "shiki/core"
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -49,21 +51,117 @@ const lineNumberTransformer: ShikiTransformer = {
   },
 }
 
+const SUPPORTED_LANGUAGES = [
+  "bash",
+  "css",
+  "go",
+  "html",
+  "javascript",
+  "json",
+  "jsx",
+  "markdown",
+  "python",
+  "rust",
+  "sql",
+  "tsx",
+  "typescript",
+  "yaml",
+] as const
+
+type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
+
+let highlighterPromise: Promise<HighlighterCore> | null = null
+
+function getHighlighter(): Promise<HighlighterCore> {
+  if (highlighterPromise === null) {
+    highlighterPromise = createHighlighterCore({
+      themes: [
+        import("@shikijs/themes/one-light"),
+        import("@shikijs/themes/one-dark-pro"),
+      ],
+      langs: [
+        import("@shikijs/langs/bash"),
+        import("@shikijs/langs/css"),
+        import("@shikijs/langs/go"),
+        import("@shikijs/langs/html"),
+        import("@shikijs/langs/javascript"),
+        import("@shikijs/langs/json"),
+        import("@shikijs/langs/jsx"),
+        import("@shikijs/langs/markdown"),
+        import("@shikijs/langs/python"),
+        import("@shikijs/langs/rust"),
+        import("@shikijs/langs/sql"),
+        import("@shikijs/langs/tsx"),
+        import("@shikijs/langs/typescript"),
+        import("@shikijs/langs/yaml"),
+      ],
+      engine: createJavaScriptRegexEngine(),
+    })
+  }
+
+  return highlighterPromise
+}
+
+function supportedLanguage(language: BundledLanguage): SupportedLanguage | null {
+  if (language === "sh" || language === "shell" || language === "zsh") return "bash"
+  if (language === "js") return "javascript"
+  if (language === "md") return "markdown"
+  if (language === "py") return "python"
+  if (language === "ts") return "typescript"
+  if (language === "yml") return "yaml"
+
+  for (const supported of SUPPORTED_LANGUAGES) {
+    if (language === supported) return supported
+  }
+
+  return null
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+}
+
+function plainCodeHtml(code: string, showLineNumbers: boolean): string {
+  const content = showLineNumbers
+    ? code
+        .split("\n")
+        .map(
+          (line, index) =>
+            `<span class="line"><span class="inline-block min-w-10 mr-4 text-right select-none text-muted-foreground">${index + 1}</span>${escapeHtml(line)}</span>`,
+        )
+        .join("\n")
+    : escapeHtml(code)
+
+  return `<pre class="shiki" style="background-color:transparent;color:inherit"><code>${content}</code></pre>`
+}
+
 export async function highlightCode(
   code: string,
   language: BundledLanguage,
   showLineNumbers = false,
 ) {
+  const normalizedLanguage = supportedLanguage(language)
+  if (normalizedLanguage === null) {
+    const plain = plainCodeHtml(code, showLineNumbers)
+    return [plain, plain]
+  }
+
   const transformers: ShikiTransformer[] = showLineNumbers ? [lineNumberTransformer] : []
+  const highlighter = await getHighlighter()
 
   return await Promise.all([
-    codeToHtml(code, {
-      lang: language,
+    highlighter.codeToHtml(code, {
+      lang: normalizedLanguage,
       theme: "one-light",
       transformers,
     }),
-    codeToHtml(code, {
-      lang: language,
+    highlighter.codeToHtml(code, {
+      lang: normalizedLanguage,
       theme: "one-dark-pro",
       transformers,
     }),
