@@ -14,8 +14,9 @@ import {
   type CherishPulseResponseType,
   type CherishValue,
 } from "@/app/actions/cherish-pulse"
+import type { CherishStory } from "@/app/actions/cherish-stories"
 import { useChatPanel } from "@/components/agent/chat-provider"
-import { CherishRecognitionTicker } from "@/components/cherish/cherish-recognition-ticker"
+import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invitation"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -32,7 +33,6 @@ import {
   FIELD_OUTBOX_CHANGED_EVENT,
   listFieldOutboxItems,
 } from "@/lib/field/offline-outbox"
-import type { FieldCherishRecognition } from "@/lib/field/types"
 import { cn } from "@/lib/utils"
 
 const CHERISH_VALUES: readonly CherishValue[] = [
@@ -61,7 +61,7 @@ export function FieldDesk({
 }: {
   readonly offlineScopeKey: string
   readonly displayName: string
-  readonly cherishRecognitions: readonly FieldCherishRecognition[]
+  readonly cherishRecognitions: readonly CherishStory[]
 }): React.ReactElement {
   const chatPanel = useChatPanel()
   const [online, setOnline] = useState(true)
@@ -226,7 +226,7 @@ export function FieldDesk({
         )}
       </header>
 
-      <CherishRecognitionTicker
+      <CherishStoryInvitation
         items={cherishRecognitions}
         className="mt-4"
       />

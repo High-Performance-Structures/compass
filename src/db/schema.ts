@@ -70,6 +70,8 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   message: text("message").notNull(),
   source: text("source").notNull().default("compass_dashboard"),
   visibility: text("visibility").notNull().default("team"),
+  audienceScope: text("audience_scope").notNull().default("company"),
+  audienceReferenceId: text("audience_reference_id"),
   reviewStatus: text("review_status").notNull().default("needs_review"),
   reviewedBy: text("reviewed_by").references(() => users.id, {
     onDelete: "set null",
@@ -79,6 +81,68 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
+
+export const cherishPulseStoryStates = sqliteTable(
+  "cherish_pulse_story_states",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => cherishPulseResponses.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewedAt: text("viewed_at").notNull(),
+    reactedAt: text("reacted_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("cherish_story_state_response_user_idx").on(
+      table.responseId,
+      table.userId,
+    ),
+    index("cherish_story_state_org_user_idx").on(
+      table.organizationId,
+      table.userId,
+    ),
+  ],
+)
+
+export const cherishPulseStoryReplies = sqliteTable(
+  "cherish_pulse_story_replies",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => cherishPulseResponses.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recipientId: text("recipient_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    message: text("message").notNull(),
+    deletedAt: text("deleted_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("cherish_story_reply_response_created_idx").on(
+      table.responseId,
+      table.createdAt,
+    ),
+    index("cherish_story_reply_recipient_created_idx").on(
+      table.recipientId,
+      table.createdAt,
+    ),
+  ],
+)
 
 export const notificationPreferences = sqliteTable("notification_preferences", {
   userId: text("user_id")

@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation"
 
-import { getCherishPulseTeamStream } from "@/app/actions/cherish-pulse"
+import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { FieldDesk } from "@/components/field/field-desk"
 import { getCurrentUser } from "@/lib/auth"
-import { toFieldCherishRecognitions } from "@/lib/field/cherish-recognition"
 import { canUseAskCompass, canUseFieldDesk } from "@/lib/permissions"
 
 export default async function FieldDeskPage(): Promise<React.ReactElement> {
@@ -16,7 +15,7 @@ export default async function FieldDeskPage(): Promise<React.ReactElement> {
     notFound()
   }
 
-  const cherishResult = await getCherishPulseTeamStream()
+  const cherishResult = await getActiveCherishStories()
 
   return (
     <FieldDesk
@@ -24,7 +23,7 @@ export default async function FieldDeskPage(): Promise<React.ReactElement> {
       displayName={user.displayName ?? user.firstName ?? "Team member"}
       cherishRecognitions={
         cherishResult.success
-          ? toFieldCherishRecognitions(cherishResult.data)
+          ? cherishResult.data
           : []
       }
     />

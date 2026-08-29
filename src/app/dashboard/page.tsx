@@ -1,7 +1,7 @@
 import type * as React from "react"
 import { redirect } from "next/navigation"
 
-import { getCherishPulseTeamStream } from "@/app/actions/cherish-pulse"
+import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
 import { getProjects } from "@/app/actions/projects"
 import {
@@ -15,7 +15,6 @@ import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import {
   canManageProjectRegistry,
 } from "@/lib/permissions"
-import { toFieldCherishRecognitions } from "@/lib/field/cherish-recognition"
 
 export default async function Page(): Promise<React.ReactElement> {
   const currentUser = await getCurrentUser()
@@ -49,7 +48,7 @@ export default async function Page(): Promise<React.ReactElement> {
     getCurrentUserPresence(),
     getOrganizationTeamAvailability(),
     getWorkCalendar(undefined, { eventsOnly: true }).catch(() => null),
-    getCherishPulseTeamStream(),
+    getActiveCherishStories(),
   ])
   const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
   const initialDeskStatusMessage = presenceResult.success
@@ -86,7 +85,7 @@ export default async function Page(): Promise<React.ReactElement> {
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
       cherishRecognitions={
         cherishResult.success
-          ? toFieldCherishRecognitions(cherishResult.data)
+          ? cherishResult.data
           : []
       }
     />

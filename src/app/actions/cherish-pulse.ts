@@ -218,6 +218,8 @@ export async function submitCherishPulseResponse(
         message: item.message,
         source: item.source,
         visibility: item.visibility,
+        audienceScope: "company",
+        audienceReferenceId: null,
         reviewStatus: item.reviewStatus,
         reviewedBy: null,
         reviewedAt: null,
@@ -346,6 +348,7 @@ export async function getCherishPulseTeamStream(): Promise<
         and(
           eq(cherishPulseResponses.organizationId, organizationId),
           eq(cherishPulseResponses.visibility, "team"),
+          eq(cherishPulseResponses.audienceScope, "company"),
           eq(cherishPulseResponses.reviewStatus, "approved")
         )
       )

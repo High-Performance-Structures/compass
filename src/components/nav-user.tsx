@@ -285,8 +285,8 @@ export function NavUser({
                   Account
                 </span>
               </span>
-              {/* Voice controls -- replace the old dots icon */}
-              <div className="group-data-[collapsible=icon]:hidden flex shrink-0 items-center">
+              {/* Keep the controls within the photo height without changing their hit areas. */}
+              <div className="group-data-[collapsible=icon]:hidden flex h-24 w-[6.375rem] shrink-0 flex-col items-center justify-between py-1">
                 <DeviceButtonGroup
                   isMuted={isMuted}
                   onToggle={(e) => { stopEvent(e); toggleMute() }}
@@ -314,7 +314,7 @@ export function NavUser({
                   onClick={stopPropagation}
                   onPointerDown={stopPropagation}
                   aria-label="Settings"
-                  className="ml-px flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  className="flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 >
                   <IconSettings className="size-3" />
                 </Link>
