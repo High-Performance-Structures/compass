@@ -33,6 +33,7 @@ import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
 import { conversationChannelIdFromNotificationHref } from "../src/lib/conversations/notification-route"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
+import { renderCherishTicker } from "./cherish-ticker"
 import {
   appendOptimisticDirectMessage,
   PROJECT_CONVERSATION_KEY,
@@ -319,9 +320,8 @@ function todayView(): string {
   const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
   const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
-  const latestRecognition = cherishRecognitions[0]
-  const cherishSpotlight = online && latestRecognition
-    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
+  const cherishSpotlight = online
+    ? renderCherishTicker(cherishRecognitions, escapeHtml)
     : ""
   return cherishSpotlight + sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
