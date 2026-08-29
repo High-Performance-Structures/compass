@@ -61,8 +61,8 @@ export default async function ProjectFinancialsPage({
               </h1>
             </div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Vendor bills, owner pay applications, and their supporting
-              packages.
+              Current financial workflows and read-only historical owner
+              billing records.
             </p>
           </div>
           <ProjectContextSwitcher

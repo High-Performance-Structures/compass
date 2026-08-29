@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -27,7 +27,14 @@ import {
 export type ProjectFinancialWorkflowItem = {
   readonly id: string
   readonly sourceRecordId: string | null
-  readonly type: "vendor_bill" | "owner_pay_application" | "rfq"
+  readonly type:
+    | "vendor_bill"
+    | "owner_pay_application"
+    | "rfq"
+    | "owner_invoice"
+    | "payment"
+    | "deposit"
+    | "credit_memo"
   readonly number: string | null
   readonly title: string
   readonly companyName: string | null
@@ -38,6 +45,8 @@ export type ProjectFinancialWorkflowItem = {
   readonly syncStatus: string
   readonly sageWriteStatus: string
   readonly supportingPackageUrl: string | null
+  readonly readOnly: boolean
+  readonly sourceLabel: string | null
   readonly updatedAt: string
 }
 
@@ -210,13 +219,35 @@ function safeHttpUrl(value: string | null): string | null {
 function prefixForType(type: ProjectFinancialWorkflowItem["type"]): string {
   if (type === "vendor_bill") return "BILL"
   if (type === "owner_pay_application") return "PAYAPP"
+  if (type === "owner_invoice") return "INVOICE"
+  if (type === "payment") return "PAYMENT"
+  if (type === "deposit") return "DEPOSIT"
+  if (type === "credit_memo") return "CREDIT"
   return "RFQ"
 }
 
 function typeLabel(type: ProjectFinancialWorkflowItem["type"]): string {
   if (type === "vendor_bill") return "Vendor bill"
   if (type === "owner_pay_application") return "Owner pay application"
+  if (type === "owner_invoice") return "Owner invoice"
+  if (type === "payment") return "Payment"
+  if (type === "deposit") return "Deposit"
+  if (type === "credit_memo") return "Credit memo"
   return "Request for quote"
+}
+
+function financialWorkflowType(
+  sourceRecordType: string
+): ProjectFinancialWorkflowItem["type"] {
+  if (sourceRecordType === "vendor_bill") return "vendor_bill"
+  if (sourceRecordType === "owner_pay_application") {
+    return "owner_pay_application"
+  }
+  if (sourceRecordType === "owner_invoice") return "owner_invoice"
+  if (sourceRecordType === "payment") return "payment"
+  if (sourceRecordType === "deposit") return "deposit"
+  if (sourceRecordType === "credit_memo") return "credit_memo"
+  return "rfq"
 }
 
 async function nextRecordNumber(
@@ -256,13 +287,31 @@ export async function getProjectFinancialWorkflowItems(
       .where(
         and(
           eq(projectOperations.projectId, projectId),
-          inArray(projectOperations.sourceRecordType, [
-            "vendor_bill",
-            "owner_pay_application",
-          ])
+          or(
+            inArray(projectOperations.sourceRecordType, [
+              "vendor_bill",
+              "owner_pay_application",
+            ]),
+            // Verified cutover rows are promoted here for operational use;
+            // staging remains the immutable source-evidence layer.
+            and(
+              eq(projectOperations.sourceSystem, "buildertrend"),
+              inArray(projectOperations.sourceRecordType, [
+                "owner_invoice",
+                "payment",
+                "deposit",
+                "credit_memo",
+              ])
+            )
+          )
         )
       )
-      .orderBy(asc(projectOperations.dueDate), asc(projectOperations.updatedAt)),
+      .orderBy(
+        asc(
+          sql`coalesce(${projectOperations.dueDate}, ${projectOperations.startDate}, ${projectOperations.createdAt})`
+        ),
+        asc(projectOperations.updatedAt)
+      ),
     db
       .select({
         id: projectBudgetApplications.id,
@@ -286,6 +335,11 @@ export async function getProjectFinancialWorkflowItems(
   )
 
   return rows.map((row) => {
+    const isBuildertrendHistory =
+      row.sourceSystem === "buildertrend" &&
+      ["owner_invoice", "payment", "deposit", "credit_memo"].includes(
+        row.sourceRecordType
+      )
     const application =
       row.sourceRecordType === "owner_pay_application" && row.sourceRecordId
         ? applicationsBySourceId.get(row.sourceRecordId) ?? null
@@ -297,23 +351,25 @@ export async function getProjectFinancialWorkflowItems(
     return {
       id: row.id,
       sourceRecordId: row.sourceRecordId,
-      type:
-        row.sourceRecordType === "vendor_bill" ||
-        row.sourceRecordType === "owner_pay_application"
-          ? row.sourceRecordType
-          : "rfq",
+      type: financialWorkflowType(row.sourceRecordType),
       number: row.sourceRecordNumber,
       title: row.title,
       companyName: row.companyName,
       status: row.status,
       amount: paymentBreakdown?.applicationTotal ?? row.amount,
       paymentBreakdown,
-      dueDate: row.dueDate,
+      dueDate:
+        row.dueDate ??
+        (isBuildertrendHistory
+          ? row.startDate ?? row.createdAt.slice(0, 10)
+          : null),
       syncStatus: row.syncStatus,
       sageWriteStatus: row.sageWriteStatus,
       supportingPackageUrl:
         safeHttpUrl(row.externalUrl) ??
         safeHttpUrl(application?.sourceUrl ?? null),
+      readOnly: isBuildertrendHistory,
+      sourceLabel: isBuildertrendHistory ? "Buildertrend history" : null,
       updatedAt: row.updatedAt,
     }
   })
