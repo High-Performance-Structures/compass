@@ -45,6 +45,10 @@ import {
   shouldLockFieldAppAfterBackground,
 } from "./field-refresh"
 import {
+  nativeResponseRequiresAuthentication,
+  webResponseRequiresAuthentication,
+} from "./native-http"
+import {
   filterFieldProjects,
   isProjectCompanyFilter,
   PROJECT_COMPANY_OPTIONS,
@@ -65,6 +69,7 @@ const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
 const FIELD_ATTACHMENT_DIRECTORY = "compass-field-attachments"
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 const BACKGROUND_LOCK_THRESHOLD_MS = 30_000
+const AUTHENTICATION_REQUIRED_MESSAGE = "Your Compass session expired. Sign in again to sync."
 const isIos = Capacitor.getPlatform() === "ios"
 
 type Project = FieldProject
@@ -125,6 +130,7 @@ let documents: SavedDocument[] = []
 let activeTab: Tab = "today"
 let online = false
 let authError = ""
+let authenticationRequired = false
 let signingIn = false
 let authMode: AuthMode = "choice"
 let authEmail = ""
@@ -271,7 +277,22 @@ function projectsView(): string {
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
     return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}</div></div>`
   }
-  return sectionHead("Active projects", "Filter by department or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
+  if (authenticationRequired && authMode === "password") {
+    return sectionHead("Reconnect Field Mode", "Your cached projects and waiting work are safe on this device.") + `<form id="native-password-form" class="form auth-form"><label class="field">Email address<input name="email" type="email" autocomplete="email" inputmode="email" value="${escapeHtml(authEmail || profile?.email || "")}" required /></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Signing in" : "Sign in and sync"}</button><button class="text-button" data-auth-choice type="button" ${signingIn ? "disabled" : ""}>Back to cached projects</button></form>`
+  }
+  if (authenticationRequired && authMode === "email") {
+    return sectionHead("Reconnect Field Mode", "Your cached projects and waiting work are safe on this device.") + `<form id="native-email-form" class="form auth-form"><label class="field">Email address<input name="email" type="email" autocomplete="email" inputmode="email" value="${escapeHtml(authEmail || profile?.email || "")}" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Sending code" : "Send verification code"}</button><button class="text-button" data-auth-choice type="button" ${signingIn ? "disabled" : ""}>Back to cached projects</button></form>`
+  }
+  if (authenticationRequired && authMode === "code") {
+    return sectionHead("Enter your verification code", `We sent a six-digit code to ${authEmail}.`) + `<form id="native-code-form" class="form auth-form"><label class="field">Verification code<input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Verifying" : "Verify and sync"}</button><button class="text-button" data-auth-email type="button" ${signingIn ? "disabled" : ""}>Use a different email</button></form>`
+  }
+  const reconnectDetail = outbox.length > 0
+    ? `Reconnect to send the ${outbox.length} waiting item${outbox.length === 1 ? "" : "s"}.`
+    : "Reconnect to refresh your projects."
+  const reconnect = authenticationRequired
+    ? `<div class="empty auth-empty"><p class="auth-error" role="alert">${escapeHtml(AUTHENTICATION_REQUIRED_MESSAGE)}</p><p>Your cached projects remain available. ${escapeHtml(reconnectDetail)}</p><div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in again</button><button id="email-code-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Email me a code</button></div></div>`
+    : ""
+  return sectionHead("Active projects", "Filter by department or type any part of a project to find it fast.") + `${reconnect}${projectError && !authenticationRequired ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
     <label class="field">Department<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All departments (${projects.length})</option>${projectCompanyOptions()}</select></label>
     <label class="field">Find a project<input id="project-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" aria-controls="project-picker-results" placeholder="Number, name, or address" value="${escapeHtml(projectSearch)}" /></label>
     <div id="project-picker-results" aria-live="polite">${projectPickerResults()}</div>
@@ -569,7 +590,12 @@ function render(): void {
     { value: "cherish", symbol: "C", label: "Cherish" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  const connectionLabel = authenticationRequired
+    ? "Sign in required - cached data available"
+    : online
+      ? "Network available"
+      : "Offline"
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online && !authenticationRequired ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online && !authenticationRequired ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : connectionLabel}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -765,7 +791,7 @@ function refreshProjectPickerResults(): void {
 }
 
 async function refreshProjectPacket(showProgress = true): Promise<void> {
-  if (!packet || !online) return
+  if (!packet || !online || authenticationRequired) return
   if (refreshingProject) {
     projectRefreshRequested = true
     return
@@ -784,8 +810,10 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
         "Cache-Control": "no-cache",
         Pragma: "no-cache",
       },
+      disableRedirects: true,
       responseType: "json",
     })
+    requireAuthenticatedNativeResponse(response)
     const result = z.object({
       success: z.boolean(),
       error: z.string().optional(),
@@ -849,6 +877,7 @@ async function openNotification(button: HTMLButtonElement): Promise<void> {
   const directChannelId = conversationChannelIdFromNotificationHref(href)
   if (directChannelId) {
     if (online) await markNotificationRead(notificationId)
+    if (authenticationRequired) return
     openDirectConversation(directChannelId)
     if (online) void refreshProjectPacket(false)
     return
@@ -856,7 +885,8 @@ async function openNotification(button: HTMLButtonElement): Promise<void> {
 
   const projectId = button.dataset.notificationProjectId
   if (online) {
-    window.location.assign(`${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`)
+    const destination = await markNotificationRead(notificationId)
+    if (destination) window.location.assign(destination)
     return
   }
   if (!projectId) return
@@ -868,16 +898,21 @@ async function openNotification(button: HTMLButtonElement): Promise<void> {
   render()
 }
 
-async function markNotificationRead(notificationId: string): Promise<void> {
+async function markNotificationRead(notificationId: string): Promise<string | null> {
   try {
     const response = await CapacitorHttp.post({
       url: `${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`,
       headers: { "Content-Type": "application/json" },
       data: {},
+      disableRedirects: true,
       responseType: "json",
     })
-    const result = z.object({ success: z.boolean() }).safeParse(responseData(response.data))
-    if (!result.success || !result.data.success) return
+    requireAuthenticatedNativeResponse(response)
+    const result = z.object({
+      success: z.boolean(),
+      href: z.string().optional(),
+    }).safeParse(responseData(response.data))
+    if (!result.success || !result.data.success) return null
     if (packet) {
       packet = {
         ...packet,
@@ -889,8 +924,12 @@ async function markNotificationRead(notificationId: string): Promise<void> {
       }
       await writeJson(packetKey(packet.project.id), packet)
     }
+    return result.data.href?.startsWith("/dashboard/")
+      ? liveAppUrl(result.data.href)
+      : liveAppUrl("/dashboard")
   } catch {
     // Opening the direct conversation remains useful when read-state sync fails.
+    return null
   }
 }
 
@@ -974,16 +1013,25 @@ async function uploadQueuedDailyLogAttachment(
 
   const response = await fetch(
     `${LIVE_URL}/api/projects/${encodeURIComponent(item.projectId)}/photos/upload`,
-    { method: "POST", body: formData, credentials: "include" }
+    {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+      redirect: "manual",
+    }
   )
+  if (webResponseRequiresAuthentication(response)) {
+    markAuthenticationRequired()
+  }
   const responseBody: unknown = await response.json().catch(() => null)
-  if (!response.ok) {
+  const result = z.object({
+    success: z.boolean(),
+    error: z.string().optional(),
+  }).safeParse(responseBody)
+  if (!response.ok || !result.success || !result.data.success) {
     const message =
-      typeof responseBody === "object" &&
-      responseBody !== null &&
-      "error" in responseBody &&
-      typeof responseBody.error === "string"
-        ? responseBody.error
+      result.success && result.data.error
+        ? result.data.error
         : `Unable to upload ${attachment.fileName}.`
     throw new Error(message)
   }
@@ -1009,8 +1057,10 @@ async function syncDailyLogOutbox(): Promise<void> {
           url: `${LIVE_URL}/api/field/daily-logs`,
           headers: { "Content-Type": "application/json" },
           data: { id: item.id, projectId: item.projectId, payload: item.payload },
+          disableRedirects: true,
           responseType: "json",
         })
+        requireAuthenticatedNativeResponse(response)
         const result = z.object({
           success: z.boolean(),
           dailyLogId: z.string().optional(),
@@ -1178,8 +1228,10 @@ async function syncCherishOutbox(): Promise<void> {
             message: item.message,
             anonymous: item.anonymous,
           },
+          disableRedirects: true,
           responseType: "json",
         })
+        requireAuthenticatedNativeResponse(response)
         const result = z.object({
           success: z.boolean(),
           error: z.string().optional(),
@@ -1212,7 +1264,7 @@ async function syncCherishOutbox(): Promise<void> {
 }
 
 async function refreshCherishRecognition(force = false): Promise<void> {
-  if (!online || !profile || loadingCherishRecognitions) return
+  if (!online || !profile || authenticationRequired || loadingCherishRecognitions) return
   if (
     !force &&
     Date.now() - lastCherishRecognitionRefreshAt < 30_000
@@ -1230,8 +1282,10 @@ async function refreshCherishRecognition(force = false): Promise<void> {
         "Cache-Control": "no-cache",
         Pragma: "no-cache",
       },
+      disableRedirects: true,
       responseType: "json",
     })
+    requireAuthenticatedNativeResponse(response)
     const result = nativeCherishStreamResponseSchema.safeParse(
       responseData(response.data),
     )
@@ -1304,8 +1358,10 @@ async function syncChatOutbox(): Promise<void> {
         url: `${LIVE_URL}/api/field/conversations/message`,
         headers: { "Content-Type": "application/json" },
         data: item.payload,
+        disableRedirects: true,
         responseType: "json",
       })
+      requireAuthenticatedNativeResponse(response)
       const result = z.object({
         success: z.boolean(),
         error: z.string().optional(),
@@ -1345,8 +1401,27 @@ function responseData(value: unknown): unknown {
   }
 }
 
+function requireAuthenticatedNativeResponse(response: {
+  readonly status: number
+  readonly url: string
+  readonly headers: Readonly<Record<string, string>>
+}): void {
+  if (!nativeResponseRequiresAuthentication(response)) return
+
+  markAuthenticationRequired()
+}
+
+function markAuthenticationRequired(): never {
+  authenticationRequired = true
+  authError = AUTHENTICATION_REQUIRED_MESSAGE
+  projectError = ""
+  activeTab = "projects"
+  render()
+  throw new Error(AUTHENTICATION_REQUIRED_MESSAGE)
+}
+
 async function persistPushToken(token: string): Promise<void> {
-  if (!online) {
+  if (!online || authenticationRequired) {
     pushStatus = "error"
     if (activeTab === "settings") render()
     return
@@ -1360,8 +1435,10 @@ async function persistPushToken(token: string): Promise<void> {
       url: `${LIVE_URL}/api/push/register`,
       headers: { "Content-Type": "application/json" },
       data: { token, platform },
+      disableRedirects: true,
       responseType: "json",
     })
+    requireAuthenticatedNativeResponse(response)
     const result = z.object({ success: z.boolean() }).safeParse(responseData(response.data))
     pushStatus = result.success && result.data.success ? "enabled" : "error"
   } catch {
@@ -1437,8 +1514,10 @@ async function startProjectChannel(): Promise<void> {
       url: `${LIVE_URL}/api/field/conversations/project`,
       headers: { "Content-Type": "application/json" },
       data: { projectId: packet.project.id },
+      disableRedirects: true,
       responseType: "json",
     })
+    requireAuthenticatedNativeResponse(response)
     const result = z.object({
       success: z.boolean(),
       error: z.string().optional(),
@@ -1481,8 +1560,10 @@ async function sendDirectMessage(event: SubmitEvent): Promise<void> {
       url: `${LIVE_URL}/api/field/conversations/direct`,
       headers: { "Content-Type": "application/json" },
       data: { targetUserId, content },
+      disableRedirects: true,
       responseType: "json",
     })
+    requireAuthenticatedNativeResponse(response)
     const result = z.object({
       success: z.boolean(),
       error: z.string().optional(),
@@ -1534,8 +1615,10 @@ async function browseDocumentFolder(folder: FieldDocument): Promise<void> {
   try {
     const response = await CapacitorHttp.get({
       url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folder.id)}`,
+      disableRedirects: true,
       responseType: "json",
     })
+    requireAuthenticatedNativeResponse(response)
     const result = nativeFieldFolderResponseSchema.safeParse(
       responseData(response.data)
     )
@@ -1611,8 +1694,10 @@ async function downloadDocumentForOffline(
   try {
     const response = await CapacitorHttp.get({
       url: `${LIVE_URL}/api/google/download/${encodeURIComponent(document.id)}?projectId=${encodeURIComponent(projectId)}`,
+      disableRedirects: true,
       responseType: "arraybuffer",
     })
+    requireAuthenticatedNativeResponse(response)
     const data: unknown = response.data
     if (response.status < 200 || response.status >= 300 || typeof data !== "string" || data.length === 0) {
       throw new Error("Compass could not download this document.")
@@ -1689,7 +1774,7 @@ async function resumePendingSync(): Promise<void> {
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
+  if (syncing || syncingDailyLogs || composing || !online || authenticationRequired || outbox.length === 0) return
   await syncDailyLogOutbox()
   await syncCherishOutbox()
   await syncChatOutbox()
@@ -1772,8 +1857,10 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   const query = params.toString()
   const response = await CapacitorHttp.get({
     url: `${LIVE_URL}/api/field/native-bootstrap${query ? `?${query}` : ""}`,
+    disableRedirects: true,
     responseType: "json",
   })
+  requireAuthenticatedNativeResponse(response)
   const result = nativeFieldBootstrapResponseSchema.safeParse(
     responseData(response.data)
   )
@@ -1801,10 +1888,12 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   ])
   authMode = "choice"
   authError = ""
+  authenticationRequired = false
   projectError = ""
   signingIn = false
   activeTab = packet ? "today" : "projects"
   render()
+  void resumePendingSync()
   if (pushToken) void persistPushToken(pushToken)
   void refreshCherishRecognition(true)
   return true
@@ -2003,6 +2092,9 @@ async function handleAppUrl(appUrl: string): Promise<void> {
     activeTab = packet ? "today" : "projects"
     authError = ""
     render()
+    if (online && authenticationRequired) {
+      void downloadNativeFieldState(packet?.project.id).catch(() => false)
+    }
     return
   }
 

@@ -1,10 +1,45 @@
 import { NextRequest, NextResponse } from "next/server"
-import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
+import {
+  applyResponseHeaders,
+  authkit,
+  handleAuthkitHeaders,
+  partitionAuthkitHeaders,
+} from "@workos-inc/authkit-nextjs"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
 import { isPublicPath } from "@/lib/public-paths"
+
+export function unauthenticatedApiResponse(
+  request: NextRequest,
+  authkitHeaders: Headers
+): NextResponse {
+  const { responseHeaders } = partitionAuthkitHeaders(request, authkitHeaders)
+  return applyResponseHeaders(
+    NextResponse.json(
+      { success: false, error: "Authentication required." },
+      { status: 401 }
+    ),
+    responseHeaders
+  )
+}
+
+export function unauthenticatedPageUrl(
+  request: NextRequest,
+  error?: string
+): URL {
+  const loginUrl = new URL("/login", request.url)
+  loginUrl.searchParams.set("from", request.nextUrl.pathname)
+  if (error) loginUrl.searchParams.set("error", error)
+
+  const nativePlatform = request.nextUrl.searchParams.get("nativePlatform")
+  if (nativePlatform === "ios" || nativePlatform === "android") {
+    loginUrl.searchParams.set("nativePlatform", nativePlatform)
+  }
+
+  return loginUrl
+}
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -25,10 +60,9 @@ export default async function middleware(request: NextRequest) {
       )
     }
 
-    const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("error", "auth_unavailable")
-    loginUrl.searchParams.set("from", pathname)
-    return NextResponse.redirect(loginUrl)
+    return NextResponse.redirect(
+      unauthenticatedPageUrl(request, "auth_unavailable")
+    )
   }
 
   const { session, headers } = await authkit(request)
@@ -43,8 +77,11 @@ export default async function middleware(request: NextRequest) {
       return handleAuthkitHeaders(request, headers)
     }
 
-    const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("from", pathname)
+    if (pathname.startsWith("/api/")) {
+      return unauthenticatedApiResponse(request, headers)
+    }
+
+    const loginUrl = unauthenticatedPageUrl(request)
     return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
   }
 
