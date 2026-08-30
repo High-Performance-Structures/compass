@@ -20,6 +20,19 @@ workflow
 Facebook posts can optionally use a project album. Compass reuses an existing department Page/project album or creates one using only the public project title.
 
 
+approved destinations
+---
+
+Compass verifies the account identity returned by OAuth against this routing map before storing a connection:
+
+| department | Facebook Page | Instagram | X |
+|---|---|---|---|
+| H | High Performance Structures, Inc. | `@hpscolorado` | `@HPSColorado` |
+| N | Nu-Tech Systems | `@nutechcolorado` | `@NutechColorado` |
+| O | Open Range Custom Builders | `@orconstructionltd` | `@ORConstruction` |
+| D | Open Range Custom Builders | `@orconstructionltd` | `@ORConstruction` |
+
+
 data and security
 ---
 
@@ -45,6 +58,8 @@ X requires a developer Project/App with OAuth 2.0 enabled and a callback of:
 `https://<compass-host>/api/social/x/callback`
 
 The integration requests `tweet.read`, `tweet.write`, `users.read`, `media.write`, and `offline.access`. See the official [OAuth 2.0 PKCE guide](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code) and [Manage Posts documentation](https://docs.x.com/x-api/posts/manage-tweets/introduction).
+
+Compass never accepts or stores X account passwords. Administrators sign in on X's authorization screen for each approved department profile, and Compass stores only the resulting encrypted OAuth tokens. Business profiles should use separate passwords and multi-factor authentication.
 
 
 environment variables

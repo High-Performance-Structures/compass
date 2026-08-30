@@ -8,7 +8,10 @@ import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { can } from "@/lib/permissions"
 import { getSocialConfig, socialTokenSalt } from "@/lib/social/config"
-import { socialDepartment } from "@/lib/social/types"
+import {
+  isExpectedXProfile,
+  socialDepartment,
+} from "@/lib/social/types"
 import {
   exchangeXAuthorizationCode,
   getXIdentity,
@@ -73,6 +76,9 @@ export async function GET(request: NextRequest): Promise<Response> {
       codeVerifier,
     })
     const identity = await getXIdentity(grant.accessToken)
+    if (!isExpectedXProfile(department, identity.username)) {
+      return redirectAndClear(request, "x-profile-mismatch")
+    }
     const db = getDb(env.DB)
     const existing = await db.select().from(socialAccounts).where(and(
       eq(socialAccounts.organizationId, user.organizationId),

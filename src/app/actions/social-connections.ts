@@ -17,8 +17,11 @@ import { getSocialConfig, socialTokenSalt } from "@/lib/social/config"
 import type { MetaPageCandidate } from "@/lib/social/meta"
 import { requiredMetaScopes } from "@/lib/social/meta"
 import {
+  isExpectedFacebookPage,
+  isExpectedInstagramProfile,
   socialDepartment,
   socialPlatform,
+  socialDepartmentDestination,
   type SocialAccountSummary,
 } from "@/lib/social/types"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -133,16 +136,30 @@ export async function getPendingMetaConnection(
     if (!draft || draft.expiresAt <= new Date().toISOString()) {
       return { success: false, error: "This Meta connection selection has expired." }
     }
+    const department = socialDepartment(draft.department)
+    if (!department) {
+      return { success: false, error: "This Meta connection has an invalid department." }
+    }
     const candidates = parseMetaCandidates(await decrypt(
       draft.candidatesEncrypted,
       config.tokenEncryptionKey,
       `compass-social-draft:${draft.id}`,
     ))
+    const matchingCandidates = candidates.filter((candidate) =>
+      isExpectedFacebookPage(department, candidate.pageName) &&
+      isExpectedInstagramProfile(department, candidate.instagramUsername)
+    )
+    if (matchingCandidates.length === 0) {
+      return {
+        success: false,
+        error: `The expected Facebook Page “${socialDepartmentDestination(department).facebookPageName}” with linked Instagram account @${socialDepartmentDestination(department).instagramUsername} was not available to this Meta account.`,
+      }
+    }
     return {
       success: true,
       draftId: draft.id,
       department: draft.department,
-      candidates: candidates.map((candidate) => ({
+      candidates: matchingCandidates.map((candidate) => ({
         pageId: candidate.pageId,
         pageName: candidate.pageName,
         instagramUsername: candidate.instagramUsername,
@@ -176,8 +193,17 @@ export async function finalizeMetaConnection(input: {
       config.tokenEncryptionKey,
       `compass-social-draft:${draft.id}`,
     ))
-    const candidate = candidates.find((item) => item.pageId === input.pageId)
-    if (!candidate) return { success: false, error: "Choose a valid Facebook Page." }
+    const candidate = candidates.find((item) =>
+      item.pageId === input.pageId &&
+      isExpectedFacebookPage(department, item.pageName) &&
+      isExpectedInstagramProfile(department, item.instagramUsername)
+    )
+    if (!candidate) {
+      return {
+        success: false,
+        error: `Choose the approved Facebook Page “${socialDepartmentDestination(department).facebookPageName}” linked to @${socialDepartmentDestination(department).instagramUsername}.`,
+      }
+    }
 
     const now = new Date().toISOString()
     const scopes = requiredMetaScopes().join(" ")

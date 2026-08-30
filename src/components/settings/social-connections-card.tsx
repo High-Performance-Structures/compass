@@ -36,7 +36,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import type { SocialAccountSummary } from "@/lib/social/types"
+import {
+  socialDepartmentDestination,
+  type SocialAccountSummary,
+} from "@/lib/social/types"
 
 const DEPARTMENTS = [
   { value: "O", label: "Open Range Construction" },
@@ -76,6 +79,9 @@ export function SocialConnectionsCard(): React.ReactElement {
   React.useEffect(() => {
     void loadAccounts()
     const params = new URLSearchParams(window.location.search)
+    if (params.get("social") === "x-profile-mismatch") {
+      toast.error("That X profile does not match the approved profile for this department.")
+    }
     const draftId = params.get("social-draft")
     if (!draftId) return
     void getPendingMetaConnection(draftId).then((result) => {
@@ -159,6 +165,7 @@ export function SocialConnectionsCard(): React.ReactElement {
 
       <div className="mt-4 divide-y border-y">
         {DEPARTMENTS.map((department) => {
+          const destination = socialDepartmentDestination(department.value)
           const departmentAccounts = accounts.filter(
             (account) => account.department === department.value,
           )
@@ -168,6 +175,9 @@ export function SocialConnectionsCard(): React.ReactElement {
                 <div>
                   <p className="text-sm font-medium">{department.label}</p>
                   <p className="text-xs text-muted-foreground">Department {department.value}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {destination.facebookPageName} · @{destination.instagramUsername} · {destination.xHandle}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm" variant="outline">
@@ -180,7 +190,7 @@ export function SocialConnectionsCard(): React.ReactElement {
                   <Button asChild size="sm" variant="outline">
                     <a href={`/api/social/x/connect?department=${department.value}`}>
                       <IconBrandX className="size-4" />
-                      Connect X
+                      Sign in to {destination.xHandle}
                       <IconExternalLink className="size-3" />
                     </a>
                   </Button>
@@ -226,6 +236,9 @@ export function SocialConnectionsCard(): React.ReactElement {
 
       <p className="mt-3 text-xs text-muted-foreground">
         Meta requires managed Facebook Pages and linked professional Instagram accounts. X requires a developer app with posting access. Tokens are encrypted at rest.
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        X passwords are entered only on X’s authorization screen and are never sent to or stored by Compass. Each business profile should use a unique password and multi-factor authentication.
       </p>
     </section>
   )
