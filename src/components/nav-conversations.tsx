@@ -10,7 +10,7 @@ import {
   IconUser,
 } from "@tabler/icons-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import { listChannels } from "@/app/actions/conversations"
 import { listCategories } from "@/app/actions/channel-categories"
@@ -36,6 +36,10 @@ import { VoiceChannelStub } from "@/components/conversations/voice-channel-stub"
 import { DirectMessageDialog } from "@/components/conversations/direct-message-dialog"
 import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
 import { ChevronRight } from "lucide-react"
+import {
+  getConversationBackHref,
+  withProjectConversationContext,
+} from "@/lib/conversation-navigation"
 
 type ChannelData = {
   readonly id: string
@@ -67,6 +71,7 @@ function setCategoryCollapsedState(id: string, collapsed: boolean): void {
 
 export function NavConversations() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { state } = useSidebar()
   const conversationPanel = useConversationPanelOptional()
   const isExpanded = state === "expanded"
@@ -80,6 +85,23 @@ export function NavConversations() {
   const [categoryCollapsedStates, setCategoryCollapsedStates] = React.useState<
     Record<string, boolean>
   >({})
+  const conversationProjectId = searchParams.get("projectId")
+  const conversationReturnHref = searchParams.get("returnTo")
+  const backHref = getConversationBackHref(
+    conversationProjectId,
+    conversationReturnHref,
+  )
+
+  const channelHref = (channelId: string): string => {
+    const href = `/dashboard/conversations/${channelId}`
+    return conversationProjectId
+      ? withProjectConversationContext(
+          href,
+          conversationProjectId,
+          conversationReturnHref,
+        )
+      : href
+  }
 
   // load collapsed states from localStorage after mount
   React.useEffect(() => {
@@ -236,7 +258,7 @@ export function NavConversations() {
               {channelContent}
             </button>
           ) : (
-            <Link href={`/dashboard/conversations/${channel.id}`}>{channelContent}</Link>
+            <Link href={channelHref(channel.id)}>{channelContent}</Link>
           )}
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -264,8 +286,13 @@ export function NavConversations() {
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Back to Dashboard">
-                <Link href="/dashboard">
+              <SidebarMenuButton
+                asChild
+                tooltip={
+                  conversationProjectId ? "Back to project" : "Back to Dashboard"
+                }
+              >
+                <Link href={backHref}>
                   <IconArrowLeft />
                   <span>Back</span>
                 </Link>

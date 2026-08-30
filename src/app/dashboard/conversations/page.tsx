@@ -2,12 +2,14 @@ import { redirect } from "next/navigation"
 import { MessageSquare } from "lucide-react"
 import { listChannels } from "@/app/actions/conversations"
 import { CreateChannelButton } from "@/components/conversations/create-channel-button"
+import { withProjectConversationContext } from "@/lib/conversation-navigation"
 
 export default async function ConversationsPage({
   searchParams,
 }: {
   readonly searchParams: Promise<{
     readonly projectId?: string | readonly string[]
+    readonly returnTo?: string | readonly string[]
   }>
 }) {
   const query = await searchParams
@@ -15,13 +17,24 @@ export default async function ConversationsPage({
     typeof query.projectId === "string"
       ? query.projectId
       : query.projectId?.[0] ?? null
+  const returnTo =
+    typeof query.returnTo === "string"
+      ? query.returnTo
+      : query.returnTo?.[0] ?? null
   const result = await listChannels()
 
   if (result.success && result.data && result.data.length > 0) {
     const channel = projectId
       ? result.data.find((candidate) => candidate.projectId === projectId)
       : result.data[0]
-    if (channel) redirect(`/dashboard/conversations/${channel.id}`)
+    if (channel) {
+      const channelHref = `/dashboard/conversations/${channel.id}`
+      redirect(
+        projectId
+          ? withProjectConversationContext(channelHref, projectId, returnTo)
+          : channelHref,
+      )
+    }
   }
 
   return (

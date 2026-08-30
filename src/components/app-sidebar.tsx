@@ -32,7 +32,7 @@ import {
   IconUsers,
   IconVideo,
 } from "@tabler/icons-react"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 
 import {
   NavMain,
@@ -59,6 +59,7 @@ import {
   getProjectTargetSection,
   getSidebarContextMode,
 } from "@/lib/sidebar-navigation"
+import { getProjectConversationsHref } from "@/lib/conversation-navigation"
 import {
   Sidebar,
   SidebarContent,
@@ -426,14 +427,25 @@ function isNavLinkVisible(
 function resolveNavLink(
   item: SidebarNavLinkSource,
   activeProjectId: string | null,
+  projectConversationReturnHref: string | null,
 ): NavLinkItem {
+  const projectUrl =
+    activeProjectId && item.projectPath === "/conversations"
+      ? getProjectConversationsHref(
+          activeProjectId,
+          projectConversationReturnHref,
+        )
+      : activeProjectId && typeof item.projectPath === "string"
+        ? `/dashboard/projects/${activeProjectId}${item.projectPath}`
+        : null
+
   return {
     kind: "link",
     title: item.title,
     url:
       typeof item.projectPath === "string"
-        ? activeProjectId
-          ? `/dashboard/projects/${activeProjectId}${item.projectPath}`
+        ? projectUrl
+          ? projectUrl
           : item.projectPath.length === 0
             ? "/dashboard/projects/select"
             : `/dashboard/projects/select?target=${encodeURIComponent(
@@ -447,12 +459,14 @@ function resolveNavLink(
 function buildGroupChildren({
   items,
   activeProjectId,
+  projectConversationReturnHref,
   canViewActivity,
   canManageFeedback,
   canUseExecutiveAdmin,
 }: {
   readonly items: ReadonlyArray<SidebarNavGroupChildSource>
   readonly activeProjectId: string | null
+  readonly projectConversationReturnHref: string | null
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
@@ -469,7 +483,13 @@ function buildGroupChildren({
           canUseExecutiveAdmin,
         )
       ) {
-        children.push(resolveNavLink(item, activeProjectId))
+        children.push(
+          resolveNavLink(
+            item,
+            activeProjectId,
+            projectConversationReturnHref,
+          ),
+        )
       }
       continue
     }
@@ -490,7 +510,13 @@ function buildGroupChildren({
           canUseExecutiveAdmin,
         )
       ) {
-        subgroupLinks.push(resolveNavLink(child, activeProjectId))
+        subgroupLinks.push(
+          resolveNavLink(
+            child,
+            activeProjectId,
+            projectConversationReturnHref,
+          ),
+        )
       }
     }
 
@@ -509,11 +535,13 @@ function buildGroupChildren({
 
 export function buildMainNavigation({
   activeProjectId,
+  projectConversationReturnHref = null,
   canViewActivity,
   canManageFeedback,
   canUseExecutiveAdmin,
 }: {
   readonly activeProjectId: string | null
+  readonly projectConversationReturnHref?: string | null
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
@@ -522,6 +550,7 @@ export function buildMainNavigation({
     const items = buildGroupChildren({
       items: group.items,
       activeProjectId,
+      projectConversationReturnHref,
       canViewActivity,
       canManageFeedback,
       canUseExecutiveAdmin,
@@ -560,12 +589,17 @@ function SidebarNav({
   readonly canUseExecutiveAdmin: boolean
 }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { state } = useSidebar()
   const isExpanded = state === "expanded"
   const { activeProjectId } = useActiveProject()
   const projects = useProjectList()
   const mode = getSidebarContextMode(pathname, isExpanded)
   const projectTargetSection = getProjectTargetSection(pathname)
+  const currentSearch = searchParams.toString()
+  const projectConversationReturnHref = currentSearch
+    ? `${pathname}?${currentSearch}`
+    : pathname
 
   const projectScopedPlanningNav = PLANNING_NAV.map((item) =>
     item.title === "To-Dos" && activeProjectId
@@ -577,6 +611,7 @@ function SidebarNav({
   )
   const navMain = buildMainNavigation({
     activeProjectId,
+    projectConversationReturnHref,
     canViewActivity,
     canManageFeedback,
     canUseExecutiveAdmin,
