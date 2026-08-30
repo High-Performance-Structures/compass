@@ -1,12 +1,14 @@
 export const dynamic = "force-dynamic"
 
 import { Fragment } from "react"
+import { redirect } from "next/navigation"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
 import { clientEstimatePhases } from "@/lib/estimates/client-report"
+import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
 function money(cents: number): string {
@@ -60,6 +62,8 @@ export default async function ProjectEstimatePrintPage({
   if (!estimate) {
     return <main className="p-8">Estimate not found.</main>
   }
+  const acceptedDocumentUrl = acceptedEstimateDocumentUrl(estimate)
+  if (acceptedDocumentUrl) redirect(acceptedDocumentUrl)
 
   const phaseDescriptions = Object.fromEntries(
     workspace.phaseDescriptions.map((item) => [

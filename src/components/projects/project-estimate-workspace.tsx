@@ -74,6 +74,11 @@ import {
   estimateAcceptanceMethodLabel,
   isEstimateAcceptanceMethod,
 } from "@/lib/estimates/manual-acceptance"
+import {
+  acceptedEstimateDateLabel,
+  acceptedEstimateDocumentUrl,
+  acceptedEstimateEvidenceUrl,
+} from "@/lib/estimates/accepted-document"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -183,6 +188,12 @@ export function ProjectEstimateWorkspacePanel({
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const estimate = workspace.activeEstimate
+  const acceptedDocumentUrl = estimate
+    ? acceptedEstimateDocumentUrl(estimate)
+    : null
+  const acceptedEvidenceUrl = estimate
+    ? acceptedEstimateEvidenceUrl(estimate)
+    : null
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [signatureMessage, setSignatureMessage] = useState<string | null>(null)
@@ -799,11 +810,16 @@ export function ProjectEstimateWorkspacePanel({
             />
             <Button variant="outline" asChild>
               <Link
-                href={`/print/projects/${projectId}/estimate?estimateId=${estimate.id}`}
+                href={
+                  acceptedDocumentUrl ??
+                  `/print/projects/${projectId}/estimate?estimateId=${estimate.id}`
+                }
                 target="_blank"
               >
                 <IconFileExport className="size-4" />
-                Client report preview
+                {acceptedDocumentUrl
+                  ? "Accepted proposal PDF"
+                  : "Client report preview"}
               </Link>
             </Button>
           </div>
@@ -1778,7 +1794,7 @@ export function ProjectEstimateWorkspacePanel({
             {estimate.status === "accepted" && (
               <div className="mt-4 border-t pt-4 text-sm">
                 <p className="font-medium text-emerald-700">
-                  Fully executed estimate is locked. Budget changes now require an executed change order.
+                  Accepted estimate is locked. Budget changes now require an executed change order.
                 </p>
                 <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">
                   <div>
@@ -1790,8 +1806,12 @@ export function ProjectEstimateWorkspacePanel({
                     </dd>
                   </div>
                   <div>
-                      <dt className="text-xs text-muted-foreground">Contract executed</dt>
-                    <dd>{estimate.signedAt ? new Date(estimate.signedAt).toLocaleDateString() : "Date not recorded"}</dd>
+                    <dt className="text-xs text-muted-foreground">Acceptance date</dt>
+                    <dd>
+                      {acceptedEstimateDateLabel(
+                        estimate.signedAt ?? estimate.acceptedAt
+                      )}
+                    </dd>
                   </div>
                   {estimate.acceptanceRecordedByName && (
                     <div>
@@ -1806,9 +1826,9 @@ export function ProjectEstimateWorkspacePanel({
                     </div>
                   )}
                 </dl>
-                {estimate.signaturePackageUrl && (
+                {acceptedEvidenceUrl && (
                   <Button className="mt-3" variant="outline" size="sm" asChild>
-                    <Link href={estimate.signaturePackageUrl} target="_blank">
+                    <Link href={acceptedEvidenceUrl} target="_blank">
                       <IconFileDescription className="size-4" />
                       {estimate.acceptanceEvidenceLabel ?? "Open signed estimate"}
                     </Link>
