@@ -1,6 +1,7 @@
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
 
 export async function GET(
@@ -19,6 +20,10 @@ export async function GET(
     const estimate = workspace.activeEstimate
     if (!estimate || estimate.id !== estimateId) {
       return new Response("Estimate not found.", { status: 404 })
+    }
+    const acceptedDocumentUrl = acceptedEstimateDocumentUrl(estimate)
+    if (acceptedDocumentUrl) {
+      return Response.redirect(acceptedDocumentUrl, 307)
     }
     const { env } = await getCloudflareContext()
     const quickAction = Reflect.get(env.BROWSER, "quickAction")
