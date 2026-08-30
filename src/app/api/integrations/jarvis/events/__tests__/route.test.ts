@@ -584,4 +584,111 @@ describe("GET /api/integrations/jarvis/events", () => {
       vi.useRealTimers()
     }
   })
+
+  it("does not let a stale worker overlap a claim after a delayed candidate read", async () => {
+    vi.useFakeTimers()
+    const sqlite = new Database(":memory:")
+    sqlite.exec(`
+      CREATE TABLE jarvis_bridge_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        organization_id TEXT,
+        direction TEXT NOT NULL,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload TEXT NOT NULL,
+        result TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        claim_token TEXT,
+        claimed_at TEXT,
+        feedback_desk_item_id TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO jarvis_bridge_events (
+        id, direction, source, event_type, status, idempotency_key, payload,
+        available_at, created_at, updated_at
+      ) VALUES (
+        'event-delayed-race', 'outbound', 'feedback-widget',
+        'feedback.status_changed', 'pending', 'status:event-delayed-race', '{}',
+        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z'
+      );
+    `)
+
+    let candidateReadStarted!: () => void
+    let releaseCandidateRead!: () => void
+    const candidateRead = new Promise<void>((resolve) => {
+      candidateReadStarted = resolve
+    })
+    const candidateRelease = new Promise<void>((resolve) => {
+      releaseCandidateRead = resolve
+    })
+    const realDb = drizzle(sqlite)
+    const candidateRows = [{ id: "event-delayed-race" }]
+    const candidateChain = {
+      from: vi.fn(),
+      where: vi.fn(),
+      orderBy: vi.fn(),
+      limit: vi.fn().mockImplementation(() => {
+        candidateReadStarted()
+        return candidateRelease.then(() => candidateRows)
+      }),
+    }
+    candidateChain.from.mockReturnValue(candidateChain)
+    candidateChain.where.mockReturnValue(candidateChain)
+    candidateChain.orderBy.mockReturnValue(candidateChain)
+    const firstDb = {
+      select: vi.fn()
+        .mockReturnValueOnce(candidateChain)
+        .mockImplementation((...args: Parameters<typeof realDb.select>) =>
+          realDb.select(...args)),
+      update: realDb.update.bind(realDb),
+    }
+
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"))
+      mocks.getDb.mockReturnValue(firstDb)
+      const firstPull = GET(new Request(
+        "https://compass.example/api/integrations/jarvis/events?eventType=feedback.status_changed",
+      ))
+      await candidateRead
+
+      vi.advanceTimersByTime(6 * 60 * 1000)
+      releaseCandidateRead()
+      const firstResponse = await firstPull
+      expect(firstResponse.status).toBe(200)
+      const firstBody: unknown = await firstResponse.json()
+      const firstEvents = typeof firstBody === "object" && firstBody !== null
+        ? Reflect.get(firstBody, "events")
+        : null
+      if (!Array.isArray(firstEvents)) throw new Error("Expected first event array")
+      expect(firstEvents).toHaveLength(1)
+      expect(sqlite.prepare(`
+        SELECT status, claimed_at AS claimedAt, attempt_count AS attemptCount
+        FROM jarvis_bridge_events WHERE id = 'event-delayed-race'
+      `).get()).toEqual({
+        status: "processing",
+        claimedAt: "2026-01-01T00:06:00.000Z",
+        attemptCount: 1,
+      })
+
+      mocks.getDb.mockReturnValue(realDb)
+      const secondResponse = await GET(new Request(
+        "https://compass.example/api/integrations/jarvis/events?eventType=feedback.status_changed",
+      ))
+      expect(secondResponse.status).toBe(200)
+      await expect(secondResponse.json()).resolves.toEqual({ events: [] })
+      expect(sqlite.prepare(
+        "SELECT attempt_count AS attemptCount FROM jarvis_bridge_events WHERE id = 'event-delayed-race'",
+      ).get()).toEqual({ attemptCount: 1 })
+    } finally {
+      sqlite.close()
+      vi.useRealTimers()
+    }
+  })
 })
