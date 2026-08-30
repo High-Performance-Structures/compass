@@ -4,12 +4,25 @@
  * decoding the whole pathname could turn an encoded slash into a new route
  * segment.
  */
-export function decodedLegacyProjectPathname(pathname: string): string | null {
-  const match = pathname.match(
-    /^\/dashboard\/projects\/(buildertrend-lead-project)%3a([^/%]+)%3a(lead-[0-9]+)(\/.*)?$/i,
+export function decodedLegacyProjectId(projectId: string): string | null {
+  const match = projectId.match(
+    /^(buildertrend-lead-project)%3a([^/%]+)%3a(lead-[0-9]+)$/i,
   )
   if (!match) return null
 
-  const [, prefix, organizationId, leadId, suffix = ""] = match
-  return `/dashboard/projects/${prefix}:${organizationId}:${leadId}${suffix}`
+  const [, prefix, organizationId, leadId] = match
+  return `${prefix}:${organizationId}:${leadId}`
+}
+
+export function decodedLegacyProjectPathname(pathname: string): string | null {
+  const match = pathname.match(
+    /^\/dashboard\/projects\/([^/]+)(\/.*)?$/i,
+  )
+  if (!match) return null
+
+  const [, encodedProjectId, suffix = ""] = match
+  const projectId = decodedLegacyProjectId(encodedProjectId)
+  if (!projectId) return null
+
+  return `/dashboard/projects/${projectId}${suffix}`
 }

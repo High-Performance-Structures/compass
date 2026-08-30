@@ -9,13 +9,15 @@ import {
   getProjectInformation,
 } from "@/app/actions/project-profile"
 import { ProjectInformationWorkspace } from "@/components/projects/project-information-workspace"
+import { decodedLegacyProjectId } from "@/lib/legacy-project-route"
 
 export default async function ProjectInformationPage({
   params,
 }: {
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: routeId } = await params
+  const id = decodedLegacyProjectId(routeId) ?? routeId
   const [information, followUpOwners, currentUser] = await Promise.all([
     getProjectInformation(id),
     getProjectFollowUpOwners(id),
