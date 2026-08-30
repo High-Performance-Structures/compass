@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { decodedLegacyProjectPathname } from "@/lib/legacy-project-route"
+import {
+  decodedLegacyProjectId,
+  decodedLegacyProjectPathname,
+} from "@/lib/legacy-project-route"
 
 describe("decodedLegacyProjectPathname", () => {
   it("decodes encoded Buildertrend project ID colons", () => {
@@ -37,6 +40,30 @@ describe("decodedLegacyProjectPathname", () => {
     expect(
       decodedLegacyProjectPathname(
         "/dashboard/projects/buildertrend-lead-project:org-1:lead-22496131/information",
+      ),
+    ).toBeNull()
+  })
+})
+
+describe("decodedLegacyProjectId", () => {
+  it("decodes the encoded Buildertrend lead id received by the page boundary", () => {
+    expect(
+      decodedLegacyProjectId(
+        "buildertrend-lead-project%3Aorg-1%3Alead-22496131",
+      ),
+    ).toBe("buildertrend-lead-project:org-1:lead-22496131")
+  })
+
+  it("does not reinterpret unrelated escaped ids", () => {
+    expect(decodedLegacyProjectId("project%20123")).toBeNull()
+    expect(decodedLegacyProjectId("project%2F123")).toBeNull()
+    expect(decodedLegacyProjectId("project-%253Aorg-1")).toBeNull()
+  })
+
+  it("does not re-decode an already decoded id", () => {
+    expect(
+      decodedLegacyProjectId(
+        "buildertrend-lead-project:org-1:lead-22496131",
       ),
     ).toBeNull()
   })
