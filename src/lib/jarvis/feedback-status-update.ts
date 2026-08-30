@@ -1,4 +1,4 @@
-import { and, eq, lt, or, sql } from "drizzle-orm"
+import { and, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { organizationMembers, users } from "@/db/schema"
@@ -18,7 +18,10 @@ import {
   knownFeedbackStatus,
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
-import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
+import {
+  feedbackFeatureTransitionIsBlocked,
+  isFeatureImplementationStatus,
+} from "@/lib/jarvis/feedback-feature-priority"
 import {
   feedbackDeliveryGraphEvent,
   feedbackDeskOutboundPayload,
@@ -470,7 +473,19 @@ export async function applyFeedbackLifecycleUpdate(
       ? "Your Compass request could not enter engineering work yet and will be retried."
       : `Your Compass request was updated: ${feedbackStatusLabel(update.status)}.`
 
-  const updateStatement = db.update(feedbackDeskItems).set({
+  const rowIdentity = item.organizationId === null
+    ? isNull(feedbackDeskItems.organizationId)
+    : eq(feedbackDeskItems.organizationId, item.organizationId)
+  const finalFence = item.kind === "feature" &&
+    isFeatureImplementationStatus(update.status)
+    ? isNotNull(feedbackDeskItems.featurePriorityApprovedAt)
+    : undefined
+  const recipients = requesterUpdateKind
+    ? await requesterRecipients(db, item)
+    : []
+
+  await db.transaction(async (tx) => {
+  const updateStatement = tx.update(feedbackDeskItems).set({
     status: update.status,
     priority,
     githubIssueUrl: issueUrl,
@@ -495,11 +510,19 @@ export async function applyFeedbackLifecycleUpdate(
     lastRequesterUpdateAt: requesterUpdateKind ? now : item.lastRequesterUpdateAt,
     lastGithubSyncAt: update.actorSource === "github" ? now : item.lastGithubSyncAt,
     updatedAt: now,
-  }).where(eq(feedbackDeskItems.id, item.id))
+  }).where(and(
+    eq(feedbackDeskItems.id, item.id),
+    rowIdentity,
+    eq(feedbackDeskItems.updatedAt, item.updatedAt),
+    ...(finalFence ? [finalFence] : []),
+  ))
+  const persisted = await updateStatement
+    .returning({ id: feedbackDeskItems.id })
+    .get()
+  if (persisted === undefined || persisted === null) {
+    throw new Error("Feedback request changed before the lifecycle update could be saved")
+  }
 
-  const recipients = requesterUpdateKind
-    ? await requesterRecipients(db, item)
-    : []
   const deliveryPayload = feedbackDeskOutboundPayload({
     id: item.id,
     kind: item.kind,
@@ -512,7 +535,7 @@ export async function applyFeedbackLifecycleUpdate(
     message: eventMessage,
     updatedAt: now,
   })
-  const inboundStatement = db.insert(jarvisBridgeEvents).values({
+  const inboundStatement = tx.insert(jarvisBridgeEvents).values({
     id: crypto.randomUUID(),
     organizationId: item.organizationId,
     direction: "inbound",
@@ -536,7 +559,7 @@ export async function applyFeedbackLifecycleUpdate(
     ? feedbackDeliveryGraphEvent(item)
     : null
   const deliveryStatement = deliveryEvent
-    ? db.insert(jarvisBridgeEvents).values({
+    ? tx.insert(jarvisBridgeEvents).values({
         id: crypto.randomUUID(),
         organizationId: item.organizationId,
         direction: "outbound",
@@ -562,7 +585,7 @@ export async function applyFeedbackLifecycleUpdate(
       })
     : null
   const notificationStatement = notificationEvent
-    ? db.insert(jarvisBridgeEvents).values({
+    ? tx.insert(jarvisBridgeEvents).values({
         id: crypto.randomUUID(),
         organizationId: item.organizationId,
         direction: "outbound",
@@ -577,107 +600,30 @@ export async function applyFeedbackLifecycleUpdate(
       }).onConflictDoNothing()
     : null
   const ownershipAssertion = bridgeReservation
-    ? assertBridgeReservationOwnership(db, bridgeReservation)
+    ? assertBridgeReservationOwnership(tx, bridgeReservation)
     : null
-  if (requesterUpdateKind) {
-    const outboundStatement = db.insert(jarvisBridgeEvents).values({
-      id: crypto.randomUUID(),
-      organizationId: item.organizationId,
-      direction: "outbound",
-      source: item.source,
-      eventType: "feedback.status_changed",
-      idempotencyKey: `notify:${update.idempotencyKey}`,
-      feedbackDeskItemId: item.id,
-      payload,
-      availableAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoNothing()
-    if (notificationStatement) {
-      if (deliveryStatement) {
-        if (ownershipAssertion) {
-          await db.batch([
-            ownershipAssertion,
-            updateStatement,
-            inboundStatement,
-            outboundStatement,
-            deliveryStatement,
-            notificationStatement,
-          ])
-        } else {
-          await db.batch([
-            updateStatement,
-            inboundStatement,
-            outboundStatement,
-            deliveryStatement,
-            notificationStatement,
-          ])
-        }
-      } else {
-        if (ownershipAssertion) {
-          await db.batch([
-            ownershipAssertion,
-            updateStatement,
-            inboundStatement,
-            outboundStatement,
-            notificationStatement,
-          ])
-        } else {
-          await db.batch([
-            updateStatement,
-            inboundStatement,
-            outboundStatement,
-            notificationStatement,
-          ])
-        }
-      }
-    } else if (deliveryStatement) {
-      if (ownershipAssertion) {
-        await db.batch([
-          ownershipAssertion,
-          updateStatement,
-          inboundStatement,
-          outboundStatement,
-          deliveryStatement,
-        ])
-      } else {
-        await db.batch([
-          updateStatement,
-          inboundStatement,
-          outboundStatement,
-          deliveryStatement,
-        ])
-      }
-    } else {
-      if (ownershipAssertion) {
-        await db.batch([
-          ownershipAssertion,
-          updateStatement,
-          inboundStatement,
-          outboundStatement,
-        ])
-      } else {
-        await db.batch([updateStatement, inboundStatement, outboundStatement])
-      }
-    }
-  } else if (deliveryStatement) {
-    if (ownershipAssertion) {
-      await db.batch([
-        ownershipAssertion,
-        updateStatement,
-        inboundStatement,
-        deliveryStatement,
-      ])
-    } else {
-      await db.batch([updateStatement, inboundStatement, deliveryStatement])
-    }
-  } else {
-    if (ownershipAssertion) {
-      await db.batch([ownershipAssertion, updateStatement, inboundStatement])
-    } else {
-      await db.batch([updateStatement, inboundStatement])
-    }
-  }
+  const outboundStatement = requesterUpdateKind
+    ? tx.insert(jarvisBridgeEvents).values({
+        id: crypto.randomUUID(),
+        organizationId: item.organizationId,
+        direction: "outbound",
+        source: item.source,
+        eventType: "feedback.status_changed",
+        idempotencyKey: `notify:${update.idempotencyKey}`,
+        feedbackDeskItemId: item.id,
+        payload,
+        availableAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoNothing()
+    : null
+
+  if (ownershipAssertion) await ownershipAssertion.run()
+  await inboundStatement.run()
+  if (outboundStatement) await outboundStatement.run()
+  if (deliveryStatement) await deliveryStatement.run()
+  if (notificationStatement) await notificationStatement.run()
+  })
 
   return {
     changed: true,

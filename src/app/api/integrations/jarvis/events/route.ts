@@ -1,4 +1,16 @@
-import { and, asc, eq, inArray, isNull, like, lt, lte, or, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  like,
+  lt,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
@@ -70,6 +82,35 @@ function jsonValue(value: string): unknown {
 
 function unauthorized(error: string): Response {
   return Response.json({ error }, { status: 401 })
+}
+
+type EventClaimExecution = (input: Readonly<{
+  eventId: string
+  claimToken: string
+  claimedAt: string
+  staleClaimAt: string
+  eventTypeFilter: SQL<unknown> | undefined
+}>) => Promise<boolean>
+
+export async function claimJarvisEvent(
+  executeClaim: EventClaimExecution,
+  eventId: string,
+  eventTypeFilter?: SQL<unknown>,
+): Promise<Readonly<{ claimToken: string; claimedAt: string }> | null> {
+  const claimNow = new Date()
+  const claimNowIso = claimNow.toISOString()
+  const staleClaimIso = new Date(
+    claimNow.getTime() - CLAIM_RETRY_MILLISECONDS,
+  ).toISOString()
+  const claimToken = crypto.randomUUID()
+  const claimed = await executeClaim({
+    eventId,
+    claimToken,
+    claimedAt: claimNowIso,
+    staleClaimAt: staleClaimIso,
+    eventTypeFilter,
+  })
+  return claimed ? { claimToken, claimedAt: claimNowIso } : null
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -150,43 +191,57 @@ export async function GET(request: Request): Promise<Response> {
 
   const claimTokens: string[] = []
   for (const candidate of candidates) {
-    const claimToken = crypto.randomUUID()
-    claimTokens.push(claimToken)
-    await db
-      .update(jarvisBridgeEvents)
-      .set({
-        status: "processing",
+    const claim = await claimJarvisEvent(
+      async ({
+        eventId,
         claimToken,
-        claimedAt: nowIso,
-        attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
-        updatedAt: nowIso,
-      })
-      .where(
-        and(
-          eq(jarvisBridgeEvents.id, candidate.id),
-          eq(jarvisBridgeEvents.direction, "outbound"),
-          eventTypeFilter,
-          lte(jarvisBridgeEvents.availableAt, nowIso),
-          or(
-            eq(jarvisBridgeEvents.status, "pending"),
+        claimedAt,
+        staleClaimAt,
+        eventTypeFilter: claimEventTypeFilter,
+      }) => {
+        const updated = await db
+          .update(jarvisBridgeEvents)
+          .set({
+            status: "processing",
+            claimToken,
+            claimedAt,
+            attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
+            updatedAt: claimedAt,
+          })
+          .where(
             and(
-              eq(jarvisBridgeEvents.status, "processing"),
+              eq(jarvisBridgeEvents.id, eventId),
+              eq(jarvisBridgeEvents.direction, "outbound"),
+              claimEventTypeFilter,
+              lte(jarvisBridgeEvents.availableAt, claimedAt),
               or(
-                isNull(jarvisBridgeEvents.result),
-                inArray(
-                  jarvisBridgeEvents.result,
-                  RECLAIMABLE_RESERVATION_RESULTS,
-                ),
-                like(
-                  jarvisBridgeEvents.result,
-                  `${PROVIDER_ATTEMPT_PREFIX}%`,
+                eq(jarvisBridgeEvents.status, "pending"),
+                and(
+                  eq(jarvisBridgeEvents.status, "processing"),
+                  or(
+                    isNull(jarvisBridgeEvents.result),
+                    inArray(
+                      jarvisBridgeEvents.result,
+                      RECLAIMABLE_RESERVATION_RESULTS,
+                    ),
+                    like(
+                      jarvisBridgeEvents.result,
+                      `${PROVIDER_ATTEMPT_PREFIX}%`,
+                    ),
+                  ),
+                  lt(jarvisBridgeEvents.claimedAt, staleClaimAt),
                 ),
               ),
-              lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
             ),
-          ),
-        ),
-      )
+          )
+          .returning({ id: jarvisBridgeEvents.id })
+          .get()
+        return updated !== undefined && updated !== null
+      },
+      candidate.id,
+      eventTypeFilter,
+    )
+    if (claim) claimTokens.push(claim.claimToken)
   }
 
   if (claimTokens.length === 0) {

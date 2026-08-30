@@ -29,7 +29,7 @@ vi.mock("@/lib/jarvis/visual-context", () => ({
   ),
 }))
 
-import { GET } from "../route"
+import { claimJarvisEvent, GET } from "../route"
 
 const CLAIM_TOKEN = "33f7357f-163d-41d2-bcb2-4bd9a7cb047e"
 
@@ -62,7 +62,9 @@ function configureDb(candidateIds = ["event-1"]) {
   claimedChain.from.mockReturnValue(claimedChain)
   claimedChain.where.mockReturnValue(claimedChain)
 
-  const updateWhere = vi.fn().mockResolvedValue(undefined)
+  const updateReturningGet = vi.fn().mockResolvedValue({ id: "event-1" })
+  const updateReturning = vi.fn().mockReturnValue({ get: updateReturningGet })
+  const updateWhere = vi.fn().mockReturnValue({ returning: updateReturning })
   const updateSet = vi.fn().mockReturnValue({ where: updateWhere })
   mocks.getDb.mockReturnValue({
     select: vi.fn()
@@ -460,6 +462,126 @@ describe("GET /api/integrations/jarvis/events", () => {
       expect(Reflect.get(events[0], "claimToken")).not.toBe("crashed-owner")
     } finally {
       sqlite.close()
+    }
+  })
+
+  it("starts the full lease after a delayed candidate read", async () => {
+    vi.useFakeTimers()
+    const sqlite = new Database(":memory:")
+    sqlite.exec(`
+      CREATE TABLE jarvis_bridge_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        organization_id TEXT,
+        direction TEXT NOT NULL,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload TEXT NOT NULL,
+        result TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        claim_token TEXT,
+        claimed_at TEXT,
+        feedback_desk_item_id TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO jarvis_bridge_events (
+        id, direction, source, event_type, status, idempotency_key, payload,
+        available_at, created_at, updated_at
+      ) VALUES (
+        'event-delayed', 'outbound', 'feedback-widget',
+        'feedback.status_changed', 'pending', 'status:event-delayed', '{}',
+        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z'
+      );
+    `)
+
+    try {
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"))
+      const candidate = sqlite.prepare(
+        "SELECT id FROM jarvis_bridge_events WHERE status = 'pending'",
+      ).get()
+      expect(candidate).toEqual({ id: "event-delayed" })
+      const delayedPause = new Promise<void>((resolve) => {
+        setTimeout(resolve, 6 * 60 * 1000)
+      })
+      vi.advanceTimersByTime(6 * 60 * 1000)
+      await delayedPause
+      const claim = await claimJarvisEvent(
+        async ({ eventId, claimToken, claimedAt, staleClaimAt }) => {
+          const result = sqlite.prepare(`
+            UPDATE jarvis_bridge_events
+            SET status = 'processing', claim_token = ?, claimed_at = ?,
+              attempt_count = attempt_count + 1, updated_at = ?
+            WHERE id = ? AND direction = 'outbound'
+              AND available_at <= ?
+              AND (
+                status = 'pending' OR (
+                  status = 'processing' AND (
+                    result IS NULL OR result IN ('{"acknowledgement":"reserved"}', '{"reply":"reserved"}')
+                    OR result LIKE 'provider-attempt:%'
+                  ) AND claimed_at < ?
+                )
+              )
+          `).run(
+            claimToken,
+            claimedAt,
+            claimedAt,
+            eventId,
+            claimedAt,
+            staleClaimAt,
+          )
+          return result.changes === 1
+        },
+        "event-delayed",
+      )
+
+      expect(claim?.claimedAt).toBe("2026-01-01T00:06:00.000Z")
+      expect(sqlite.prepare(`
+        SELECT status, claimed_at AS claimedAt FROM jarvis_bridge_events
+        WHERE id = 'event-delayed'
+      `).get()).toEqual({
+        status: "processing",
+        claimedAt: "2026-01-01T00:06:00.000Z",
+      })
+
+      vi.advanceTimersByTime(1_000)
+      const secondClaim = await claimJarvisEvent(
+        async ({ eventId, claimToken, claimedAt, staleClaimAt }) => {
+          const result = sqlite.prepare(`
+            UPDATE jarvis_bridge_events
+            SET status = 'processing', claim_token = ?, claimed_at = ?,
+              attempt_count = attempt_count + 1, updated_at = ?
+            WHERE id = ? AND direction = 'outbound'
+              AND available_at <= ?
+              AND (
+                status = 'pending' OR (
+                  status = 'processing' AND (
+                    result IS NULL OR result IN ('{"acknowledgement":"reserved"}', '{"reply":"reserved"}')
+                    OR result LIKE 'provider-attempt:%'
+                  ) AND claimed_at < ?
+                )
+              )
+          `).run(
+            claimToken,
+            claimedAt,
+            claimedAt,
+            eventId,
+            claimedAt,
+            staleClaimAt,
+          )
+          return result.changes === 1
+        },
+        "event-delayed",
+      )
+      expect(secondClaim).toBeNull()
+    } finally {
+      sqlite.close()
+      vi.useRealTimers()
     }
   })
 })
