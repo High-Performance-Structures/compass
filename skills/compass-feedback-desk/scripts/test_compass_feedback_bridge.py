@@ -6,7 +6,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -203,6 +203,70 @@ class SignatureTests(unittest.TestCase):
             json.loads(request.call_args.args[2])["claimToken"],
             "active-claim",
         )
+
+    def test_search_and_visuals_commands_require_claim_tokens(self) -> None:
+        parser = MODULE.build_parser()
+        for command_args in (
+            ["search", "--event-id", "123e4567-e89b-12d3-a456-426614174000"],
+            [
+                "visuals",
+                "--event-id",
+                "123e4567-e89b-12d3-a456-426614174000",
+                "--output-dir",
+                "/tmp/visuals",
+            ],
+        ):
+            with self.subTest(command_args=command_args):
+                with self.assertRaises(SystemExit):
+                    parser.parse_args(command_args)
+
+    def test_request_json_sends_claim_token_header(self) -> None:
+        class Response:
+            status = 200
+
+            class Headers:
+                def get(self, _name, default):
+                    return default
+
+            headers = Headers()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _limit):
+                return b"{}"
+
+        opener = Mock()
+        opener.open.return_value = Response()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COMPASS_BASE_URL": MODULE.COMPASS_PRODUCTION_BASE_URL,
+                    "JARVIS_BRIDGE_SECRET": "test-secret",
+                },
+                clear=False,
+            ),
+            patch.object(
+                MODULE.urllib.request,
+                "build_opener",
+                return_value=opener,
+            ),
+        ):
+            self.assertEqual(
+                MODULE.request_json(
+                    "GET",
+                    "/api/integrations/jarvis/events/123e4567-e89b-12d3-a456-426614174000/search",
+                    claim_token="active-claim",
+                ),
+                {},
+            )
+
+        request = opener.open.call_args.args[0]
+        self.assertEqual(request.headers["X-compass-claim-token"], "active-claim")
 
     def test_request_rejects_nonexact_origin_before_network_access(self) -> None:
         for origin in (

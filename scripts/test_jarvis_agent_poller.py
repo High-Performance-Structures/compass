@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 SCRIPT_PATH = Path(__file__).parent / "jarvis-agent-poller.py"
@@ -16,6 +16,65 @@ if SPEC is None or SPEC.loader is None:
     raise RuntimeError("Unable to load Jarvis agent poller")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+
+class CompassTransportSecurityTests(unittest.TestCase):
+    def test_compass_request_rejects_non_production_origins_before_network(self) -> None:
+        for base_url in (
+            "https://attacker.example",
+            "https://compass.openrangeconstruction.ltd/",
+            "https://compass.openrangeconstruction.ltd:443",
+        ):
+            with self.subTest(base_url=base_url), patch.dict(
+                os.environ,
+                {
+                    "COMPASS_BASE_URL": base_url,
+                    "JARVIS_BRIDGE_SECRET": "test-secret",
+                },
+                clear=False,
+            ), patch.object(MODULE.urllib.request, "urlopen") as urlopen:
+                with self.assertRaisesRegex(RuntimeError, "production Compass origin"):
+                    MODULE.compass_request("GET", MODULE.HEALTH_TARGET)
+                urlopen.assert_not_called()
+
+    def test_compass_request_uses_a_no_redirect_opener(self) -> None:
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _limit):
+                return b"{}"
+
+        opener = Mock()
+        opener.open.return_value = Response()
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COMPASS_BASE_URL": "https://compass.openrangeconstruction.ltd",
+                    "JARVIS_BRIDGE_SECRET": "test-secret",
+                },
+                clear=False,
+            ),
+            patch.object(
+                MODULE.urllib.request,
+                "build_opener",
+                return_value=opener,
+            ) as build_opener,
+        ):
+            self.assertEqual(
+                MODULE.compass_request("GET", MODULE.HEALTH_TARGET),
+                {},
+            )
+
+        build_opener.assert_called_once()
+        handler = build_opener.call_args.args[0]
+        self.assertIsNone(
+            handler.redirect_request(None, None, 302, "Found", None, "/next")
+        )
 
 
 class CompassSearchContextTests(unittest.TestCase):
@@ -285,6 +344,10 @@ class CompassSearchContextTests(unittest.TestCase):
         submitted = submit.call_args.args[2]
         self.assertEqual(submitted["kind"], "feature")
         self.assertEqual(submitted["description"], report)
+        self.assertEqual(
+            submit.call_args.args[3],
+            "1d223b6f-20ca-424d-a0b5-e66f2f9be830",
+        )
         self.assertEqual(
             acknowledge.call_args.args[1],
             "1d223b6f-20ca-424d-a0b5-e66f2f9be830",

@@ -9,8 +9,8 @@ import {
   lte,
   or,
   sql,
-  type SQL,
 } from "drizzle-orm"
+import type { SQL } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
@@ -30,6 +30,7 @@ import {
 } from "@/lib/jarvis/bridge-reservation"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
+import { claimJarvisEvent } from "@/lib/jarvis/event-claim"
 import { jarvisPayloadForDelivery } from "@/lib/jarvis/visual-context"
 
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
@@ -82,35 +83,6 @@ function jsonValue(value: string): unknown {
 
 function unauthorized(error: string): Response {
   return Response.json({ error }, { status: 401 })
-}
-
-type EventClaimExecution = (input: Readonly<{
-  eventId: string
-  claimToken: string
-  claimedAt: string
-  staleClaimAt: string
-  eventTypeFilter: SQL<unknown> | undefined
-}>) => Promise<boolean>
-
-export async function claimJarvisEvent(
-  executeClaim: EventClaimExecution,
-  eventId: string,
-  eventTypeFilter?: SQL<unknown>,
-): Promise<Readonly<{ claimToken: string; claimedAt: string }> | null> {
-  const claimNow = new Date()
-  const claimNowIso = claimNow.toISOString()
-  const staleClaimIso = new Date(
-    claimNow.getTime() - CLAIM_RETRY_MILLISECONDS,
-  ).toISOString()
-  const claimToken = crypto.randomUUID()
-  const claimed = await executeClaim({
-    eventId,
-    claimToken,
-    claimedAt: claimNowIso,
-    staleClaimAt: staleClaimIso,
-    eventTypeFilter,
-  })
-  return claimed ? { claimToken, claimedAt: claimNowIso } : null
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -321,6 +293,37 @@ export async function POST(request: Request): Promise<Response> {
 
   const event = parsed.data
   const db = getDb(env.DB)
+  const claimToken = request.headers.get("X-Compass-Claim-Token")
+  if (
+    event.source === "ask-jarvis" &&
+    event.eventType === "feedback.reported"
+  ) {
+    if (!claimToken || claimToken.length > 128) {
+      return Response.json(
+        { error: "Event claim is no longer active" },
+        { status: 409 },
+      )
+    }
+    const activeClaim = await db
+      .select({ id: jarvisBridgeEvents.id })
+      .from(jarvisBridgeEvents)
+      .where(
+        and(
+          eq(jarvisBridgeEvents.id, event.sourceEventId),
+          eq(jarvisBridgeEvents.direction, "outbound"),
+          eq(jarvisBridgeEvents.eventType, "agent.prompt"),
+          eq(jarvisBridgeEvents.status, "processing"),
+          eq(jarvisBridgeEvents.claimToken, claimToken),
+        ),
+      )
+      .get()
+    if (!activeClaim) {
+      return Response.json(
+        { error: "Event claim is no longer active" },
+        { status: 409 },
+      )
+    }
+  }
   const now = new Date().toISOString()
   const itemId = crypto.randomUUID()
   const bridgeEventId = crypto.randomUUID()

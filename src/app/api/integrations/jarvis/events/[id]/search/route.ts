@@ -146,6 +146,14 @@ export async function GET(
     return Response.json({ error: verification.error }, { status: 401 })
   }
 
+  const claimToken = request.headers.get("X-Compass-Claim-Token")
+  if (!claimToken || claimToken.length > 128) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
+  }
+
   const { id } = await params
   const db = getDb(env.DB)
   const event = await db
@@ -154,13 +162,17 @@ export async function GET(
       eventType: jarvisBridgeEvents.eventType,
       direction: jarvisBridgeEvents.direction,
       payload: jarvisBridgeEvents.payload,
+      status: jarvisBridgeEvents.status,
+      claimToken: jarvisBridgeEvents.claimToken,
     })
     .from(jarvisBridgeEvents)
     .where(
       and(
         eq(jarvisBridgeEvents.id, id),
         eq(jarvisBridgeEvents.direction, "outbound"),
-        eq(jarvisBridgeEvents.eventType, "agent.prompt")
+        eq(jarvisBridgeEvents.eventType, "agent.prompt"),
+        eq(jarvisBridgeEvents.status, "processing"),
+        eq(jarvisBridgeEvents.claimToken, claimToken),
       )
     )
     .get()

@@ -29,9 +29,15 @@ vi.mock("@/lib/jarvis/visual-context", () => ({
   ),
 }))
 
-import { claimJarvisEvent, GET } from "../route"
+import * as routeModule from "../route"
+import { claimJarvisEvent } from "@/lib/jarvis/event-claim"
+import { GET } from "../route"
 
 const CLAIM_TOKEN = "33f7357f-163d-41d2-bcb2-4bd9a7cb047e"
+
+it("keeps non-route claim helpers out of the route export surface", () => {
+  expect("claimJarvisEvent" in routeModule).toBe(false)
+})
 
 function configureDb(candidateIds = ["event-1"]) {
   const candidateChain = {

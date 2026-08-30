@@ -448,6 +448,8 @@ def request_json(
     target: str,
     body: bytes = b"",
     max_response_bytes: int = MAX_BODY_BYTES,
+    *,
+    claim_token: str | None = None,
 ) -> Any:
     require_feedback_status_production_origin()
     if not _allowed_request_target(method, target):
@@ -474,6 +476,10 @@ def request_json(
     }
     if body:
         headers["Content-Type"] = "application/json"
+    if claim_token is not None:
+        if not claim_token or len(claim_token) > 128:
+            raise ValueError("claim token is invalid")
+        headers["X-Compass-Claim-Token"] = claim_token
 
     request = urllib.request.Request(
         f"{base_url}{target}",
@@ -528,9 +534,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     search = commands.add_parser("search")
     search.add_argument("--event-id", required=True)
+    search.add_argument("--claim-token", required=True)
 
     visuals = commands.add_parser("visuals")
     visuals.add_argument("--event-id", required=True)
+    visuals.add_argument("--claim-token", required=True)
     visuals.add_argument("--output-dir", required=True)
 
     status = commands.add_parser(
@@ -605,6 +613,7 @@ def main() -> int:
         result = request_json(
             "GET",
             f"/api/integrations/jarvis/events/{event_id}/search",
+            claim_token=args.claim_token,
         )
     elif args.command == "visuals":
         event_id = urllib.parse.quote(args.event_id, safe="")
@@ -612,6 +621,7 @@ def main() -> int:
             "GET",
             f"/api/integrations/jarvis/events/{event_id}/visuals",
             max_response_bytes=MAX_VISUAL_RESPONSE_BYTES,
+            claim_token=args.claim_token,
         )
         output_dir = Path(args.output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
