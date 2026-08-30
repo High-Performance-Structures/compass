@@ -20,9 +20,13 @@ function officeNavigation(
   )
 }
 
-function projectsNavigation(activeProjectId: string | null): NavGroupItem | undefined {
+function projectsNavigation(
+  activeProjectId: string | null,
+  projectConversationReturnHref: string | null = null,
+): NavGroupItem | undefined {
   return buildMainNavigation({
     activeProjectId,
+    projectConversationReturnHref,
     canViewActivity: true,
     canManageFeedback: false,
     canUseExecutiveAdmin: false,
@@ -59,6 +63,35 @@ describe("Projects sidebar navigation", () => {
       kind: "link",
       url: "/dashboard/projects/select",
     })
+  })
+
+  it("records the current project location in the conversations link", () => {
+    const projects = projectsNavigation(
+      "project-123",
+      "/dashboard/projects/project-123/schedule?view=gantt",
+    )
+    const collaboration = projects?.items.find(
+      (item) =>
+        item.kind === "subgroup" && item.title === "Collaboration & Access",
+    )
+    const conversations =
+      collaboration?.kind === "subgroup"
+        ? collaboration.items.find(
+            (item) =>
+              item.kind === "link" && item.title === "Project Conversations",
+          )
+        : undefined
+    const url = new URL(
+      conversations?.kind === "link" ? conversations.url : "",
+      "https://compass.local",
+    )
+
+    expect(url.pathname).toBe(
+      "/dashboard/projects/project-123/conversations",
+    )
+    expect(url.searchParams.get("returnTo")).toBe(
+      "/dashboard/projects/project-123/schedule?view=gantt",
+    )
   })
 })
 
