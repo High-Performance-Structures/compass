@@ -5,6 +5,11 @@
  * segment.
  */
 export function decodedLegacyProjectPathname(pathname: string): string | null {
-  const decoded = pathname.replace(/%3a/gi, ":")
-  return decoded === pathname ? null : decoded
+  const match = pathname.match(
+    /^\/dashboard\/projects\/(buildertrend-lead-project)%3a([^/%]+)%3a(lead-[0-9]+)(\/.*)?$/i,
+  )
+  if (!match) return null
+
+  const [, prefix, organizationId, leadId, suffix = ""] = match
+  return `/dashboard/projects/${prefix}:${organizationId}:${leadId}${suffix}`
 }
