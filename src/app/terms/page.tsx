@@ -93,6 +93,27 @@ export default function TermsPage(): React.ReactElement {
         </section>
 
         <section className="mt-10 space-y-4">
+          <h2 className="text-xl font-semibold">
+            Facebook, Instagram, and X publishing
+          </h2>
+          <p className="leading-7">
+            Authorized staff may connect company-managed Facebook Pages,
+            professional Instagram accounts, and X accounts and publish
+            selected project photos and copy. Users must review the destination,
+            privacy-safe project title, location, media, text, and hashtags
+            before confirming publication.
+          </p>
+          <p className="leading-7">
+            Users certify that they have permission to publish the selected
+            content and that it complies with the destination provider&apos;s
+            terms and policies. Published posts are public according to the
+            selected account&apos;s settings and may be copied or reshared by
+            others. Compass does not guarantee removal of copies after a post
+            is deleted or a provider connection is revoked.
+          </p>
+        </section>
+
+        <section className="mt-10 space-y-4">
           <h2 className="text-xl font-semibold">Service and integrations</h2>
           <p className="leading-7">
             Third-party integrations remain subject to their providers&apos;
