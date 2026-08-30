@@ -4,10 +4,18 @@ import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
+import { decodedLegacyProjectPathname } from "@/lib/legacy-project-route"
 import { isPublicPath } from "@/lib/public-paths"
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  const decodedLegacyPathname = decodedLegacyProjectPathname(pathname)
+  if (decodedLegacyPathname) {
+    const decodedUrl = request.nextUrl.clone()
+    decodedUrl.pathname = decodedLegacyPathname
+    return NextResponse.redirect(decodedUrl)
+  }
 
   if (!isWorkOSConfigured()) {
     if (isDevAuthFallbackAllowed()) {
