@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
   getJarvisBridgeSecrets: vi.fn(),
+  getJarvisEnvValue: vi.fn(),
+  readBoundedBody: vi.fn(),
   verifyJarvisRequest: vi.fn(),
 }))
 
@@ -13,8 +15,8 @@ vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext })
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/jarvis/auth", () => ({
   getJarvisBridgeSecrets: mocks.getJarvisBridgeSecrets,
-  getJarvisEnvValue: vi.fn(),
-  readBoundedBody: vi.fn(),
+  getJarvisEnvValue: mocks.getJarvisEnvValue,
+  readBoundedBody: mocks.readBoundedBody,
   verifyJarvisRequest: mocks.verifyJarvisRequest,
 }))
 vi.mock("@/lib/jarvis/feedback-github", () => ({
@@ -31,7 +33,7 @@ vi.mock("@/lib/jarvis/visual-context", () => ({
 
 import * as routeModule from "../route"
 import { claimJarvisEvent } from "@/lib/jarvis/event-claim"
-import { GET } from "../route"
+import { GET, POST } from "../route"
 
 const CLAIM_TOKEN = "33f7357f-163d-41d2-bcb2-4bd9a7cb047e"
 
@@ -754,5 +756,67 @@ describe("GET /api/integrations/jarvis/events", () => {
       sqlite.close()
       vi.useRealTimers()
     }
+  })
+})
+
+describe("POST /api/integrations/jarvis/events", () => {
+  it("executes a fresh intake insert before resolving the durable item", async () => {
+    const body = JSON.stringify({
+      source: "telegram",
+      sourceEventId: "telegram-message-1",
+      eventType: "feedback.reported",
+      kind: "bug",
+      title: "Fresh report",
+      content: "The report should be persisted.",
+    })
+    const item = { id: "feedback-item-1" }
+    let feedbackInsertExecuted = false
+    const makeInsert = () => {
+      const operation: {
+        values: ReturnType<typeof vi.fn>
+        onConflictDoNothing: ReturnType<typeof vi.fn>
+        then: (resolve: (value: unknown) => unknown) => Promise<unknown>
+      } = {
+        values: vi.fn(),
+        onConflictDoNothing: vi.fn(),
+        then: (resolve) => {
+          feedbackInsertExecuted = true
+          return Promise.resolve(resolve(undefined))
+        },
+      }
+      operation.values.mockReturnValue(operation)
+      operation.onConflictDoNothing.mockReturnValue(operation)
+      return operation
+    }
+    const selectChain = {
+      from: vi.fn(),
+      where: vi.fn(),
+      get: vi.fn().mockImplementation(() =>
+        feedbackInsertExecuted ? item : undefined,
+      ),
+    }
+    selectChain.from.mockReturnValue(selectChain)
+    selectChain.where.mockReturnValue(selectChain)
+    const db = {
+      insert: vi.fn(makeInsert),
+      select: vi.fn().mockReturnValue(selectChain),
+    }
+    mocks.getCloudflareContext.mockResolvedValue({
+      env: { DB: {}, JARVIS_BRIDGE_SECRET: "secret" },
+    })
+    mocks.getJarvisBridgeSecrets.mockReturnValue(["secret"])
+    mocks.getJarvisEnvValue.mockReturnValue("org-1")
+    mocks.readBoundedBody.mockResolvedValue({ success: true, rawBody: body })
+    mocks.verifyJarvisRequest.mockResolvedValue({ success: true })
+    mocks.getDb.mockReturnValue(db)
+
+    const response = await POST(new Request(
+      "https://compass.example/api/integrations/jarvis/events",
+      { method: "POST", body },
+    ))
+
+    expect(response.status).toBe(202)
+    expect(feedbackInsertExecuted).toBe(true)
+    expect(db.insert).toHaveBeenCalledTimes(2)
   })
 })

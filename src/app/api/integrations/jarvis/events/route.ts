@@ -324,6 +324,16 @@ export async function POST(request: Request): Promise<Response> {
   )
   const idempotencyKey =
     `inbound:${event.source}:${event.sourceEventId}`
+  const claimOwnership =
+    event.source === "ask-jarvis" &&
+    event.eventType === "feedback.reported" &&
+    claimToken !== null
+      ? {
+          eventId: event.sourceEventId,
+          claimToken,
+          reservationResult: null,
+        }
+      : undefined
 
   const feedbackInsert = db
     .insert(feedbackDeskItems)
@@ -346,6 +356,15 @@ export async function POST(request: Request): Promise<Response> {
       updatedAt: now,
     })
     .onConflictDoNothing()
+
+  if (claimOwnership) {
+    await db.batch([
+      assertBridgeReservationOwnership(db, claimOwnership),
+      feedbackInsert,
+    ])
+  } else {
+    await feedbackInsert
+  }
 
   const item = await db
     .select()
@@ -384,24 +403,12 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  const claimOwnership =
-    event.source === "ask-jarvis" &&
-    event.eventType === "feedback.reported" &&
-    claimToken !== null
-      ? {
-          eventId: event.sourceEventId,
-          claimToken,
-          reservationResult: null,
-        }
-      : undefined
   if (claimOwnership) {
     await db.batch([
       assertBridgeReservationOwnership(db, claimOwnership),
-      feedbackInsert,
       inboundInsert,
     ])
   } else {
-    await feedbackInsert
     await inboundInsert
   }
 
