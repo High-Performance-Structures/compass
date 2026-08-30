@@ -7,6 +7,10 @@ import {
 } from "@/db/schema-jarvis"
 import { feedbackSlaTarget } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackDeskOutboundPayload } from "@/lib/jarvis/feedback-delivery"
+import {
+  assertBridgeReservationOwnership,
+  type BridgeReservationOwnership,
+} from "@/lib/jarvis/bridge-reservation"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -44,6 +48,7 @@ type CreateFeedbackDeskItemInput = {
 export async function enqueueFeedbackReceipt(
   db: CompassDb,
   item: FeedbackDeskItem,
+  ownership?: BridgeReservationOwnership,
 ): Promise<void> {
   const now = new Date().toISOString()
   const receiptPayload = feedbackDeskOutboundPayload({
@@ -53,7 +58,7 @@ export async function enqueueFeedbackReceipt(
     notificationKind: null,
   })
 
-  await db
+  const receiptInsert = db
     .insert(jarvisBridgeEvents)
     .values({
       id: crypto.randomUUID(),
@@ -69,6 +74,15 @@ export async function enqueueFeedbackReceipt(
       updatedAt: now,
     })
     .onConflictDoNothing()
+
+  if (ownership) {
+    await db.batch([
+      assertBridgeReservationOwnership(db, ownership),
+      receiptInsert,
+    ])
+    return
+  }
+  await receiptInsert
 }
 
 export async function enqueueFeedbackDeskItem(

@@ -284,6 +284,58 @@ describe("GET /api/integrations/jarvis/events", () => {
     }
   })
 
+  it("does not reclaim an event while a provider attempt is reserved", async () => {
+    const sqlite = new Database(":memory:")
+    sqlite.exec(`
+      CREATE TABLE jarvis_bridge_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        organization_id TEXT,
+        direction TEXT NOT NULL,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload TEXT NOT NULL,
+        result TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        claim_token TEXT,
+        claimed_at TEXT,
+        feedback_desk_item_id TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO jarvis_bridge_events (
+        id, direction, source, event_type, status, idempotency_key,
+        payload, result, available_at, claim_token, claimed_at,
+        created_at, updated_at
+      ) VALUES (
+        'provider-event', 'outbound', 'ask-jarvis', 'agent.prompt',
+        'processing', 'agent:provider-event', '{}',
+        'provider-attempt:attempt-1', '2026-01-01T00:00:00.000Z',
+        'claim-a', '2026-01-01T00:00:00.000Z',
+        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+      );
+    `)
+    mocks.getDb.mockReturnValue(drizzle(sqlite))
+
+    try {
+      const response = await GET(new Request(
+        "https://compass.example/api/integrations/jarvis/events?eventType=agent.prompt",
+      ))
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toEqual({ events: [] })
+      expect(sqlite.prepare(
+        "SELECT claim_token AS claimToken FROM jarvis_bridge_events WHERE id = ?",
+      ).get("provider-event")).toEqual({ claimToken: "claim-a" })
+    } finally {
+      sqlite.close()
+    }
+  })
+
   it("reclaims an expired acknowledgement reservation", async () => {
     const sqlite = new Database(":memory:")
     sqlite.exec(`
@@ -417,7 +469,7 @@ describe("GET /api/integrations/jarvis/events", () => {
     }
   })
 
-  it("reclaims an expired provider-attempt marker after a crash", async () => {
+  it("leaves an expired provider-attempt marker pending reconciliation", async () => {
     const sqlite = new Database(":memory:")
     sqlite.exec(`
       CREATE TABLE jarvis_bridge_events (
@@ -463,9 +515,15 @@ describe("GET /api/integrations/jarvis/events", () => {
       const events = typeof body === "object" && body !== null
         ? Reflect.get(body, "events")
         : null
-      if (!Array.isArray(events)) throw new Error("Expected reclaimed event array")
-      expect(events).toHaveLength(1)
-      expect(Reflect.get(events[0], "claimToken")).not.toBe("crashed-owner")
+      if (!Array.isArray(events)) throw new Error("Expected event array")
+      expect(events).toHaveLength(0)
+      expect(sqlite.prepare(`
+        SELECT claim_token AS claimToken, result
+        FROM jarvis_bridge_events WHERE id = 'event-provider-crash'
+      `).get()).toEqual({
+        claimToken: "crashed-owner",
+        result: "provider-attempt:crashed",
+      })
     } finally {
       sqlite.close()
     }

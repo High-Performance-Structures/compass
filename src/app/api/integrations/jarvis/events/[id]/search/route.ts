@@ -124,6 +124,32 @@ function absoluteResult(
   }
 }
 
+async function claimIsStillActive(
+  db: ReturnType<typeof getDb>,
+  eventId: string,
+  claimToken: string,
+): Promise<boolean> {
+  const activeClaim = await db
+    .select({ id: jarvisBridgeEvents.id })
+    .from(jarvisBridgeEvents)
+    .where(and(
+      eq(jarvisBridgeEvents.id, eventId),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eq(jarvisBridgeEvents.eventType, "agent.prompt"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, claimToken),
+    ))
+    .get()
+  return activeClaim !== undefined && activeClaim !== null
+}
+
+function staleClaimResponse(): Response {
+  return Response.json(
+    { error: "Event claim is no longer active" },
+    { status: 409 },
+  )
+}
+
 export async function GET(
   request: Request,
   {
@@ -194,6 +220,9 @@ export async function GET(
     recentUserMessages(payload)
   )
   if (query.length === 0) {
+    if (!(await claimIsStillActive(db, id, claimToken))) {
+      return staleClaimResponse()
+    }
     return Response.json({ query: "", results: [], count: 0 })
   }
 
@@ -257,6 +286,9 @@ export async function GET(
     }
 
     const origin = new URL(request.url).origin
+    if (!(await claimIsStillActive(db, id, claimToken))) {
+      return staleClaimResponse()
+    }
     const verifiedAt = new Date().toISOString()
     return Response.json({
       query,
@@ -290,6 +322,9 @@ export async function GET(
     currentProjectIdFromPath(currentPage)
   )
   if (projectIds.length === 0) {
+    if (!(await claimIsStillActive(db, id, claimToken))) {
+      return staleClaimResponse()
+    }
     return Response.json({ query, results: [], count: 0 })
   }
 
@@ -440,6 +475,10 @@ export async function GET(
     .sort((left, right) => right.date.localeCompare(left.date))
     .slice(0, 15)
     .map((result) => absoluteResult(origin, result))
+
+  if (!(await claimIsStillActive(db, id, claimToken))) {
+    return staleClaimResponse()
+  }
 
   return Response.json({
     query,

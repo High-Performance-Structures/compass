@@ -4,7 +4,6 @@ import {
   eq,
   inArray,
   isNull,
-  like,
   lt,
   lte,
   or,
@@ -24,7 +23,7 @@ import {
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
 import {
-  PROVIDER_ATTEMPT_PREFIX,
+  assertBridgeReservationOwnership,
   RECLAIMABLE_RESERVATION_RESULTS,
 } from "@/lib/jarvis/bridge-reservation"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
@@ -147,10 +146,6 @@ export async function GET(request: Request): Promise<Response> {
                 jarvisBridgeEvents.result,
                 RECLAIMABLE_RESERVATION_RESULTS,
               ),
-              like(
-                jarvisBridgeEvents.result,
-                `${PROVIDER_ATTEMPT_PREFIX}%`,
-              ),
             ),
             lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
           ),
@@ -195,10 +190,7 @@ export async function GET(request: Request): Promise<Response> {
                       jarvisBridgeEvents.result,
                       RECLAIMABLE_RESERVATION_RESULTS,
                     ),
-                    like(
-                      jarvisBridgeEvents.result,
-                      `${PROVIDER_ATTEMPT_PREFIX}%`,
-                    ),
+
                   ),
                   lt(jarvisBridgeEvents.claimedAt, staleClaimAt),
                 ),
@@ -333,7 +325,7 @@ export async function POST(request: Request): Promise<Response> {
   const idempotencyKey =
     `inbound:${event.source}:${event.sourceEventId}`
 
-  await db
+  const feedbackInsert = db
     .insert(feedbackDeskItems)
     .values({
       id: itemId,
@@ -373,7 +365,7 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  await db
+  const inboundInsert = db
     .insert(jarvisBridgeEvents)
     .values({
       id: bridgeEventId,
@@ -392,7 +384,28 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  await enqueueFeedbackReceipt(db, item)
+  const claimOwnership =
+    event.source === "ask-jarvis" &&
+    event.eventType === "feedback.reported" &&
+    claimToken !== null
+      ? {
+          eventId: event.sourceEventId,
+          claimToken,
+          reservationResult: null,
+        }
+      : undefined
+  if (claimOwnership) {
+    await db.batch([
+      assertBridgeReservationOwnership(db, claimOwnership),
+      feedbackInsert,
+      inboundInsert,
+    ])
+  } else {
+    await feedbackInsert
+    await inboundInsert
+  }
+
+  await enqueueFeedbackReceipt(db, item, claimOwnership)
   await linkFeedbackDeskItemToGithub(db, env, item)
 
   return Response.json(
