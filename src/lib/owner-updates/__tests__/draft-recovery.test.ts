@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   ownerUpdateDraftStorageKey,
+  parseOwnerUpdateDraftEdit,
   parseRecoverableOwnerUpdateDraft,
   serializeOwnerUpdateDraftBackup,
   type OwnerUpdateDraftEdit,
@@ -22,6 +23,29 @@ const draft: OwnerUpdateDraftEdit = {
 }
 
 describe("owner update draft recovery", () => {
+  it("normalizes a legacy save payload with missing newer draft fields", () => {
+    expect(
+      parseOwnerUpdateDraftEdit({
+        title: "Weekly update",
+        updateDate: "2026-07-28",
+        summary: "Drywall is moving forward.",
+        sourceDailyLogIds: ["log-1"],
+        selectedPhotoIds: ["photo-1"],
+      })
+    ).toEqual({
+      success: true,
+      data: {
+        ...draft,
+        periodStart: "2026-07-28",
+        periodEnd: "2026-07-28",
+        selectedDocumentIds: [],
+        completedScheduleItems: [],
+        lookAheadScheduleItems: [],
+        todos: [],
+      },
+    })
+  })
+
   it("uses a project- and update-specific browser key", () => {
     expect(ownerUpdateDraftStorageKey("user-1", "project-1", "update-1")).toBe(
       "compass:owner-update-draft:user-1:project-1:update-1"
