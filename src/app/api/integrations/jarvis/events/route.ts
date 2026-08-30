@@ -10,7 +10,6 @@ import {
   or,
   sql,
 } from "drizzle-orm"
-import type { SQL } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
