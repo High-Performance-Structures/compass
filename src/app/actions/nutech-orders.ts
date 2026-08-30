@@ -1,10 +1,10 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
+import { and, asc, desc, eq, exists, inArray, isNull, like, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectOperations, projects } from "@/db/schema"
+import { organizations, projectOperations, projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
 import {
   nuTechCatalogPrices,
@@ -44,6 +44,7 @@ import {
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -320,6 +321,9 @@ async function nuTechProjectAccess(
   action: "read" | "update" | "delete"
 ): Promise<NuTechAccess> {
   const user = await requireAuth()
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
   if (action !== "read" && isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
@@ -327,6 +331,21 @@ async function nuTechProjectAccess(
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Purchase orders require an active internal organization.")
+  }
   const project = await db
     .select({
       id: projects.id,
@@ -501,10 +520,28 @@ export async function getNuTechOrderDashboard(): Promise<
   readonly NuTechOrderDashboardItem[]
 > {
   const user = await requireAuth()
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
   await requireFeaturePermission(user, "nutech-orders", "read")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Purchase orders require an active internal organization.")
+  }
   const projectRows = await db
     .select({
       id: projects.id,
@@ -748,7 +785,13 @@ export async function saveProjectNuTechOrder(
           updatedBy: access.user.id,
           updatedAt: now,
         },
+        where: isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
       })
+      .returning({ id: nuTechOrderWorkflows.id })
+    const savedWorkflow = await saveWorkflowQuery.get()
+    if (!savedWorkflow) {
+      throw new Error("Released Airlite PO details are locked.")
+    }
     if (values.catalogVersionId !== null) {
       const selectedPriceColumn =
         parsedCustomerType === "new"
@@ -771,9 +814,9 @@ export async function saveProjectNuTechOrder(
           updatedAt: now,
         })
         .where(eq(nuTechOrderItems.workflowId, id))
-      await access.db.batch([saveWorkflowQuery, repriceOrderItemsQuery])
+      await repriceOrderItemsQuery.run()
     } else {
-      await saveWorkflowQuery
+      // The workflow upsert above is the complete save when no catalog is active.
     }
     revalidateNuTechPaths(projectId)
     return { success: true, id }
@@ -819,7 +862,11 @@ export async function releaseNuTechAirlitePurchaseOrder(
     const purchaseOrderId = order.airlitePurchaseOrderOperationId
     if (purchaseOrderId === null) throw new Error("Link the Airlite purchase order.")
     const purchaseOrder = await access.db
-      .select({ id: projectOperations.id, status: projectOperations.status })
+      .select({
+        id: projectOperations.id,
+        status: projectOperations.status,
+        revision: projectOperations.revision,
+      })
       .from(projectOperations)
       .where(
         and(
@@ -836,7 +883,34 @@ export async function releaseNuTechAirlitePurchaseOrder(
       purchaseOrder.status === "draft" || purchaseOrder.status === "approved"
         ? "sent"
         : purchaseOrder.status
-    await access.db.batch([
+    const releaseResults = await access.db.batch([
+      access.db
+        .update(projectOperations)
+        .set({ status: purchaseOrderStatus, updatedAt: now })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, purchaseOrder.revision),
+            isNull(projectOperations.purchaseOrderEmailClaimToken),
+            exists(
+              access.db
+                .select({ id: nuTechOrderWorkflows.id })
+                .from(nuTechOrderWorkflows)
+                .where(
+                  and(
+                    eq(nuTechOrderWorkflows.id, order.id),
+                    eq(
+                      nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                      purchaseOrderId
+                    ),
+                    isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+                  )
+                )
+            )
+          )
+        ),
       access.db
         .update(nuTechOrderWorkflows)
         .set({
@@ -846,12 +920,38 @@ export async function releaseNuTechAirlitePurchaseOrder(
           updatedBy: access.user.id,
           updatedAt: now,
         })
-        .where(eq(nuTechOrderWorkflows.id, order.id)),
-      access.db
-        .update(projectOperations)
-        .set({ status: purchaseOrderStatus, updatedAt: now })
-        .where(eq(projectOperations.id, purchaseOrderId)),
+        .where(
+          and(
+            eq(nuTechOrderWorkflows.id, order.id),
+            isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+            eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, purchaseOrderId),
+            exists(
+              access.db
+                .select({ id: projectOperations.id })
+                .from(projectOperations)
+                .where(
+                  and(
+                    eq(projectOperations.id, purchaseOrderId),
+                    eq(projectOperations.projectId, projectId),
+                    eq(projectOperations.sourceRecordType, "purchase_order"),
+                    eq(projectOperations.revision, purchaseOrder.revision + 1),
+                    eq(projectOperations.status, purchaseOrderStatus)
+                  )
+                )
+            )
+          )
+        ),
     ])
+    const purchaseOrderResult = releaseResults[0]
+    const workflowResult = releaseResults[1]
+    if (
+      (workflowResult?.meta.changes ?? 0) !== 1 ||
+      (purchaseOrderResult?.meta.changes ?? 0) !== 1
+    ) {
+      throw new Error(
+        "This purchase order is being emailed. Try again after delivery finishes."
+      )
+    }
     revalidateNuTechPaths(projectId)
     return { success: true, id: order.id }
   } catch (error) {

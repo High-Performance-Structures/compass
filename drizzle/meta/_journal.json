@@ -337,6 +337,76 @@
       "when": 1787671000000,
       "tag": "0137_cherish_anonymous_submission",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1787672000000,
+      "tag": "0138_sage_square_payment_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1787673000000,
+      "tag": "0139_buildertrend_identity_review_scope_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1787674000000,
+      "tag": "0139_cherish_stories",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1787675000000,
+      "tag": "0140_cherish_story_replies",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1787676000000,
+      "tag": "0140_project_source_record_participants",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1787677000000,
+      "tag": "0141_schedule_task_assignee_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1787678000000,
+      "tag": "0142_project_operation_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1787679000000,
+      "tag": "0143_purchase_order_email_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1787680000000,
+      "tag": "0144_purchase_order_email_claim_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1787681000000,
+      "tag": "0145_nutech_order_item_release_guards",
+      "breakpoints": true
     }
   ]
 }

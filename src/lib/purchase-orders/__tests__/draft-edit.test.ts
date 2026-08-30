@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { canEditPurchaseOrderDraft } from "../draft-edit"
+import {
+  canEditPurchaseOrderDraft,
+  canRemovePurchaseOrderLine,
+} from "../draft-edit"
 
 const EDITABLE_DRAFT = {
   sourceSystem: "compass",
@@ -23,5 +26,17 @@ describe("canEditPurchaseOrderDraft", () => {
     { ...EDITABLE_DRAFT, sageWriteStatus: "queued" },
   ])("locks a PO after it leaves the editable draft state", (purchaseOrder) => {
     expect(canEditPurchaseOrderDraft(purchaseOrder)).toBe(false)
+  })
+})
+
+describe("canRemovePurchaseOrderLine", () => {
+  it("allows an editor to remove the final existing line", () => {
+    expect(canRemovePurchaseOrderLine(1, true)).toBe(true)
+    expect(canRemovePurchaseOrderLine(0, true)).toBe(true)
+  })
+
+  it("keeps a new purchase order from having no line rows", () => {
+    expect(canRemovePurchaseOrderLine(1, false)).toBe(false)
+    expect(canRemovePurchaseOrderLine(2, false)).toBe(true)
   })
 })
