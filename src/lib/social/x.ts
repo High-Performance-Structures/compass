@@ -27,7 +27,12 @@ async function jsonPayload(response: Response): Promise<unknown> {
 }
 
 function xError(operation: string, response: Response, payload: unknown): Error {
-  const detail = isRecord(payload) ? stringValue(payload.detail) ?? stringValue(payload.title) : null
+  const detail = isRecord(payload)
+    ? stringValue(payload.error_description) ??
+      stringValue(payload.detail) ??
+      stringValue(payload.title) ??
+      stringValue(payload.error)
+    : null
   return new Error(`${operation} failed (${response.status})${detail ? `: ${detail}` : "."}`)
 }
 
@@ -83,10 +88,16 @@ async function tokenRequest(input: {
   const authorization = tokenAuthorization(input.clientId, input.clientSecret)
   const headers = new Headers({ "Content-Type": "application/x-www-form-urlencoded" })
   if (authorization) headers.set("Authorization", authorization)
+  // OAuth clients must use exactly one authentication method. X's confidential
+  // web apps authenticate with Basic auth; public clients identify themselves
+  // with client_id in the form body.
+  const fields = authorization
+    ? input.fields
+    : { client_id: input.clientId, ...input.fields }
   const response = await fetch("https://api.x.com/2/oauth2/token", {
     method: "POST",
     headers,
-    body: new URLSearchParams({ client_id: input.clientId, ...input.fields }),
+    body: new URLSearchParams(fields),
   })
   const payload = await jsonPayload(response)
   if (!response.ok || !isRecord(payload)) throw xError("X authorization", response, payload)
