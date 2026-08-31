@@ -27,13 +27,11 @@ import {
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
-const MAX_SOURCE_FILES = 1_000
-const MAX_FOLDER_DEPTH = 20
-
 type DocumentsDb = ReturnType<typeof getDb>
 
 export type ProjectDocumentSourceFile = {
   readonly id: string
+  readonly kind: "file" | "folder"
   readonly name: string
   readonly mimeType: string
   readonly modifiedAt: string | null
@@ -86,6 +84,10 @@ export type ProjectDocumentWorkspace = {
 
 export type ProjectDocumentActionResult =
   | { readonly success: true; readonly id: string }
+  | { readonly success: false; readonly error: string }
+
+export type ProjectDocumentFolderResult =
+  | { readonly success: true; readonly files: readonly ProjectDocumentSourceFile[] }
   | { readonly success: false; readonly error: string }
 
 type InternalDocumentAccess = {
@@ -190,56 +192,28 @@ async function listFolderFiles(
   return files
 }
 
-async function listProjectSourceFiles(
-  access: InternalDocumentAccess
+async function listProjectSourceFolder(
+  access: InternalDocumentAccess,
+  folderId: string,
+  path: string
 ): Promise<readonly ProjectDocumentSourceFile[]> {
-  if (!access.project.driveFolderId) {
-    throw new Error("Connect this project to its Google Drive folder first.")
-  }
-
   const drive = await projectDriveClient(access)
-  const queue: { readonly folderId: string; readonly path: string; readonly depth: number }[] = [
-    { folderId: access.project.driveFolderId, path: "", depth: 0 },
-  ]
-  const candidates: ProjectDocumentSourceFile[] = []
+  const files = await listFolderFiles(
+    drive.client,
+    drive.googleEmail,
+    folderId,
+    drive.sharedDriveId
+  )
 
-  while (queue.length > 0 && candidates.length < MAX_SOURCE_FILES) {
-    const next = queue.shift()
-    if (!next) break
-    const files = await listFolderFiles(
-      drive.client,
-      drive.googleEmail,
-      next.folderId,
-      drive.sharedDriveId
-    )
-
-    for (const file of files) {
-      if (file.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
-        if (next.depth < MAX_FOLDER_DEPTH) {
-          queue.push({
-            folderId: file.id,
-            path: next.path ? `${next.path}/${file.name}` : file.name,
-            depth: next.depth + 1,
-          })
-        }
-        continue
-      }
-      candidates.push({
-        id: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        modifiedAt: file.modifiedTime ?? null,
-        path: next.path,
-        webViewLink: file.webViewLink ?? null,
-      })
-      if (candidates.length >= MAX_SOURCE_FILES) break
-    }
-  }
-
-  return candidates.sort((left, right) => {
-    const pathComparison = left.path.localeCompare(right.path)
-    return pathComparison === 0 ? left.name.localeCompare(right.name) : pathComparison
-  })
+  return files.map((file) => ({
+    id: file.id,
+    kind: file.mimeType === GOOGLE_FOLDER_MIME_TYPE ? "folder" : "file",
+    name: file.name,
+    mimeType: file.mimeType,
+    modifiedAt: file.modifiedTime ?? null,
+    path,
+    webViewLink: file.webViewLink ?? null,
+  }))
 }
 
 function refreshDocumentPaths(projectId: string): void {
@@ -340,7 +314,14 @@ export async function getProjectDocumentWorkspace(
   const access = await internalDocumentAccess(projectId, false)
   const documents = await documentItems(access.db, projectId)
   try {
-    const sourceFiles = await listProjectSourceFiles(access)
+    if (!access.project.driveFolderId) {
+      throw new Error("Connect this project to its Google Drive folder first.")
+    }
+    const sourceFiles = await listProjectSourceFolder(
+      access,
+      access.project.driveFolderId,
+      ""
+    )
     return {
       project: access.project,
       canManage: true,
@@ -356,6 +337,42 @@ export async function getProjectDocumentWorkspace(
       sourceFiles: [],
       sourceError:
         error instanceof Error ? error.message : "Unable to load project files.",
+    }
+  }
+}
+
+export async function listProjectDocumentSourceFolder(
+  projectId: string,
+  folderId: string,
+  path: string
+): Promise<ProjectDocumentFolderResult> {
+  try {
+    const access = await internalDocumentAccess(projectId, false)
+    if (!access.project.driveFolderId) {
+      throw new Error("Connect this project to its Google Drive folder first.")
+    }
+    const cleanedFolderId = requiredText(folderId, "Folder")
+    const cleanedPath = path.trim().slice(0, 1_000)
+    if (cleanedFolderId !== access.project.driveFolderId) {
+      const drive = await projectDriveClient(access)
+      const withinProject = await isDriveItemWithinProjectFolder({
+        client: drive.client,
+        googleEmail: drive.googleEmail,
+        itemId: cleanedFolderId,
+        projectFolderId: access.project.driveFolderId,
+      })
+      if (!withinProject) throw new Error("That folder is outside this project.")
+    }
+    const files = await listProjectSourceFolder(
+      access,
+      cleanedFolderId,
+      cleanedPath
+    )
+    return { success: true, files }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to load that project folder.",
     }
   }
 }

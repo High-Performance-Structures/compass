@@ -5,8 +5,10 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconArchive,
+  IconChevronLeft,
   IconDownload,
   IconFileDescription,
+  IconFolder,
   IconHistory,
   IconPlus,
   IconTrash,
@@ -16,6 +18,7 @@ import { toast } from "sonner"
 
 import {
   deleteProjectDocument,
+  listProjectDocumentSourceFolder,
   publishProjectDocument,
   updateProjectDocumentStatus,
   type ProjectDocumentWorkspace,
@@ -54,6 +57,12 @@ function dateLabel(value: string | null): string {
       })
 }
 
+type SourceFolderTrailItem = {
+  readonly id: string
+  readonly name: string
+  readonly path: string
+}
+
 export function ProjectDocumentsWorkspacePanel({
   workspace,
 }: {
@@ -61,21 +70,31 @@ export function ProjectDocumentsWorkspacePanel({
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [isFolderPending, startFolderTransition] = useTransition()
   const [sourceFileId, setSourceFileId] = useState("")
+  const [sourceFiles, setSourceFiles] = useState(workspace.sourceFiles)
+  const [sourceError, setSourceError] = useState(workspace.sourceError)
+  const [folderTrail, setFolderTrail] = useState<readonly SourceFolderTrailItem[]>(
+    workspace.project.driveFolderId
+      ? [{ id: workspace.project.driveFolderId, name: "Project folder", path: "" }]
+      : []
+  )
   const [category, setCategory] = useState("architectural_plans")
   const [title, setTitle] = useState("")
   const [supersedesDocumentId, setSupersedesDocumentId] = useState("")
 
   const sourceOptions = useMemo(
     () =>
-      workspace.sourceFiles.map((file) => ({
+      sourceFiles.map((file) => ({
         value: file.id,
         label: file.name,
         selectedLabel: file.name,
-        description: file.path || "Project folder",
-        keywords: `${file.path} ${file.mimeType}`,
+        description: file.kind === "folder"
+          ? `${file.path || "Project folder"} · Folder`
+          : file.path || "Project folder",
+        keywords: `${file.path} ${file.mimeType} ${file.kind}`,
       })),
-    [workspace.sourceFiles]
+    [sourceFiles]
   )
   const currentOptions = workspace.documents
     .filter((document) => document.status === "current")
@@ -91,10 +110,45 @@ export function ProjectDocumentsWorkspacePanel({
         .join(" · "),
     }))
 
+  function loadFolder(
+    folder: SourceFolderTrailItem,
+    nextTrail: readonly SourceFolderTrailItem[]
+  ): void {
+    startFolderTransition(async () => {
+      const result = await listProjectDocumentSourceFolder(
+        workspace.project.id,
+        folder.id,
+        folder.path
+      )
+      if (!result.success) {
+        setSourceError(result.error)
+        toast.error(result.error)
+        return
+      }
+      setSourceError(null)
+      setSourceFileId("")
+      setSourceFiles(result.files)
+      setFolderTrail(nextTrail)
+    })
+  }
+
   function chooseSource(value: string): void {
+    const source = sourceFiles.find((file) => file.id === value)
+    if (source?.kind === "folder") {
+      const path = source.path ? `${source.path}/${source.name}` : source.name
+      const folder = { id: source.id, name: source.name, path }
+      loadFolder(folder, [...folderTrail, folder])
+      return
+    }
     setSourceFileId(value)
-    const source = workspace.sourceFiles.find((file) => file.id === value)
     if (source) setTitle(source.name.replace(/\.[^.]+$/, ""))
+  }
+
+  function goUpOneFolder(): void {
+    if (folderTrail.length <= 1) return
+    const nextTrail = folderTrail.slice(0, -1)
+    const parent = nextTrail[nextTrail.length - 1]
+    if (parent) loadFolder(parent, nextTrail)
   }
 
   function publish(event: FormEvent<HTMLFormElement>): void {
@@ -299,23 +353,42 @@ export function ProjectDocumentsWorkspacePanel({
         <p className="mt-1 text-sm text-muted-foreground">
           Select the exact Drive file that belongs in the coordinated construction set.
         </p>
-        {workspace.sourceError ? (
+        {sourceError && sourceFiles.length === 0 ? (
           <p className="mt-4 border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-            {workspace.sourceError}
+            {sourceError}
           </p>
         ) : (
           <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={publish}>
             <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="project-document-source">Project file</Label>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={isFolderPending || folderTrail.length <= 1}
+                  onClick={goUpOneFolder}
+                >
+                  <IconChevronLeft className="size-4" />
+                  Up one folder
+                </Button>
+                <span className="inline-flex min-w-0 items-center gap-1.5">
+                  <IconFolder className="size-4 shrink-0" />
+                  <span className="truncate">
+                    {folderTrail.map((folder) => folder.name).join(" / ") || "Project folder"}
+                  </span>
+                </span>
+              </div>
               <SearchableCombobox
                 id="project-document-source"
                 ariaLabel="Project construction document file"
-                placeholder="Search files inside this project folder"
-                searchPlaceholder="Search by file or folder name..."
-                emptyMessage="No project files match this search."
+                placeholder={isFolderPending ? "Loading project folder..." : "Choose a file or open a folder"}
+                searchPlaceholder="Search this folder..."
+                emptyMessage="No files or folders match this search."
                 options={sourceOptions}
                 value={sourceFileId}
                 onValueChange={chooseSource}
+                disabled={isFolderPending}
                 required
               />
             </div>
