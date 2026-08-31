@@ -303,7 +303,7 @@ export function ProjectSocialWorkspace({
               <span>
                 <span className="block font-medium">Use this project’s Facebook album</span>
                 <span className="block text-xs text-muted-foreground">
-                  Compass will reuse the project album, or create it from the privacy-safe public title.
+                  Compass will reuse a Page album with the same privacy-safe public title, or create it when none exists.
                 </span>
               </span>
             </label>

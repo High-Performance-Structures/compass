@@ -96,6 +96,7 @@ export function ProjectInformationWorkspace({
   const [newJobStatusSageCode, setNewJobStatusSageCode] = useState("")
   const [newJobStatusCadence, setNewJobStatusCadence] = useState("7")
   const [message, setMessage] = useState<string | null>(null)
+  const [profileMessage, setProfileMessage] = useState<string | null>(null)
 
   function refreshAfter(result: { readonly success: boolean; readonly error?: string }): void {
     setMessage(resultMessage(result))
@@ -104,6 +105,14 @@ export function ProjectInformationWorkspace({
 
   function saveProfile(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    const hasPublicTitle = publicTitle.trim().length > 0
+    const hasPublicLocation = publicLocationCity.trim().length > 0
+    if (hasPublicTitle !== hasPublicLocation) {
+      const error = "Add both a privacy-safe public project title and a town/city, or leave both blank."
+      setProfileMessage(error)
+      setMessage(error)
+      return
+    }
     startTransition(async () => {
       const result = await updateProjectInformation({
         projectId: information.project.id,
@@ -116,6 +125,7 @@ export function ProjectInformationWorkspace({
         addressSuffix: information.project.projectNumber ? addressSuffix : null,
         updateClientDefaultMailingAddress: propagateMailingAddress,
       })
+      setProfileMessage(resultMessage(result))
       refreshAfter(result)
     })
   }
@@ -339,7 +349,14 @@ export function ProjectInformationWorkspace({
             </div>
           )}
         </div>
-        <div className="mt-5 flex justify-end"><Button type="submit" disabled={pending}>Save project information</Button></div>
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
+          {profileMessage ? (
+            <p className="text-sm text-muted-foreground" role="status" aria-live="polite">
+              {profileMessage}
+            </p>
+          ) : null}
+          <Button type="submit" disabled={pending}>Save project information</Button>
+        </div>
       </form>
 
       {canManageJobStatuses && (

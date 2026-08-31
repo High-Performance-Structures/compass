@@ -30,6 +30,7 @@ import {
 } from "@/lib/social/image-sanitization"
 import {
   createFacebookProjectAlbum,
+  findFacebookAlbumByName,
   publishFacebookPhotos,
   publishInstagramPhotos,
 } from "@/lib/social/meta"
@@ -775,7 +776,13 @@ export async function publishSocialPost(input: {
             )).get()
             albumId = existingAlbum?.externalAlbumId ?? null
             if (!albumId) {
-              albumId = await createFacebookProjectAlbum({
+              const discoveredAlbum = await findFacebookAlbumByName({
+                apiVersion: config.metaApiVersion,
+                pageId: row.account.externalAccountId,
+                accessToken,
+                name: post.publicTitleSnapshot,
+              })
+              albumId = discoveredAlbum?.id ?? await createFacebookProjectAlbum({
                 apiVersion: config.metaApiVersion,
                 pageId: row.account.externalAccountId,
                 accessToken,
@@ -787,9 +794,19 @@ export async function publishSocialPost(input: {
                 accountId: row.account.id,
                 projectId: input.projectId,
                 externalAlbumId: albumId,
-                albumName: post.publicTitleSnapshot,
+                albumName: discoveredAlbum?.name ?? post.publicTitleSnapshot,
                 createdAt: now,
                 updatedAt: now,
+              }).onConflictDoUpdate({
+                target: [
+                  socialProjectAlbums.accountId,
+                  socialProjectAlbums.projectId,
+                ],
+                set: {
+                  externalAlbumId: albumId,
+                  albumName: discoveredAlbum?.name ?? post.publicTitleSnapshot,
+                  updatedAt: now,
+                },
               }).run()
             }
           }
