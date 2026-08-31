@@ -11,7 +11,9 @@ import {
 
 // Auth and user management tables
 export const users = sqliteTable("users", {
-  id: text("id").primaryKey(), // workos user id
+  id: text("id").primaryKey(),
+  // Explicitly links imported/legacy Compass records to their WorkOS identity.
+  workosUserId: text("workos_user_id").unique(),
   email: text("email").notNull().unique(),
   firstName: text("first_name"),
   lastName: text("last_name"),

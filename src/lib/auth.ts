@@ -10,7 +10,7 @@ import {
   projectMembers,
 } from "@/db/schema"
 import type { User } from "@/db/schema"
-import { and, desc, eq, sql } from "drizzle-orm"
+import { and, desc, eq, or, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
 import {
@@ -387,7 +387,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     let dbUser = await db
       .select()
       .from(users)
-      .where(eq(users.id, workosUser.id))
+      .where(
+        or(
+          eq(users.id, workosUser.id),
+          eq(users.workosUserId, workosUser.id)
+        )
+      )
       .get()
 
     if (!dbUser) {
@@ -597,7 +602,12 @@ export async function ensureUserExists(workosUser: {
   const existing = await db
     .select()
     .from(users)
-    .where(eq(users.id, workosUser.id))
+    .where(
+      or(
+        eq(users.id, workosUser.id),
+        eq(users.workosUserId, workosUser.id)
+      )
+    )
     .get()
 
   if (existing) return existing
@@ -623,6 +633,7 @@ export async function ensureUserExists(workosUser: {
 
   const newUser = {
     id: workosUser.id,
+    workosUserId: workosUser.id,
     email: workosUser.email,
     firstName: workosUser.firstName ?? null,
     lastName: workosUser.lastName ?? null,

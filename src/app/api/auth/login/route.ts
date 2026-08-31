@@ -71,7 +71,7 @@ function mapWorkOSError(error: unknown): string {
     case "invalid_code":
       return "Invalid code. Please try again."
     default:
-      return err.message || "An error occurred. Please try again."
+      return "Compass could not complete sign-in. Please try again."
   }
 }
 
