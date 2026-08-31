@@ -78,14 +78,18 @@ export async function POST(request: NextRequest): Promise<Response> {
     )
 
     if (expectsJson) {
-      return NextResponse.json({ success: true })
+      const response = NextResponse.json({ success: true })
+      response.cookies.delete("compass-demo")
+      return response
     }
 
     const destination = new URL("/dashboard/field/native-bootstrap", request.url)
     if (parsed.data.nativePlatform) {
       destination.searchParams.set("nativePlatform", parsed.data.nativePlatform)
     }
-    return NextResponse.redirect(destination, 303)
+    const response = NextResponse.redirect(destination, 303)
+    response.cookies.delete("compass-demo")
+    return response
   } catch (error) {
     console.error("Mobile OAuth session exchange failed:", error)
     if (expectsJson) {

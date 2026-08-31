@@ -161,12 +161,17 @@ code should be boring and obvious, not clever and hidden.
 demo mode
 ---
 
-Demo mode gives unauthenticated visitors a read-only experience
-of the application. When a user visits `/demo`, they get a
-session cookie (`compass-demo`) that identifies them as a
-synthetic demo user. This user has an admin role in a demo org
-called "Meridian Group", so they can see the full UI, but they
-should never be able to modify persistent state.
+The synthetic demo identity is restricted to the isolated end-to-end test
+environment. Production `/demo` requests clear any stale demo and active-org
+cookies and redirect to normal authentication. This fail-closed policy remains
+in place until Compass has a physically separate demo datastore; a fake
+organization ID in the shared production database is not a sufficient security
+boundary because client-side route state can survive an identity transition.
+
+In end-to-end tests, visiting `/demo` sets a `compass-demo` cookie and uses an
+admin identity in a fake organization called "Meridian Group". It exists only
+to exercise the full UI against isolated test data and must never be enabled on
+the production deployment.
 
 The demo user is defined in `src/lib/demo.ts`:
 
@@ -195,8 +200,8 @@ generic error.
 
 **Which actions need the guard**: any function that calls
 `db.insert()`, `db.update()`, or `db.delete()`. Read-only
-actions don't need it -- demo users should be able to browse
-freely.
+actions don't need it because the synthetic user is limited to isolated test
+data.
 
 **Where to place it**: immediately after the auth check, before
 any database access. This keeps the pattern consistent across
@@ -207,13 +212,12 @@ queries that run before the guard.
 the demo cookie
 ---
 
-The `compass-demo` cookie uses `sameSite: "strict"` rather than
-`"lax"`. This matters because the cookie bypasses the entire
-authentication flow -- if it's present and set to `"true"`,
-`getCurrentUser()` returns the demo user without checking WorkOS
-at all. With `"lax"`, the cookie would be sent on cross-site
-top-level navigations (clicking a link from another site to
-Compass). With `"strict"`, it's only sent on same-site requests.
+In the isolated end-to-end environment, the `compass-demo` cookie uses
+`sameSite: "strict"` rather than `"lax"`. This matters because the cookie
+bypasses the WorkOS flow inside that test environment. Production middleware
+ignores and deletes the cookie. With `"lax"`, the cookie would be sent on
+cross-site top-level navigations (clicking a link from another site to Compass).
+With `"strict"`, it's only sent on same-site requests.
 
 The `compass-active-org` cookie (which tracks which org a real
 user has selected) can remain `"lax"` because it doesn't bypass

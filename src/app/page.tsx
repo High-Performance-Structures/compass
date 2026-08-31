@@ -426,7 +426,7 @@ export default function Home(): React.JSX.Element {
 						style={{ animationDelay: "0.65s" }}
 					>
 						<Link
-							href="/demo"
+							href="/login"
 							className={
 								"group inline-flex " +
 								"items-center gap-3 " +
@@ -731,7 +731,7 @@ export default function Home(): React.JSX.Element {
 							workflows.
 						</p>
 						<Link
-							href="/demo"
+							href="/login"
 							className={
 								"group inline-flex " +
 								"items-center gap-2 " +
@@ -744,7 +744,7 @@ export default function Home(): React.JSX.Element {
 								"hover:text-[#00E0A8]"
 							}
 						>
-							Try the Demo
+							Sign In
 							<IconArrowRight
 								className={
 									"size-3 " +
@@ -1052,7 +1052,7 @@ export default function Home(): React.JSX.Element {
 							}
 						>
 							<Link
-								href="/demo"
+								href="/login"
 								className={
 									"group inline-flex " +
 									"items-center gap-3 " +

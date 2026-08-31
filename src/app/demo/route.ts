@@ -1,9 +1,15 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { isE2ETest } from "@/lib/auth-config"
+import { isDemoSessionAllowed, isE2ETest } from "@/lib/auth-config"
 
 export async function GET() {
   const cookieStore = await cookies()
+  if (!isDemoSessionAllowed("true")) {
+    cookieStore.delete("compass-demo")
+    cookieStore.delete("compass-active-org")
+    redirect("/login")
+  }
+
   cookieStore.set("compass-demo", "true", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production" && !isE2ETest(),

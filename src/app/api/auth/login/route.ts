@@ -152,10 +152,12 @@ export async function POST(request: NextRequest) {
         request
       )
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
       })
+      response.cookies.delete("compass-demo")
+      return response
     }
 
     if (data.type === "passwordless_send") {
@@ -202,10 +204,12 @@ export async function POST(request: NextRequest) {
         request
       )
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
       })
+      response.cookies.delete("compass-demo")
+      return response
     }
 
     return NextResponse.json(

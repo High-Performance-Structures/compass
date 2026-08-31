@@ -14,6 +14,7 @@ import { and, desc, eq, or, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
 import {
+  isDemoSessionAllowed,
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
@@ -327,8 +328,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       // check demo cookie when WorkOS isn't available
       try {
         const cookieStore = await cookies()
-        const isDemoSession =
-          cookieStore.get("compass-demo")?.value === "true"
+        const isDemoSession = isDemoSessionAllowed(
+          cookieStore.get("compass-demo")?.value
+        )
         if (isDemoSession) return DEMO_USER
       } catch {
         // cookies() may throw in non-request contexts
@@ -363,8 +365,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       // no real session; fall back to demo cookie
       try {
         const cookieStore = await cookies()
-        const isDemoSession =
-          cookieStore.get("compass-demo")?.value === "true"
+        const isDemoSession = isDemoSessionAllowed(
+          cookieStore.get("compass-demo")?.value
+        )
         if (isDemoSession) return DEMO_USER
       } catch {
         // cookies() may throw in non-request contexts
@@ -372,8 +375,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       return null
     }
 
-    // demo cookie cleanup handled by middleware (can't delete
-    // cookies from Server Components -- only actions/routes)
+    // Stale demo cookies are cleared by middleware. Server Components cannot
+    // mutate cookies, so real authentication always takes precedence here.
 
     const workosUser = session.user
 

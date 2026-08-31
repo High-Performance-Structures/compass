@@ -70,7 +70,9 @@ export async function GET(request: NextRequest) {
     )
 
     const redirectTo = state || "/dashboard"
-    return NextResponse.redirect(new URL(redirectTo, request.url))
+    const response = NextResponse.redirect(new URL(redirectTo, request.url))
+    response.cookies.delete("compass-demo")
+    return response
   } catch (error) {
     console.error("OAuth callback error:", error)
     return NextResponse.redirect(

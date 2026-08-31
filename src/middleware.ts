@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
 import {
+  isDemoSessionAllowed,
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
@@ -42,21 +43,37 @@ export default async function middleware(request: NextRequest) {
   const { session, headers } = await authkit(request)
 
   if (isPublicPath(pathname)) {
-    return handleAuthkitHeaders(request, headers)
+    const response = handleAuthkitHeaders(request, headers)
+    if (
+      request.cookies.get("compass-demo")?.value === "true" &&
+      !isDemoSessionAllowed("true")
+    ) {
+      response.cookies.delete("compass-demo")
+    }
+    return response
   }
 
   if (!session.user) {
-    const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
+    const demoCookie = request.cookies.get("compass-demo")?.value
+    const isDemoSession = isDemoSessionAllowed(demoCookie)
     if (isDemoSession) {
       return handleAuthkitHeaders(request, headers)
     }
 
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
-    return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
+    const response = handleAuthkitHeaders(request, headers, {
+      redirect: loginUrl.toString(),
+    })
+    if (demoCookie === "true") response.cookies.delete("compass-demo")
+    return response
   }
 
-  return handleAuthkitHeaders(request, headers)
+  const response = handleAuthkitHeaders(request, headers)
+  if (request.cookies.get("compass-demo")?.value === "true") {
+    response.cookies.delete("compass-demo")
+  }
+  return response
 }
 
 export const config = {
