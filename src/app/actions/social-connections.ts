@@ -15,7 +15,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { can } from "@/lib/permissions"
 import { getSocialConfig, socialTokenSalt } from "@/lib/social/config"
 import type { MetaPageCandidate } from "@/lib/social/meta"
-import { requiredMetaScopes } from "@/lib/social/meta"
+import { hasRequiredMetaCandidateScopes } from "@/lib/social/meta"
 import {
   isExpectedFacebookPage,
   isExpectedInstagramProfile,
@@ -53,6 +53,14 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
 }
 
+function stringList(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const parsed = stringOrNull(item)
+    return parsed ? [parsed] : []
+  })
+}
+
 function parseMetaCandidates(value: string): readonly MetaPageCandidate[] {
   try {
     const parsed: unknown = JSON.parse(value)
@@ -70,6 +78,7 @@ function parseMetaCandidates(value: string): readonly MetaPageCandidate[] {
         pageAccessToken,
         instagramAccountId: stringOrNull(item.instagramAccountId),
         instagramUsername: stringOrNull(item.instagramUsername),
+        grantedScopes: stringList(item.grantedScopes),
       })
     }
     return candidates
@@ -147,7 +156,8 @@ export async function getPendingMetaConnection(
     ))
     const matchingCandidates = candidates.filter((candidate) =>
       isExpectedFacebookPage(department, candidate.pageName) &&
-      isExpectedInstagramProfile(department, candidate.instagramUsername)
+      isExpectedInstagramProfile(department, candidate.instagramUsername) &&
+      hasRequiredMetaCandidateScopes(candidate)
     )
     if (matchingCandidates.length === 0) {
       return {
@@ -196,7 +206,8 @@ export async function finalizeMetaConnection(input: {
     const candidate = candidates.find((item) =>
       item.pageId === input.pageId &&
       isExpectedFacebookPage(department, item.pageName) &&
-      isExpectedInstagramProfile(department, item.instagramUsername)
+      isExpectedInstagramProfile(department, item.instagramUsername) &&
+      hasRequiredMetaCandidateScopes(item)
     )
     if (!candidate) {
       return {
@@ -206,7 +217,7 @@ export async function finalizeMetaConnection(input: {
     }
 
     const now = new Date().toISOString()
-    const scopes = requiredMetaScopes().join(" ")
+    const scopes = candidate.grantedScopes.join(" ")
     const platforms = candidate.instagramAccountId
       ? ["facebook", "instagram"]
       : ["facebook"]
