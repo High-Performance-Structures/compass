@@ -8,6 +8,7 @@ import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { can } from "@/lib/permissions"
 import { getSocialConfig, socialTokenSalt } from "@/lib/social/config"
+import { sharedXDepartments } from "@/lib/social/x-account-sharing"
 import {
   isExpectedXProfile,
   socialDepartment,
@@ -64,6 +65,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!code) return redirectAndClear(request, "missing-code")
 
   try {
+    const organizationId = user.organizationId
     const { env } = await getCloudflareContext()
     const config = getSocialConfig(env, request.url)
     if (!config.xClientId) return redirectAndClear(request, "x-not-configured")
@@ -80,59 +82,85 @@ export async function GET(request: NextRequest): Promise<Response> {
       return redirectAndClear(request, "x-profile-mismatch")
     }
     const db = getDb(env.DB)
-    const existing = await db.select().from(socialAccounts).where(and(
-      eq(socialAccounts.organizationId, user.organizationId),
-      eq(socialAccounts.department, department),
+    const existingAccounts = await db.select().from(socialAccounts).where(and(
+      eq(socialAccounts.organizationId, organizationId),
       eq(socialAccounts.platform, "x"),
-    )).get()
-    const salt = socialTokenSalt({
-      organizationId: user.organizationId,
-      platform: "x",
-      department,
+    )).all()
+    const departments = sharedXDepartments({
+      requestedDepartment: department,
+      externalAccountId: identity.id,
+      accounts: existingAccounts,
     })
     const now = new Date()
-    const refreshTokenEncrypted = grant.refreshToken
-      ? await encrypt(grant.refreshToken, config.tokenEncryptionKey, salt)
-      : existing?.refreshTokenEncrypted ?? null
-    await db.insert(socialAccounts).values({
-      id: existing?.id ?? crypto.randomUUID(),
-      organizationId: user.organizationId,
-      department,
-      platform: "x",
-      externalAccountId: identity.id,
-      parentExternalAccountId: null,
-      accountName: `@${identity.username}`,
-      accessTokenEncrypted: await encrypt(grant.accessToken, config.tokenEncryptionKey, salt),
-      refreshTokenEncrypted,
-      tokenExpiresAt: new Date(now.getTime() + grant.expiresIn * 1000).toISOString(),
-      grantedScopes: [...grant.scopes].sort().join(" "),
-      status: "connected",
-      connectedBy: user.id,
-      connectedAt: now.toISOString(),
-      lastPublishedAt: existing?.lastPublishedAt ?? null,
-      lastError: null,
-      createdAt: existing?.createdAt ?? now.toISOString(),
-      updatedAt: now.toISOString(),
-    }).onConflictDoUpdate({
-      target: [
-        socialAccounts.organizationId,
-        socialAccounts.department,
-        socialAccounts.platform,
-      ],
-      set: {
-        externalAccountId: identity.id,
-        accountName: `@${identity.username}`,
-        accessTokenEncrypted: await encrypt(grant.accessToken, config.tokenEncryptionKey, salt),
+    const tokenExpiresAt = new Date(now.getTime() + grant.expiresIn * 1000).toISOString()
+    const credentialValues = await Promise.all(departments.map(async (targetDepartment) => {
+      const existing = existingAccounts.find(
+        (account) => account.department === targetDepartment,
+      )
+      const salt = socialTokenSalt({
+        organizationId,
+        platform: "x",
+        department: targetDepartment,
+      })
+      const accessTokenEncrypted = await encrypt(
+        grant.accessToken,
+        config.tokenEncryptionKey,
+        salt,
+      )
+      const refreshTokenEncrypted = grant.refreshToken
+        ? await encrypt(grant.refreshToken, config.tokenEncryptionKey, salt)
+        : existing?.refreshTokenEncrypted ?? null
+      return {
+        targetDepartment,
+        existing,
+        accessTokenEncrypted,
         refreshTokenEncrypted,
-        tokenExpiresAt: new Date(now.getTime() + grant.expiresIn * 1000).toISOString(),
+      }
+    }))
+    const statements = credentialValues.map((value) =>
+      db.insert(socialAccounts).values({
+        id: value.existing?.id ?? crypto.randomUUID(),
+        organizationId,
+        department: value.targetDepartment,
+        platform: "x",
+        externalAccountId: identity.id,
+        parentExternalAccountId: null,
+        accountName: `@${identity.username}`,
+        accessTokenEncrypted: value.accessTokenEncrypted,
+        refreshTokenEncrypted: value.refreshTokenEncrypted,
+        tokenExpiresAt,
         grantedScopes: [...grant.scopes].sort().join(" "),
         status: "connected",
         connectedBy: user.id,
         connectedAt: now.toISOString(),
+        lastPublishedAt: value.existing?.lastPublishedAt ?? null,
         lastError: null,
+        createdAt: value.existing?.createdAt ?? now.toISOString(),
         updatedAt: now.toISOString(),
-      },
-    }).run()
+      }).onConflictDoUpdate({
+        target: [
+          socialAccounts.organizationId,
+          socialAccounts.department,
+          socialAccounts.platform,
+        ],
+        set: {
+          externalAccountId: identity.id,
+          accountName: `@${identity.username}`,
+          accessTokenEncrypted: value.accessTokenEncrypted,
+          refreshTokenEncrypted: value.refreshTokenEncrypted,
+          tokenExpiresAt,
+          grantedScopes: [...grant.scopes].sort().join(" "),
+          status: "connected",
+          connectedBy: user.id,
+          connectedAt: now.toISOString(),
+          lastError: null,
+          updatedAt: now.toISOString(),
+        },
+      }),
+    )
+    const [firstStatement, ...remainingStatements] = statements
+    if (!firstStatement) throw new Error("No X account destination was selected.")
+    await db.batch([firstStatement, ...remainingStatements])
     return redirectAndClear(request, "x-connected")
   } catch (error) {
     console.error("X social connection failed", error)
