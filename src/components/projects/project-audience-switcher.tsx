@@ -1,10 +1,11 @@
 "use client"
 
-import type * as React from "react"
+import * as React from "react"
 import { useRouter } from "next/navigation"
 
 import type { AudienceProjectOption } from "@/app/actions/project-audience-preview"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
+import { projectAudienceActiveProjectCookieName } from "@/lib/project-audience-active-project"
 import {
   projectAudienceSectionHref,
   type ProjectAudiencePreviewRoute,
@@ -25,6 +26,17 @@ export function ProjectAudienceSwitcher({
   readonly className?: string
 }): React.ReactElement {
   const router = useRouter()
+  const rememberProject = React.useCallback(
+    (projectId: string): void => {
+      const cookieName = projectAudienceActiveProjectCookieName(audience)
+      document.cookie = `${cookieName}=${encodeURIComponent(projectId)}; Path=/; Max-Age=31536000; SameSite=Lax`
+    },
+    [audience]
+  )
+
+  React.useEffect(() => {
+    rememberProject(currentProjectId)
+  }, [currentProjectId, rememberProject])
 
   return (
     <ProjectCombobox
@@ -32,9 +44,10 @@ export function ProjectAudienceSwitcher({
       value={currentProjectId}
       onValueChange={(projectId) => {
         if (projectId === currentProjectId) return
+        rememberProject(projectId)
         router.push(projectAudienceSectionHref(projectId, audience, section))
       }}
-      ariaLabel="Switch preview project"
+      ariaLabel="Switch project"
       className={className}
       popoverClassName="w-[min(22rem,calc(100vw-3rem))]"
     />

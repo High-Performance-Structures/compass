@@ -224,6 +224,82 @@ export type ProjectAudiencePreview = {
   readonly contacts: readonly AudienceContact[]
 }
 
+type AudienceProjectRow = AudienceProjectOption & {
+  readonly projectRole: string
+}
+
+function visibleAudienceProjectOptions(
+  rows: readonly AudienceProjectRow[],
+  audience: ProjectAudience
+): readonly AudienceProjectOption[] {
+  const seenProjectIds = new Set<string>()
+
+  return rows.flatMap((row) => {
+    if (
+      seenProjectIds.has(row.id) ||
+      !canUseProjectAudience(row.projectRole, audience)
+    ) {
+      return []
+    }
+
+    seenProjectIds.add(row.id)
+    return [
+      {
+        id: row.id,
+        name: row.name,
+        projectNumber: row.projectNumber,
+        status: row.status,
+      },
+    ]
+  })
+}
+
+async function loadAudienceProjectOptions(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly userId: string
+  readonly audience: ProjectAudience
+  readonly organizationId?: string
+}): Promise<readonly AudienceProjectOption[]> {
+  const organizationFilter = input.organizationId
+    ? eq(projects.organizationId, input.organizationId)
+    : undefined
+  const rows = await input.db
+    .select({
+      id: projects.id,
+      name: projects.name,
+      projectNumber: projects.projectNumber,
+      status: projects.status,
+      projectRole: projectMembers.role,
+    })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .where(
+      and(
+        eq(projectMembers.userId, input.userId),
+        organizationFilter
+      )
+    )
+    .orderBy(asc(projects.projectNumber), asc(projects.name))
+
+  return visibleAudienceProjectOptions(rows, input.audience)
+}
+
+export async function getProjectAudienceOptions(
+  audience: ProjectAudience
+): Promise<readonly AudienceProjectOption[]> {
+  const user = await requireAuth()
+  requirePermission(user, "project", "read")
+  if (isInternalStaffRole(user.role)) return []
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  return loadAudienceProjectOptions({
+    db,
+    userId: user.id,
+    audience,
+  })
+}
+
 async function verifyProjectAccess(
   projectId: string,
   audience: ProjectAudience
@@ -350,35 +426,12 @@ export async function getProjectAudiencePreview(
           status: project.status,
         },
       ]
-    : await db
-        .select({
-          id: projects.id,
-          name: projects.name,
-          projectNumber: projects.projectNumber,
-          status: projects.status,
-          projectRole: projectMembers.role,
-        })
-        .from(projectMembers)
-        .innerJoin(projects, eq(projects.id, projectMembers.projectId))
-        .where(
-          and(
-            eq(projectMembers.userId, viewer.id),
-            eq(projects.organizationId, organizationId)
-          )
-        )
-        .orderBy(asc(projects.projectNumber), asc(projects.name))
-        .then((rows) =>
-          rows
-            .filter((row) =>
-              canUseProjectAudience(row.projectRole, audience)
-            )
-            .map((row) => ({
-              id: row.id,
-              name: row.name,
-              projectNumber: row.projectNumber,
-              status: row.status,
-            }))
-        )
+    : await loadAudienceProjectOptions({
+        db,
+        userId: viewer.id,
+        audience,
+        organizationId,
+      })
 
   const resolvedViewerContact =
     !viewerIsInternal

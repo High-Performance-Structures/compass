@@ -333,7 +333,19 @@ export function ProjectAudiencePreviewShell({
               messageShortcut={messageShortcut}
             />
           </div>
-          <nav className="mt-3 flex gap-1 overflow-x-auto border-t pt-2">
+          {projectOptions.length > 1 && (
+            <div className="mt-2">
+              <p className="sr-only">Current project</p>
+              <ProjectAudienceSwitcher
+                projects={projectOptions}
+                currentProjectId={projectId}
+                audience={routeAudience}
+                section={activeSection}
+                className="h-9 bg-background"
+              />
+            </div>
+          )}
+          <nav className="mt-2 flex gap-1 overflow-x-auto border-t pt-2">
             {navigation.map((item) => (
               <Link
                 key={item.section}

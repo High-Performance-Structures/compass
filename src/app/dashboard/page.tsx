@@ -1,9 +1,10 @@
 import type * as React from "react"
+import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
-import { getProjects } from "@/app/actions/projects"
+import { getProjectAudienceOptions } from "@/app/actions/project-audience-preview"
 import {
   getCurrentUserPresence,
   getOrganizationTeamAvailability,
@@ -12,6 +13,10 @@ import { getWorkCalendar } from "@/app/actions/work-calendar"
 import { DashboardLaunchpad } from "@/components/dashboard/dashboard-launchpad"
 import type { DashboardOfficeEvent } from "@/components/dashboard/dashboard-launchpad"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
+import {
+  projectAudienceActiveProjectCookieName,
+  resolveProjectAudienceActiveProject,
+} from "@/lib/project-audience-active-project"
 import {
   canManageProjectRegistry,
 } from "@/lib/permissions"
@@ -24,15 +29,23 @@ export default async function Page(): Promise<React.ReactElement> {
       currentUser.role
     )
   ) {
-    const assignedProjects = await getProjects()
-    const firstProject = assignedProjects[0]
-    if (firstProject) {
-      const audience =
-        currentUser.role === "client" || currentUser.role === "owner"
-          ? "owner"
-          : "sub-vendor"
+    const audience =
+      currentUser.role === "client" || currentUser.role === "owner"
+        ? "owner"
+        : "sub-vendor"
+    const dataAudience = audience === "owner" ? "owner" : "sub_vendor"
+    const [assignedProjects, cookieStore] = await Promise.all([
+      getProjectAudienceOptions(dataAudience),
+      cookies(),
+    ])
+    const projectId = resolveProjectAudienceActiveProject(
+      assignedProjects,
+      cookieStore.get(projectAudienceActiveProjectCookieName(audience))
+        ?.value ?? null
+    )
+    if (projectId) {
       redirect(
-        `/preview/projects/${encodeURIComponent(firstProject.id)}/${audience}`
+        `/preview/projects/${encodeURIComponent(projectId)}/${audience}`
       )
     }
   }
