@@ -14,12 +14,26 @@ import {
   normalizeSocialImageMimeType,
   sanitizeSocialImage,
 } from "@/lib/social/image-sanitization"
-import { verifySignedSocialPhoto } from "@/lib/social/media-signing"
+import {
+  socialPhotoVariant,
+  verifySignedSocialPhoto,
+} from "@/lib/social/media-signing"
 
 const DEFAULT_DOWNLOAD_USER = "compass@hps-colorado.com"
 
 function safeFileName(value: string): string {
   return value.replace(/["\r\n]/g, "_")
+}
+
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
+function instagramFileName(value: string): string {
+  const withoutExtension = value.replace(/\.[^.]+$/, "")
+  return `${withoutExtension || "project-photo"}.jpg`
 }
 
 export async function GET(
@@ -30,10 +44,13 @@ export async function GET(
     const { photoId } = await params
     const { env } = await getCloudflareContext()
     const config = getSocialConfig(env, request.url)
+    const variant = socialPhotoVariant(request.nextUrl.searchParams.get("variant"))
+    if (!variant) return new Response("Photo not found", { status: 404 })
     const valid = await verifySignedSocialPhoto({
       photoId,
       expires: request.nextUrl.searchParams.get("expires"),
       providedSignature: request.nextUrl.searchParams.get("signature"),
+      variant,
       key: config.tokenEncryptionKey,
     })
     if (!valid) return new Response("Photo not found", { status: 404 })
@@ -86,15 +103,43 @@ export async function GET(
     if (!downloaded.ok) {
       return new Response("Photo could not be loaded", { status: downloaded.status })
     }
-    const sanitized = sanitizeSocialImage(
-      new Uint8Array(await downloaded.arrayBuffer()),
-      photo.mimeType,
-    )
+    const originalBytes = new Uint8Array(await downloaded.arrayBuffer())
+    const sanitized = sanitizeSocialImage(originalBytes, photo.mimeType)
     const mimeType = normalizeSocialImageMimeType(photo.mimeType)
     if (!mimeType) return new Response("Photo format is not supported", { status: 415 })
-    const responseBody = new ArrayBuffer(sanitized.byteLength)
-    new Uint8Array(responseBody).set(sanitized)
-    return new Response(responseBody, {
+
+    if (variant === "instagram") {
+      // Cloudflare applies EXIF rotation before re-encoding, so use the validated
+      // source bytes here. JPEG output drops GPS and other private EXIF metadata.
+      const source = new Response(bytesToArrayBuffer(originalBytes)).body
+      if (!source) return new Response("Photo could not be loaded", { status: 500 })
+      const images = env.IMAGES
+      if (!images) return new Response("Photo normalization is unavailable", { status: 503 })
+      const transformed = await images.input(source)
+        .transform({
+          width: 1080,
+          height: 1350,
+          fit: "pad",
+          background: "white",
+        })
+        .output({
+          format: "image/jpeg",
+          quality: 90,
+          anim: false,
+        })
+      const imageResponse = transformed.response()
+      return new Response(imageResponse.body, {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Content-Disposition": `inline; filename="${safeFileName(instagramFileName(photo.fileName))}"`,
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+          "Referrer-Policy": "no-referrer",
+        },
+      })
+    }
+
+    return new Response(bytesToArrayBuffer(sanitized), {
       headers: {
         "Content-Type": mimeType,
         "Content-Disposition": `inline; filename="${safeFileName(photo.fileName)}"`,
