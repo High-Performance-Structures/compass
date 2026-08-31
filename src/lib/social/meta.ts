@@ -23,12 +23,36 @@ export type MetaAlbumCandidate = {
   readonly name: string
 }
 
+function metaPageCandidate(value: unknown): MetaPageCandidate | null {
+  if (!isRecord(value)) return null
+  const pageId = stringValue(value.id)
+  const pageName = stringValue(value.name)
+  const pageAccessToken = stringValue(value.access_token)
+  if (!pageId || !pageName || !pageAccessToken) return null
+  const instagram = isRecord(value.instagram_business_account)
+    ? value.instagram_business_account
+    : null
+  return {
+    pageId,
+    pageName,
+    pageAccessToken,
+    instagramAccountId: instagram ? stringValue(instagram.id) : null,
+    instagramUsername: instagram ? stringValue(instagram.username) : null,
+  }
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
+}
+
+function isMetaPageScope(value: string): boolean {
+  return value === "pages_show_list"
+    || value === "pages_read_engagement"
+    || value === "pages_manage_posts"
 }
 
 async function responsePayload(response: Response): Promise<unknown> {
@@ -94,6 +118,8 @@ export async function exchangeMetaAuthorizationCode(input: {
 
 export async function getManagedMetaPages(input: {
   readonly apiVersion: string
+  readonly appId: string
+  readonly appSecret: string
   readonly userAccessToken: string
 }): Promise<readonly MetaPageCandidate[]> {
   const url = new URL(`https://graph.facebook.com/${input.apiVersion}/me/accounts`)
@@ -111,21 +137,53 @@ export async function getManagedMetaPages(input: {
 
   const candidates: MetaPageCandidate[] = []
   for (const item of payload.data) {
-    if (!isRecord(item)) continue
-    const pageId = stringValue(item.id)
-    const pageName = stringValue(item.name)
-    const pageAccessToken = stringValue(item.access_token)
-    if (!pageId || !pageName || !pageAccessToken) continue
-    const instagram = isRecord(item.instagram_business_account)
-      ? item.instagram_business_account
-      : null
-    candidates.push({
-      pageId,
-      pageName,
-      pageAccessToken,
-      instagramAccountId: instagram ? stringValue(instagram.id) : null,
-      instagramUsername: instagram ? stringValue(instagram.username) : null,
-    })
+    const candidate = metaPageCandidate(item)
+    if (candidate) candidates.push(candidate)
+  }
+  if (candidates.length > 0) return candidates
+
+  // Meta's granular asset picker can authorize Pages without returning them from
+  // /me/accounts. Recover only the Page targets attached to the granted Page scopes.
+  const debugUrl = new URL(`https://graph.facebook.com/${input.apiVersion}/debug_token`)
+  debugUrl.searchParams.set("input_token", input.userAccessToken)
+  const debugResponse = await fetch(debugUrl, {
+    headers: { Authorization: `Bearer ${input.appId}|${input.appSecret}` },
+  })
+  const debugPayload = await responsePayload(debugResponse)
+  if (!debugResponse.ok || !isRecord(debugPayload) || !isRecord(debugPayload.data)) {
+    throw graphError("Meta token inspection", debugResponse, debugPayload)
+  }
+
+  const pageIds = new Set<string>()
+  const granularScopes = Array.isArray(debugPayload.data.granular_scopes)
+    ? debugPayload.data.granular_scopes
+    : []
+  for (const granularScope of granularScopes) {
+    if (!isRecord(granularScope)) continue
+    const scope = stringValue(granularScope.scope)
+    if (!scope || !isMetaPageScope(scope) || !Array.isArray(granularScope.target_ids)) {
+      continue
+    }
+    for (const targetId of granularScope.target_ids) {
+      const pageId = stringValue(targetId)
+      if (pageId) pageIds.add(pageId)
+    }
+  }
+
+  for (const pageId of pageIds) {
+    const pageUrl = new URL(`https://graph.facebook.com/${input.apiVersion}/${pageId}`)
+    pageUrl.searchParams.set(
+      "fields",
+      "id,name,access_token,instagram_business_account{id,username}",
+    )
+    pageUrl.searchParams.set("access_token", input.userAccessToken)
+    const pageResponse = await fetch(pageUrl)
+    const pagePayload = await responsePayload(pageResponse)
+    if (!pageResponse.ok || !isRecord(pagePayload)) {
+      throw graphError("Meta Page lookup", pageResponse, pagePayload)
+    }
+    const candidate = metaPageCandidate(pagePayload)
+    if (candidate) candidates.push(candidate)
   }
   return candidates
 }
