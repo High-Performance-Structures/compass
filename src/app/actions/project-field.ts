@@ -1130,8 +1130,16 @@ export async function getProjectFieldSummary(
         not(sql<boolean>`EXISTS (
           SELECT 1
           FROM daily_log_photo_aliases AS alias
+          JOIN daily_log_photos AS canonical
+            ON canonical.id IS alias.canonical_photo_id
           WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
             AND alias.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.mime_type LIKE 'image/%'
+            AND (
+              canonical.drive_file_id IS NOT NULL
+              OR canonical.thumbnail_url IS NOT NULL
+            )
         )`),
       ),
     )
@@ -1409,6 +1417,11 @@ export async function getProjectDailyLogWorkspace(
           WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
             AND alias.project_id IS ${dailyLogPhotos.projectId}
             AND canonical.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.mime_type LIKE 'image/%'
+            AND (
+              canonical.drive_file_id IS NOT NULL
+              OR canonical.thumbnail_url IS NOT NULL
+            )
             AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
         )`),
       ),
@@ -2000,6 +2013,11 @@ export async function draftOwnerUpdateFromDailyLogs(
             WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
               AND alias.project_id IS ${dailyLogPhotos.projectId}
               AND canonical.project_id IS ${dailyLogPhotos.projectId}
+              AND canonical.mime_type LIKE 'image/%'
+              AND (
+                canonical.drive_file_id IS NOT NULL
+                OR canonical.thumbnail_url IS NOT NULL
+              )
               AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
               AND canonical.review_status IS 'approved'
               AND canonical.owner_visible IS 1
@@ -2327,6 +2345,11 @@ export async function getOwnerProjectUpdateDocument(
               WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
                 AND alias.project_id IS ${dailyLogPhotos.projectId}
                 AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.mime_type LIKE 'image/%'
+                AND (
+                  canonical.drive_file_id IS NOT NULL
+                  OR canonical.thumbnail_url IS NOT NULL
+                )
                 AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
                 AND canonical.review_status IS 'approved'
                 AND canonical.owner_visible IS 1

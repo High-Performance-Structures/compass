@@ -231,6 +231,36 @@ function count(database: TestDatabase, query: string): number {
   return rowNumber(sqlRow(database.prepare(query).get()), "value")
 }
 
+function aggregatePhotoIds(database: TestDatabase): ReadonlySet<string> {
+  const rows = sqlRows(database.prepare(`
+    SELECT p.id
+    FROM daily_log_photos AS p
+    WHERE p.project_id IS '${projectId}'
+      AND p.mime_type LIKE 'image/%'
+      AND (p.drive_file_id IS NOT NULL OR p.thumbnail_url IS NOT NULL)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM daily_log_photo_aliases AS alias
+        JOIN daily_log_photos AS canonical
+          ON canonical.id IS alias.canonical_photo_id
+        WHERE alias.source_photo_id IS p.id
+          AND alias.project_id IS p.project_id
+          AND canonical.project_id IS p.project_id
+          AND canonical.mime_type LIKE 'image/%'
+          AND (
+            canonical.drive_file_id IS NOT NULL
+            OR canonical.thumbnail_url IS NOT NULL
+          )
+      )
+  `).all())
+  return new Set(
+    rows.flatMap((row) => {
+      const value = row.id
+      return typeof value === "string" ? [value] : []
+    }),
+  )
+}
+
 function audiencePhotoIds(
   database: TestDatabase,
   audience: "owner" | "sub_vendor",
@@ -259,6 +289,11 @@ function audiencePhotoIds(
         WHERE alias.source_photo_id IS p.id
           AND alias.project_id IS p.project_id
           AND canonical.project_id IS p.project_id
+          AND canonical.mime_type LIKE 'image/%'
+          AND (
+            canonical.drive_file_id IS NOT NULL
+            OR canonical.thumbnail_url IS NOT NULL
+          )
           AND canonical.review_status IS 'approved'
           AND (${canonicalVisibility})
       )
@@ -289,6 +324,11 @@ function ownerWorkflowPhotoIds(database: TestDatabase): ReadonlySet<string> {
           WHERE alias.source_photo_id IS p.id
             AND alias.project_id IS p.project_id
             AND canonical.project_id IS p.project_id
+            AND canonical.mime_type LIKE 'image/%'
+            AND (
+              canonical.drive_file_id IS NOT NULL
+              OR canonical.thumbnail_url IS NOT NULL
+            )
             AND p.daily_log_id IS canonical.daily_log_id
             AND canonical.review_status IS 'approved'
             AND canonical.owner_visible IS 1
@@ -319,9 +359,14 @@ function socialPhotoIds(database: TestDatabase): ReadonlySet<string> {
           JOIN daily_log_photos AS canonical
             ON canonical.id IS alias.canonical_photo_id
           WHERE alias.source_photo_id IS p.id
-            AND alias.project_id IS p.project_id
-            AND canonical.project_id IS p.project_id
-            AND canonical.review_status IS 'approved'
+          AND alias.project_id IS p.project_id
+          AND canonical.project_id IS p.project_id
+          AND canonical.mime_type LIKE 'image/%'
+          AND (
+            canonical.drive_file_id IS NOT NULL
+            OR canonical.thumbnail_url IS NOT NULL
+          )
+          AND canonical.review_status IS 'approved'
             AND canonical.public_shareable IS 1
         )
     `)
@@ -502,6 +547,26 @@ describe("daily-log photo alias read model", () => {
           "SELECT COUNT(*) AS value FROM daily_log_photos WHERE id IS 'alias-219'",
         ),
       ).toBe(1)
+    } finally {
+      database.close()
+    }
+  })
+
+  it("retains an eligible source when its canonical loses renderable media", async () => {
+    const database = await openDatabase()
+    try {
+      createFixture(database)
+
+      expect(aggregatePhotoIds(database).has("alias-219")).toBe(false)
+      database
+        .prepare(
+          "UPDATE daily_log_photos SET drive_file_id = NULL, thumbnail_url = NULL WHERE id = ?",
+        )
+        .run("canonical-219")
+
+      expect(aggregatePhotoIds(database).has("alias-219")).toBe(true)
+      expect(audiencePhotoIds(database, "owner").has("alias-219")).toBe(true)
+      expect(socialPhotoIds(database).has("alias-219")).toBe(true)
     } finally {
       database.close()
     }
