@@ -1,6 +1,17 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, isNull, not, or, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  not,
+  or,
+  sql,
+} from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -16,6 +27,7 @@ import {
   scheduleTasks,
 } from "@/db/schema"
 import { scheduleTaskAssignees, projectSourceRecordParticipants } from "@/db/schema-participants"
+import { projectDocuments } from "@/db/schema-documents"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -193,6 +205,19 @@ export type AudienceContact = {
   readonly primaryContact: boolean
 }
 
+export type AudienceDocument = {
+  readonly id: string
+  readonly category: string
+  readonly title: string
+  readonly description: string | null
+  readonly documentDate: string | null
+  readonly revision: string | null
+  readonly status: string
+  readonly downloadable: boolean
+  readonly sourceFileName: string
+  readonly publishedAt: string | null
+}
+
 export type ProjectAudiencePreview = {
   readonly audience: ProjectAudience
   readonly viewerIsInternal: boolean
@@ -217,6 +242,7 @@ export type ProjectAudiencePreview = {
   }
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
+  readonly documents: readonly AudienceDocument[]
   readonly scheduleItems: readonly AudienceScheduleItem[]
   readonly operations: readonly AudienceOperationItem[]
   readonly rfis: readonly AudienceRfi[]
@@ -1041,6 +1067,36 @@ export async function getProjectAudiencePreview(
       }
     })
 
+  // Published construction documents use one whole-project audience. Owners,
+  // assigned subcontractors, and internal previews receive the same set.
+  const documentRows = await db
+    .select({
+      id: projectDocuments.id,
+      category: projectDocuments.category,
+      title: projectDocuments.title,
+      description: projectDocuments.description,
+      documentDate: projectDocuments.documentDate,
+      revision: projectDocuments.revision,
+      status: projectDocuments.status,
+      downloadable: projectDocuments.downloadable,
+      sourceFileName: projectDocuments.sourceFileName,
+      publishedAt: projectDocuments.publishedAt,
+    })
+    .from(projectDocuments)
+    .where(
+      and(
+        eq(projectDocuments.projectId, projectId),
+        eq(projectDocuments.audience, "project_team"),
+        inArray(projectDocuments.status, ["current", "superseded"]),
+        isNotNull(projectDocuments.publishedAt)
+      )
+    )
+    .orderBy(
+      asc(projectDocuments.category),
+      desc(projectDocuments.documentDate),
+      asc(projectDocuments.title)
+    )
+
   return {
     audience,
     viewerIsInternal,
@@ -1085,6 +1141,7 @@ export async function getProjectAudiencePreview(
             : "No phase assigned.",
       }
     }),
+    documents: documentRows,
     scheduleItems: audienceScheduleItems,
     operations: audienceOperations,
     rfis: rfiRows,

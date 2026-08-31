@@ -145,7 +145,7 @@ export function FileBrowser({
   }, [])
 
   const viewTitle: Record<FileView, string> = {
-    projects: "Project Files",
+    projects: "All Project Folders",
     "my-files": "",
     shared: "Shared with me",
     recent: "Recent",

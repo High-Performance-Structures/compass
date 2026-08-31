@@ -37,7 +37,7 @@ const fileNavItems: {
   icon: typeof IconFiles
 }[] = [
   {
-    title: "Project Files",
+    title: "All Project Folders",
     view: "projects",
     icon: IconFolderOpen,
   },

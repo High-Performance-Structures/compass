@@ -454,6 +454,7 @@ export async function estimateSourceHash(input: {
   }[]
   readonly basisDocuments: readonly {
     readonly id: string
+    readonly projectDocumentId: string | null
     readonly documentType: string
     readonly title: string
     readonly documentDate: string | null

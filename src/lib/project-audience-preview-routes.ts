@@ -10,6 +10,7 @@ export type ProjectAudienceWorkspaceSection =
   | "change-orders"
   | "conversations"
   | "photos"
+  | "documents"
   | "warranty"
   | "team"
 

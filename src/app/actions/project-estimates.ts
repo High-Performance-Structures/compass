@@ -24,6 +24,7 @@ import {
   sageTaxEntities,
 } from "@/db/schema-estimates"
 import { googleAuth } from "@/db/schema-google"
+import { projectDocuments } from "@/db/schema-documents"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { decrypt } from "@/lib/crypto"
@@ -208,6 +209,7 @@ export type ProjectEstimateLineCostItem = {
 
 export type ProjectEstimateBasisItem = {
   readonly id: string
+  readonly projectDocumentId: string | null
   readonly documentType: string
   readonly title: string
   readonly documentDate: string | null
@@ -215,6 +217,16 @@ export type ProjectEstimateBasisItem = {
   readonly driveUrl: string | null
   readonly notes: string | null
   readonly sortOrder: number
+}
+
+export type ProjectEstimateDocumentOption = {
+  readonly id: string
+  readonly category: string
+  readonly title: string
+  readonly documentDate: string | null
+  readonly revision: string | null
+  readonly status: string
+  readonly sourceUrl: string | null
 }
 
 export type ProjectEstimateCostCodeOption = {
@@ -280,6 +292,7 @@ export type ProjectEstimateWorkspace = {
   readonly activeEstimate: ProjectEstimateSummary | null
   readonly lines: readonly ProjectEstimateLineItem[]
   readonly basisDocuments: readonly ProjectEstimateBasisItem[]
+  readonly projectDocumentOptions: readonly ProjectEstimateDocumentOption[]
   readonly costCodes: readonly ProjectEstimateCostCodeOption[]
   readonly taxEntities: readonly ProjectEstimateTaxOption[]
   readonly termsTemplates: readonly ProjectEstimateTermsOption[]
@@ -373,6 +386,7 @@ export type ProjectEstimateBuilderFeeInput = {
 }
 
 export type ProjectEstimateBasisInput = {
+  readonly projectDocumentId: string | null
   readonly documentType: string | null
   readonly title: string | null
   readonly documentDate: string | null
@@ -1044,6 +1058,7 @@ export async function getProjectEstimateWorkspace(
     phaseRows,
     acknowledgementRows,
     signerContactRows,
+    projectDocumentRows,
   ] =
     await Promise.all([
       selected
@@ -1136,6 +1151,28 @@ export async function getProjectEstimateWorkspace(
           asc(projectContacts.sortOrder),
           asc(projectContacts.displayName)
         ),
+      access.db
+        .select({
+          id: projectDocuments.id,
+          category: projectDocuments.category,
+          title: projectDocuments.title,
+          documentDate: projectDocuments.documentDate,
+          revision: projectDocuments.revision,
+          status: projectDocuments.status,
+          sourceUrl: projectDocuments.sourceUrl,
+        })
+        .from(projectDocuments)
+        .where(
+          and(
+            eq(projectDocuments.projectId, projectId),
+            inArray(projectDocuments.status, ["current", "superseded"])
+          )
+        )
+        .orderBy(
+          asc(projectDocuments.category),
+          desc(projectDocuments.documentDate),
+          asc(projectDocuments.title)
+        ),
     ])
 
   const costItemsByLine = new Map<
@@ -1197,6 +1234,7 @@ export async function getProjectEstimateWorkspace(
     ),
     basisDocuments: basisRows.map((row) => ({
       id: row.id,
+      projectDocumentId: row.projectDocumentId,
       documentType: row.documentType,
       title: row.title,
       documentDate: row.documentDate,
@@ -1205,6 +1243,7 @@ export async function getProjectEstimateWorkspace(
       notes: row.notes,
       sortOrder: row.sortOrder,
     })),
+    projectDocumentOptions: projectDocumentRows,
     costCodes: [
       ...estimateCostCodes.map((row) => ({
         value: row.code,
@@ -1493,13 +1532,14 @@ export async function duplicateProjectEstimate(
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_basis_documents (
-             id, project_id, estimate_id, document_type, title, document_date,
+             id, project_id, estimate_id, project_document_id,
+             document_type, title, document_date,
              revision, drive_file_id, drive_url, notes, sort_order, created_at,
              updated_at
            )
-           SELECT lower(hex(randomblob(16))), project_id, ?, document_type,
-             title, document_date, revision, drive_file_id, drive_url, notes,
-             sort_order, ?, ?
+           SELECT lower(hex(randomblob(16))), project_id, ?, project_document_id,
+             document_type, title, document_date, revision, drive_file_id,
+             drive_url, notes, sort_order, ?, ?
            FROM project_estimate_basis_documents
            WHERE estimate_id = ? AND project_id = ?`
         )
@@ -3022,6 +3062,24 @@ export async function addProjectEstimateBasisDocument(
   try {
     const access = await estimateAccess(projectId, true)
     await requireEditableEstimate(access.db, projectId, estimateId)
+    const requestedProjectDocumentId = cleanText(input.projectDocumentId)
+    const linkedDocument = requestedProjectDocumentId
+      ? await access.db
+          .select()
+          .from(projectDocuments)
+          .where(
+            and(
+              eq(projectDocuments.id, requestedProjectDocumentId),
+              eq(projectDocuments.projectId, projectId),
+              inArray(projectDocuments.status, ["current", "superseded"])
+            )
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : null
+    if (requestedProjectDocumentId && !linkedDocument) {
+      throw new Error("Choose a published document from this project.")
+    }
     const prior = await access.db
       .select({ sortOrder: projectEstimateBasisDocuments.sortOrder })
       .from(projectEstimateBasisDocuments)
@@ -3034,11 +3092,14 @@ export async function addProjectEstimateBasisDocument(
       id,
       projectId,
       estimateId,
-      documentType: requiredText(input.documentType, "Document type"),
-      title: requiredText(input.title, "Document title"),
-      documentDate: cleanText(input.documentDate),
-      revision: cleanText(input.revision),
-      driveUrl: safeUrl(input.driveUrl),
+      projectDocumentId: linkedDocument?.id ?? null,
+      documentType:
+        linkedDocument?.category ?? requiredText(input.documentType, "Document type"),
+      title: linkedDocument?.title ?? requiredText(input.title, "Document title"),
+      documentDate: linkedDocument?.documentDate ?? cleanText(input.documentDate),
+      revision: linkedDocument?.revision ?? cleanText(input.revision),
+      driveFileId: linkedDocument?.sourceDriveFileId ?? null,
+      driveUrl: linkedDocument?.sourceUrl ?? safeUrl(input.driveUrl),
       notes: cleanText(input.notes),
       sortOrder: (prior[0]?.sortOrder ?? 0) + 1,
       createdAt: now,
@@ -3274,6 +3335,7 @@ export async function prepareProjectEstimateForClientSignature(
       })),
       basisDocuments: basisDocuments.map((document) => ({
         id: document.id,
+        projectDocumentId: document.projectDocumentId,
         documentType: document.documentType,
         title: document.title,
         documentDate: document.documentDate,

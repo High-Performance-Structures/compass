@@ -13,6 +13,7 @@ import {
   projectTemplateApplications,
   projectTemplateVersions,
 } from "./schema-templates"
+import { projectDocuments } from "./schema-documents"
 
 export const sageTaxEntities = sqliteTable(
   "sage_tax_entities",
@@ -381,6 +382,10 @@ export const projectEstimateBasisDocuments = sqliteTable(
     estimateId: text("estimate_id")
       .notNull()
       .references(() => projectEstimates.id, { onDelete: "cascade" }),
+    projectDocumentId: text("project_document_id").references(
+      () => projectDocuments.id,
+      { onDelete: "set null" }
+    ),
     documentType: text("document_type").notNull(),
     title: text("title").notNull(),
     documentDate: text("document_date"),
@@ -396,6 +401,9 @@ export const projectEstimateBasisDocuments = sqliteTable(
     index("project_estimate_basis_documents_estimate_idx").on(
       table.estimateId,
       table.sortOrder
+    ),
+    index("project_estimate_basis_documents_project_document_idx").on(
+      table.projectDocumentId
     ),
   ]
 )

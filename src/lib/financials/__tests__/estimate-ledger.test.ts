@@ -307,6 +307,7 @@ describe("estimate ledger", () => {
       basisDocuments: [
         {
           id: "basis-1",
+          projectDocumentId: null,
           documentType: "architectural_plans",
           title: "Architectural plans",
           documentDate: "2026-07-15",
@@ -333,6 +334,12 @@ describe("estimate ledger", () => {
         { ...input.basisDocuments[0], documentDate: "2026-07-31" },
       ],
     })
+    const differentPublishedDocument = await estimateSourceHash({
+      ...input,
+      basisDocuments: [
+        { ...input.basisDocuments[0], projectDocumentId: "project-document-1" },
+      ],
+    })
     const differentPresentation = await estimateSourceHash({
       ...input,
       phaseDescriptions: [
@@ -353,6 +360,7 @@ describe("estimate ledger", () => {
 
     expect(revised).not.toBe(original)
     expect(differentBasis).not.toBe(original)
+    expect(differentPublishedDocument).not.toBe(original)
     expect(differentPresentation).not.toBe(original)
     expect(differentSigner).not.toBe(original)
     expect(differentPreparedForAddress).not.toBe(original)

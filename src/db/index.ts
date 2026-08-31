@@ -19,6 +19,7 @@ import * as warrantySchema from "./schema-warranty"
 import * as contractSchema from "./schema-contracts"
 import * as participantSchema from "./schema-participants"
 import * as socialSchema from "./schema-social"
+import * as documentSchema from "./schema-documents"
 
 const allSchemas = {
   ...schema,
@@ -41,6 +42,7 @@ const allSchemas = {
   ...contractSchema,
   ...participantSchema,
   ...socialSchema,
+  ...documentSchema,
 }
 
 // Legacy function - kept for backwards compatibility
