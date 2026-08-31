@@ -51,6 +51,10 @@ import {
   refreshXAccessToken,
   uploadXImage,
 } from "@/lib/social/x"
+import {
+  freshestXAccessAccount,
+  newestXRefreshAccount,
+} from "@/lib/social/x-account-sharing"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type SocialResult =
@@ -620,44 +624,113 @@ export async function suggestSocialPost(input: {
   }
 }
 
+async function synchronizeXCredentials(input: {
+  readonly context: SocialContext
+  readonly accounts: readonly (typeof socialAccounts.$inferSelect)[]
+  readonly accessToken: string
+  readonly refreshToken: string | null
+  readonly tokenExpiresAt: string
+  readonly grantedScopes: string
+}): Promise<void> {
+  const config = getSocialConfig(input.context.env)
+  const credentialValues = await Promise.all(input.accounts.map(async (account) => {
+    const salt = socialTokenSalt({
+      organizationId: input.context.organizationId,
+      platform: "x",
+      department: account.department,
+    })
+    const accessTokenEncrypted = await encrypt(
+      input.accessToken,
+      config.tokenEncryptionKey,
+      salt,
+    )
+    const refreshTokenEncrypted = input.refreshToken
+      ? await encrypt(input.refreshToken, config.tokenEncryptionKey, salt)
+      : account.refreshTokenEncrypted
+    return { account, accessTokenEncrypted, refreshTokenEncrypted }
+  }))
+  const statements = credentialValues.map((value) =>
+    input.context.db.update(socialAccounts).set({
+      accessTokenEncrypted: value.accessTokenEncrypted,
+      refreshTokenEncrypted: value.refreshTokenEncrypted,
+      tokenExpiresAt: input.tokenExpiresAt,
+      grantedScopes: input.grantedScopes,
+      lastError: null,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(socialAccounts.id, value.account.id)),
+  )
+  const [firstStatement, ...remainingStatements] = statements
+  if (!firstStatement) throw new Error("Reconnect the X account before publishing.")
+  await input.context.db.batch([firstStatement, ...remainingStatements])
+}
+
 async function xAccessToken(input: {
   readonly context: SocialContext
   readonly account: typeof socialAccounts.$inferSelect
 }): Promise<string> {
   const config = getSocialConfig(input.context.env)
-  const salt = socialTokenSalt({
-    organizationId: input.context.organizationId,
-    platform: "x",
-    department: input.account.department,
-  })
-  const tokenIsFresh = input.account.tokenExpiresAt
-    ? new Date(input.account.tokenExpiresAt).getTime() > Date.now() + 5 * 60_000
-    : true
-  if (tokenIsFresh) {
-    return decrypt(input.account.accessTokenEncrypted, config.tokenEncryptionKey, salt)
+  const sharedAccounts = await input.context.db.select().from(socialAccounts).where(and(
+    eq(socialAccounts.organizationId, input.context.organizationId),
+    eq(socialAccounts.platform, "x"),
+    eq(socialAccounts.externalAccountId, input.account.externalAccountId),
+    eq(socialAccounts.status, "connected"),
+  )).all()
+  const freshAccount = freshestXAccessAccount(sharedAccounts, Date.now())
+  if (freshAccount && freshAccount.tokenExpiresAt) {
+    const freshSalt = socialTokenSalt({
+      organizationId: input.context.organizationId,
+      platform: "x",
+      department: freshAccount.department,
+    })
+    const accessToken = await decrypt(
+      freshAccount.accessTokenEncrypted,
+      config.tokenEncryptionKey,
+      freshSalt,
+    )
+    const refreshToken = freshAccount.refreshTokenEncrypted
+      ? await decrypt(
+          freshAccount.refreshTokenEncrypted,
+          config.tokenEncryptionKey,
+          freshSalt,
+        )
+      : null
+    await synchronizeXCredentials({
+      context: input.context,
+      accounts: sharedAccounts,
+      accessToken,
+      refreshToken,
+      tokenExpiresAt: freshAccount.tokenExpiresAt,
+      grantedScopes: freshAccount.grantedScopes,
+    })
+    return accessToken
   }
-  if (!input.account.refreshTokenEncrypted || !config.xClientId) {
+  const refreshAccount = newestXRefreshAccount(sharedAccounts)
+  if (!refreshAccount?.refreshTokenEncrypted || !config.xClientId) {
     throw new Error("Reconnect the X account before publishing.")
   }
+  const refreshSalt = socialTokenSalt({
+    organizationId: input.context.organizationId,
+    platform: "x",
+    department: refreshAccount.department,
+  })
   const refreshToken = await decrypt(
-    input.account.refreshTokenEncrypted,
+    refreshAccount.refreshTokenEncrypted,
     config.tokenEncryptionKey,
-    salt,
+    refreshSalt,
   )
   const grant = await refreshXAccessToken({
     clientId: config.xClientId,
     clientSecret: config.xClientSecret,
     refreshToken,
   })
-  await input.context.db.update(socialAccounts).set({
-    accessTokenEncrypted: await encrypt(grant.accessToken, config.tokenEncryptionKey, salt),
-    refreshTokenEncrypted: grant.refreshToken
-      ? await encrypt(grant.refreshToken, config.tokenEncryptionKey, salt)
-      : input.account.refreshTokenEncrypted,
+  await synchronizeXCredentials({
+    context: input.context,
+    accounts: sharedAccounts,
+    accessToken: grant.accessToken,
+    refreshToken: grant.refreshToken,
     tokenExpiresAt: new Date(Date.now() + grant.expiresIn * 1000).toISOString(),
     grantedScopes: [...grant.scopes].sort().join(" "),
-    updatedAt: new Date().toISOString(),
-  }).where(eq(socialAccounts.id, input.account.id)).run()
+  })
   return grant.accessToken
 }
 
