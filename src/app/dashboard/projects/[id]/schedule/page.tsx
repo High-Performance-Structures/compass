@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
@@ -40,7 +41,8 @@ export default async function SchedulePage({
     readonly item?: string | readonly string[]
   }>
 }) {
-  const [{ id }, query] = await Promise.all([params, searchParams])
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
+  const id = decodeProjectRouteId(rawProjectId)
   const requestedView =
     typeof query.view === "string" ? query.view : query.view?.[0]
   const initialView =

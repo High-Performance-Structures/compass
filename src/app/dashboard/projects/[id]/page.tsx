@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
@@ -129,7 +130,8 @@ export default async function ProjectSummaryPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
 
   let project: {
     id: string

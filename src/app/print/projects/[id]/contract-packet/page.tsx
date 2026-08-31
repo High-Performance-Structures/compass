@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getProjectContractPacketWorkspace } from "@/app/actions/contract-packets"
 import { ProjectContractPacketPreview } from "@/components/projects/project-contract-packet-preview"
 
@@ -10,7 +11,8 @@ export default async function ProjectContractPacketPrintPage({
   readonly params: Promise<{ id: string }>
   readonly searchParams: Promise<{ packetId?: string }>
 }): Promise<React.ReactElement> {
-  const [{ id }, query] = await Promise.all([params, searchParams])
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
+  const id = decodeProjectRouteId(rawProjectId)
   const workspace = await getProjectContractPacketWorkspace(id, query.packetId)
   const packet = workspace.activePacket
 

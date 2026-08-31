@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import {
   IconArrowLeft,
@@ -100,7 +101,8 @@ export default async function ProjectRfisPage({
     readonly status?: string | readonly string[]
   }>
 }) {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const query = await searchParams
   const createdRfiId = Array.isArray(query.created)
     ? query.created[0] ?? null

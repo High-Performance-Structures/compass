@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import {
   IconArrowLeft,
@@ -37,7 +38,8 @@ export default async function ProjectBudgetPage({
 }: {
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const currentUser = await getCurrentUser()
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)

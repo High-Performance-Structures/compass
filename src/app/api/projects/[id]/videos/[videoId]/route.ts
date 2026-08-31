@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { type NextRequest } from "next/server"
 
@@ -35,7 +36,8 @@ export async function GET(
 ): Promise<Response> {
   try {
     const user = await requireAuth()
-    const { id: projectId, videoId } = await params
+    const { id: rawProjectId, videoId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     const requestedAudience = audienceValue(
       request.nextUrl.searchParams.get("audience")
     )

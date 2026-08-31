@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import {
   publishOwnerProjectUpdate,
   updateOwnerProjectUpdateDraft,
@@ -34,7 +35,8 @@ export async function PUT(
     )
   }
 
-  const { id, updateId } = await params
+  const { id: rawProjectId, updateId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const intent =
     new URL(request.url).searchParams.get("intent") === "publish"
       ? "publish"

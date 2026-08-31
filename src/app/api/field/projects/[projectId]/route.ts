@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getFieldProjectPacket } from "@/app/actions/field-mode"
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 
 const PACKET_RESPONSE_HEADERS: Readonly<Record<string, string>> = {
   "Cache-Control": "private, no-store, max-age=0, must-revalidate",
@@ -13,7 +14,8 @@ export async function GET(
   { params }: { readonly params: Promise<{ readonly projectId: string }> }
 ): Promise<Response> {
   try {
-    const { projectId } = await params
+    const { projectId: rawProjectId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     if (!projectId) {
       return NextResponse.json(
         { success: false, error: "Choose a project first." },

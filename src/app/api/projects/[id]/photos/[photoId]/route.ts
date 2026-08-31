@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
@@ -69,7 +70,8 @@ export async function GET(
 ): Promise<Response> {
   try {
     const user = await requireAuth()
-    const { id: projectId, photoId } = await params
+    const { id: rawProjectId, photoId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)

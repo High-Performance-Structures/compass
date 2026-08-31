@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { NextRequest, NextResponse } from "next/server"
@@ -59,7 +60,8 @@ export async function POST(
         { status: 403 }
       )
     }
-    const { id: projectId, claimId } = await params
+    const { id: rawProjectId, claimId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const access = await assertProjectAccess(db, user, projectId)

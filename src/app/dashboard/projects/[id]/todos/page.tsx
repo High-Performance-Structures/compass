@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { notFound } from "next/navigation"
 
 import {
@@ -22,7 +23,8 @@ export default async function ProjectTodosPage({
     readonly item?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
-  const [{ id }, query] = await Promise.all([params, searchParams])
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
+  const id = decodeProjectRouteId(rawProjectId)
   const [projects, items, user] = await Promise.all([
     getProjects(),
     getProjectTodos(id),

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import { IconArrowLeft, IconFileDollar } from "@tabler/icons-react"
 
@@ -19,7 +20,8 @@ export default async function ProjectFinancialsPage({
 }: {
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   let items: readonly ProjectFinancialWorkflowItem[] = []
   let codingOptions: ProjectFinancialCodingOptions = {
     phases: [],

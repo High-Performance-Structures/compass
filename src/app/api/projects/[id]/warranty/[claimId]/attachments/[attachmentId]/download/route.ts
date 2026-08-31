@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
@@ -30,7 +31,8 @@ export async function GET(
   try {
     const user = await getCurrentUser()
     if (!user) return new Response("Unauthorized", { status: 401 })
-    const { id: projectId, claimId, attachmentId } = await params
+    const { id: rawProjectId, claimId, attachmentId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)

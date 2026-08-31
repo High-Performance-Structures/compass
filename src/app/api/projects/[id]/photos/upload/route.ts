@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
@@ -278,7 +279,8 @@ export async function POST(
       )
     }
     const organizationId = requireOrg(user)
-    const { id: projectId } = await params
+    const { id: rawProjectId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
 
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>

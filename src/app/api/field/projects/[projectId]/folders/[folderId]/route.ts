@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getFieldDocumentFolder } from "@/app/actions/field-mode"
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 
 export async function GET(
   _request: Request,
@@ -14,7 +15,8 @@ export async function GET(
   }
 ): Promise<Response> {
   try {
-    const { projectId, folderId } = await params
+    const { projectId: rawProjectId, folderId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     if (!projectId || !folderId) {
       return NextResponse.json(
         { success: false, error: "Choose a project folder first." },

@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
 import {
@@ -364,7 +365,8 @@ export default async function ProjectRfqsPage({
     readonly status?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const query = await searchParams
   const createdRfqId = Array.isArray(query.created)
     ? query.created[0] ?? null

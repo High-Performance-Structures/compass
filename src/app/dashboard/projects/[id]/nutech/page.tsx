@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import { IconArrowLeft, IconTool } from "@tabler/icons-react"
 
@@ -12,7 +13,8 @@ export default async function ProjectNuTechOrderPage({
 }: {
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const workspace = await getProjectNuTechOrderWorkspace(id)
 
   return (

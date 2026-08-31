@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import { notFound } from "next/navigation"
 
@@ -16,7 +17,8 @@ export default async function ProjectChangeOrderDetailPage({
     readonly changeOrderId: string
   }>
 }): Promise<React.ReactElement> {
-  const { id, changeOrderId } = await params
+  const { id: rawProjectId, changeOrderId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const [item, formOptions] = await Promise.all([
     getProjectChangeOrder(id, changeOrderId),
     getProjectChangeOrderFormOptions(id),

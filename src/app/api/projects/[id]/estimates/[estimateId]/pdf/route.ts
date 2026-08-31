@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -15,7 +16,8 @@ export async function GET(
 ): Promise<Response> {
   try {
     await requireAuth()
-    const { id: projectId, estimateId } = await context.params
+    const { id: rawProjectId, estimateId } = await context.params
+    const projectId = decodeProjectRouteId(rawProjectId)
     const workspace = await getProjectEstimateWorkspace(projectId, estimateId)
     const estimate = workspace.activeEstimate
     if (!estimate || estimate.id !== estimateId) {

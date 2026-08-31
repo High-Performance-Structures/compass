@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
@@ -65,7 +66,8 @@ export async function POST(
     const user = await requireAuth()
     await requireFeaturePermission(user, "project-photos", "update")
     const organizationId = requireOrg(user)
-    const { id: projectId } = await params
+    const { id: rawProjectId } = await params
+    const projectId = decodeProjectRouteId(rawProjectId)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const [project] = await db

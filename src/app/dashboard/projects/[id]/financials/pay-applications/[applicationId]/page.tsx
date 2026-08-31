@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { IconArrowLeft, IconFileDollar } from "@tabler/icons-react"
@@ -12,7 +13,8 @@ export default async function ProjectPayApplicationPage({
 }: {
   readonly params: Promise<{ id: string; applicationId: string }>
 }): Promise<React.ReactElement> {
-  const { id, applicationId } = await params
+  const { id: rawProjectId, applicationId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const application = await getProjectOwnerPayApplicationDraft(id, applicationId)
   if (!application) notFound()
 
