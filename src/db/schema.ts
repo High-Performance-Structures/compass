@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm"
 import {
+  check,
   index,
   sqliteTable,
   text,
@@ -604,6 +605,31 @@ export const projectNumberAliases = sqliteTable(
       table.organizationId,
       table.projectNumber,
     ),
+  ],
+)
+
+export const projectRouteAliases = sqliteTable(
+  "project_route_aliases",
+  {
+    sourceProjectId: text("source_project_id").primaryKey(),
+    targetProjectId: text("target_project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sourceSystem: text("source_system").notNull().default("compass"),
+    sourceExternalId: text("source_external_id"),
+    reason: text("reason"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    check(
+      "project_route_aliases_distinct_projects_check",
+      sql`${table.sourceProjectId} <> ${table.targetProjectId}`,
+    ),
+    index("project_route_aliases_target_idx").on(table.targetProjectId),
+    index("project_route_aliases_organization_idx").on(table.organizationId),
   ],
 )
 
@@ -2451,6 +2477,8 @@ export const sageCostCodes = sqliteTable("sage_cost_codes", {
 })
 
 export type Project = typeof projects.$inferSelect
+export type ProjectRouteAlias = typeof projectRouteAliases.$inferSelect
+export type NewProjectRouteAlias = typeof projectRouteAliases.$inferInsert
 export type ProjectExternalLink = typeof projectExternalLinks.$inferSelect
 export type NewProjectExternalLink = typeof projectExternalLinks.$inferInsert
 export type DailyLog = typeof dailyLogs.$inferSelect
