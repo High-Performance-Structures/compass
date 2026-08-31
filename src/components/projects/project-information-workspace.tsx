@@ -298,7 +298,9 @@ export function ProjectInformationWorkspace({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="public-title">Privacy-safe public title</Label>
+            <Label htmlFor="public-title">
+              Privacy-safe public title <span className="text-destructive" aria-hidden="true">*</span>
+            </Label>
             <Input
               id="public-title"
               value={publicTitle}
@@ -308,11 +310,13 @@ export function ProjectInformationWorkspace({
               aria-describedby="public-title-help"
             />
             <p id="public-title-help" className="text-xs text-muted-foreground">
-              Short and descriptive. Do not use a client name, street, house number, or internal job name.
+              Required for social publishing. Keep it short and descriptive; do not use a client name, street, house number, or internal job name.
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="public-location-city">Public town / city</Label>
+            <Label htmlFor="public-location-city">
+              Public town / city <span className="text-destructive" aria-hidden="true">*</span>
+            </Label>
             <Input
               id="public-location-city"
               value={publicLocationCity}
@@ -322,7 +326,7 @@ export function ProjectInformationWorkspace({
               aria-describedby="public-location-help"
             />
             <p id="public-location-help" className="text-xs text-muted-foreground">
-              Town or city only—no street, ZIP code, coordinates, neighborhood, or subdivision.
+              Required for social publishing. Town or city only—no street, ZIP code, coordinates, neighborhood, or subdivision.
             </p>
           </div>
           <div className="space-y-2">
