@@ -4,7 +4,11 @@ import { and, desc, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { cherishPulseResponses } from "@/db/schema"
+import {
+  cherishPulseResponses,
+  organizationMembers,
+  users,
+} from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -33,6 +37,9 @@ export type CherishPulseReviewStatus =
   | "approved"
   | "archived"
 export type CherishPulseReviewDecision = "approve" | "archive"
+export type CherishPulseAudience =
+  | { readonly scope: "company" }
+  | { readonly scope: "user"; readonly recipientId: string }
 
 export type CherishPulseReviewItem = {
   readonly id: string
@@ -47,6 +54,7 @@ export type CherishPulseReviewItem = {
   readonly submittedByEmail: string | null
   readonly weekStart: string
   readonly createdAt: string
+  readonly audience: CherishPulseAudience
 }
 
 export type SubmitCherishPulseInput = {
@@ -56,6 +64,7 @@ export type SubmitCherishPulseInput = {
   readonly source?: CherishPulseSource
   readonly clientSubmissionId?: string
   readonly anonymous?: boolean
+  readonly recipientId?: string
 }
 
 export type SearchCherishPulseArchiveInput = {
@@ -162,6 +171,8 @@ export async function submitCherishPulseResponse(
           submittedByEmail: cherishPulseResponses.submittedByEmail,
           weekStart: cherishPulseResponses.weekStart,
           createdAt: cherishPulseResponses.createdAt,
+          audienceScope: cherishPulseResponses.audienceScope,
+          audienceReferenceId: cherishPulseResponses.audienceReferenceId,
         })
         .from(cherishPulseResponses)
         .where(
@@ -186,6 +197,15 @@ export async function submitCherishPulseResponse(
     const visibility = visibilityForType(input.responseType)
     const isAnonymous = input.anonymous === true
     const submittedByName = nameForUser(user)
+    const audienceResult = await resolveSubmissionAudience({
+      db,
+      organizationId,
+      submitterId: user.id,
+      responseType: input.responseType,
+      recipientId: input.recipientId,
+    })
+    if (!audienceResult.success) return audienceResult
+
     const item: CherishPulseReviewItem = {
       id: clientSubmissionId ?? crypto.randomUUID(),
       cherishValue: input.cherishValue,
@@ -199,6 +219,7 @@ export async function submitCherishPulseResponse(
       submittedByEmail: isAnonymous ? null : user.email,
       weekStart: weekStartForDate(new Date()),
       createdAt: now,
+      audience: audienceResult.data,
     }
 
     await db
@@ -218,8 +239,9 @@ export async function submitCherishPulseResponse(
         message: item.message,
         source: item.source,
         visibility: item.visibility,
-        audienceScope: "company",
-        audienceReferenceId: null,
+        audienceScope: item.audience.scope,
+        audienceReferenceId:
+          item.audience.scope === "user" ? item.audience.recipientId : null,
         reviewStatus: item.reviewStatus,
         reviewedBy: null,
         reviewedAt: null,
@@ -280,6 +302,8 @@ export async function getCherishPulseReviewQueue(): Promise<
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
         createdAt: cherishPulseResponses.createdAt,
+        audienceScope: cherishPulseResponses.audienceScope,
+        audienceReferenceId: cherishPulseResponses.audienceReferenceId,
       })
       .from(cherishPulseResponses)
       .where(
@@ -342,13 +366,21 @@ export async function getCherishPulseTeamStream(): Promise<
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
         createdAt: cherishPulseResponses.createdAt,
+        audienceScope: cherishPulseResponses.audienceScope,
+        audienceReferenceId: cherishPulseResponses.audienceReferenceId,
       })
       .from(cherishPulseResponses)
       .where(
         and(
           eq(cherishPulseResponses.organizationId, organizationId),
           eq(cherishPulseResponses.visibility, "team"),
-          eq(cherishPulseResponses.audienceScope, "company"),
+          or(
+            eq(cherishPulseResponses.audienceScope, "company"),
+            and(
+              eq(cherishPulseResponses.audienceScope, "user"),
+              eq(cherishPulseResponses.audienceReferenceId, user.id),
+            ),
+          ),
           eq(cherishPulseResponses.reviewStatus, "approved")
         )
       )
@@ -409,6 +441,8 @@ export async function getCherishPulseLeadershipStream(): Promise<
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
         createdAt: cherishPulseResponses.createdAt,
+        audienceScope: cherishPulseResponses.audienceScope,
+        audienceReferenceId: cherishPulseResponses.audienceReferenceId,
       })
       .from(cherishPulseResponses)
       .where(
@@ -508,6 +542,8 @@ export async function searchCherishPulseArchive(
         submittedByEmail: cherishPulseResponses.submittedByEmail,
         weekStart: cherishPulseResponses.weekStart,
         createdAt: cherishPulseResponses.createdAt,
+        audienceScope: cherishPulseResponses.audienceScope,
+        audienceReferenceId: cherishPulseResponses.audienceReferenceId,
       })
       .from(cherishPulseResponses)
       .where(
@@ -573,6 +609,9 @@ export async function reviewCherishPulseResponse(
     const existing = await db
       .select({
         id: cherishPulseResponses.id,
+        responseType: cherishPulseResponses.responseType,
+        audienceScope: cherishPulseResponses.audienceScope,
+        audienceReferenceId: cherishPulseResponses.audienceReferenceId,
       })
       .from(cherishPulseResponses)
       .where(
@@ -587,6 +626,33 @@ export async function reviewCherishPulseResponse(
       return {
         success: false,
         error: "That Pulse response was not found.",
+      }
+    }
+
+    if (
+      reviewStatus === "approved" &&
+      existing.audienceScope === "user"
+    ) {
+      if (
+        existing.responseType !== "shoutout" ||
+        existing.audienceReferenceId === null
+      ) {
+        return {
+          success: false,
+          error: "This employee-only CHERISH has an invalid recipient.",
+        }
+      }
+
+      const recipient = await findEligibleRecipient(
+        db,
+        organizationId,
+        existing.audienceReferenceId,
+      )
+      if (!recipient) {
+        return {
+          success: false,
+          error: "That employee is no longer available as a CHERISH recipient.",
+        }
       }
     }
 
@@ -628,6 +694,72 @@ export async function reviewCherishPulseResponse(
           : "Unable to update the Pulse response.",
     }
   }
+}
+
+async function resolveSubmissionAudience(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly submitterId: string
+  readonly responseType: CherishPulseResponseType
+  readonly recipientId: string | undefined
+}): Promise<ActionResult<CherishPulseAudience>> {
+  const recipientId = input.recipientId?.trim()
+  if (!recipientId) return { success: true, data: { scope: "company" } }
+
+  if (input.responseType !== "shoutout") {
+    return {
+      success: false,
+      error: "Employee recipients are available only for shout-outs.",
+    }
+  }
+  if (recipientId === input.submitterId) {
+    return {
+      success: false,
+      error: "Choose another employee for this shout-out.",
+    }
+  }
+
+  const recipient = await findEligibleRecipient(
+    input.db,
+    input.organizationId,
+    recipientId,
+  )
+  if (!recipient) {
+    return {
+      success: false,
+      error: "Choose an active employee from your company.",
+    }
+  }
+
+  return {
+    success: true,
+    data: { scope: "user", recipientId: recipient.id },
+  }
+}
+
+async function findEligibleRecipient(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  recipientId: string,
+): Promise<{ readonly id: string } | null> {
+  const recipient = await db
+    .select({
+      id: users.id,
+      role: organizationMembers.role,
+    })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.userId, recipientId),
+        eq(users.isActive, true),
+      ),
+    )
+    .get()
+
+  if (!recipient || !isInternalStaffRole(recipient.role)) return null
+  return { id: recipient.id }
 }
 
 function canSubmitCherishPulse(user: AuthUser): boolean {
@@ -693,6 +825,8 @@ function rowToReviewItem(row: {
   readonly submittedByEmail: string | null
   readonly weekStart: string
   readonly createdAt: string
+  readonly audienceScope: string
+  readonly audienceReferenceId: string | null
 }): CherishPulseReviewItem {
   const isAnonymous = row.isAnonymous
   return {
@@ -708,6 +842,10 @@ function rowToReviewItem(row: {
     submittedByEmail: isAnonymous ? null : row.submittedByEmail,
     weekStart: row.weekStart,
     createdAt: row.createdAt,
+    audience:
+      row.audienceScope === "user" && row.audienceReferenceId !== null
+        ? { scope: "user", recipientId: row.audienceReferenceId }
+        : { scope: "company" },
   }
 }
 

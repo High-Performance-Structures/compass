@@ -300,7 +300,7 @@ function todayView(): string {
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
   const latestRecognition = cherishRecognitions[0]
   const cherishSpotlight = online && latestRecognition
-    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
+    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"}${latestRecognition.audienceScope === "user" ? " · Just for you" : ""} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
     : ""
   return cherishSpotlight + sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
@@ -495,10 +495,10 @@ function cherishView(): string {
   const recognitionRows = cherishRecognitions
     .map(
       (item) =>
-        `<article class="cherish-recognition"><div><span>${escapeHtml(item.cherishValue)}</span><small>${item.responseType === "win" ? "Project win" : "Shoutout"} · ${escapeHtml(shortDate(item.createdAt))}</small></div><p>${escapeHtml(item.message)}</p><footer>${item.isAnonymous ? "Shared anonymously" : `Shared by ${escapeHtml(item.submittedByName ?? "a team member")}`}</footer></article>`,
+        `<article class="cherish-recognition"><div><span>${escapeHtml(item.cherishValue)}</span><small>${item.responseType === "win" ? "Project win" : "Shoutout"}${item.audienceScope === "user" ? " · Just for you" : ""} · ${escapeHtml(shortDate(item.createdAt))}</small></div><p>${escapeHtml(item.message)}</p><footer>${item.isAnonymous ? "Shared anonymously" : `Shared by ${escapeHtml(item.submittedByName ?? "a team member")}`}</footer></article>`,
     )
     .join("")
-  const recognitionStream = `<section class="cherish-stream">${sectionHead("Team recognition", "Approved shoutouts and project wins from across HPS.")}${loadingCherishRecognitions ? `<p class="cherish-stream-status">Loading team recognition...</p>` : recognitionRows ? `<div class="cherish-recognition-list">${recognitionRows}</div>` : `<p class="cherish-stream-status">${escapeHtml(cherishRecognitionError || (online ? "No approved recognition yet." : "Connect to load approved recognition."))}</p>`}</section>`
+  const recognitionStream = `<section class="cherish-stream">${sectionHead("Recognition shared with you", "Company stories and employee-only shoutouts approved for you.")}${loadingCherishRecognitions ? `<p class="cherish-stream-status">Loading recognition...</p>` : recognitionRows ? `<div class="cherish-recognition-list">${recognitionRows}</div>` : `<p class="cherish-stream-status">${escapeHtml(cherishRecognitionError || (online ? "No approved recognition yet." : "Connect to load approved recognition."))}</p>`}</section>`
 
   return `${recognitionStream}<section class="block">${sectionHead("CHERISH feedback", "Save a shoutout, project win, or private concern without leaving Field Mode.")}
     <form id="cherish-form" class="form">

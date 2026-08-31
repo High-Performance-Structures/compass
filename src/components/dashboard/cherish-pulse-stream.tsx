@@ -16,6 +16,10 @@ import {
   searchCherishPulseArchive,
   type CherishPulseReviewItem,
 } from "@/app/actions/cherish-pulse"
+import {
+  getCherishRecipientOptions,
+  type CherishRecipientOption,
+} from "@/app/actions/cherish-recipients"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +27,7 @@ import { Input } from "@/components/ui/input"
 function responseLabel(response: CherishPulseReviewItem): string {
   if (response.responseType === "concern") return "Private concern"
   if (response.responseType === "win") return "Project win"
+  if (response.audience.scope === "user") return "Employee shoutout"
   return "Team shoutout"
 }
 
@@ -63,6 +68,9 @@ export function CherishPulseStream({
   const [loading, setLoading] = useState(true)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [recipients, setRecipients] = useState<
+    readonly CherishRecipientOption[]
+  >([])
 
   useEffect(() => {
     let mounted = true
@@ -72,14 +80,21 @@ export function CherishPulseStream({
       if (mounted && teamResult.success) setTeamItems(teamResult.data)
 
       if (canReview) {
-        const [reviewResult, privateResult, archiveResult] = await Promise.all([
+        const [
+          reviewResult,
+          privateResult,
+          archiveResult,
+          recipientResult,
+        ] = await Promise.all([
           getCherishPulseReviewQueue(),
           getCherishPulseLeadershipStream(),
           searchCherishPulseArchive(),
+          getCherishRecipientOptions(),
         ])
         if (mounted && reviewResult.success) setReviewItems(reviewResult.data)
         if (mounted && privateResult.success) setPrivateItems(privateResult.data)
         if (mounted && archiveResult.success) setArchiveItems(archiveResult.data)
+        if (mounted && recipientResult.success) setRecipients(recipientResult.data)
       }
 
       if (mounted) setLoading(false)
@@ -132,12 +147,22 @@ export function CherishPulseStream({
         query: archiveQuery,
       })
       if (archiveResult.success) setArchiveItems(archiveResult.data)
-    } else if (item.visibility === "team") {
+    } else if (
+      item.visibility === "team" &&
+      item.audience.scope === "company"
+    ) {
       setTeamItems((current) => [
         { ...item, reviewStatus: "approved" },
         ...current.filter((entry) => entry.id !== item.id),
       ])
       setMessage("Approved and added to the team CHERISH stream.")
+    } else if (
+      item.visibility === "team" &&
+      item.audience.scope === "user"
+    ) {
+      setMessage(
+        `Approved for ${recipientName(item, recipients)} only.`,
+      )
     } else if (decision === "approve") {
       setPrivateItems((current) => [
         { ...item, reviewStatus: "approved" },
@@ -180,6 +205,11 @@ export function CherishPulseStream({
                   {item.visibility === "private" ? (
                     <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                       <IconLock className="size-3" /> Leadership only
+                    </span>
+                  ) : null}
+                  {item.audience.scope === "user" ? (
+                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <IconLock className="size-3" /> Only {recipientName(item, recipients)}
                     </span>
                   ) : null}
                 </div>
@@ -298,6 +328,11 @@ export function CherishPulseStream({
                         <IconLock className="size-3" /> Leadership only
                       </span>
                     ) : null}
+                    {item.audience.scope === "user" ? (
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <IconLock className="size-3" /> Only {recipientName(item, recipients)}
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-5">
                     {item.message}
@@ -338,6 +373,9 @@ export function CherishPulseStream({
                 <span className="text-[11px] text-muted-foreground">
                   {responseLabel(item)} · {formatDate(item.createdAt)}
                 </span>
+                {item.audience.scope === "user" ? (
+                  <Badge variant="secondary">Just for you</Badge>
+                ) : null}
               </div>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-5">
                 {item.message}
@@ -367,4 +405,15 @@ export function CherishPulseStream({
       </section>
     </div>
   )
+}
+
+function recipientName(
+  item: CherishPulseReviewItem,
+  recipients: readonly CherishRecipientOption[],
+): string {
+  if (item.audience.scope === "company") return "the whole company"
+  const recipientId = item.audience.recipientId
+  return recipients.find(
+    (recipient) => recipient.id === recipientId,
+  )?.name ?? "the selected employee"
 }

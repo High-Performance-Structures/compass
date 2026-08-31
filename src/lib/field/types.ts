@@ -137,6 +137,7 @@ export const fieldCherishRecognitionSchema = z.object({
   message: z.string(),
   isAnonymous: z.boolean().default(false),
   submittedByName: z.string().nullable(),
+  audienceScope: z.enum(["company", "user"]).default("company"),
   createdAt: z.string(),
 })
 

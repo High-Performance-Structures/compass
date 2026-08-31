@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { IconHeartHandshake } from "@tabler/icons-react"
 
 import { getCherishStoryArchive } from "@/app/actions/cherish-stories"
+import { getCherishRecipientOptions } from "@/app/actions/cherish-recipients"
 import { CherishFeedbackForm } from "@/components/cherish/cherish-feedback-form"
 import { CherishStoryArchive } from "@/components/cherish/cherish-story-archive"
 import { getCurrentUser } from "@/lib/auth"
@@ -20,9 +21,10 @@ export default async function CherishPage({
   if (!canUseFieldDesk(user)) {
     redirect("/dashboard/access-restricted?action=submit%20CHERISH%20feedback")
   }
-  const [params, archiveResult] = await Promise.all([
+  const [params, archiveResult, recipientResult] = await Promise.all([
     searchParams,
     getCherishStoryArchive(),
+    getCherishRecipientOptions(),
   ])
   const initialStoryId = typeof params.story === "string"
     ? params.story
@@ -48,10 +50,19 @@ export default async function CherishPage({
           Share a CHERISH
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Approved recognition becomes a company story for 24 hours.
+          Approved recognition becomes a story for its chosen audience for 24
+          hours.
         </p>
         <div className="mt-4">
-          <CherishFeedbackForm />
+          <CherishFeedbackForm
+            recipients={
+              recipientResult.success
+                ? recipientResult.data.filter(
+                    (recipient) => recipient.id !== user?.id,
+                  )
+                : []
+            }
+          />
         </div>
       </section>
 
@@ -60,10 +71,11 @@ export default async function CherishPage({
         aria-labelledby="cherish-archive-heading"
       >
         <h2 id="cherish-archive-heading" className="text-lg font-semibold">
-          Company archive
+          Your archive
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Past company stories stay here after they leave the dashboard.
+          Company stories and shout-outs shared just with you stay here after
+          they leave the dashboard.
         </p>
         <div className="mt-4">
           {archiveResult.success ? (

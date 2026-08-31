@@ -11,6 +11,7 @@ type CherishRecognitionSource = {
   readonly message: string
   readonly isAnonymous: boolean
   readonly submittedByName: string | null
+  readonly audience: { readonly scope: "company" } | { readonly scope: "user" }
   readonly createdAt: string
 }
 
@@ -32,6 +33,7 @@ export function toFieldCherishRecognitions(
             message: item.message,
             isAnonymous: item.isAnonymous,
             submittedByName: item.isAnonymous ? null : item.submittedByName,
+            audienceScope: item.audience.scope,
             createdAt: item.createdAt,
           },
         ],

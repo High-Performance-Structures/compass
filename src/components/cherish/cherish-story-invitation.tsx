@@ -299,7 +299,7 @@ export function CherishStoryInvitation({
             <span className="mt-0.5 block text-xs text-muted-foreground">
               {unreadCount > 0
                 ? `${unreadCount} ${unreadCount === 1 ? "moment is" : "moments are"} ready for you`
-                : "Replay today’s company stories before they expire"}
+                : "Replay today’s stories shared with you before they expire"}
             </span>
           </span>
           <span className="shrink-0 text-xs font-medium text-primary">
@@ -333,7 +333,7 @@ export function CherishStoryInvitation({
         >
           <DialogTitle className="sr-only">CHERISH stories</DialogTitle>
           <DialogDescription className="sr-only">
-            Company recognition published during the last 24 hours. Use the
+            Recognition shared with you during the last 24 hours. Use the
             previous and next buttons or arrow keys to move between stories.
           </DialogDescription>
 
@@ -369,6 +369,7 @@ export function CherishStoryInvitation({
                     <p className="mt-1 text-xs text-primary-foreground/75">
                       {currentStory.responseType === "win" ? "Project win" : "Team shoutout"}
                       {" · "}
+                      {currentStory.audience.scope === "user" ? "Just for you · " : ""}
                       {formatStoryAge(currentStory.publishedAt)}
                     </p>
                   </div>
@@ -480,15 +481,17 @@ export function CherishStoryInvitation({
                         ? ` · ${currentStory.reactionCount}`
                         : ""}
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground"
-                      onClick={() => void shareStory()}
-                    >
-                      <IconShare3 aria-hidden="true" /> Share
-                    </Button>
+                    {currentStory.audience.scope === "company" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-primary-foreground hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                        onClick={() => void shareStory()}
+                      >
+                        <IconShare3 aria-hidden="true" /> Share
+                      </Button>
+                    ) : null}
                   </div>
                   <Button
                     asChild

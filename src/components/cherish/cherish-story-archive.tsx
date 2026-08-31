@@ -35,7 +35,7 @@ export function CherishStoryArchive({
   if (items.length === 0) {
     return (
       <p className="border-y py-8 text-center text-sm text-muted-foreground">
-        Approved company Cherishes will collect here.
+        Approved CHERISH stories shared with you will collect here.
       </p>
     )
   }
@@ -71,6 +71,9 @@ export function CherishStoryArchive({
                   <Badge variant="outline">
                     {story.responseType === "win" ? "Project win" : "Team shoutout"}
                   </Badge>
+                  {story.audience.scope === "user" ? (
+                    <Badge variant="secondary">Just for you</Badge>
+                  ) : null}
                   {story.reactedAt !== null ? (
                     <IconHeart
                       className="size-3.5 fill-current text-primary"

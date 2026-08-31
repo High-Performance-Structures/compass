@@ -34,6 +34,7 @@ describe("GET /api/field/cherish", () => {
           submittedByEmail: "martine@example.com",
           weekStart: "2026-08-24",
           createdAt: "2026-08-24T12:00:00.000Z",
+          audience: { scope: "user", recipientId: "field-user-1" },
         },
         {
           id: "defense-in-depth",
@@ -48,6 +49,7 @@ describe("GET /api/field/cherish", () => {
           submittedByEmail: "private@example.com",
           weekStart: "2026-08-24",
           createdAt: "2026-08-24T13:00:00.000Z",
+          audience: { scope: "company" },
         },
       ],
     })
@@ -67,6 +69,7 @@ describe("GET /api/field/cherish", () => {
           message: "The team passed inspection on the first visit.",
           isAnonymous: true,
           submittedByName: null,
+          audienceScope: "user",
           createdAt: "2026-08-24T12:00:00.000Z",
         },
       ],
