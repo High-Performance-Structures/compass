@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, gte, isNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNull, not, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -19,6 +19,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -337,7 +338,18 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         })
         .from(dailyLogPhotos)
         .innerJoin(projects, eq(dailyLogPhotos.projectId, projects.id))
-        .where(eq(projects.organizationId, orgId))
+        .where(
+          and(
+            eq(projects.organizationId, orgId),
+            dailyLogPhotoCollectionEligibility(),
+            not(sql<boolean>`EXISTS (
+              SELECT 1
+              FROM daily_log_photo_aliases AS alias
+              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                AND alias.project_id IS ${dailyLogPhotos.projectId}
+            )`),
+          ),
+        )
         .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt)),
       db
         .select({

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, not, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -18,6 +18,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectDepartment } from "@/lib/project-branding"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -214,6 +215,18 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
       eq(dailyLogPhotos.projectId, projectId),
       eq(dailyLogPhotos.reviewStatus, "approved"),
       eq(dailyLogPhotos.publicShareable, true),
+      dailyLogPhotoCollectionEligibility(),
+      not(sql<boolean>`EXISTS (
+        SELECT 1
+        FROM daily_log_photo_aliases AS alias
+        JOIN daily_log_photos AS canonical
+          ON canonical.id IS alias.canonical_photo_id
+        WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+          AND alias.project_id IS ${dailyLogPhotos.projectId}
+          AND canonical.project_id IS ${dailyLogPhotos.projectId}
+          AND canonical.review_status IS 'approved'
+          AND canonical.public_shareable IS 1
+      )`),
     )).orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt)),
     context.db.select({
       id: socialPosts.id,

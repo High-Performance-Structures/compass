@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -10,6 +10,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 
 export type ProjectPhotoLibraryItem = {
   readonly id: string
@@ -196,7 +197,18 @@ export async function getProjectPhotoLibrary(
     })
     .from(dailyLogPhotos)
     .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
-    .where(eq(dailyLogPhotos.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogPhotos.projectId, projectId),
+        dailyLogPhotoCollectionEligibility(),
+        not(sql<boolean>`EXISTS (
+          SELECT 1
+          FROM daily_log_photo_aliases AS alias
+          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+            AND alias.project_id IS ${dailyLogPhotos.projectId}
+        )`),
+      ),
+    )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
   const tasks = await db
