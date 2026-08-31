@@ -13,7 +13,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import {
   accessLevelToFeatureActions,
-  getPermissionAccessLevel,
+  getPermissionFeatureAccessLevel,
   getPermissionFeature,
   isPermissionAccessLevel,
   type Action,
@@ -80,7 +80,7 @@ export async function getEffectivePermissionAccessLevel(
   const feature = getPermissionFeature(featureId)
   if (!feature || !user || !user.isActive) return "none"
 
-  let effectiveLevel = getPermissionAccessLevel(user.role, feature.resource)
+  let effectiveLevel = getPermissionFeatureAccessLevel(user.role, featureId)
 
   if (
     !user.organizationId ||

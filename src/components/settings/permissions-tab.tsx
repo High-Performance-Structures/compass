@@ -13,7 +13,7 @@ import {
 } from "@/app/actions/permission-overrides"
 import {
   accessLevelToFeatureActions,
-  getPermissionAccessLevel,
+  getPermissionFeatureAccessLevel,
   PERMISSION_ACCESS_LEVELS,
   PERMISSION_FEATURES,
   type PermissionAccessLevel,
@@ -216,7 +216,7 @@ function FeatureRow({
   ) => void
   readonly showInternalDetails: boolean
 }): React.ReactElement {
-  const baselineLevel = getPermissionAccessLevel(selectedRole, feature.resource)
+  const baselineLevel = getPermissionFeatureAccessLevel(selectedRole, feature.id)
   const accessLevel = roleOverride?.accessLevel ?? baselineLevel
   const roleChoice = roleOverride?.accessLevel ?? ROLE_BASELINE
   const teamChoice = teamOverride?.accessLevel ?? TEAM_INHERIT
