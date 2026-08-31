@@ -131,7 +131,7 @@ describe("schedule dependency propagation", () => {
     })
   })
 
-  it("recalculates task dates after the project work calendar changes", () => {
+  it("does not pull a successor backward when the work calendar opens a day", () => {
     const tasks = [
       task("a", "2026-07-24", 2, "2026-07-27"),
       task("b", "2026-07-28", 1, "2026-07-28"),
@@ -163,9 +163,79 @@ describe("schedule dependency propagation", () => {
         startDate: "2026-07-24",
         endDateCalculated: "2026-07-25",
       },
+    })
+  })
+
+  it("preserves intentional schedule gaps when a holiday is added", () => {
+    const tasks = [
+      task("countertops", "2026-09-01", 5, "2026-09-07"),
+      task("plumbing", "2026-09-21", 2, "2026-09-22"),
+    ]
+    const laborDay = {
+      id: "labor-day",
+      projectId: "project-1",
+      title: "Labor Day",
+      startDate: "2026-09-07",
+      endDate: "2026-09-07",
+      type: "non_working" as const,
+      category: "national_holiday" as const,
+      recurrence: "yearly" as const,
+      notes: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    }
+
+    expect(
+      Object.fromEntries(
+        recalculateScheduleDates(
+          tasks,
+          [dependency("FS", 0, "countertops", "plumbing")],
+          [laborDay]
+        ).updatedTasks
+      )
+    ).toEqual({
+      countertops: {
+        startDate: "2026-09-01",
+        endDateCalculated: "2026-09-08",
+      },
+    })
+  })
+
+  it("moves a successor forward when a holiday tightens its dependency", () => {
+    const tasks = [
+      task("a", "2026-09-01", 5, "2026-09-07"),
+      task("b", "2026-09-08", 2, "2026-09-09"),
+    ]
+    const laborDay = {
+      id: "labor-day",
+      projectId: "project-1",
+      title: "Labor Day",
+      startDate: "2026-09-07",
+      endDate: "2026-09-07",
+      type: "non_working" as const,
+      category: "national_holiday" as const,
+      recurrence: "one_time" as const,
+      notes: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    }
+
+    expect(
+      Object.fromEntries(
+        recalculateScheduleDates(
+          tasks,
+          [dependency("FS")],
+          [laborDay]
+        ).updatedTasks
+      )
+    ).toEqual({
+      a: {
+        startDate: "2026-09-01",
+        endDateCalculated: "2026-09-08",
+      },
       b: {
-        startDate: "2026-07-27",
-        endDateCalculated: "2026-07-27",
+        startDate: "2026-09-09",
+        endDateCalculated: "2026-09-10",
       },
     })
   })
