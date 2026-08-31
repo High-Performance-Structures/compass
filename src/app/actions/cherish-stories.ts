@@ -13,19 +13,20 @@ import {
 } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { deleteMessage, sendMessage } from "@/app/actions/chat-messages"
+import { createDirectMessage } from "@/app/actions/conversations"
 import { getDb } from "@/db"
 import {
   cherishPulseResponses,
   cherishPulseStoryReplies,
   cherishPulseStoryStates,
   notificationEvents,
-  notificationRecipients,
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import { conversationFullViewHref } from "@/lib/conversations/notification-route"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import { createNotificationEvent } from "@/lib/notifications/events"
 
 export type CherishStory = {
   readonly id: string
@@ -182,75 +183,95 @@ export async function sendCherishStoryReply(
       }
     }
 
-    const id = crypto.randomUUID()
-    const now = new Date().toISOString()
-    await context.db.insert(cherishPulseStoryReplies).values({
-      id,
-      organizationId: context.organizationId,
-      responseId: context.responseId,
-      authorId: context.user.id,
-      recipientId: context.recipientId,
-      message,
-      deletedAt: null,
-      createdAt: now,
-    }).run()
-
-    try {
-      await createNotificationEvent({
-        organizationId: context.organizationId,
-        projectId: null,
-        eventType: "cherish.story_reply",
-        sourceType: "cherish_story_reply",
-        sourceId: id,
-        title: "A teammate replied to your CHERISH",
-        body: `${replyAuthorName(context.user)}: ${message}`,
-        href: `/dashboard/cherish?story=${encodeURIComponent(context.responseId)}`,
-        priority: "normal",
-        audience: "current_user",
-        createdBy: context.user.id,
-        recipients: [{
-          userId: context.recipientId,
-          email: context.recipientEmail,
-        }],
-        delivery: { inApp: true, email: false, push: false },
-      })
-
-      const delivery = await context.db
-        .select({ id: notificationRecipients.id })
-        .from(notificationRecipients)
-        .innerJoin(
-          notificationEvents,
-          eq(notificationEvents.id, notificationRecipients.eventId),
-        )
-        .where(
-          and(
-            eq(notificationEvents.organizationId, context.organizationId),
-            eq(notificationEvents.sourceType, "cherish_story_reply"),
-            eq(notificationEvents.sourceId, id),
-            eq(notificationRecipients.userId, context.recipientId),
-            eq(notificationRecipients.inApp, true),
-          ),
-        )
-        .get()
-      if (!delivery) {
-        throw new Error("The recipient could not receive an in-app notification.")
+    const conversation = await createDirectMessage([context.recipientId])
+    if (!conversation.success || !conversation.data) {
+      return {
+        success: false,
+        error: "Unable to start a private conversation with the sender.",
       }
-    } catch (notificationError) {
-      console.error("Unable to deliver the CHERISH reply:", notificationError)
-      try {
-        await rollbackUndeliveredReply(
-          context.db,
-          context.organizationId,
-          context.user.id,
+    }
+
+    const sentMessage = await sendMessage({
+      channelId: conversation.data.channelId,
+      content: `CHERISH reply\n\n${message}`,
+    })
+    if (!sentMessage.success || !sentMessage.data) {
+      return {
+        success: false,
+        error: "Unable to send this reply as a private message.",
+      }
+    }
+
+    // Sharing the id links the CHERISH acknowledgement to the regular message
+    // so Undo can remove both without adding another schema relationship.
+    const id = sentMessage.data.id
+    const now = new Date().toISOString()
+    try {
+      await context.db.insert(cherishPulseStoryReplies).values({
+        id,
+        organizationId: context.organizationId,
+        responseId: context.responseId,
+        authorId: context.user.id,
+        recipientId: context.recipientId,
+        message,
+        deletedAt: null,
+        createdAt: now,
+      }).run()
+    } catch (persistenceError) {
+      const rollback = await deleteMessage(id)
+      if (!rollback.success) {
+        console.error("Unable to roll back an untracked CHERISH message:", {
           id,
-        )
-      } catch (rollbackError) {
-        console.error("Unable to roll back the CHERISH reply:", rollbackError)
+          persistenceError,
+          rollbackError: rollback.error,
+        })
+      } else {
+        await context.db
+          .update(notificationEvents)
+          .set({
+            title: "CHERISH reply not sent",
+            body: "This reply could not be delivered.",
+          })
+          .where(
+            and(
+              eq(notificationEvents.organizationId, context.organizationId),
+              eq(notificationEvents.sourceType, "message"),
+              eq(notificationEvents.sourceId, id),
+              eq(notificationEvents.createdBy, context.user.id),
+            ),
+          )
+          .run()
       }
       return {
         success: false,
-        error: "Unable to deliver this CHERISH reply. Please try again.",
+        error: "Unable to finish sending this reply. Please try again.",
       }
+    }
+
+    // The regular message notification already opens the correct conversation.
+    // Customizing its CHERISH presentation is useful but not delivery-critical.
+    try {
+      await context.db
+        .update(notificationEvents)
+        .set({
+          eventType: "cherish.story_reply",
+          title: `${replyAuthorName(context.user)} replied to your CHERISH`,
+          href: conversationFullViewHref(conversation.data.channelId),
+        })
+        .where(
+          and(
+            eq(notificationEvents.organizationId, context.organizationId),
+            eq(notificationEvents.sourceType, "message"),
+            eq(notificationEvents.sourceId, id),
+            eq(notificationEvents.createdBy, context.user.id),
+          ),
+        )
+        .run()
+    } catch (notificationError) {
+      console.error("Unable to customize the CHERISH reply notification:", {
+        id,
+        notificationError,
+      })
     }
 
     revalidatePath("/dashboard/cherish")
@@ -258,42 +279,6 @@ export async function sendCherishStoryReply(
   } catch (error) {
     return storyError(error, "Unable to send this CHERISH reply.")
   }
-}
-
-async function rollbackUndeliveredReply(
-  db: ReturnType<typeof getDb>,
-  organizationId: string,
-  authorId: string,
-  replyId: string,
-): Promise<void> {
-  const failedAt = new Date().toISOString()
-  const redactNotification = db
-    .update(notificationEvents)
-    .set({
-      title: "CHERISH reply not delivered",
-      body: "This reply could not be delivered.",
-    })
-    .where(
-      and(
-        eq(notificationEvents.organizationId, organizationId),
-        eq(notificationEvents.sourceType, "cherish_story_reply"),
-        eq(notificationEvents.sourceId, replyId),
-        eq(notificationEvents.createdBy, authorId),
-      ),
-    )
-  const removeReply = db
-    .update(cherishPulseStoryReplies)
-    .set({ deletedAt: failedAt })
-    .where(
-      and(
-        eq(cherishPulseStoryReplies.id, replyId),
-        eq(cherishPulseStoryReplies.organizationId, organizationId),
-        eq(cherishPulseStoryReplies.authorId, authorId),
-        isNull(cherishPulseStoryReplies.deletedAt),
-      ),
-    )
-
-  await db.batch([redactNotification, removeReply])
 }
 
 export async function deleteCherishStoryReply(
@@ -339,6 +324,14 @@ export async function deleteCherishStoryReply(
       return { success: false, error: "That CHERISH reply was not found." }
     }
 
+    const deletedMessage = await deleteMessage(id)
+    if (!deletedMessage.success) {
+      return {
+        success: false,
+        error: "Unable to remove the private message for this reply.",
+      }
+    }
+
     await db
       .update(notificationEvents)
       .set({
@@ -348,7 +341,7 @@ export async function deleteCherishStoryReply(
       .where(
         and(
           eq(notificationEvents.organizationId, organizationId),
-          eq(notificationEvents.sourceType, "cherish_story_reply"),
+          eq(notificationEvents.sourceType, "message"),
           eq(notificationEvents.sourceId, id),
           eq(notificationEvents.createdBy, user.id),
         ),
