@@ -67,6 +67,7 @@ import {
 import { clientFollowUpState } from "@/lib/project-follow-up"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { validatePublicProjectIdentity } from "@/lib/social/privacy"
 
 export type ProjectProfileResult =
   | { readonly success: true }
@@ -113,6 +114,8 @@ export type ProjectInformation = {
     readonly projectNumber: string | null
     readonly projectAddress: string | null
     readonly mailingAddress: string | null
+    readonly publicTitle: string | null
+    readonly publicLocationCity: string | null
     readonly clientStatus: ProjectClientStatus
     readonly jobStatusId: string
     readonly status: string
@@ -371,6 +374,8 @@ export async function getProjectInformation(
         projectNumber: projects.projectNumber,
         projectAddress: projects.address,
         mailingAddress: projects.mailingAddress,
+        publicTitle: projects.publicTitle,
+        publicLocationCity: projects.publicLocationCity,
         clientStatus: projects.clientStatus,
         jobStatusId: projects.jobStatusId,
         status: projects.status,
@@ -829,6 +834,8 @@ export async function updateProjectInformation(input: {
   readonly projectId: string
   readonly projectAddress: string | null
   readonly mailingAddress: string | null
+  readonly publicTitle: string | null
+  readonly publicLocationCity: string | null
   readonly clientStatus: ProjectClientStatus
   readonly jobStatusId: string
   readonly addressSuffix: string | null
@@ -847,12 +854,16 @@ export async function updateProjectInformation(input: {
     const existingRows = await db
       .select({
         id: projects.id,
+        name: projects.name,
+        clientName: projects.clientName,
         projectNumber: projects.projectNumber,
         status: projects.status,
         address: projects.address,
         mailingAddress: projects.mailingAddress,
         clientStatus: projects.clientStatus,
         jobStatusId: projects.jobStatusId,
+        publicTitle: projects.publicTitle,
+        publicLocationCity: projects.publicLocationCity,
       })
       .from(projects)
       .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)))
@@ -862,6 +873,25 @@ export async function updateProjectInformation(input: {
 
     const projectAddress = nullableText(input.projectAddress)
     const mailingAddress = nullableText(input.mailingAddress)
+    const publicTitle = nullableText(input.publicTitle)
+    const publicLocationCity = nullableText(input.publicLocationCity)
+    if ((publicTitle === null) !== (publicLocationCity === null)) {
+      return {
+        success: false,
+        error: "Add both a privacy-safe public project title and a town/city, or leave both blank.",
+      }
+    }
+    if (publicTitle && publicLocationCity) {
+      const identityErrors = validatePublicProjectIdentity({
+        publicTitle,
+        locationCity: publicLocationCity,
+        internalProjectName: existing.name,
+        clientName: existing.clientName,
+      })
+      if (identityErrors.length > 0) {
+        return { success: false, error: identityErrors.join(" ") }
+      }
+    }
     let projectNumber = existing.projectNumber
     if (input.addressSuffix !== null && existing.projectNumber) {
       try {
@@ -937,6 +967,8 @@ export async function updateProjectInformation(input: {
         mailingAddress,
         clientStatus: input.clientStatus,
         jobStatusId: input.jobStatusId,
+        publicTitle,
+        publicLocationCity,
         updatedAt,
       })
       .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)))
@@ -961,6 +993,8 @@ export async function updateProjectInformation(input: {
         mailingAddress,
         clientStatus: input.clientStatus,
         jobStatusId: input.jobStatusId,
+        publicTitle,
+        publicLocationCity,
         status: legacyStatus,
       }),
       createdAt: updatedAt,

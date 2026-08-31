@@ -10,6 +10,7 @@ import {
   IconFileDollar,
   IconFolder,
   IconPalette,
+  IconShare3,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -62,6 +63,12 @@ export function ProjectActionsMenu({
           <Link href={`/dashboard/projects/${projectId}/photos`}>
             <IconCamera />
             Photo review
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={`/dashboard/projects/${projectId}/social`}>
+            <IconShare3 />
+            Social post
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

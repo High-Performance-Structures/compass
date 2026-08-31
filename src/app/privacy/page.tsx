@@ -93,6 +93,34 @@ export default function PrivacyPolicyPage(): React.ReactElement {
         </section>
 
         <section className="mt-10 space-y-4">
+          <h2 className="text-xl font-semibold">
+            Facebook, Instagram, and X information
+          </h2>
+          <p className="leading-7">
+            Authorized internal administrators may connect company-managed
+            Facebook Pages, professional Instagram accounts, and X accounts.
+            Compass uses those connections only to identify the approved
+            business destination and publish project updates that an authorized
+            staff member has reviewed and approved.
+          </p>
+          <p className="leading-7">
+            Compass stores the provider account identifier and display name,
+            granted permissions, connection timestamps, and encrypted OAuth
+            access or refresh tokens. It may also store published post
+            identifiers, links, status, and error details for operational and
+            audit history. Passwords are never requested or stored by Compass.
+          </p>
+          <p className="leading-7">
+            Project photos and post copy are sent to Meta or X only when an
+            authorized user selects those destinations and confirms
+            publication. Public posts use a privacy-safe project title and
+            town or city name only; Compass does not intentionally include
+            client names, street addresses, ZIP codes, coordinates, or photo
+            location metadata.
+          </p>
+        </section>
+
+        <section className="mt-10 space-y-4">
           <h2 className="text-xl font-semibold">How information is used</h2>
           <p className="leading-7">
             Information is used to provide project collaboration, scheduling,
@@ -116,7 +144,10 @@ export default function PrivacyPolicyPage(): React.ReactElement {
           </p>
         </section>
 
-        <section className="mt-10 space-y-4">
+        <section
+          id="retention-deletion-and-revocation"
+          className="mt-10 space-y-4"
+        >
           <h2 className="text-xl font-semibold">
             Retention, deletion, and revocation
           </h2>
@@ -144,6 +175,21 @@ export default function PrivacyPolicyPage(): React.ReactElement {
             delete videos already published to a company YouTube channel; a
             channel manager can remove those videos in YouTube Studio or request
             assistance.
+          </p>
+          <p className="leading-7">
+            An authorized administrator may disconnect a Facebook, Instagram,
+            or X account in Compass. Compass then removes the usable stored
+            OAuth credentials while retaining limited connection and publishing
+            history when required for security, audit, contractual, or legal
+            records. A user may also revoke Compass in the applicable Meta or X
+            account settings.
+          </p>
+          <p className="leading-7">
+            Users may request deletion or correction of Meta or X connection
+            data through their Compass administrator or by emailing the address
+            below. Disconnecting an account does not automatically delete posts
+            already published to Facebook, Instagram, or X; an account manager
+            can remove those posts on the provider or request assistance.
           </p>
         </section>
 

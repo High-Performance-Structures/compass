@@ -51,6 +51,7 @@ Modules are the parts specific to HPS's construction business:
 | Nu-Tech orders | Fox Blocks catalog, takeoffs, pricing, bracing rentals, and Airlite purchase orders | `db/schema-nutech.ts`, `actions/nutech-orders.ts`, `components/nutech/` |
 | Mobile | Capacitor native wrapper, offline photos, push | `lib/native/`, `lib/push/`, `hooks/use-native*.ts`, `components/native/` |
 | Claude Code | local bridge daemon, own API key, filesystem + terminal access | `lib/mcp/`, `lib/agent/ws-transport.ts`, `packages/compass-bridge/` |
+| Social publishing | privacy-safe department-routed Facebook, Instagram, and X project posts | `db/schema-social.ts`, `lib/social/`, `actions/social-*.ts`, `components/projects/project-social-workspace.tsx` |
 
 Some tables blur the line. The `customers` and `vendors` tables in `schema.ts` are core entities used by multiple modules, but they have `netsuiteId` columns that only matter when the NetSuite module is active. The `projects` table has legacy `netsuiteJobId` plus active Sage mapping fields (`sageJobId`, `sageJobNumber`) for the current HPS integration track. The `pushTokens` table lives in the core schema but is only meaningful to the mobile module. These are pragmatic compromises: splitting them into separate schemas would add complexity without real benefit at the current scale.
 

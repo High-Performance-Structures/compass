@@ -26,6 +26,12 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/api/integrations/other/events")).toBe(false)
   })
 
+  it("allows only signed social media delivery through WorkOS middleware", () => {
+    expect(isPublicPath("/api/social/media/photo-123")).toBe(true)
+    expect(isPublicPath("/api/social/meta/connect")).toBe(false)
+    expect(isPublicPath("/api/social/x/callback")).toBe(false)
+  })
+
   it("allows only the HMAC-authenticated Sage bridge endpoints", () => {
     expect(
       isPublicPath("/api/integrations/sage/pay-applications/requests")

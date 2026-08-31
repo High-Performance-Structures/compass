@@ -30,6 +30,7 @@ import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-statu
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
 import { GoogleCalendarConnectionCard } from "@/components/google/calendar-connection-status"
+import { SocialConnectionsCard } from "@/components/settings/social-connections-card"
 import {
   DeveloperOnly,
   useDeveloperMode,
@@ -57,6 +58,8 @@ function IntegrationsSection() {
       <GoogleDriveConnectionStatus />
       <Separator />
       <GoogleCalendarConnectionCard />
+      <Separator />
+      <SocialConnectionsCard />
       <DeveloperOnly>
         <Separator />
         <NetSuiteConnectionStatus />
@@ -77,7 +80,7 @@ export default function SettingsPage() {
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.has("google-calendar")) {
+    if (params.has("google-calendar") || params.has("social") || params.has("social-draft")) {
       setActiveSection("integrations")
     }
   }, [])

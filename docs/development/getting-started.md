@@ -55,6 +55,12 @@ Wrangler reads `.dev.vars` automatically when running the local dev server. For 
 | Variable | Description |
 |----------|-------------|
 | `OPENROUTER_API_KEY` | API key from OpenRouter. The AI agent routes through OpenRouter to access the kimi-k2.5 model. Without this, the chat agent won't function. |
+| `SOCIAL_TOKEN_ENCRYPTION_KEY` | Required to connect social accounts; encrypts OAuth tokens and signs short-lived approved-photo URLs. |
+| `SOCIAL_PUBLIC_BASE_URL` | Public Compass origin used by Meta/X callbacks and Instagram media fetches. |
+| `META_APP_ID`, `META_APP_SECRET` | Meta Business app credentials for Facebook Page and professional Instagram publishing. |
+| `META_GRAPH_API_VERSION` | Optional Meta Graph API version; social publishing defaults to `v25.0`. |
+| `X_CLIENT_ID`, `X_CLIENT_SECRET` | X OAuth 2.0 app credentials. The secret is optional for a public PKCE client. |
+| `SOCIAL_AI_MODEL` | Optional OpenRouter vision model used for photo-aware social copy suggestions. |
 
 ### Sage integration (HPS active path, optional)
 
