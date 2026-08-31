@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { AuthUser } from "@/lib/auth"
 import { DEMO_USER } from "@/lib/demo"
 import {
+  accessLevelToFeatureActions,
   canCreateProject,
   canManageWorkCalendarEvents,
   canUseAskCompass,
@@ -239,5 +240,32 @@ describe("canManageWorkCalendarEvents", () => {
       }),
     ).toBe(false)
     expect(canManageWorkCalendarEvents(null)).toBe(false)
+  })
+})
+
+describe("social publishing feature baseline", () => {
+  it("lets social editors publish without inheriting delete authority", () => {
+    expect(accessLevelToFeatureActions("social-publishing", "edit")).toEqual([
+      "create",
+      "read",
+      "update",
+      "approve",
+    ])
+  })
+
+  it("does not broaden read-only or unrelated feature permissions", () => {
+    expect(accessLevelToFeatureActions("social-publishing", "view")).toEqual(["read"])
+    expect(accessLevelToFeatureActions("social-publishing", "delete")).toEqual([
+      "create",
+      "read",
+      "update",
+      "delete",
+      "approve",
+    ])
+    expect(accessLevelToFeatureActions("project-hub", "edit")).toEqual([
+      "create",
+      "read",
+      "update",
+    ])
   })
 })

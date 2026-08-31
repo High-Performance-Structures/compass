@@ -352,6 +352,21 @@ export function accessLevelToActions(
   }
 }
 
+export function accessLevelToFeatureActions(
+  featureId: string,
+  level: PermissionAccessLevel
+): readonly Action[] {
+  const actions = accessLevelToActions(level)
+  if (
+    featureId === "social-publishing" &&
+    (level === "edit" || level === "delete") &&
+    !actions.includes("approve")
+  ) {
+    return [...actions, "approve"]
+  }
+  return actions
+}
+
 type RolePermissions = {
   [key: string]: {
     [key in Resource]?: Action[]
