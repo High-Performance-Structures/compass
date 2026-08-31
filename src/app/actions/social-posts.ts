@@ -804,11 +804,19 @@ export async function publishSocialPost(input: {
     const now = new Date().toISOString()
     const config = getSocialConfig(context.env)
     const photoUrls: string[] = []
+    const instagramPhotoUrls: string[] = []
     for (const media of mediaRows) {
       photoUrls.push(await createSignedSocialPhotoUrl({
         baseUrl: config.publicBaseUrl,
         photoId: media.photoId,
         key: config.tokenEncryptionKey,
+        lifetimeSeconds: 20 * 60,
+      }))
+      instagramPhotoUrls.push(await createSignedSocialPhotoUrl({
+        baseUrl: config.publicBaseUrl,
+        photoId: media.photoId,
+        key: config.tokenEncryptionKey,
+        variant: "instagram",
         lifetimeSeconds: 20 * 60,
       }))
     }
@@ -892,11 +900,6 @@ export async function publishSocialPost(input: {
             albumId,
           })
         } else if (platform === "instagram") {
-          if (mediaRows.some((media) =>
-            media.mimeType === null || normalizeSocialImageMimeType(media.mimeType) !== "image/jpeg"
-          )) {
-            throw new Error("Instagram requires JPEG photos.")
-          }
           const accessToken = await decrypt(
             row.account.accessTokenEncrypted,
             config.tokenEncryptionKey,
@@ -911,7 +914,7 @@ export async function publishSocialPost(input: {
             instagramAccountId: row.account.externalAccountId,
             accessToken,
             caption: text,
-            photoUrls,
+            photoUrls: instagramPhotoUrls,
           })
         } else {
           if (text.length > 280) throw new Error("X posts must be 280 characters or fewer.")

@@ -35,4 +35,30 @@ describe("signed social photo URLs", () => {
       key: "test-signing-key-with-enough-entropy",
     })).resolves.toBe(false)
   })
+
+  it("signs the Instagram transformation separately from the original", async () => {
+    const url = new URL(await createSignedSocialPhotoUrl({
+      baseUrl: "https://compass.example.com",
+      photoId: "photo-123",
+      key: "test-signing-key-with-enough-entropy",
+      variant: "instagram",
+      lifetimeSeconds: 60,
+    }))
+
+    expect(url.searchParams.get("variant")).toBe("instagram")
+    await expect(verifySignedSocialPhoto({
+      photoId: "photo-123",
+      expires: url.searchParams.get("expires"),
+      providedSignature: url.searchParams.get("signature"),
+      variant: "instagram",
+      key: "test-signing-key-with-enough-entropy",
+    })).resolves.toBe(true)
+    await expect(verifySignedSocialPhoto({
+      photoId: "photo-123",
+      expires: url.searchParams.get("expires"),
+      providedSignature: url.searchParams.get("signature"),
+      variant: "original",
+      key: "test-signing-key-with-enough-entropy",
+    })).resolves.toBe(false)
+  })
 })

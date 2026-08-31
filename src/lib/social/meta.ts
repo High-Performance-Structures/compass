@@ -348,22 +348,7 @@ export async function publishFacebookPhotos(input: {
     return { id, url: `https://www.facebook.com/${id.replace("_", "/posts/")}` }
   }
 
-  if (input.albumId) {
-    let firstId: string | null = null
-    for (const photoUrl of input.photoUrls) {
-      const payload = await graphFormPost({
-        apiVersion: input.apiVersion,
-        path: `${input.albumId}/photos`,
-        accessToken: input.accessToken,
-        fields: { url: photoUrl, message: input.text },
-      })
-      firstId ??= stringValue(payload.post_id) ?? stringValue(payload.id)
-    }
-    if (!firstId) throw new Error("Facebook did not return an album post ID.")
-    return { id: firstId, url: `https://www.facebook.com/${input.pageId}/photos` }
-  }
-
-  if (input.photoUrls.length === 1) {
+  if (!input.albumId && input.photoUrls.length === 1) {
     const payload = await graphFormPost({
       apiVersion: input.apiVersion,
       path: `${input.pageId}/photos`,
@@ -379,7 +364,7 @@ export async function publishFacebookPhotos(input: {
   for (const photoUrl of input.photoUrls) {
     const payload = await graphFormPost({
       apiVersion: input.apiVersion,
-      path: `${input.pageId}/photos`,
+      path: `${input.albumId ?? input.pageId}/photos`,
       accessToken: input.accessToken,
       fields: { url: photoUrl, published: "false" },
     })
