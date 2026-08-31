@@ -9,7 +9,10 @@ import {
   canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
+  getPermissionFeatureAccessLevel,
+  getPermissions,
 } from "@/lib/permissions"
+import { isInternalStaffRole, USER_ROLES } from "@/lib/user-roles"
 
 function userWithRole(role: string): AuthUser {
   return {
@@ -267,5 +270,43 @@ describe("social publishing feature baseline", () => {
       "read",
       "update",
     ])
+  })
+})
+
+describe("internal staff project editing baseline", () => {
+  const internalStaffRoles = USER_ROLES.filter(isInternalStaffRole)
+
+  it.each(internalStaffRoles)(
+    "gives internal staff role %s project-hub editing by default",
+    (role) => {
+      const level = getPermissionFeatureAccessLevel(role, "project-hub")
+      expect(accessLevelToFeatureActions("project-hub", level)).toContain("update")
+    },
+  )
+
+  it.each(internalStaffRoles)(
+    "gives internal staff role %s social review and publishing by default",
+    (role) => {
+      const level = getPermissionFeatureAccessLevel(role, "social-publishing")
+      expect(accessLevelToFeatureActions("social-publishing", level)).toContain(
+        "approve",
+      )
+    },
+  )
+
+  it.each(["client", "subcontractor", "supplier", "guest"])(
+    "does not give external role %s project editing",
+    (role) => {
+      expect(getPermissionFeatureAccessLevel(role, "project-hub")).toBe("view")
+      expect(getPermissionFeatureAccessLevel(role, "social-publishing")).toBe(
+        "view",
+      )
+    },
+  )
+
+  it("does not broaden raw field permissions into project administration", () => {
+    expect(getPermissions("field_superintendent", "project")).toEqual(["read"])
+    expect(getPermissions("field_crew", "project")).toEqual(["read"])
+    expect(getPermissions("field", "project")).toEqual(["read"])
   })
 })

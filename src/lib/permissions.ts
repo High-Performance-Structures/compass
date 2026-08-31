@@ -638,6 +638,36 @@ export function getPermissionAccessLevel(
   return permissionAccessLevelFromActions(getPermissions(role, resource))
 }
 
+const INTERNAL_STAFF_EDIT_FEATURES: readonly string[] = [
+  "project-hub",
+  "social-publishing",
+]
+
+/**
+ * Internal staff need a useful project baseline even when their underlying
+ * resource role is deliberately narrower. Keep this feature-scoped so basic
+ * project editing does not also grant unrelated financial or access-management
+ * actions that still use the raw project resource permission.
+ */
+export function getPermissionFeatureAccessLevel(
+  role: string,
+  featureId: string
+): PermissionAccessLevel {
+  const feature = getPermissionFeature(featureId)
+  if (!feature) return "none"
+
+  const baseline = getPermissionAccessLevel(role, feature.resource)
+  if (
+    isInternalStaffRole(role) &&
+    INTERNAL_STAFF_EDIT_FEATURES.includes(featureId) &&
+    (baseline === "none" || baseline === "view")
+  ) {
+    return "edit"
+  }
+
+  return baseline
+}
+
 export function hasAnyPermission(
   user: AuthUser | null,
   resource: Resource
