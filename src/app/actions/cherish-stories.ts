@@ -9,6 +9,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  or,
 } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -37,9 +38,9 @@ export type CherishStory = {
   readonly viewedAt: string | null
   readonly reactedAt: string | null
   readonly reactionCount: number
-  readonly audience: {
-    readonly scope: "company"
-  }
+  readonly audience:
+    | { readonly scope: "company" }
+    | { readonly scope: "user" }
 }
 
 type StoryActionResult<T> =
@@ -410,13 +411,21 @@ async function getCherishStories({
         isAnonymous: cherishPulseResponses.isAnonymous,
         submittedByName: cherishPulseResponses.submittedByName,
         publishedAt: cherishPulseResponses.publishedAt,
+        audienceScope: cherishPulseResponses.audienceScope,
+        audienceReferenceId: cherishPulseResponses.audienceReferenceId,
       })
       .from(cherishPulseResponses)
       .where(
         and(
           eq(cherishPulseResponses.organizationId, organizationId),
           eq(cherishPulseResponses.visibility, "team"),
-          eq(cherishPulseResponses.audienceScope, "company"),
+          or(
+            eq(cherishPulseResponses.audienceScope, "company"),
+            and(
+              eq(cherishPulseResponses.audienceScope, "user"),
+              eq(cherishPulseResponses.audienceReferenceId, user.id),
+            ),
+          ),
           eq(cherishPulseResponses.reviewStatus, "approved"),
           activeOnly
             ? gte(cherishPulseResponses.publishedAt, cutoff)
@@ -494,7 +503,11 @@ async function getCherishStories({
           viewedAt: state?.viewedAt ?? null,
           reactedAt: state?.reactedAt ?? null,
           reactionCount: reactionsByResponse.get(row.id) ?? 0,
-          audience: { scope: "company" },
+          audience:
+            row.audienceScope === "user" &&
+            row.audienceReferenceId === user.id
+              ? { scope: "user" }
+              : { scope: "company" },
         }
       }),
     }
@@ -553,7 +566,13 @@ async function storyMutationContext(
         eq(cherishPulseResponses.id, responseId),
         eq(cherishPulseResponses.organizationId, organizationId),
         eq(cherishPulseResponses.visibility, "team"),
-        eq(cherishPulseResponses.audienceScope, "company"),
+        or(
+          eq(cherishPulseResponses.audienceScope, "company"),
+          and(
+            eq(cherishPulseResponses.audienceScope, "user"),
+            eq(cherishPulseResponses.audienceReferenceId, user.id),
+          ),
+        ),
         eq(cherishPulseResponses.reviewStatus, "approved"),
         gte(cherishPulseResponses.publishedAt, cutoff),
       ),

@@ -913,14 +913,17 @@ function CherishPulse(): React.ReactElement {
   }
 
   function handleReviewResponse(
-    id: string,
+    response: CherishPulseReviewItem,
     decision: CherishPulseReviewDecision
   ): void {
     setReviewMessage(null)
-    setReviewingId(id)
+    setReviewingId(response.id)
 
     async function reviewResponse(): Promise<void> {
-      const result = await reviewCherishPulseResponse({ id, decision })
+      const result = await reviewCherishPulseResponse({
+        id: response.id,
+        decision,
+      })
       if (!result.success) {
         setReviewMessage(result.error)
         setReviewingId(null)
@@ -932,7 +935,9 @@ function CherishPulse(): React.ReactElement {
       )
       setReviewMessage(
         result.data.reviewStatus === "approved"
-          ? "Approved for the team-visible CHERISH stream."
+          ? response.audience.scope === "user"
+            ? "Approved for the selected employee only."
+            : "Approved for the team-visible CHERISH stream."
           : "Archived from the review queue."
       )
       setReviewingId(null)
@@ -1122,9 +1127,14 @@ function CherishPulse(): React.ReactElement {
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <Badge variant={response.visibility === "private" ? "secondary" : "outline"}>
-                      {CHERISH_RESPONSE_COPY[response.responseType].label}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={response.visibility === "private" ? "secondary" : "outline"}>
+                        {CHERISH_RESPONSE_COPY[response.responseType].label}
+                      </Badge>
+                      {response.audience.scope === "user" ? (
+                        <Badge variant="secondary">Employee only</Badge>
+                      ) : null}
+                    </div>
                     <DeveloperOnly>
                       <span className="text-xs text-muted-foreground">
                         {sourceLabel(response.source)}
@@ -1142,7 +1152,7 @@ function CherishPulse(): React.ReactElement {
                       type="button"
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => handleReviewResponse(response.id, "approve")}
+                      onClick={() => handleReviewResponse(response, "approve")}
                       disabled={reviewingId === response.id}
                     >
                       {reviewingId === response.id ? "Working..." : "Approve"}
@@ -1152,7 +1162,7 @@ function CherishPulse(): React.ReactElement {
                       size="sm"
                       variant="outline"
                       className="h-7 px-2 text-xs"
-                      onClick={() => handleReviewResponse(response.id, "archive")}
+                      onClick={() => handleReviewResponse(response, "archive")}
                       disabled={reviewingId === response.id}
                     >
                       Archive

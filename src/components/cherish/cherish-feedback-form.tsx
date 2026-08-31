@@ -7,6 +7,7 @@ import {
   type CherishPulseResponseType,
   type CherishValue,
 } from "@/app/actions/cherish-pulse"
+import type { CherishRecipientOption } from "@/app/actions/cherish-recipients"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -38,13 +39,20 @@ export const CHERISH_RESPONSE_TYPES: readonly {
   { value: "concern", label: "Private concern" },
 ]
 
-export function CherishFeedbackForm(): React.ReactElement {
+const COMPANY_RECIPIENT = "company"
+
+export function CherishFeedbackForm({
+  recipients,
+}: {
+  readonly recipients: readonly CherishRecipientOption[]
+}): React.ReactElement {
   const [cherishValue, setCherishValue] =
     useState<CherishValue>("Reliability")
   const [responseType, setResponseType] =
     useState<CherishPulseResponseType>("shoutout")
   const [message, setMessage] = useState("")
   const [anonymous, setAnonymous] = useState(false)
+  const [recipientId, setRecipientId] = useState(COMPANY_RECIPIENT)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -68,6 +76,10 @@ export function CherishFeedbackForm(): React.ReactElement {
         message: trimmedMessage,
         source: "compass_dashboard",
         anonymous,
+        recipientId:
+          responseType === "shoutout" && recipientId !== COMPANY_RECIPIENT
+            ? recipientId
+            : undefined,
       })
 
       if (!result.success) {
@@ -77,12 +89,18 @@ export function CherishFeedbackForm(): React.ReactElement {
 
       setMessage("")
       setAnonymous(false)
+      setRecipientId(COMPANY_RECIPIENT)
+      const selectedRecipient = recipients.find(
+        (recipient) => recipient.id === recipientId,
+      )
       setFeedback(
-        anonymous
-          ? "Saved anonymously to the CHERISH review queue."
-          : responseType === "concern"
-            ? "Saved privately for leadership review."
-            : "Saved to the CHERISH review queue.",
+        responseType === "concern"
+          ? "Saved privately for leadership review."
+          : selectedRecipient
+            ? `Saved${anonymous ? " anonymously" : ""} for review. Only ${selectedRecipient.name} will receive it after approval.`
+            : anonymous
+              ? "Saved anonymously to the CHERISH review queue."
+              : "Saved to the CHERISH review queue.",
       )
     })
   }
@@ -149,6 +167,35 @@ export function CherishFeedbackForm(): React.ReactElement {
         </div>
       </div>
 
+      {responseType === "shoutout" ? (
+        <div>
+          <label className="mb-1.5 block text-sm font-medium">
+            Who should see this?
+          </label>
+          <Select value={recipientId} onValueChange={setRecipientId}>
+            <SelectTrigger aria-describedby="cherish-recipient-description">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={COMPANY_RECIPIENT}>Whole company</SelectItem>
+              {recipients.map((recipient) => (
+                <SelectItem key={recipient.id} value={recipient.id}>
+                  {recipient.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p
+            id="cherish-recipient-description"
+            className="mt-1.5 text-xs text-muted-foreground"
+          >
+            {recipientId === COMPANY_RECIPIENT
+              ? "After approval, everyone can see this story."
+              : "After approval, only the selected employee can see this story."}
+          </p>
+        </div>
+      ) : null}
+
       <div>
         <label className="mb-1.5 block text-sm font-medium">Message</label>
         <Textarea
@@ -197,7 +244,9 @@ export function CherishFeedbackForm(): React.ReactElement {
           {feedback ??
             (responseType === "concern"
               ? "Private concerns are visible only to Executive Admin reviewers."
-              : "Team responses appear after Executive Admin approval.")}
+              : recipientId === COMPANY_RECIPIENT
+                ? "Company stories appear after Executive Admin approval."
+                : "Only the selected employee will see this after approval.")}
         </p>
         <Button
           type="submit"

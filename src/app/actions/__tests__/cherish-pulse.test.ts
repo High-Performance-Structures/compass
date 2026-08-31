@@ -75,6 +75,56 @@ describe("reviewCherishPulseResponse", () => {
       "/dashboard/executive-admin/cherish",
     )
   })
+
+  it("revalidates an employee recipient before approval", async () => {
+    const responseQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    responseQuery.from.mockReturnValue(responseQuery)
+    responseQuery.where.mockReturnValue(responseQuery)
+    responseQuery.get.mockResolvedValue({
+      id: "recognition-1",
+      responseType: "shoutout",
+      audienceScope: "user",
+      audienceReferenceId: "staff-2",
+    })
+    const recipientQuery = {
+      from: vi.fn(),
+      innerJoin: vi.fn(),
+      where: vi.fn(),
+      get: vi.fn(),
+    }
+    recipientQuery.from.mockReturnValue(recipientQuery)
+    recipientQuery.innerJoin.mockReturnValue(recipientQuery)
+    recipientQuery.where.mockReturnValue(recipientQuery)
+    recipientQuery.get.mockResolvedValue({ id: "staff-2", role: "field_crew" })
+
+    const updateChain = { set: vi.fn(), where: vi.fn(), run: vi.fn() }
+    updateChain.set.mockReturnValue(updateChain)
+    updateChain.where.mockReturnValue(updateChain)
+    updateChain.run.mockResolvedValue(undefined)
+    mocks.getDb.mockReturnValue({
+      select: vi
+        .fn()
+        .mockReturnValueOnce(responseQuery)
+        .mockReturnValueOnce(recipientQuery),
+      update: vi.fn().mockReturnValue(updateChain),
+    })
+
+    const result = await reviewCherishPulseResponse({
+      id: "recognition-1",
+      decision: "approve",
+    })
+
+    expect(result).toEqual({
+      success: true,
+      data: { id: "recognition-1", reviewStatus: "approved" },
+    })
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewStatus: "approved",
+        publishedAt: expect.any(String),
+      }),
+    )
+  })
 })
 
 describe("anonymous CHERISH submissions", () => {
@@ -122,6 +172,64 @@ describe("anonymous CHERISH submissions", () => {
         isAnonymous: true,
       }),
     )
+  })
+
+  it("stores a validated employee-only shoutout", async () => {
+    const recipientQuery = {
+      from: vi.fn(),
+      innerJoin: vi.fn(),
+      where: vi.fn(),
+      get: vi.fn(),
+    }
+    recipientQuery.from.mockReturnValue(recipientQuery)
+    recipientQuery.innerJoin.mockReturnValue(recipientQuery)
+    recipientQuery.where.mockReturnValue(recipientQuery)
+    recipientQuery.get.mockResolvedValue({ id: "staff-2", role: "field_crew" })
+    const insertChain = { values: vi.fn(), run: vi.fn() }
+    insertChain.values.mockReturnValue(insertChain)
+    insertChain.run.mockResolvedValue(undefined)
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(recipientQuery),
+      insert: vi.fn().mockReturnValue(insertChain),
+    })
+
+    const result = await submitCherishPulseResponse({
+      cherishValue: "Honor",
+      responseType: "shoutout",
+      message: "Thank you for helping the team.",
+      recipientId: "staff-2",
+    })
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.audience).toEqual({
+      scope: "user",
+      recipientId: "staff-2",
+    })
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audienceScope: "user",
+        audienceReferenceId: "staff-2",
+      }),
+    )
+  })
+
+  it("rejects employee targeting for project wins", async () => {
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({ insert })
+
+    const result = await submitCherishPulseResponse({
+      cherishValue: "Excellence",
+      responseType: "win",
+      message: "We passed the final inspection.",
+      recipientId: "staff-2",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: "Employee recipients are available only for shout-outs.",
+    })
+    expect(insert).not.toHaveBeenCalled()
   })
 })
 

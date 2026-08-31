@@ -52,6 +52,8 @@ describe("CHERISH stories", () => {
         isAnonymous: false,
         submittedByName: "Nicholai",
         publishedAt: "2026-08-29T12:00:00.000Z",
+        audienceScope: "company",
+        audienceReferenceId: null,
       },
     ]
     const storyQuery = {
@@ -100,7 +102,13 @@ describe("CHERISH stories", () => {
       success: true,
       data: [
         {
-          ...storyRows[0],
+          id: "story-1",
+          cherishValue: "Honor",
+          responseType: "shoutout",
+          message: "A thoughtful handoff made the day better.",
+          isAnonymous: false,
+          submittedByName: "Nicholai",
+          publishedAt: "2026-08-29T12:00:00.000Z",
           viewedAt: "2026-08-29T12:05:00.000Z",
           reactedAt: "2026-08-29T12:06:00.000Z",
           reactionCount: 4,
@@ -142,6 +150,26 @@ describe("CHERISH stories", () => {
     )
     expect(insertQuery.onConflictDoUpdate).toHaveBeenCalledOnce()
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/dashboard")
+  })
+
+  it("does not mutate a story outside the current user's audience", async () => {
+    const accessQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    accessQuery.from.mockReturnValue(accessQuery)
+    accessQuery.where.mockReturnValue(accessQuery)
+    accessQuery.get.mockResolvedValue(null)
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(accessQuery),
+      insert,
+    })
+
+    const result = await markCherishStoryViewed({ id: "someone-elses-story" })
+
+    expect(result).toEqual({
+      success: false,
+      error: "This CHERISH story is no longer available.",
+    })
+    expect(insert).not.toHaveBeenCalled()
   })
 
   it("sends a private reply to the original submitter", async () => {

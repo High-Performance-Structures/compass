@@ -63,6 +63,12 @@ describe("fieldCherishRecognitionSchema", () => {
       }).success,
     ).toBe(true)
     expect(
+      fieldCherishRecognitionSchema.parse({
+        ...recognition,
+        responseType: "shoutout",
+      }).audienceScope,
+    ).toBe("company")
+    expect(
       fieldCherishRecognitionSchema.safeParse({
         ...recognition,
         responseType: "concern",
