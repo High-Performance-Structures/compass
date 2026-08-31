@@ -18,6 +18,11 @@ export type MetaPageCandidate = {
   readonly instagramUsername: string | null
 }
 
+export type MetaAlbumCandidate = {
+  readonly id: string
+  readonly name: string
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -166,6 +171,57 @@ async function graphGet(input: {
     throw graphError("Meta lookup", response, payload)
   }
   return payload
+}
+
+function normalizedAlbumName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US")
+}
+
+export async function findFacebookAlbumByName(input: {
+  readonly apiVersion: string
+  readonly pageId: string
+  readonly accessToken: string
+  readonly name: string
+}): Promise<MetaAlbumCandidate | null> {
+  const wantedName = normalizedAlbumName(input.name)
+  let nextUrl: URL | null = new URL(
+    `https://graph.facebook.com/${input.apiVersion}/${input.pageId}/albums`,
+  )
+  nextUrl.searchParams.set("fields", "id,name")
+  nextUrl.searchParams.set("limit", "100")
+  nextUrl.searchParams.set("access_token", input.accessToken)
+
+  // Keep discovery bounded so a Page with an unexpectedly large album catalog
+  // cannot hold a publishing request open indefinitely.
+  for (let page = 0; page < 10 && nextUrl; page += 1) {
+    const response = await fetch(nextUrl)
+    const payload = await responsePayload(response)
+    if (!response.ok || !isRecord(payload) || !Array.isArray(payload.data)) {
+      throw graphError("Facebook album lookup", response, payload)
+    }
+    for (const item of payload.data) {
+      if (!isRecord(item)) continue
+      const id = stringValue(item.id)
+      const name = stringValue(item.name)
+      if (id && name && normalizedAlbumName(name) === wantedName) {
+        return { id, name }
+      }
+    }
+
+    const paging = isRecord(payload.paging) ? payload.paging : null
+    const next = paging ? stringValue(paging.next) : null
+    if (!next) return null
+    const candidate = new URL(next)
+    if (candidate.protocol !== "https:" || candidate.hostname !== "graph.facebook.com") {
+      throw new Error("Facebook returned an invalid album paging URL.")
+    }
+    nextUrl = candidate
+  }
+
+  if (nextUrl) {
+    throw new Error("Facebook has too many albums to safely identify this project album.")
+  }
+  return null
 }
 
 function wait(milliseconds: number): Promise<void> {
