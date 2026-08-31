@@ -1,4 +1,4 @@
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { type NextRequest } from "next/server"
 
@@ -37,7 +37,8 @@ export async function GET(
   try {
     const user = await requireAuth()
     const { id: rawProjectId, videoId } = await params
-    const projectId = decodeProjectRouteId(rawProjectId)
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Video not found", { status: 404 })
     const requestedAudience = audienceValue(
       request.nextUrl.searchParams.get("audience")
     )

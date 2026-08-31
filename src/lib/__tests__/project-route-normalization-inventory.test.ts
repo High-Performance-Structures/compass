@@ -27,7 +27,9 @@ describe("project route ID normalization inventory", () => {
       const source = readFileSync(file, "utf8")
       return (
         !source.includes('from "@/lib/project-route-id"') ||
-        !source.includes("decodeProjectRouteId(")
+        !(source.includes("decodeProjectRouteId(") ||
+          source.includes("resolveProjectRouteId(") ||
+          source.includes("requireProjectRouteId("))
       )
     })
 

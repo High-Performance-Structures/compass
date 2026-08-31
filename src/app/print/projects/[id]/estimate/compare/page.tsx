@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import { getProjectEstimateVersionComparison } from "@/app/actions/project-estimates"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
 import { ProjectEstimateVersionComparisonDocument } from "@/components/projects/project-estimate-version-comparison"
@@ -16,7 +16,7 @@ export default async function ProjectEstimateComparisonPrintPage({
   }>
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
-  const id = decodeProjectRouteId(rawProjectId)
+  const id = await requireProjectRouteId(rawProjectId)
   const data = await getProjectEstimateVersionComparison(
     id,
     query.baseEstimateId,

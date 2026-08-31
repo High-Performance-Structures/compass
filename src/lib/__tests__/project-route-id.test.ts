@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import {
+  decodeProjectRouteId,
+  resolveProjectRouteIdWithLookup,
+} from "@/lib/project-route-id"
 
 describe("decodeProjectRouteId", () => {
   it("decodes an encoded Buildertrend lead project ID", () => {
@@ -33,5 +36,27 @@ describe("decodeProjectRouteId", () => {
     expect(
       decodeProjectRouteId("buildertrend-lead-project%3aorg-1%3alead-22496131"),
     ).toBe("buildertrend-lead-project:org-1:lead-22496131")
+  })
+
+  it("resolves a stale source ID to the canonical target before route actions", async () => {
+    await expect(
+      resolveProjectRouteIdWithLookup(
+        "buildertrend-lead-project%3Aorg-1%3Alead-22496131",
+        async (projectId) =>
+          projectId === "buildertrend-lead-project:org-1:lead-22496131"
+            ? "canonical-project"
+            : null,
+      ),
+    ).resolves.toBe("canonical-project")
+  })
+
+  it("fails closed when a route alias cycle is encountered", async () => {
+    await expect(
+      resolveProjectRouteIdWithLookup(
+        "legacy-source",
+        async (projectId) =>
+          projectId === "legacy-source" ? "legacy-target" : "legacy-source",
+      ),
+    ).resolves.toBeNull()
   })
 })

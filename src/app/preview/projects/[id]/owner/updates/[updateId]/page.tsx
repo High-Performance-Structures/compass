@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import { notFound } from "next/navigation"
 
@@ -57,7 +57,7 @@ export default async function OwnerUpdatePreviewPage({
   }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId, updateId } = await params
-  const id = decodeProjectRouteId(rawProjectId)
+  const id = await requireProjectRouteId(rawProjectId)
   const { document, preview } = await loadOwnerUpdatePreview(id, updateId)
   const homeHref = projectAudiencePreviewHref(id, "owner")
   const messageShortcut = projectAudienceMessageShortcut({

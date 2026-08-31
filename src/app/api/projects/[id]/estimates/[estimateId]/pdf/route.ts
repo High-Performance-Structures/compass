@@ -1,4 +1,4 @@
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -17,7 +17,8 @@ export async function GET(
   try {
     await requireAuth()
     const { id: rawProjectId, estimateId } = await context.params
-    const projectId = decodeProjectRouteId(rawProjectId)
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Estimate not found.", { status: 404 })
     const workspace = await getProjectEstimateWorkspace(projectId, estimateId)
     const estimate = workspace.activeEstimate
     if (!estimate || estimate.id !== estimateId) {

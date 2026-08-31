@@ -1,4 +1,4 @@
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { getProjectContractPacketWorkspace } from "@/app/actions/contract-packets"
 import {
   base64PdfBytes,
@@ -47,7 +47,10 @@ export async function GET(
 ): Promise<Response> {
   try {
     const { id: rawProjectId, packetId } = await context.params
-    const id = decodeProjectRouteId(rawProjectId)
+    const id = await resolveProjectRouteId(rawProjectId)
+    if (!id) {
+      return Response.json({ success: false, error: "Contract packet not found." }, { status: 404 })
+    }
     const workspace = await getProjectContractPacketWorkspace(id, packetId)
     const packet = workspace.activePacket
     if (!packet || packet.id !== packetId) {

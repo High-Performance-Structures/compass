@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 
 import { ProjectAudienceConversation } from "@/components/projects/project-audience-conversation"
@@ -19,7 +19,7 @@ export default async function OwnerConversationPage({
   }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId, channelId } = await params
-  const id = decodeProjectRouteId(rawProjectId)
+  const id = await requireProjectRouteId(rawProjectId)
   const query = await searchParams
   const mention =
     typeof query.mention === "string" ? query.mention : query.mention?.[0]

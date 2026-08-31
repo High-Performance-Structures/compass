@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { decodeProjectRouteId } from "@/lib/project-route-id"
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 
 import { ProjectAudienceWorkspaceRoute } from "@/components/projects/project-audience-workspace-route"
@@ -11,7 +11,7 @@ export default async function OwnerTeamPage({
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
-  const id = decodeProjectRouteId(rawProjectId)
+  const id = await requireProjectRouteId(rawProjectId)
   return (
     <ProjectAudienceWorkspaceRoute
       projectId={id}
