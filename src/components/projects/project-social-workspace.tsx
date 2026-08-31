@@ -323,11 +323,12 @@ export function ProjectSocialWorkspace({
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               {workspace.photos.map((photo) => {
                 const selected = photoIds.includes(photo.id)
+                // Anchor the hidden checkbox so focus cannot scroll nested page containers.
                 return (
                   <label
                     key={photo.id}
                     className={cn(
-                      "cursor-pointer overflow-hidden rounded-md border text-left transition",
+                      "relative cursor-pointer overflow-hidden rounded-md border text-left transition",
                       selected ? "border-primary ring-2 ring-primary/20" : "hover:border-muted-foreground/50",
                     )}
                   >
