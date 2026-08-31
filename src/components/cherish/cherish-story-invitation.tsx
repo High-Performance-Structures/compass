@@ -244,7 +244,7 @@ export function CherishStoryInvitation({
 
       setReplyDraft("")
       setLastReply({ id: result.data.id, storyId: currentStory.id })
-      setStatus("Reply sent privately.")
+      setStatus("Reply sent. Any follow-up will continue in Messages.")
     })
   }
 

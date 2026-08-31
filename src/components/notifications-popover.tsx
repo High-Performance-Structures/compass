@@ -61,6 +61,10 @@ function relativeTime(value: string): string {
   return `${days}d ago`
 }
 
+function notificationActionLabel(item: NotificationCenterItem): string {
+  return item.eventType === "cherish.story_reply" ? "Message" : "Open"
+}
+
 function NotificationsList({
   notifications,
   loading,
@@ -99,7 +103,7 @@ function NotificationsList({
                       {item.title}
                     </p>
                     <span className="text-[11px] font-medium text-primary">
-                      Open
+                      {notificationActionLabel(item)}
                     </span>
                   </div>
                   <p className="line-clamp-2 break-words text-xs text-muted-foreground">

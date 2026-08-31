@@ -5,15 +5,21 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   requireAuth: vi.fn(),
   revalidatePath: vi.fn(),
-  createNotificationEvent: vi.fn(),
+  createDirectMessage: vi.fn(),
+  sendMessage: vi.fn(),
+  deleteMessage: vi.fn(),
 }))
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
-vi.mock("@/lib/notifications/events", () => ({
-  createNotificationEvent: mocks.createNotificationEvent,
+vi.mock("@/app/actions/conversations", () => ({
+  createDirectMessage: mocks.createDirectMessage,
+}))
+vi.mock("@/app/actions/chat-messages", () => ({
+  sendMessage: mocks.sendMessage,
+  deleteMessage: mocks.deleteMessage,
 }))
 vi.mock("@/lib/user-roles", () => ({
   isInternalStaffRole: vi.fn(() => true),
@@ -39,7 +45,18 @@ describe("CHERISH stories", () => {
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
     mocks.getDb.mockReset()
     mocks.revalidatePath.mockReset()
-    mocks.createNotificationEvent.mockReset()
+    mocks.createDirectMessage.mockReset()
+    mocks.createDirectMessage.mockResolvedValue({
+      success: true,
+      data: { channelId: "direct:author-1:staff-1" },
+    })
+    mocks.sendMessage.mockReset()
+    mocks.sendMessage.mockResolvedValue({
+      success: true,
+      data: { id: "message-1" },
+    })
+    mocks.deleteMessage.mockReset()
+    mocks.deleteMessage.mockResolvedValue({ success: true })
   })
 
   it("returns active company stories with the current user's state", async () => {
@@ -181,28 +198,22 @@ describe("CHERISH stories", () => {
       recipientId: "author-1",
       recipientEmail: "author@example.com",
     })
-    const deliveryQuery = {
-      from: vi.fn(),
-      innerJoin: vi.fn(),
-      where: vi.fn(),
-      get: vi.fn(),
-    }
-    deliveryQuery.from.mockReturnValue(deliveryQuery)
-    deliveryQuery.innerJoin.mockReturnValue(deliveryQuery)
-    deliveryQuery.where.mockReturnValue(deliveryQuery)
-    deliveryQuery.get.mockResolvedValue({ id: "delivery-1" })
-
     const insertQuery = { values: vi.fn(), run: vi.fn() }
     insertQuery.values.mockReturnValue(insertQuery)
     insertQuery.run.mockResolvedValue(undefined)
+    const notificationUpdate = {
+      set: vi.fn(),
+      where: vi.fn(),
+      run: vi.fn(),
+    }
+    notificationUpdate.set.mockReturnValue(notificationUpdate)
+    notificationUpdate.where.mockReturnValue(notificationUpdate)
+    notificationUpdate.run.mockResolvedValue(undefined)
     mocks.getDb.mockReturnValue({
-      select: vi
-        .fn()
-        .mockReturnValueOnce(accessQuery)
-        .mockReturnValueOnce(deliveryQuery),
+      select: vi.fn().mockReturnValue(accessQuery),
       insert: vi.fn().mockReturnValue(insertQuery),
+      update: vi.fn().mockReturnValue(notificationUpdate),
     })
-    mocks.createNotificationEvent.mockResolvedValue(undefined)
 
     const result = await sendCherishStoryReply({
       id: "story-1",
@@ -212,23 +223,90 @@ describe("CHERISH stories", () => {
     expect(result.success).toBe(true)
     expect(insertQuery.values).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: "message-1",
         responseId: "story-1",
         authorId: "staff-1",
         recipientId: "author-1",
         message: "This made my day too.",
       }),
     )
-    expect(mocks.createNotificationEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        eventType: "cherish.story_reply",
-        recipients: [
-          { userId: "author-1", email: "author@example.com" },
-        ],
-      }),
-    )
+    expect(mocks.createDirectMessage).toHaveBeenCalledWith(["author-1"])
+    expect(mocks.sendMessage).toHaveBeenCalledWith({
+      channelId: "direct:author-1:staff-1",
+      content: "CHERISH reply\n\nThis made my day too.",
+    })
+    expect(notificationUpdate.set).toHaveBeenCalledWith({
+      eventType: "cherish.story_reply",
+      title: "staff@example.com replied to your CHERISH",
+      href: "/dashboard/conversations/direct%3Aauthor-1%3Astaff-1",
+    })
   })
 
-  it("rolls back a private reply when delivery fails", async () => {
+  it("does not save a reply when a direct conversation cannot be started", async () => {
+    const accessQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    accessQuery.from.mockReturnValue(accessQuery)
+    accessQuery.where.mockReturnValue(accessQuery)
+    accessQuery.get.mockResolvedValue({
+      id: "story-1",
+      recipientId: "author-1",
+      recipientEmail: "author@example.com",
+    })
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(accessQuery),
+      insert,
+    })
+    mocks.createDirectMessage.mockResolvedValue({
+      success: false,
+      error: "One or more team members were not found",
+    })
+
+    const result = await sendCherishStoryReply({
+      id: "story-1",
+      message: "Thank you!",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: "Unable to start a private conversation with the sender.",
+    })
+    expect(insert).not.toHaveBeenCalled()
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it("does not save a CHERISH reply when the private message fails", async () => {
+    const accessQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    accessQuery.from.mockReturnValue(accessQuery)
+    accessQuery.where.mockReturnValue(accessQuery)
+    accessQuery.get.mockResolvedValue({
+      id: "story-1",
+      recipientId: "author-1",
+      recipientEmail: "author@example.com",
+    })
+
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(accessQuery),
+      insert,
+    })
+    mocks.sendMessage.mockResolvedValue({
+      success: false,
+      error: "Failed to send message",
+    })
+
+    const result = await sendCherishStoryReply({
+      id: "story-1",
+      message: "This made my day too.",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: "Unable to send this reply as a private message.",
+    })
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it("removes the private message when CHERISH reply persistence fails", async () => {
     const accessQuery = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
     accessQuery.from.mockReturnValue(accessQuery)
     accessQuery.where.mockReturnValue(accessQuery)
@@ -240,26 +318,20 @@ describe("CHERISH stories", () => {
 
     const insertQuery = { values: vi.fn(), run: vi.fn() }
     insertQuery.values.mockReturnValue(insertQuery)
-    insertQuery.run.mockResolvedValue(undefined)
-    const notificationUpdate = { set: vi.fn(), where: vi.fn() }
+    insertQuery.run.mockRejectedValue(new Error("storage unavailable"))
+    const notificationUpdate = {
+      set: vi.fn(),
+      where: vi.fn(),
+      run: vi.fn(),
+    }
     notificationUpdate.set.mockReturnValue(notificationUpdate)
     notificationUpdate.where.mockReturnValue(notificationUpdate)
-    const replyUpdate = { set: vi.fn(), where: vi.fn() }
-    replyUpdate.set.mockReturnValue(replyUpdate)
-    replyUpdate.where.mockReturnValue(replyUpdate)
-    const batch = vi.fn().mockResolvedValue(undefined)
+    notificationUpdate.run.mockResolvedValue(undefined)
     mocks.getDb.mockReturnValue({
       select: vi.fn().mockReturnValue(accessQuery),
       insert: vi.fn().mockReturnValue(insertQuery),
-      update: vi
-        .fn()
-        .mockReturnValueOnce(notificationUpdate)
-        .mockReturnValueOnce(replyUpdate),
-      batch,
+      update: vi.fn().mockReturnValue(notificationUpdate),
     })
-    mocks.createNotificationEvent.mockRejectedValue(
-      new Error("notification storage unavailable"),
-    )
 
     const result = await sendCherishStoryReply({
       id: "story-1",
@@ -268,16 +340,13 @@ describe("CHERISH stories", () => {
 
     expect(result).toEqual({
       success: false,
-      error: "Unable to deliver this CHERISH reply. Please try again.",
+      error: "Unable to finish sending this reply. Please try again.",
     })
+    expect(mocks.deleteMessage).toHaveBeenCalledWith("message-1")
     expect(notificationUpdate.set).toHaveBeenCalledWith({
-      title: "CHERISH reply not delivered",
+      title: "CHERISH reply not sent",
       body: "This reply could not be delivered.",
     })
-    expect(replyUpdate.set).toHaveBeenCalledWith({
-      deletedAt: expect.any(String),
-    })
-    expect(batch).toHaveBeenCalledOnce()
   })
 
   it("does not save a reply when the story has no reachable author", async () => {
@@ -305,7 +374,7 @@ describe("CHERISH stories", () => {
       error: "Private replies are not available for this CHERISH.",
     })
     expect(insert).not.toHaveBeenCalled()
-    expect(mocks.createNotificationEvent).not.toHaveBeenCalled()
+    expect(mocks.sendMessage).not.toHaveBeenCalled()
   })
 
   it("redacts the delivered notification before removing a reply", async () => {
@@ -341,6 +410,7 @@ describe("CHERISH stories", () => {
     const result = await deleteCherishStoryReply({ id: "reply-1" })
 
     expect(result).toEqual({ success: true, data: { id: "reply-1" } })
+    expect(mocks.deleteMessage).toHaveBeenCalledWith("reply-1")
     expect(notificationUpdate.set).toHaveBeenCalledWith({
       title: "CHERISH reply removed",
       body: "This reply was removed by its sender.",
