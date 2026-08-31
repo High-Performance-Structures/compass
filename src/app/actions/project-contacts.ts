@@ -101,6 +101,11 @@ export type ProjectContactsSummary = {
   readonly groups: readonly ProjectContactGroup[]
   readonly csiGroups: readonly ProjectContactCsiGroup[]
   readonly allContacts: readonly ProjectContactItem[]
+  readonly historicalContacts: readonly ProjectContactItem[]
+}
+
+export type ProjectContactsSummaryOptions = {
+  readonly includeHistorical?: boolean
 }
 
 export type ProjectContactCsiGroup = {
@@ -606,7 +611,8 @@ function organizationUserToTaskAssigneeOption(input: {
 
 export async function getProjectContactsSummary(
   projectId: string,
-  audience: ProjectContactAudience = "internal"
+  audience: ProjectContactAudience = "internal",
+  options: ProjectContactsSummaryOptions = {}
 ): Promise<ProjectContactsSummary> {
   const db = await verifyProjectAccess(projectId)
 
@@ -632,6 +638,17 @@ export async function getProjectContactsSummary(
               eq(projectContacts.subVendorPortalVisible, true)
             )
           )
+
+  const historicalWhere = and(
+    eq(projectContacts.projectId, projectId),
+    eq(projectContacts.active, false),
+    eq(projectContacts.contactType, "internal"),
+    eq(projectContacts.sourceSystem, "buildertrend")
+  )
+  const queryWhere =
+    options.includeHistorical && audience === "internal"
+      ? or(visibilityWhere, historicalWhere)
+      : visibilityWhere
 
   const projectRow = await db
     .select({ organizationId: projects.organizationId })
@@ -705,7 +722,7 @@ export async function getProjectContactsSummary(
         )`
       )
     )
-    .where(visibilityWhere)
+    .where(queryWhere)
     .orderBy(
       asc(projectContacts.sortOrder),
       asc(projectContacts.contactType),
@@ -813,7 +830,9 @@ export async function getProjectContactsSummary(
   const activeProjectEmails = new Set(
     activeProjectMemberRows.map((member) => member.email.trim().toLowerCase())
   )
-  const allContacts = rows.map((row) => {
+  const toProjectContactItem = (
+    row: (typeof rows)[number]
+  ): ProjectContactItem => {
     const email = row.email?.trim().toLowerCase() ?? ""
     const latestInvitation =
       latestInvitationByContactId.get(row.id) ??
@@ -827,10 +846,12 @@ export async function getProjectContactsSummary(
 
     return toContactItem(
       row,
-      projectContactAccessStatus({
-        activeProjectMember,
-        latestInvitation,
-      }),
+      row.active
+        ? projectContactAccessStatus({
+            activeProjectMember,
+            latestInvitation,
+          })
+        : "not_invited",
       (row.sourceEntityId !== null &&
         directoryIdentityKeys.has(
           `${row.sourceEntityType}:${row.sourceEntityId}`
@@ -838,7 +859,11 @@ export async function getProjectContactsSummary(
         (row.vendorContactId !== null &&
           directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`))
     )
-  })
+  }
+  const allContacts = rows.filter((row) => row.active).map(toProjectContactItem)
+  const historicalContacts = rows
+    .filter((row) => !row.active)
+    .map(toProjectContactItem)
   const sourceLinks = await db
     .select({
       matchStatus: projectContactSourceLinks.matchStatus,
@@ -884,6 +909,7 @@ export async function getProjectContactsSummary(
     groups: buildGroups(allContacts),
     csiGroups: buildCsiGroups(allContacts),
     allContacts,
+    historicalContacts,
   }
 }
 

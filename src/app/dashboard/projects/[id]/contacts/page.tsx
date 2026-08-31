@@ -40,7 +40,7 @@ export default async function ProjectContactsPage({
 
   try {
     const [contactSummary, projectList] = await Promise.all([
-      getProjectContactsSummary(id, "internal"),
+      getProjectContactsSummary(id, "internal", { includeHistorical: true }),
       getProjects(),
     ])
     contacts = contactSummary
