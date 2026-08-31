@@ -77,6 +77,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     })
     const candidates = await getManagedMetaPages({
       apiVersion: config.metaApiVersion,
+      appId: config.metaAppId,
+      appSecret: config.metaAppSecret,
       userAccessToken,
     })
     if (candidates.length === 0) return redirectAndClear(request, "no-meta-pages")
