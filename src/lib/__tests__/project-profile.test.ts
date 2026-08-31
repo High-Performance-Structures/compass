@@ -57,6 +57,7 @@ describe("project profile rules", () => {
         "Awarded",
         "Under Construction",
         "Punchlist",
+        "Under Warranty",
         "Bid Refused",
       ]),
     )
@@ -90,6 +91,12 @@ describe("project profile rules", () => {
         jobStatusLabel: "Current",
       }),
     ).toBe("active")
+    expect(
+      projectJobStatusBucket({
+        jobStatusId: "under_warranty",
+        jobStatusLabel: "Under Warranty",
+      }),
+    ).toBe("warranty")
     expect(
       projectJobStatusBucket({
         jobStatusId: "organization-warranty",

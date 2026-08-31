@@ -218,6 +218,7 @@ export const PROJECT_JOB_STATUS_DEFINITIONS = [
   },
   { id: "current", label: "Current", followUpCadenceDays: 7 },
   { id: "punchlist", label: "Punchlist", followUpCadenceDays: 7 },
+  { id: "under_warranty", label: "Under Warranty", followUpCadenceDays: null },
   { id: "complete", label: "Complete", followUpCadenceDays: null },
   { id: "closed", label: "Closed", followUpCadenceDays: null },
   { id: "bid_refused", label: "Bid Refused", followUpCadenceDays: null },

@@ -36,6 +36,10 @@ const namespaceMigration = readFileSync(
   resolve(process.cwd(), "drizzle/0108_project_job_status_label_namespace.sql"),
   "utf8",
 )
+const underWarrantyMigration = readFileSync(
+  resolve(process.cwd(), "drizzle/0144_project_under_warranty_job_status.sql"),
+  "utf8",
+)
 
 async function openDatabase(): Promise<TestDatabase> {
   if ("Bun" in globalThis) {
@@ -435,6 +439,11 @@ describe("project job-status label namespace migration", () => {
         VALUES ('project-org-2', 'org-2', 'OPEN', 'current');
       `)
       database.exec(namespaceMigration)
+      expect(() =>
+        database.exec("UPDATE projects SET job_status_id = 'under_warranty' WHERE id = 'project-org-2'"),
+      ).toThrow(/Project job status/)
+      database.exec(underWarrantyMigration)
+      database.exec(underWarrantyMigration)
 
       expect(() => database.exec("UPDATE projects SET job_status_id = 'org-1-custom' WHERE id = 'project-org-2'")).toThrow(/Project job status/)
       expect(() => database.exec("UPDATE projects SET organization_id = NULL, job_status_id = 'org-1-custom' WHERE id = 'project-org-2'")).toThrow(/Project job status/)
