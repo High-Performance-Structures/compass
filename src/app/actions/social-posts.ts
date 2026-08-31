@@ -103,6 +103,8 @@ export type SocialPostWorkspace = {
     readonly targets: readonly {
       readonly platform: string
       readonly facebookAlbumMode: string
+      readonly facebookAlbumName: string | null
+      readonly facebookAlbumUrl: string | null
       readonly status: string
       readonly externalPostUrl: string | null
       readonly error: string | null
@@ -232,6 +234,7 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
   const targetRows = postIds.length > 0
     ? await context.db.select({
         postId: socialPostTargets.postId,
+        accountId: socialPostTargets.accountId,
         platform: socialPostTargets.platform,
         facebookAlbumMode: socialPostTargets.facebookAlbumMode,
         status: socialPostTargets.status,
@@ -239,6 +242,11 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
         error: socialPostTargets.error,
       }).from(socialPostTargets).where(inArray(socialPostTargets.postId, postIds))
     : []
+  const albumRows = await context.db.select({
+    accountId: socialProjectAlbums.accountId,
+    albumName: socialProjectAlbums.albumName,
+    externalAlbumId: socialProjectAlbums.externalAlbumId,
+  }).from(socialProjectAlbums).where(eq(socialProjectAlbums.projectId, projectId))
   const mediaRows = postIds.length > 0
     ? await context.db.select({
         postId: socialPostMedia.postId,
@@ -273,23 +281,35 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
       return platform ? [{ ...account, platform }] : []
     }),
     photos: photoRows,
-    posts: postRows.map((post) => ({
-      id: post.id,
-      heading: post.heading,
-      body: post.body,
-      hashtags: parseHashtags(post.hashtagsJson),
-      status: post.status,
-      createdAt: post.createdAt,
-      publishedAt: post.publishedAt,
-      photoIds: mediaRows.filter((media) => media.postId === post.id).map((media) => media.photoId),
-      targets: targetRows.filter((target) => target.postId === post.id).map((target) => ({
-        platform: target.platform,
-        facebookAlbumMode: target.facebookAlbumMode,
-        status: target.status,
-        externalPostUrl: target.externalPostUrl,
-        error: target.error,
-      })),
-    })),
+    posts: postRows.map((post) => {
+      const postMedia = mediaRows.filter((media) => media.postId === post.id)
+      return {
+        id: post.id,
+        heading: post.heading,
+        body: post.body,
+        hashtags: parseHashtags(post.hashtagsJson),
+        status: post.status,
+        createdAt: post.createdAt,
+        publishedAt: post.publishedAt,
+        photoIds: postMedia.map((media) => media.photoId),
+        targets: targetRows.filter((target) => target.postId === post.id).map((target) => {
+          const album = target.facebookAlbumMode === "project_album" && postMedia.length > 0
+            ? albumRows.find((candidate) => candidate.accountId === target.accountId)
+            : undefined
+          return {
+            platform: target.platform,
+            facebookAlbumMode: target.facebookAlbumMode,
+            facebookAlbumName: album?.albumName ?? null,
+            facebookAlbumUrl: album
+              ? `https://www.facebook.com/media/set/?set=a.${encodeURIComponent(album.externalAlbumId)}&type=3`
+              : null,
+            status: target.status,
+            externalPostUrl: target.externalPostUrl,
+            error: target.error,
+          }
+        }),
+      }
+    }),
   }
 }
 
@@ -461,7 +481,9 @@ export async function saveSocialPostDraft(input: {
         accountId: account.id,
         platform: account.platform,
         facebookAlbumMode:
-          account.platform === "facebook" ? input.facebookAlbumMode : "none",
+          account.platform === "facebook" && uniquePhotoIds.length > 0
+            ? input.facebookAlbumMode
+            : "none",
         status: "pending",
         externalPostId: null,
         externalPostUrl: null,
@@ -850,7 +872,7 @@ export async function publishSocialPost(input: {
             }),
           )
           let albumId: string | null = null
-          if (row.target.facebookAlbumMode === "project_album") {
+          if (row.target.facebookAlbumMode === "project_album" && photoUrls.length > 0) {
             const existingAlbum = await context.db.select().from(socialProjectAlbums).where(and(
               eq(socialProjectAlbums.accountId, row.account.id),
               eq(socialProjectAlbums.projectId, input.projectId),

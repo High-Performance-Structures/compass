@@ -12,7 +12,7 @@ import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import {
-  accessLevelToActions,
+  accessLevelToFeatureActions,
   getPermissionAccessLevel,
   getPermissionFeature,
   isPermissionAccessLevel,
@@ -57,10 +57,11 @@ const ACCESS_LEVEL_RANK: { readonly [key in PermissionAccessLevel]: number } = {
 }
 
 function accessLevelAllowsAction(
+  featureId: string,
   level: PermissionAccessLevel,
   action: Action
 ): boolean {
-  return accessLevelToActions(level).includes(action)
+  return accessLevelToFeatureActions(featureId, level).includes(action)
 }
 
 function strongerAccessLevel(
@@ -146,7 +147,7 @@ export async function canFeature(
   action: Action
 ): Promise<boolean> {
   const level = await getEffectivePermissionAccessLevel(user, featureId)
-  return accessLevelAllowsAction(level, action)
+  return accessLevelAllowsAction(featureId, level, action)
 }
 
 export async function requireFeaturePermission(

@@ -66,6 +66,9 @@ export function ProjectSocialWorkspace({
   readonly workspace: SocialPostWorkspace
 }): React.ReactElement {
   const router = useRouter()
+  const hasFacebookDestination = workspace.accounts.some(
+    (account) => account.platform === "facebook",
+  )
   const [editingPostId, setEditingPostId] = React.useState<string | undefined>()
   const [heading, setHeading] = React.useState("")
   const [body, setBody] = React.useState("")
@@ -74,7 +77,7 @@ export function ProjectSocialWorkspace({
   const [platforms, setPlatforms] = React.useState<readonly string[]>(
     workspace.accounts.map((account) => account.platform),
   )
-  const [projectAlbum, setProjectAlbum] = React.useState(false)
+  const [projectAlbum, setProjectAlbum] = React.useState(hasFacebookDestination)
   const [pending, startTransition] = React.useTransition()
 
   function toggleValue(values: readonly string[], value: string, checked: boolean): readonly string[] {
@@ -90,7 +93,7 @@ export function ProjectSocialWorkspace({
     setHashtags("")
     setPhotoIds([])
     setPlatforms(workspace.accounts.map((account) => account.platform))
-    setProjectAlbum(false)
+    setProjectAlbum(hasFacebookDestination)
   }
 
   function editPost(post: SocialPostWorkspace["posts"][number]): void {
@@ -116,7 +119,7 @@ export function ProjectSocialWorkspace({
         hashtags: parseHashtags(hashtags),
         photoIds,
         platforms,
-        facebookAlbumMode: projectAlbum ? "project_album" : "none",
+        facebookAlbumMode: projectAlbum && photoIds.length > 0 ? "project_album" : "none",
       })
       if (!result.success) {
         toast.error(result.error)
@@ -297,13 +300,16 @@ export function ProjectSocialWorkspace({
           {platforms.includes("facebook") ? (
             <label className="mt-3 flex items-start gap-2 text-sm">
               <Checkbox
-                checked={projectAlbum}
+                checked={projectAlbum && photoIds.length > 0}
+                disabled={photoIds.length === 0}
                 onCheckedChange={(checked) => setProjectAlbum(checked === true)}
               />
               <span>
-                <span className="block font-medium">Use this project’s Facebook album</span>
+                <span className="block font-medium">Use this project’s Facebook album (recommended)</span>
                 <span className="block text-xs text-muted-foreground">
-                  Compass will reuse a Page album with the same privacy-safe public title, or create it when none exists.
+                  {photoIds.length > 0
+                    ? "Compass will reuse a Page album with the same privacy-safe public title, or create it when none exists."
+                    : "Select at least one photo to use a project album."}
                 </span>
               </span>
             </label>
@@ -418,6 +424,13 @@ export function ProjectSocialWorkspace({
                           <a href={target.externalPostUrl} target="_blank" rel="noreferrer" className="text-primary underline">
                             View
                           </a>
+                        ) : null}
+                        {target.facebookAlbumUrl ? (
+                          <a href={target.facebookAlbumUrl} target="_blank" rel="noreferrer" className="text-primary underline">
+                            Album: {target.facebookAlbumName ?? "Project album"}
+                          </a>
+                        ) : target.platform === "facebook" && target.facebookAlbumMode === "project_album" ? (
+                          <span>Project album requested</span>
                         ) : null}
                         {target.error ? <span className="text-destructive">{target.error}</span> : null}
                       </span>

@@ -12,7 +12,7 @@ import {
   type TeamPermissionOverrideChoice,
 } from "@/app/actions/permission-overrides"
 import {
-  accessLevelToActions,
+  accessLevelToFeatureActions,
   getPermissionAccessLevel,
   PERMISSION_ACCESS_LEVELS,
   PERMISSION_FEATURES,
@@ -162,11 +162,13 @@ function TeamOverrideSelect({
 }
 
 function ActionsList({
+  featureId,
   accessLevel,
 }: {
+  readonly featureId: string
   readonly accessLevel: PermissionAccessLevel
 }): React.ReactElement {
-  const actions = accessLevelToActions(accessLevel)
+  const actions = accessLevelToFeatureActions(featureId, accessLevel)
 
   if (actions.length === 0) {
     return <span className="text-xs text-muted-foreground">none</span>
@@ -258,7 +260,7 @@ function FeatureRow({
       </TableCell>
       {showInternalDetails && (
         <TableCell>
-          <ActionsList accessLevel={accessLevel} />
+          <ActionsList featureId={feature.id} accessLevel={accessLevel} />
         </TableCell>
       )}
       <TableCell>
