@@ -349,14 +349,14 @@ export function ProjectContactsDirectory({
             <div className="flex items-center gap-2">
               <IconShieldCheck className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold">
-                Former employees (historical)
+                Former employees and historical internal users
               </h2>
             </div>
             <Badge variant="outline">{summary.historicalContacts.length}</Badge>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Historical Buildertrend contacts are retained for the record and are
-            inactive, uninvited, and excluded from active project access.
+            Historical Buildertrend internal contacts are retained for the record.
+            They are inactive, uninvited, and excluded from active project access.
           </p>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {summary.historicalContacts.map((contact) => (
