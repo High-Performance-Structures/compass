@@ -643,7 +643,31 @@ export async function getProjectContactsSummary(
     eq(projectContacts.projectId, projectId),
     eq(projectContacts.active, false),
     eq(projectContacts.contactType, "internal"),
-    eq(projectContacts.sourceSystem, "buildertrend")
+    eq(projectContacts.sourceSystem, "buildertrend"),
+    // Inactive imports also include superseded duplicates. Only surface rows
+    // that the cutover explicitly classified as historical staff records.
+    sql`case
+      when json_valid(${projectContacts.notes}) = 1
+        then json_extract(${projectContacts.notes}, '$.formerEmployeeStatus')
+      else null
+    end in ('former_employee', 'former_employee_or_review')`,
+    sql`not exists (
+      select 1
+      from project_contacts active_contact
+      where active_contact.project_id = ${projectContacts.projectId}
+        and active_contact.active = 1
+        and active_contact.contact_type = 'internal'
+        and (
+          (
+            ${projectContacts.sourceEntityId} is not null
+            and active_contact.source_entity_id = ${projectContacts.sourceEntityId}
+          )
+          or (
+            trim(coalesce(${projectContacts.email}, '')) <> ''
+            and lower(trim(active_contact.email)) = lower(trim(${projectContacts.email}))
+          )
+        )
+    )`
   )
   const queryWhere =
     options.includeHistorical && audience === "internal"
