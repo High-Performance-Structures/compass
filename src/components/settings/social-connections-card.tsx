@@ -82,6 +82,11 @@ export function SocialConnectionsCard(): React.ReactElement {
     if (params.get("social") === "x-profile-mismatch") {
       toast.error("That X profile does not match the approved profile for this department.")
     }
+    if (params.get("social") === "meta-permissions-missing") {
+      toast.error(
+        "Meta did not grant all publishing permissions for that Page. Edit Compass access in Meta, enable the department’s Facebook and Instagram accounts, then reconnect.",
+      )
+    }
     const draftId = params.get("social-draft")
     if (!draftId) return
     void getPendingMetaConnection(draftId).then((result) => {

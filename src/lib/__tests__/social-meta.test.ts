@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   getManagedMetaPages,
+  hasRequiredMetaCandidateScopes,
   publishFacebookPhotos,
 } from "@/lib/social/meta"
 
@@ -17,7 +18,29 @@ describe("Meta Page discovery", () => {
   it("uses the managed Page list when Meta returns it", async () => {
     const requestedUrls: string[] = []
     globalThis.fetch = async (input: string | URL | Request): Promise<Response> => {
-      requestedUrls.push(input.toString())
+      const url = new URL(input.toString())
+      requestedUrls.push(url.pathname)
+      if (url.pathname.endsWith("/debug_token")) {
+        return Response.json({
+          data: {
+            scopes: [
+              "pages_show_list",
+              "pages_read_engagement",
+              "pages_manage_posts",
+              "instagram_basic",
+              "instagram_content_publish",
+            ],
+            granular_scopes: [
+              // Meta omits targets when a permission applies to all managed assets.
+              { scope: "pages_show_list" },
+              { scope: "pages_read_engagement", target_ids: ["page-1"] },
+              { scope: "pages_manage_posts", target_ids: ["page-1"] },
+              { scope: "instagram_basic", target_ids: ["instagram-1"] },
+              { scope: "instagram_content_publish", target_ids: ["instagram-1"] },
+            ],
+          },
+        })
+      }
       return Response.json({
         data: [{
           id: "page-1",
@@ -42,8 +65,15 @@ describe("Meta Page discovery", () => {
       pageAccessToken: "page-token",
       instagramAccountId: "instagram-1",
       instagramUsername: "orconstructionltd",
+      grantedScopes: [
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_posts",
+        "instagram_basic",
+        "instagram_content_publish",
+      ],
     }])
-    expect(requestedUrls).toHaveLength(1)
+    expect(requestedUrls).toEqual(["/v25.0/me/accounts", "/v25.0/debug_token"])
   })
 
   it("recovers Pages selected by Meta's granular asset picker", async () => {
@@ -59,8 +89,10 @@ describe("Meta Page discovery", () => {
         return Response.json({
           data: {
             granular_scopes: [
+              { scope: "pages_show_list", target_ids: ["page-1"] },
               { scope: "pages_manage_posts", target_ids: ["page-1"] },
               { scope: "pages_read_engagement", target_ids: ["page-1"] },
+              { scope: "instagram_basic", target_ids: ["instagram-1"] },
               { scope: "instagram_content_publish", target_ids: ["instagram-1"] },
             ],
           },
@@ -91,6 +123,13 @@ describe("Meta Page discovery", () => {
       pageAccessToken: "page-token",
       instagramAccountId: "instagram-1",
       instagramUsername: "orconstructionltd",
+      grantedScopes: [
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_posts",
+        "instagram_basic",
+        "instagram_content_publish",
+      ],
     }])
     expect(requests.map((request) => request.url.pathname)).toEqual([
       "/v25.0/me/accounts",
@@ -121,6 +160,64 @@ describe("Meta Page discovery", () => {
       appSecret: "app-secret",
       userAccessToken: "user-token",
     })).resolves.toEqual([])
+  })
+
+  it("marks a Page incomplete when Meta granted only partial permissions for that asset", async () => {
+    globalThis.fetch = async (input: string | URL | Request): Promise<Response> => {
+      const url = new URL(input.toString())
+      if (url.pathname.endsWith("/me/accounts")) {
+        return Response.json({
+          data: [{
+            id: "page-hps",
+            name: "High Performance Structures, Inc.",
+            access_token: "hps-page-token",
+            instagram_business_account: {
+              id: "instagram-hps",
+              username: "hpscolorado",
+            },
+          }],
+        })
+      }
+      return Response.json({
+        data: {
+          scopes: [
+            "pages_show_list",
+            "pages_read_engagement",
+            "pages_manage_posts",
+            "instagram_basic",
+            "instagram_content_publish",
+          ],
+          granular_scopes: [
+            { scope: "pages_show_list", target_ids: ["page-hps"] },
+            { scope: "pages_read_engagement", target_ids: ["page-orc"] },
+            { scope: "pages_manage_posts", target_ids: ["page-orc"] },
+            { scope: "instagram_basic", target_ids: ["instagram-hps"] },
+            { scope: "instagram_content_publish", target_ids: ["instagram-hps"] },
+          ],
+        },
+      })
+    }
+
+    const candidates = await getManagedMetaPages({
+      apiVersion: "v25.0",
+      appId: "app-id",
+      appSecret: "app-secret",
+      userAccessToken: "user-token",
+    })
+
+    expect(candidates).toEqual([{
+      pageId: "page-hps",
+      pageName: "High Performance Structures, Inc.",
+      pageAccessToken: "hps-page-token",
+      instagramAccountId: "instagram-hps",
+      instagramUsername: "hpscolorado",
+      grantedScopes: [
+        "pages_show_list",
+        "instagram_basic",
+        "instagram_content_publish",
+      ],
+    }])
+    expect(candidates[0] ? hasRequiredMetaCandidateScopes(candidates[0]) : true).toBe(false)
   })
 })
 

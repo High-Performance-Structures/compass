@@ -10,8 +10,13 @@ import { getSocialConfig } from "@/lib/social/config"
 import {
   exchangeMetaAuthorizationCode,
   getManagedMetaPages,
+  hasRequiredMetaCandidateScopes,
 } from "@/lib/social/meta"
-import { socialDepartment } from "@/lib/social/types"
+import {
+  isExpectedFacebookPage,
+  isExpectedInstagramProfile,
+  socialDepartment,
+} from "@/lib/social/types"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const STATE_COOKIE = "compass_social_meta_state"
@@ -75,13 +80,31 @@ export async function GET(request: NextRequest): Promise<Response> {
       redirectUri,
       code,
     })
-    const candidates = await getManagedMetaPages({
+    const discoveredCandidates = await getManagedMetaPages({
       apiVersion: config.metaApiVersion,
       appId: config.metaAppId,
       appSecret: config.metaAppSecret,
       userAccessToken,
     })
-    if (candidates.length === 0) return redirectAndClear(request, "no-meta-pages")
+    if (discoveredCandidates.length === 0) {
+      return redirectAndClear(request, "no-meta-pages")
+    }
+    const expectedPageCandidates = discoveredCandidates.filter((candidate) =>
+      isExpectedFacebookPage(department, candidate.pageName)
+    )
+    if (
+      expectedPageCandidates.length > 0 &&
+      !expectedPageCandidates.some((candidate) =>
+        isExpectedInstagramProfile(department, candidate.instagramUsername) &&
+        hasRequiredMetaCandidateScopes(candidate)
+      )
+    ) {
+      return redirectAndClear(request, "meta-permissions-missing")
+    }
+    const candidates = discoveredCandidates.filter(hasRequiredMetaCandidateScopes)
+    if (candidates.length === 0) {
+      return redirectAndClear(request, "meta-permissions-missing")
+    }
 
     const id = crypto.randomUUID()
     const now = new Date()

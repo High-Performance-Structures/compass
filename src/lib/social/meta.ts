@@ -16,6 +16,14 @@ export type MetaPageCandidate = {
   readonly pageAccessToken: string
   readonly instagramAccountId: string | null
   readonly instagramUsername: string | null
+  readonly grantedScopes: readonly string[]
+}
+
+type MetaPageDetails = Omit<MetaPageCandidate, "grantedScopes">
+
+type MetaTokenPermissions = {
+  readonly scopes: ReadonlySet<string>
+  readonly targetsByScope: ReadonlyMap<string, ReadonlySet<string>>
 }
 
 export type MetaAlbumCandidate = {
@@ -23,7 +31,7 @@ export type MetaAlbumCandidate = {
   readonly name: string
 }
 
-function metaPageCandidate(value: unknown): MetaPageCandidate | null {
+function metaPageCandidate(value: unknown): MetaPageDetails | null {
   if (!isRecord(value)) return null
   const pageId = stringValue(value.id)
   const pageName = stringValue(value.name)
@@ -39,6 +47,84 @@ function metaPageCandidate(value: unknown): MetaPageCandidate | null {
     instagramAccountId: instagram ? stringValue(instagram.id) : null,
     instagramUsername: instagram ? stringValue(instagram.username) : null,
   }
+}
+
+function stringValues(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const parsed = stringValue(item)
+    return parsed ? [parsed] : []
+  })
+}
+
+async function inspectMetaTokenPermissions(input: {
+  readonly apiVersion: string
+  readonly appId: string
+  readonly appSecret: string
+  readonly userAccessToken: string
+}): Promise<MetaTokenPermissions> {
+  const debugUrl = new URL(`https://graph.facebook.com/${input.apiVersion}/debug_token`)
+  debugUrl.searchParams.set("input_token", input.userAccessToken)
+  const response = await fetch(debugUrl, {
+    headers: { Authorization: `Bearer ${input.appId}|${input.appSecret}` },
+  })
+  const payload = await responsePayload(response)
+  if (!response.ok || !isRecord(payload) || !isRecord(payload.data)) {
+    throw graphError("Meta token inspection", response, payload)
+  }
+
+  const scopes = new Set(stringValues(payload.data.scopes))
+  const targetsByScope = new Map<string, Set<string>>()
+  const granularScopes = Array.isArray(payload.data.granular_scopes)
+    ? payload.data.granular_scopes
+    : []
+  for (const granularScope of granularScopes) {
+    if (!isRecord(granularScope)) continue
+    const scope = stringValue(granularScope.scope)
+    if (!scope) continue
+    scopes.add(scope)
+    const grantedTargets = stringValues(granularScope.target_ids)
+    if (grantedTargets.length === 0) continue
+    const targets = targetsByScope.get(scope) ?? new Set<string>()
+    for (const targetId of grantedTargets) {
+      targets.add(targetId)
+    }
+    targetsByScope.set(scope, targets)
+  }
+  return { scopes, targetsByScope }
+}
+
+function scopeGrantedForTargets(
+  permissions: MetaTokenPermissions,
+  scope: string,
+  targetIds: readonly string[],
+): boolean {
+  if (!permissions.scopes.has(scope)) return false
+  const granularTargets = permissions.targetsByScope.get(scope)
+  if (!granularTargets) return true
+  return targetIds.some((targetId) => granularTargets.has(targetId))
+}
+
+function candidateWithGrantedScopes(
+  candidate: MetaPageDetails,
+  permissions: MetaTokenPermissions,
+): MetaPageCandidate {
+  const instagramTargets = candidate.instagramAccountId
+    ? [candidate.pageId, candidate.instagramAccountId]
+    : [candidate.pageId]
+  const grantedScopes = META_SCOPES.filter((scope) => scopeGrantedForTargets(
+    permissions,
+    scope,
+    scope.startsWith("instagram_") ? instagramTargets : [candidate.pageId],
+  ))
+  return { ...candidate, grantedScopes }
+}
+
+export function hasRequiredMetaCandidateScopes(candidate: MetaPageCandidate): boolean {
+  const requiredScopes = candidate.instagramAccountId
+    ? META_SCOPES
+    : META_SCOPES.filter((scope) => !scope.startsWith("instagram_"))
+  return requiredScopes.every((scope) => candidate.grantedScopes.includes(scope))
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -135,41 +221,29 @@ export async function getManagedMetaPages(input: {
     throw graphError("Meta Page lookup", response, payload)
   }
 
-  const candidates: MetaPageCandidate[] = []
+  const pageDetails: MetaPageDetails[] = []
   for (const item of payload.data) {
     const candidate = metaPageCandidate(item)
-    if (candidate) candidates.push(candidate)
+    if (candidate) pageDetails.push(candidate)
   }
-  if (candidates.length > 0) return candidates
+
+  const permissions = await inspectMetaTokenPermissions(input)
+  if (pageDetails.length > 0) {
+    return pageDetails.map((candidate) => candidateWithGrantedScopes(candidate, permissions))
+  }
 
   // Meta's granular asset picker can authorize Pages without returning them from
-  // /me/accounts. Recover only the Page targets attached to the granted Page scopes.
-  const debugUrl = new URL(`https://graph.facebook.com/${input.apiVersion}/debug_token`)
-  debugUrl.searchParams.set("input_token", input.userAccessToken)
-  const debugResponse = await fetch(debugUrl, {
-    headers: { Authorization: `Bearer ${input.appId}|${input.appSecret}` },
-  })
-  const debugPayload = await responsePayload(debugResponse)
-  if (!debugResponse.ok || !isRecord(debugPayload) || !isRecord(debugPayload.data)) {
-    throw graphError("Meta token inspection", debugResponse, debugPayload)
-  }
-
+  // /me/accounts. Recover each candidate with its exact grants so the callback
+  // can validate the Page that belongs to the requested department.
   const pageIds = new Set<string>()
-  const granularScopes = Array.isArray(debugPayload.data.granular_scopes)
-    ? debugPayload.data.granular_scopes
-    : []
-  for (const granularScope of granularScopes) {
-    if (!isRecord(granularScope)) continue
-    const scope = stringValue(granularScope.scope)
-    if (!scope || !isMetaPageScope(scope) || !Array.isArray(granularScope.target_ids)) {
-      continue
-    }
-    for (const targetId of granularScope.target_ids) {
-      const pageId = stringValue(targetId)
-      if (pageId) pageIds.add(pageId)
+  for (const [scope, targetIds] of permissions.targetsByScope) {
+    if (!isMetaPageScope(scope)) continue
+    for (const targetId of targetIds) {
+      pageIds.add(targetId)
     }
   }
 
+  const candidates: MetaPageCandidate[] = []
   for (const pageId of pageIds) {
     const pageUrl = new URL(`https://graph.facebook.com/${input.apiVersion}/${pageId}`)
     pageUrl.searchParams.set(
@@ -183,7 +257,8 @@ export async function getManagedMetaPages(input: {
       throw graphError("Meta Page lookup", pageResponse, pagePayload)
     }
     const candidate = metaPageCandidate(pagePayload)
-    if (candidate) candidates.push(candidate)
+    if (!candidate) continue
+    candidates.push(candidateWithGrantedScopes(candidate, permissions))
   }
   return candidates
 }
