@@ -130,7 +130,11 @@ export function legacyProjectResolutionPathname(
   if (route.suffix) search.set("suffix", route.suffix)
   const preservedSearch = originalRouteSearch(originalSearch).toString()
   if (preservedSearch) search.set("originalSearch", preservedSearch)
-  return `/dashboard/projects/legacy-route?${search.toString()}`
+  // Keep the resolver outside the dashboard layout. A client-side navigation
+  // into a nested resolver replaces the dashboard child tree while the shell
+  // is still hydrating, which can trigger React hook-order failures. The
+  // resolver itself only redirects and therefore does not need that shell.
+  return `/legacy-project-route?${search.toString()}`
 }
 
 export function legacyProjectFallbackPathname(
