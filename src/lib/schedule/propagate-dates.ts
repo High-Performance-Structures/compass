@@ -216,7 +216,23 @@ export function recalculateScheduleDates(
         exceptions
       )
       if (dates) {
-        taskMap.set(successor.id, { ...successor, ...dates })
+        // A calendar change may tighten a dependency, but it must not erase
+        // intentional slack by pulling an already-later task back to the
+        // dependency's earliest allowed date. Keep the stored start unless
+        // the recalculated constraint requires the task to move forward.
+        const startDate =
+          successor.startDate > dates.startDate
+            ? successor.startDate
+            : dates.startDate
+        taskMap.set(successor.id, {
+          ...successor,
+          startDate,
+          endDateCalculated: calculateEndDate(
+            startDate,
+            successor.workdays,
+            exceptions
+          ),
+        })
       }
       queue.push(successor.id)
     }
