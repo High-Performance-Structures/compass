@@ -71,3 +71,17 @@ export function driveFileIdFromValue(value: string): string | null {
 export function isPublishedProjectDocumentStatus(status: string): boolean {
   return status === "current" || status === "superseded"
 }
+
+export function isPublishableProjectDocumentMimeType(mimeType: string): boolean {
+  if (mimeType === "application/vnd.google-apps.folder") return false
+  if (!mimeType.startsWith("application/vnd.google-apps.")) return true
+  return [
+    "application/vnd.google-apps.document",
+    "application/vnd.google-apps.spreadsheet",
+    "application/vnd.google-apps.presentation",
+  ].includes(mimeType)
+}
+
+export function projectDocumentTitleFromFileName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "")
+}
