@@ -83,6 +83,56 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const cherishCardFulfillments = sqliteTable(
+  "cherish_card_fulfillments",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => cherishPulseResponses.id),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    provider: text("provider").notNull().default("handwrytten"),
+    deliveryMethod: text("delivery_method").notNull().default("physical_mail"),
+    providerOrderId: text("provider_order_id"),
+    status: text("status").notNull().default("submitting"),
+    providerCardId: text("provider_card_id").notNull(),
+    cardName: text("card_name").notNull(),
+    message: text("message").notNull(),
+    wishes: text("wishes").notNull(),
+    recipientFirstName: text("recipient_first_name").notNull(),
+    recipientLastName: text("recipient_last_name").notNull(),
+    recipientBusinessName: text("recipient_business_name"),
+    recipientEmail: text("recipient_email"),
+    recipientPhone: text("recipient_phone"),
+    recipientAddress1: text("recipient_address1"),
+    recipientAddress2: text("recipient_address2"),
+    recipientCity: text("recipient_city"),
+    recipientState: text("recipient_state"),
+    recipientPostalCode: text("recipient_postal_code"),
+    recipientCountry: text("recipient_country"),
+    giftProviderItemId: text("gift_provider_item_id"),
+    giftName: text("gift_name"),
+    giftAmountCents: integer("gift_amount_cents"),
+    providerError: text("provider_error"),
+    submittedAt: text("submitted_at"),
+    cancelledAt: text("cancelled_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("cherish_card_fulfillment_response_idx").on(table.responseId),
+    index("cherish_card_fulfillment_org_status_idx").on(
+      table.organizationId,
+      table.status,
+    ),
+  ],
+)
+
 export const cherishPulseStoryStates = sqliteTable(
   "cherish_pulse_story_states",
   {
