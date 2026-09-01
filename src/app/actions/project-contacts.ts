@@ -36,6 +36,7 @@ import {
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
+import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectContactType =
@@ -670,7 +671,9 @@ export async function getProjectContactsSummary(
     )`
   )
   const queryWhere =
-    options.includeHistorical && audience === "internal"
+    options.includeHistorical &&
+    audience === "internal" &&
+    canViewHistoricalProjectContacts((await requireAuth()).role)
       ? or(visibilityWhere, historicalWhere)
       : visibilityWhere
 

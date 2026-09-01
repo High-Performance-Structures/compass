@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge"
 import { projectContactCanInvite } from "@/lib/project-contact-access-status"
 import {
   buildProjectContactDisplayGroups,
+  projectContactCanEdit,
   type ProjectContactDisplayGroupId,
 } from "@/lib/project-contact-display"
 
@@ -137,14 +138,14 @@ function ContactCard({
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">{visibilityLabel(contact)}</Badge>
-          {directoryOptions && (
+          {projectContactCanEdit(contact, directoryOptions) && directoryOptions ? (
             <ProjectContactEditor
               projectId={projectId}
               contact={contact}
               directoryOptions={directoryOptions}
               sageOptions={sageOptions ?? { divisions: [], costCodes: [] }}
             />
-          )}
+          ) : null}
         </div>
       </div>
 

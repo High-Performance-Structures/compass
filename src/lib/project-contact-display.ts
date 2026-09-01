@@ -1,7 +1,9 @@
 import type {
+  ProjectContactDirectoryOption,
   ProjectContactItem,
   ProjectContactType,
 } from "@/app/actions/project-contacts"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectContactDisplayGroupId = "owners" | "vendors" | "internal"
 
@@ -9,6 +11,19 @@ export type ProjectContactDisplayGroup = {
   readonly id: ProjectContactDisplayGroupId
   readonly label: string
   readonly contacts: readonly ProjectContactItem[]
+}
+
+export function canViewHistoricalProjectContacts(
+  role: string | null | undefined
+): boolean {
+  return role !== null && role !== undefined && isInternalStaffRole(role)
+}
+
+export function projectContactCanEdit(
+  contact: Pick<ProjectContactItem, "active">,
+  directoryOptions: readonly ProjectContactDirectoryOption[] | undefined
+): boolean {
+  return contact.active && directoryOptions !== undefined
 }
 
 export function buildProjectContactDisplayGroups(

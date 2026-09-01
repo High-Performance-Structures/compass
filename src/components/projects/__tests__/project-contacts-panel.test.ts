@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import type { ProjectContactItem } from "@/app/actions/project-contacts"
-import { buildProjectContactDisplayGroups } from "@/lib/project-contact-display"
+import type {
+  ProjectContactDirectoryOption,
+  ProjectContactItem,
+} from "@/app/actions/project-contacts"
+import {
+  buildProjectContactDisplayGroups,
+  canViewHistoricalProjectContacts,
+  projectContactCanEdit,
+} from "@/lib/project-contact-display"
 
 function contact(
   id: string,
@@ -55,5 +62,25 @@ describe("buildProjectContactDisplayGroups", () => {
       "Internal",
     ])
     expect(groups.map((group) => group.contacts.length)).toEqual([1, 2, 1])
+  })
+})
+
+describe("projectContactCanEdit", () => {
+  it("keeps historical contacts read-only even when directory options exist", () => {
+    const directoryOptions: readonly ProjectContactDirectoryOption[] = []
+
+    expect(projectContactCanEdit(contact("former", "internal", false), directoryOptions)).toBe(
+      false
+    )
+    expect(projectContactCanEdit(contact("active", "internal"), directoryOptions)).toBe(true)
+    expect(projectContactCanEdit(contact("active", "internal"), undefined)).toBe(false)
+  })
+})
+
+describe("canViewHistoricalProjectContacts", () => {
+  it("limits historical contacts to internal staff roles", () => {
+    expect(canViewHistoricalProjectContacts("project_manager")).toBe(true)
+    expect(canViewHistoricalProjectContacts("client")).toBe(false)
+    expect(canViewHistoricalProjectContacts(null)).toBe(false)
   })
 })
