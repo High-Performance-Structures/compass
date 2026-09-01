@@ -95,9 +95,9 @@ describe("decodedLegacyProjectId", () => {
 })
 
 describe("legacyProjectResolutionPathname", () => {
-  it("routes encoded and decoded legacy ids through the pre-page resolver", () => {
+  it("routes encoded and decoded legacy ids through the root-level resolver", () => {
     const expected =
-      "/dashboard/projects/legacy-route?sourceProjectId=buildertrend-lead-project%3Aorg-1%3Alead-22496131&suffix=%2Finformation"
+      "/legacy-project-route?sourceProjectId=buildertrend-lead-project%3Aorg-1%3Alead-22496131&suffix=%2Finformation"
     expect(
       legacyProjectResolutionPathname(
         "/dashboard/projects/buildertrend-lead-project%3Aorg-1%3Alead-22496131/information",
@@ -124,7 +124,7 @@ describe("legacyProjectResolutionPathname", () => {
         "/dashboard/projects/buildertrend-lead-project:org-a:d-100-example/estimate",
       ),
     ).toBe(
-      "/dashboard/projects/legacy-route?sourceProjectId=buildertrend-lead-project%3Aorg-a%3Ad-100-example&suffix=%2Festimate",
+      "/legacy-project-route?sourceProjectId=buildertrend-lead-project%3Aorg-a%3Ad-100-example&suffix=%2Festimate",
     )
   })
 
@@ -135,7 +135,7 @@ describe("legacyProjectResolutionPathname", () => {
         "?estimateId=estimate-7&legacyResolved=1",
       ),
     ).toBe(
-      "/dashboard/projects/legacy-route?sourceProjectId=buildertrend-lead-project%3Aorg-1%3Alead-22496131&suffix=%2Festimate&originalSearch=estimateId%3Destimate-7",
+      "/legacy-project-route?sourceProjectId=buildertrend-lead-project%3Aorg-1%3Alead-22496131&suffix=%2Festimate&originalSearch=estimateId%3Destimate-7",
     )
   })
 })
