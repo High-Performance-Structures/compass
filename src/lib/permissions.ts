@@ -574,6 +574,28 @@ export function canUseExecutiveAdmin(user: AuthUser | null): boolean {
 }
 
 /**
+ * Greeting-card preparation is a team capability. Every active internal role
+ * can prepare a request; Executive Admin still controls approval and release.
+ */
+export function canPrepareGreetingCards(user: AuthUser | null): boolean {
+  if (
+    !user ||
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  ) {
+    return false
+  }
+
+  return isInternalStaffRole(user.role)
+}
+
+export function canApproveGreetingCards(user: AuthUser | null): boolean {
+  return canUseExecutiveAdmin(user)
+}
+
+/**
  * Calendar event management is broader than field schedule progress but
  * narrower than schedule.update. Keep it with office/project leadership.
  */

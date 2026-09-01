@@ -133,6 +133,72 @@ export const cherishCardFulfillments = sqliteTable(
   ],
 )
 
+export const greetingCardRequests = sqliteTable(
+  "greeting_card_requests",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    requestedBy: text("requested_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    approvedBy: text("approved_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    rejectedBy: text("rejected_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    releasedBy: text("released_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedBy: text("deleted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    provider: text("provider").notNull().default("handwrytten"),
+    deliveryMethod: text("delivery_method").notNull().default("physical_mail"),
+    providerOrderId: text("provider_order_id"),
+    status: text("status").notNull().default("pending_approval"),
+    providerCardId: text("provider_card_id").notNull(),
+    cardName: text("card_name").notNull(),
+    cardPriceCents: integer("card_price_cents"),
+    recipientType: text("recipient_type").notNull(),
+    occasion: text("occasion"),
+    message: text("message").notNull(),
+    wishes: text("wishes").notNull(),
+    recipientFirstName: text("recipient_first_name").notNull(),
+    recipientLastName: text("recipient_last_name").notNull(),
+    recipientBusinessName: text("recipient_business_name"),
+    recipientAddress1: text("recipient_address1").notNull(),
+    recipientAddress2: text("recipient_address2"),
+    recipientCity: text("recipient_city").notNull(),
+    recipientState: text("recipient_state").notNull(),
+    recipientPostalCode: text("recipient_postal_code").notNull(),
+    recipientCountry: text("recipient_country").notNull().default("United States"),
+    approvalNote: text("approval_note"),
+    providerError: text("provider_error"),
+    approvedAt: text("approved_at"),
+    rejectedAt: text("rejected_at"),
+    releasedAt: text("released_at"),
+    submittedAt: text("submitted_at"),
+    cancelledAt: text("cancelled_at"),
+    deletedAt: text("deleted_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("greeting_card_requests_org_status_created_idx").on(
+      table.organizationId,
+      table.status,
+      table.createdAt,
+    ),
+    index("greeting_card_requests_requester_created_idx").on(
+      table.requestedBy,
+      table.createdAt,
+    ),
+  ],
+)
+
 export const cherishPulseStoryStates = sqliteTable(
   "cherish_pulse_story_states",
   {

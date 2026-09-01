@@ -126,6 +126,39 @@ describe("Executive Admin sidebar navigation", () => {
   })
 })
 
+describe("Greeting Cards sidebar navigation", () => {
+  it("shows the office greeting-card workspace to preparers", () => {
+    const office = buildMainNavigation({
+      activeProjectId: null,
+      canViewActivity: true,
+      canManageFeedback: false,
+      canUseExecutiveAdmin: false,
+      canPrepareGreetingCards: true,
+    }).find(
+      (item): item is NavGroupItem =>
+        item.kind === "group" && item.title === "Office",
+    )
+
+    expect(
+      office?.items.find(
+        (item) => item.kind === "link" && item.title === "Greeting Cards",
+      ),
+    ).toMatchObject({
+      kind: "link",
+      url: "/dashboard/cards",
+    })
+  })
+
+  it("hides the card workspace when a role cannot prepare cards", () => {
+    const office = officeNavigation(false)
+    expect(
+      office?.items.some(
+        (item) => item.kind === "link" && item.title === "Greeting Cards",
+      ),
+    ).toBe(false)
+  })
+})
+
 describe("CHERISH sidebar navigation", () => {
   it("opens the dedicated full Compass page for eligible team members", () => {
     expect(buildCherishNavigation(true)).toMatchObject([

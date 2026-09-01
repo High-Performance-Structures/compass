@@ -18,6 +18,7 @@ import {
   IconFolder,
   IconHome2,
   IconMailForward,
+  IconMail,
   IconMessageCircle,
   IconMessageCircleQuestion,
   IconMessageReport,
@@ -108,6 +109,7 @@ interface SidebarNavLinkSource {
   readonly internalOnly?: boolean
   readonly adminOnly?: boolean
   readonly executiveAdminOnly?: boolean
+  readonly greetingCardsOnly?: boolean
 }
 
 interface SidebarNavSubgroupSource {
@@ -382,6 +384,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
       },
       {
         kind: "link",
+        title: "Greeting Cards",
+        url: "/dashboard/cards",
+        icon: IconMail,
+        greetingCardsOnly: true,
+      },
+      {
+        kind: "link",
         title: "Template Library",
         url: "/dashboard/templates",
         icon: IconTemplate,
@@ -417,11 +426,13 @@ function isNavLinkVisible(
   canViewActivity: boolean,
   canManageFeedback: boolean,
   canUseExecutiveAdmin: boolean,
+  canPrepareGreetingCards: boolean,
 ): boolean {
   return (
     (!item.internalOnly || canViewActivity) &&
     (!item.adminOnly || canManageFeedback) &&
-    (!item.executiveAdminOnly || canUseExecutiveAdmin)
+    (!item.executiveAdminOnly || canUseExecutiveAdmin) &&
+    (!item.greetingCardsOnly || canPrepareGreetingCards)
   )
 }
 
@@ -464,6 +475,7 @@ function buildGroupChildren({
   canViewActivity,
   canManageFeedback,
   canUseExecutiveAdmin,
+  canPrepareGreetingCards,
 }: {
   readonly items: ReadonlyArray<SidebarNavGroupChildSource>
   readonly activeProjectId: string | null
@@ -471,6 +483,7 @@ function buildGroupChildren({
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
+  readonly canPrepareGreetingCards: boolean
 }): ReadonlyArray<NavGroupChildItem> {
   const children: NavGroupChildItem[] = []
 
@@ -482,6 +495,7 @@ function buildGroupChildren({
           canViewActivity,
           canManageFeedback,
           canUseExecutiveAdmin,
+          canPrepareGreetingCards,
         )
       ) {
         children.push(
@@ -509,6 +523,7 @@ function buildGroupChildren({
           canViewActivity,
           canManageFeedback,
           canUseExecutiveAdmin,
+          canPrepareGreetingCards,
         )
       ) {
         subgroupLinks.push(
@@ -540,12 +555,14 @@ export function buildMainNavigation({
   canViewActivity,
   canManageFeedback,
   canUseExecutiveAdmin,
+  canPrepareGreetingCards = false,
 }: {
   readonly activeProjectId: string | null
   readonly projectConversationReturnHref?: string | null
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
+  readonly canPrepareGreetingCards?: boolean
 }): ReadonlyArray<NavItem> {
   return NAV_GROUPS.flatMap((group) => {
     const items = buildGroupChildren({
@@ -555,6 +572,7 @@ export function buildMainNavigation({
       canViewActivity,
       canManageFeedback,
       canUseExecutiveAdmin,
+      canPrepareGreetingCards,
     })
 
     return items.length > 0
@@ -583,11 +601,13 @@ function SidebarNav({
   canViewActivity,
   canManageFeedback,
   canUseExecutiveAdmin,
+  canPrepareGreetingCards,
 }: {
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
+  readonly canPrepareGreetingCards: boolean
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -616,6 +636,7 @@ function SidebarNav({
     canViewActivity,
     canManageFeedback,
     canUseExecutiveAdmin,
+    canPrepareGreetingCards,
   })
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
@@ -683,6 +704,7 @@ export function AppSidebar({
   canViewActivity = false,
   canManageFeedback = false,
   canUseExecutiveAdmin = false,
+  canPrepareGreetingCards = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser | null
@@ -692,6 +714,7 @@ export function AppSidebar({
   readonly canViewActivity?: boolean
   readonly canManageFeedback?: boolean
   readonly canUseExecutiveAdmin?: boolean
+  readonly canPrepareGreetingCards?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -710,6 +733,7 @@ export function AppSidebar({
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
           canUseExecutiveAdmin={canUseExecutiveAdmin}
+          canPrepareGreetingCards={canPrepareGreetingCards}
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">
