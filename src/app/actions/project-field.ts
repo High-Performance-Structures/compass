@@ -2335,6 +2335,13 @@ export async function getOwnerProjectUpdateDocument(
         eq(dailyLogPhotos.projectId, projectId),
         or(
           inArray(dailyLogPhotos.id, selectedPhotoIds),
+          // The owner-update picker shares this query with the photo picker.
+          // Keep non-image attachments available for document selection; the
+          // alias read model is only relevant to image collection rows.
+          sql<boolean>`
+            ${dailyLogPhotos.mimeType} IS NULL
+            OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
+          `,
           and(
             dailyLogPhotoCollectionEligibility(),
             not(sql<boolean>`EXISTS (

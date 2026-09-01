@@ -56,7 +56,7 @@ const sameContextAliasCount = 157
 const crossContextAliasCount = 73
 const reviewCanonicalCount = 40
 const reviewAliasCount = 218
-const ancillaryRowCount = 3
+const ancillaryRowCount = 4
 const ownerWorkflowDemotionAlias = 150
 const reviewAliasReplacement = 218
 const sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -207,6 +207,19 @@ function createFixture(database: TestDatabase): void {
     "image/jpeg",
     null,
     "needs_review",
+    0,
+    0,
+    0,
+  )
+  insertPhoto.run(
+    "ancillary-pdf",
+    projectId,
+    "log-3",
+    "owner-update-document.pdf",
+    "drive-ancillary-pdf",
+    "application/pdf",
+    null,
+    "approved",
     0,
     0,
     0,
@@ -371,6 +384,58 @@ function socialPhotoIds(database: TestDatabase): ReadonlySet<string> {
         )
     `)
     .all())
+  return new Set(
+    rows.flatMap((row) => {
+      const value = row.id
+      return typeof value === "string" ? [value] : []
+    }),
+  )
+}
+
+function ownerUpdateAttachmentIds(
+  database: TestDatabase,
+  selectedPhotoIds: readonly string[] = [],
+): ReadonlySet<string> {
+  const placeholders = selectedPhotoIds.map(() => "?").join(", ")
+  const selectedClause =
+    selectedPhotoIds.length > 0
+      ? `p.id IN (${placeholders}) OR `
+      : ""
+  const rows = sqlRows(
+    database
+      .prepare(`
+        SELECT p.id
+        FROM daily_log_photos AS p
+        WHERE p.project_id IS ?
+          AND (
+            ${selectedClause}
+            p.mime_type IS NULL
+            OR p.mime_type NOT LIKE 'image/%'
+            OR (
+              p.mime_type LIKE 'image/%'
+              AND (p.drive_file_id IS NOT NULL OR p.thumbnail_url IS NOT NULL)
+              AND NOT EXISTS (
+                SELECT 1
+                FROM daily_log_photo_aliases AS alias
+                JOIN daily_log_photos AS canonical
+                  ON canonical.id IS alias.canonical_photo_id
+                WHERE alias.source_photo_id IS p.id
+                  AND alias.project_id IS p.project_id
+                  AND canonical.project_id IS p.project_id
+                  AND canonical.mime_type LIKE 'image/%'
+                  AND (
+                    canonical.drive_file_id IS NOT NULL
+                    OR canonical.thumbnail_url IS NOT NULL
+                  )
+                  AND p.daily_log_id IS canonical.daily_log_id
+                  AND canonical.review_status IS 'approved'
+                  AND canonical.owner_visible IS 1
+              )
+            )
+          )
+      `)
+      .all(projectId, ...selectedPhotoIds),
+  )
   return new Set(
     rows.flatMap((row) => {
       const value = row.id
@@ -615,6 +680,26 @@ describe("daily-log photo alias read model", () => {
         )
         .run("needs_review", "canonical-219")
       expect(socialPhotoIds(database).has("alias-219")).toBe(true)
+    } finally {
+      database.close()
+    }
+  })
+
+  it("keeps ordinary documents selectable while deduping owner-update photos", async () => {
+    const database = await openDatabase()
+    try {
+      createFixture(database)
+
+      const attachments = ownerUpdateAttachmentIds(database)
+      expect(attachments.has("ancillary-zip")).toBe(true)
+      expect(attachments.has("ancillary-folder")).toBe(true)
+      expect(attachments.has("ancillary-pdf")).toBe(true)
+      expect(attachments.has("ancillary-staged")).toBe(false)
+      expect(attachments.has("alias-150")).toBe(false)
+      expect(attachments.has("canonical-150")).toBe(true)
+
+      const selected = ownerUpdateAttachmentIds(database, ["alias-150"])
+      expect(selected.has("alias-150")).toBe(true)
     } finally {
       database.close()
     }
