@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic"
 import { getWorkCalendar } from "@/app/actions/work-calendar"
 import {
   getOwnerScheduleView,
+  getScheduleProjects,
   getScopedSchedule,
 } from "@/app/actions/schedule"
-import { getProjects } from "@/app/actions/projects"
 import {
   WorkCalendar,
   type WorkCalendarKindFilter,
@@ -98,7 +98,7 @@ export default async function SchedulePage({
   const query = await searchParams
   if (firstValue(query.mode) === "projects") {
     const [allProjects, savedViews, currentUser, schedulePreferences] = await Promise.all([
-      getProjects(),
+      getScheduleProjects(),
       getScheduleSavedViews(),
       getCurrentUser(),
       getUserSchedulePreferences(),

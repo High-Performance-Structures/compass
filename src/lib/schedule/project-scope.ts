@@ -1,4 +1,5 @@
 import type { ProjectDepartment } from "@/lib/project-branding"
+import { projectJobStatusBucket } from "@/lib/project-profile"
 
 const PROJECT_COLORS = [
   "#2563eb",
@@ -28,6 +29,21 @@ export type ScheduleProjectData = {
   readonly department: ProjectDepartment
   readonly color: string
 }
+
+type SchedulePortfolioProject = {
+  readonly jobStatusId: string
+  readonly jobStatusLabel: string
+}
+
+export function schedulePortfolioProjects<
+  Project extends SchedulePortfolioProject,
+>(projects: readonly Project[]): Project[] {
+  return projects.filter((project) => {
+    const status = projectJobStatusBucket(project)
+    return status === "active" || status === "warranty"
+  })
+}
+
 export type ScheduleScope =
   | {
       readonly kind: "project"
