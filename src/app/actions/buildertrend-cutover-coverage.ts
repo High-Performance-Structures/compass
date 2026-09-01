@@ -63,7 +63,15 @@ export async function getBuildertrendCutoverCoverage(): Promise<BuildertrendCuto
     .select({
       projectId: buildertrendSourceRecords.projectId,
       sourceRecordType: buildertrendSourceRecords.sourceRecordType,
-      recordCount: sql<number>`count(*)`,
+      // Import waves may retain multiple immutable captures of the same
+      // Buildertrend entity. Coverage measures source entities, not capture
+      // rows, so prefer the upstream job/lead + record identity and fall back
+      // to the source key only when Buildertrend did not expose a record ID.
+      recordCount: sql<number>`count(distinct (
+        coalesce(${buildertrendSourceRecords.buildertrendJobId}, '') || char(31) ||
+        coalesce(${buildertrendSourceRecords.buildertrendLeadId}, '') || char(31) ||
+        coalesce(${buildertrendSourceRecords.buildertrendRecordId}, ${buildertrendSourceRecords.sourceKey})
+      ))`,
     })
     .from(buildertrendSourceRecords)
     .where(
