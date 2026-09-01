@@ -274,6 +274,35 @@ function aggregatePhotoIds(database: TestDatabase): ReadonlySet<string> {
   )
 }
 
+function thumbnailAwareAggregatePhotoIds(
+  database: TestDatabase,
+): ReadonlySet<string> {
+  const rows = sqlRows(database.prepare(`
+    SELECT p.id
+    FROM daily_log_photos AS p
+    WHERE p.project_id IS '${projectId}'
+      AND (p.thumbnail_url IS NOT NULL OR p.mime_type LIKE 'image/%')
+      AND (p.drive_file_id IS NOT NULL OR p.thumbnail_url IS NOT NULL)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM daily_log_photo_aliases AS alias
+        JOIN daily_log_photos AS canonical
+          ON canonical.id IS alias.canonical_photo_id
+        WHERE alias.source_photo_id IS p.id
+          AND alias.project_id IS p.project_id
+          AND canonical.project_id IS p.project_id
+          AND (canonical.thumbnail_url IS NOT NULL OR canonical.mime_type LIKE 'image/%')
+          AND (canonical.drive_file_id IS NOT NULL OR canonical.thumbnail_url IS NOT NULL)
+      )
+  `).all())
+  return new Set(
+    rows.flatMap((row) => {
+      const value = row.id
+      return typeof value === "string" ? [value] : []
+    }),
+  )
+}
+
 function audiencePhotoIds(
   database: TestDatabase,
   audience: "owner" | "sub_vendor",
@@ -412,7 +441,7 @@ function ownerUpdateAttachmentIds(
             p.mime_type IS NULL
             OR p.mime_type NOT LIKE 'image/%'
             OR (
-              p.mime_type LIKE 'image/%'
+              (p.thumbnail_url IS NOT NULL OR p.mime_type LIKE 'image/%')
               AND (p.drive_file_id IS NOT NULL OR p.thumbnail_url IS NOT NULL)
               AND NOT EXISTS (
                 SELECT 1
@@ -422,7 +451,10 @@ function ownerUpdateAttachmentIds(
                 WHERE alias.source_photo_id IS p.id
                   AND alias.project_id IS p.project_id
                   AND canonical.project_id IS p.project_id
-                  AND canonical.mime_type LIKE 'image/%'
+                  AND (
+                    canonical.thumbnail_url IS NOT NULL
+                    OR canonical.mime_type LIKE 'image/%'
+                  )
                   AND (
                     canonical.drive_file_id IS NOT NULL
                     OR canonical.thumbnail_url IS NOT NULL
@@ -632,6 +664,25 @@ describe("daily-log photo alias read model", () => {
       expect(aggregatePhotoIds(database).has("alias-219")).toBe(true)
       expect(audiencePhotoIds(database, "owner").has("alias-219")).toBe(true)
       expect(socialPhotoIds(database).has("alias-219")).toBe(true)
+    } finally {
+      database.close()
+    }
+  })
+
+  it("treats a thumbnail-only canonical as renderable for alias suppression", async () => {
+    const database = await openDatabase()
+    try {
+      createFixture(database)
+
+      database
+        .prepare(
+          "UPDATE daily_log_photos SET mime_type = NULL, thumbnail_url = ? WHERE id = ?",
+        )
+        .run("/thumbnail/canonical-0", "canonical-0")
+
+      const photoIds = thumbnailAwareAggregatePhotoIds(database)
+      expect(photoIds.has("canonical-0")).toBe(true)
+      expect(photoIds.has("alias-0")).toBe(false)
     } finally {
       database.close()
     }

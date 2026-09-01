@@ -1135,7 +1135,10 @@ export async function getProjectFieldSummary(
           WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
             AND alias.project_id IS ${dailyLogPhotos.projectId}
             AND canonical.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.mime_type LIKE 'image/%'
+            AND (
+              canonical.thumbnail_url IS NOT NULL
+              OR canonical.mime_type LIKE 'image/%'
+            )
             AND (
               canonical.drive_file_id IS NOT NULL
               OR canonical.thumbnail_url IS NOT NULL
@@ -1417,7 +1420,10 @@ export async function getProjectDailyLogWorkspace(
           WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
             AND alias.project_id IS ${dailyLogPhotos.projectId}
             AND canonical.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.mime_type LIKE 'image/%'
+            AND (
+              canonical.thumbnail_url IS NOT NULL
+              OR canonical.mime_type LIKE 'image/%'
+            )
             AND (
               canonical.drive_file_id IS NOT NULL
               OR canonical.thumbnail_url IS NOT NULL
@@ -2013,7 +2019,10 @@ export async function draftOwnerUpdateFromDailyLogs(
             WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
               AND alias.project_id IS ${dailyLogPhotos.projectId}
               AND canonical.project_id IS ${dailyLogPhotos.projectId}
-              AND canonical.mime_type LIKE 'image/%'
+              AND (
+                canonical.thumbnail_url IS NOT NULL
+                OR canonical.mime_type LIKE 'image/%'
+              )
               AND (
                 canonical.drive_file_id IS NOT NULL
                 OR canonical.thumbnail_url IS NOT NULL
@@ -2352,7 +2361,10 @@ export async function getOwnerProjectUpdateDocument(
               WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
                 AND alias.project_id IS ${dailyLogPhotos.projectId}
                 AND canonical.project_id IS ${dailyLogPhotos.projectId}
-                AND canonical.mime_type LIKE 'image/%'
+                AND (
+                  canonical.thumbnail_url IS NOT NULL
+                  OR canonical.mime_type LIKE 'image/%'
+                )
                 AND (
                   canonical.drive_file_id IS NOT NULL
                   OR canonical.thumbnail_url IS NOT NULL
