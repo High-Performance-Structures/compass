@@ -154,16 +154,30 @@ const scheduleCreateSchema = z.object({
   assignedTo: z.string().optional(),
 })
 
-const scheduleUpdateSchema = z.object({
-  id: z.string().min(1),
-  title: z.string().optional(),
-  startDate: z.string().optional(),
-  workdays: z.number().int().positive().optional(),
-  phase: z.string().optional(),
-  isMilestone: z.boolean().optional(),
-  percentComplete: z.number().optional(),
-  assignedTo: z.string().nullable().optional(),
-})
+const scheduleUpdateSchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string().optional(),
+    startDate: z.string().optional(),
+    workdays: z.number().int().positive().optional(),
+    phase: z.string().optional(),
+    isMilestone: z.boolean().optional(),
+    percentComplete: z.number().optional(),
+    assignedTo: z.string().nullable().optional(),
+    shiftReason: z.string().min(3).max(500).optional(),
+  })
+  .superRefine((value, context) => {
+    if (
+      (value.startDate !== undefined || value.workdays !== undefined) &&
+      value.shiftReason === undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["shiftReason"],
+        message: "A schedule shift reason is required when dates change",
+      })
+    }
+  })
 
 const agentItemSchema = z.object({
   type: z.enum(["todo", "note", "checklist"]),

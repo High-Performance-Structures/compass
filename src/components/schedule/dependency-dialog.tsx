@@ -15,11 +15,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { createDependency } from "@/app/actions/schedule"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
+import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -55,6 +57,7 @@ export function DependencyDialog({
   const [successorId, setSuccessorId] = useState("")
   const [type, setType] = useState<DependencyType>("FS")
   const [lagDays, setLagDays] = useState(0)
+  const [shiftReason, setShiftReason] = useState("")
   const [error, setError] = useState("")
 
   function validate() {
@@ -70,6 +73,11 @@ export function DependencyDialog({
       setError("This dependency would create a circular reference")
       return false
     }
+    const shiftReasonResult = validateScheduleShiftReason(shiftReason)
+    if (!shiftReasonResult.success) {
+      setError(shiftReasonResult.error)
+      return false
+    }
     setError("")
     return true
   }
@@ -83,6 +91,7 @@ export function DependencyDialog({
       type,
       lagDays,
       projectId,
+      shiftReason,
     })
 
     if (result.success) {
@@ -91,6 +100,7 @@ export function DependencyDialog({
       setSuccessorId("")
       setType("FS")
       setLagDays(0)
+      setShiftReason("")
       router.refresh()
     } else {
       toast.error(result.error)
@@ -174,6 +184,21 @@ export function DependencyDialog({
                 className="mt-1"
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="dependency-shift-reason">Schedule shift reason</Label>
+            <Textarea
+              id="dependency-shift-reason"
+              value={shiftReason}
+              onChange={(event) => setShiftReason(event.currentTarget.value)}
+              placeholder="Why is this dependency being added?"
+              maxLength={500}
+              className="mt-1 min-h-[72px] resize-none"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Saved in activity history and used in any end-date warning.
+            </p>
           </div>
 
           {error && (

@@ -78,6 +78,11 @@ const exceptionSchema = z
     ]),
     recurrence: z.enum(["one_time", "yearly"]),
     notes: z.string(),
+    shiftReason: z
+      .string()
+      .trim()
+      .min(3, "Enter a schedule shift reason")
+      .max(500, "Reason must be 500 characters or fewer"),
   })
   .refine((values) => values.endDate >= values.startDate, {
     message: "End date must be on or after the start date",
@@ -112,6 +117,7 @@ export function WorkdayExceptionFormDialog({
       category: "company_holiday",
       recurrence: "one_time",
       notes: "",
+      shiftReason: "",
     },
   })
 
@@ -125,6 +131,7 @@ export function WorkdayExceptionFormDialog({
         category: editingException.category,
         recurrence: editingException.recurrence,
         notes: editingException.notes ?? "",
+        shiftReason: "",
       })
     } else {
       form.reset({
@@ -135,6 +142,7 @@ export function WorkdayExceptionFormDialog({
         category: "company_holiday",
         recurrence: "one_time",
         notes: "",
+        shiftReason: "",
       })
     }
   }, [editingException, form])
@@ -295,6 +303,28 @@ export function WorkdayExceptionFormDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="shiftReason"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs">Schedule shift reason</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Why is the work calendar changing?"
+                      className="min-h-[72px] resize-none text-sm"
+                      maxLength={500}
+                      {...field}
+                    />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Saved in activity history and used in any end-date warning.
+                  </p>
                   <FormMessage />
                 </FormItem>
               )}

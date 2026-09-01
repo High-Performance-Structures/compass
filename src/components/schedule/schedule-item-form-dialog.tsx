@@ -61,6 +61,7 @@ import {
   type ScheduleTaskChangeProposal,
 } from "@/app/actions/schedule-confirmations"
 import { calculateEndDate } from "@/lib/schedule/business-days"
+import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -118,7 +119,8 @@ const scheduleItemSchema = z.object({
   ownerVisible: z.boolean(),
   subVendorVisible: z.boolean(),
   confirmationRequired: z.boolean(),
-  notes: z.string()
+  notes: z.string(),
+  shiftReason: z.string().max(500, "Reason must be 500 characters or fewer")
 })
 
 type ScheduleItemFormValues = z.infer<typeof scheduleItemSchema>
@@ -214,7 +216,8 @@ export function ScheduleItemFormDialog({
       ownerVisible: true,
       subVendorVisible: false,
       confirmationRequired: false,
-      notes: ""
+      notes: "",
+      shiftReason: ""
     }
   })
 
@@ -282,7 +285,8 @@ export function ScheduleItemFormDialog({
         ownerVisible: editingTask.ownerVisible ?? true,
         subVendorVisible: editingTask.subVendorVisible ?? false,
         confirmationRequired: editingTask.confirmationRequired ?? false,
-        notes: ""
+        notes: "",
+        shiftReason: ""
       })
       setAssignedOptionId(
         assigneeOptions.find(
@@ -306,7 +310,8 @@ export function ScheduleItemFormDialog({
         ownerVisible: true,
         subVendorVisible: false,
         confirmationRequired: false,
-        notes: ""
+        notes: "",
+        shiftReason: ""
       })
       setAssignedOptionId(null)
       setDetailsOpen(false)
@@ -470,6 +475,31 @@ export function ScheduleItemFormDialog({
   }
 
   async function onSubmit(values: ScheduleItemFormValues) {
+    const datesChanged =
+      editingTask !== null &&
+      (values.startDate !== editingTask.startDate ||
+        values.workdays !== editingTask.workdays)
+    const existingDependencyChanged = existingPredecessors.some((dependency) => {
+      const edit = existingPredecessorEdits[dependency.id]
+      return Boolean(
+        edit &&
+          (edit.taskId !== dependency.predecessorId ||
+            edit.type !== dependency.type ||
+            edit.lagDays !== dependency.lagDays)
+      )
+    })
+    const dependencyAdded = pendingPredecessors.some(
+      (predecessor) => predecessor.taskId.length > 0
+    )
+    const shiftReasonResult =
+      datesChanged || existingDependencyChanged || dependencyAdded
+        ? validateScheduleShiftReason(values.shiftReason)
+        : null
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
+      form.setError("shiftReason", { message: shiftReasonResult.error })
+      return
+    }
+
     let submittedPhase = values.phase
     if (customPhaseMode && saveCustomPhase) {
       const phaseResult = await saveSchedulePhaseOption({
@@ -490,9 +520,10 @@ export function ScheduleItemFormDialog({
         return [...withoutDuplicate, phaseResult.option]
       })
     }
-    const { notes, ...valuesWithoutNotes } = values
+    const { notes, shiftReason, ...valuesWithoutNotes } = values
     const taskValues = { ...valuesWithoutNotes, phase: submittedPhase }
     void notes
+    void shiftReason
     let savedTaskId: string
     let linkedTodoCount = 0
     if (isEditing) {
@@ -500,7 +531,10 @@ export function ScheduleItemFormDialog({
         ...taskValues,
         assignedTo: taskValues.assignedTo || null,
         assignedOptionId,
-        acceptChangeProposal: acceptProposalOnSave
+        acceptChangeProposal: acceptProposalOnSave,
+        shiftReason: shiftReasonResult?.success
+          ? shiftReasonResult.reason
+          : undefined
       })
       if (!result.success) {
         toast.error(result.error)
@@ -541,7 +575,10 @@ export function ScheduleItemFormDialog({
         successorId: savedTaskId,
         type: edit.type,
         lagDays: edit.lagDays,
-        projectId
+        projectId,
+        shiftReason: shiftReasonResult?.success
+          ? shiftReasonResult.reason
+          : values.shiftReason
       })
       if (!dependencyResult.success) {
         dependencyErrors.push(dependencyResult.error)
@@ -555,7 +592,10 @@ export function ScheduleItemFormDialog({
           successorId: savedTaskId,
           type: predecessor.type,
           lagDays: predecessor.lagDays,
-          projectId
+          projectId,
+          shiftReason: shiftReasonResult?.success
+            ? shiftReasonResult.reason
+            : values.shiftReason
         })
         if (!dependencyResult.success) {
           dependencyErrors.push(dependencyResult.error)
@@ -1093,6 +1133,31 @@ export function ScheduleItemFormDialog({
                   </div>
                 </FormItem>
               </div>
+
+              <FormField
+                control={form.control}
+                name="shiftReason"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                      Schedule shift reason
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Required when dates or predecessors change"
+                        className="min-h-[60px] resize-none text-sm"
+                        maxLength={500}
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-[11px] text-muted-foreground">
+                      Saved in activity history. If the project finish moves later,
+                      project administrators are warned that a change order may be needed.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* === DETAILS (collapsible) === */}
               <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>

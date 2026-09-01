@@ -4,6 +4,8 @@ import { useRef, useEffect, useState, useCallback, type CSSProperties } from "re
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
 import type { DisplayColorPalette } from "@/lib/schedule/appearance"
 import { getScheduleItemClasses } from "@/lib/schedule/appearance"
+import { isNonWorkday } from "@/lib/schedule/business-days"
+import type { WorkdayExceptionData } from "@/lib/schedule/types"
 import {
   dominantScrollAxis,
   clampGanttScrollOffset,
@@ -152,6 +154,7 @@ const GANTT_VIEW_MODES = [
 
 interface GanttChartProps {
   tasks: FrappeTask[]
+  exceptions?: readonly WorkdayExceptionData[]
   viewMode: ViewMode
   columnWidth?: number
   panMode?: boolean
@@ -176,6 +179,7 @@ interface GanttChartProps {
 
 export function GanttChart({
   tasks,
+  exceptions = [],
   viewMode,
   columnWidth,
   panMode = false,
@@ -418,6 +422,10 @@ export function GanttChart({
         view_mode: viewMode,
         view_modes: viewModes,
         infinite_padding: false,
+        holidays: {
+          "var(--background)": "weekend",
+        },
+        is_weekend: (date: Date) => isNonWorkday(date, exceptions),
         ...(columnWidth ? { column_width: columnWidth } : {}),
         on_date_change: (task: { id: string }, start: Date, end: Date) => {
           if (onDateChange) {
@@ -550,7 +558,7 @@ export function GanttChart({
       interactionCallbacksRef.current.onDateScrollReady?.(null)
       interactionCallbacksRef.current.onTaskVisibilityReady?.(null)
     }
-  }, [tasks, viewMode, columnWidth, onDateChange, onProgressChange])
+  }, [tasks, exceptions, viewMode, columnWidth, onDateChange, onProgressChange])
 
   useEffect(() => {
     if (ganttRef.current && loaded) {
