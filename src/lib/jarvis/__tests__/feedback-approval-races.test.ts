@@ -12,22 +12,26 @@ type Sqlite = InstanceType<typeof Database>
 function createD1(sqlite: Sqlite, pauseAfterRead?: {
   readonly paused: Promise<void>
   readonly shouldPause: (query?: string) => boolean
-}, shouldFailWrite?: (query?: string) => boolean): unknown {
+}, shouldFailWrite?: (query?: string) => boolean, recordQuery?: (query: string) => void): unknown {
   function statementFor(query: string, values: readonly unknown[] = []): Record<string, unknown> {
+    recordQuery?.(query)
     const statement = sqlite.prepare(query)
     const result = {
       bind: (...nextValues: unknown[]): unknown => statementFor(query, nextValues),
       run: async (): Promise<unknown> => {
         if (shouldFailWrite?.(query)) throw new Error("simulated crash")
-        const info = statement.run(...values)
+        const returnsRows = query.toLowerCase().includes("returning")
+        const results = returnsRows ? statement.all(...values) : []
+        const info = returnsRows ? null : statement.run(...values)
         return {
           success: true,
+          results,
           meta: {
-            changes: Number(info.changes),
+            changes: returnsRows ? results.length : Number(info?.changes),
             duration: 0,
-            last_row_id: Number(info.lastInsertRowid),
+            last_row_id: returnsRows ? 0 : Number(info?.lastInsertRowid),
             rows_read: 0,
-            rows_written: Number(info.changes),
+            rows_written: returnsRows ? results.length : Number(info?.changes),
           },
         }
       },
@@ -56,7 +60,20 @@ function createD1(sqlite: Sqlite, pauseAfterRead?: {
       return statementFor(query)
     },
     async batch(statements: readonly { run: () => Promise<unknown> }[]): Promise<readonly unknown[]> {
-      return Promise.all(statements.map((statement) => statement.run()))
+      // Model D1.batch: every prepared statement succeeds or none persists.
+      sqlite.exec("SAVEPOINT d1_batch")
+      try {
+        const results: unknown[] = []
+        for (const statement of statements) {
+          results.push(await statement.run())
+        }
+        sqlite.exec("RELEASE SAVEPOINT d1_batch")
+        return results
+      } catch (error) {
+        sqlite.exec("ROLLBACK TO SAVEPOINT d1_batch")
+        sqlite.exec("RELEASE SAVEPOINT d1_batch")
+        throw error
+      }
     },
     async exec(query: string): Promise<Readonly<{ count: number; duration: number }>> {
       sqlite.exec(query)
@@ -161,6 +178,27 @@ function seedFeature(sqlite: Sqlite): void {
     "2026-08-24T18:00:00.000Z",
     "admin-1",
     "2026-08-24T17:00:00.000Z",
+    "2026-08-24T17:00:00.000Z",
+    "2026-08-24T17:00:00.000Z",
+  )
+}
+
+function seedBug(sqlite: Sqlite): void {
+  sqlite.prepare(`
+    INSERT INTO feedback_desk_items (
+      id, organization_id, source, source_id, kind, status, priority,
+      title, description, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    "bug-1",
+    null,
+    "feedback-widget",
+    "source-bug-1",
+    "bug",
+    "new",
+    "normal",
+    "Redacted bug",
+    "Redacted description",
     "2026-08-24T17:00:00.000Z",
     "2026-08-24T17:00:00.000Z",
   )
@@ -693,6 +731,86 @@ describe("Feedback Desk real approval race fences", () => {
     expect(stored?.featurePriorityApprovedAt).toBeNull()
     const events = await actorTwo.select().from(jarvisBridgeEvents)
     expect(events).toHaveLength(0)
+    sqlite.close()
+  })
+
+  it("uses an atomic D1 batch without raw transaction control statements", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedFeature(sqlite)
+    const queries: string[] = []
+    let failOutboxWrite = false
+    const client = createD1(
+      sqlite,
+      undefined,
+      (query) => failOutboxWrite && query?.startsWith('insert into "jarvis_bridge_events"') === true,
+      (query) => queries.push(query),
+    )
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const db = getDb(client)
+    const item = await db.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    if (!item) throw new Error("seed row missing")
+
+    failOutboxWrite = true
+    await expect(applyFeedbackLifecycleUpdate(db, item, {
+      status: "planned",
+      actorSource: "compass-admin",
+      idempotencyKey: "atomic-outbox-failure",
+    })).rejects.toThrow("simulated crash")
+
+    const stored = await db.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "feature-1")).get()
+    const events = await db.select().from(jarvisBridgeEvents)
+    expect(stored?.status).toBe("triaged")
+    expect(events).toHaveLength(0)
+    expect(queries.some((query) => /^(begin|commit|rollback)\b/i.test(query))).toBe(false)
+    sqlite.close()
+  })
+
+  it("queues a requester update when a prior delivery request is idempotent", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedBug(sqlite)
+    const client = createD1(sqlite)
+    // @ts-expect-error The SQLite-backed adapter implements the D1 methods used by this integration test.
+    const db = getDb(client)
+    const now = "2026-08-24T17:00:00.000Z"
+    await db.insert(jarvisBridgeEvents).values({
+      id: "delivery-event-1",
+      organizationId: null,
+      direction: "outbound",
+      source: "feedback-desk",
+      eventType: "feedback.delivery_requested",
+      status: "pending",
+      idempotencyKey: "feedback-delivery-graph:bug-1",
+      feedbackDeskItemId: "bug-1",
+      payload: "{}",
+      result: null,
+      attemptCount: 0,
+      availableAt: now,
+      claimToken: null,
+      claimedAt: null,
+      completedAt: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const item = await db.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, "bug-1")).get()
+    if (!item) throw new Error("seed row missing")
+
+    const result = await applyFeedbackLifecycleUpdate(db, item, {
+      status: "triaged",
+      actorSource: "compass-admin",
+      idempotencyKey: "bug-triage-1",
+    })
+
+    const requesterEvent = await db.select().from(jarvisBridgeEvents).where(
+      eq(jarvisBridgeEvents.idempotencyKey, "notify:bug-triage-1"),
+    ).get()
+    expect(result.requesterUpdateQueued).toBe(true)
+    expect(requesterEvent?.eventType).toBe("feedback.status_changed")
     sqlite.close()
   })
 })

@@ -253,8 +253,12 @@ export async function applyFeedbackLifecycleUpdate(
   const finalFence = item.kind === "feature" && isFeatureImplementationStatus(update.status)
     ? isNotNull(feedbackDeskItems.featurePriorityApprovedAt)
     : undefined
-  await db.transaction(async (tx) => {
-    const persisted = await tx.update(feedbackDeskItems).set({
+  // D1 batches commit or roll back together without emitting the unsupported
+  // transaction-control statements that Drizzle's transaction wrapper uses.
+  // One D1 batch statement writes all outbox rows. Its SELECT is fenced on the
+  // checked update's affected-row count, so a lost optimistic update cannot
+  // create only a subset of the events.
+  const persistedWrite = db.update(feedbackDeskItems).set({
       status: update.status,
       priority,
       githubIssueUrl: issueUrl,
@@ -284,58 +288,38 @@ export async function applyFeedbackLifecycleUpdate(
       rowIdentity,
       eq(feedbackDeskItems.updatedAt, item.updatedAt),
       ...(finalFence ? [finalFence] : []),
-    )).returning({ id: feedbackDeskItems.id }).get()
-    if (!persisted) {
-      throw new Error("Feedback request changed before the lifecycle update could be saved")
-    }
-
-    await tx.insert(jarvisBridgeEvents).values({
-      id: crypto.randomUUID(),
-      organizationId: item.organizationId,
-      direction: "inbound",
-      source: update.actorSource,
-      eventType: "feedback.status_updated",
-      status: "completed",
-      idempotencyKey: update.idempotencyKey,
-      feedbackDeskItemId: item.id,
-      payload,
-      result: payload,
-      availableAt: now,
-      completedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoNothing()
-    if (deliveryEvent) {
-      await tx.insert(jarvisBridgeEvents).values({
-        id: crypto.randomUUID(),
-        organizationId: item.organizationId,
-        direction: "outbound",
-        source: "feedback-desk",
-        eventType: deliveryEvent.eventType,
-        idempotencyKey: deliveryEvent.idempotencyKey,
-        feedbackDeskItemId: item.id,
-        payload: JSON.stringify(deliveryEvent.payload),
-        availableAt: now,
-        createdAt: now,
-        updatedAt: now,
-      }).onConflictDoNothing()
-    }
-    if (requesterUpdateKind) {
-      await tx.insert(jarvisBridgeEvents).values({
-        id: crypto.randomUUID(),
-        organizationId: item.organizationId,
-        direction: "outbound",
-        source: item.source,
-        eventType: "feedback.status_changed",
-        idempotencyKey: `notify:${update.idempotencyKey}`,
-        feedbackDeskItemId: item.id,
-        payload,
-        availableAt: now,
-        createdAt: now,
-        updatedAt: now,
-      }).onConflictDoNothing()
-    }
-  })
+    )).returning({ id: feedbackDeskItems.id })
+  const deliveryEventSelect = deliveryEvent
+    ? sql`
+      union all select
+        ${crypto.randomUUID()}, ${item.organizationId}, 'outbound', 'feedback-desk',
+        ${deliveryEvent.eventType}, 'pending', ${deliveryEvent.idempotencyKey}, ${item.id},
+        ${JSON.stringify(deliveryEvent.payload)}, null, 0, ${now}, null, null, null, null, ${now}, ${now}
+      where changes() = 1
+    `
+    : sql``
+  const requesterEventSelect = requesterUpdateKind
+    ? sql`
+      union all select
+        ${crypto.randomUUID()}, ${item.organizationId}, 'outbound', ${item.source},
+        'feedback.status_changed', 'pending', ${`notify:${update.idempotencyKey}`}, ${item.id},
+        ${payload}, null, 0, ${now}, null, null, null, null, ${now}, ${now}
+      where changes() = 1
+    `
+    : sql``
+  const outboxWrite = db.insert(jarvisBridgeEvents).select(sql`
+    select
+      ${crypto.randomUUID()}, ${item.organizationId}, 'inbound', ${update.actorSource},
+      'feedback.status_updated', 'completed', ${update.idempotencyKey}, ${item.id},
+      ${payload}, ${payload}, 0, ${now}, null, null, ${now}, null, ${now}, ${now}
+    where changes() = 1
+    ${deliveryEventSelect}
+    ${requesterEventSelect}
+  `).onConflictDoNothing()
+  const [persistedRows] = await db.batch([persistedWrite, outboxWrite])
+  if (!persistedRows?.[0]) {
+    throw new Error("Feedback request changed before the lifecycle update could be saved")
+  }
 
   if (requesterUpdateKind && item.organizationId && recipients.length > 0) {
     try {
