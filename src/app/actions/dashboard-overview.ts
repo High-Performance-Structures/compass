@@ -350,10 +350,8 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
               WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
                 AND alias.project_id IS ${dailyLogPhotos.projectId}
                 AND canonical.project_id IS ${dailyLogPhotos.projectId}
-                AND (
-                  canonical.thumbnail_url IS NOT NULL
-                  OR canonical.mime_type LIKE 'image/%'
-                )
+                AND canonical.mime_type LIKE 'image/%'
+                AND canonical.drive_file_id IS NOT NULL
                 AND (
                   canonical.drive_file_id IS NOT NULL
                   OR canonical.thumbnail_url IS NOT NULL

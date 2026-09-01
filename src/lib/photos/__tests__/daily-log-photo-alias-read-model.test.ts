@@ -291,8 +291,8 @@ function thumbnailAwareAggregatePhotoIds(
         WHERE alias.source_photo_id IS p.id
           AND alias.project_id IS p.project_id
           AND canonical.project_id IS p.project_id
-          AND (canonical.thumbnail_url IS NOT NULL OR canonical.mime_type LIKE 'image/%')
-          AND (canonical.drive_file_id IS NOT NULL OR canonical.thumbnail_url IS NOT NULL)
+          AND canonical.mime_type LIKE 'image/%'
+          AND canonical.drive_file_id IS NOT NULL
       )
   `).all())
   return new Set(
@@ -669,7 +669,7 @@ describe("daily-log photo alias read model", () => {
     }
   })
 
-  it("treats a thumbnail-only canonical as renderable for alias suppression", async () => {
+  it("keeps a source when its thumbnail-only canonical is not downloadable", async () => {
     const database = await openDatabase()
     try {
       createFixture(database)
@@ -682,7 +682,7 @@ describe("daily-log photo alias read model", () => {
 
       const photoIds = thumbnailAwareAggregatePhotoIds(database)
       expect(photoIds.has("canonical-0")).toBe(true)
-      expect(photoIds.has("alias-0")).toBe(false)
+      expect(photoIds.has("alias-0")).toBe(true)
     } finally {
       database.close()
     }
