@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { customProjectInteractionType } from "@/lib/project-profile"
+import { type ProjectDepartment } from "@/lib/project-branding"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
@@ -69,6 +70,9 @@ export function ProjectInformationWorkspace({
   const [publicLocationCity, setPublicLocationCity] = useState(
     information.project.publicLocationCity ?? "",
   )
+  const [department, setDepartment] = useState<ProjectDepartment | "">(
+    information.project.department ?? "",
+  )
   const [clientStatus, setClientStatus] = useState(information.project.clientStatus)
   const [jobStatusId, setJobStatusId] = useState(information.project.jobStatusId)
   const [addressSuffix, setAddressSuffix] = useState(
@@ -113,9 +117,16 @@ export function ProjectInformationWorkspace({
       setMessage(error)
       return
     }
+    if (!department) {
+      const error = "Choose ORC, HPS, Nu-Tech, or Design."
+      setProfileMessage(error)
+      setMessage(error)
+      return
+    }
     startTransition(async () => {
       const result = await updateProjectInformation({
         projectId: information.project.id,
+        department,
         projectAddress,
         mailingAddress,
         publicTitle,
@@ -272,7 +283,7 @@ export function ProjectInformationWorkspace({
           <div>
             <h2 className="font-semibold">Core project record</h2>
             <p className="text-sm text-muted-foreground">
-              Site and mailing addresses are separate. Project-number department and sequence stay fixed.
+              Site and mailing addresses are separate. Department is explicit; the project-number sequence stays fixed.
             </p>
           </div>
           <Badge variant="outline">Office staff editable</Badge>
@@ -296,6 +307,35 @@ export function ProjectInformationWorkspace({
               <option value="lead">Lead</option>
               <option value="customer">Customer</option>
             </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="project-department">
+              Department <span className="text-destructive" aria-hidden="true">*</span>
+            </Label>
+            <select
+              id="project-department"
+              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+              value={department}
+              onChange={(event) => {
+                const value = event.target.value
+                setDepartment(
+                  value === "O" || value === "H" || value === "N" || value === "D"
+                    ? value
+                    : "",
+                )
+              }}
+              required
+              aria-describedby="project-department-help"
+            >
+              <option value="">Choose department</option>
+              <option value="O">ORC</option>
+              <option value="H">HPS</option>
+              <option value="N">Nu-Tech</option>
+              <option value="D">Design</option>
+            </select>
+            <p id="project-department-help" className="text-xs text-muted-foreground">
+              Controls department-specific workflows, including which connected social accounts receive posts.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="public-title">

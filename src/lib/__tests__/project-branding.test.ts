@@ -5,8 +5,10 @@ import { join } from "node:path"
 import {
   projectBrandFor,
   projectDepartment,
+  projectDepartmentFromDivisionLabel,
   projectDepartmentDisplayName,
   projectLegalEntityName,
+  resolvedProjectDepartment,
 } from "@/lib/project-branding"
 
 describe("project branding", () => {
@@ -21,6 +23,33 @@ describe("project branding", () => {
 
   it("can infer the department from a Compass project id", () => {
     expect(projectDepartment({ projectId: "proj-bt-o-197-litten" })).toBe("O")
+  })
+
+  it("prefers the explicit project department", () => {
+    expect(projectDepartment({
+      department: "N",
+      projectId: "proj-bt-nu-tech-job",
+      projectNumber: null,
+    })).toBe("N")
+    expect(projectDepartment({ department: "N", projectNumber: "H-OFFICE" })).toBe("N")
+  })
+
+  it("does not invent a department for ambiguous social routing", () => {
+    expect(resolvedProjectDepartment({
+      projectId: "proj-bt-nu-tech-job",
+      projectNumber: null,
+    })).toBeNull()
+  })
+
+  it.each([
+    ["ORC", "O"],
+    ["HPS", "H"],
+    ["NuTech", "N"],
+    ["Nu-Tech", "N"],
+    ["Design", "D"],
+    ["Unassigned", null],
+  ] as const)("maps the handoff division %s", (division, department) => {
+    expect(projectDepartmentFromDivisionLabel(division)).toBe(department)
   })
 
   it("uses the ORC identity for both ORC and Design projects", () => {

@@ -19,7 +19,10 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { getProjectAccessRecord } from "@/lib/project-access"
-import { projectDepartment } from "@/lib/project-branding"
+import {
+  resolvedProjectDepartment,
+  type ProjectDepartment,
+} from "@/lib/project-branding"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { environmentString, getSocialConfig, socialTokenSalt } from "@/lib/social/config"
 import { createSignedSocialPhotoUrl } from "@/lib/social/media-signing"
@@ -70,7 +73,7 @@ export type SocialPostWorkspace = {
     readonly id: string
     readonly name: string
     readonly projectNumber: string | null
-    readonly department: string
+    readonly department: ProjectDepartment | null
     readonly publicTitle: string | null
     readonly publicLocationCity: string | null
     readonly privacyReady: boolean
@@ -121,6 +124,7 @@ type SocialContext = {
     readonly id: string
     readonly name: string
     readonly projectNumber: string | null
+    readonly department: string | null
     readonly publicTitle: string | null
     readonly publicLocationCity: string | null
     readonly clientName: string | null
@@ -151,6 +155,24 @@ function publicIdentityErrors(project: SocialContext["project"]): readonly strin
   })
 }
 
+function socialProjectDepartment(
+  project: SocialContext["project"],
+): ProjectDepartment | null {
+  return resolvedProjectDepartment({
+    department: project.department,
+    projectId: project.id,
+    projectNumber: project.projectNumber,
+  })
+}
+
+function socialReadinessErrors(project: SocialContext["project"]): readonly string[] {
+  const errors = [...publicIdentityErrors(project)]
+  if (!socialProjectDepartment(project)) {
+    errors.push("Choose the project department before creating or publishing social posts.")
+  }
+  return errors
+}
+
 async function socialContext(
   projectId: string,
   action: "read" | "create" | "update" | "delete" | "approve",
@@ -171,6 +193,7 @@ async function socialContext(
     id: projects.id,
     name: projects.name,
     projectNumber: projects.projectNumber,
+    department: projects.department,
     publicTitle: projects.publicTitle,
     publicLocationCity: projects.publicLocationCity,
     clientName: projects.clientName,
@@ -190,10 +213,7 @@ function revalidateSocial(projectId: string): void {
 
 export async function getSocialPostWorkspace(projectId: string): Promise<SocialPostWorkspace> {
   const context = await socialContext(projectId, "read")
-  const department = projectDepartment({
-    projectId: context.project.id,
-    projectNumber: context.project.projectNumber,
-  })
+  const department = socialProjectDepartment(context.project)
   const [accountRows, photoRows, postRows] = await context.db.batch([
     context.db.select({
       id: socialAccounts.id,
@@ -201,7 +221,9 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
       accountName: socialAccounts.accountName,
     }).from(socialAccounts).where(and(
       eq(socialAccounts.organizationId, context.organizationId),
-      eq(socialAccounts.department, department),
+      department === null
+        ? eq(socialAccounts.id, "__no_matching_department__")
+        : eq(socialAccounts.department, department),
       eq(socialAccounts.status, "connected"),
     )),
     context.db.select({
@@ -256,7 +278,7 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
         inArray(socialPostMedia.postId, postIds),
       ).orderBy(asc(socialPostMedia.sortOrder))
     : []
-  const errors = publicIdentityErrors(context.project)
+  const errors = socialReadinessErrors(context.project)
   return {
     project: {
       id: context.project.id,
@@ -347,7 +369,7 @@ export async function saveSocialPostDraft(input: {
   let createdId: string | null = null
   try {
     const context = await socialContext(input.projectId, input.postId ? "update" : "create")
-    const identityErrors = publicIdentityErrors(context.project)
+    const identityErrors = socialReadinessErrors(context.project)
     if (identityErrors.length > 0) return { success: false, error: identityErrors.join(" ") }
     const copy = cleanCopy(input)
     if (!copy.heading || !copy.body) {
@@ -373,10 +395,10 @@ export async function saveSocialPostDraft(input: {
     if (platforms.includes("x") && socialPostText(copy).length > 280) {
       return { success: false, error: "X posts must be 280 characters or fewer, including hashtags." }
     }
-    const department = projectDepartment({
-      projectId: context.project.id,
-      projectNumber: context.project.projectNumber,
-    })
+    const department = socialProjectDepartment(context.project)
+    if (!department) {
+      return { success: false, error: "Choose the project department before creating a post." }
+    }
     const accounts = await context.db.select().from(socialAccounts).where(and(
       eq(socialAccounts.organizationId, context.organizationId),
       eq(socialAccounts.department, department),
@@ -431,6 +453,7 @@ export async function saveSocialPostDraft(input: {
       )).get()
       if (!existing) return { success: false, error: "Only active drafts can be edited." }
       await context.db.update(socialPosts).set({
+        department,
         heading: copy.heading,
         body: copy.body,
         hashtagsJson: JSON.stringify(copy.hashtags),
@@ -544,7 +567,7 @@ export async function suggestSocialPost(input: {
 }): Promise<SuggestionResult> {
   try {
     const context = await socialContext(input.projectId, "create")
-    const identityErrors = publicIdentityErrors(context.project)
+    const identityErrors = socialReadinessErrors(context.project)
     if (identityErrors.length > 0) return { success: false, error: identityErrors.join(" ") }
     const photoIds = [...new Set(input.photoIds)].slice(0, 4)
     if (photoIds.length === 0) {
@@ -775,8 +798,18 @@ export async function publishSocialPost(input: {
     if (!post || (post.status !== "draft" && post.status !== "failed" && post.status !== "partial")) {
       return { success: false, error: "This post is not ready to publish." }
     }
-    const identityErrors = publicIdentityErrors(context.project)
+    const identityErrors = socialReadinessErrors(context.project)
     if (identityErrors.length > 0) return { success: false, error: identityErrors.join(" ") }
+    const department = socialProjectDepartment(context.project)
+    if (!department) {
+      return { success: false, error: "Choose the project department before publishing." }
+    }
+    if (post.department !== department) {
+      return {
+        success: false,
+        error: "The project department changed after this draft was saved. Edit and save the draft again before publishing.",
+      }
+    }
     const hashtags = parseHashtags(post.hashtagsJson)
     const text = socialPostText({ heading: post.heading, body: post.body, hashtags })
     const violations = socialCopyPrivacyViolations(text, {
@@ -815,6 +848,7 @@ export async function publishSocialPost(input: {
     ).where(and(
       eq(socialPostTargets.postId, post.id),
       eq(socialAccounts.organizationId, context.organizationId),
+      eq(socialAccounts.department, department),
       eq(socialAccounts.status, "connected"),
     ))
     if (allTargets.length === 0) return { success: false, error: "No connected destinations remain." }

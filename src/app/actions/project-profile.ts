@@ -66,6 +66,11 @@ import {
 } from "@/lib/project-profile"
 import { clientFollowUpState } from "@/lib/project-follow-up"
 import { getProjectAccessRecord } from "@/lib/project-access"
+import {
+  isProjectDepartment,
+  resolvedProjectDepartment,
+  type ProjectDepartment,
+} from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { validatePublicProjectIdentity } from "@/lib/social/privacy"
 
@@ -112,6 +117,7 @@ export type ProjectInformation = {
     readonly id: string
     readonly name: string
     readonly projectNumber: string | null
+    readonly department: ProjectDepartment | null
     readonly projectAddress: string | null
     readonly mailingAddress: string | null
     readonly publicTitle: string | null
@@ -372,6 +378,7 @@ export async function getProjectInformation(
         id: projects.id,
         name: projects.name,
         projectNumber: projects.projectNumber,
+        department: projects.department,
         projectAddress: projects.address,
         mailingAddress: projects.mailingAddress,
         publicTitle: projects.publicTitle,
@@ -498,7 +505,15 @@ export async function getProjectInformation(
       ? project.clientStatus
       : "customer"
     return {
-      project: { ...project, clientStatus },
+      project: {
+        ...project,
+        department: resolvedProjectDepartment({
+          department: project.department,
+          projectId: project.id,
+          projectNumber: project.projectNumber,
+        }),
+        clientStatus,
+      },
       jobStatuses: jobStatusOptions(customStatuses),
       interactionTypes: projectInteractionTypeOptions(
         customInteractionTypes.map((item) => item.interactionType),
@@ -832,6 +847,7 @@ export async function retryProjectProfileSyncOperation(input: {
 
 export async function updateProjectInformation(input: {
   readonly projectId: string
+  readonly department: ProjectDepartment
   readonly projectAddress: string | null
   readonly mailingAddress: string | null
   readonly publicTitle: string | null
@@ -847,6 +863,9 @@ export async function updateProjectInformation(input: {
     if (!PROJECT_CLIENT_STATUSES.includes(input.clientStatus)) {
       return { success: false, error: "Choose Lead or Customer." }
     }
+    if (!isProjectDepartment(input.department)) {
+      return { success: false, error: "Choose ORC, HPS, Nu-Tech, or Design." }
+    }
     if (!(await validJobStatus({ db, organizationId, jobStatusId: input.jobStatusId }))) {
       return { success: false, error: "Choose an active governed job status." }
     }
@@ -857,6 +876,7 @@ export async function updateProjectInformation(input: {
         name: projects.name,
         clientName: projects.clientName,
         projectNumber: projects.projectNumber,
+        department: projects.department,
         status: projects.status,
         address: projects.address,
         mailingAddress: projects.mailingAddress,
@@ -962,6 +982,7 @@ export async function updateProjectInformation(input: {
       .update(projects)
       .set({
         projectNumber,
+        department: input.department,
         status: legacyStatus,
         address: projectAddress,
         mailingAddress,
@@ -989,6 +1010,7 @@ export async function updateProjectInformation(input: {
       beforeJson: JSON.stringify(existing),
       afterJson: JSON.stringify({
         projectNumber,
+        department: input.department,
         projectAddress,
         mailingAddress,
         clientStatus: input.clientStatus,

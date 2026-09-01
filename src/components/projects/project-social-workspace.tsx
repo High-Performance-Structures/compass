@@ -184,7 +184,9 @@ export function ProjectSocialWorkspace({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Social publishing · Department {workspace.project.department}
+            Social publishing · {workspace.project.department
+              ? `Department ${workspace.project.department}`
+              : "Department not set"}
           </p>
           <h1 className="mt-1 text-2xl font-semibold">Project social posts</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -200,7 +202,7 @@ export function ProjectSocialWorkspace({
 
       {!workspace.project.privacyReady ? (
         <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-          <h2 className="font-semibold">Public project identity required</h2>
+          <h2 className="font-semibold">Project social setup required</h2>
           {workspace.project.privacyErrors.map((error) => (
             <p key={error} className="mt-1 text-sm text-muted-foreground">{error}</p>
           ))}

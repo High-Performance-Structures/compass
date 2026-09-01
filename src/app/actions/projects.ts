@@ -672,6 +672,7 @@ export async function createProjectIntake(
           id: projectId,
           organizationId,
           projectNumber,
+          department,
           name: projectName,
           status: "OPEN",
           address: joinedAddress(input),
@@ -1496,6 +1497,9 @@ export async function createProjectShell(
         id,
         organizationId: orgId,
         projectNumber,
+        department:
+          normalizedIntakeDepartment(input.department) ??
+          projectDepartment(projectNumber),
         name,
         status,
         address,
