@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 
 import { getDb } from "@/db"
 import { getCurrentUser } from "@/lib/auth"
@@ -15,6 +15,7 @@ import {
   projectRouteAliasDestination,
   resolveProjectRouteAliasTarget,
 } from "@/lib/project-route-alias"
+import { LegacyProjectRouteRedirect } from "@/components/projects/legacy-project-route-redirect"
 
 export default async function LegacyProjectRoutePage({
   searchParams,
@@ -24,7 +25,7 @@ export default async function LegacyProjectRoutePage({
     readonly suffix?: string | readonly string[]
     readonly originalSearch?: string | readonly string[]
   }>
-}>): Promise<never> {
+}>): Promise<React.ReactElement> {
   const params = await searchParams
   const sourceProjectId = scalarLegacyRouteSearchParam(params.sourceProjectId)
   const suffix = scalarLegacyRouteSearchParam(params.suffix)
@@ -74,16 +75,18 @@ export default async function LegacyProjectRoutePage({
 
   if (aliasResolution.kind === "resolved") {
     if (!hasTargetAccess) notFound()
-    redirect(
-      projectRouteAliasDestination(
-        aliasResolution.targetProjectId,
-        suffix,
-        originalSearch,
-      ),
+    return (
+      <LegacyProjectRouteRedirect
+        destination={projectRouteAliasDestination(
+          aliasResolution.targetProjectId,
+          suffix,
+          originalSearch,
+        )}
+      />
     )
   }
 
   // Existing, unconsolidated Buildertrend leads continue through their
   // original project route. The marker prevents a resolver loop.
-  redirect(fallbackPathname)
+  return <LegacyProjectRouteRedirect destination={fallbackPathname} />
 }
