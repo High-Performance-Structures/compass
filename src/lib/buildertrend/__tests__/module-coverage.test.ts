@@ -132,6 +132,9 @@ describe("Buildertrend module coverage", () => {
     )
     expect(moduleForArchiveFileType("owner_update_photo")).toBe("photos")
     expect(moduleForArchiveFileType("document")).toBe("files")
+    expect(moduleForArchiveFileType("lead_proposal")).toBeNull()
+    expect(moduleForArchiveFileType("owner_invoice_attachment")).toBeNull()
+    expect(moduleForArchiveFileType("message_claim_photo")).toBeNull()
     expect(moduleForSourceRecordType("job")).toBeNull()
   })
 

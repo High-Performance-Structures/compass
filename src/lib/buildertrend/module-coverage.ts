@@ -303,8 +303,8 @@ export function moduleForArchiveFileType(
     return "videos"
   }
   if (sourceRecordType === "document") return "files"
-  if (sourceRecordType === "lead_proposal") return "estimates"
-  if (sourceRecordType === "owner_invoice_attachment") return "owner_invoices"
-  if (sourceRecordType === "message_claim_photo") return "warranty_claims"
+  // Attachments are supporting evidence for their parent record. Counting
+  // them as additional estimates, invoices, or claims makes an exact module
+  // attestation conflict whenever a record has one or more files.
   return null
 }
