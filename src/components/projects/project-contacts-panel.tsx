@@ -21,50 +21,21 @@ import { ProjectContactInviteButton } from "@/components/projects/project-contac
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
 import { Badge } from "@/components/ui/badge"
 import { projectContactCanInvite } from "@/lib/project-contact-access-status"
-
-type ProjectContactDisplayGroupId = "customers" | "vendors" | "internal"
-
-type ProjectContactDisplayGroup = {
-  readonly id: ProjectContactDisplayGroupId
-  readonly label: string
-  readonly contacts: readonly ProjectContactItem[]
-}
+import {
+  buildProjectContactDisplayGroups,
+  projectContactCanEdit,
+  type ProjectContactDisplayGroupId,
+} from "@/lib/project-contact-display"
 
 function typeIcon(type: ProjectContactDisplayGroupId): React.ReactElement {
   switch (type) {
-    case "customers":
+    case "owners":
       return <IconHome className="size-4 text-muted-foreground" />
     case "vendors":
       return <IconBuildingStore className="size-4 text-muted-foreground" />
     case "internal":
       return <IconShieldCheck className="size-4 text-muted-foreground" />
   }
-}
-
-function buildDisplayGroups(
-  contacts: readonly ProjectContactItem[]
-): readonly ProjectContactDisplayGroup[] {
-  return [
-    {
-      id: "customers",
-      label: "Owners",
-      contacts: contacts.filter((contact) => contact.contactType === "owner"),
-    },
-    {
-      id: "vendors",
-      label: "Vendors",
-      contacts: contacts.filter(
-        (contact) =>
-          contact.contactType === "supplier" ||
-          contact.contactType === "subcontractor"
-      ),
-    },
-    {
-      id: "internal",
-      label: "Internal",
-      contacts: contacts.filter((contact) => contact.contactType === "internal"),
-    },
-  ]
 }
 
 function visibilityLabel(contact: ProjectContactItem): string {
@@ -167,14 +138,14 @@ function ContactCard({
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline">{visibilityLabel(contact)}</Badge>
-          {directoryOptions && (
+          {projectContactCanEdit(contact, directoryOptions) && directoryOptions ? (
             <ProjectContactEditor
               projectId={projectId}
               contact={contact}
               directoryOptions={directoryOptions}
               sageOptions={sageOptions ?? { divisions: [], costCodes: [] }}
             />
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -215,6 +186,7 @@ function ContactCard({
       )}
 
       {!compact &&
+        contact.active &&
         contact.email &&
         !isCompanyOnlyVendor(contact) &&
         projectContactCanInvite(contact.accessStatus) && (
@@ -262,7 +234,7 @@ export function ProjectContactsPanel({
     )
   }
 
-  const displayGroups = buildDisplayGroups(summary.allContacts)
+  const displayGroups = buildProjectContactDisplayGroups(summary.allContacts)
 
   return (
     <section className="rounded-lg border p-3 sm:p-4">
@@ -338,7 +310,7 @@ export function ProjectContactsDirectory({
   readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
   readonly sageOptions?: ProjectContactSageOptions
 }): React.ReactElement {
-  const displayGroups = buildDisplayGroups(summary.allContacts)
+  const displayGroups = buildProjectContactDisplayGroups(summary.allContacts)
 
   return (
     <div className="grid gap-4">
@@ -371,6 +343,36 @@ export function ProjectContactsDirectory({
           )}
         </section>
       ))}
+
+      {summary.historicalContacts.length > 0 && (
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <IconShieldCheck className="size-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">
+                Former employees and historical internal users
+              </h2>
+            </div>
+            <Badge variant="outline">{summary.historicalContacts.length}</Badge>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Historical Buildertrend internal contacts are retained for the record.
+            They are inactive, uninvited, and excluded from active project access.
+          </p>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {summary.historicalContacts.map((contact) => (
+              <ContactCard
+                key={contact.id}
+                contact={contact}
+                projectId={projectId}
+                projectLabel={projectLabel}
+                directoryOptions={directoryOptions}
+                sageOptions={sageOptions}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {summary.csiGroups.length > 0 && (
         <section className="rounded-lg border p-4">
