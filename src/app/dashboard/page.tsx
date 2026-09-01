@@ -18,6 +18,7 @@ import {
   resolveProjectAudienceActiveProject,
 } from "@/lib/project-audience-active-project"
 import {
+  canPrepareGreetingCards,
   canManageProjectRegistry,
 } from "@/lib/permissions"
 
@@ -96,6 +97,7 @@ export default async function Page(): Promise<React.ReactElement> {
       officeCalendarEvents={officeCalendarEvents}
       officeProjectId={workCalendar?.defaultProjectId ?? null}
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
+      canPrepareGreetingCards={canPrepareGreetingCards(currentUser)}
       cherishRecognitions={
         cherishResult.success
           ? cherishResult.data

@@ -5,6 +5,8 @@ import {
   accessLevelToFeatureActions,
   canCreateProject,
   canManageWorkCalendarEvents,
+  canApproveGreetingCards,
+  canPrepareGreetingCards,
   canUseAskCompass,
   canUseExecutiveAdmin,
   canUseFieldDesk,
@@ -209,6 +211,49 @@ describe("canUseExecutiveAdmin", () => {
       canUseExecutiveAdmin({ ...martine, organizationType: "client" }),
     ).toBe(false)
     expect(canUseExecutiveAdmin(null)).toBe(false)
+  })
+})
+
+describe("greeting-card permissions", () => {
+  it.each([
+    "admin",
+    "secondary_admin",
+    "executive",
+    "project_manager",
+    "project_administrator",
+    "assistant_project_manager",
+    "accounting",
+    "office_manager",
+    "office",
+    "architectural_designer",
+    "drafter",
+    "lead_estimator",
+    "assistant_estimator",
+    "coordinator",
+    "field_superintendent",
+    "field_crew",
+    "field",
+  ])("allows internal team role %s to prepare cards", (role) => {
+    expect(canPrepareGreetingCards(userWithRole(role))).toBe(true)
+  })
+
+  it.each([
+    "developer",
+    "client",
+    "subcontractor",
+    "supplier",
+    "guest",
+  ])("does not expose recipient addresses to external role %s", (role) => {
+    expect(canPrepareGreetingCards(userWithRole(role))).toBe(false)
+  })
+
+  it("keeps final approval with the Executive Admin identity allowlist", () => {
+    const martine = {
+      ...userWithRole("office"),
+      email: "martine@hps-colorado.com",
+    }
+    expect(canApproveGreetingCards(martine)).toBe(true)
+    expect(canApproveGreetingCards(userWithRole("admin"))).toBe(false)
   })
 })
 

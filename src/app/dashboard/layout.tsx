@@ -37,6 +37,7 @@ import {
   canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
+  canPrepareGreetingCards,
   canManageUserAccess,
   canManageProjectRegistry,
 } from "@/lib/permissions"
@@ -73,6 +74,7 @@ export default async function DashboardLayout({
   const canUseDirectMessages = canViewActivity
   const canManageFeedback = canManageUserAccess(authUser)
   const canAccessExecutiveAdmin = canUseExecutiveAdmin(authUser)
+  const canAccessGreetingCards = canPrepareGreetingCards(authUser)
   const canUseDeveloperMode = canManageProjectRegistry(authUser)
   const developerModeEnabled = developerModeFromCookie(
     cookieStore.get(DEVELOPER_MODE_COOKIE)?.value,
@@ -121,6 +123,7 @@ export default async function DashboardLayout({
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
           canUseExecutiveAdmin={canAccessExecutiveAdmin}
+          canPrepareGreetingCards={canAccessGreetingCards}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />

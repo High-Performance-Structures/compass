@@ -22,6 +22,7 @@ import {
   IconFileInvoice,
   IconHome2,
   IconMapPin,
+  IconMail,
   IconMessageCircleQuestion,
   IconPhoto,
   IconPhotoEdit,
@@ -908,7 +909,11 @@ function OfficeAlerts({
   )
 }
 
-function QuickDock(): React.ReactElement {
+function QuickDock({
+  canPrepareGreetingCards,
+}: {
+  readonly canPrepareGreetingCards: boolean
+}): React.ReactElement {
   const actions = [
     {
       label: "Review POs",
@@ -926,9 +931,11 @@ function QuickDock(): React.ReactElement {
       icon: <IconClipboardText className="size-4" />,
     },
     {
-      label: "Files",
-      href: "/dashboard/files",
-      icon: <IconFileInvoice className="size-4" />,
+      label: canPrepareGreetingCards ? "Greeting cards" : "Files",
+      href: canPrepareGreetingCards ? "/dashboard/cards" : "/dashboard/files",
+      icon: canPrepareGreetingCards
+        ? <IconMail className="size-4" />
+        : <IconFileInvoice className="size-4" />,
     },
   ]
 
@@ -1174,6 +1181,7 @@ export function DashboardLaunchpad({
   officeCalendarEvents,
   officeProjectId,
   canManageOfficeMaintenance,
+  canPrepareGreetingCards,
   cherishRecognitions,
 }: {
   readonly overview: DashboardOverview
@@ -1183,6 +1191,7 @@ export function DashboardLaunchpad({
   readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
   readonly officeProjectId: string | null
   readonly canManageOfficeMaintenance: boolean
+  readonly canPrepareGreetingCards: boolean
   readonly cherishRecognitions: readonly CherishStory[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
@@ -1266,7 +1275,7 @@ export function DashboardLaunchpad({
           />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
             <OfficeAlerts overview={overview} />
-            <QuickDock />
+            <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
           </div>
         </div>
       ) : (

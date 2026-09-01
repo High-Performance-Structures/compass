@@ -20,6 +20,10 @@ export type HandwryttenConfigResult =
   | { readonly success: true; readonly data: HandwryttenConfig }
   | { readonly success: false; readonly missingKeys: readonly string[] }
 
+export type HandwryttenApiKeyResult =
+  | { readonly success: true; readonly apiKey: string }
+  | { readonly success: false; readonly missingKeys: readonly string[] }
+
 const REQUIRED_CONFIG_KEYS = [
   "HANDWRYTTEN_API_KEY",
   "HANDWRYTTEN_SENDER_BUSINESS_NAME",
@@ -81,4 +85,11 @@ export function getHandwryttenConfig(env: object): HandwryttenConfigResult {
       },
     },
   }
+}
+
+export function getHandwryttenApiKey(env: object): HandwryttenApiKeyResult {
+  const apiKey = environmentString(env, "HANDWRYTTEN_API_KEY")
+  return apiKey
+    ? { success: true, apiKey }
+    : { success: false, missingKeys: ["HANDWRYTTEN_API_KEY"] }
 }
