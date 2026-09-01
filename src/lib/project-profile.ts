@@ -127,6 +127,12 @@ export type ProjectJobStatusDefinition = {
   readonly followUpCadenceDays: number | null
 }
 
+export type ProjectJobStatusOption = ProjectJobStatusDefinition & {
+  readonly sageCode: string | null
+  readonly active: boolean
+  readonly builtIn: boolean
+}
+
 export const PROJECT_JOB_STATUS_DEFINITIONS = [
   { id: "intake", label: "Intake", followUpCadenceDays: 2 },
   {
@@ -224,6 +230,50 @@ export const PROJECT_JOB_STATUS_DEFINITIONS = [
   { id: "bid_refused", label: "Bid Refused", followUpCadenceDays: null },
   { id: "inactive", label: "Inactive", followUpCadenceDays: null },
 ] as const satisfies readonly ProjectJobStatusDefinition[]
+
+export function projectJobStatusOptions(
+  customStatuses: readonly {
+    readonly id: string
+    readonly label: string
+    readonly sageCode: string | null
+    readonly followUpCadenceDays: number | null
+    readonly active: boolean
+  }[],
+  selectedJobStatusId?: string,
+): readonly ProjectJobStatusOption[] {
+  const seenLabels = new Set<string>()
+  const customOptions: ProjectJobStatusOption[] = []
+  const selectedBuiltIn = PROJECT_JOB_STATUS_DEFINITIONS.find(
+    (status) => status.id === selectedJobStatusId,
+  )
+  const selectedBuiltInLabel = selectedBuiltIn
+    ? normalizeProjectJobStatusLabel(selectedBuiltIn.label)
+    : null
+
+  for (const status of customStatuses) {
+    const normalizedLabel = normalizeProjectJobStatusLabel(status.label)
+    // A controlled select must always contain its persisted value. Prefer the
+    // selected built-in on a label collision; otherwise the Sage-backed
+    // organization status remains authoritative for that shared label.
+    if (normalizedLabel === selectedBuiltInLabel) continue
+    if (seenLabels.has(normalizedLabel)) continue
+    seenLabels.add(normalizedLabel)
+    customOptions.push({ ...status, builtIn: false })
+  }
+
+  const builtInOptions = PROJECT_JOB_STATUS_DEFINITIONS
+    .filter((status) => !seenLabels.has(normalizeProjectJobStatusLabel(status.label)))
+    .map((status) => ({
+      id: status.id,
+      label: status.label,
+      sageCode: null,
+      followUpCadenceDays: status.followUpCadenceDays,
+      active: true,
+      builtIn: true,
+    }))
+
+  return [...builtInOptions, ...customOptions]
+}
 
 export type ProjectJobStatusId = (typeof PROJECT_JOB_STATUS_DEFINITIONS)[number]["id"]
 
