@@ -1,0 +1,40 @@
+CREATE TABLE `cherish_card_fulfillments` (
+	`id` text PRIMARY KEY NOT NULL,
+	`organization_id` text NOT NULL,
+	`response_id` text NOT NULL,
+	`created_by` text,
+	`provider` text DEFAULT 'handwrytten' NOT NULL,
+	`delivery_method` text DEFAULT 'physical_mail' NOT NULL,
+	`provider_order_id` text,
+	`status` text DEFAULT 'submitting' NOT NULL,
+	`provider_card_id` text NOT NULL,
+	`card_name` text NOT NULL,
+	`message` text NOT NULL,
+	`wishes` text NOT NULL,
+	`recipient_first_name` text NOT NULL,
+	`recipient_last_name` text NOT NULL,
+	`recipient_business_name` text,
+	`recipient_email` text,
+	`recipient_phone` text,
+	`recipient_address1` text,
+	`recipient_address2` text,
+	`recipient_city` text,
+	`recipient_state` text,
+	`recipient_postal_code` text,
+	`recipient_country` text,
+	`gift_provider_item_id` text,
+	`gift_name` text,
+	`gift_amount_cents` integer,
+	`provider_error` text,
+	`submitted_at` text,
+	`cancelled_at` text,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`organization_id`) REFERENCES `organizations`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`response_id`) REFERENCES `cherish_pulse_responses`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `cherish_card_fulfillment_response_idx` ON `cherish_card_fulfillments` (`response_id`);
+--> statement-breakpoint
+CREATE INDEX `cherish_card_fulfillment_org_status_idx` ON `cherish_card_fulfillments` (`organization_id`,`status`);

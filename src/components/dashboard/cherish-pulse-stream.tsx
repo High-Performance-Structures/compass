@@ -17,9 +17,14 @@ import {
   type CherishPulseReviewItem,
 } from "@/app/actions/cherish-pulse"
 import {
+  getCherishCardFulfillments,
+  type CherishCardFulfillment,
+} from "@/app/actions/cherish-cards"
+import {
   getCherishRecipientOptions,
   type CherishRecipientOption,
 } from "@/app/actions/cherish-recipients"
+import { CherishCardAction } from "@/components/cherish/cherish-card-action"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -65,6 +70,9 @@ export function CherishPulseStream({
   const [archiveQuery, setArchiveQuery] = useState("")
   const [archiveLoading, setArchiveLoading] = useState(false)
   const [archiveMessage, setArchiveMessage] = useState<string | null>(null)
+  const [cardFulfillments, setCardFulfillments] = useState<
+    readonly CherishCardFulfillment[]
+  >([])
   const [loading, setLoading] = useState(true)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -85,16 +93,19 @@ export function CherishPulseStream({
           privateResult,
           archiveResult,
           recipientResult,
+          cardResult,
         ] = await Promise.all([
           getCherishPulseReviewQueue(),
           getCherishPulseLeadershipStream(),
           searchCherishPulseArchive(),
           getCherishRecipientOptions(),
+          getCherishCardFulfillments(),
         ])
         if (mounted && reviewResult.success) setReviewItems(reviewResult.data)
         if (mounted && privateResult.success) setPrivateItems(privateResult.data)
         if (mounted && archiveResult.success) setArchiveItems(archiveResult.data)
         if (mounted && recipientResult.success) setRecipients(recipientResult.data)
+        if (mounted && cardResult.success) setCardFulfillments(cardResult.data)
       }
 
       if (mounted) setLoading(false)
@@ -386,18 +397,36 @@ export function CherishPulseStream({
                   : `Shared by ${item.submittedByName ?? "a team member"}`}
               </p>
               {canReview ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="mt-3"
-                  onClick={() => void review(item, "archive")}
-                  disabled={reviewingId !== null}
-                >
-                  {reviewingId === item.id
-                    ? "Archiving…"
-                    : "Archive from team stream"}
-                </Button>
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => void review(item, "archive")}
+                      disabled={reviewingId !== null}
+                    >
+                      {reviewingId === item.id
+                        ? "Archiving…"
+                        : "Archive from team stream"}
+                    </Button>
+                  </div>
+                  <CherishCardAction
+                    recognition={item}
+                    fulfillment={
+                      cardFulfillments.find(
+                        (fulfillment) => fulfillment.responseId === item.id,
+                      ) ?? null
+                    }
+                    onFulfillmentChange={(next) => {
+                      setCardFulfillments((current) => [
+                        next,
+                        ...current.filter((entry) => entry.id !== next.id),
+                      ])
+                    }}
+                  />
+                </>
               ) : null}
             </article>
           ))}

@@ -146,6 +146,15 @@ decision reactivates NetSuite for a specific workflow.
 |----------|-------------|
 | `GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY` | Encrypts stored service account credentials. Generate with `openssl rand -hex 32`. |
 
+### CHERISH physical cards (optional)
+
+Handwrytten configuration is required only to enable the Executive Admin
+physical-card action. Store `HANDWRYTTEN_API_KEY` as a Worker secret. Configure
+the sender name and complete US return address with the
+`HANDWRYTTEN_SENDER_*` variables shown in `.env.example`. See
+[CHERISH cards](../modules/cherish-cards.md) for the fulfillment safeguards and
+the planned CardSnacks digital e-card path.
+
 ### Push notifications (optional, mobile)
 
 | Variable | Description |
