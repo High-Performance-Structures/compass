@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, isNull, or } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, not, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -43,6 +43,7 @@ import {
 } from "@/lib/schedule/owner-visibility"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
+import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
 import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
@@ -460,6 +461,14 @@ export async function getProjectAudiencePreview(
           eq(dailyLogPhotos.publicShareable, true)
         )
 
+  // An alias is suppressed only when its canonical row is still eligible for
+  // this audience. If a later permission update demotes the canonical row,
+  // keep the source row available so visible content is not lost.
+  const canonicalVisibilityFilter =
+    audience === "owner"
+      ? sql<boolean>`canonical.owner_visible IS 1 OR canonical.public_shareable IS 1`
+      : sql<boolean>`canonical.sub_vendor_visible IS 1 OR canonical.public_shareable IS 1`
+
   const photoRows = await db
     .select({
       id: dailyLogPhotos.id,
@@ -483,7 +492,25 @@ export async function getProjectAudiencePreview(
       and(
         eq(dailyLogPhotos.projectId, projectId),
         eq(dailyLogPhotos.reviewStatus, "approved"),
-        visibilityFilter
+        visibilityFilter,
+        dailyLogPhotoCollectionEligibility(),
+        not(sql<boolean>`EXISTS (
+          SELECT 1
+          FROM daily_log_photo_aliases AS alias
+          JOIN daily_log_photos AS canonical
+            ON canonical.id IS alias.canonical_photo_id
+          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+            AND alias.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.mime_type LIKE 'image/%'
+            AND canonical.drive_file_id IS NOT NULL
+            AND (
+              canonical.drive_file_id IS NOT NULL
+              OR canonical.thumbnail_url IS NOT NULL
+            )
+            AND canonical.review_status IS 'approved'
+            AND (${canonicalVisibilityFilter})
+        )`),
       )
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))

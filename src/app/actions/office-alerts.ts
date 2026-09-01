@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, not, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -14,6 +14,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
+import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 
 export type OfficeAlertRfi = {
@@ -194,7 +195,23 @@ export async function getOfficeAlertQueue(): Promise<OfficeAlertQueue> {
             .where(
               and(
                 inArray(dailyLogPhotos.projectId, batchProjectIds),
-                eq(dailyLogPhotos.reviewStatus, "needs_review")
+                eq(dailyLogPhotos.reviewStatus, "needs_review"),
+                dailyLogPhotoCollectionEligibility(),
+                not(sql<boolean>`EXISTS (
+                  SELECT 1
+                  FROM daily_log_photo_aliases AS alias
+                  JOIN daily_log_photos AS canonical
+                    ON canonical.id IS alias.canonical_photo_id
+                  WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                    AND alias.project_id IS ${dailyLogPhotos.projectId}
+                    AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                    AND canonical.mime_type LIKE 'image/%'
+                    AND canonical.drive_file_id IS NOT NULL
+                    AND (
+                      canonical.drive_file_id IS NOT NULL
+                      OR canonical.thumbnail_url IS NOT NULL
+                    )
+                )`),
               )
             )
             .orderBy(

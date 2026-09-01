@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, not, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -21,6 +21,7 @@ import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
+import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import {
   dateRangeFromDates,
   isDateWithinOwnerUpdatePeriod,
@@ -1122,7 +1123,27 @@ export async function getProjectFieldSummary(
       capturedAt: dailyLogPhotos.capturedAt,
     })
     .from(dailyLogPhotos)
-    .where(eq(dailyLogPhotos.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogPhotos.projectId, projectId),
+        dailyLogPhotoCollectionEligibility(),
+        not(sql<boolean>`EXISTS (
+          SELECT 1
+          FROM daily_log_photo_aliases AS alias
+          JOIN daily_log_photos AS canonical
+            ON canonical.id IS alias.canonical_photo_id
+          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+            AND alias.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.mime_type LIKE 'image/%'
+            AND canonical.drive_file_id IS NOT NULL
+            AND (
+              canonical.drive_file_id IS NOT NULL
+              OR canonical.thumbnail_url IS NOT NULL
+            )
+        )`),
+      ),
+    )
     .orderBy(desc(dailyLogPhotos.createdAt))
 
   const updateRows = await db
@@ -1385,7 +1406,28 @@ export async function getProjectDailyLogWorkspace(
       createdAt: dailyLogPhotos.createdAt,
     })
     .from(dailyLogPhotos)
-    .where(eq(dailyLogPhotos.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogPhotos.projectId, projectId),
+        dailyLogPhotoCollectionEligibility(),
+        not(sql<boolean>`EXISTS (
+          SELECT 1
+          FROM daily_log_photo_aliases AS alias
+          JOIN daily_log_photos AS canonical
+            ON canonical.id IS alias.canonical_photo_id
+          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+            AND alias.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.project_id IS ${dailyLogPhotos.projectId}
+            AND canonical.mime_type LIKE 'image/%'
+            AND canonical.drive_file_id IS NOT NULL
+            AND (
+              canonical.drive_file_id IS NOT NULL
+              OR canonical.thumbnail_url IS NOT NULL
+            )
+            AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
+        )`),
+      ),
+    )
     .orderBy(asc(dailyLogPhotos.sortOrder), desc(dailyLogPhotos.createdAt))
 
   const phaseRows = await db
@@ -1963,7 +2005,26 @@ export async function draftOwnerUpdateFromDailyLogs(
           eq(dailyLogPhotos.projectId, projectId),
           inArray(dailyLogPhotos.dailyLogId, selectedLogs.map((log) => log.id)),
           eq(dailyLogPhotos.reviewStatus, "approved"),
-          eq(dailyLogPhotos.ownerVisible, true)
+          eq(dailyLogPhotos.ownerVisible, true),
+          dailyLogPhotoCollectionEligibility(),
+          not(sql<boolean>`EXISTS (
+            SELECT 1
+            FROM daily_log_photo_aliases AS alias
+            JOIN daily_log_photos AS canonical
+              ON canonical.id IS alias.canonical_photo_id
+            WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+              AND alias.project_id IS ${dailyLogPhotos.projectId}
+              AND canonical.project_id IS ${dailyLogPhotos.projectId}
+              AND canonical.mime_type LIKE 'image/%'
+              AND canonical.drive_file_id IS NOT NULL
+              AND (
+                canonical.drive_file_id IS NOT NULL
+                OR canonical.thumbnail_url IS NOT NULL
+              )
+              AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
+              AND canonical.review_status IS 'approved'
+              AND canonical.owner_visible IS 1
+          )`),
         )
       )
       .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
@@ -2272,7 +2333,42 @@ export async function getOwnerProjectUpdateDocument(
       reviewStatus: dailyLogPhotos.reviewStatus,
     })
     .from(dailyLogPhotos)
-    .where(eq(dailyLogPhotos.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogPhotos.projectId, projectId),
+        or(
+          inArray(dailyLogPhotos.id, selectedPhotoIds),
+          // The owner-update picker shares this query with the photo picker.
+          // Keep non-image attachments available for document selection; the
+          // alias read model is only relevant to image collection rows.
+          sql<boolean>`
+            ${dailyLogPhotos.mimeType} IS NULL
+            OR ${dailyLogPhotos.mimeType} NOT LIKE 'image/%'
+          `,
+          and(
+            dailyLogPhotoCollectionEligibility(),
+            not(sql<boolean>`EXISTS (
+              SELECT 1
+              FROM daily_log_photo_aliases AS alias
+              JOIN daily_log_photos AS canonical
+                ON canonical.id IS alias.canonical_photo_id
+              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                AND alias.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.mime_type LIKE 'image/%'
+                AND canonical.drive_file_id IS NOT NULL
+                AND (
+                  canonical.drive_file_id IS NOT NULL
+                  OR canonical.thumbnail_url IS NOT NULL
+                )
+                AND ${dailyLogPhotos.dailyLogId} IS canonical.daily_log_id
+                AND canonical.review_status IS 'approved'
+                AND canonical.owner_visible IS 1
+            )`),
+          ),
+        ),
+      ),
+    )
     .orderBy(asc(dailyLogPhotos.sortOrder), asc(dailyLogPhotos.createdAt))
 
   const [photoFolder] = await db

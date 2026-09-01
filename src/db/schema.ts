@@ -1253,6 +1253,49 @@ export const dailyLogPhotos = sqliteTable("daily_log_photos", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const dailyLogPhotoAliases = sqliteTable(
+  "daily_log_photo_aliases",
+  {
+    sourcePhotoId: text("source_photo_id")
+      .primaryKey()
+      .notNull()
+      .references(() => dailyLogPhotos.id, { onDelete: "restrict" }),
+    canonicalPhotoId: text("canonical_photo_id")
+      .notNull()
+      .references(() => dailyLogPhotos.id, { onDelete: "restrict" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    contentSha256: text("content_sha256").notNull(),
+    contentSizeBytes: integer("content_size_bytes").notNull(),
+    adjudication: text("adjudication").notNull().default("verified_sha256"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    check(
+      "daily_log_photo_aliases_distinct_check",
+      sql`${table.sourcePhotoId} <> ${table.canonicalPhotoId}`,
+    ),
+    check(
+      "daily_log_photo_aliases_sha256_check",
+      sql`length(${table.contentSha256}) = 64 AND ${table.contentSha256} NOT GLOB '*[^0-9A-Fa-f]*'`,
+    ),
+    check(
+      "daily_log_photo_aliases_size_check",
+      sql`${table.contentSizeBytes} >= 0`,
+    ),
+    index("idx_daily_log_photo_aliases_project_canonical").on(
+      table.projectId,
+      table.canonicalPhotoId,
+    ),
+    index("idx_daily_log_photo_aliases_content").on(
+      table.projectId,
+      table.contentSha256,
+      table.contentSizeBytes,
+    ),
+  ],
+)
+
 export const ownerProjectUpdates = sqliteTable("owner_project_updates", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -2536,6 +2579,8 @@ export type DailyLog = typeof dailyLogs.$inferSelect
 export type NewDailyLog = typeof dailyLogs.$inferInsert
 export type DailyLogPhoto = typeof dailyLogPhotos.$inferSelect
 export type NewDailyLogPhoto = typeof dailyLogPhotos.$inferInsert
+export type DailyLogPhotoAlias = typeof dailyLogPhotoAliases.$inferSelect
+export type NewDailyLogPhotoAlias = typeof dailyLogPhotoAliases.$inferInsert
 export type DailyLogTaskLink = typeof dailyLogTaskLinks.$inferSelect
 export type NewDailyLogTaskLink = typeof dailyLogTaskLinks.$inferInsert
 export type OwnerProjectUpdate = typeof ownerProjectUpdates.$inferSelect
