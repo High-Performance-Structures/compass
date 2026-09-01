@@ -4,21 +4,25 @@ import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
-import { decodedLegacyProjectPathname } from "@/lib/legacy-project-route"
+import { legacyProjectResolutionPathname } from "@/lib/legacy-project-route"
 import { isPublicPath } from "@/lib/public-paths"
+
+function legacyResolutionUrl(request: NextRequest): URL | null {
+  if (request.nextUrl.searchParams.get("legacyResolved") === "1") return null
+  const pathname = legacyProjectResolutionPathname(
+    request.nextUrl.pathname,
+    request.nextUrl.search,
+  )
+  return pathname ? new URL(pathname, request.url) : null
+}
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  const decodedLegacyPathname = decodedLegacyProjectPathname(pathname)
-  if (decodedLegacyPathname) {
-    const decodedUrl = request.nextUrl.clone()
-    decodedUrl.pathname = decodedLegacyPathname
-    return NextResponse.redirect(decodedUrl)
-  }
-
   if (!isWorkOSConfigured()) {
     if (isDevAuthFallbackAllowed()) {
+      const resolutionUrl = legacyResolutionUrl(request)
+      if (resolutionUrl) return NextResponse.redirect(resolutionUrl)
       return NextResponse.next()
     }
 
@@ -35,7 +39,7 @@ export default async function middleware(request: NextRequest) {
 
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("error", "auth_unavailable")
-    loginUrl.searchParams.set("from", pathname)
+    loginUrl.searchParams.set("from", `${pathname}${request.nextUrl.search}`)
     return NextResponse.redirect(loginUrl)
   }
 
@@ -48,12 +52,25 @@ export default async function middleware(request: NextRequest) {
   if (!session.user) {
     const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
     if (isDemoSession) {
+      const resolutionUrl = legacyResolutionUrl(request)
+      if (resolutionUrl) {
+        return handleAuthkitHeaders(request, headers, {
+          redirect: resolutionUrl.toString(),
+        })
+      }
       return handleAuthkitHeaders(request, headers)
     }
 
     const loginUrl = new URL("/login", request.url)
-    loginUrl.searchParams.set("from", pathname)
+    loginUrl.searchParams.set("from", `${pathname}${request.nextUrl.search}`)
     return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
+  }
+
+  const resolutionUrl = legacyResolutionUrl(request)
+  if (resolutionUrl) {
+    return handleAuthkitHeaders(request, headers, {
+      redirect: resolutionUrl.toString(),
+    })
   }
 
   return handleAuthkitHeaders(request, headers)

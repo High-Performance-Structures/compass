@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import {
   IconArrowLeft,
   IconAddressBook,
@@ -30,7 +31,8 @@ export default async function ProjectContactsPage({
 }: {
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
 
   let contacts: ProjectContactsSummary | null = null
   let directoryOptions: readonly ProjectContactDirectoryOption[] = []

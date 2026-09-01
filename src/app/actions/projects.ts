@@ -11,12 +11,13 @@ import {
   projectMembers,
   projectNumberReservations,
   projectOperations,
+  projectRouteAliases,
   projects,
   users,
 } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { googleAuth } from "@/db/schema-google"
-import { and, asc, eq, or, sql } from "drizzle-orm"
+import { and, asc, eq, notExists, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
@@ -1358,7 +1359,17 @@ export async function getProjects(): Promise<ProjectListItem[]> {
             eq(projectJobStatuses.organizationId, projects.organizationId),
           ),
         )
-        .where(eq(projects.organizationId, user.organizationId))
+        .where(
+          and(
+            eq(projects.organizationId, user.organizationId),
+            notExists(
+              db
+                .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
+                .from(projectRouteAliases)
+                .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+            ),
+          ),
+        )
         .orderBy(asc(projects.projectNumber), asc(projects.name))
       return projectListItems(rows)
     }
@@ -1385,7 +1396,17 @@ export async function getProjects(): Promise<ProjectListItem[]> {
           eq(projectJobStatuses.organizationId, projects.organizationId),
         ),
       )
-      .where(eq(projectMembers.userId, user.id))
+      .where(
+        and(
+          eq(projectMembers.userId, user.id),
+          notExists(
+            db
+              .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
+              .from(projectRouteAliases)
+              .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+          ),
+        ),
+      )
       .orderBy(asc(projects.projectNumber), asc(projects.name))
     return projectListItems(rows)
   } catch {

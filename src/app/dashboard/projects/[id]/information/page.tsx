@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { notFound } from "next/navigation"
 
 import { getCurrentUser } from "@/lib/auth"
@@ -15,7 +16,8 @@ export default async function ProjectInformationPage({
 }: {
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   const [information, followUpOwners, currentUser] = await Promise.all([
     getProjectInformation(id),
     getProjectFollowUpOwners(id),

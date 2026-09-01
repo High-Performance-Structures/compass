@@ -1,3 +1,4 @@
+import { resolveProjectRouteId } from "@/lib/project-route-id"
 import {
   publishOwnerProjectUpdate,
   updateOwnerProjectUpdateDraft,
@@ -34,7 +35,9 @@ export async function PUT(
     )
   }
 
-  const { id, updateId } = await params
+  const { id: rawProjectId, updateId } = await params
+  const id = await resolveProjectRouteId(rawProjectId)
+  if (!id) return Response.json({ success: false, error: "Project not found." }, { status: 404 })
   const intent =
     new URL(request.url).searchParams.get("intent") === "publish"
       ? "publish"

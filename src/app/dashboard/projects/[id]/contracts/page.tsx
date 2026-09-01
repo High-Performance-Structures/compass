@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import { IconArrowLeft, IconFileDescription } from "@tabler/icons-react"
 
@@ -14,7 +15,8 @@ export default async function ProjectContractsPage({
   readonly params: Promise<{ id: string }>
   readonly searchParams: Promise<{ packetId?: string }>
 }): Promise<React.ReactElement> {
-  const [{ id }, query] = await Promise.all([params, searchParams])
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
+  const id = decodeProjectRouteId(rawProjectId)
   const workspace = await getProjectContractPacketWorkspace(id, query.packetId)
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">

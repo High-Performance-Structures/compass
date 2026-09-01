@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import { IconArrowLeft, IconCalculator, IconPackageExport } from "@tabler/icons-react"
 
@@ -15,7 +16,8 @@ export default async function ProjectEstimatePage({
   readonly params: Promise<{ id: string }>
   readonly searchParams: Promise<{ estimateId?: string }>
 }): Promise<React.ReactElement> {
-  const [{ id }, query] = await Promise.all([params, searchParams])
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
+  const id = decodeProjectRouteId(rawProjectId)
   const [workspace, estimateTemplates] = await Promise.all([
     getProjectEstimateWorkspace(id, query.estimateId),
     getPublishedEstimateTemplateOptions(),

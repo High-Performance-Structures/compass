@@ -1,3 +1,4 @@
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
 import { IconArrowLeft } from "@tabler/icons-react"
@@ -47,7 +48,8 @@ export default async function ProjectSelectionsPage({
 }: {
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   let summary: ProjectSelectionsSummary
   let selectionOptions: ProjectSelectionOptions
 

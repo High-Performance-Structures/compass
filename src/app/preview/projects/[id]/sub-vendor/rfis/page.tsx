@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 
 import { ProjectAudienceWorkspaceRoute } from "@/components/projects/project-audience-workspace-route"
@@ -9,7 +10,8 @@ export default async function PartnerRfisPage({
 }: {
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = await requireProjectRouteId(rawProjectId)
   return (
     <ProjectAudienceWorkspaceRoute
       projectId={id}

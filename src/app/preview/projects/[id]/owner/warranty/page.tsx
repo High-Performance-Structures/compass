@@ -1,3 +1,4 @@
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 
 import { ProjectAudienceWarranty } from "@/components/projects/project-audience-warranty"
@@ -9,6 +10,7 @@ export default async function OwnerWarrantyPage({
 }: {
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = await requireProjectRouteId(rawProjectId)
   return <ProjectAudienceWarranty projectId={id} />
 }

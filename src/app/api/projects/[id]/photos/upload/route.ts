@@ -1,3 +1,4 @@
+import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { and, eq } from "drizzle-orm"
 import { NextRequest, NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
@@ -278,7 +279,11 @@ export async function POST(
       )
     }
     const organizationId = requireOrg(user)
-    const { id: projectId } = await params
+    const { id: rawProjectId } = await params
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) {
+      return NextResponse.json({ success: false, error: "Project not found." }, { status: 404 })
+    }
 
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>

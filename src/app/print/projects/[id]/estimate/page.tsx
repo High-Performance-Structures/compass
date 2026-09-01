@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { requireProjectRouteId } from "@/lib/project-route-id"
 import { Fragment } from "react"
 import { redirect } from "next/navigation"
 
@@ -50,7 +51,8 @@ export default async function ProjectEstimatePrintPage({
   readonly params: Promise<{ id: string }>
   readonly searchParams: Promise<{ estimateId?: string }>
 }): Promise<React.ReactElement> {
-  const [{ id }, query] = await Promise.all([params, searchParams])
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
+  const id = await requireProjectRouteId(rawProjectId)
   const workspace = await getProjectEstimateWorkspace(id, query.estimateId)
   const estimate = workspace.activeEstimate
   const brand = projectBrandFor({

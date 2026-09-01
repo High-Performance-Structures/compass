@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import { notFound } from "next/navigation"
 
@@ -19,7 +20,8 @@ export default async function OwnerUpdatePage({
 }: {
   readonly params: Promise<{ readonly id: string; readonly updateId: string }>
 }): Promise<React.ReactElement> {
-  const { id, updateId } = await params
+  const { id: rawProjectId, updateId } = await params
+  const id = decodeProjectRouteId(rawProjectId)
   let document: OwnerProjectUpdateDocumentData
 
   try {
