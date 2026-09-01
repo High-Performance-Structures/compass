@@ -17,6 +17,7 @@ import {
   projectClientStatusLabel,
   projectInteractionTypeLabel,
   projectInteractionTypeOptions,
+  projectJobStatusOptions,
   projectJobStatusBucket,
   projectJobStatusLabel,
   projectNumberParts,
@@ -82,6 +83,79 @@ describe("project profile rules", () => {
     expect(projectClientStatusLabel("customer")).toBe("Customer")
     expect(projectClientStatusLabel("lead")).toBe("Lead")
     expect(projectClientStatusLabel("unexpected")).toBe("Unknown client status")
+  })
+
+  it("prefers an organization status over a built-in label collision", () => {
+    const options = projectJobStatusOptions([
+      {
+        id: "sage-37-under-warranty",
+        label: "Under Warranty",
+        sageCode: "37",
+        followUpCadenceDays: null,
+        active: true,
+      },
+    ])
+
+    const warrantyOptions = options.filter(
+      (option) => normalizeProjectJobStatusLabel(option.label) === "under warranty",
+    )
+    expect(warrantyOptions).toHaveLength(1)
+    expect(warrantyOptions[0]).toEqual({
+      id: "sage-37-under-warranty",
+      label: "Under Warranty",
+      sageCode: "37",
+      followUpCadenceDays: null,
+      active: true,
+      builtIn: false,
+    })
+  })
+
+  it("preserves a selected built-in status on an organization label collision", () => {
+    const options = projectJobStatusOptions(
+      [
+        {
+          id: "sage-37-under-warranty",
+          label: "Under Warranty",
+          sageCode: "37",
+          followUpCadenceDays: null,
+          active: true,
+        },
+      ],
+      "under_warranty",
+    )
+
+    const warrantyOptions = options.filter(
+      (option) => normalizeProjectJobStatusLabel(option.label) === "under warranty",
+    )
+    expect(warrantyOptions).toHaveLength(1)
+    expect(warrantyOptions[0]).toEqual({
+      id: "under_warranty",
+      label: "Under Warranty",
+      sageCode: null,
+      followUpCadenceDays: null,
+      active: true,
+      builtIn: true,
+    })
+  })
+
+  it("keeps a noncolliding organization status alongside built-ins", () => {
+    const options = projectJobStatusOptions([
+      {
+        id: "custom-site-review",
+        label: "Site Review",
+        sageCode: "42",
+        followUpCadenceDays: 5,
+        active: true,
+      },
+    ])
+
+    expect(options.some((option) => option.id === "under_warranty")).toBe(true)
+    expect(options.some((option) => option.id === "custom-site-review")).toBe(true)
+    expect(
+      options.filter(
+        (option) => normalizeProjectJobStatusLabel(option.label) === "site review",
+      ),
+    ).toHaveLength(1)
   })
 
   it("groups project search views from approved job status rather than legacy OPEN", () => {

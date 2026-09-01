@@ -58,11 +58,13 @@ import {
   isSupportedProjectJobStatusLabel,
   legacyProjectStatusAfterClientUpdate,
   normalizeProjectJobStatusLabel,
+  projectJobStatusOptions,
   projectInteractionTypeLabel,
   projectInteractionTypeOptions,
   projectNumberParts,
   type ProjectClientStatus,
   type ProjectInteractionTypeOption,
+  type ProjectJobStatusOption,
 } from "@/lib/project-profile"
 import { clientFollowUpState } from "@/lib/project-follow-up"
 import { getProjectAccessRecord } from "@/lib/project-access"
@@ -78,14 +80,7 @@ export type ProjectProfileResult =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 
-export type ProjectProfileJobStatus = {
-  readonly id: string
-  readonly label: string
-  readonly sageCode: string | null
-  readonly followUpCadenceDays: number | null
-  readonly active: boolean
-  readonly builtIn: boolean
-}
+export type ProjectProfileJobStatus = ProjectJobStatusOption
 
 export type ProjectProfileNote = {
   readonly id: string
@@ -320,28 +315,6 @@ async function validJobStatus(input: {
   return custom.length === 1
 }
 
-function jobStatusOptions(
-  custom: readonly {
-    readonly id: string
-    readonly label: string
-    readonly sageCode: string | null
-    readonly followUpCadenceDays: number | null
-    readonly active: boolean
-  }[],
-): readonly ProjectProfileJobStatus[] {
-  return [
-    ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => ({
-      id: status.id,
-      label: status.label,
-      sageCode: null,
-      followUpCadenceDays: status.followUpCadenceDays,
-      active: true,
-      builtIn: true,
-    })),
-    ...custom.map((status) => ({ ...status, builtIn: false })),
-  ]
-}
-
 export async function getProjectFollowUpOwners(
   projectId: string,
 ): Promise<readonly ProjectFollowUpOwner[]> {
@@ -514,7 +487,7 @@ export async function getProjectInformation(
         }),
         clientStatus,
       },
-      jobStatuses: jobStatusOptions(customStatuses),
+      jobStatuses: projectJobStatusOptions(customStatuses, project.jobStatusId),
       interactionTypes: projectInteractionTypeOptions(
         customInteractionTypes.map((item) => item.interactionType),
       ),
