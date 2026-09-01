@@ -7,6 +7,7 @@ import {
   IconEye,
   IconFileDollar,
   IconFileInvoice,
+  IconFiles,
   IconHome,
   IconMessageCircle,
   IconPhoto,
@@ -74,6 +75,11 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     icon: <IconPhoto className="size-4" />,
   },
   {
+    label: "Plans & Documents",
+    section: "documents",
+    icon: <IconFiles className="size-4" />,
+  },
+  {
     label: "Project Team",
     section: "team",
     icon: <IconUsers className="size-4" />,
@@ -120,6 +126,11 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Photos",
     section: "photos",
     icon: <IconPhoto className="size-4" />,
+  },
+  {
+    label: "Plans & Documents",
+    section: "documents",
+    icon: <IconFiles className="size-4" />,
   },
   {
     label: "Project Team",

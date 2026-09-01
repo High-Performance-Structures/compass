@@ -25,14 +25,11 @@ import { ProjectAudiencePreviewLink } from "@/components/projects/project-audien
 
 export function ProjectActionsMenu({
   projectId,
-  projectDriveFolderId,
 }: {
   readonly projectId: string
   readonly projectDriveFolderId: string | null
 }): React.ReactElement {
-  const projectFilesHref = projectDriveFolderId
-    ? `/dashboard/files/folder/${projectDriveFolderId}`
-    : "/dashboard/files?view=projects"
+  const projectFilesHref = `/dashboard/projects/${projectId}/documents`
 
   return (
     <DropdownMenu>
@@ -49,7 +46,7 @@ export function ProjectActionsMenu({
         <DropdownMenuItem asChild>
           <Link href={projectFilesHref}>
             <IconFolder />
-            Project files
+            Plans &amp; documents
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

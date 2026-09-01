@@ -32,6 +32,7 @@ import { ProjectAudienceSwitcher } from "@/components/projects/project-audience-
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
+import { ProjectAudienceDocumentLibrary } from "@/components/projects/project-audience-document-library"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectAudiencePurchaseOrderResponseDialog } from "@/components/projects/project-audience-purchase-order-response-dialog"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
@@ -863,6 +864,13 @@ function OwnerProjectPreview({
           />
         </div>
         )}
+
+        {section === "documents" && (
+          <ProjectAudienceDocumentLibrary
+            projectId={data.project.id}
+            documents={data.documents}
+          />
+        )}
       </div>
     </main>
   )
@@ -1189,6 +1197,13 @@ export function ProjectAudiencePreview({
             emptyMessage="No photos have been approved for this audience yet."
           />
         </div>
+        )}
+
+        {section === "documents" && (
+          <ProjectAudienceDocumentLibrary
+            projectId={data.project.id}
+            documents={data.documents}
+          />
         )}
         </div>
       </main>

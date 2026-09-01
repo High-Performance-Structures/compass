@@ -198,9 +198,10 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
           },
           {
             kind: "link",
-            title: "Project Files",
-            url: "/dashboard/files?view=projects",
+            title: "Plans & Documents",
+            url: "/dashboard/projects",
             icon: IconFiles,
+            projectPath: "/documents",
           },
           {
             kind: "link",

@@ -203,6 +203,7 @@ export function ProjectEstimateWorkspacePanel({
   const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(null)
   const lineEditorRef = useRef<HTMLFormElement>(null)
   const [startTemplateId, setStartTemplateId] = useState("")
+  const [basisProjectDocumentId, setBasisProjectDocumentId] = useState("")
   const [startTaxEntityId, setStartTaxEntityId] = useState("")
   const [defaultTaxEntityId, setDefaultTaxEntityId] = useState(
     estimate?.defaultTaxEntityId ?? ""
@@ -538,6 +539,7 @@ export function ProjectEstimateWorkspacePanel({
         projectId,
         estimate.id,
         {
+          projectDocumentId: basisProjectDocumentId,
           documentType: formText(formData, "documentType"),
           title: formText(formData, "documentTitle"),
           documentDate: formText(formData, "documentDate"),
@@ -546,7 +548,10 @@ export function ProjectEstimateWorkspacePanel({
           notes: formText(formData, "documentNotes"),
         }
       )
-      if (result.success) form.reset()
+      if (result.success) {
+        form.reset()
+        setBasisProjectDocumentId("")
+      }
       finish(result.success ? "Estimate basis added." : result.error)
     })
   }
@@ -1624,6 +1629,11 @@ export function ProjectEstimateWorkspacePanel({
                   {statusLabel(document.documentType)} · {document.documentDate ?? "date not set"}
                   {document.revision ? ` · revision ${document.revision}` : ""}
                 </p>
+                {document.projectDocumentId && (
+                  <p className="mt-1 text-xs font-medium text-primary">
+                    Linked to the published project document
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 gap-2">
                 {document.driveUrl && <Button variant="outline" size="sm" asChild><Link href={document.driveUrl} target="_blank">Open</Link></Button>}
@@ -1647,6 +1657,32 @@ export function ProjectEstimateWorkspacePanel({
         </div>
         {editable && (
           <form className="mt-3 grid gap-3 border-t pt-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={addBasis}>
+            <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+              <Label htmlFor="estimate-basis-project-document">Published project plan or specification</Label>
+              <SearchableCombobox
+                id="estimate-basis-project-document"
+                ariaLabel="Published project document used as estimate basis"
+                placeholder="Choose a published document, or enter a legacy reference below"
+                searchPlaceholder="Search published plans and specifications..."
+                emptyMessage="No published project documents match."
+                options={workspace.projectDocumentOptions.map((document) => ({
+                  value: document.id,
+                  label: document.title,
+                  selectedLabel: document.title,
+                  description: `${statusLabel(document.category)}${document.revision ? ` · revision ${document.revision}` : ""} · ${document.status}`,
+                }))}
+                value={basisProjectDocumentId}
+                onValueChange={setBasisProjectDocumentId}
+              />
+              {basisProjectDocumentId && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setBasisProjectDocumentId("")}>
+                  Use a legacy/manual reference instead
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This links the exact published revision to the estimate. A later contract packet inherits that estimate basis without changing when newer plans are published.
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="documentType">Type</Label>
               <Select name="documentType" defaultValue="architectural_plans">
@@ -1660,10 +1696,10 @@ export function ProjectEstimateWorkspacePanel({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="documentTitle">Title</Label><Input id="documentTitle" name="documentTitle" required /></div>
+            <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="documentTitle">Legacy/manual title</Label><Input id="documentTitle" name="documentTitle" required={!basisProjectDocumentId} disabled={Boolean(basisProjectDocumentId)} /></div>
             <div className="space-y-1.5"><Label htmlFor="basisDate">Document date</Label><Input id="basisDate" name="documentDate" type="date" /></div>
             <div className="space-y-1.5"><Label htmlFor="basisRevision">Revision</Label><Input id="basisRevision" name="revision" /></div>
-            <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="basisDriveUrl">Google Drive link</Label><Input id="basisDriveUrl" name="driveUrl" type="url" /></div>
+            <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="basisDriveUrl">Legacy/manual Google Drive link</Label><Input id="basisDriveUrl" name="driveUrl" type="url" disabled={Boolean(basisProjectDocumentId)} /></div>
             <div className="flex items-end"><Button type="submit" disabled={isPending}><IconPlus className="size-4" />Add basis</Button></div>
           </form>
         )}
