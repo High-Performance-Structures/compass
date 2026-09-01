@@ -36,9 +36,12 @@ import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
-import { getProjects } from "@/app/actions/projects"
+import { getProjects, type ProjectListItem } from "@/app/actions/projects"
 import { projectDepartment } from "@/lib/project-branding"
-import { projectScheduleColor } from "@/lib/schedule/project-scope"
+import {
+  projectScheduleColor,
+  schedulePortfolioProjects,
+} from "@/lib/schedule/project-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -327,7 +330,7 @@ export async function getSchedule(projectId: string): Promise<ScheduleData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
   const orgId = requireOrg(user)
-  const accessibleProjects = await getProjects()
+  const accessibleProjects = await getScheduleProjects()
   if (!accessibleProjects.some((project) => project.id === projectId)) {
     throw new Error("Project not found or access denied")
   }
@@ -603,6 +606,10 @@ export async function getScopedSchedule(
       recurrence: exception.recurrence as ExceptionRecurrence
     }))
   }
+}
+
+export async function getScheduleProjects(): Promise<ProjectListItem[]> {
+  return schedulePortfolioProjects(await getProjects())
 }
 
 export async function importScheduleTemplateItems(

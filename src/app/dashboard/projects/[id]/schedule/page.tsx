@@ -6,9 +6,9 @@ import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
-import { getSchedule } from "@/app/actions/schedule"
+import { getSchedule, getScheduleProjects } from "@/app/actions/schedule"
 import { getBaselines } from "@/app/actions/baselines"
-import { getProjects, type ProjectListItem } from "@/app/actions/projects"
+import type { ProjectListItem } from "@/app/actions/projects"
 import {
   getProjectTaskAssigneeOptions,
   type ProjectTaskAssigneeOption,
@@ -86,7 +86,7 @@ export default async function SchedulePage({
     ;[schedule, baselines, allProjects, publicationStatus] = await Promise.all([
       getSchedule(id),
       getBaselines(id),
-      getProjects(),
+      getScheduleProjects(),
       getSchedulePublicationStatus(id),
     ])
   } catch (e: unknown) {
