@@ -47,8 +47,19 @@ const NUTECH_BRAND: BrandIdentity = {
   telephone: "719.686.0770",
 }
 
-function isProjectDepartment(value: string): value is ProjectDepartment {
+export function isProjectDepartment(value: string): value is ProjectDepartment {
   return value === "O" || value === "H" || value === "N" || value === "D"
+}
+
+export function projectDepartmentFromDivisionLabel(
+  value: string | null | undefined,
+): ProjectDepartment | null {
+  const normalized = value?.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "") ?? ""
+  if (normalized === "O" || normalized === "ORC") return "O"
+  if (normalized === "H" || normalized === "HPS") return "H"
+  if (normalized === "N" || normalized === "NUTECH") return "N"
+  if (normalized === "D" || normalized === "DESIGN") return "D"
+  return null
 }
 
 function departmentFromIdentifier(
@@ -66,27 +77,48 @@ function departmentFromIdentifier(
 }
 
 export function projectDepartment({
+  department,
   projectId,
   projectNumber,
 }: {
+  readonly department?: string | null
   readonly projectId?: string | null
   readonly projectNumber?: string | null
 }): ProjectDepartment {
+  return resolvedProjectDepartment({ department, projectId, projectNumber }) ?? "H"
+}
+
+export function resolvedProjectDepartment({
+  department,
+  projectId,
+  projectNumber,
+}: {
+  readonly department?: string | null
+  readonly projectId?: string | null
+  readonly projectNumber?: string | null
+}): ProjectDepartment | null {
+  const normalizedDepartment = department?.trim().toUpperCase() ?? ""
   return (
+    (isProjectDepartment(normalizedDepartment) ? normalizedDepartment : null) ??
     departmentFromIdentifier(projectNumber) ??
-    departmentFromIdentifier(projectId) ??
-    "H"
+    departmentFromIdentifier(projectId)
   )
 }
 
 export function projectBrandFor({
+  department: explicitDepartment,
   projectId,
   projectNumber,
 }: {
+  readonly department?: string | null
   readonly projectId?: string | null
   readonly projectNumber?: string | null
 }): ProjectBrand {
-  const department = projectDepartment({ projectId, projectNumber })
+  const department = projectDepartment({
+    department: explicitDepartment,
+    projectId,
+    projectNumber,
+  })
   const identity =
     department === "H"
       ? HPS_BRAND

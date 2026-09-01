@@ -571,6 +571,7 @@ export const groupMembers = sqliteTable("group_members", {
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   projectNumber: text("project_number"),
+  department: text("department", { enum: ["O", "H", "N", "D"] }),
   name: text("name").notNull(),
   status: text("status").notNull().default("OPEN"),
   // `address` remains the project/site address for compatibility with existing data.

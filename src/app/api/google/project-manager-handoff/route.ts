@@ -8,6 +8,10 @@ import {
   projects,
 } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  projectDepartmentFromDivisionLabel,
+  resolvedProjectDepartment,
+} from "@/lib/project-branding"
 
 type HandoffAction = "create_project" | "update_project"
 
@@ -442,7 +446,7 @@ export async function POST(request: Request): Promise<Response> {
   const now = new Date().toISOString()
   const payload = parsed.payload
   const [existingProject] = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, department: projects.department })
     .from(projects)
     .where(
       and(
@@ -455,6 +459,9 @@ export async function POST(request: Request): Promise<Response> {
   const folderId = payload.folderId ?? driveFolderIdFromUrl(payload.folderLink)
   const folderUrl = driveFolderUrl(folderId, payload.folderLink)
   const projectStatus = normalizeProjectStatus(payload.status)
+  const department =
+    projectDepartmentFromDivisionLabel(payload.division) ??
+    resolvedProjectDepartment({ projectNumber: payload.projectNumber })
   const projectId =
     existingProject?.id ??
     `proj-${slugPart(payload.projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
@@ -462,6 +469,7 @@ export async function POST(request: Request): Promise<Response> {
   if (existingProject) {
     const projectUpdates = {
       name: payload.name,
+      department: existingProject.department ?? department,
       status: projectStatus,
       clientName: payload.clientName,
       projectManager: payload.assignedTo,
@@ -482,6 +490,7 @@ export async function POST(request: Request): Promise<Response> {
       id: projectId,
       organizationId,
       projectNumber: payload.projectNumber,
+      department,
       name: payload.name,
       status: projectStatus,
       address: payload.address,
