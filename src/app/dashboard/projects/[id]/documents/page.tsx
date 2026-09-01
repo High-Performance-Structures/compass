@@ -7,13 +7,15 @@ import { getProjectDocumentWorkspace } from "@/app/actions/project-documents"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectDocumentsWorkspacePanel } from "@/components/projects/project-documents-workspace"
 import { Button } from "@/components/ui/button"
+import { requireProjectRouteId } from "@/lib/project-route-id"
 
 export default async function ProjectDocumentsPage({
   params,
 }: {
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const { id: rawProjectId } = await params
+  const id = await requireProjectRouteId(rawProjectId)
   const workspace = await getProjectDocumentWorkspace(id)
   const allProjectFoldersHref = workspace.project.driveFolderId
     ? `/dashboard/files/folder/${workspace.project.driveFolderId}`

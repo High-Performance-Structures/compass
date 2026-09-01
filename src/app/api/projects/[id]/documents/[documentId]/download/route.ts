@@ -15,6 +15,7 @@ import { assertProjectAccess } from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
+import { resolveProjectRouteId } from "@/lib/project-route-id"
 
 export async function GET(
   _request: NextRequest,
@@ -30,7 +31,9 @@ export async function GET(
   try {
     const user = await getCurrentUser()
     if (!user) return new Response("Unauthorized", { status: 401 })
-    const { id: projectId, documentId } = await params
+    const { id: rawProjectId, documentId } = await params
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Document not found", { status: 404 })
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)
