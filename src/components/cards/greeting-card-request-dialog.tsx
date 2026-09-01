@@ -10,7 +10,12 @@ import {
   type GreetingCardRecipientType,
   type GreetingCardRequest,
 } from "@/app/actions/greeting-cards"
+import {
+  getGreetingCardRecipientOptions,
+  type GreetingCardRecipientOption,
+} from "@/app/actions/greeting-card-recipients"
 import { Button } from "@/components/ui/button"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Dialog,
   DialogContent,
@@ -71,8 +76,15 @@ export function GreetingCardRequestDialog({
 }): React.ReactElement {
   const [open, setOpen] = useState(false)
   const [catalog, setCatalog] = useState<readonly GreetingCardCatalogItem[]>([])
-  const [catalogRequested, setCatalogRequested] = useState(false)
   const [catalogLoading, setCatalogLoading] = useState(false)
+  const [recipientOptions, setRecipientOptions] = useState<
+    readonly GreetingCardRecipientOption[]
+  >([])
+  const [recipientOptionsLoading, setRecipientOptionsLoading] = useState(false)
+  const [selectedRecipientId, setSelectedRecipientId] = useState("")
+  const [recipientOptionsError, setRecipientOptionsError] = useState<
+    string | null
+  >(null)
   const [cardId, setCardId] = useState<number | null>(null)
   const [recipientType, setRecipientType] =
     useState<GreetingCardRecipientType>("client")
@@ -86,9 +98,8 @@ export function GreetingCardRequestDialog({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!open || catalogRequested) return
+    if (!open || catalog.length > 0) return
     let mounted = true
-    setCatalogRequested(true)
     setCatalogLoading(true)
     setError(null)
     void getGreetingCardCatalog().then((result) => {
@@ -104,12 +115,42 @@ export function GreetingCardRequestDialog({
     return () => {
       mounted = false
     }
-  }, [catalogRequested, open])
+  }, [catalog.length, open])
+
+  useEffect(() => {
+    if (!open || recipientOptions.length > 0) return
+    let mounted = true
+    setRecipientOptionsLoading(true)
+    setRecipientOptionsError(null)
+    void getGreetingCardRecipientOptions().then((result) => {
+      if (!mounted) return
+      if (result.success) {
+        setRecipientOptions(result.data)
+      } else {
+        setRecipientOptionsError(result.error)
+      }
+      setRecipientOptionsLoading(false)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [open, recipientOptions.length])
 
   const selectedCard = catalog.find((card) => card.id === cardId) ?? null
+  const selectedRecipient =
+    recipientOptions.find((option) => option.id === selectedRecipientId) ?? null
 
   function updateRecipient(field: keyof RecipientForm, value: string): void {
+    setSelectedRecipientId("")
     setRecipient((current) => ({ ...current, [field]: value }))
+  }
+
+  function chooseRecipient(optionId: string): void {
+    setSelectedRecipientId(optionId)
+    const option = recipientOptions.find((candidate) => candidate.id === optionId)
+    if (!option) return
+    setRecipientType(option.recipientType)
+    setRecipient(option.recipient)
   }
 
   function resetForm(): void {
@@ -118,6 +159,7 @@ export function GreetingCardRequestDialog({
     setMessage("")
     setWishes("With appreciation,\nHigh Performance Structures")
     setRecipient(EMPTY_RECIPIENT)
+    setSelectedRecipientId("")
     setError(null)
   }
 
@@ -146,10 +188,7 @@ export function GreetingCardRequestDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen)
-        if (!nextOpen && catalog.length === 0) setCatalogRequested(false)
-      }}
+      onOpenChange={setOpen}
     >
       <DialogTrigger asChild>
         <Button type="button">
@@ -277,6 +316,53 @@ export function GreetingCardRequestDialog({
               Verify the address carefully. Handwrytten validates US addresses
               again when Executive Admin releases the order.
             </p>
+            <div className="space-y-2">
+              <Label htmlFor="card-saved-recipient">Saved recipient (optional)</Label>
+              <SearchableCombobox
+                id="card-saved-recipient"
+                ariaLabel="Choose a saved greeting-card recipient"
+                value={selectedRecipientId}
+                onValueChange={chooseRecipient}
+                options={recipientOptions.map(recipientComboboxOption)}
+                placeholder={
+                  recipientOptionsLoading
+                    ? "Loading saved recipients…"
+                    : recipientOptions.length === 0
+                      ? "No saved recipients found"
+                      : "Search clients, trade partners, or employees"
+                }
+                searchPlaceholder="Search names or companies…"
+                emptyMessage="No matching saved recipient. Enter the details below."
+                groupHeading="Compass contacts"
+                disabled={recipientOptionsLoading}
+              />
+              <p className="text-xs text-muted-foreground">
+                Choosing a saved contact fills the fields below. You can still
+                edit any detail or enter a recipient manually.
+              </p>
+              {selectedRecipient?.addressStatus === "partial" ? (
+                <p className="text-xs text-muted-foreground" role="status">
+                  Compass found an address, but it is incomplete or could not be
+                  fully separated. Please finish the mailing fields.
+                </p>
+              ) : null}
+              {selectedRecipient?.addressStatus === "missing" ? (
+                <p className="text-xs text-muted-foreground" role="status">
+                  This contact does not have a saved mailing address yet.
+                </p>
+              ) : null}
+              {selectedRecipient?.sourceType === "vendor" ? (
+                <p className="text-xs text-muted-foreground" role="status">
+                  This is a company record. Add the individual recipient&apos;s
+                  first and last name below.
+                </p>
+              ) : null}
+              {recipientOptionsError ? (
+                <p className="text-xs text-destructive" role="status">
+                  {recipientOptionsError} Enter the recipient manually for now.
+                </p>
+              ) : null}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <CardInput id="card-first-name" label="First name" value={recipient.firstName} onChange={(value) => updateRecipient("firstName", value)} autoComplete="given-name" />
               <CardInput id="card-last-name" label="Last name" value={recipient.lastName} onChange={(value) => updateRecipient("lastName", value)} autoComplete="family-name" />
@@ -351,4 +437,46 @@ function CardInput({
 
 function recipientTypeFromValue(value: string): GreetingCardRecipientType {
   return RECIPIENT_TYPE_OPTIONS.find((option) => option.value === value)?.value ?? "other"
+}
+
+function recipientComboboxOption(option: GreetingCardRecipientOption): {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly keywords: string
+} {
+  const sourceLabel = recipientSourceLabel(option)
+  const addressLabel =
+    option.addressStatus === "complete"
+      ? "mailing address saved"
+      : option.addressStatus === "partial"
+        ? "address needs review"
+        : "no mailing address"
+  const companyLabel =
+    option.companyName && option.companyName !== option.displayName
+      ? ` · ${option.companyName}`
+      : ""
+  return {
+    value: option.id,
+    label: option.displayName,
+    description: `${sourceLabel}${companyLabel} · ${addressLabel}`,
+    keywords: `${option.companyName ?? ""} ${sourceLabel}`,
+  }
+}
+
+function recipientSourceLabel(option: GreetingCardRecipientOption): string {
+  switch (option.sourceType) {
+    case "customer":
+      return "Client"
+    case "vendor":
+      return option.recipientType === "subcontractor"
+        ? "Subcontractor company"
+        : "Vendor company"
+    case "vendor_contact":
+      return option.recipientType === "subcontractor"
+        ? "Subcontractor contact"
+        : "Vendor contact"
+    case "team":
+      return "Employee"
+  }
 }
