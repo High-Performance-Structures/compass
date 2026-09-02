@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   compareOfficeCalendarPriority,
+  dateKeyInTimeZone,
   instantForLocalDateTime,
   isValidDateKey,
   normalizeWorkCalendarEventTiming,
@@ -109,6 +110,14 @@ describe("H-Office default project resolution", () => {
 })
 
 describe("work calendar event timing", () => {
+  it("keeps the local date when UTC has advanced to the next day", () => {
+    const instant = new Date("2026-09-01T02:43:32.000Z")
+
+    expect(dateKeyInTimeZone(instant, "America/Denver")).toBe("2026-08-31")
+    expect(dateKeyInTimeZone(instant, "America/New_York")).toBe("2026-08-31")
+    expect(dateKeyInTimeZone(instant, "Europe/London")).toBe("2026-09-01")
+  })
+
   it("resolves wall-clock times in the organization time zone", () => {
     expect(
       instantForLocalDateTime(

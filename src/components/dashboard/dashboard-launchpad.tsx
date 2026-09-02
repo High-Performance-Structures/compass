@@ -287,8 +287,25 @@ function compareOfficePriority(
   return leftIsOffice ? -1 : 1
 }
 
-function greetingForNow(): string {
-  const hour = new Date().getHours()
+function hourForTimeZone(timeZone: string): number {
+  try {
+    const hourPart = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "hour")
+    const hour = hourPart ? Number.parseInt(hourPart.value, 10) : Number.NaN
+    if (Number.isFinite(hour)) return hour
+  } catch {
+    // Fall back to the device timezone if a stored timezone becomes invalid.
+  }
+  return new Date().getHours()
+}
+
+function greetingForNow(timeZone: string): string {
+  const hour = hourForTimeZone(timeZone)
   if (hour < 12) return "Good morning"
   if (hour < 17) return "Good afternoon"
   return "Good evening"
@@ -432,11 +449,13 @@ function Horizon({
 function DeskHero({
   user,
   today,
+  timeZone,
   status,
   onStatusChange,
 }: {
   readonly user: SidebarUser | null
   readonly today: string
+  readonly timeZone: string
   readonly status: DeskStatus
   readonly onStatusChange: (status: DeskStatus) => void
 }): React.ReactElement {
@@ -554,7 +573,7 @@ function DeskHero({
       <div className="flex min-w-0 flex-col justify-center px-5 py-4">
         <p className="text-xs text-muted-foreground">{formatLongDate(today)}</p>
         <h1 className="mt-1 font-serif text-2xl font-semibold tracking-tight">
-          <span>{greetingForNow()},</span>{" "}
+          <span>{greetingForNow(timeZone)},</span>{" "}
           <span className="italic sm:block">{firstName}</span>
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1250,6 +1269,7 @@ export function DashboardLaunchpad({
         <DeskHero
           user={user}
           today={overview.today}
+          timeZone={overview.timeZone}
           status={deskStatus}
           onStatusChange={setDeskStatus}
         />
