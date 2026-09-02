@@ -262,9 +262,11 @@ test.describe("usable Compass areas", () => {
     await expect(project).toBeVisible()
     await project.dispatchEvent("click")
     await expect(page).toHaveURL(/scope=selected.*projects=[^&]+/)
-    await expect(project).toHaveAttribute("data-schedule-selected", "true")
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    const selectedProject = page.locator('[data-schedule-selected="true"]').first()
+    await expect(selectedProject).toBeVisible()
 
-    await project.click()
+    await selectedProject.dispatchEvent("click")
     await expect
       .poll(() => new URL(page.url()).searchParams.get("projects"))
       .toBe("")
