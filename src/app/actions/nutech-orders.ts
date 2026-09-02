@@ -43,6 +43,7 @@ import {
   canFeature,
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
+import { requireInternalNuTechStaff } from "@/lib/nutech/access"
 import { projectDepartment } from "@/lib/project-branding"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -320,6 +321,7 @@ async function nuTechProjectAccess(
   action: "read" | "update" | "delete"
 ): Promise<NuTechAccess> {
   const user = await requireAuth()
+  requireInternalNuTechStaff(user)
   if (action !== "read" && isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
@@ -501,6 +503,7 @@ export async function getNuTechOrderDashboard(): Promise<
   readonly NuTechOrderDashboardItem[]
 > {
   const user = await requireAuth()
+  requireInternalNuTechStaff(user)
   await requireFeaturePermission(user, "nutech-orders", "read")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()

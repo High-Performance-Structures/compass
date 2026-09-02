@@ -17,6 +17,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechAirliteWorkbookPlan } from "@/lib/nutech/airlite-workbook"
+import { requireInternalNuTechStaff } from "@/lib/nutech/access"
 import {
   nuTechCustomerPriceCents,
   validateNuTechOrderQuantity,
@@ -47,6 +48,7 @@ export type NuTechOrderItemActionResult =
 
 async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
   const user = await requireAuth()
+  requireInternalNuTechStaff(user)
   if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
   await requireFeaturePermission(user, "nutech-orders", "update")
   const organizationId = requireOrg(user)

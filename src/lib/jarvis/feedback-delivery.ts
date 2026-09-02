@@ -8,6 +8,40 @@ export type FeedbackDeliveryGraphItem = Readonly<{
   channelId?: string | null
 }>
 
+export type FeedbackDeliveryRoute =
+  | "engineering"
+  | "response"
+  | "feature_decision"
+
+export type FeedbackResponseClosure = Readonly<{
+  status: "closed"
+  message: string
+}>
+
+export function feedbackDeliveryRoute(
+  item: Readonly<{
+    kind: string
+    requiresEngineering?: boolean
+  }>,
+): FeedbackDeliveryRoute {
+  if (item.kind === "feature") return "feature_decision"
+  if (item.kind === "bug" || item.requiresEngineering === true) {
+    return "engineering"
+  }
+  return "response"
+}
+
+export function feedbackResponseClosure(
+  item: Pick<FeedbackDeliveryGraphItem, "id" | "kind" | "status">,
+): FeedbackResponseClosure {
+  void item
+  return {
+    status: "closed",
+    message:
+      "The Feedback Desk reviewed this request and provided an accountable response. No Compass code change was required.",
+  }
+}
+
 export type FeedbackDeliveryGraphEvent = Readonly<{
   eventType: "feedback.delivery_requested"
   idempotencyKey: string
@@ -15,9 +49,54 @@ export type FeedbackDeliveryGraphEvent = Readonly<{
     schemaVersion: 1
     feedbackDeskItemId: string
     reference: string
-    kind: "bug"
+    kind: string
   }>
 }>
+
+export type FeedbackDeskOutboundPayload = Readonly<{
+  schemaVersion: 1
+  feedbackDeskItemId: string
+  reference: string
+  kind: string
+  status: string
+  notificationKind: string | null
+}>
+
+export function feedbackDeskOutboundPayload(input: Readonly<{
+  id: string
+  kind: string
+  status: string
+  notificationKind: string | null
+}>): FeedbackDeskOutboundPayload {
+  return {
+    schemaVersion: 1,
+    feedbackDeskItemId: input.id,
+    reference: `CFD-${input.id}`,
+    kind: input.kind,
+    status: input.status,
+    notificationKind: input.notificationKind,
+  }
+}
+
+export type FeedbackRequesterNotificationEvent = Readonly<{
+  eventType: "feedback.requester_notification"
+  idempotencyKey: string
+  payload: FeedbackDeskOutboundPayload
+}>
+
+export function feedbackRequesterNotificationEvent(input: Readonly<{
+  id: string
+  kind: string
+  status: string
+  notificationKind: string
+  idempotencyKey: string
+}>): FeedbackRequesterNotificationEvent {
+  return {
+    eventType: "feedback.requester_notification",
+    idempotencyKey: `feedback-requester-notification:${input.idempotencyKey}`,
+    payload: feedbackDeskOutboundPayload(input),
+  }
+}
 
 export type FeedbackDeliveryGraphUpdate = Readonly<{
   status: "created" | "failed"
@@ -31,8 +110,9 @@ export type FeedbackDeliveryGraphUpdate = Readonly<{
 export function shouldRequestFeedbackDeliveryGraph(
   item: Pick<FeedbackDeliveryGraphItem, "kind" | "status">,
   nextStatus: string,
+  route?: FeedbackDeliveryRoute,
 ): boolean {
-  return item.kind === "bug" &&
+  return (route ?? feedbackDeliveryRoute(item)) === "engineering" &&
     item.status !== "triaged" &&
     nextStatus === "triaged"
 }
@@ -47,7 +127,7 @@ export function feedbackDeliveryGraphEvent(
       schemaVersion: 1,
       feedbackDeskItemId: item.id,
       reference: `CFD-${item.id}`,
-      kind: "bug",
+      kind: item.kind,
     },
   }
 }

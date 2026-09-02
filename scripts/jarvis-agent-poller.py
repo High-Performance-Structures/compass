@@ -19,6 +19,7 @@ from typing import Any
 
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_COMPASS_CONTEXT_CHARACTERS = 14_000
+COMPASS_PRODUCTION_ORIGIN = "https://compass.openrangeconstruction.ltd"
 PULL_TARGET = "/api/integrations/jarvis/events?limit=1&eventType=agent.prompt"
 HEALTH_TARGET = "/api/integrations/jarvis/health"
 FEEDBACK_CONFIRMATION_QUESTION = (
@@ -77,6 +78,19 @@ class RetryableError(RuntimeError):
     """A temporary network or provider error."""
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
 def stop_running(_signum: int, _frame: Any) -> None:
     global RUNNING
     RUNNING = False
@@ -105,6 +119,25 @@ def signature(
     return f"sha256={digest}"
 
 
+def validate_runtime_origin() -> str:
+    configured = required_env("COMPASS_BASE_URL")
+    if configured != COMPASS_PRODUCTION_ORIGIN:
+        raise RuntimeError("Poller requires the production Compass origin")
+    parsed = urllib.parse.urlsplit(configured)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "compass.openrangeconstruction.ltd"
+        or parsed.port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("Poller Compass origin is invalid")
+    return configured
+
+
 def read_json_response(response: Any) -> Any:
     raw = response.read(MAX_RESPONSE_BYTES)
     try:
@@ -117,8 +150,10 @@ def compass_request(
     method: str,
     target: str,
     payload: dict[str, Any] | None = None,
+    *,
+    claim_token: str | None = None,
 ) -> Any:
-    base_url = required_env("COMPASS_BASE_URL").rstrip("/")
+    base_url = validate_runtime_origin()
     secret = required_env("JARVIS_BRIDGE_SECRET")
     parsed_url = urllib.parse.urlsplit(base_url)
     if parsed_url.scheme != "https":
@@ -148,6 +183,10 @@ def compass_request(
     }
     if body:
         headers["Content-Type"] = "application/json"
+    if claim_token is not None:
+        if not claim_token or len(claim_token) > 128:
+            raise RuntimeError("Poller claim token is invalid")
+        headers["X-Compass-Claim-Token"] = claim_token
 
     request = urllib.request.Request(
         f"{base_url}{target}",
@@ -155,10 +194,13 @@ def compass_request(
         headers=headers,
         method=method,
     )
+    opener = urllib.request.build_opener(_NoRedirectHandler())
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with opener.open(request, timeout=30) as response:
             return read_json_response(response)
     except urllib.error.HTTPError as error:
+        if 300 <= error.code < 400:
+            raise RuntimeError("Compass redirects are not allowed") from error
         message = error.read(2_048).decode("utf-8", errors="replace")
         if error.code == 429 or error.code >= 500:
             raise RetryableError(
@@ -204,12 +246,16 @@ def load_compass_skill() -> str:
     return content[:12_000]
 
 
-def compass_search(event_id: str) -> dict[str, Any] | None:
+def compass_search(
+    event_id: str,
+    claim_token: str,
+) -> dict[str, Any] | None:
     escaped_id = urllib.parse.quote(event_id, safe="")
     try:
         result = compass_request(
             "GET",
             f"/api/integrations/jarvis/events/{escaped_id}/search",
+            claim_token=claim_token,
         )
     except (RetryableError, RuntimeError):
         LOGGER.warning(
@@ -682,6 +728,7 @@ def submit_feedback(
     event_id: str,
     event_payload: dict[str, Any],
     feedback: dict[str, str],
+    claim_token: str,
 ) -> None:
     user = event_payload.get("user")
     actor: dict[str, str] = {}
@@ -711,33 +758,43 @@ def submit_feedback(
             "actor": actor,
             "metadata": metadata,
         },
+        claim_token=claim_token,
     )
 
 
 def acknowledge(
     event_id: str,
+    claim_token: str,
     payload: dict[str, Any],
 ) -> None:
+    if not claim_token or len(claim_token) > 128:
+        raise RuntimeError("Agent event claim token is invalid")
     escaped_id = urllib.parse.quote(event_id, safe="")
+    acknowledgement = dict(payload)
+    acknowledgement["claimToken"] = claim_token
     compass_request(
         "POST",
         f"/api/integrations/jarvis/events/{escaped_id}/ack",
-        payload,
+        acknowledgement,
     )
 
 
 def handle_event(event: dict[str, Any]) -> None:
     event_id = event.get("id")
+    claim_token = event.get("claimToken")
     event_type = event.get("eventType")
     payload = event.get("payload")
     if (
         not isinstance(event_id, str)
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
         or event_type != "agent.prompt"
         or not isinstance(payload, dict)
     ):
         raise RuntimeError("Invalid agent event")
 
-    search_context = compass_search(event_id)
+    search_context = compass_search(event_id, claim_token)
     completion = hermes_request(payload, search_context)
     content, feedback = structured_answer(
         assistant_content(completion),
@@ -766,7 +823,7 @@ def handle_event(event: dict[str, Any]) -> None:
         # so recover the immediately preceding report deterministically.
         feedback = fallback_feedback_candidate(confirmed_report)
     if feedback is not None:
-        submit_feedback(event_id, payload, feedback)
+        submit_feedback(event_id, payload, feedback, claim_token)
         content = (
             f"I recorded “{feedback['title']}” with the Compass Feedback Desk."
         )
@@ -774,6 +831,7 @@ def handle_event(event: dict[str, Any]) -> None:
     model = completion.get("model")
     acknowledge(
         event_id,
+        claim_token,
         {
             "status": "completed",
             "result": {
@@ -813,12 +871,14 @@ def run() -> None:
                 if not isinstance(event, dict):
                     continue
                 event_id = event.get("id")
+                claim_token = event.get("claimToken")
                 try:
                     handle_event(event)
                 except RetryableError as error:
-                    if isinstance(event_id, str):
+                    if isinstance(event_id, str) and isinstance(claim_token, str):
                         acknowledge(
                             event_id,
+                            claim_token,
                             {
                                 "status": "failed",
                                 "error": str(error),
@@ -830,9 +890,10 @@ def run() -> None:
                         event_id,
                     )
                 except Exception as error:
-                    if isinstance(event_id, str):
+                    if isinstance(event_id, str) and isinstance(claim_token, str):
                         acknowledge(
                             event_id,
+                            claim_token,
                             {
                                 "status": "failed",
                                 "error": str(error)[:2_000],

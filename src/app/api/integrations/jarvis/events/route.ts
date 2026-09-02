@@ -1,4 +1,14 @@
-import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
@@ -12,8 +22,13 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import {
+  assertBridgeReservationOwnership,
+  RECLAIMABLE_RESERVATION_RESULTS,
+} from "@/lib/jarvis/bridge-reservation"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
+import { claimJarvisEvent } from "@/lib/jarvis/event-claim"
 import { jarvisPayloadForDelivery } from "@/lib/jarvis/visual-context"
 
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
@@ -23,12 +38,14 @@ type EventTypeFilter =
   | "agent.prompt"
   | "feedback.status_changed"
   | "feedback.delivery_requested"
+  | "feedback.lifecycle_requested"
 
 function isEventTypeFilter(value: string): value is EventTypeFilter {
   return (
     value === "agent.prompt" ||
     value === "feedback.status_changed" ||
-    value === "feedback.delivery_requested"
+    value === "feedback.delivery_requested" ||
+    value === "feedback.lifecycle_requested"
   )
 }
 
@@ -109,7 +126,6 @@ export async function GET(request: Request): Promise<Response> {
   const staleClaimIso = new Date(
     now.getTime() - CLAIM_RETRY_MILLISECONDS,
   ).toISOString()
-  const claimToken = crypto.randomUUID()
   const db = getDb(env.DB)
 
   const candidates = await db
@@ -124,6 +140,13 @@ export async function GET(request: Request): Promise<Response> {
           eq(jarvisBridgeEvents.status, "pending"),
           and(
             eq(jarvisBridgeEvents.status, "processing"),
+            or(
+              isNull(jarvisBridgeEvents.result),
+              inArray(
+                jarvisBridgeEvents.result,
+                RECLAIMABLE_RESERVATION_RESULTS,
+              ),
+            ),
             lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
           ),
         ),
@@ -132,35 +155,73 @@ export async function GET(request: Request): Promise<Response> {
     .orderBy(asc(jarvisBridgeEvents.createdAt))
     .limit(limit)
 
+  const claimTokens: string[] = []
   for (const candidate of candidates) {
-    await db
-      .update(jarvisBridgeEvents)
-      .set({
-        status: "processing",
+    const claim = await claimJarvisEvent(
+      async ({
+        eventId,
         claimToken,
-        claimedAt: nowIso,
-        attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
-        updatedAt: nowIso,
-      })
-      .where(
-        and(
-          eq(jarvisBridgeEvents.id, candidate.id),
-          eventTypeFilter,
-          or(
-            eq(jarvisBridgeEvents.status, "pending"),
+        claimedAt,
+        staleClaimAt,
+        eventTypeFilter: claimEventTypeFilter,
+      }) => {
+        const updated = await db
+          .update(jarvisBridgeEvents)
+          .set({
+            status: "processing",
+            claimToken,
+            claimedAt,
+            attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
+            updatedAt: claimedAt,
+          })
+          .where(
             and(
-              eq(jarvisBridgeEvents.status, "processing"),
-              lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
+              eq(jarvisBridgeEvents.id, eventId),
+              eq(jarvisBridgeEvents.direction, "outbound"),
+              claimEventTypeFilter,
+              lte(jarvisBridgeEvents.availableAt, claimedAt),
+              or(
+                eq(jarvisBridgeEvents.status, "pending"),
+                and(
+                  eq(jarvisBridgeEvents.status, "processing"),
+                  or(
+                    isNull(jarvisBridgeEvents.result),
+                    inArray(
+                      jarvisBridgeEvents.result,
+                      RECLAIMABLE_RESERVATION_RESULTS,
+                    ),
+
+                  ),
+                  lt(jarvisBridgeEvents.claimedAt, staleClaimAt),
+                ),
+              ),
             ),
-          ),
-        ),
-      )
+          )
+          .returning({ id: jarvisBridgeEvents.id })
+          .get()
+        return updated !== undefined && updated !== null
+      },
+      candidate.id,
+      eventTypeFilter,
+    )
+    if (claim) claimTokens.push(claim.claimToken)
+  }
+
+  if (claimTokens.length === 0) {
+    return Response.json({ events: [] })
   }
 
   const claimed = await db
     .select()
     .from(jarvisBridgeEvents)
-    .where(eq(jarvisBridgeEvents.claimToken, claimToken))
+    .where(
+      and(
+        eq(jarvisBridgeEvents.direction, "outbound"),
+        eventTypeFilter,
+        eq(jarvisBridgeEvents.status, "processing"),
+        inArray(jarvisBridgeEvents.claimToken, claimTokens),
+      ),
+    )
     .orderBy(asc(jarvisBridgeEvents.createdAt))
 
   return Response.json({
@@ -169,6 +230,7 @@ export async function GET(request: Request): Promise<Response> {
       eventType: event.eventType,
       source: event.source,
       attempt: event.attemptCount,
+      claimToken: event.claimToken,
       payload:
         event.eventType === "agent.prompt"
           ? jarvisPayloadForDelivery(event.id, event.payload)
@@ -222,6 +284,37 @@ export async function POST(request: Request): Promise<Response> {
 
   const event = parsed.data
   const db = getDb(env.DB)
+  const claimToken = request.headers.get("X-Compass-Claim-Token")
+  if (
+    event.source === "ask-jarvis" &&
+    event.eventType === "feedback.reported"
+  ) {
+    if (!claimToken || claimToken.length > 128) {
+      return Response.json(
+        { error: "Event claim is no longer active" },
+        { status: 409 },
+      )
+    }
+    const activeClaim = await db
+      .select({ id: jarvisBridgeEvents.id })
+      .from(jarvisBridgeEvents)
+      .where(
+        and(
+          eq(jarvisBridgeEvents.id, event.sourceEventId),
+          eq(jarvisBridgeEvents.direction, "outbound"),
+          eq(jarvisBridgeEvents.eventType, "agent.prompt"),
+          eq(jarvisBridgeEvents.status, "processing"),
+          eq(jarvisBridgeEvents.claimToken, claimToken),
+        ),
+      )
+      .get()
+    if (!activeClaim) {
+      return Response.json(
+        { error: "Event claim is no longer active" },
+        { status: 409 },
+      )
+    }
+  }
   const now = new Date().toISOString()
   const itemId = crypto.randomUUID()
   const bridgeEventId = crypto.randomUUID()
@@ -231,8 +324,18 @@ export async function POST(request: Request): Promise<Response> {
   )
   const idempotencyKey =
     `inbound:${event.source}:${event.sourceEventId}`
+  const claimOwnership =
+    event.source === "ask-jarvis" &&
+    event.eventType === "feedback.reported" &&
+    claimToken !== null
+      ? {
+          eventId: event.sourceEventId,
+          claimToken,
+          reservationResult: null,
+        }
+      : undefined
 
-  await db
+  const feedbackInsert = db
     .insert(feedbackDeskItems)
     .values({
       id: itemId,
@@ -254,6 +357,15 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
+  if (claimOwnership) {
+    await db.batch([
+      assertBridgeReservationOwnership(db, claimOwnership),
+      feedbackInsert,
+    ])
+  } else {
+    await feedbackInsert
+  }
+
   const item = await db
     .select()
     .from(feedbackDeskItems)
@@ -272,7 +384,7 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  await db
+  const inboundInsert = db
     .insert(jarvisBridgeEvents)
     .values({
       id: bridgeEventId,
@@ -291,7 +403,16 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  await enqueueFeedbackReceipt(db, item)
+  if (claimOwnership) {
+    await db.batch([
+      assertBridgeReservationOwnership(db, claimOwnership),
+      inboundInsert,
+    ])
+  } else {
+    await inboundInsert
+  }
+
+  await enqueueFeedbackReceipt(db, item, claimOwnership)
   await linkFeedbackDeskItemToGithub(db, env, item)
 
   return Response.json(

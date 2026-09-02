@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
@@ -8,7 +8,10 @@ import {
   channels,
   messages,
 } from "@/db/schema-conversations"
-import { jarvisBridgeEvents } from "@/db/schema-jarvis"
+import {
+  feedbackDeskItems,
+  jarvisBridgeEvents,
+} from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
   getJarvisBridgeSecrets,
@@ -16,9 +19,16 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import {
+  REPLY_RESERVATION_RESULT,
+  assertBridgeReservationOwnership,
+  isBridgeReservationOwnershipError,
+  renewBridgeReservation,
+} from "@/lib/jarvis/bridge-reservation"
 
 const replySchema = z.object({
   eventId: z.string().min(1).max(128),
+  claimToken: z.string().min(1).max(128),
   idempotencyKey: z.string().min(1).max(256),
   content: z.string().min(1).max(10_000),
 })
@@ -119,30 +129,41 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const db = getDb(env.DB)
+  const now = new Date().toISOString()
+  const replyClaimToken = crypto.randomUUID()
   const sourceEvent = await db
-    .select({
-      id: jarvisBridgeEvents.id,
-      eventType: jarvisBridgeEvents.eventType,
-      source: jarvisBridgeEvents.source,
-      payload: jarvisBridgeEvents.payload,
+    .update(jarvisBridgeEvents)
+    .set({
+      claimToken: replyClaimToken,
+      claimedAt: now,
+      updatedAt: now,
     })
-    .from(jarvisBridgeEvents)
     .where(
       and(
         eq(jarvisBridgeEvents.id, parsed.data.eventId),
         eq(jarvisBridgeEvents.direction, "outbound"),
+        eq(jarvisBridgeEvents.status, "processing"),
+        eq(jarvisBridgeEvents.claimToken, parsed.data.claimToken),
+        or(
+          eq(jarvisBridgeEvents.eventType, "assistance.requested"),
+          eq(jarvisBridgeEvents.eventType, "feedback.status_changed"),
+        ),
       ),
     )
+    .returning({
+      id: jarvisBridgeEvents.id,
+      eventType: jarvisBridgeEvents.eventType,
+      source: jarvisBridgeEvents.source,
+      idempotencyKey: jarvisBridgeEvents.idempotencyKey,
+      payload: jarvisBridgeEvents.payload,
+      feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
+    })
     .get()
 
-  if (
-    !sourceEvent ||
-    (sourceEvent.eventType !== "assistance.requested" &&
-      sourceEvent.eventType !== "feedback.status_changed")
-  ) {
+  if (!sourceEvent) {
     return Response.json(
-      { error: "Replyable request not found" },
-      { status: 404 },
+      { error: "Event claim is no longer active" },
+      { status: 409 },
     )
   }
 
@@ -156,7 +177,26 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  const target = replyTarget(sourceEvent.payload)
+  const feedbackItem = sourceEvent.feedbackDeskItemId
+    ? await db
+      .select({
+        organizationId: feedbackDeskItems.organizationId,
+        channelId: feedbackDeskItems.channelId,
+        messageId: feedbackDeskItems.messageId,
+      })
+      .from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, sourceEvent.feedbackDeskItemId))
+      .get()
+    : null
+  const target = sourceEvent.eventType === "feedback.status_changed"
+    ? feedbackItem?.organizationId && feedbackItem.channelId && feedbackItem.messageId
+      ? {
+          organizationId: feedbackItem.organizationId,
+          channelId: feedbackItem.channelId,
+          messageId: feedbackItem.messageId,
+        }
+      : null
+    : replyTarget(sourceEvent.payload)
   if (!target) {
     return Response.json(
       { error: "Request has no Compass reply target" },
@@ -217,47 +257,77 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  const messageId = await deterministicReplyId(
-    parsed.data.idempotencyKey,
-  )
+  const sideEffectClaimToken = crypto.randomUUID()
+  const reserved = await db
+    .update(jarvisBridgeEvents)
+    .set({
+      claimToken: sideEffectClaimToken,
+      claimedAt: now,
+      result: REPLY_RESERVATION_RESULT,
+      updatedAt: now,
+    })
+    .where(and(
+      eq(jarvisBridgeEvents.id, parsed.data.eventId),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, replyClaimToken),
+    ))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+  if (!reserved) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
+  }
+
+  const replyIdempotencyKey = `jarvis-reply:${sourceEvent.id}`
+  const messageId = await deterministicReplyId(replyIdempotencyKey)
   const duplicate = await db
     .select({ id: messages.id })
     .from(messages)
     .where(eq(messages.id, messageId))
     .get()
-  if (duplicate) {
-    return Response.json({
-      success: true,
-      messageId,
-      duplicate: true,
-    })
+  if (!await renewBridgeReservation(db, {
+    eventId: parsed.data.eventId,
+    claimToken: sideEffectClaimToken,
+    reservationResult: REPLY_RESERVATION_RESULT,
+    now: new Date().toISOString(),
+  })) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
   }
-
-  const now = new Date().toISOString()
-  await db.insert(messages).values({
-    id: messageId,
-    channelId: target.channelId,
-    threadId: target.messageId,
-    userId: serviceUserId,
-    content: parsed.data.content,
-    contentHtml: null,
-    editedAt: null,
-    deletedAt: null,
-    deletedBy: null,
-    isPinned: false,
-    replyCount: 0,
-    lastReplyAt: null,
-    createdAt: now,
-  })
-  await db
+  const messageStatement = duplicate
+    ? null
+    : db.insert(messages).values({
+      id: messageId,
+      channelId: target.channelId,
+      threadId: target.messageId,
+      userId: serviceUserId,
+      content: parsed.data.content,
+      contentHtml: null,
+      editedAt: null,
+      deletedAt: null,
+      deletedBy: null,
+      isPinned: false,
+      replyCount: 0,
+      lastReplyAt: null,
+      createdAt: now,
+    }).onConflictDoNothing()
+  const parentStatement = db
     .update(messages)
     .set({
-      replyCount: sql`${messages.replyCount} + 1`,
+      replyCount: sql<number>`(
+        SELECT count(*) FROM ${messages}
+        WHERE ${messages.threadId} = ${target.messageId}
+      )`,
       lastReplyAt: now,
     })
     .where(eq(messages.id, target.messageId))
 
-  await db
+  const inboundStatement = db
     .insert(jarvisBridgeEvents)
     .values({
       id: crypto.randomUUID(),
@@ -266,7 +336,7 @@ export async function POST(request: Request): Promise<Response> {
       source: "signet",
       eventType: "assistance.responded",
       status: "completed",
-      idempotencyKey: `reply:${parsed.data.idempotencyKey}`,
+      idempotencyKey: `reply:${sourceEvent.id}`,
       payload: bodyResult.rawBody,
       availableAt: now,
       completedAt: now,
@@ -275,18 +345,56 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  await db
+  const releaseStatement = db
     .update(jarvisBridgeEvents)
     .set({
-      status: "completed",
-      result: JSON.stringify({ messageId }),
-      claimToken: null,
-      claimedAt: null,
-      completedAt: now,
+      result: null,
+      claimedAt: now,
       updatedAt: now,
     })
-    .where(eq(jarvisBridgeEvents.id, sourceEvent.id))
+    .where(and(
+      eq(jarvisBridgeEvents.id, parsed.data.eventId),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, sideEffectClaimToken),
+    ))
+  const ownershipAssertion = assertBridgeReservationOwnership(db, {
+    eventId: parsed.data.eventId,
+    claimToken: sideEffectClaimToken,
+    reservationResult: REPLY_RESERVATION_RESULT,
+  })
+  try {
+    if (messageStatement) {
+      await db.batch([
+        ownershipAssertion,
+        messageStatement,
+        parentStatement,
+        inboundStatement,
+        releaseStatement,
+      ])
+    } else {
+      await db.batch([
+        ownershipAssertion,
+        parentStatement,
+        inboundStatement,
+        releaseStatement,
+      ])
+    }
+  } catch (error) {
+    if (isBridgeReservationOwnershipError(error)) {
+      return Response.json(
+        { error: "Event claim is no longer active" },
+        { status: 409 },
+      )
+    }
+    throw error
+  }
 
   revalidatePath("/dashboard/conversations")
-  return Response.json({ success: true, messageId })
+  return Response.json({
+    success: true,
+    messageId,
+    claimToken: sideEffectClaimToken,
+    ...(duplicate ? { duplicate: true } : {}),
+  })
 }

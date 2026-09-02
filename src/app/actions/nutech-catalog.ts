@@ -16,6 +16,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechCatalogImport } from "@/lib/nutech/catalog-import"
+import { requireInternalNuTechStaff } from "@/lib/nutech/access"
 import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -94,6 +95,7 @@ async function sourceHash(value: unknown): Promise<string> {
 
 export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspace> {
   const user = await requireAuth()
+  requireInternalNuTechStaff(user)
   await requireFeaturePermission(user, "nutech-orders", "read")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
@@ -194,6 +196,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
 export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResult> {
   try {
     const user = await requireAuth()
+    requireInternalNuTechStaff(user)
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
     const organizationId = requireOrg(user)
@@ -404,6 +407,7 @@ export async function activateNuTechCatalogVersion(
 ): Promise<NuTechCatalogActionResult> {
   try {
     const user = await requireAuth()
+    requireInternalNuTechStaff(user)
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
     const organizationId = requireOrg(user)
@@ -456,6 +460,7 @@ export async function mapNuTechProductToSageCostCode(
 ): Promise<NuTechCatalogActionResult> {
   try {
     const user = await requireAuth()
+    requireInternalNuTechStaff(user)
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "approve")
     const organizationId = requireOrg(user)
@@ -505,6 +510,7 @@ export async function deleteNuTechCatalogVersion(
 ): Promise<NuTechCatalogActionResult> {
   try {
     const user = await requireAuth()
+    requireInternalNuTechStaff(user)
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
     await requireFeaturePermission(user, "nutech-orders", "delete")
     const organizationId = requireOrg(user)

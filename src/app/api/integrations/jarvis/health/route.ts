@@ -11,7 +11,11 @@ import {
 import { recordFeedbackServiceHealth } from "@/lib/jarvis/feedback-maintenance"
 
 const heartbeatSchema = z.object({
-  serviceName: z.enum(["jarvis-agent-poller", "jarvis-feedback-notifier"]),
+  serviceName: z.enum([
+    "jarvis-agent-poller",
+    "jarvis-feedback-notifier",
+    "jarvis-feedback-lifecycle-executor",
+  ]),
   status: z.enum(["healthy", "degraded", "failed"]),
   error: z.string().max(2_000).nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),

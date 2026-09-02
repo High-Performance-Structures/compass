@@ -13,6 +13,10 @@ type FeedbackBugTransition = FeedbackLifecycleEvidenceItem & Readonly<{
   nextStatus: string
 }>
 
+type FeedbackEngineeringTransition = FeedbackBugTransition & Readonly<{
+  deliveryRoute: "engineering" | "response" | "feature_decision"
+}>
+
 function present(value: string | null): boolean {
   return value !== null && value.trim().length > 0
 }
@@ -36,38 +40,53 @@ export function feedbackDeliveryGraphIsComplete(
   )
 }
 
-export function feedbackBugTransitionIsBlocked(
-  transition: FeedbackBugTransition,
+export function feedbackEngineeringTransitionIsBlocked(
+  transition: FeedbackEngineeringTransition,
 ): string | null {
-  if (transition.kind !== "bug" || transition.status === transition.nextStatus) {
+  if (
+    transition.kind === "feature" ||
+    transition.deliveryRoute !== "engineering" ||
+    transition.status === transition.nextStatus
+  ) {
     return null
   }
+
+  const subject = transition.kind === "bug" ? "A bug" : "An engineering request"
 
   if (transition.nextStatus === "planned") {
     return feedbackDeliveryGraphIsComplete(transition)
       ? null
-      : "A bug must have a complete durable delivery graph before it is planned"
+      : `${subject} must have a complete durable delivery graph before it is planned`
   }
 
   if (transition.nextStatus === "in_progress") {
     return feedbackDeliveryGraphIsComplete(transition)
       ? null
-      : "A bug must have a complete durable delivery graph before implementation starts"
+      : `${subject} must have a complete durable delivery graph before implementation starts`
   }
 
   if (transition.nextStatus === "testing") {
     return feedbackDeliveryGraphIsComplete(transition) &&
       present(transition.githubDraftPullRequestUrl)
       ? null
-      : "A bug must have a pull request and complete durable review evidence before testing"
+      : `${subject} must have a pull request and complete durable review evidence before testing`
   }
 
   if (transition.nextStatus === "deployed") {
     return feedbackDeliveryGraphIsComplete(transition) &&
       present(transition.githubDraftPullRequestUrl)
       ? null
-      : "A bug must have a pull request and complete durable release evidence before deployment"
+      : `${subject} must have a pull request and complete durable release evidence before deployment`
   }
 
   return null
+}
+
+export function feedbackBugTransitionIsBlocked(
+  transition: FeedbackBugTransition,
+): string | null {
+  return feedbackEngineeringTransitionIsBlocked({
+    ...transition,
+    deliveryRoute: "engineering",
+  })
 }

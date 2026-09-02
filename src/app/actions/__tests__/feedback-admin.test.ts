@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
 }))
 
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
@@ -24,6 +25,7 @@ vi.mock("@/lib/jarvis/feedback-status-update", () => ({
 
 import {
   setFeedbackGithubIssueCreationApproval,
+  queueFeedbackLifecycleRequest,
   updateFeedbackAdminItem,
 } from "@/app/actions/feedback-admin"
 
@@ -49,6 +51,7 @@ function configureDb() {
 
 describe("updateFeedbackAdminItem lifecycle evidence", () => {
   beforeEach(() => {
+    mocks.requireAuth.mockReset()
     configureDb()
     mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
     mocks.canManageUserAccess.mockReturnValue(true)
@@ -106,5 +109,63 @@ describe("setFeedbackGithubIssueCreationApproval concurrency gate", () => {
       success: false,
       error: "This request changed while its GitHub approval was being updated",
     })
+  })
+})
+
+describe("queueFeedbackLifecycleRequest", () => {
+  beforeEach(() => {
+    mocks.requireAuth.mockReset()
+    configureDb()
+    mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
+    mocks.canManageUserAccess.mockReturnValue(true)
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+  })
+
+  it("rejects feature requests before creating a bridge event", async () => {
+    const chain = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    chain.from.mockReturnValue(chain)
+    chain.where.mockReturnValue(chain)
+    chain.get.mockResolvedValue({ ...unprovenBug, kind: "feature" })
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({ select: vi.fn().mockReturnValue(chain), insert })
+
+    const result = await queueFeedbackLifecycleRequest({
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      status: "planned",
+      idempotencyKey: "scheduled-feature-1",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: "Feature lifecycle updates require the approved feature workflow",
+    })
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {
+      name: "idempotency keys outside the executor pattern",
+      input: { idempotencyKey: "scheduled key" },
+    },
+    {
+      name: "blank lifecycle messages",
+      input: { idempotencyKey: "scheduled-message", message: "   " },
+    },
+    {
+      name: "zero-number GitHub issue URLs",
+      input: {
+        idempotencyKey: "scheduled-issue",
+        githubIssueUrl: "https://github.com/High-Performance-Structures/compass/issues/0",
+      },
+    },
+  ])("rejects $name before authentication or persistence", async ({ input }) => {
+    const result = await queueFeedbackLifecycleRequest({
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      status: "planned",
+      ...input,
+    })
+
+    expect(result.success).toBe(false)
+    expect(mocks.requireAuth).not.toHaveBeenCalled()
   })
 })

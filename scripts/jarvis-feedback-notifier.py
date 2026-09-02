@@ -15,11 +15,18 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
+import fcntl
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_LEDGER_EVENTS = 5_000
+COMPASS_PRODUCTION_ORIGIN = "https://compass.openrangeconstruction.ltd"
+UUID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 PULL_TARGET = (
     "/api/integrations/jarvis/events"
     "?limit=20&eventType=feedback.status_changed"
@@ -34,6 +41,19 @@ class RetryableError(RuntimeError):
     """A temporary delivery or bridge error."""
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
 def stop_running(_signum: int, _frame: Any) -> None:
     global RUNNING
     RUNNING = False
@@ -44,6 +64,57 @@ def required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def validate_runtime_origin() -> str:
+    configured = required_env("COMPASS_BASE_URL")
+    if (
+        os.environ.get("COMPASS_BASE_URL") != COMPASS_PRODUCTION_ORIGIN
+        or configured != COMPASS_PRODUCTION_ORIGIN
+    ):
+        raise RuntimeError("Notifier requires the production Compass origin")
+    parsed = urllib.parse.urlsplit(configured)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "compass.openrangeconstruction.ltd"
+        or parsed.port is not None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path
+    ):
+        raise RuntimeError("Notifier Compass origin is invalid")
+    return configured
+
+
+def allowed_target(method: str, target: str) -> bool:
+    normalized_method = method.upper()
+    if normalized_method == "GET" and target == PULL_TARGET:
+        return True
+    parsed = urllib.parse.urlsplit(target)
+    if parsed.scheme or parsed.netloc or parsed.fragment:
+        return False
+    if normalized_method == "POST" and not parsed.query and parsed.path in {
+        HEALTH_TARGET,
+        "/api/integrations/jarvis/replies",
+    }:
+        return True
+    if normalized_method == "GET":
+        suffix = "delivery"
+    elif normalized_method == "POST":
+        suffix = "ack|delivery/attempt"
+    else:
+        return False
+    matched = re.fullmatch(
+        r"/api/integrations/jarvis/events/([^/]+)/(" + suffix + r")",
+        parsed.path,
+    )
+    if matched is None or UUID_PATTERN.fullmatch(matched.group(1)) is None:
+        return False
+    if normalized_method == "POST":
+        return not parsed.query
+    return not parsed.query
 
 
 def signature(
@@ -66,12 +137,22 @@ def compass_request(
     method: str,
     target: str,
     payload: dict[str, Any] | None = None,
+    *,
+    claim_token: str | None = None,
 ) -> Any:
-    base_url = required_env("COMPASS_BASE_URL").rstrip("/")
+    if not allowed_target(method, target):
+        raise RuntimeError("Notifier bridge target is not allowlisted")
+    if claim_token is not None and (
+        not (
+            method.upper() == "GET" and target.endswith("/delivery")
+            or method.upper() == "POST" and target.endswith("/delivery/attempt")
+        )
+        or not claim_token
+        or len(claim_token) > 128
+    ):
+        raise RuntimeError("Notifier claim header is not allowlisted")
+    base_url = validate_runtime_origin()
     secret = required_env("JARVIS_BRIDGE_SECRET")
-    parsed_url = urllib.parse.urlsplit(base_url)
-    if parsed_url.scheme != "https":
-        raise RuntimeError("COMPASS_BASE_URL must use HTTPS")
 
     body = (
         json.dumps(
@@ -97,6 +178,8 @@ def compass_request(
     }
     if body:
         headers["Content-Type"] = "application/json"
+    if claim_token is not None:
+        headers["X-Compass-Claim-Token"] = claim_token
 
     request = urllib.request.Request(
         f"{base_url}{target}",
@@ -104,10 +187,15 @@ def compass_request(
         headers=headers,
         method=method,
     )
+    opener = urllib.request.build_opener(_NoRedirectHandler())
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read(MAX_RESPONSE_BYTES)
+        with opener.open(request, timeout=30) as response:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(raw) > MAX_RESPONSE_BYTES:
+                raise RuntimeError("Compass response exceeded the allowed size")
     except urllib.error.HTTPError as error:
+        if 300 <= error.code < 400:
+            raise RuntimeError("Compass redirects are not allowed") from error
         if error.code == 429 or error.code >= 500:
             raise RetryableError(
                 f"Compass returned HTTP {error.code}"
@@ -147,14 +235,86 @@ def heartbeat(status: str, error: str | None = None) -> None:
 
 def acknowledge(
     event_id: str,
+    claim_token: str,
     payload: dict[str, Any],
 ) -> None:
+    if UUID_PATTERN.fullmatch(event_id) is None:
+        raise RuntimeError("Feedback lifecycle event ID is invalid")
+    if not claim_token or len(claim_token) > 128:
+        raise RuntimeError("Feedback lifecycle claim token is invalid")
     escaped_id = urllib.parse.quote(event_id, safe="")
+    acknowledgement = dict(payload)
+    acknowledgement["claimToken"] = claim_token
     compass_request(
         "POST",
         f"/api/integrations/jarvis/events/{escaped_id}/ack",
-        payload,
+        acknowledgement,
     )
+
+
+def delivery_details(event: dict[str, Any]) -> dict[str, Any]:
+    event_id = event.get("id")
+    claim_token = event.get("claimToken")
+    if (
+        not isinstance(event_id, str)
+        or UUID_PATTERN.fullmatch(event_id) is None
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
+    ):
+        raise RuntimeError("Feedback lifecycle event has no active claim")
+    escaped_id = urllib.parse.quote(event_id, safe="")
+    response = compass_request(
+        "GET",
+        f"/api/integrations/jarvis/events/{escaped_id}/delivery",
+        claim_token=claim_token,
+    )
+    if not isinstance(response, dict):
+        raise RetryableError("Compass returned invalid feedback delivery details")
+    replacement_claim = response.get("claimToken")
+    if (
+        not isinstance(replacement_claim, str)
+        or not replacement_claim
+        or len(replacement_claim) > 128
+    ):
+        raise RetryableError("Compass returned invalid feedback delivery claim")
+    event["claimToken"] = replacement_claim
+    return response
+
+
+def reserve_provider_attempt(event: dict[str, Any]) -> dict[str, Any]:
+    event_id = event.get("id")
+    claim_token = event.get("claimToken")
+    if (
+        not isinstance(event_id, str)
+        or UUID_PATTERN.fullmatch(event_id) is None
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
+    ):
+        raise RuntimeError("Feedback lifecycle event has no active claim")
+    escaped_id = urllib.parse.quote(event_id, safe="")
+    response = compass_request(
+        "POST",
+        f"/api/integrations/jarvis/events/{escaped_id}/delivery/attempt",
+        claim_token=claim_token,
+    )
+    if not isinstance(response, dict):
+        raise RetryableError("Compass returned invalid provider attempt details")
+    outcome = response.get("outcome")
+    replacement_claim = response.get("claimToken")
+    provider_attempt = response.get("providerAttempt")
+    if (
+        outcome not in {"reserved", "unknown"}
+        or not isinstance(replacement_claim, str)
+        or not replacement_claim
+        or len(replacement_claim) > 128
+        or not isinstance(provider_attempt, str)
+        or not provider_attempt.startswith("provider-attempt:")
+    ):
+        raise RetryableError("Compass returned invalid provider attempt details")
+    event["claimToken"] = replacement_claim
+    return response
 
 
 def metadata_object(payload: dict[str, Any]) -> dict[str, Any]:
@@ -256,21 +416,37 @@ def send_via_hermes(target: str, message: str) -> None:
 
 
 def reply_to_compass(
-    event_id: str,
+    event: dict[str, Any],
     message: str,
 ) -> None:
-    compass_request(
+    event_id = event.get("id")
+    claim_token = event.get("claimToken")
+    if not isinstance(event_id, str) or not isinstance(claim_token, str):
+        raise RuntimeError("Compass reply event has no active claim")
+    response = compass_request(
         "POST",
         "/api/integrations/jarvis/replies",
         {
             "eventId": event_id,
+            "claimToken": claim_token,
             "idempotencyKey": f"feedback-notify:{event_id}",
             "content": message,
         },
     )
+    replacement_claim = response.get("claimToken") if isinstance(response, dict) else None
+    if (
+        not isinstance(replacement_claim, str)
+        or not replacement_claim
+        or len(replacement_claim) > 128
+    ):
+        raise RetryableError("Compass returned invalid reply claim")
+    event["claimToken"] = replacement_claim
 
 
-def deliver_event(event: dict[str, Any]) -> bool:
+def deliver_event(
+    event: dict[str, Any],
+    delivery_state: dict[str, str],
+) -> bool:
     event_id = event.get("id")
     source = event.get("source")
     payload = event.get("payload")
@@ -282,22 +458,52 @@ def deliver_event(event: dict[str, Any]) -> bool:
     ):
         raise RuntimeError("Invalid feedback lifecycle event")
 
-    message = message_text(payload)
+    details = delivery_details(event)
+    message_value = details.get("message")
+    if not isinstance(message_value, str) or not message_value.strip():
+        raise RuntimeError("Compass feedback delivery has no requester message")
+    message = message_value.strip()[:2_000]
+    target_details = details.get("deliveryTarget")
+    target = target_details if isinstance(target_details, dict) else {}
     if source == "telegram":
-        target = telegram_delivery_target(payload)
-        if target is None:
+        actor_id = target.get("externalActorId")
+        if not isinstance(actor_id, str) or not actor_id.strip():
             raise RuntimeError("Telegram feedback has no valid reply target")
-        send_via_hermes(target, message)
+        normalized_payload = {"reporter": {"externalActorId": actor_id}}
+        telegram_target = telegram_delivery_target(normalized_payload)
+        if telegram_target is None:
+            raise RuntimeError("Telegram feedback has no valid reply target")
+        attempt = reserve_provider_attempt(event)
+        if attempt["outcome"] == "unknown":
+            event["providerOutcome"] = "unknown"
+            return True
+        delivery_state[event_id] = "attempting"
+        save_ledger(delivery_state)
+        send_via_hermes(telegram_target, message)
+        delivery_state[event_id] = "delivered"
+        save_ledger(delivery_state)
         return True
     if source == "jarvis-email":
-        target = reporter_email(payload)
-        if target is None:
+        email = target.get("email")
+        if not isinstance(email, str) or not email.strip():
             raise RuntimeError("Email feedback has no valid reply target")
-        send_via_hermes(f"email:{target}", message)
+        normalized_payload = {"reporter": {"email": email}}
+        email_target = reporter_email(normalized_payload)
+        if email_target is None:
+            raise RuntimeError("Email feedback has no valid reply target")
+        attempt = reserve_provider_attempt(event)
+        if attempt["outcome"] == "unknown":
+            event["providerOutcome"] = "unknown"
+            return True
+        delivery_state[event_id] = "attempting"
+        save_ledger(delivery_state)
+        send_via_hermes(f"email:{email_target}", message)
+        delivery_state[event_id] = "delivered"
+        save_ledger(delivery_state)
         return True
     if source == "compass-conversation":
-        reply_to_compass(event_id, message)
-        return False
+        reply_to_compass(event, message)
+        return True
     if source in {"ask-jarvis", "feedback-widget"}:
         # Ask Jarvis confirms receipt in its original response and later
         # lifecycle changes create requester-scoped Compass notifications.
@@ -315,43 +521,128 @@ def ledger_path() -> Path:
     )
 
 
-def load_ledger() -> list[str]:
-    path = ledger_path()
+def _read_ledger(path: Path) -> dict[str, str]:
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [value for value in parsed if isinstance(value, str)][
-        -MAX_LEDGER_EVENTS:
-    ]
+        return {}
+    if isinstance(parsed, list):
+        legacy_ids = [value for value in parsed if isinstance(value, str)]
+        return {
+            event_id: "delivered"
+            for event_id in legacy_ids[-MAX_LEDGER_EVENTS:]
+        }
+    if not isinstance(parsed, dict):
+        return {}
+    valid_states = {
+        event_id: state
+        for event_id, state in parsed.items()
+        if isinstance(event_id, str)
+        and state in {"attempting", "delivered"}
+    }
+    return dict(list(valid_states.items())[-MAX_LEDGER_EVENTS:])
 
 
-def save_ledger(event_ids: list[str]) -> None:
+@contextmanager
+def locked_ledger() -> Iterator[tuple[Path, dict[str, str]]]:
     path = ledger_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield path, _read_ledger(path)
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def load_ledger() -> dict[str, str]:
+    with locked_ledger() as (_path, delivery_state):
+        return dict(delivery_state)
+
+
+def _write_ledger(path: Path, delivery_state: dict[str, str]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
-        json.dumps(event_ids[-MAX_LEDGER_EVENTS:]),
+        json.dumps(dict(list(delivery_state.items())[-MAX_LEDGER_EVENTS:])),
         encoding="utf-8",
     )
     temporary.replace(path)
 
 
-def handle_event(event: dict[str, Any], delivered: list[str]) -> None:
+def save_ledger(delivery_state: dict[str, str]) -> None:
+    with locked_ledger() as (path, durable_state):
+        for event_id, state in delivery_state.items():
+            if durable_state.get(event_id) == "delivered" and state == "attempting":
+                continue
+            durable_state[event_id] = state
+        bounded_state = dict(list(durable_state.items())[-MAX_LEDGER_EVENTS:])
+        _write_ledger(path, bounded_state)
+        delivery_state.clear()
+        delivery_state.update(bounded_state)
+
+
+def reserve_delivery_attempt(event_id: str) -> str:
+    with locked_ledger() as (path, durable_state):
+        prior_state = durable_state.get(event_id)
+        if prior_state is not None:
+            return prior_state
+        durable_state[event_id] = "attempting"
+        _write_ledger(path, durable_state)
+        return "reserved"
+
+
+def handle_event(event: dict[str, Any], delivery_state: dict[str, str]) -> None:
     event_id = event.get("id")
-    if not isinstance(event_id, str):
-        raise RuntimeError("Feedback lifecycle event has no ID")
-    if event_id in delivered:
-        acknowledge(event_id, {"status": "completed"})
+    claim_token = event.get("claimToken")
+    if (
+        not isinstance(event_id, str)
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
+    ):
+        raise RuntimeError("Feedback lifecycle event has no active claim")
+    external_delivery = event.get("source") in {"telegram", "jarvis-email"}
+    if external_delivery:
+        # Reconcile the process snapshot first, then reserve under a cross-process
+        # lock so only one worker can cross the external-send boundary.
+        save_ledger(delivery_state)
+        prior_state = reserve_delivery_attempt(event_id)
+        delivery_state.clear()
+        delivery_state.update(load_ledger())
+    else:
+        prior_state = delivery_state.get(event_id)
+    if prior_state == "delivered":
+        acknowledge(event_id, claim_token, {"status": "completed"})
+        return
+    if prior_state == "attempting":
+        acknowledge(event_id, claim_token, {
+            "status": "failed",
+            "error": (
+                "External delivery outcome is ambiguous; "
+                "duplicate send suppressed"
+            ),
+        })
         return
 
-    requires_ack = deliver_event(event)
+    requires_ack = deliver_event(event, delivery_state)
     if requires_ack:
-        delivered.append(event_id)
-        save_ledger(delivered)
-        acknowledge(event_id, {"status": "completed"})
+        claim_token = event.get("claimToken")
+        if not isinstance(claim_token, str):
+            raise RuntimeError("Feedback delivery lost its active claim")
+        if event.get("providerOutcome") == "unknown":
+            acknowledge(event_id, claim_token, {
+                "status": "failed",
+                "error": (
+                    "External delivery outcome is ambiguous; "
+                    "duplicate send suppressed"
+                ),
+            })
+            return
+        if external_delivery:
+            delivery_state[event_id] = "delivered"
+            save_ledger(delivery_state)
+        acknowledge(event_id, claim_token, {"status": "completed"})
 
 
 def run() -> None:
@@ -359,7 +650,7 @@ def run() -> None:
         0.5,
         float(os.environ.get("COMPASS_FEEDBACK_POLL_SECONDS", "2")),
     )
-    delivered = load_ledger()
+    delivery_state = load_ledger()
     while RUNNING:
         try:
             response = compass_request("GET", PULL_TARGET)
@@ -382,12 +673,14 @@ def run() -> None:
                     continue
                 event_id = event.get("id")
                 try:
-                    handle_event(event, delivered)
+                    handle_event(event, delivery_state)
                     LOGGER.info("Completed feedback event %s", event_id)
                 except RetryableError as error:
-                    if isinstance(event_id, str):
+                    claim_token = event.get("claimToken")
+                    if isinstance(event_id, str) and isinstance(claim_token, str):
                         acknowledge(
                             event_id,
+                            claim_token,
                             {
                                 "status": "failed",
                                 "error": str(error),
@@ -399,9 +692,11 @@ def run() -> None:
                         event_id,
                     )
                 except Exception as error:
-                    if isinstance(event_id, str):
+                    claim_token = event.get("claimToken")
+                    if isinstance(event_id, str) and isinstance(claim_token, str):
                         acknowledge(
                             event_id,
+                            claim_token,
                             {
                                 "status": "failed",
                                 "error": str(error)[:2_000],
@@ -430,6 +725,7 @@ def main() -> int:
     signal.signal(signal.SIGINT, stop_running)
     required_env("COMPASS_BASE_URL")
     required_env("JARVIS_BRIDGE_SECRET")
+    validate_runtime_origin()
     run()
     return 0
 
