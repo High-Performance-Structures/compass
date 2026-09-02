@@ -8,7 +8,18 @@ import {
   isHistoryRequestCurrent,
   isHistoryScrollRestoreCurrent,
   isAtNewestEdge,
+  mergeOlderMessagePage,
 } from "../message-list-behavior"
+
+type TestMessage = {
+  readonly id: string
+}
+
+function createMessages(prefix: string, count: number): readonly TestMessage[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${prefix}-${index}`,
+  }))
+}
 
 describe("message list behavior", () => {
   it("aligns only the current user's messages to the right", () => {
@@ -57,5 +68,40 @@ describe("message list behavior", () => {
   it("does not restore request-start scroll over a later manual scroll", () => {
     expect(isHistoryScrollRestoreCurrent(4, 4, 12, 12)).toBe(true)
     expect(isHistoryScrollRestoreCurrent(4, 4, 12, 13)).toBe(false)
+  })
+
+  it("stops at the retained limit using messages appended during a history request", () => {
+    const requestStartMessages = createMessages("current", 149)
+    const currentMessages = [
+      ...requestStartMessages,
+      { id: "realtime-during-request" },
+    ]
+    const olderMessages = createMessages("older", 50)
+
+    const result = mergeOlderMessagePage({
+      currentMessages,
+      olderMessages,
+      pageSize: 50,
+      maxMessages: 200,
+    })
+
+    expect(result.messages).toHaveLength(200)
+    expect(result.messages.slice(0, 50)).toEqual(olderMessages)
+    expect(result.hasMore).toBe(false)
+  })
+
+  it("terminates when a full page yields no retained cursor progress", () => {
+    const currentMessages = createMessages("current", 199)
+    const duplicateOlderPage = currentMessages.slice(0, 50)
+
+    const result = mergeOlderMessagePage({
+      currentMessages,
+      olderMessages: duplicateOlderPage,
+      pageSize: 50,
+      maxMessages: 200,
+    })
+
+    expect(result.messages).toEqual(currentMessages)
+    expect(result.hasMore).toBe(false)
   })
 })
