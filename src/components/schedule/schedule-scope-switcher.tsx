@@ -23,42 +23,21 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import {
   projectScheduleLabel,
+  scheduleProjectSelection,
+  scheduleScopeHref,
+  scheduleSelectionModeFor,
   scheduleScopeLabel,
   type ScheduleProjectData,
+  type ScheduleSelectionMode,
   type ScheduleScope,
 } from "@/lib/schedule/project-scope"
 import { projectDepartment } from "@/lib/project-branding"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
 type ScheduleScopeSwitcherProps = {
   readonly projects: readonly ProjectListItem[]
   readonly scheduleProjects: readonly ScheduleProjectData[]
   readonly scope: ScheduleScope
-}
-
-function scopeHref(
-  searchParams: URLSearchParams,
-  next:
-    | { readonly scope: "all" }
-    | { readonly scope: "department"; readonly department: string }
-    | { readonly scope: "selected"; readonly projectIds: readonly string[] }
-    | { readonly scope: "project"; readonly projectId: string }
-): string {
-  const params = new URLSearchParams(searchParams.toString())
-  params.set("mode", "projects")
-  params.set("scope", next.scope)
-  params.delete("department")
-  params.delete("project")
-  params.delete("projects")
-
-  if (next.scope === "department") {
-    params.set("department", next.department)
-  } else if (next.scope === "selected") {
-    params.set("projects", next.projectIds.join(","))
-  } else if (next.scope === "project") {
-    params.set("project", next.projectId)
-  }
-
-  return `/dashboard/schedule?${params.toString()}`
 }
 
 export function ScheduleScopeSwitcher({
@@ -69,42 +48,73 @@ export function ScheduleScopeSwitcher({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [open, setOpen] = React.useState(false)
+  const selectionMode = scheduleSelectionModeFor(
+    searchParams.get("selection"),
+    scope.kind
+  )
   const selectedIds = new Set(
     scope.kind === "project" || scope.kind === "selected"
       ? scope.projectIds
       : []
   )
 
-  function navigate(href: string): void {
-    setOpen(false)
+  function navigate(href: string, close = true): void {
+    if (close) setOpen(false)
     router.push(href)
   }
 
-  function toggleProject(projectId: string): void {
-    const customProjectIds =
-      scope.kind === "project" || scope.kind === "selected"
-        ? scope.projectIds
-        : []
-    const nextIds = selectedIds.has(projectId)
-      ? customProjectIds.filter((id) => id !== projectId)
-      : [...customProjectIds, projectId]
-    if (nextIds.length === 0) return
-    if (nextIds.length === 1) {
-      navigate(
-        scopeHref(searchParams, {
-          scope: "project",
-          projectId: nextIds[0],
-        })
+  function scopeLinkForMode(mode: ScheduleSelectionMode): string {
+    if (scope.kind === "project" || scope.kind === "selected") {
+      const projectIds = [...selectedIds]
+      return scheduleScopeHref(
+        searchParams,
+        mode === "single"
+          ? projectIds[0]
+            ? { scope: "project", projectId: projectIds[0] }
+            : { scope: "selected", projectIds: [] }
+          : { scope: "selected", projectIds },
+        mode
       )
-      return
     }
-    navigate(
-      scopeHref(searchParams, {
-        scope: "selected",
-        projectIds: nextIds,
-      })
+    return scheduleScopeHref(
+      searchParams,
+      scope.kind === "department"
+        ? { scope: "department", department: scope.department }
+        : { scope: "all" },
+      mode
     )
   }
+
+  function changeSelectionMode(value: string): void {
+    if (value !== "single" && value !== "multiple") return
+    navigate(scopeLinkForMode(value), false)
+  }
+
+  function toggleProject(projectId: string): void {
+    const currentIds = [...selectedIds]
+    const nextIds = scheduleProjectSelection(
+      selectionMode,
+      currentIds,
+      projectId
+    )
+    navigate(
+      scheduleScopeHref(
+        searchParams,
+        selectionMode === "single"
+          ? { scope: "project", projectId }
+          : { scope: "selected", projectIds: nextIds },
+        selectionMode
+      ),
+      selectionMode === "single"
+    )
+  }
+
+  const selectedProjectLabels = projects
+    .filter((project) => selectedIds.has(project.id))
+    .map((project) => ({
+      id: project.id,
+      label: projectScheduleLabel(project),
+    }))
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -127,6 +137,50 @@ export function ScheduleScopeSwitcher({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[360px] max-w-[90vw] p-0">
+        <div className="space-y-3 p-3">
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium" id="schedule-selection-mode-label">
+              Project selection
+            </p>
+            <ToggleGroup
+              type="single"
+              value={selectionMode}
+              onValueChange={changeSelectionMode}
+              aria-labelledby="schedule-selection-mode-label"
+              className="grid w-full grid-cols-2"
+              size="sm"
+              variant="outline"
+            >
+              <ToggleGroupItem value="single">Single schedule</ToggleGroupItem>
+              <ToggleGroupItem value="multiple">Multiple schedules</ToggleGroupItem>
+            </ToggleGroup>
+            <p className="text-xs text-muted-foreground" id="schedule-selection-mode-help">
+              {selectionMode === "single"
+                ? "Choose one project. A new choice replaces the current project."
+                : "Check projects to compare their schedules. You can select none or several."}
+            </p>
+          </div>
+          {selectionMode === "multiple" && (
+            <div
+              aria-live="polite"
+              className="rounded-md border bg-muted/30 px-2.5 py-2 text-xs"
+            >
+              <p className="font-medium">
+                {selectedProjectLabels.length === 0
+                  ? "No projects selected"
+                  : `${selectedProjectLabels.length} selected`}
+              </p>
+              {selectedProjectLabels.length > 0 && (
+                <ul className="mt-1 list-disc space-y-0.5 pl-4 text-muted-foreground">
+                  {selectedProjectLabels.map((project) => (
+                    <li key={project.id}>{project.label}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+        <Separator />
         <div className="grid grid-cols-5 gap-1 p-2">
           <Button
             type="button"
@@ -134,7 +188,9 @@ export function ScheduleScopeSwitcher({
             variant={scope.kind === "all" ? "default" : "ghost"}
             className="col-span-1"
             onClick={() =>
-              navigate(scopeHref(searchParams, { scope: "all" }))
+              navigate(
+                scheduleScopeHref(searchParams, { scope: "all" }, selectionMode)
+              )
             }
           >
             All
@@ -152,10 +208,11 @@ export function ScheduleScopeSwitcher({
               }
               onClick={() =>
                 navigate(
-                  scopeHref(searchParams, {
-                    scope: "department",
-                    department,
-                  })
+                  scheduleScopeHref(
+                    searchParams,
+                    { scope: "department", department },
+                    selectionMode
+                  )
                 )
               }
             >
@@ -165,7 +222,10 @@ export function ScheduleScopeSwitcher({
         </div>
         <Separator />
         <Command>
-          <CommandInput placeholder="Search projects to select..." />
+          <CommandInput
+            placeholder="Search projects..."
+            aria-describedby="schedule-selection-mode-help"
+          />
           <CommandList className="max-h-72">
             <CommandEmpty>No matching projects.</CommandEmpty>
             <CommandGroup heading="Projects">
@@ -178,6 +238,10 @@ export function ScheduleScopeSwitcher({
                 return (
                   <CommandItem
                     key={project.id}
+                    className={cn(
+                      selected && "bg-accent/50 font-medium"
+                    )}
+                    data-schedule-selected={selected}
                     value={[
                       project.projectNumber,
                       project.name,

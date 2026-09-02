@@ -238,6 +238,39 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("project schedules expose single and multiple selection modes", async ({
+    page,
+  }) => {
+    const path = "/dashboard/schedule?mode=projects&scope=all&view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    await expect(page.getByText("Project selection", { exact: true })).toBeVisible()
+
+    const multipleMode = page.getByRole("radio", {
+      name: "Multiple schedules",
+    })
+    await multipleMode.click()
+    await expect(page).toHaveURL(/selection=multiple/)
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    await expect(
+      page.getByText("Check projects to compare their schedules.")
+    ).toBeVisible()
+
+    const project = page.locator('[data-slot="command-item"]').first()
+    await expect(project).toBeVisible()
+    await project.click()
+    await expect(page).toHaveURL(/scope=selected.*projects=[^&]+/)
+    await expect(project).toHaveAttribute("data-schedule-selected", "true")
+
+    await project.click()
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("projects"))
+      .toBe("")
+    await expect(page.getByText("No projects selected", { exact: true })).toBeVisible()
+  })
+
   test("Schedule keeps controls compact and gives views a scrollable workspace", async ({
     page,
   }) => {

@@ -4,6 +4,10 @@ import {
   projectScheduleColor,
   projectScheduleLabel,
   schedulePortfolioProjects,
+  scheduleProjectSelection,
+  scheduleScopeHref,
+  scheduleSelectionModeFor,
+  scheduleScopeForSelection,
   scheduleScopeLabel,
   type ScheduleProjectData,
 } from "@/lib/schedule/project-scope"
@@ -99,5 +103,65 @@ describe("unified schedule project scope", () => {
         projects
       )
     ).toBe("All projects")
+  })
+
+  it("replaces the selection in single mode", () => {
+    expect(scheduleProjectSelection("single", [projects[0].id], projects[1].id)).toEqual([
+      projects[1].id,
+    ])
+  })
+
+  it("toggles projects and allows an empty selection in multiple mode", () => {
+    expect(scheduleProjectSelection("multiple", [projects[0].id], projects[1].id)).toEqual([
+      projects[0].id,
+      projects[1].id,
+    ])
+    expect(scheduleProjectSelection("multiple", projects.map((project) => project.id), projects[0].id)).toEqual([
+      projects[1].id,
+    ])
+    expect(scheduleProjectSelection("multiple", [projects[0].id], projects[0].id)).toEqual([])
+  })
+
+  it("derives and preserves explicit selection modes", () => {
+    expect(scheduleSelectionModeFor(undefined, "project")).toBe("single")
+    expect(scheduleSelectionModeFor(undefined, "selected")).toBe("multiple")
+    expect(scheduleSelectionModeFor("multiple", "project")).toBe("multiple")
+    expect(scheduleSelectionModeFor("invalid", "project")).toBe("single")
+    expect(
+      scheduleScopeForSelection("multiple", [projects[0].id])
+    ).toEqual({
+      kind: "selected",
+      projectIds: [projects[0].id],
+      department: null,
+    })
+    expect(scheduleScopeForSelection("multiple", [])).toEqual({
+      kind: "selected",
+      projectIds: [],
+      department: null,
+    })
+    expect(
+      scheduleScopeLabel(
+        { kind: "selected", projectIds: [projects[0].id], department: null },
+        projects
+      )
+    ).toBe("1 selected project")
+    expect(
+      scheduleScopeLabel(
+        { kind: "selected", projectIds: [], department: null },
+        projects
+      )
+    ).toBe("No projects selected")
+  })
+
+  it("keeps schedule query state while changing the selection mode", () => {
+    const href = scheduleScopeHref(
+      new URLSearchParams("mode=projects&view=list&q=roofing"),
+      { scope: "selected", projectIds: [projects[0].id] },
+      "multiple"
+    )
+
+    expect(href).toBe(
+      "/dashboard/schedule?mode=projects&view=list&q=roofing&selection=multiple&scope=selected&projects=proj-o-202-loeffler"
+    )
   })
 })
