@@ -235,12 +235,24 @@ export function ScheduleScopeSwitcher({
                   projectNumber: project.projectNumber,
                 })
                 const selected = selectedIds.has(project.id)
+                const projectLabel = projectScheduleLabel(project)
+                // cmdk owns aria-selected for the keyboard-active row, so
+                // announce schedule inclusion through each row's name.
+                const selectionAnnouncement =
+                  selectionMode === "multiple"
+                    ? selected
+                      ? "Selected for schedule comparison"
+                      : "Not selected for schedule comparison"
+                    : selected
+                      ? "Current project"
+                      : "Not the current project"
                 return (
                   <CommandItem
                     key={project.id}
                     className={cn(
                       selected && "bg-accent/50 font-medium"
                     )}
+                    aria-label={`${projectLabel}, ${department}, ${selectionAnnouncement}`}
                     data-schedule-selected={selected}
                     value={[
                       project.projectNumber,
@@ -259,10 +271,7 @@ export function ScheduleScopeSwitcher({
                       )}
                     />
                     <span className="min-w-0 flex-1 truncate">
-                      {projectScheduleLabel({
-                        name: project.name,
-                        projectNumber: project.projectNumber,
-                      })}
+                      {projectLabel}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {department}
