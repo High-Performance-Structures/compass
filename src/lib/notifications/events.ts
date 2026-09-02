@@ -20,6 +20,7 @@ import {
   channelNotificationRecipients,
   type ChannelMessageMention,
 } from "@/lib/notifications/audience"
+import { workflowRoleIdFromString } from "@/lib/project-workflow-roles"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export {
@@ -105,6 +106,17 @@ type WarrantyUpdatedNotificationInput = {
   readonly status: string
   readonly claimantUserId: string | null
   readonly updatedBy: AuthUser
+}
+
+type ScheduleEndDateExtendedNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly sourceType: string
+  readonly sourceId: string | null
+  readonly previousProjectEnd: string
+  readonly nextProjectEnd: string
+  readonly reason: string
+  readonly changedBy: AuthUser
 }
 
 function normalizeName(value: string | null): string {
@@ -205,6 +217,91 @@ function notificationPreview(content: string): string {
   const compact = content.replace(/\s+/g, " ").trim()
   if (compact.length <= 240) return compact
   return `${compact.slice(0, 237)}...`
+}
+
+function scheduleDateLabel(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00.000Z`))
+}
+
+export async function notifyScheduleEndDateExtended(
+  input: ScheduleEndDateExtendedNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const [project, orgUsers, projectRoles] = await Promise.all([
+    db
+      .select({ name: projects.name, projectNumber: projects.projectNumber })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null),
+    db
+      .select({
+        userId: users.id,
+        email: users.email,
+        googleEmail: users.googleEmail,
+        userRole: users.role,
+        organizationRole: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, input.organizationId),
+          eq(users.isActive, true)
+        )
+      ),
+    db
+      .select({ userId: projectMembers.userId, role: projectMembers.role })
+      .from(projectMembers)
+      .where(eq(projectMembers.projectId, input.projectId)),
+  ])
+  const projectRoleByUserId = new Map(
+    projectRoles.map((member) => [member.userId, member.role])
+  )
+  const recipients = orgUsers
+    .filter((member) => {
+      const projectRole = projectRoleByUserId.get(member.userId)
+      return (
+        workflowRoleIdFromString(projectRole) === "project-administrator" ||
+        workflowRoleIdFromString(member.organizationRole) ===
+          "project-administrator" ||
+        workflowRoleIdFromString(member.userRole) === "project-administrator"
+      )
+    })
+    .map((member) => ({
+      userId: member.userId,
+      email: member.googleEmail?.trim() || member.email,
+    }))
+  if (recipients.length === 0) return
+
+  const projectLabel = project?.projectNumber
+    ? `${project.projectNumber} - ${project.name}`
+    : project?.name ?? "Project"
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "schedule.end_date_extended",
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    title: `Schedule end date extended: ${projectLabel}`,
+    body:
+      `The project finish moved from ${scheduleDateLabel(
+        input.previousProjectEnd
+      )} to ${scheduleDateLabel(input.nextProjectEnd)}. ` +
+      `Reason: ${input.reason}. A change order may be needed due to this schedule shift.`,
+    href: `/dashboard/projects/${input.projectId}/schedule`,
+    priority: "high",
+    audience: "project_administrator",
+    createdBy: input.changedBy.id,
+    recipients,
+    delivery: { inApp: true, email: true, push: true },
+  })
 }
 
 export async function notifyChannelMessage(

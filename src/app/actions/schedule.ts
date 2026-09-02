@@ -58,6 +58,11 @@ import {
 } from "@/lib/templates/schedule-template-bulk-selection"
 import { isOwnerScheduleView, type OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
+import { recordScheduleShift } from "@/lib/schedule/record-shift"
+import {
+  summarizeScheduleShift,
+  validateScheduleShiftReason,
+} from "@/lib/schedule/shift-tracking"
 import type {
   TaskStatus,
   DependencyType,
@@ -1181,6 +1186,7 @@ export async function updateTask(
     subVendorVisible?: boolean
     confirmationRequired?: boolean
     acceptChangeProposal?: boolean
+    shiftReason?: string
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1278,6 +1284,14 @@ export async function updateTask(
         startDate,
         endDateCalculated: endDate,
       })
+    }
+    const shiftSummary = summarizeScheduleShift(schedule.tasks, dateUpdates)
+    const shiftReasonResult =
+      shiftSummary.affectedItemCount > 0
+        ? validateScheduleShiftReason(data.shiftReason)
+        : null
+    if (shiftReasonResult !== null && !shiftReasonResult.success) {
+      return { success: false, error: shiftReasonResult.error }
     }
 
     // Leave dates untouched until the paired D1 batch below. Linked to-dos
@@ -1381,6 +1395,19 @@ export async function updateTask(
       dateUpdates,
       now
     )
+    if (shiftReasonResult?.success) {
+      await recordScheduleShift({
+        db,
+        organizationId: orgId,
+        projectId: task.projectId,
+        actor: user,
+        sourceType: "schedule_item",
+        sourceId: taskId,
+        sourceLabel: `“${data.title ?? task.title}”`,
+        reason: shiftReasonResult.reason,
+        summary: shiftSummary,
+      })
+    }
 
     await recordActivityEvent({
       db,
@@ -1813,6 +1840,7 @@ export async function createDependency(data: {
   type: DependencyType
   lagDays: number
   projectId: string
+  shiftReason: string
 }): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
     const user = await requireAuth()
@@ -1834,6 +1862,10 @@ export async function createDependency(data: {
 
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
+    }
+    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
+    if (!shiftReasonResult.success) {
+      return { success: false, error: shiftReasonResult.error }
     }
 
     if (data.predecessorId === data.successorId) {
@@ -1891,8 +1923,9 @@ export async function createDependency(data: {
       return { success: false, error: "This dependency would create a cycle" }
     }
 
+    const dependencyId = crypto.randomUUID()
     await db.insert(taskDependencies).values({
-      id: crypto.randomUUID(),
+      id: dependencyId,
       predecessorId: data.predecessorId,
       successorId: data.successorId,
       type: data.type,
@@ -1907,12 +1940,24 @@ export async function createDependency(data: {
       updatedSchedule.dependencies,
       updatedSchedule.exceptions
     )
+    const shiftSummary = summarizeScheduleShift(schedule.tasks, updatedTasks)
     await persistScheduleDateUpdates(
       env.DB,
       data.projectId,
       updatedTasks,
       new Date().toISOString()
     )
+    await recordScheduleShift({
+      db,
+      organizationId: orgId,
+      projectId: data.projectId,
+      actor: user,
+      sourceType: "schedule_dependency",
+      sourceId: dependencyId,
+      sourceLabel: "a new dependency",
+      reason: shiftReasonResult.reason,
+      summary: shiftSummary,
+    })
 
     await recordActivityEvent({
       db,
@@ -1945,6 +1990,7 @@ export async function updateDependency(data: {
   type: DependencyType
   lagDays: number
   projectId: string
+  shiftReason: string
 }): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
     const user = await requireAuth()
@@ -1964,6 +2010,10 @@ export async function updateDependency(data: {
 
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
+    }
+    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
+    if (!shiftReasonResult.success) {
+      return { success: false, error: shiftReasonResult.error }
     }
     if (data.predecessorId === data.successorId) {
       return {
@@ -2024,6 +2074,10 @@ export async function updateDependency(data: {
       [...otherDependencies, updatedDependency],
       schedule.exceptions
     )
+    const shiftSummary = summarizeScheduleShift(
+      schedule.tasks,
+      recalculated.updatedTasks
+    )
     const updatedAt = new Date().toISOString()
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(
@@ -2053,6 +2107,17 @@ export async function updateDependency(data: {
     if (results.some((result) => !result.success)) {
       throw new Error("Dependency update batch failed")
     }
+    await recordScheduleShift({
+      db,
+      organizationId: orgId,
+      projectId: data.projectId,
+      actor: user,
+      sourceType: "schedule_dependency",
+      sourceId: data.dependencyId,
+      sourceLabel: "an updated dependency",
+      reason: shiftReasonResult.reason,
+      summary: shiftSummary,
+    })
 
     await recordActivityEvent({
       db,

@@ -69,6 +69,7 @@ import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
 import { countBusinessDays } from "@/lib/schedule/business-days"
+import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
   DEFAULT_DISPLAY_COLOR_LABELS,
@@ -153,6 +154,7 @@ export function ScheduleGanttView({
   )
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
+  const [ganttRevision, setGanttRevision] = useState(0)
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
@@ -586,16 +588,27 @@ export function ScheduleGanttView({
         endDate,
         taskExceptions
       )
+      const shiftReasonInput = window.prompt(
+        `Why is “${scheduleTask?.title ?? task.name}” shifting? This will be saved in schedule history.`
+      )
+      const shiftReasonResult = validateScheduleShiftReason(shiftReasonInput)
+      if (!shiftReasonResult.success) {
+        if (shiftReasonInput !== null) toast.error(shiftReasonResult.error)
+        setGanttRevision((revision) => revision + 1)
+        return
+      }
 
       const result = await updateTask(task.id, {
         startDate,
         workdays: Math.max(1, workdays),
+        shiftReason: shiftReasonResult.reason,
       })
 
       if (result.success) {
         router.refresh()
       } else {
         toast.error(result.error)
+        setGanttRevision((revision) => revision + 1)
       }
     },
     [exceptions, router, tasks]
@@ -1068,7 +1081,9 @@ export function ScheduleGanttView({
           ) : (
             <div className="relative min-w-0 flex-1 min-h-0 overflow-hidden border">
               <GanttChart
+                key={`mobile-gantt-${ganttRevision}`}
                 tasks={frappeTasks}
+                exceptions={multipleProjects ? [] : exceptions}
                 viewMode={viewMode}
                 columnWidth={columnWidth}
                 panMode={panMode}
@@ -1106,7 +1121,9 @@ export function ScheduleGanttView({
           <ResizablePanel defaultSize="70%" minSize="40%">
             <div className="relative h-full min-w-0 overflow-hidden">
               <GanttChart
+                key={`desktop-gantt-${ganttRevision}`}
                 tasks={frappeTasks}
+                exceptions={multipleProjects ? [] : exceptions}
                 viewMode={viewMode}
                 columnWidth={columnWidth}
                 panMode={panMode}

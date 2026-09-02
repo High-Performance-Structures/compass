@@ -17,6 +17,11 @@ import { requirePermission } from "@/lib/permissions"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
 import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
+import { recordScheduleShift } from "@/lib/schedule/record-shift"
+import {
+  summarizeScheduleShift,
+  validateScheduleShiftReason,
+} from "@/lib/schedule/shift-tracking"
 import type {
   DependencyType,
   TaskStatus,
@@ -172,6 +177,7 @@ export async function createWorkdayException(
     category: ExceptionCategory
     recurrence: ExceptionRecurrence
     notes?: string
+    shiftReason: string
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -195,6 +201,10 @@ export async function createWorkdayException(
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
     }
+    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
+    if (!shiftReasonResult.success) {
+      return { success: false, error: shiftReasonResult.error }
+    }
 
     const now = new Date().toISOString()
     const exceptionId = crypto.randomUUID()
@@ -203,6 +213,10 @@ export async function createWorkdayException(
       .from(workdayExceptions)
       .where(eq(workdayExceptions.projectId, projectId))
       .then((rows) => rows.map(exceptionData))
+    const tasksBefore = await db
+      .select()
+      .from(scheduleTasks)
+      .where(eq(scheduleTasks.projectId, projectId))
     const newException: WorkdayExceptionData = {
       id: exceptionId,
       projectId,
@@ -220,6 +234,7 @@ export async function createWorkdayException(
       ...existingExceptions,
       newException,
     ])
+    const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runExceptionScheduleBatch(
       env.DB,
       env.DB
@@ -246,6 +261,17 @@ export async function createWorkdayException(
       now,
       updatedTasks
     )
+    await recordScheduleShift({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      sourceType: "workday_exception",
+      sourceId: exceptionId,
+      sourceLabel: `workday exception “${data.title}”`,
+      reason: shiftReasonResult.reason,
+      summary: shiftSummary,
+    })
     await recordActivityEvent({
       db,
       organizationId: orgId,
@@ -279,6 +305,7 @@ export async function updateWorkdayException(
     category?: ExceptionCategory
     recurrence?: ExceptionRecurrence
     notes?: string | null
+    shiftReason: string
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -310,6 +337,10 @@ export async function updateWorkdayException(
     if (!project) {
       return { success: false, error: "Access denied" }
     }
+    const shiftReasonResult = validateScheduleShiftReason(data.shiftReason)
+    if (!shiftReasonResult.success) {
+      return { success: false, error: shiftReasonResult.error }
+    }
 
     const updatedAt = new Date().toISOString()
     const updatedException: WorkdayExceptionData = {
@@ -329,6 +360,10 @@ export async function updateWorkdayException(
       .from(workdayExceptions)
       .where(eq(workdayExceptions.projectId, existing.projectId))
       .then((rows) => rows.map(exceptionData))
+    const tasksBefore = await db
+      .select()
+      .from(scheduleTasks)
+      .where(eq(scheduleTasks.projectId, existing.projectId))
     const updatedTasks = await recalculateProjectDates(
       db,
       existing.projectId,
@@ -336,6 +371,7 @@ export async function updateWorkdayException(
         exception.id === exceptionId ? updatedException : exception
       )
     )
+    const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runExceptionScheduleBatch(
       env.DB,
       env.DB
@@ -361,6 +397,17 @@ export async function updateWorkdayException(
       updatedAt,
       updatedTasks
     )
+    await recordScheduleShift({
+      db,
+      organizationId: orgId,
+      projectId: existing.projectId,
+      actor: user,
+      sourceType: "workday_exception",
+      sourceId: exceptionId,
+      sourceLabel: `workday exception “${updatedException.title}”`,
+      reason: shiftReasonResult.reason,
+      summary: shiftSummary,
+    })
     await recordActivityEvent({
       db,
       organizationId: orgId,
@@ -387,7 +434,8 @@ export async function updateWorkdayException(
 }
 
 export async function deleteWorkdayException(
-  exceptionId: string
+  exceptionId: string,
+  shiftReason: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await requireAuth()
@@ -418,6 +466,10 @@ export async function deleteWorkdayException(
     if (!project) {
       return { success: false, error: "Access denied" }
     }
+    const shiftReasonResult = validateScheduleShiftReason(shiftReason)
+    if (!shiftReasonResult.success) {
+      return { success: false, error: shiftReasonResult.error }
+    }
 
     const updatedAt = new Date().toISOString()
     const remainingExceptions = await db
@@ -429,11 +481,16 @@ export async function deleteWorkdayException(
           .filter((exception) => exception.id !== exceptionId)
           .map(exceptionData)
       )
+    const tasksBefore = await db
+      .select()
+      .from(scheduleTasks)
+      .where(eq(scheduleTasks.projectId, existing.projectId))
     const updatedTasks = await recalculateProjectDates(
       db,
       existing.projectId,
       remainingExceptions
     )
+    const shiftSummary = summarizeScheduleShift(tasksBefore, updatedTasks)
     await runExceptionScheduleBatch(
       env.DB,
       env.DB
@@ -445,6 +502,17 @@ export async function deleteWorkdayException(
       updatedAt,
       updatedTasks
     )
+    await recordScheduleShift({
+      db,
+      organizationId: orgId,
+      projectId: existing.projectId,
+      actor: user,
+      sourceType: "workday_exception",
+      sourceId: exceptionId,
+      sourceLabel: `deleted workday exception “${existing.title}”`,
+      reason: shiftReasonResult.reason,
+      summary: shiftSummary,
+    })
     await recordActivityEvent({
       db,
       organizationId: orgId,
