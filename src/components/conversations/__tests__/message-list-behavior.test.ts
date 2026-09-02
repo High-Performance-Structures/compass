@@ -4,7 +4,9 @@ import {
   getMessageAlignmentClass,
   getNewestScrollTop,
   getPreservedScrollTop,
+  getHistoryLoadError,
   isHistoryRequestCurrent,
+  isHistoryScrollRestoreCurrent,
   isAtNewestEdge,
 } from "../message-list-behavior"
 
@@ -43,5 +45,17 @@ describe("message list behavior", () => {
   it("ignores history completions invalidated by newest navigation", () => {
     expect(isHistoryRequestCurrent(4, 4)).toBe(true)
     expect(isHistoryRequestCurrent(4, 5)).toBe(false)
+  })
+
+  it("keeps history errors available for an accessible retry state", () => {
+    expect(getHistoryLoadError(new Error("History request failed"))).toBe(
+      "History request failed",
+    )
+    expect(getHistoryLoadError({})).toBe("Unable to load older messages.")
+  })
+
+  it("does not restore request-start scroll over a later manual scroll", () => {
+    expect(isHistoryScrollRestoreCurrent(4, 4, 12, 12)).toBe(true)
+    expect(isHistoryScrollRestoreCurrent(4, 4, 12, 13)).toBe(false)
   })
 })
