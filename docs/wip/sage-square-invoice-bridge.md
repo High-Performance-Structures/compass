@@ -35,6 +35,14 @@ prefixes always fail closed.
   and invoice number before it can be published.
 - Existing Square invoice numbers without the Sage source marker stop the run
   for manual review.
+- The Sage client email is used by default. A command-line override must match
+  the Sage email when both are present.
+- A missing Square customer may be created only during an explicitly confirmed
+  draft write with `--create-customer`. The bridge searches by exact email
+  first and uses a deterministic Sage-client idempotency key and reference ID.
+- Sage sales tax is represented as an order-level Square tax. Square calculates
+  the order before creation, and the bridge stops unless the calculated total
+  exactly matches Sage.
 
 ## Required secrets
 
@@ -55,9 +63,11 @@ signet secret exec \
   -s HPS_SQUARE_PRODUCTION_ACCESS_TOKEN \
   -- python3 sage_square_invoice_bridge.py \
   --sage-invoice-id SAGE_RECORD_ID \
-  --recipient-email RECIPIENT_EMAIL \
   --environment production
 ```
+
+If Sage has no email yet, `--recipient-email RECIPIENT_EMAIL` may be supplied.
+If Sage already has an email, the override must match it exactly.
 
 Create a non-sending draft after reviewing the preview:
 
@@ -70,8 +80,14 @@ signet secret exec \
   --recipient-email RECIPIENT_EMAIL \
   --environment production \
   --create-draft \
+  --create-customer \
   --confirm-invoice-number 'EXACT CURRENT SAGE INVOICE NUMBER'
 ```
+
+Omit `--create-customer` when the matching Square customer already exists. If
+the exact-email search returns no match, the bridge stops without creating the
+draft and explains which flag is required. More than one match always stops for
+manual review.
 
 Publish only after re-running preview and confirming the recipient, amount, due
 date, job prefix, location, and draft status:

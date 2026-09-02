@@ -67,6 +67,9 @@ class SageInvoice:
     invoice_date: str
     due_date: str
     sage_job_id: int
+    sage_customer_id: int
+    sage_customer_name: str
+    sage_customer_email: str | None
     job_name: str
     job_short_name: str
     sage_department: str | None
@@ -177,14 +180,30 @@ def build_square_order(invoice: SageInvoice, location_id: str, customer_id: str)
         }
         for line in invoice.lines
     ]
+    order: dict[str, Any] = {
+        "location_id": location_id,
+        "customer_id": customer_id,
+        "reference_id": f"sage-ar-invoice:{invoice.sage_invoice_id}",
+        "line_items": line_items,
+    }
+    tax = sage_tax_amount(invoice)
+    if tax > 0:
+        subtotal = sage_line_total(invoice)
+        percentage = (tax * Decimal("100") / subtotal).quantize(
+            Decimal("0.000001"), rounding=ROUND_HALF_UP
+        )
+        order["taxes"] = [
+            {
+                "uid": "sage-sales-tax",
+                "name": "Sage sales tax",
+                "type": "ADDITIVE",
+                "percentage": format(percentage.normalize(), "f"),
+                "scope": "ORDER",
+            }
+        ]
     return {
         "idempotency_key": f"sage-ar-order-{invoice.sage_invoice_id}",
-        "order": {
-            "location_id": location_id,
-            "customer_id": customer_id,
-            "reference_id": f"sage-ar-invoice:{invoice.sage_invoice_id}",
-            "line_items": line_items,
-        },
+        "order": order,
     }
 
 
@@ -238,6 +257,16 @@ def build_square_invoice(
     }
 
 
+def sage_line_total(invoice: SageInvoice) -> Decimal:
+    return sum((line.amount for line in invoice.lines), Decimal("0.00")).quantize(
+        Decimal("0.01")
+    )
+
+
+def sage_tax_amount(invoice: SageInvoice) -> Decimal:
+    return (invoice.total - sage_line_total(invoice)).quantize(Decimal("0.01"))
+
+
 def validate_invoice(invoice: SageInvoice) -> None:
     if invoice.status != 1:
         raise BridgeError(
@@ -247,10 +276,13 @@ def validate_invoice(invoice: SageInvoice) -> None:
         raise BridgeError("Sage invoice must have a positive total and open balance")
     if not invoice.lines:
         raise BridgeError("Sage invoice has no billable line items")
-    line_total = sum((line.amount for line in invoice.lines), Decimal("0.00"))
-    if line_total.quantize(Decimal("0.01")) != invoice.total:
+    line_total = sage_line_total(invoice)
+    if line_total <= 0:
+        raise BridgeError("Sage invoice line total must be positive")
+    if line_total > invoice.total:
         raise BridgeError(
-            f"Sage line total {line_total:.2f} does not match invoice total {invoice.total:.2f}"
+            f"Sage line total {line_total:.2f} exceeds invoice total {invoice.total:.2f}; "
+            "discounted invoices require manual review"
         )
 
 
@@ -259,9 +291,11 @@ def load_sage_invoice(connection: Any, sage_invoice_id: int) -> SageInvoice:
     cursor.execute(
         """
         SELECT i.recnum, i.invnum, i.invdte, i.duedte, i.jobnum, i.status,
-               i.invttl, i.invbal, j.jobnme, j.shtnme, j.dptmnt
+               i.invttl, i.invbal, j.jobnme, j.shtnme, j.dptmnt,
+               c.recnum AS clnnum, c.clnnme, c.e_mail
         FROM dbo.acrinv i
         LEFT JOIN dbo.actrec j ON j.recnum = i.jobnum
+        LEFT JOIN dbo.reccln c ON c.recnum = j.clnnum
         WHERE i.recnum = %s
         """,
         (sage_invoice_id,),
@@ -305,6 +339,9 @@ def load_sage_invoice(connection: Any, sage_invoice_id: int) -> SageInvoice:
         invoice_date=iso_date(row.get("invdte")),
         due_date=iso_date(row.get("duedte")),
         sage_job_id=int(row.get("jobnum") or 0),
+        sage_customer_id=int(row.get("clnnum") or 0),
+        sage_customer_name=text(row.get("clnnme")) or "",
+        sage_customer_email=text(row.get("e_mail")),
         job_name=text(row.get("jobnme")) or "",
         job_short_name=text(row.get("shtnme")) or text(row.get("jobnme")) or "",
         sage_department=text(row.get("dptmnt")),
@@ -366,7 +403,7 @@ class SquareClient:
             )
         return matches[0]["id"]
 
-    def customer_by_email(self, email: str) -> dict[str, Any]:
+    def customers_by_email(self, email: str) -> list[dict[str, Any]]:
         value = self.request(
             "POST",
             "/v2/customers/search",
@@ -384,11 +421,63 @@ class SquareClient:
             and text(customer.get("email_address")) is not None
             and str(customer["email_address"]).lower() == email.strip().lower()
         ]
-        if len(customers) != 1:
+        return customers
+
+    def customer_by_email(
+        self, email: str
+    ) -> dict[str, Any] | None:
+        customers = self.customers_by_email(email)
+        if len(customers) > 1:
             raise BridgeError(
                 f"Expected exactly one Square customer with email {email}; found {len(customers)}"
             )
-        return customers[0]
+        if customers:
+            return customers[0]
+        return None
+
+    def create_customer(
+        self,
+        email: str,
+        sage_customer_id: int,
+        sage_customer_name: str,
+    ) -> dict[str, Any]:
+        if sage_customer_id <= 0:
+            raise BridgeError(
+                "Cannot create a Square customer without a valid Sage customer ID"
+            )
+        if text(sage_customer_name) is None:
+            raise BridgeError(
+                "Cannot create a Square customer without a Sage customer name"
+            )
+
+        value = self.request(
+            "POST",
+            "/v2/customers",
+            {
+                "idempotency_key": f"sage-client-{sage_customer_id}-square-customer-v1",
+                "company_name": sage_customer_name[:500],
+                "email_address": email,
+                "reference_id": f"sage-client:{sage_customer_id}",
+                "note": "Created by the Sage invoice bridge after an exact-email lookup found no match.",
+            },
+        )
+        created = value.get("customer")
+        if not isinstance(created, dict) or not isinstance(created.get("id"), str):
+            raise BridgeError("Square did not return the created customer")
+        created_email = text(created.get("email_address"))
+        if created_email is None or created_email.lower() != email.lower():
+            raise BridgeError("Created Square customer email does not match Sage")
+        return created
+
+    def calculate_order(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        order = payload.get("order")
+        if not isinstance(order, dict):
+            raise BridgeError("Square order payload is invalid")
+        value = self.request("POST", "/v2/orders/calculate", {"order": order})
+        calculated = value.get("order")
+        if not isinstance(calculated, dict):
+            raise BridgeError("Square did not return the calculated order")
+        return calculated
 
     def invoices_for_location(self, location_id: str) -> list[dict[str, Any]]:
         invoices: list[dict[str, Any]] = []
@@ -439,12 +528,14 @@ class SquareClient:
         location_id: str,
         customer_id: str,
     ) -> dict[str, Any]:
-        order_value = self.request(
-            "POST", "/v2/orders", build_square_order(invoice, location_id, customer_id)
-        )
+        order_payload = build_square_order(invoice, location_id, customer_id)
+        calculated = self.calculate_order(order_payload)
+        validate_square_order_total(calculated, invoice)
+        order_value = self.request("POST", "/v2/orders", order_payload)
         order = order_value.get("order")
         if not isinstance(order, dict) or not isinstance(order.get("id"), str):
             raise BridgeError("Square did not return the created order")
+        validate_square_order_total(order, invoice)
         invoice_value = self.request(
             "POST",
             "/v2/invoices",
@@ -497,6 +588,30 @@ def validate_existing_square_invoice(
         raise BridgeError("Square draft total no longer matches the current Sage invoice")
 
 
+def validate_square_order_total(
+    square_order: Mapping[str, Any], sage_invoice: SageInvoice
+) -> None:
+    total = square_order.get("total_money")
+    if not isinstance(total, dict) or total.get("currency") != "USD":
+        raise BridgeError("Square order did not return a USD total")
+    if total.get("amount") != square_cents(sage_invoice.total):
+        raise BridgeError("Square order total does not match the current Sage invoice")
+
+
+def recipient_email(invoice: SageInvoice, override: str | None) -> str:
+    sage_email = text(invoice.sage_customer_email)
+    requested = text(override)
+    if requested is not None and sage_email is not None:
+        if requested.lower() != sage_email.lower():
+            raise BridgeError("Recipient email does not match the Sage customer email")
+    resolved = requested or sage_email
+    if resolved is None:
+        raise BridgeError(
+            "Sage customer has no email; add it in Sage or pass --recipient-email"
+        )
+    return resolved.lower()
+
+
 def connect_sage() -> Any:
     try:
         import pymssql
@@ -524,6 +639,7 @@ def public_summary(
     location_name: str,
     location_id: str,
     customer: Mapping[str, Any],
+    customer_created: bool,
     square_invoice: Mapping[str, Any] | None,
     action: str,
 ) -> dict[str, Any]:
@@ -547,10 +663,12 @@ def public_summary(
                 if part is not None
             ),
             "email": customer.get("email_address"),
+            "created": customer_created,
         },
         "invoiceDate": invoice.invoice_date,
         "dueDate": invoice.due_date,
         "total": f"{invoice.total:.2f}",
+        "salesTax": f"{sage_tax_amount(invoice):.2f}",
         "balance": f"{invoice.balance:.2f}",
         "lineCount": len(invoice.lines),
         "squareInvoice": (
@@ -568,13 +686,21 @@ def public_summary(
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sage-invoice-id", required=True, type=int)
-    parser.add_argument("--recipient-email", required=True)
+    parser.add_argument(
+        "--recipient-email",
+        help="Optional override; must match Sage when Sage already has an email",
+    )
     parser.add_argument(
         "--environment", choices=("production", "sandbox"), default="sandbox"
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--create-draft", action="store_true")
     mode.add_argument("--publish", action="store_true")
+    parser.add_argument(
+        "--create-customer",
+        action="store_true",
+        help="Create a missing exact-email Square customer during --create-draft",
+    )
     parser.add_argument(
         "--confirm-invoice-number",
         help="Required for Square writes; must exactly match Sage",
@@ -607,22 +733,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.environment == "production"
         else SQUARE_SANDBOX_ORIGIN
     )
-    square = SquareClient(access_token, origin)
-    location_id = square.location_id(location_name)
-    customer = square.customer_by_email(args.recipient_email)
-    customer_id = customer.get("id")
-    if not isinstance(customer_id, str):
-        raise BridgeError("Square customer is missing its ID")
-    existing = square.matching_invoice(invoice, location_id)
-    if existing is not None:
-        validate_existing_square_invoice(
-            existing, invoice, location_id, customer_id
-        )
-
     write_requested = args.create_draft or args.publish
     if write_requested and args.confirm_invoice_number != invoice.invoice_number:
         raise BridgeError(
             "--confirm-invoice-number must exactly match the current Sage invoice number"
+        )
+    if args.create_customer and not args.create_draft:
+        raise BridgeError("--create-customer requires --create-draft")
+
+    square = SquareClient(access_token, origin)
+    location_id = square.location_id(location_name)
+    email = recipient_email(invoice, args.recipient_email)
+    customer = square.customer_by_email(email)
+    customer_created = False
+    # Duplicate detection must happen before any customer write. Otherwise a
+    # retry against an already-created invoice could leave an orphan customer.
+    existing = square.matching_invoice(invoice, location_id)
+    if customer is None:
+        if existing is not None:
+            raise BridgeError(
+                "A matching Square invoice exists, but its recipient cannot be "
+                "verified by the current Sage customer email"
+            )
+        if not args.create_customer:
+            raise BridgeError(
+                f"No Square customer has email {email}; create the customer or rerun "
+                "--create-draft with --create-customer"
+            )
+        customer = square.create_customer(
+            email,
+            invoice.sage_customer_id,
+            invoice.sage_customer_name,
+        )
+        customer_created = True
+    customer_id = customer.get("id")
+    if not isinstance(customer_id, str):
+        raise BridgeError("Square customer is missing its ID")
+    if existing is not None:
+        validate_existing_square_invoice(
+            existing, invoice, location_id, customer_id
         )
 
     action = "preview"
@@ -656,6 +805,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 location_name,
                 location_id,
                 customer,
+                customer_created,
                 result,
                 action,
             ),
