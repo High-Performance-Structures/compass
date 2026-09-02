@@ -75,6 +75,29 @@ SELECT 'access tenant evidence is consistent', CASE WHEN NOT EXISTS (
         AND source_record.organization_id <> record_project.organization_id)
   ) THEN 1 ELSE 0 END;
 
+-- A repeated Buildertrend file id within the same source-record relationship is
+-- an import replay. Reject it before any durable staging write. The source
+-- record id is the strongest relationship key; when older captures omit it,
+-- the project/scope/type/job/lead tuple is the fallback relationship. The
+-- same file may still be shared by distinct source records (for example an
+-- attachment referenced by multiple RFIs), so the file id is not checked
+-- globally.
+INSERT INTO buildertrend_reconciliation_guard (check_name, valid)
+SELECT 'duplicate file identity is absent', CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM buildertrend_archive_files source_file
+    WHERE source_file.buildertrend_file_id IS NOT NULL
+    GROUP BY
+      COALESCE(source_file.project_id, ''),
+      source_file.source_scope,
+      source_file.source_record_type,
+      COALESCE(source_file.buildertrend_job_id, ''),
+      COALESCE(source_file.buildertrend_lead_id, ''),
+      COALESCE(source_file.source_record_id, ''),
+      source_file.buildertrend_file_id
+    HAVING COUNT(*) > 1
+  ) THEN 1 ELSE 0 END;
+
 INSERT OR IGNORE INTO buildertrend_staging_runs (
   id,
   organization_id,
