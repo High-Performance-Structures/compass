@@ -296,14 +296,12 @@ terminal failure remains visible in the protected operations health and
 Feedback Desk records. Features never enqueue this event and remain blocked by
 the persisted leadership priority decision.
 
-The private runtime creates the implementation, independent-review, and
-release-steward tasks through its normal Kanban tools, then attaches all three
-task IDs to the protected Feedback Desk record with the signed lifecycle
-endpoint. The consumer uses one stable idempotency key per feedback item for
-all three Kanban creates and the callback, so a process crash after task
-creation or after attachment safely adopts the existing work rather than
-creating a competing graph. The implementation task is the parent of the
-review task, and the review task is the parent of the release-steward task.
+The implementation task is the parent of the review task, and the review task
+is the parent of the release-steward task. The signed lifecycle callback uses
+its own stable `delivery-graph-attach:<item-id>` idempotency key. Replaying that
+callback after an ambiguous response therefore adopts the existing attachment
+without reusing the graph-level event key or any of the three stage-creation
+keys.
 
 All private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
