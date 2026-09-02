@@ -104,10 +104,10 @@ export async function GET(request: Request): Promise<Response> {
     requestedEventType !== null
       ? eq(jarvisBridgeEvents.eventType, requestedEventType)
       : undefined
-  const now = new Date()
-  const nowIso = now.toISOString()
+  const candidateNow = new Date()
+  const candidateNowIso = candidateNow.toISOString()
   const staleClaimIso = new Date(
-    now.getTime() - CLAIM_RETRY_MILLISECONDS,
+    candidateNow.getTime() - CLAIM_RETRY_MILLISECONDS,
   ).toISOString()
   const db = getDb(env.DB)
 
@@ -118,7 +118,7 @@ export async function GET(request: Request): Promise<Response> {
       and(
         eq(jarvisBridgeEvents.direction, "outbound"),
         eventTypeFilter,
-        lte(jarvisBridgeEvents.availableAt, nowIso),
+        lte(jarvisBridgeEvents.availableAt, candidateNowIso),
         or(
           eq(jarvisBridgeEvents.status, "pending"),
           and(
@@ -134,31 +134,40 @@ export async function GET(request: Request): Promise<Response> {
   const claimTokens: string[] = []
   for (const candidate of candidates) {
     const claimToken = crypto.randomUUID()
-    claimTokens.push(claimToken)
-    await db
+    // Capture each lease after the candidate query and immediately before its CAS.
+    // A slow pull must not hand out a lease that is already stale when acquired.
+    const claimNow = new Date()
+    const claimIso = claimNow.toISOString()
+    const claimStaleIso = new Date(
+      claimNow.getTime() - CLAIM_RETRY_MILLISECONDS,
+    ).toISOString()
+    const claimed = await db
       .update(jarvisBridgeEvents)
       .set({
         status: "processing",
         claimToken,
-        claimedAt: nowIso,
+        claimedAt: claimIso,
         attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
-        updatedAt: nowIso,
+        updatedAt: claimIso,
       })
       .where(
         and(
           eq(jarvisBridgeEvents.id, candidate.id),
           eq(jarvisBridgeEvents.direction, "outbound"),
           eventTypeFilter,
-          lte(jarvisBridgeEvents.availableAt, nowIso),
+          lte(jarvisBridgeEvents.availableAt, claimIso),
           or(
             eq(jarvisBridgeEvents.status, "pending"),
             and(
               eq(jarvisBridgeEvents.status, "processing"),
-              lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
+              lt(jarvisBridgeEvents.claimedAt, claimStaleIso),
             ),
           ),
         ),
       )
+      .returning({ id: jarvisBridgeEvents.id })
+      .get()
+    if (claimed) claimTokens.push(claimToken)
   }
 
   if (claimTokens.length === 0) return Response.json({ events: [] })

@@ -255,6 +255,27 @@ class DeliveryConsumerTests(unittest.TestCase):
                     {"status": "completed"},
                 )
 
+    def test_systemd_unit_matches_the_documented_installation_path(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        unit = (repo_root / "ops/systemd/compass-jarvis-feedback-delivery.service").read_text()
+        installation = (repo_root / "deploy/systemd/README.md").read_text()
+
+        self.assertIn(
+            "ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/.local/lib/compass/"
+            "jarvis-feedback-delivery.py",
+            unit,
+        )
+        self.assertIn(
+            "Environment=HERMES_KANBAN_DB=%h/.local/state/hermes/kanban.db",
+            unit,
+        )
+        self.assertIn("ReadWritePaths=%h/.local/state/hermes", unit)
+        self.assertIn(
+            'install -m 0755 scripts/jarvis-feedback-delivery.py \\\n  "$HOME/.local/lib/compass/jarvis-feedback-delivery.py"',
+            installation,
+        )
+        self.assertTrue((repo_root / "scripts/jarvis-feedback-delivery.py").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

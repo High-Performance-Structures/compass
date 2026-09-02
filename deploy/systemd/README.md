@@ -42,3 +42,26 @@ The timer invokes a single, lock-protected poll each minute. The wrapper waits
 for Signet's asynchronous job and propagates the poller's real exit status to
 systemd. A successful idle run reports `requested: 0`, `processed: 0`, and the
 current `taxDistricts` count; that is a healthy state.
+
+## Feedback Desk bug-delivery consumer
+
+From the Compass repository root, install the exact consumer file referenced by
+the user service and give Hermes Kanban an explicit writable state directory:
+
+```bash
+install -d "$HOME/.local/lib/compass" \
+  "$HOME/.local/state/hermes" \
+  "$HOME/.config/systemd/user"
+install -m 0755 scripts/jarvis-feedback-delivery.py \
+  "$HOME/.local/lib/compass/jarvis-feedback-delivery.py"
+install -m 0644 ops/systemd/compass-jarvis-feedback-delivery.service \
+  "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now compass-jarvis-feedback-delivery.service
+```
+
+The unit keeps `ProtectHome=read-only` and explicitly grants write access only
+to `%h/.local/state/hermes`, where `HERMES_KANBAN_DB` points. The consumer is
+therefore the repository's `scripts/jarvis-feedback-delivery.py` copied to the
+same `%h/.local/lib/compass/jarvis-feedback-delivery.py` path used by
+`ExecStart`; do not hand-edit the unit to point at a repository-relative path.
