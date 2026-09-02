@@ -494,7 +494,7 @@ export async function getScopedSchedule(
     requestedProjectIds?.map((projectId) => projectId.trim()).filter(Boolean) ?? []
   )
   const selectedProjects =
-    requestedIds.size === 0
+    requestedProjectIds === undefined
       ? accessibleProjects
       : accessibleProjects.filter((project) => requestedIds.has(project.id))
 

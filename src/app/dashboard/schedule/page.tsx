@@ -18,6 +18,10 @@ import type {
   ScheduleScope,
   ScheduleScopeKind,
 } from "@/lib/schedule/project-scope"
+import {
+  scheduleScopeForSelection,
+  scheduleSelectionModeFor,
+} from "@/lib/schedule/project-scope"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
 import { getUserSchedulePreferences } from "@/app/actions/user-schedule-preferences"
@@ -89,6 +93,7 @@ export default async function SchedulePage({
     readonly date?: string | readonly string[]
     readonly mode?: string | readonly string[]
     readonly scope?: string | readonly string[]
+    readonly selection?: string | readonly string[]
     readonly project?: string | readonly string[]
     readonly projects?: string | readonly string[]
     readonly department?: string | readonly string[]
@@ -105,6 +110,10 @@ export default async function SchedulePage({
     ])
     const requestedScope = firstValue(query.scope)
     const scopeKind = isScopeKind(requestedScope) ? requestedScope : "all"
+    const selectionMode = scheduleSelectionModeFor(
+      firstValue(query.selection),
+      scopeKind
+    )
     const requestedProjectId = firstValue(query.project)
     const requestedProjectIds = (firstValue(query.projects) ?? "")
       .split(",")
@@ -137,26 +146,13 @@ export default async function SchedulePage({
                 )
                 .map((project) => project.id)
             : allProjects.map((project) => project.id)
-    const safeProjectIds =
-      scopeKind === "selected" && scopeProjectIds.length === 0
-        ? allProjects[0]
-          ? [allProjects[0].id]
-          : []
-        : scopeProjectIds
+    const safeProjectIds = scopeProjectIds
     const data = await getScopedSchedule(safeProjectIds)
     const scope: ScheduleScope =
       scopeKind === "project" && safeProjectIds[0]
-        ? {
-            kind: "project",
-            projectIds: [safeProjectIds[0]],
-            department: null,
-          }
+        ? scheduleScopeForSelection("single", safeProjectIds)
         : scopeKind === "selected"
-          ? {
-              kind: "selected",
-              projectIds: safeProjectIds,
-              department: null,
-            }
+          ? scheduleScopeForSelection(selectionMode, safeProjectIds)
           : scopeKind === "department"
             ? {
                 kind: "department",
