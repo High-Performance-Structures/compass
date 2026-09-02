@@ -17,6 +17,7 @@ import {
   isHistoryRequestCurrent,
   isHistoryScrollRestoreCurrent,
   isAtNewestEdge,
+  mergeOlderMessagePage,
 } from "./message-list-behavior"
 
 type MessageData = {
@@ -58,7 +59,13 @@ type MessageListProps = {
   readonly currentUserId: string | null
 }
 
+type MessageWindowState = {
+  readonly messages: readonly MessageData[]
+  readonly hasMore: boolean
+}
+
 const MAX_MESSAGES = 200
+const HISTORY_PAGE_SIZE = 50
 
 export function MessageList({
   channelId,
@@ -67,11 +74,12 @@ export function MessageList({
   currentUserId,
 }: MessageListProps) {
   // server returns DESC order; reverse for chronological display
-  const [messages, setMessages] = React.useState<readonly MessageData[]>(
-    [...initialMessages].reverse()
-  )
+  const [messageWindow, setMessageWindow] = React.useState<MessageWindowState>({
+    messages: [...initialMessages].reverse(),
+    hasMore: true,
+  })
+  const { messages, hasMore } = messageWindow
   const [loading, setLoading] = React.useState(false)
-  const [hasMore, setHasMore] = React.useState(true)
   const [historyError, setHistoryError] = React.useState<string | null>(null)
   const [atNewestEdge, setAtNewestEdge] = React.useState(true)
   const [historyCommitId, setHistoryCommitId] = React.useState(0)
@@ -111,11 +119,14 @@ export function MessageList({
     pendingNewestScrollRef.current = atNewestEdge
 
     // append new messages in chronological order
-    setMessages((prev) => {
-      const existingIds = new Set(prev.map((m) => m.id))
+    setMessageWindow((previous) => {
+      const existingIds = new Set(previous.messages.map((message) => message.id))
       const unique = unconsumed.filter((m) => !existingIds.has(m.id))
       // reverse because realtime returns DESC
-      return [...prev, ...unique.reverse()].slice(-MAX_MESSAGES)
+      return {
+        ...previous,
+        messages: [...previous.messages, ...unique.reverse()].slice(-MAX_MESSAGES),
+      }
     })
     setRealtimeCommitId((previous) => previous + 1)
   }, [atNewestEdge, newMessages])
@@ -152,8 +163,10 @@ export function MessageList({
     setLoading(false)
     setHistoryError(null)
     setAtNewestEdge(true)
-    setMessages([...initialMessages].reverse())
-    setHasMore(true)
+    setMessageWindow({
+      messages: [...initialMessages].reverse(),
+      hasMore: true,
+    })
     const frame = requestAnimationFrame(() => scrollToNewest("auto"))
     return () => cancelAnimationFrame(frame)
   }, [initialMessages, scrollToNewest])
@@ -238,7 +251,7 @@ export function MessageList({
 
     try {
       const result = await getMessages(channelId, {
-        limit: 50,
+        limit: HISTORY_PAGE_SIZE,
         cursor: oldestMessage.createdAt,
       })
 
@@ -257,23 +270,21 @@ export function MessageList({
             scrollHeight: currentViewport.scrollHeight,
           }
         }
-        setMessages((prev) => {
-          const existingIds = new Set(prev.map((message) => message.id))
-          const uniqueOlder = older.filter((message) => !existingIds.has(message.id))
-          const combined = [...uniqueOlder, ...prev]
-          // limit to MAX_MESSAGES most recent
-          return combined.slice(-MAX_MESSAGES)
+        setMessageWindow((previous) => {
+          return mergeOlderMessagePage({
+            currentMessages: previous.messages,
+            olderMessages: older,
+            pageSize: HISTORY_PAGE_SIZE,
+            maxMessages: MAX_MESSAGES,
+          })
         })
-        if (
-          result.data.length < 50 ||
-          messages.length + result.data.length >= MAX_MESSAGES
-        ) {
-          setHasMore(false)
-        }
         setHistoryCommitId(requestId)
       } else if (result.success) {
         prependScrollRef.current = null
-        setHasMore(false)
+        setMessageWindow((previous) => ({
+          ...previous,
+          hasMore: false,
+        }))
       } else {
         prependScrollRef.current = null
         setHistoryError(result.error ?? "Unable to load older messages.")
