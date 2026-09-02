@@ -271,7 +271,7 @@ test.describe("usable Compass areas", () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get("projects"))
       .toBe("")
-    await expect(page.getByText("No projects selected", { exact: true })).toBeVisible()
+    await expect(page.getByText("No projects selected", { exact: true }).last()).toBeVisible()
   })
 
   test("Schedule keeps controls compact and gives views a scrollable workspace", async ({
