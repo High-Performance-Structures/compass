@@ -37,6 +37,8 @@ import { useConversationPanelOptional } from "@/components/conversations/convers
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { QuickAddMenu } from "@/components/quick-add-menu"
+import type { QuickAddAction } from "@/lib/quick-add"
 
 const OFFICE_TALK_MEETING_HREF =
   "/dashboard/conversations/voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899/meeting"
@@ -77,11 +79,13 @@ export function SiteHeader({
   canUseAskCompass,
   canUseOfficeTalk,
   canUseDirectMessages,
+  quickAddActions,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
   readonly canUseOfficeTalk: boolean
   readonly canUseDirectMessages: boolean
+  readonly quickAddActions: readonly QuickAddAction[]
 }) {
   const { theme, setTheme } = useTheme()
   const { open: openCommand, openWithQuery } = useCommandMenu()
@@ -151,6 +155,7 @@ export function SiteHeader({
             <IconMoon className="size-4 block dark:hidden" />
           </button>
           <NotificationsPopover />
+          <QuickAddMenu actions={quickAddActions} />
           {canUseOfficeTalk && (
             <Button
               variant="ghost"
@@ -282,6 +287,7 @@ export function SiteHeader({
             </Button>
           )}
           <NotificationsPopover />
+          <QuickAddMenu actions={quickAddActions} />
           {canUseOfficeTalk && (
             <Button
               variant="ghost"

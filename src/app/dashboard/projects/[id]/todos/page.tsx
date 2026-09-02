@@ -21,6 +21,7 @@ export default async function ProjectTodosPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly item?: string | readonly string[]
+    readonly quickAdd?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
@@ -38,6 +39,8 @@ export default async function ProjectTodosPage({
     : project.name
   const initialItemId =
     typeof query.item === "string" ? query.item : query.item?.[0] ?? null
+  const quickAdd =
+    typeof query.quickAdd === "string" ? query.quickAdd : query.quickAdd?.[0]
   const canManage =
     !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
@@ -57,6 +60,7 @@ export default async function ProjectTodosPage({
       initialItemId={initialItemId}
       assigneeOptions={assigneeOptions}
       canManage={canManage}
+      initialCreateOpen={quickAdd === "todo"}
     />
   )
 }

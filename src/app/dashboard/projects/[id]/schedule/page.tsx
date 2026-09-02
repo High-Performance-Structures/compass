@@ -39,6 +39,7 @@ export default async function SchedulePage({
   searchParams: Promise<{
     readonly view?: string | readonly string[]
     readonly item?: string | readonly string[]
+    readonly quickAdd?: string | readonly string[]
   }>
 }) {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
@@ -53,6 +54,8 @@ export default async function SchedulePage({
       : undefined
   const focusTaskId =
     typeof query.item === "string" ? query.item : query.item?.[0] ?? null
+  const quickAdd =
+    typeof query.quickAdd === "string" ? query.quickAdd : query.quickAdd?.[0]
 
   let projectName = "Project"
   let schedule: ScheduleData = emptySchedule
@@ -120,6 +123,7 @@ export default async function SchedulePage({
         ganttScrollMode={schedulePreferences.ganttScrollMode}
         currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
         publicationStatus={publicationStatus}
+        initialTaskFormOpen={quickAdd === "schedule-item"}
       />
     </div>
   )

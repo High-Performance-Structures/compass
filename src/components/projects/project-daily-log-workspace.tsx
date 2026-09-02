@@ -694,9 +694,11 @@ function PhotoStrip({
 export function ProjectDailyLogWorkspace({
   workspace,
   assigneeOptions,
+  initialShowNewLog = false,
 }: {
   readonly workspace: ProjectDailyLogWorkspaceData
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly initialShowNewLog?: boolean
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
@@ -705,7 +707,7 @@ export function ProjectDailyLogWorkspace({
     React.useState<readonly ProjectDailyLogItem[]>(workspace.logs)
   const [filter, setFilter] = React.useState<LogFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
-  const [showNewLog, setShowNewLog] = React.useState(false)
+  const [showNewLog, setShowNewLog] = React.useState(initialShowNewLog)
   const [draft, setDraft] = React.useState<DailyLogDraft>(emptyDailyLogDraft)
   const [editingLogId, setEditingLogId] = React.useState<string | null>(null)
   const [editProjectId, setEditProjectId] = React.useState(

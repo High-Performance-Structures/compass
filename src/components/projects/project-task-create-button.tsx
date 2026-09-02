@@ -53,6 +53,7 @@ type ProjectTaskCreateButtonProps = {
   readonly defaultTaskType?: ProjectTaskRecordType
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   readonly compact?: boolean
+  readonly defaultOpen?: boolean
   readonly onCreated?: (todoId: string) => void
 }
 
@@ -101,10 +102,11 @@ export function ProjectTaskCreateButton({
   defaultTaskType = "staff_task",
   assigneeOptions = [],
   compact = false,
+  defaultOpen = false,
   onCreated,
 }: ProjectTaskCreateButtonProps): React.ReactElement {
   const router = useRouter()
-  const [open, setOpen] = React.useState(false)
+  const [open, setOpen] = React.useState(defaultOpen)
   const [selectedAssigneeId, setSelectedAssigneeId] = React.useState<
     string | null
   >(null)

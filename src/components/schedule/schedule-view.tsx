@@ -164,6 +164,7 @@ interface ScheduleViewProps {
   readonly ganttScrollMode?: GanttScrollMode
   readonly currentUserAssigneeTerms?: readonly string[]
   readonly publicationStatus?: SchedulePublicationStatus | null
+  readonly initialTaskFormOpen?: boolean
 }
 
 export function ScheduleView({
@@ -183,6 +184,7 @@ export function ScheduleView({
   ganttScrollMode = "default",
   currentUserAssigneeTerms = [],
   publicationStatus: initialPublicationStatus = null,
+  initialTaskFormOpen = false,
 }: ScheduleViewProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -227,7 +229,7 @@ export function ScheduleView({
         ? requestedOrder
         : "chronological"
     })
-  const [taskFormOpen, setTaskFormOpen] = useState(false)
+  const [taskFormOpen, setTaskFormOpen] = useState(initialTaskFormOpen)
   const [filters, setFilters] = useState<TaskFilters>(() => ({
     status: requestedStatuses,
     phase: (searchParams.get("phase") ?? "").split(",").filter(Boolean),
