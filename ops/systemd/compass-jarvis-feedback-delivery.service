@@ -1,0 +1,20 @@
+[Unit]
+Description=Compass Feedback Desk durable bug-delivery consumer
+After=network-online.target hermes-gateway.service
+Wants=network-online.target hermes-gateway.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.hermes/.env
+Environment=PATH=%h/.hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=COMPASS_KANBAN_REPO_ROOT=%h/.local/lib/compass
+ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/.local/lib/compass/jarvis-feedback-delivery.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target

@@ -292,7 +292,16 @@ terminal failure remains visible in the protected operations health and
 Feedback Desk records. Features never enqueue this event and remain blocked by
 the persisted leadership priority decision.
 
-Both private relay services post a signed heartbeat to
+The private runtime creates the implementation, independent-review, and
+release-steward tasks through its normal Kanban tools, then attaches all three
+task IDs to the protected Feedback Desk record with the signed lifecycle
+endpoint. The consumer uses one stable idempotency key per feedback item for
+all three Kanban creates and the callback, so a process crash after task
+creation or after attachment safely adopts the existing work rather than
+creating a competing graph. The implementation task is the parent of the
+review task, and the review task is the parent of the release-steward task.
+
+All private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
 Feedback Desk shows heartbeat age, last failure, and pending/processing/failed
 bridge counts. A missing heartbeat is an operational failure even when the
@@ -303,6 +312,12 @@ process manager still reports the service as running.
 ```text
 POST /api/integrations/jarvis/events/<event-id>/ack
 ```
+
+The pull response includes an opaque `claimToken` for each claimed event. A
+`feedback.delivery_requested` acknowledgement must echo that token; the server
+fences the terminal update to the active claim so an expired worker cannot
+complete a replacement worker's event. Completed acknowledgements remain
+idempotent after the worker loses its response.
 
 Completed:
 

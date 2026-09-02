@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, lt, lte, or, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
@@ -109,7 +109,6 @@ export async function GET(request: Request): Promise<Response> {
   const staleClaimIso = new Date(
     now.getTime() - CLAIM_RETRY_MILLISECONDS,
   ).toISOString()
-  const claimToken = crypto.randomUUID()
   const db = getDb(env.DB)
 
   const candidates = await db
@@ -132,7 +131,10 @@ export async function GET(request: Request): Promise<Response> {
     .orderBy(asc(jarvisBridgeEvents.createdAt))
     .limit(limit)
 
+  const claimTokens: string[] = []
   for (const candidate of candidates) {
+    const claimToken = crypto.randomUUID()
+    claimTokens.push(claimToken)
     await db
       .update(jarvisBridgeEvents)
       .set({
@@ -145,7 +147,9 @@ export async function GET(request: Request): Promise<Response> {
       .where(
         and(
           eq(jarvisBridgeEvents.id, candidate.id),
+          eq(jarvisBridgeEvents.direction, "outbound"),
           eventTypeFilter,
+          lte(jarvisBridgeEvents.availableAt, nowIso),
           or(
             eq(jarvisBridgeEvents.status, "pending"),
             and(
@@ -157,10 +161,17 @@ export async function GET(request: Request): Promise<Response> {
       )
   }
 
+  if (claimTokens.length === 0) return Response.json({ events: [] })
+
   const claimed = await db
     .select()
     .from(jarvisBridgeEvents)
-    .where(eq(jarvisBridgeEvents.claimToken, claimToken))
+    .where(and(
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eventTypeFilter,
+      eq(jarvisBridgeEvents.status, "processing"),
+      inArray(jarvisBridgeEvents.claimToken, claimTokens),
+    ))
     .orderBy(asc(jarvisBridgeEvents.createdAt))
 
   return Response.json({
@@ -169,6 +180,7 @@ export async function GET(request: Request): Promise<Response> {
       eventType: event.eventType,
       source: event.source,
       attempt: event.attemptCount,
+      claimToken: event.claimToken,
       payload:
         event.eventType === "agent.prompt"
           ? jarvisPayloadForDelivery(event.id, event.payload)

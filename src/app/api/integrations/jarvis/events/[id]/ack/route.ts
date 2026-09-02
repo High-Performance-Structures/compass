@@ -12,11 +12,26 @@ import { feedbackDeliveryGraphIsComplete } from "@/lib/jarvis/feedback-lifecycle
 import { jarvisPayloadAfterCompletion } from "@/lib/jarvis/visual-context"
 
 const acknowledgementSchema = z.object({
+  claimToken: z.string().min(1).max(128).optional(),
   status: z.enum(["completed", "failed"]),
   result: z.unknown().optional(),
   error: z.string().max(2000).optional(),
   retryAfterSeconds: z.number().int().min(1).max(86_400).optional(),
 })
+
+function activeClaimPredicate(id: string, claimToken?: string) {
+  return claimToken
+    ? and(
+      eq(jarvisBridgeEvents.id, id),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, claimToken),
+    )
+    : and(
+      eq(jarvisBridgeEvents.id, id),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+    )
+}
 
 export async function POST(
   request: Request,
@@ -81,25 +96,41 @@ export async function POST(
       ).toISOString()
     : nowIso
   const db = getDb(env.DB)
+  const claimToken = parsed.data.claimToken
 
   const existing = await db
     .select({
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
+      status: jarvisBridgeEvents.status,
+      claimToken: jarvisBridgeEvents.claimToken,
       payload: jarvisBridgeEvents.payload,
       feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
     .from(jarvisBridgeEvents)
-    .where(
-      and(
-        eq(jarvisBridgeEvents.id, id),
-        eq(jarvisBridgeEvents.direction, "outbound"),
-      ),
-    )
+    .where(and(
+      eq(jarvisBridgeEvents.id, id),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+    ))
     .get()
 
   if (!existing) {
     return Response.json({ error: "Event not found" }, { status: 404 })
+  }
+
+  if (existing.status === "completed") {
+    return Response.json({ success: true, duplicate: true })
+  }
+
+  if (existing.eventType === "feedback.delivery_requested" && !claimToken) {
+    return Response.json({ error: "A delivery event claim token is required" }, { status: 409 })
+  }
+
+  if (
+    existing.eventType === "feedback.delivery_requested" &&
+    existing.claimToken !== claimToken
+  ) {
+    return Response.json({ error: "Event claim is no longer active" }, { status: 409 })
   }
 
   if (
@@ -116,7 +147,7 @@ export async function POST(
       const retryAt = new Date(
         now.getTime() + retrySeconds * 1000,
       ).toISOString()
-      await db.update(jarvisBridgeEvents).set({
+      const reset = await db.update(jarvisBridgeEvents).set({
         status: "pending",
         result: null,
         lastError: "Delivery graph attachment is incomplete",
@@ -125,7 +156,11 @@ export async function POST(
         claimedAt: null,
         completedAt: null,
         updatedAt: nowIso,
-      }).where(eq(jarvisBridgeEvents.id, id))
+      }).where(activeClaimPredicate(id, claimToken))
+        .returning({ id: jarvisBridgeEvents.id }).get()
+      if (!reset) {
+        return Response.json({ error: "Event claim is no longer active" }, { status: 409 })
+      }
       return Response.json({
         success: false,
         retryable: true,
@@ -135,7 +170,7 @@ export async function POST(
     }
   }
 
-  await db
+  const acknowledged = await db
     .update(jarvisBridgeEvents)
     .set({
       status: shouldRetry ? "pending" : parsed.data.status,
@@ -155,7 +190,13 @@ export async function POST(
           : existing.payload,
       updatedAt: nowIso,
     })
-    .where(eq(jarvisBridgeEvents.id, id))
+    .where(activeClaimPredicate(id, claimToken))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+
+  if (!acknowledged) {
+    return Response.json({ error: "Event claim is no longer active" }, { status: 409 })
+  }
 
   if (
     existing.eventType === "feedback.delivery_requested" &&
