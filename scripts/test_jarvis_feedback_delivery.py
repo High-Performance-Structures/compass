@@ -1,6 +1,8 @@
 import importlib.util
 import json
 import os
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -275,6 +277,92 @@ class DeliveryConsumerTests(unittest.TestCase):
             installation,
         )
         self.assertTrue((repo_root / "scripts/jarvis-feedback-delivery.py").is_file())
+
+    def test_systemd_unit_and_docs_anchor_kanban_to_a_git_checkout(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        unit = (repo_root / "ops/systemd/compass-jarvis-feedback-delivery.service").read_text()
+        installation = (repo_root / "deploy/systemd/README.md").read_text()
+
+        self.assertIn(
+            "Environment=COMPASS_KANBAN_REPO_ROOT=%h/.local/src/compass",
+            unit,
+        )
+        self.assertIn(
+            "ReadWritePaths=%h/.local/state/hermes %h/.local/src/compass",
+            unit,
+        )
+        self.assertIn(
+            'git clone --branch main --single-branch '
+            'git@github.com:High-Performance-Structures/compass.git '
+            '"$HOME/.local/src/compass"',
+            installation,
+        )
+        self.assertIn(
+            'COMPASS_KANBAN_REPO_ROOT="$HOME/.local/src/compass"',
+            installation,
+        )
+        self.assertIn('"$HOME/.local/lib/compass"', installation)
+
+    def test_repo_root_rejects_a_plain_directory_and_accepts_a_git_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            plain_directory = Path(temporary) / "plain"
+            plain_directory.mkdir()
+            checkout = Path(temporary) / "checkout"
+            subprocess.run(
+                ["git", "init", "--quiet", str(checkout)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (checkout / "README.md").write_text("temporary checkout\n")
+            subprocess.run(
+                ["git", "-C", str(checkout), "config", "user.email", "test@example.com"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "config", "user.name", "Test User"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "add", "README.md"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "commit", "--quiet", "-m", "initial"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            with patch.dict(
+                os.environ,
+                {"COMPASS_KANBAN_REPO_ROOT": str(plain_directory)},
+                clear=False,
+            ):
+                with self.assertRaises(MODULE.TerminalDeliveryError):
+                    MODULE._repo_root()
+
+            with patch.dict(
+                os.environ,
+                {"COMPASS_KANBAN_REPO_ROOT": str(checkout)},
+                clear=False,
+            ):
+                resolved_root = MODULE._repo_root()
+                self.assertEqual(resolved_root, str(checkout.resolve()))
+                worktree = Path(temporary) / "materialized-worktree"
+                subprocess.run(
+                    ["git", "-C", resolved_root, "worktree", "add", "--quiet", str(worktree), "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual((worktree / "README.md").read_text(), "temporary checkout\n")
 
 
 if __name__ == "__main__":

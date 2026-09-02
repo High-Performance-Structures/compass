@@ -275,8 +275,12 @@ Confirmed bugs that an administrator moves into `triaged` also enqueue one
 private Hermes/Kanban runtime: it contains only the Feedback Desk item's opaque
 ID, the `CFD-<UUID>` reference, and the fixed `bug` kind. It never contains the
 request title, description, reporter, source ID, channel, thread, or metadata.
-The event's idempotency key is `feedback-delivery-graph:<item-id>`, so a
-maintenance retry or repeated status callback cannot create a second graph.
+The event's stable graph idempotency key is
+`feedback-delivery-graph:<item-id>`, so a maintenance retry or repeated status
+callback cannot create a second graph. Each Kanban stage creation then uses its
+own distinct stable key, `feedback-delivery:<item-id>:<stage>` for
+`implementation`, `review`, or `release`; retries reuse the stage key without
+colliding the three intentional task creations.
 The private runtime creates the implementation, independent-review, and
 release-steward tasks through its normal Kanban tools, then attaches all three
 task IDs to the protected Feedback Desk record with a signed callback. A

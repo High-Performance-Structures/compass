@@ -128,8 +128,15 @@ def validate_event(event: object) -> tuple[str, str, dict[str, object]]:
 def _repo_root() -> str:
     configured = required_env("COMPASS_KANBAN_REPO_ROOT")
     path = Path(configured).expanduser().resolve()
-    if not path.is_absolute() or not path.exists() or not path.is_dir():
-        raise TerminalDeliveryError("Configured Compass Kanban repository is unavailable")
+    if (
+        not path.is_absolute()
+        or not path.exists()
+        or not path.is_dir()
+        or not (path / ".git").exists()
+    ):
+        raise TerminalDeliveryError(
+            "Configured Compass Kanban repository must be a Git checkout"
+        )
     return str(path)
 
 

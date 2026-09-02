@@ -7,7 +7,7 @@ Wants=network-online.target hermes-gateway.service
 Type=simple
 EnvironmentFile=%h/.hermes/.env
 Environment=PATH=%h/.hermes/hermes-agent/venv/bin:/usr/local/bin:/usr/bin:/bin
-Environment=COMPASS_KANBAN_REPO_ROOT=%h/.local/lib/compass
+Environment=COMPASS_KANBAN_REPO_ROOT=%h/.local/src/compass
 Environment=HERMES_KANBAN_DB=%h/.local/state/hermes/kanban.db
 ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/.local/lib/compass/jarvis-feedback-delivery.py
 Restart=always
@@ -16,7 +16,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/state/hermes
+ReadWritePaths=%h/.local/state/hermes %h/.local/src/compass
 
 [Install]
 WantedBy=default.target
