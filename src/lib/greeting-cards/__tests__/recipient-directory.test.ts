@@ -84,6 +84,7 @@ describe("greeting-card recipient directory", () => {
         firstName: "Alex",
         lastName: "Trade",
         businessName: "Trade Partner LLC",
+        email: "",
         address1: "100 Main Street",
         address2: "",
         city: "Denver",

@@ -7,6 +7,7 @@ import {
   getGreetingCardCatalog,
   submitGreetingCardRequest,
   type GreetingCardCatalogItem,
+  type GreetingCardDeliveryMethod,
   type GreetingCardRecipientType,
   type GreetingCardRequest,
 } from "@/app/actions/greeting-cards"
@@ -15,6 +16,7 @@ import {
   type GreetingCardRecipientOption,
 } from "@/app/actions/greeting-card-recipients"
 import { Button } from "@/components/ui/button"
+import { EcardPreview } from "@/components/cards/ecard-preview"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Dialog,
@@ -35,11 +37,16 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  ECARD_TEMPLATES,
+  getEcardTemplate,
+} from "@/lib/greeting-cards/templates"
 
 type RecipientForm = {
   readonly firstName: string
   readonly lastName: string
   readonly businessName: string
+  readonly email: string
   readonly address1: string
   readonly address2: string
   readonly city: string
@@ -51,6 +58,7 @@ const EMPTY_RECIPIENT: RecipientForm = {
   firstName: "",
   lastName: "",
   businessName: "",
+  email: "",
   address1: "",
   address2: "",
   city: "",
@@ -86,6 +94,10 @@ export function GreetingCardRequestDialog({
     string | null
   >(null)
   const [cardId, setCardId] = useState<number | null>(null)
+  const [deliveryMethod, setDeliveryMethod] =
+    useState<GreetingCardDeliveryMethod>("physical_mail")
+  const [templateId, setTemplateId] = useState("appreciation")
+  const [giftAmount, setGiftAmount] = useState("")
   const [recipientType, setRecipientType] =
     useState<GreetingCardRecipientType>("client")
   const [occasion, setOccasion] = useState("")
@@ -98,7 +110,7 @@ export function GreetingCardRequestDialog({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!open || catalog.length > 0) return
+    if (!open || deliveryMethod !== "physical_mail" || catalog.length > 0) return
     let mounted = true
     setCatalogLoading(true)
     setError(null)
@@ -115,7 +127,7 @@ export function GreetingCardRequestDialog({
     return () => {
       mounted = false
     }
-  }, [catalog.length, open])
+  }, [catalog.length, deliveryMethod, open])
 
   useEffect(() => {
     if (!open || recipientOptions.length > 0) return
@@ -137,6 +149,7 @@ export function GreetingCardRequestDialog({
   }, [open, recipientOptions.length])
 
   const selectedCard = catalog.find((card) => card.id === cardId) ?? null
+  const selectedTemplate = getEcardTemplate(templateId)
   const selectedRecipient =
     recipientOptions.find((option) => option.id === selectedRecipientId) ?? null
 
@@ -154,6 +167,9 @@ export function GreetingCardRequestDialog({
   }
 
   function resetForm(): void {
+    setDeliveryMethod("physical_mail")
+    setTemplateId("appreciation")
+    setGiftAmount("")
     setRecipientType("client")
     setOccasion("")
     setMessage("")
@@ -164,17 +180,23 @@ export function GreetingCardRequestDialog({
   }
 
   async function submit(): Promise<void> {
-    if (cardId === null) return
+    if (deliveryMethod === "physical_mail" && cardId === null) return
     setSubmitting(true)
     setError(null)
-    const result = await submitGreetingCardRequest({
-      cardId,
-      recipientType,
-      occasion,
-      message,
-      wishes,
-      recipient,
-    })
+    const common = { recipientType, occasion, message, wishes, recipient }
+    const result =
+      deliveryMethod === "physical_mail"
+        ? await submitGreetingCardRequest({
+            ...common,
+            deliveryMethod: "physical_mail",
+            cardId: cardId ?? 0,
+          })
+        : await submitGreetingCardRequest({
+            ...common,
+            deliveryMethod: "digital_email",
+            templateId,
+            giftAmountCents: giftAmountCents(giftAmount),
+          })
     setSubmitting(false)
     if (!result.success) {
       setError(result.error)
@@ -200,12 +222,34 @@ export function GreetingCardRequestDialog({
         <DialogHeader>
           <DialogTitle>Prepare a greeting card</DialogTitle>
           <DialogDescription>
-            Add the final card and mailing details. Submitting creates an
-            approval request; it does not place a Handwrytten order.
+            Choose a mailed card or an HPS e-card. Submitting creates an
+            approval request; it does not place an order or send an email.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="card-delivery-method">Delivery</Label>
+            <Select
+              value={deliveryMethod}
+              onValueChange={(value) =>
+                setDeliveryMethod(deliveryMethodFromValue(value))
+              }
+            >
+              <SelectTrigger id="card-delivery-method" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="physical_mail">
+                  Mailed handwritten card · Handwrytten
+                </SelectItem>
+                <SelectItem value="digital_email">
+                  E-card by email · optional digital gift
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="card-recipient-type">Recipient type</Label>
@@ -238,6 +282,7 @@ export function GreetingCardRequestDialog({
             />
           </div>
 
+          {deliveryMethod === "physical_mail" ? (
           <div className="space-y-2">
             <Label htmlFor="greeting-card-design">Card design</Label>
             <Select
@@ -284,6 +329,45 @@ export function GreetingCardRequestDialog({
               </div>
             ) : null}
           </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="greeting-ecard-design">E-card design</Label>
+                <Select value={templateId} onValueChange={setTemplateId}>
+                  <SelectTrigger id="greeting-ecard-design" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ECARD_TEMPLATES.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name} · {template.description}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ecard-gift-amount">
+                  Digital gift amount (optional)
+                </Label>
+                <Input
+                  id="ecard-gift-amount"
+                  type="number"
+                  inputMode="decimal"
+                  min="5"
+                  max="500"
+                  step="1"
+                  value={giftAmount}
+                  onChange={(event) => setGiftAmount(event.target.value)}
+                  placeholder="25"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave blank for an e-card only. A $5–$500 gift uses Giftbit's
+                  US reward catalog and is purchased only when Executive Admin releases it.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="greeting-card-message">Message</Label>
@@ -291,11 +375,18 @@ export function GreetingCardRequestDialog({
               id="greeting-card-message"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
-              maxLength={selectedCard?.characters ?? 1_200}
+              maxLength={
+                deliveryMethod === "physical_mail"
+                  ? selectedCard?.characters ?? 1_200
+                  : 1_200
+              }
               className="min-h-28"
             />
             <p className="text-right text-xs text-muted-foreground">
-              {message.length}/{selectedCard?.characters ?? 1_200}
+              {message.length}/
+              {deliveryMethod === "physical_mail"
+                ? selectedCard?.characters ?? 1_200
+                : 1_200}
             </p>
           </div>
 
@@ -310,11 +401,27 @@ export function GreetingCardRequestDialog({
             />
           </div>
 
+          {deliveryMethod === "digital_email" && selectedTemplate ? (
+            <EcardPreview
+              template={selectedTemplate}
+              recipientName={recipient.firstName}
+              message={message}
+              wishes={wishes}
+              giftAmountCents={giftAmountCentsForPreview(giftAmount)}
+              compact
+            />
+          ) : null}
+
           <fieldset className="space-y-3 border-t pt-4">
-            <legend className="text-sm font-semibold">Recipient and mailing address</legend>
+            <legend className="text-sm font-semibold">
+              {deliveryMethod === "physical_mail"
+                ? "Recipient and mailing address"
+                : "Recipient and email"}
+            </legend>
             <p className="text-xs text-muted-foreground">
-              Verify the address carefully. Handwrytten validates US addresses
-              again when Executive Admin releases the order.
+              {deliveryMethod === "physical_mail"
+                ? "Verify the address carefully. Handwrytten validates US addresses again when Executive Admin releases the order."
+                : "Verify the email carefully. Compass sends the private e-card link only after Executive Admin approves and releases it."}
             </p>
             <div className="space-y-2">
               <Label htmlFor="card-saved-recipient">Saved recipient (optional)</Label>
@@ -340,13 +447,15 @@ export function GreetingCardRequestDialog({
                 Choosing a saved contact fills the fields below. You can still
                 edit any detail or enter a recipient manually.
               </p>
-              {selectedRecipient?.addressStatus === "partial" ? (
+              {deliveryMethod === "physical_mail" &&
+              selectedRecipient?.addressStatus === "partial" ? (
                 <p className="text-xs text-muted-foreground" role="status">
                   Compass found an address, but it is incomplete or could not be
                   fully separated. Please finish the mailing fields.
                 </p>
               ) : null}
-              {selectedRecipient?.addressStatus === "missing" ? (
+              {deliveryMethod === "physical_mail" &&
+              selectedRecipient?.addressStatus === "missing" ? (
                 <p className="text-xs text-muted-foreground" role="status">
                   This contact does not have a saved mailing address yet.
                 </p>
@@ -368,13 +477,18 @@ export function GreetingCardRequestDialog({
               <CardInput id="card-last-name" label="Last name" value={recipient.lastName} onChange={(value) => updateRecipient("lastName", value)} autoComplete="family-name" />
             </div>
             <CardInput id="card-business" label="Business name (optional)" value={recipient.businessName} onChange={(value) => updateRecipient("businessName", value)} autoComplete="organization" />
-            <CardInput id="card-address-1" label="Street address" value={recipient.address1} onChange={(value) => updateRecipient("address1", value)} autoComplete="address-line1" />
-            <CardInput id="card-address-2" label="Unit or suite (optional)" value={recipient.address2} onChange={(value) => updateRecipient("address2", value)} autoComplete="address-line2" />
-            <div className="grid gap-3 sm:grid-cols-[1fr_6rem_8rem]">
-              <CardInput id="card-city" label="City" value={recipient.city} onChange={(value) => updateRecipient("city", value)} autoComplete="address-level2" />
-              <CardInput id="card-state" label="State" value={recipient.state} onChange={(value) => updateRecipient("state", value.toUpperCase())} autoComplete="address-level1" maxLength={2} />
-              <CardInput id="card-zip" label="ZIP code" value={recipient.postalCode} onChange={(value) => updateRecipient("postalCode", value)} autoComplete="postal-code" maxLength={10} />
-            </div>
+            <CardInput id="card-email" label={deliveryMethod === "digital_email" ? "Email address" : "Email address (optional)"} value={recipient.email} onChange={(value) => updateRecipient("email", value)} autoComplete="email" maxLength={254} />
+            {deliveryMethod === "physical_mail" ? (
+              <>
+                <CardInput id="card-address-1" label="Street address" value={recipient.address1} onChange={(value) => updateRecipient("address1", value)} autoComplete="address-line1" />
+                <CardInput id="card-address-2" label="Unit or suite (optional)" value={recipient.address2} onChange={(value) => updateRecipient("address2", value)} autoComplete="address-line2" />
+                <div className="grid gap-3 sm:grid-cols-[1fr_6rem_8rem]">
+                  <CardInput id="card-city" label="City" value={recipient.city} onChange={(value) => updateRecipient("city", value)} autoComplete="address-level2" />
+                  <CardInput id="card-state" label="State" value={recipient.state} onChange={(value) => updateRecipient("state", value.toUpperCase())} autoComplete="address-level1" maxLength={2} />
+                  <CardInput id="card-zip" label="ZIP code" value={recipient.postalCode} onChange={(value) => updateRecipient("postalCode", value)} autoComplete="postal-code" maxLength={10} />
+                </div>
+              </>
+            ) : null}
           </fieldset>
         </div>
 
@@ -389,7 +503,11 @@ export function GreetingCardRequestDialog({
             onClick={() => void submit()}
             disabled={
               submitting ||
-              cardId === null ||
+              (deliveryMethod === "physical_mail"
+                ? cardId === null
+                : !selectedTemplate ||
+                  !isGiftAmountInputValid(giftAmount) ||
+                  recipient.email.trim().length === 0) ||
               message.trim().length < 3 ||
               wishes.trim().length === 0
             }
@@ -439,6 +557,26 @@ function recipientTypeFromValue(value: string): GreetingCardRecipientType {
   return RECIPIENT_TYPE_OPTIONS.find((option) => option.value === value)?.value ?? "other"
 }
 
+function deliveryMethodFromValue(value: string): GreetingCardDeliveryMethod {
+  return value === "digital_email" ? "digital_email" : "physical_mail"
+}
+
+function giftAmountCents(value: string): number | null {
+  if (!value.trim()) return null
+  const dollars = Number(value)
+  return Number.isFinite(dollars) ? Math.round(dollars * 100) : Number.NaN
+}
+
+function isGiftAmountInputValid(value: string): boolean {
+  const cents = giftAmountCents(value)
+  return cents === null ||
+    (Number.isInteger(cents) && cents >= 500 && cents <= 50_000)
+}
+
+function giftAmountCentsForPreview(value: string): number | null {
+  return isGiftAmountInputValid(value) ? giftAmountCents(value) : null
+}
+
 function recipientComboboxOption(option: GreetingCardRecipientOption): {
   readonly value: string
   readonly label: string
@@ -456,11 +594,12 @@ function recipientComboboxOption(option: GreetingCardRecipientOption): {
     option.companyName && option.companyName !== option.displayName
       ? ` · ${option.companyName}`
       : ""
+  const emailLabel = option.recipient.email ? "email saved" : "no email"
   return {
     value: option.id,
     label: option.displayName,
-    description: `${sourceLabel}${companyLabel} · ${addressLabel}`,
-    keywords: `${option.companyName ?? ""} ${sourceLabel}`,
+    description: `${sourceLabel}${companyLabel} · ${emailLabel} · ${addressLabel}`,
+    keywords: `${option.companyName ?? ""} ${option.recipient.email} ${sourceLabel}`,
   }
 }
 

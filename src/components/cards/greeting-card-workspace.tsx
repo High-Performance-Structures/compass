@@ -157,8 +157,8 @@ export function GreetingCardWorkspace({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {canApprove
-              ? "Approve the content first, then release the billable mailing order separately."
-              : "Office staff can prepare cards here. Executive Admin must approve and release every mailing."}
+              ? "Approve the content and recipient first, then release the mailing, email, or optional gift separately."
+              : "Every employee can prepare cards here. Executive Admin must approve and release each delivery."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -290,10 +290,13 @@ function CardRequestRow({
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-semibold">{recipientName}</p>
             <Badge variant={statusBadgeVariant(request.status)}>
-              {statusLabel(request.status)}
+              {statusLabel(request.status, request.deliveryMethod)}
             </Badge>
             <span className="text-xs text-muted-foreground">
               {recipientTypeLabel(request.recipientType)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {request.deliveryMethod === "digital_email" ? "E-card" : "Mailed card"}
             </span>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -302,6 +305,9 @@ function CardRequestRow({
             {request.cardPriceCents === null
               ? ""
               : ` · $${(request.cardPriceCents / 100).toFixed(2)} plus postage and tax`}
+            {request.gift
+              ? ` · $${(request.gift.amountCents / 100).toFixed(2)} digital gift`
+              : ""}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Requested by {request.requestedByName} · {formatDate(request.createdAt)}
@@ -323,15 +329,27 @@ function CardRequestRow({
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button type="button" size="sm" disabled={busy}>
-                  <IconSend className="size-4" /> Release for mailing
+                  <IconSend className="size-4" />
+                  {request.deliveryMethod === "digital_email"
+                    ? "Send e-card"
+                    : "Release for mailing"}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Release this approved card?</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    {request.deliveryMethod === "digital_email"
+                      ? "Send this approved e-card?"
+                      : "Release this approved card?"}
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    This creates a billable Handwrytten order for {recipientName}.
-                    Handwrytten will write, stamp, and mail the physical card.
+                    {request.deliveryMethod === "digital_email"
+                      ? `Compass will email the private HPS e-card to ${request.recipient.email}.${
+                          request.gift
+                            ? ` This also purchases a $${(request.gift.amountCents / 100).toFixed(2)} Giftbit reward.`
+                            : " No gift will be purchased."
+                        }`
+                      : `This creates a billable Handwrytten order for ${recipientName}. Handwrytten will write, stamp, and mail the physical card.`}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -343,19 +361,31 @@ function CardRequestRow({
               </AlertDialogContent>
             </AlertDialog>
           ) : null}
-          {canApprove && request.status === "submitted" ? (
+          {canApprove &&
+          (request.status === "submitted" ||
+            (request.deliveryMethod === "digital_email" &&
+              request.status === "needs_attention")) ? (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button type="button" size="sm" variant="outline" disabled={busy}>
-                  Cancel before production
+                  {request.deliveryMethod === "digital_email"
+                    ? "Cancel e-card"
+                    : "Cancel before production"}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Cancel the mailed card?</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    {request.deliveryMethod === "digital_email"
+                      ? "Cancel the e-card?"
+                      : "Cancel the mailed card?"}
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    Handwrytten can cancel only before production begins. The
-                    provider may reject this request if writing has started.
+                    {request.deliveryMethod === "digital_email"
+                      ? request.status === "needs_attention"
+                        ? "Compass could not confirm delivery. Cancelling will disable the private card link and attempt to reclaim an included Giftbit reward before it is redeemed."
+                        : "The private card link will stop working. An included Giftbit reward can be cancelled only before the recipient redeems it; the email itself cannot be recalled."
+                      : "Handwrytten can cancel only before production begins. The provider may reject this request if writing has started."}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -377,7 +407,7 @@ function CardRequestRow({
                   <AlertDialogTitle>Remove this unreleased request?</AlertDialogTitle>
                   <AlertDialogDescription>
                     It will disappear from the active queue but retain a
-                    recoverable audit record. No Handwrytten order exists.
+                    recoverable audit record. Nothing has been sent or purchased.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -399,14 +429,30 @@ function CardRequestRow({
             <p className="mt-3 whitespace-pre-wrap text-muted-foreground">{request.wishes}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mailing address</p>
-            <address className="mt-2 not-italic leading-6">
-              {recipientName}<br />
-              {request.recipient.businessName ? <>{request.recipient.businessName}<br /></> : null}
-              {request.recipient.address1}<br />
-              {request.recipient.address2 ? <>{request.recipient.address2}<br /></> : null}
-              {request.recipient.city}, {request.recipient.state} {request.recipient.postalCode}
-            </address>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {request.deliveryMethod === "digital_email" ? "Email delivery" : "Mailing address"}
+            </p>
+            {request.deliveryMethod === "digital_email" ? (
+              <div className="mt-2 leading-6">
+                <p>{request.recipient.email}</p>
+                {request.gift ? (
+                  <p className="text-muted-foreground">
+                    Giftbit US catalog · ${(request.gift.amountCents / 100).toFixed(2)}
+                    {request.gift.status ? ` · ${request.gift.status}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">E-card only · no gift</p>
+                )}
+              </div>
+            ) : (
+              <address className="mt-2 not-italic leading-6">
+                {recipientName}<br />
+                {request.recipient.businessName ? <>{request.recipient.businessName}<br /></> : null}
+                {request.recipient.address1}<br />
+                {request.recipient.address2 ? <>{request.recipient.address2}<br /></> : null}
+                {request.recipient.city}, {request.recipient.state} {request.recipient.postalCode}
+              </address>
+            )}
           </div>
         </div>
       </details>
@@ -426,12 +472,15 @@ function CardRequestRow({
   )
 }
 
-function statusLabel(status: GreetingCardRequestStatus): string {
+function statusLabel(
+  status: GreetingCardRequestStatus,
+  deliveryMethod: GreetingCardRequest["deliveryMethod"],
+): string {
   switch (status) {
     case "pending_approval": return "Awaiting approval"
     case "approved": return "Approved"
-    case "submitting": return "Releasing"
-    case "submitted": return "Ordered"
+    case "submitting": return deliveryMethod === "digital_email" ? "Sending" : "Releasing"
+    case "submitted": return deliveryMethod === "digital_email" ? "Sent" : "Ordered"
     case "cancelling": return "Cancelling"
     case "cancelled": return "Cancelled"
     case "rejected": return "Rejected"
