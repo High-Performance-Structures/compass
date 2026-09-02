@@ -6,6 +6,7 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
+  notificationPreferences,
   ownerProjectUpdates,
   projectOperations,
   projectRfis,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/project-workflow-roles"
 import { getSageBridgeStatus } from "@/lib/sage/config"
 import { isSageBridgeHeartbeatOnline } from "@/lib/sage/bridge-health"
+import { dateKeyInTimeZone, isValidTimeZone } from "@/lib/work-calendar"
 
 type DashboardTask = {
   readonly id: string
@@ -109,6 +111,7 @@ type DashboardFieldPhoto = {
 
 export type DashboardOverview = {
   readonly today: string
+  readonly timeZone: string
   readonly user: {
     readonly role: string | null
     readonly canUseDeveloperMode: boolean
@@ -148,11 +151,14 @@ export type DashboardOverview = {
   readonly fieldPhotos: readonly DashboardFieldPhoto[]
 }
 
+const DEFAULT_DASHBOARD_TIME_ZONE = "America/Denver"
+
 function emptyOverview(): DashboardOverview {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = dateKeyInTimeZone(new Date(), DEFAULT_DASHBOARD_TIME_ZONE)
 
   return {
     today,
+    timeZone: DEFAULT_DASHBOARD_TIME_ZONE,
     user: {
       role: null,
       canUseDeveloperMode: false,
@@ -259,8 +265,6 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     )
 
     const db = getDb(env.DB)
-    const today = new Date().toISOString().slice(0, 10)
-
     const rankedDailyLogs = db
       .select({
         projectId: dailyLogs.projectId,
@@ -290,6 +294,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       allRfiRows,
       bridgeHeartbeatRows,
       socialRowsThisWeek,
+      preferenceRows,
     ] = await db.batch([
       db
         .select({
@@ -429,7 +434,19 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
             isNull(socialPosts.deletedAt),
           ),
         ),
+      db
+        .select({ timeZone: notificationPreferences.timeZone })
+        .from(notificationPreferences)
+        .where(eq(notificationPreferences.userId, user.id))
+        .limit(1),
     ])
+
+    const configuredTimeZone = preferenceRows[0]?.timeZone
+    const timeZone =
+      configuredTimeZone && isValidTimeZone(configuredTimeZone)
+        ? configuredTimeZone
+        : DEFAULT_DASHBOARD_TIME_ZONE
+    const today = dateKeyInTimeZone(new Date(), timeZone)
 
     const tasksByProject = groupByProjectId(allTaskRows)
     const photosByProject = groupByProjectId(allPhotoRows)
@@ -646,6 +663,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
 
     return {
       today,
+      timeZone,
       user: {
         role: user.role,
         canUseDeveloperMode,
