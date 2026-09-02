@@ -291,6 +291,51 @@ describe("legacy Buildertrend staging reconciliation", () => {
     expect(scalar(database, "SELECT COUNT(*) FROM buildertrend_staging_files")).toBe(0)
   })
 
+  it("aborts duplicate file identities before any durable writes", () => {
+    database.exec(`
+      INSERT INTO buildertrend_archive_files
+      SELECT
+        'photo-main-replay', import_run_id, source_record_id, organization_id,
+        project_id, source_scope, source_record_type, buildertrend_job_id,
+        buildertrend_lead_id, buildertrend_file_id, buildertrend_url, file_name,
+        mime_type, file_size, drive_folder_id, drive_file_id, drive_url,
+        thumbnail_drive_file_id, thumbnail_url, checksum, captured_at, visibility,
+        review_status, metadata_json, created_at, updated_at
+      FROM buildertrend_archive_files
+      WHERE id = 'photo-main';
+    `)
+
+    expect(() =>
+      executeReconciliation(
+        database,
+        buildLegacyBuildertrendReconciliationSql("org-main")
+      )
+    ).toThrow()
+    expect(scalar(database, "SELECT COUNT(*) FROM buildertrend_staging_runs")).toBe(0)
+    expect(scalar(database, "SELECT COUNT(*) FROM buildertrend_staging_files")).toBe(0)
+  })
+
+  it("allows a shared file identity across distinct source records", () => {
+    database.exec(`
+      INSERT INTO buildertrend_archive_files
+      SELECT
+        'photo-other', import_run_id, 'record-other', organization_id,
+        'project-other', source_scope, source_record_type, 'job-other',
+        buildertrend_lead_id, buildertrend_file_id, buildertrend_url, file_name,
+        mime_type, file_size, drive_folder_id, drive_file_id, drive_url,
+        thumbnail_drive_file_id, thumbnail_url, checksum, captured_at, visibility,
+        review_status, metadata_json, created_at, updated_at
+      FROM buildertrend_archive_files
+      WHERE id = 'photo-main';
+    `)
+
+    executeReconciliation(
+      database,
+      buildLegacyBuildertrendReconciliationSql("org-main")
+    )
+    expect(scalar(database, "SELECT COUNT(*) FROM buildertrend_staging_files")).toBe(2)
+  })
+
   it("aborts when an access candidate links projects across tenants", () => {
     database.exec(`
       UPDATE buildertrend_access_candidates
