@@ -46,3 +46,21 @@ export function isHistoryRequestCurrent(
 ): boolean {
   return requestId === currentRequestId
 }
+
+export function isHistoryScrollRestoreCurrent(
+  requestId: number,
+  currentRequestId: number,
+  requestScrollIntentId: number,
+  currentScrollIntentId: number,
+): boolean {
+  return (
+    isHistoryRequestCurrent(requestId, currentRequestId) &&
+    requestScrollIntentId === currentScrollIntentId
+  )
+}
+
+export function getHistoryLoadError(error: unknown): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : "Unable to load older messages."
+}

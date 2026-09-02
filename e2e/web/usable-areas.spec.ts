@@ -36,7 +36,12 @@ const projectAreas = [
 ]
 
 async function enterDemo(page: Page): Promise<void> {
-  await page.goto("/demo")
+  await page.goto("/")
+  const host = new URL(page.url()).hostname
+  await page.context().addCookies([
+    { name: "compass-demo", value: "true", domain: host, path: "/" },
+  ])
+  await page.goto("/dashboard")
   await page.waitForURL(/\/dashboard/)
   await expect(page.locator("body")).not.toContainText(applicationErrorText)
 }

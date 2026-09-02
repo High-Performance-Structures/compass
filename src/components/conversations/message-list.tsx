@@ -13,7 +13,9 @@ import { useRealtimeChannel } from "@/hooks/use-realtime-channel"
 import {
   getNewestScrollTop,
   getPreservedScrollTop,
+  getHistoryLoadError,
   isHistoryRequestCurrent,
+  isHistoryScrollRestoreCurrent,
   isAtNewestEdge,
 } from "./message-list-behavior"
 
@@ -70,6 +72,7 @@ export function MessageList({
   )
   const [loading, setLoading] = React.useState(false)
   const [hasMore, setHasMore] = React.useState(true)
+  const [historyError, setHistoryError] = React.useState<string | null>(null)
   const [atNewestEdge, setAtNewestEdge] = React.useState(true)
   const [historyCommitId, setHistoryCommitId] = React.useState(0)
   const [realtimeCommitId, setRealtimeCommitId] = React.useState(0)
@@ -79,9 +82,11 @@ export function MessageList({
     readonly scrollTop: number
     readonly scrollHeight: number
     readonly wasAtNewestEdge: boolean
+    readonly scrollIntentId: number
   } | null>(null)
   const pendingNewestScrollRef = React.useRef(false)
   const historyRequestIdRef = React.useRef(0)
+  const scrollIntentIdRef = React.useRef(0)
 
   // get last message id for real-time polling
   const lastMessageId = React.useMemo(() => {
@@ -126,6 +131,7 @@ export function MessageList({
       historyRequestIdRef.current += 1
       prependScrollRef.current = null
       setLoading(false)
+      setHistoryError(null)
       const viewport = getScrollViewport()
       if (viewport) {
         viewport.scrollTo({
@@ -144,6 +150,7 @@ export function MessageList({
     prependScrollRef.current = null
     pendingNewestScrollRef.current = false
     setLoading(false)
+    setHistoryError(null)
     setAtNewestEdge(true)
     setMessages([...initialMessages].reverse())
     setHasMore(true)
@@ -167,6 +174,20 @@ export function MessageList({
     const prependScroll = prependScrollRef.current
     if (!viewport || prependScroll?.requestId !== historyCommitId) return
 
+    if (
+      !isHistoryScrollRestoreCurrent(
+        prependScroll.requestId,
+        historyRequestIdRef.current,
+        prependScroll.scrollIntentId,
+        scrollIntentIdRef.current,
+      )
+    ) {
+      prependScrollRef.current = null
+      pendingNewestScrollRef.current = false
+      setAtNewestEdge(isAtNewestEdge(viewport))
+      return
+    }
+
     if (prependScroll.wasAtNewestEdge) {
       viewport.scrollTop = getNewestScrollTop(viewport)
     } else {
@@ -186,6 +207,7 @@ export function MessageList({
     if (!viewport) return
 
     const updateNewestEdge = () => {
+      scrollIntentIdRef.current += 1
       setAtNewestEdge(isAtNewestEdge(viewport))
     }
     viewport.addEventListener("scroll", updateNewestEdge)
@@ -208,52 +230,64 @@ export function MessageList({
         scrollTop: viewport.scrollTop,
         scrollHeight: viewport.scrollHeight,
         wasAtNewestEdge: isAtNewestEdge(viewport),
+        scrollIntentId: scrollIntentIdRef.current,
       }
     }
+    setHistoryError(null)
     setLoading(true)
 
-    const result = await getMessages(channelId, {
-      limit: 50,
-      cursor: oldestMessage.createdAt,
-    })
-
-    if (!isHistoryRequestCurrent(requestId, historyRequestIdRef.current)) {
-      return
-    }
-
-    if (result.success && result.data && result.data.length > 0) {
-      // older messages come in DESC; reverse to chronological, prepend
-      const older = [...result.data].reverse()
-      const currentViewport = getScrollViewport()
-      const pendingPrepend = prependScrollRef.current
-      if (pendingPrepend && currentViewport) {
-        prependScrollRef.current = {
-          ...pendingPrepend,
-          scrollHeight: currentViewport.scrollHeight,
-        }
-      }
-      setMessages((prev) => {
-        const existingIds = new Set(prev.map((message) => message.id))
-        const uniqueOlder = older.filter((message) => !existingIds.has(message.id))
-        const combined = [...uniqueOlder, ...prev]
-        // limit to MAX_MESSAGES most recent
-        return combined.slice(-MAX_MESSAGES)
+    try {
+      const result = await getMessages(channelId, {
+        limit: 50,
+        cursor: oldestMessage.createdAt,
       })
-      if (
-        result.data.length < 50 ||
-        messages.length + result.data.length >= MAX_MESSAGES
-      ) {
-        setHasMore(false)
-      }
-      setHistoryCommitId(requestId)
-    } else if (result.success) {
-      prependScrollRef.current = null
-      setHasMore(false)
-    } else {
-      prependScrollRef.current = null
-    }
 
-    setLoading(false)
+      if (!isHistoryRequestCurrent(requestId, historyRequestIdRef.current)) {
+        return
+      }
+
+      if (result.success && result.data && result.data.length > 0) {
+        // older messages come in DESC; reverse to chronological, prepend
+        const older = [...result.data].reverse()
+        const currentViewport = getScrollViewport()
+        const pendingPrepend = prependScrollRef.current
+        if (pendingPrepend && currentViewport) {
+          prependScrollRef.current = {
+            ...pendingPrepend,
+            scrollHeight: currentViewport.scrollHeight,
+          }
+        }
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((message) => message.id))
+          const uniqueOlder = older.filter((message) => !existingIds.has(message.id))
+          const combined = [...uniqueOlder, ...prev]
+          // limit to MAX_MESSAGES most recent
+          return combined.slice(-MAX_MESSAGES)
+        })
+        if (
+          result.data.length < 50 ||
+          messages.length + result.data.length >= MAX_MESSAGES
+        ) {
+          setHasMore(false)
+        }
+        setHistoryCommitId(requestId)
+      } else if (result.success) {
+        prependScrollRef.current = null
+        setHasMore(false)
+      } else {
+        prependScrollRef.current = null
+        setHistoryError(result.error ?? "Unable to load older messages.")
+      }
+    } catch (error: unknown) {
+      if (isHistoryRequestCurrent(requestId, historyRequestIdRef.current)) {
+        prependScrollRef.current = null
+        setHistoryError(getHistoryLoadError(error))
+      }
+    } finally {
+      if (isHistoryRequestCurrent(requestId, historyRequestIdRef.current)) {
+        setLoading(false)
+      }
+    }
   }, [channelId, getScrollViewport, hasMore, loading, messages])
 
   const groupedMessages = React.useMemo(() => {
@@ -296,15 +330,24 @@ export function MessageList({
       <ScrollArea className="h-full min-h-0 flex-1" ref={scrollRef}>
         <div className="flex flex-col gap-4 p-4">
           {hasMore && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadMoreMessages}
-                disabled={loading}
-              >
-                {loading ? "Loading..." : "Load older messages"}
-              </Button>
+            <div className="flex justify-center" aria-live="polite" aria-busy={loading}>
+              {historyError ? (
+                <div className="flex flex-col items-center gap-2 text-center" role="alert">
+                  <p className="text-sm text-destructive">{historyError}</p>
+                  <Button type="button" variant="outline" size="sm" onClick={loadMoreMessages}>
+                    Try again
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadMoreMessages}
+                  disabled={loading}
+                >
+                  {loading ? "Loading..." : "Load older messages"}
+                </Button>
+              )}
             </div>
           )}
 
