@@ -42,7 +42,14 @@ function visibilityLabel(contact: ProjectContactItem): string {
   const labels = []
   if (contact.ownerPortalVisible) labels.push("Owner")
   if (contact.subVendorPortalVisible) labels.push("Sub/vendor")
-  if (contact.internalVisible) labels.push("Internal")
+  // Internal visibility is an audience flag, not a second role. Showing it
+  // on owner/vendor cards made external contacts appear to be internal users.
+  if (
+    contact.contactType === "internal" &&
+    contact.internalVisible
+  ) {
+    labels.push("Internal")
+  }
   return labels.join(" · ") || "Hidden"
 }
 
@@ -400,3 +407,4 @@ export function ProjectContactsDirectory({
     </div>
   )
 }
+
