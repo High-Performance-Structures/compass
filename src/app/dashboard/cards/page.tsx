@@ -30,9 +30,10 @@ export default async function GreetingCardsPage(): Promise<React.ReactElement> {
           </h1>
         </div>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Prepare handwritten cards for clients, subcontractors, vendors,
-          employees, and other business relationships. Every physical mailing
-          requires Executive Admin approval and a separate release action.
+          Prepare mailed handwritten cards or HPS e-cards for clients,
+          subcontractors, vendors, employees, and other business relationships.
+          Every delivery and optional digital gift requires Executive Admin
+          approval and a separate release action.
         </p>
       </header>
 

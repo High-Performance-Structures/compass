@@ -24,6 +24,7 @@ type RecipientOptionInput = {
   readonly sourceType: GreetingCardRecipientSource
   readonly displayName: string
   readonly companyName: string | null
+  readonly email?: string | null
   readonly address: string | null
   readonly recipientType: GreetingCardRecipientType
   readonly personName: boolean
@@ -105,6 +106,7 @@ export function buildGreetingCardRecipientOption(
       firstName,
       lastName,
       businessName: input.companyName?.trim() || "",
+      email: input.email?.trim() || "",
       ...parsedAddress.recipient,
     },
     addressStatus: parsedAddress.status,

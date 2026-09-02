@@ -52,6 +52,7 @@ export function isPublicPath(pathname: string): boolean {
     webhookPaths.includes(pathname) ||
     scheduledMaintenancePaths.includes(pathname) ||
     pathname.startsWith("/.well-known/") ||
+    pathname.startsWith("/ecard/") ||
     pathname.startsWith("/api/auth/") ||
     // Signed, short-lived URLs let Meta fetch only approved public photos.
     // The route performs its own HMAC and current-visibility checks.

@@ -7,6 +7,12 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/terms")).toBe(true)
   })
 
+  it("allows private-token e-card pages without exposing the card dashboard", () => {
+    expect(isPublicPath("/ecard/6b8bb215-7cf0-4c5c-a426-9689dd645ec7")).toBe(true)
+    expect(isPublicPath("/ecard")).toBe(false)
+    expect(isPublicPath("/dashboard/cards")).toBe(false)
+  })
+
   it("allows the HMAC-authenticated Jarvis bridge through WorkOS middleware", () => {
     expect(isPublicPath("/api/integrations/jarvis/events")).toBe(true)
     expect(

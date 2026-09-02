@@ -58,6 +58,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
             id: customers.id,
             name: customers.name,
             company: customers.company,
+            email: customers.email,
             address: customers.address,
           })
           .from(customers)
@@ -67,6 +68,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
             id: vendors.id,
             name: vendors.name,
             category: vendors.category,
+            email: vendors.email,
             address: vendors.address,
           })
           .from(vendors)
@@ -80,6 +82,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           .select({
             id: vendorContacts.id,
             name: vendorContacts.name,
+            email: vendorContacts.email,
             vendorName: vendors.name,
             vendorCategory: vendors.category,
             vendorAddress: vendors.address,
@@ -121,6 +124,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           sourceType: "customer",
           displayName: row.name,
           companyName: row.company,
+          email: row.email,
           address: row.address,
           recipientType: "client",
           personName: true,
@@ -135,6 +139,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           sourceType: "vendor",
           displayName: row.name,
           companyName: row.name,
+          email: row.email,
           address: row.address,
           recipientType: vendorRecipientType(row.category),
           personName: false,
@@ -149,6 +154,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           sourceType: "vendor_contact",
           displayName: row.name,
           companyName: row.vendorName,
+          email: row.email,
           address: row.vendorAddress,
           recipientType: vendorRecipientType(row.vendorCategory),
           personName: true,
@@ -166,6 +172,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           sourceType: "team",
           displayName: row.displayName?.trim() || fullName || row.email,
           companyName: null,
+          email: row.email,
           address: row.address,
           recipientType: "employee",
           personName: true,
