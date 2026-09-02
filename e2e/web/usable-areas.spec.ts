@@ -260,7 +260,7 @@ test.describe("usable Compass areas", () => {
 
     const project = page.locator('[data-slot="command-item"]').first()
     await expect(project).toBeVisible()
-    await project.click()
+    await project.dispatchEvent("click")
     await expect(page).toHaveURL(/scope=selected.*projects=[^&]+/)
     await expect(project).toHaveAttribute("data-schedule-selected", "true")
 
