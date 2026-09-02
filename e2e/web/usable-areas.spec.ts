@@ -682,32 +682,33 @@ test.describe("usable Compass areas", () => {
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
 
-    const viewport = page.locator('[data-slot="scroll-area-viewport"]').first()
+    // App Router can briefly retain a hidden streamed tree in WebKit.
+    const viewport = page
+      .locator('[data-slot="scroll-area-viewport"]:visible')
+      .last()
     await expect(viewport).toBeVisible()
-    await expect(page.locator('[data-message-id="e2e-message-001"]')).toHaveClass(
+    await expect(viewport.locator('[data-message-id="e2e-message-001"]')).toHaveClass(
       /justify-end/
     )
     await expect(
-      page.locator('[data-message-id="e2e-message-history-064"]')
+      viewport.locator('[data-message-id="e2e-message-history-064"]')
     ).toHaveClass(/justify-start/)
 
-    const alignment = await page.evaluate(() => {
-      const viewport = document
-        .querySelector('[data-slot="scroll-area-viewport"]')
-        ?.getBoundingClientRect()
-      const own = document
+    const alignment = await viewport.evaluate((element) => {
+      const viewportBounds = element.getBoundingClientRect()
+      const own = element
         .querySelector('[data-message-id="e2e-message-001"] [data-slot="avatar"]')
         ?.getBoundingClientRect()
-      const other = document
+      const other = element
         .querySelector('[data-message-id="e2e-message-history-064"] [data-slot="avatar"]')
         ?.getBoundingClientRect()
-      if (!viewport || !own || !other) {
+      if (!own || !other) {
         throw new Error("Conversation alignment fixtures did not render")
       }
       return {
         ownLeft: own.left,
         otherLeft: other.left,
-        viewportRight: viewport.right,
+        viewportRight: viewportBounds.right,
         ownRight: own.right,
       }
     })
