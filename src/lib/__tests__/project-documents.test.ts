@@ -5,6 +5,7 @@ import {
   isProjectDocumentCategory,
   isPublishableProjectDocumentMimeType,
   isPublishedProjectDocumentStatus,
+  normalizeProjectDocumentMetadata,
   projectDocumentTitleFromFileName,
 } from "@/lib/project-documents"
 
@@ -51,5 +52,50 @@ describe("project documents", () => {
     expect(projectDocumentTitleFromFileName("Finish Schedule")).toBe(
       "Finish Schedule"
     )
+  })
+
+  it("normalizes editable Compass document information", () => {
+    expect(
+      normalizeProjectDocumentMetadata({
+        category: " specifications ",
+        title: " Interior selections ",
+        description: " Finish schedule ",
+        documentDate: "2026-09-03",
+        revision: " Rev 2 ",
+      })
+    ).toEqual({
+      success: true,
+      value: {
+        category: "specifications",
+        title: "Interior selections",
+        description: "Finish schedule",
+        documentDate: "2026-09-03",
+        revision: "Rev 2",
+      },
+    })
+  })
+
+  it("rejects invalid editable document information", () => {
+    expect(
+      normalizeProjectDocumentMetadata({
+        category: "internal_pricing",
+        title: "Selections",
+        description: null,
+        documentDate: null,
+        revision: null,
+      })
+    ).toEqual({
+      success: false,
+      error: "Choose a supported construction-document category.",
+    })
+    expect(
+      normalizeProjectDocumentMetadata({
+        category: "specifications",
+        title: "  ",
+        description: null,
+        documentDate: null,
+        revision: null,
+      })
+    ).toEqual({ success: false, error: "Display title is required." })
   })
 })
