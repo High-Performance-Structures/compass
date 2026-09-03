@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { projectAccessWelcomeTemplate } from "@/lib/email/project-access-welcome"
+import type { ProjectContactCompassAccountStatus } from "@/lib/project-contact-access-status"
 
 type InvitableContactType = "owner" | "subcontractor" | "supplier" | "internal"
 
@@ -36,6 +37,7 @@ export function ProjectContactInviteButton({
   contactName,
   contactEmail,
   contactType,
+  compassAccountStatus,
 }: {
   readonly projectId: string
   readonly projectLabel: string
@@ -43,6 +45,7 @@ export function ProjectContactInviteButton({
   readonly contactName: string
   readonly contactEmail: string
   readonly contactType: InvitableContactType
+  readonly compassAccountStatus: ProjectContactCompassAccountStatus
 }): React.ReactElement {
   const router = useRouter()
   const template = projectAccessWelcomeTemplate({
@@ -53,6 +56,7 @@ export function ProjectContactInviteButton({
   const [subject, setSubject] = React.useState(template.subject)
   const [message, setMessage] = React.useState(template.message)
   const [sending, setSending] = React.useState(false)
+  const grantsExistingAccount = compassAccountStatus === "active"
 
   const handleOpenChange = (nextOpen: boolean): void => {
     setOpen(nextOpen)
@@ -105,15 +109,19 @@ export function ProjectContactInviteButton({
         onClick={() => setOpen(true)}
       >
         <IconMailForward className="size-3.5" />
-        Invite to Compass
+        {grantsExistingAccount ? "Grant project access" : "Invite to Compass"}
       </Button>
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent className="flex w-full flex-col overflow-y-auto sm:max-w-xl">
           <SheetHeader className="border-b pb-4 text-left">
-            <SheetTitle>Invite to Compass</SheetTitle>
+            <SheetTitle>
+              {grantsExistingAccount ? "Grant project access" : "Invite to Compass"}
+            </SheetTitle>
             <SheetDescription>
-              Send project-specific access and an editable welcome email.
+              {grantsExistingAccount
+                ? "Assign this existing Compass account to this project and send an editable welcome email."
+                : "Send project-specific access and an editable welcome email."}
             </SheetDescription>
           </SheetHeader>
 
@@ -165,9 +173,9 @@ export function ProjectContactInviteButton({
             </div>
 
             <p className="border-t pt-4 text-xs text-muted-foreground">
-              New users receive a secure WorkOS account invitation. Existing
-              Compass users receive this project assignment immediately. No
-              other project access is added.
+              {grantsExistingAccount
+                ? "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
+                : "New users receive a secure WorkOS account invitation. No other project access is added."}
             </p>
           </div>
 
@@ -185,7 +193,11 @@ export function ProjectContactInviteButton({
               onClick={handleSend}
               disabled={sending || !subject.trim() || !message.trim()}
             >
-              {sending ? "Sending..." : "Send Welcome and Access"}
+              {sending
+                ? "Sending..."
+                : grantsExistingAccount
+                  ? "Send Welcome and Grant Access"
+                  : "Send Welcome and Access"}
             </Button>
           </SheetFooter>
         </SheetContent>

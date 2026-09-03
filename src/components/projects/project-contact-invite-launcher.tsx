@@ -51,6 +51,7 @@ function isInvitableContact(
   return (
     !isCompanyOnlyVendor &&
     Boolean(contact.email?.trim()) &&
+    contact.compassAccountStatus !== "inactive" &&
     projectContactCanInvite(contact.accessStatus)
   )
 }
@@ -81,6 +82,8 @@ export function ProjectContactInviteLauncher({
   const [sending, setSending] = React.useState(false)
   const selectedContact =
     eligibleContacts.find((contact) => contact.id === selectedContactId) ?? null
+  const grantsExistingAccount =
+    selectedContact?.compassAccountStatus === "active"
 
   if (eligibleContacts.length === 0) return null
 
@@ -140,13 +143,13 @@ export function ProjectContactInviteLauncher({
     <>
       <Button type="button" size="sm" onClick={() => setSheetOpen(true)}>
         <IconMailForward className="size-4" />
-        Invite contact
+        Manage project access
       </Button>
 
       <Sheet open={sheetOpen} onOpenChange={handleOpenChange}>
         <SheetContent className="flex w-full flex-col overflow-y-auto sm:max-w-xl">
           <SheetHeader className="border-b pb-4 text-left">
-            <SheetTitle>Invite a project contact</SheetTitle>
+            <SheetTitle>Manage project access</SheetTitle>
             <SheetDescription>
               Choose a contact, review the welcome email, and grant access to
               this project only.
@@ -220,7 +223,12 @@ export function ProjectContactInviteLauncher({
                               </span>
                               <span className="block truncate text-xs text-muted-foreground">
                                 {accessLabel(contact.contactType)} ·{" "}
-                                {contact.email}
+                                {contact.email} ·{" "}
+                                {contact.compassAccountStatus === "active"
+                                  ? "Compass account active"
+                                  : contact.compassAccountStatus === "inactive"
+                                    ? "Compass account inactive"
+                                    : "New Compass account"}
                               </span>
                             </span>
                           </CommandItem>
@@ -285,9 +293,9 @@ export function ProjectContactInviteLauncher({
             )}
 
             <p className="border-t pt-4 text-xs text-muted-foreground">
-              Existing Compass users receive this project assignment
-              immediately. New users receive a secure account invitation. No
-              other project access is added.
+              {grantsExistingAccount
+                ? "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
+                : "New users receive a secure account invitation. No other project access is added."}
             </p>
           </div>
 
@@ -310,7 +318,11 @@ export function ProjectContactInviteLauncher({
                 !message.trim()
               }
             >
-              {sending ? "Sending..." : "Send Welcome and Access"}
+              {sending
+                ? "Sending..."
+                : grantsExistingAccount
+                  ? "Send Welcome and Grant Access"
+                  : "Send Welcome and Access"}
             </Button>
           </SheetFooter>
         </SheetContent>

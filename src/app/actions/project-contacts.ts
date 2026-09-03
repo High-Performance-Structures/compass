@@ -31,8 +31,10 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import {
+  projectContactCompassAccountStatus,
   projectContactAccessStatus,
   type ProjectContactAccessStatus,
+  type ProjectContactCompassAccountStatus,
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
@@ -75,6 +77,7 @@ export type ProjectContactItem = {
   readonly syncStatus: string
   readonly lastSyncedAt: string | null
   readonly accessStatus: ProjectContactAccessStatus
+  readonly compassAccountStatus: ProjectContactCompassAccountStatus
   readonly identityManagedByActiveUser: boolean
 }
 
@@ -375,7 +378,8 @@ function requireLinkIds(formData: FormData): readonly string[] {
 function toContactItem(
   row: typeof projectContacts.$inferSelect,
   accessStatus: ProjectContactAccessStatus = "not_invited",
-  directoryIdentityManaged = false
+  directoryIdentityManaged = false,
+  compassAccountStatus: ProjectContactCompassAccountStatus = "not_registered"
 ): ProjectContactItem {
   return {
     id: row.id,
@@ -405,6 +409,7 @@ function toContactItem(
     syncStatus: row.syncStatus,
     lastSyncedAt: row.lastSyncedAt,
     accessStatus,
+    compassAccountStatus,
     identityManagedByActiveUser:
       accessStatus === "active" || directoryIdentityManaged,
   }
@@ -826,6 +831,52 @@ export async function getProjectContactsSummary(
         eq(users.isActive, true)
       )
     )
+  const contactEmails = Array.from(
+    new Set(
+      rows
+        .map((row) => row.email?.trim().toLowerCase() ?? "")
+        .filter((email) => email.length > 0)
+    )
+  )
+  const compassAccountRows = (
+    await Promise.all(
+      Array.from(
+        { length: Math.ceil(contactEmails.length / 80) },
+        (_, chunkIndex) =>
+          db
+            .select({
+              id: users.id,
+              email: users.email,
+              isActive: users.isActive,
+            })
+            .from(users)
+            .where(
+              inArray(
+                sql<string>`lower(trim(${users.email}))`,
+                contactEmails.slice(chunkIndex * 80, chunkIndex * 80 + 80)
+              )
+            )
+      )
+    )
+  ).flat()
+  const compassAccountStatusByEmail = new Map<
+    string,
+    ProjectContactCompassAccountStatus
+  >()
+  for (const account of compassAccountRows) {
+    const email = account.email.trim().toLowerCase()
+    if (!email) continue
+
+    const current = compassAccountStatusByEmail.get(email)
+    const next = projectContactCompassAccountStatus(account)
+    if (
+      current === undefined ||
+      next === "active" ||
+      (next === "inactive" && current === "not_registered")
+    ) {
+      compassAccountStatusByEmail.set(email, next)
+    }
+  }
   const latestInvitationByContactId = new Map<
     string,
     ProjectContactInvitationSnapshot
@@ -861,6 +912,8 @@ export async function getProjectContactsSummary(
     row: (typeof rows)[number]
   ): ProjectContactItem => {
     const email = row.email?.trim().toLowerCase() ?? ""
+    const compassAccountStatus =
+      compassAccountStatusByEmail.get(email) ?? "not_registered"
     const latestInvitation =
       latestInvitationByContactId.get(row.id) ??
       (email ? latestInvitationByEmail.get(email) : undefined) ??
@@ -877,6 +930,7 @@ export async function getProjectContactsSummary(
         ? projectContactAccessStatus({
             activeProjectMember,
             latestInvitation,
+            compassAccountStatus,
           })
         : "not_invited",
       (row.sourceEntityId !== null &&
@@ -884,7 +938,8 @@ export async function getProjectContactsSummary(
           `${row.sourceEntityType}:${row.sourceEntityId}`
         )) ||
         (row.vendorContactId !== null &&
-          directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`))
+          directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)),
+      compassAccountStatus
     )
   }
   const allContacts = rows.filter((row) => row.active).map(toProjectContactItem)
