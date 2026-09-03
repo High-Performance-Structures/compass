@@ -71,6 +71,10 @@ describe("sub/vendor RFQ portal", () => {
     const updated = withPortalRfqVendorResponse(original, {
       decision: "quote",
       amount: 12500,
+      lines: [
+        { lineNumber: 1, amount: 10_000, notes: "Base scope" },
+        { lineNumber: 2, amount: 2_500, notes: null },
+      ],
       leadTime: "3 weeks",
       validUntil: "2026-09-30",
       notes: "Includes crane time.",
@@ -84,5 +88,9 @@ describe("sub/vendor RFQ portal", () => {
     expect(parsed.vendorCategory).toBe("Framing")
     expect(parsed.scopeItems[0]?.description).toBe("Frame the garage")
     expect(parsed.vendorResponse?.amount).toBe(12500)
+    expect(parsed.vendorResponse?.lines).toEqual([
+      { lineNumber: 1, amount: 10_000, notes: "Base scope" },
+      { lineNumber: 2, amount: 2_500, notes: null },
+    ])
   })
 })

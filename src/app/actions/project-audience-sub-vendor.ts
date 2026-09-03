@@ -31,6 +31,7 @@ import {
   portalRfqMatchesRecipient,
   withPortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { validRfiPriority } from "@/lib/rfis/status"
 
 type SubVendorActionResult =
@@ -47,6 +48,11 @@ export type CreateSubVendorRfiInput = {
 export type SubmitSubVendorRfqResponseInput = {
   readonly decision: "quote" | "decline"
   readonly amount: number | null
+  readonly lines: readonly {
+    readonly lineNumber: number
+    readonly amount: number | null
+    readonly notes: string | null
+  }[]
   readonly leadTime: string | null
   readonly validUntil: string | null
   readonly notes: string | null
@@ -412,13 +418,10 @@ export async function submitSubVendorRfqResponse(
     if (input.decision !== "quote" && input.decision !== "decline") {
       return { success: false, error: "Choose quote or decline." }
     }
-    const amount =
+    let amount =
       input.amount === null || !Number.isFinite(input.amount)
         ? null
         : Math.round(input.amount * 100) / 100
-    if (input.decision === "quote" && (amount === null || amount < 0)) {
-      return { success: false, error: "Enter a valid quote amount." }
-    }
 
     const rfq = await context.db
       .select()
@@ -436,6 +439,15 @@ export async function submitSubVendorRfqResponse(
     if (!portalRfqCanReceiveResponse(rfq.status)) {
       return { success: false, error: "This RFQ is not accepting responses." }
     }
+    const approval = await context.db
+      .select({ id: projectRfqBidApprovals.id })
+      .from(projectRfqBidApprovals)
+      .where(eq(projectRfqBidApprovals.rfqOperationId, rfqId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (approval) {
+      return { success: false, error: "This RFQ bid has already been approved." }
+    }
 
     const payload = parsePortalRfqPayload(rfq.sagePayloadJson)
     if (
@@ -451,6 +463,49 @@ export async function submitSubVendorRfqResponse(
       return { success: false, error: "This RFQ was assigned to another vendor." }
     }
 
+    const responseLines = input.decision === "quote"
+      ? input.lines.map((line) => ({
+          lineNumber: line.lineNumber,
+          amount:
+            line.amount === null || !Number.isFinite(line.amount)
+              ? null
+              : Math.round(line.amount * 100) / 100,
+          notes: cleanText(line.notes, 2_000),
+        }))
+      : []
+    if (input.decision === "quote" && payload.scopeItems.length > 0) {
+      const expectedNumbers = new Set(
+        payload.scopeItems.map((line) => line.lineNumber)
+      )
+      const submittedNumbers = new Set(
+        responseLines.map((line) => line.lineNumber)
+      )
+      const complete =
+        expectedNumbers.size === responseLines.length &&
+        expectedNumbers.size === submittedNumbers.size &&
+        [...expectedNumbers].every((lineNumber) =>
+          submittedNumbers.has(lineNumber)
+        )
+      if (
+        !complete ||
+        responseLines.some(
+          (line) => line.amount === null || line.amount < 0
+        )
+      ) {
+        return {
+          success: false,
+          error: "Enter a valid price for every RFQ scope line.",
+        }
+      }
+      amount = responseLines.reduce(
+        (total, line) => total + (line.amount ?? 0),
+        0
+      )
+    }
+    if (input.decision === "quote" && (amount === null || amount < 0)) {
+      return { success: false, error: "Enter a valid quote amount." }
+    }
+
     const now = new Date().toISOString()
     const responseStatus =
       input.decision === "decline" ? "declined" : "response_received"
@@ -462,6 +517,14 @@ export async function submitSubVendorRfqResponse(
         sagePayloadJson: withPortalRfqVendorResponse(rfq.sagePayloadJson, {
           decision: input.decision,
           amount: input.decision === "quote" ? amount : null,
+          lines:
+            input.decision === "quote"
+              ? responseLines.flatMap((line) =>
+                  line.amount === null
+                    ? []
+                    : [{ ...line, amount: line.amount }]
+                )
+              : [],
           leadTime: cleanText(input.leadTime, 240),
           validUntil: validDate(input.validUntil),
           notes: cleanText(input.notes, 10_000),

@@ -9,11 +9,18 @@ import {
   IconShoppingCartQuestion,
 } from "@tabler/icons-react"
 
-import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import {
+  getProjectTaskAssigneeOptions,
+  type ProjectTaskAssigneeOption,
+} from "@/app/actions/project-contacts"
 import {
   getProjectRfqs,
   type ProjectRfqItem,
 } from "@/app/actions/project-operations"
+import {
+  getProjectRfqBidWorkspace,
+  type ProjectRfqBidWorkflowItem,
+} from "@/app/actions/project-rfq-bids"
 import {
   getProjectSelectionOptions,
   getProjectSelections,
@@ -22,7 +29,9 @@ import {
 } from "@/app/actions/project-selections"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-form"
+import { ProjectRfqBidActions } from "@/components/projects/project-rfq-bid-actions"
 import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
+import { ProjectRfqDuplicateDialog } from "@/components/projects/project-rfq-duplicate-dialog"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
@@ -148,18 +157,27 @@ function RfqCard({
   selectionOptions,
   selectionsSummary,
   developerModeEnabled,
+  bidWorkflow,
+  canApproveBids,
+  canImportBids,
+  editableEstimates,
 }: {
   readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
   readonly projectId: string
   readonly projectLabel: string
   readonly isCreated: boolean
-  readonly taskAssigneeOptions: React.ComponentProps<
-    typeof ProjectTaskCreateButton
-  >["assigneeOptions"]
+  readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
   readonly developerModeEnabled: boolean
+  readonly bidWorkflow: ProjectRfqBidWorkflowItem | null
+  readonly canApproveBids: boolean
+  readonly canImportBids: boolean
+  readonly editableEstimates: readonly {
+    readonly id: string
+    readonly label: string
+  }[]
 }): React.ReactElement {
   return (
     <article
@@ -191,11 +209,19 @@ function RfqCard({
           {rfq.priority === "high" || rfq.priority === "critical" ? (
             <Badge variant="destructive">{label(rfq.priority)}</Badge>
           ) : null}
-          <ProjectRfqEditForm
+          {!rfq.vendorResponse && (
+            <ProjectRfqEditForm
+              projectId={projectId}
+              rfq={rfq}
+              selectionOptions={selectionOptions}
+              selectionsSummary={selectionsSummary}
+            />
+          )}
+          <ProjectRfqDuplicateDialog
             projectId={projectId}
-            rfq={rfq}
-            selectionOptions={selectionOptions}
-            selectionsSummary={selectionsSummary}
+            rfqId={rfq.id}
+            rfqNumber={rfq.sourceRecordNumber}
+            recipientOptions={taskAssigneeOptions}
           />
           <ProjectRfqShareActions
             brand={brand}
@@ -203,12 +229,14 @@ function RfqCard({
             projectLabel={projectLabel}
             rfq={rfq}
           />
-          <ProjectRfqDeleteButton
-            projectId={projectId}
-            rfqId={rfq.id}
-            rfqNumber={rfq.sourceRecordNumber}
-            title={rfq.title}
-          />
+          {rfq.status === "draft" && (
+            <ProjectRfqDeleteButton
+              projectId={projectId}
+              rfqId={rfq.id}
+              rfqNumber={rfq.sourceRecordNumber}
+              title={rfq.title}
+            />
+          )}
           <ProjectTaskCreateButton
             projectId={projectId}
             sourceLabel="RFQ"
@@ -281,7 +309,51 @@ function RfqCard({
               {rfq.vendorResponse.notes}
             </p>
           )}
+          {rfq.vendorResponse.lines.length > 0 && (
+            <div className="mt-3 overflow-hidden border bg-background">
+              {rfq.vendorResponse.lines.map((line) => {
+                const scope = rfq.scopeItems.find(
+                  (scopeLine) => scopeLine.lineNumber === line.lineNumber
+                )
+                return (
+                  <div
+                    key={`${rfq.id}-response-${line.lineNumber}`}
+                    className="flex flex-wrap items-start justify-between gap-2 border-b px-3 py-2 last:border-b-0"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {line.lineNumber}. {scope?.description ?? "RFQ scope"}
+                      </p>
+                      {line.notes && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {line.notes}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-medium">
+                      {new Intl.NumberFormat("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                      }).format(line.amount)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
+      )}
+
+      {rfq.vendorResponse?.decision === "quote" && (
+        <ProjectRfqBidActions
+          projectId={projectId}
+          rfqId={rfq.id}
+          rfqLabel={rfq.sourceRecordNumber ?? rfq.title}
+          canApprove={canApproveBids}
+          canImport={canImportBids}
+          workflow={bidWorkflow}
+          editableEstimates={editableEstimates}
+        />
       )}
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -376,13 +448,20 @@ export default async function ProjectRfqsPage({
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
   )
-  const [projects, rfqs, taskAssigneeOptions, selectionsSummary, selectionOptions] =
-    await Promise.all([
+  const [
+    projects,
+    rfqs,
+    taskAssigneeOptions,
+    selectionsSummary,
+    selectionOptions,
+    bidWorkspace,
+  ] = await Promise.all([
     getProjects(),
     getProjectRfqs(id),
     getProjectTaskAssigneeOptions(id),
     getProjectSelections(id),
     getProjectSelectionOptions(id),
+    getProjectRfqBidWorkspace(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -501,6 +580,14 @@ export default async function ProjectRfqsPage({
               selectionOptions={selectionOptions}
               selectionsSummary={selectionsSummary}
               developerModeEnabled={developerModeEnabled}
+              bidWorkflow={
+                bidWorkspace.workflows.find(
+                  (workflow) => workflow.rfqOperationId === rfq.id
+                ) ?? null
+              }
+              canApproveBids={bidWorkspace.canApprove}
+              canImportBids={bidWorkspace.canImport}
+              editableEstimates={bidWorkspace.editableEstimates}
             />
           ))
         ) : (
