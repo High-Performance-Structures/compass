@@ -232,6 +232,102 @@ export const voiceRealtimeKitMeetings = sqliteTable(
   ]
 )
 
+// listening rooms synchronize intent and provider links; audio stays with each
+// listener's music service and never passes through Compass.
+export const listeningRooms = sqliteTable(
+  "listening_rooms",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    hostUserId: text("host_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    playbackState: text("playback_state").notNull().default("paused"),
+    currentTrackId: text("current_track_id"),
+    anchorPositionMs: integer("anchor_position_ms").notNull().default(0),
+    playbackStartedAt: text("playback_started_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("listening_rooms_channel_idx").on(table.channelId),
+    index("listening_rooms_host_idx").on(table.hostUserId),
+  ]
+)
+
+export const listeningQueueItems = sqliteTable(
+  "listening_queue_items",
+  {
+    id: text("id").primaryKey(),
+    roomId: text("room_id")
+      .notNull()
+      .references(() => listeningRooms.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    artist: text("artist"),
+    durationMs: integer("duration_ms"),
+    sortOrder: integer("sort_order").notNull(),
+    addedBy: text("added_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    playedAt: text("played_at"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("listening_queue_items_room_order_idx").on(
+      table.roomId,
+      table.sortOrder
+    ),
+    index("listening_queue_items_room_idx").on(table.roomId),
+  ]
+)
+
+export const listeningTrackLinks = sqliteTable(
+  "listening_track_links",
+  {
+    id: text("id").primaryKey(),
+    queueItemId: text("queue_item_id")
+      .notNull()
+      .references(() => listeningQueueItems.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    url: text("url").notNull(),
+    addedBy: text("added_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("listening_track_links_item_provider_idx").on(
+      table.queueItemId,
+      table.provider
+    ),
+  ]
+)
+
+export const listeningRoomParticipants = sqliteTable(
+  "listening_room_participants",
+  {
+    id: text("id").primaryKey(),
+    roomId: text("room_id")
+      .notNull()
+      .references(() => listeningRooms.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    preferredProvider: text("preferred_provider"),
+    joinedAt: text("joined_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("listening_room_participants_room_user_idx").on(
+      table.roomId,
+      table.userId
+    ),
+    index("listening_room_participants_user_idx").on(table.userId),
+  ]
+)
+
 // type exports
 export type Channel = typeof channels.$inferSelect
 export type NewChannel = typeof channels.$inferInsert
@@ -261,3 +357,13 @@ export type VoiceRealtimeKitMeeting =
   typeof voiceRealtimeKitMeetings.$inferSelect
 export type NewVoiceRealtimeKitMeeting =
   typeof voiceRealtimeKitMeetings.$inferInsert
+export type ListeningRoom = typeof listeningRooms.$inferSelect
+export type NewListeningRoom = typeof listeningRooms.$inferInsert
+export type ListeningQueueItem = typeof listeningQueueItems.$inferSelect
+export type NewListeningQueueItem = typeof listeningQueueItems.$inferInsert
+export type ListeningTrackLink = typeof listeningTrackLinks.$inferSelect
+export type NewListeningTrackLink = typeof listeningTrackLinks.$inferInsert
+export type ListeningRoomParticipant =
+  typeof listeningRoomParticipants.$inferSelect
+export type NewListeningRoomParticipant =
+  typeof listeningRoomParticipants.$inferInsert
