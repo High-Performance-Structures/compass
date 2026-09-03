@@ -3339,13 +3339,27 @@ export async function prepareProjectEstimateForClientSignature(
       projectId,
       estimateId
     )
-    const [lines, basisDocuments, phaseDescriptions, acknowledgements] =
+    const [
+      lines,
+      costItems,
+      basisDocuments,
+      phaseDescriptions,
+      acknowledgements,
+    ] =
       await Promise.all([
         access.db
           .select()
           .from(projectEstimateLines)
           .where(eq(projectEstimateLines.estimateId, estimateId))
           .orderBy(asc(projectEstimateLines.sortOrder)),
+        access.db
+          .select()
+          .from(projectEstimateLineCostItems)
+          .where(eq(projectEstimateLineCostItems.estimateId, estimateId))
+          .orderBy(
+            asc(projectEstimateLineCostItems.estimateLineId),
+            asc(projectEstimateLineCostItems.sortOrder)
+          ),
         access.db
           .select()
           .from(projectEstimateBasisDocuments)
@@ -3410,6 +3424,15 @@ export async function prepareProjectEstimateForClientSignature(
       department: access.department,
       requestedTitle: estimate.title,
     })
+    const costItemsByLineId = new Map<
+      string,
+      (typeof costItems)[number][]
+    >()
+    for (const item of costItems) {
+      const current = costItemsByLineId.get(item.estimateLineId) ?? []
+      current.push(item)
+      costItemsByLineId.set(item.estimateLineId, current)
+    }
     const sourceHash = await estimateSourceHash({
       estimateId,
       versionNumber: estimate.versionNumber,
@@ -3454,11 +3477,22 @@ export async function prepareProjectEstimateForClientSignature(
         markupRateBasisPoints: line.markupRateBasisPoints,
         taxable: line.taxable,
         taxCode: line.taxCode,
+        taxName: line.taxName,
         taxRateBasisPoints: line.taxRateBasisPoints,
+        taxCents: line.taxCents,
         lineTotalCents: line.lineTotalCents,
         ownerVisible: line.ownerVisible,
         includeInBuilderFee: line.includeInBuilderFee,
         sortOrder: line.sortOrder,
+        costItems: (costItemsByLineId.get(line.id) ?? []).map((item) => ({
+          id: item.id,
+          taxCode: item.taxCode,
+          taxName: item.taxName,
+          taxRateBasisPoints: item.taxRateBasisPoints,
+          taxCents: item.taxCents,
+          lineTotalCents: item.lineTotalCents,
+          sortOrder: item.sortOrder,
+        })),
       })),
       basisDocuments: basisDocuments.map((document) => ({
         id: document.id,

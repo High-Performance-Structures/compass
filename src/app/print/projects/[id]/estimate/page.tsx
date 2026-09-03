@@ -8,7 +8,11 @@ import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
-import { clientEstimatePhases } from "@/lib/estimates/client-report"
+import {
+  clientEstimatePhases,
+  clientEstimateTaxSummary,
+  type ClientEstimateLine,
+} from "@/lib/estimates/client-report"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
@@ -31,6 +35,30 @@ function percent(basisPoints: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   })}%`
+}
+
+function lineTaxDetail(line: ClientEstimateLine): string | null {
+  if (line.taxCents <= 0) return null
+  const summary = clientEstimateTaxSummary([line])
+  const group = summary.groups.length === 1 ? summary.groups[0] : null
+  const context = group
+    ? [group.label, percent(group.rateBasisPoints)].filter(Boolean).join(" ")
+    : ""
+  return `Includes ${money(line.taxCents)} sales tax${context ? ` · ${context}` : ""}`
+}
+
+function LineTaxNote({
+  line,
+}: {
+  readonly line: ClientEstimateLine
+}): React.ReactElement | null {
+  const detail = lineTaxDetail(line)
+  if (!detail) return null
+  return (
+    <p className="mt-1 text-xs font-normal italic text-neutral-600">
+      {detail}
+    </p>
+  )
 }
 
 function estimateDate(value: string | null, createdAt: string): string {
@@ -81,6 +109,10 @@ export default async function ProjectEstimatePrintPage({
     (total, phase) => total + phase.subtotalCents,
     0
   )
+  const taxSummary = clientEstimateTaxSummary(
+    phases.flatMap((phase) => phase.lines)
+  )
+  const clientPreTaxSubtotalCents = clientSubtotalCents - taxSummary.taxCents
   const clientTotalCents = clientSubtotalCents + estimate.builderFeeCents
   const builderFeeRateBasisPoints =
     estimate.overheadRateBasisPoints +
@@ -195,6 +227,11 @@ export default async function ProjectEstimatePrintPage({
                       : "Division"}{" "}
                     {phase.divisionCode}
                   </p>
+                  {phase.taxCents > 0 && (
+                    <p className="mt-1 text-xs italic text-neutral-600">
+                      Includes {money(phase.taxCents)} sales tax
+                    </p>
+                  )}
                 </div>
                 <span className="text-right font-semibold">
                   {money(phase.subtotalCents)}
@@ -237,6 +274,7 @@ export default async function ProjectEstimatePrintPage({
                             {line.description}
                           </p>
                         )}
+                        <LineTaxNote line={line} />
                         {!line.includeInBuilderFee && (
                           <p className="mt-1 text-xs font-normal italic text-neutral-600">
                             Included in project cost; excluded from builder-fee calculation.
@@ -271,10 +309,47 @@ export default async function ProjectEstimatePrintPage({
         )}
 
         <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
-          <div className="flex justify-between border-t border-black py-2 font-semibold">
-            <span>Project Subtotal:</span>
-            <span>{money(clientSubtotalCents)}</span>
-          </div>
+          {taxSummary.taxCents > 0 ? (
+            <>
+              <div className="flex justify-between border-t border-black py-2 font-semibold">
+                <span>Project work before sales tax</span>
+                <span>{money(clientPreTaxSubtotalCents)}</span>
+              </div>
+              <div className="border-l-2 border-black bg-neutral-100 px-3 py-1">
+                {taxSummary.groups.map((group) => (
+                  <div key={group.key}>
+                    <div className="flex justify-between py-1">
+                      <span>
+                        Taxable subtotal{group.label ? ` · ${group.label}` : ""}
+                      </span>
+                      <span>{money(group.taxableSubtotalCents)}</span>
+                    </div>
+                    <div className="flex justify-between py-1 pl-4 text-neutral-600">
+                      <span>Sales tax ({percent(group.rateBasisPoints)})</span>
+                      <span className="font-semibold text-black">
+                        {money(group.taxCents)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {taxSummary.groups.length > 1 && (
+                  <div className="flex justify-between border-t border-neutral-400 py-1 font-semibold">
+                    <span>Total sales tax</span>
+                    <span>{money(taxSummary.taxCents)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between border-t border-black py-2 font-semibold">
+                <span>Project subtotal including sales tax</span>
+                <span>{money(clientSubtotalCents)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between border-t border-black py-2 font-semibold">
+              <span>Project Subtotal:</span>
+              <span>{money(clientSubtotalCents)}</span>
+            </div>
+          )}
           {estimate.builderFeeCents > 0 && (
             <>
               <div className="flex justify-between border-y border-black py-2 font-semibold">

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   builtInEstimateTextTemplates,
   clientEstimatePhases,
+  clientEstimateTaxSummary,
   defaultEstimateTitle,
   estimateClientReportMode,
   mergeEstimateTextTemplates,
@@ -24,10 +25,15 @@ function line(
     quantity: 2,
     unit: "CY",
     unitCostCents: 5_000,
+    taxCode: null,
+    taxName: null,
+    taxRateBasisPoints: 0,
+    taxCents: 0,
     lineTotalCents: 10_000,
     ownerVisible: true,
     includeInBuilderFee: true,
     sortOrder: 0,
+    costItems: [],
     ...overrides,
   }
 }
@@ -85,11 +91,80 @@ describe("estimate client report profiles", () => {
       divisionCode: "03",
       description: "Concrete foundations and structural slabs",
       subtotalCents: 15_000,
+      taxCents: 0,
     })
     expect(phases[0]?.lines.map((item) => item.id)).toEqual([
       "line-1",
       "line-2",
     ])
+  })
+
+  it("groups visible sales tax by the underlying tax entity", () => {
+    const phases = clientEstimatePhases({
+      lines: [
+        line({
+          id: "simple-tax",
+          taxCode: "DENVER",
+          taxName: "Denver",
+          taxRateBasisPoints: 881,
+          taxCents: 881,
+          lineTotalCents: 10_881,
+        }),
+        line({
+          id: "breakdown-tax",
+          taxCents: 1_281,
+          lineTotalCents: 16_281,
+          costItems: [
+            {
+              taxCode: "DENVER",
+              taxName: "Denver",
+              taxRateBasisPoints: 881,
+              taxCents: 881,
+              lineTotalCents: 10_881,
+            },
+            {
+              taxCode: "CO",
+              taxName: "Colorado",
+              taxRateBasisPoints: 400,
+              taxCents: 400,
+              lineTotalCents: 5_400,
+            },
+          ],
+        }),
+        line({
+          id: "private-tax",
+          ownerVisible: false,
+          taxName: "Denver",
+          taxRateBasisPoints: 881,
+          taxCents: 8_810,
+          lineTotalCents: 108_810,
+        }),
+      ],
+      phaseDescriptions: {},
+    })
+
+    expect(phases[0]?.taxCents).toBe(2_162)
+    expect(
+      clientEstimateTaxSummary(phases.flatMap((phase) => phase.lines))
+    ).toEqual({
+      taxCents: 2_162,
+      groups: [
+        {
+          key: "Colorado:400",
+          label: "Colorado",
+          rateBasisPoints: 400,
+          taxableSubtotalCents: 5_000,
+          taxCents: 400,
+        },
+        {
+          key: "Denver:881",
+          label: "Denver",
+          rateBasisPoints: 881,
+          taxableSubtotalCents: 20_000,
+          taxCents: 1_762,
+        },
+      ],
+    })
   })
 
   it("offers the Drive-sourced acknowledgement forms only to Nu-Tech", () => {
