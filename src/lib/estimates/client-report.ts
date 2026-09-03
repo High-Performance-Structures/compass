@@ -40,10 +40,23 @@ export type ClientEstimateLine = {
   readonly quantity: number
   readonly unit: string
   readonly unitCostCents: number
+  readonly taxCode: string | null
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+  readonly taxCents: number
   readonly lineTotalCents: number
   readonly ownerVisible: boolean
   readonly includeInBuilderFee: boolean
   readonly sortOrder: number
+  readonly costItems: readonly ClientEstimateLineCostItem[]
+}
+
+export type ClientEstimateLineCostItem = {
+  readonly taxCode: string | null
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+  readonly taxCents: number
+  readonly lineTotalCents: number
 }
 
 export type ClientEstimatePhase = {
@@ -51,7 +64,21 @@ export type ClientEstimatePhase = {
   readonly divisionName: string
   readonly description: string
   readonly subtotalCents: number
+  readonly taxCents: number
   readonly lines: readonly ClientEstimateLine[]
+}
+
+export type ClientEstimateTaxGroup = {
+  readonly key: string
+  readonly label: string | null
+  readonly rateBasisPoints: number
+  readonly taxableSubtotalCents: number
+  readonly taxCents: number
+}
+
+export type ClientEstimateTaxSummary = {
+  readonly taxCents: number
+  readonly groups: readonly ClientEstimateTaxGroup[]
 }
 
 const DEFAULT_INTRODUCTION = `Thank you for the opportunity to provide you with an estimate for your project. Please direct any questions to ___________________ at _______________________.`
@@ -285,7 +312,65 @@ export function clientEstimatePhases(input: {
           (total, line) => total + line.lineTotalCents,
           0
         ),
+        taxCents: lines.reduce((total, line) => total + line.taxCents, 0),
         lines,
       }
     })
+}
+
+type MutableClientEstimateTaxGroup = {
+  key: string
+  label: string | null
+  rateBasisPoints: number
+  taxableSubtotalCents: number
+  taxCents: number
+}
+
+function taxGroupLabel(source: ClientEstimateLineCostItem): string | null {
+  const name = source.taxName?.trim()
+  if (name) return name
+  const code = source.taxCode?.trim()
+  return code && code.length > 0 ? code : null
+}
+
+function taxSourcesForLine(
+  line: ClientEstimateLine
+): readonly ClientEstimateLineCostItem[] {
+  return line.costItems.length > 0 ? line.costItems : [line]
+}
+
+export function clientEstimateTaxSummary(
+  lines: readonly ClientEstimateLine[]
+): ClientEstimateTaxSummary {
+  const grouped = new Map<string, MutableClientEstimateTaxGroup>()
+
+  for (const line of lines) {
+    for (const source of taxSourcesForLine(line)) {
+      if (source.taxCents <= 0) continue
+      const label = taxGroupLabel(source)
+      const key = [label ?? "", source.taxRateBasisPoints].join(":")
+      const current = grouped.get(key) ?? {
+        key,
+        label,
+        rateBasisPoints: source.taxRateBasisPoints,
+        taxableSubtotalCents: 0,
+        taxCents: 0,
+      }
+      current.taxableSubtotalCents +=
+        source.lineTotalCents - source.taxCents
+      current.taxCents += source.taxCents
+      grouped.set(key, current)
+    }
+  }
+
+  const groups = [...grouped.values()].sort((left, right) => {
+    const labelOrder = (left.label ?? "").localeCompare(right.label ?? "")
+    if (labelOrder !== 0) return labelOrder
+    return left.rateBasisPoints - right.rateBasisPoints
+  })
+
+  return {
+    taxCents: groups.reduce((total, group) => total + group.taxCents, 0),
+    groups,
+  }
 }
