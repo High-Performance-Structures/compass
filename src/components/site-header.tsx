@@ -34,12 +34,15 @@ import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
 import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
+import { ListeningRoomButton } from "@/components/voice/listening-room-button"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 
+const OFFICE_TALK_CHANNEL_ID =
+  "voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899"
 const OFFICE_TALK_MEETING_HREF =
-  "/dashboard/conversations/voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899/meeting"
+  `/dashboard/conversations/${OFFICE_TALK_CHANNEL_ID}/meeting`
 const OFFICE_TALK_WINDOW_NAME = "compass-office-talk"
 
 export function openOfficeTalkWindow(): void {
@@ -152,16 +155,23 @@ export function SiteHeader({
           </button>
           <NotificationsPopover />
           {canUseOfficeTalk && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={openOfficeTalkWindow}
-              aria-label="Open Office Talk"
-              title="Office Talk"
-            >
-              <IconVideo className="size-4" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={openOfficeTalkWindow}
+                aria-label="Open Office Talk"
+                title="Office Talk"
+              >
+                <IconVideo className="size-4" />
+              </Button>
+              <ListeningRoomButton
+                channelId={OFFICE_TALK_CHANNEL_ID}
+                channelName="Office Talk"
+                className="size-9 shrink-0 border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              />
+            </>
           )}
           {canUseDirectMessages && (
             <Button
@@ -283,16 +293,23 @@ export function SiteHeader({
           )}
           <NotificationsPopover />
           {canUseOfficeTalk && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={openOfficeTalkWindow}
-              aria-label="Open Office Talk"
-              title="Office Talk"
-            >
-              <IconVideo className="size-4" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={openOfficeTalkWindow}
+                aria-label="Open Office Talk"
+                title="Office Talk"
+              >
+                <IconVideo className="size-4" />
+              </Button>
+              <ListeningRoomButton
+                channelId={OFFICE_TALK_CHANNEL_ID}
+                channelName="Office Talk"
+                className="border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              />
+            </>
           )}
           {canUseDirectMessages && (
             <Button

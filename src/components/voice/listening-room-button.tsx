@@ -94,9 +94,11 @@ function preferredLink(
 export function ListeningRoomButton({
   channelId,
   channelName,
+  className,
 }: {
   readonly channelId: string
   readonly channelName: string
+  readonly className?: string
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [room, setRoom] = React.useState<ListeningRoomSnapshot | null>(null)
@@ -124,13 +126,15 @@ export function ListeningRoomButton({
   React.useEffect(() => {
     const saved = window.localStorage.getItem(PREFERRED_PROVIDER_KEY)
     if (saved && isMusicProvider(saved)) setPreferredProvider(saved)
-    void loadRoom(false)
-    const interval = window.setInterval(() => void loadRoom(false), 5_000)
-    return () => window.clearInterval(interval)
-  }, [loadRoom])
+  }, [])
 
   React.useEffect(() => {
-    if (open) void loadRoom(false)
+    void loadRoom(false)
+    const interval = window.setInterval(
+      () => void loadRoom(false),
+      open ? 5_000 : 30_000
+    )
+    return () => window.clearInterval(interval)
   }, [loadRoom, open])
 
   async function applySnapshot(
@@ -246,7 +250,8 @@ export function ListeningRoomButton({
             onClick={() => setOpen(true)}
             className={cn(
               "relative flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
-              room && "border-primary/60 bg-primary/15 text-primary"
+              room && "border-primary/60 bg-primary/15 text-primary",
+              className
             )}
             aria-label="Open listening room"
           >
