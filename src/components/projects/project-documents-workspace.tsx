@@ -1,6 +1,12 @@
 "use client"
 
-import { useMemo, useState, useTransition, type FormEvent } from "react"
+import {
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+  type MouseEvent,
+} from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -9,6 +15,7 @@ import {
   IconDownload,
   IconFileDescription,
   IconFolder,
+  IconFolderPlus,
   IconHistory,
   IconPlus,
   IconTrash,
@@ -23,6 +30,7 @@ import {
   updateProjectDocumentStatus,
   type ProjectDocumentWorkspace,
 } from "@/app/actions/project-documents"
+import { publishProjectDocumentFolder } from "@/app/actions/project-document-folders"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -174,6 +182,43 @@ export function ProjectDocumentsWorkspacePanel({
       setTitle("")
       setSupersedesDocumentId("")
       form.reset()
+      router.refresh()
+    })
+  }
+
+  function publishFolder(event: MouseEvent<HTMLButtonElement>): void {
+    const form = event.currentTarget.form
+    const folder = folderTrail[folderTrail.length - 1]
+    if (!form || !folder) return
+    const categoryLabel = projectDocumentCategoryLabel(category)
+    if (
+      !window.confirm(
+        `Publish all downloadable files in “${folder.name}” and its subfolders as ${categoryLabel}? Already-published files will be skipped.`
+      )
+    ) return
+    const data = new FormData(form)
+    startTransition(async () => {
+      const result = await publishProjectDocumentFolder(workspace.project.id, {
+        sourceDriveFolderId: folder.id,
+        category,
+        description: String(data.get("description") ?? ""),
+        documentDate: String(data.get("documentDate") ?? ""),
+        revision: String(data.get("revision") ?? ""),
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.publishedCount === 0) {
+        toast.info("Every downloadable file in this folder is already published.")
+      } else {
+        const skipped = result.skippedCount > 0
+          ? ` ${result.skippedCount} duplicate or unsupported files were skipped.`
+          : ""
+        toast.success(
+          `${result.publishedCount} folder documents published to the entire project team.${skipped}`
+        )
+      }
       router.refresh()
     })
   }
@@ -351,7 +396,8 @@ export function ProjectDocumentsWorkspacePanel({
           <h2 className="font-semibold">Publish from this project’s folder</h2>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Select the exact Drive file that belongs in the coordinated construction set.
+          Select one Drive file, or open a folder and publish all downloadable files
+          inside it and its subfolders.
         </p>
         {sourceError && sourceFiles.length === 0 ? (
           <p className="mt-4 border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -371,6 +417,16 @@ export function ProjectDocumentsWorkspacePanel({
                 >
                   <IconChevronLeft className="size-4" />
                   Up one folder
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isPending || isFolderPending || folderTrail.length === 0}
+                  onClick={publishFolder}
+                >
+                  <IconFolderPlus className="size-4" />
+                  {isPending ? "Publishing..." : "Publish this folder"}
                 </Button>
                 <span className="inline-flex min-w-0 items-center gap-1.5">
                   <IconFolder className="size-4 shrink-0" />
@@ -404,7 +460,7 @@ export function ProjectDocumentsWorkspacePanel({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="project-document-title">Display title</Label>
+              <Label htmlFor="project-document-title">Display title (single file)</Label>
               <Input
                 id="project-document-title"
                 value={title}
