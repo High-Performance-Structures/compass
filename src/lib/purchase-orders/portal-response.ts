@@ -6,9 +6,46 @@ export type PortalPurchaseOrderAcknowledgement = {
   readonly submittedAt: string
 }
 
+export const PORTAL_PURCHASE_ORDER_VENDOR_STATUSES = [
+  {
+    value: "processing",
+    label: "Processing",
+    description: "The order is being reviewed, prepared, or scheduled.",
+  },
+  {
+    value: "partially_fulfilled",
+    label: "Partially fulfilled",
+    description: "Part of the material or contracted work has been fulfilled.",
+  },
+  {
+    value: "fulfilled",
+    label: "Fulfilled",
+    description: "The material or contracted work has been fulfilled.",
+  },
+  {
+    value: "on_hold",
+    label: "On hold / needs attention",
+    description: "Progress is blocked and the project team needs to respond.",
+  },
+] as const
+
+export type PortalPurchaseOrderVendorStatus =
+  (typeof PORTAL_PURCHASE_ORDER_VENDOR_STATUSES)[number]["value"]
+
+export type PortalPurchaseOrderStatusUpdate = {
+  readonly status: PortalPurchaseOrderVendorStatus
+  readonly responderUserId: string
+  readonly responderName: string
+  readonly responderCompany: string | null
+  readonly note: string | null
+  readonly submittedAt: string
+}
+
 export type PortalPurchaseOrderPayload = {
   readonly recipientEmails: readonly string[]
   readonly acknowledgement: PortalPurchaseOrderAcknowledgement | null
+  readonly latestStatus: PortalPurchaseOrderStatusUpdate | null
+  readonly statusHistory: readonly PortalPurchaseOrderStatusUpdate[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -72,13 +109,69 @@ function parseAcknowledgement(
   }
 }
 
+export function validPortalPurchaseOrderVendorStatus(
+  value: string
+): PortalPurchaseOrderVendorStatus | null {
+  const normalized = value.trim().toLowerCase()
+  return (
+    PORTAL_PURCHASE_ORDER_VENDOR_STATUSES.find(
+      (status) => status.value === normalized
+    )?.value ?? null
+  )
+}
+
+export function portalPurchaseOrderVendorStatusLabel(
+  value: PortalPurchaseOrderVendorStatus
+): string {
+  return (
+    PORTAL_PURCHASE_ORDER_VENDOR_STATUSES.find(
+      (status) => status.value === value
+    )?.label ?? value
+  )
+}
+
+function parseStatusUpdate(value: unknown): PortalPurchaseOrderStatusUpdate | null {
+  if (!isRecord(value)) return null
+  const rawStatus = textValue(value, "status")
+  const responderUserId = textValue(value, "responderUserId")
+  const responderName = textValue(value, "responderName")
+  const submittedAt = textValue(value, "submittedAt")
+  const status = rawStatus
+    ? validPortalPurchaseOrderVendorStatus(rawStatus)
+    : null
+  if (!status || !responderUserId || !responderName || !submittedAt) return null
+  return {
+    status,
+    responderUserId,
+    responderName,
+    responderCompany: textValue(value, "responderCompany"),
+    note: textValue(value, "note"),
+    submittedAt,
+  }
+}
+
+function parseStatusHistory(
+  payload: Record<string, unknown>
+): readonly PortalPurchaseOrderStatusUpdate[] {
+  const raw = payload.vendorStatusUpdates
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map(parseStatusUpdate)
+    .filter(
+      (update): update is PortalPurchaseOrderStatusUpdate => update !== null
+    )
+}
+
 export function parsePortalPurchaseOrderPayload(
   value: string | null
 ): PortalPurchaseOrderPayload {
   const payload = parseRecord(value)
+  const statusHistory = parseStatusHistory(payload)
   return {
     recipientEmails: parseRecipientEmails(payload),
     acknowledgement: parseAcknowledgement(payload),
+    latestStatus: statusHistory[statusHistory.length - 1] ?? null,
+    statusHistory,
   }
 }
 
@@ -153,5 +246,17 @@ export function withPortalPurchaseOrderAcknowledgement(
   return JSON.stringify({
     ...parseRecord(value),
     vendorAcknowledgement: acknowledgement,
+  })
+}
+
+export function withPortalPurchaseOrderStatusUpdate(
+  value: string | null,
+  update: PortalPurchaseOrderStatusUpdate
+): string {
+  const payload = parseRecord(value)
+  const history = parseStatusHistory(payload)
+  return JSON.stringify({
+    ...payload,
+    vendorStatusUpdates: [...history, update].slice(-100),
   })
 }

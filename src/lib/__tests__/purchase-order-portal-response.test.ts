@@ -36,6 +36,8 @@ describe("purchase order portal response", () => {
         note: "Received",
         submittedAt: "2026-08-19T18:00:00.000Z",
       },
+      latestStatus: null,
+      statusHistory: [],
     })
   })
 
