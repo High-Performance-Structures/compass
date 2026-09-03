@@ -831,6 +831,7 @@ export function ProjectEstimateWorkspacePanel({
               estimates={workspace.estimates}
               activeEstimate={estimate}
               canEdit={workspace.canEdit}
+              canDelete={workspace.canDelete}
             />
             <Button variant="outline" asChild>
               <Link

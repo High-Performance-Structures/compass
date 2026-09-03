@@ -3,10 +3,11 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTransition } from "react"
-import { IconColumns3, IconCopy } from "@tabler/icons-react"
+import { IconColumns3, IconCopy, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
+  deleteProjectEstimateDraft,
   duplicateProjectEstimate,
   type ProjectEstimateSummary,
 } from "@/app/actions/project-estimates"
@@ -29,11 +30,13 @@ export function ProjectEstimateVersionControls({
   estimates,
   activeEstimate,
   canEdit,
+  canDelete,
 }: {
   readonly projectId: string
   readonly estimates: readonly ProjectEstimateSummary[]
   readonly activeEstimate: ProjectEstimateSummary
   readonly canEdit: boolean
+  readonly canDelete: boolean
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -65,6 +68,29 @@ export function ProjectEstimateVersionControls({
       router.push(
         `/dashboard/projects/${projectId}/estimate?estimateId=${result.id}`
       )
+      router.refresh()
+    })
+  }
+
+  function deleteDraft(): void {
+    if (
+      !window.confirm(
+        `Permanently delete draft version ${activeEstimate.versionNumber}? This deletes the entire draft, including its estimate lines, cost breakdowns, basis references, and imported RFQ bid links. This cannot be undone.`
+      )
+    ) {
+      return
+    }
+    startTransition(async () => {
+      const result = await deleteProjectEstimateDraft(
+        projectId,
+        activeEstimate.id
+      )
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Estimate draft deleted.")
+      router.push(`/dashboard/projects/${projectId}/estimate`)
       router.refresh()
     })
   }
@@ -102,6 +128,17 @@ export function ProjectEstimateVersionControls({
         >
           <IconCopy className="size-4" />
           {isPending ? "Creating version…" : "Duplicate as next version"}
+        </Button>
+      )}
+      {canDelete && activeEstimate.status === "draft" && (
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={deleteDraft}
+          disabled={isPending}
+        >
+          <IconTrash className="size-4" />
+          {isPending ? "Deleting draft…" : "Delete draft"}
         </Button>
       )}
     </div>

@@ -25,6 +25,11 @@ import {
 } from "@/db/schema-estimates"
 import { googleAuth } from "@/db/schema-google"
 import { projectDocuments } from "@/db/schema-documents"
+import { contractPackets } from "@/db/schema-contracts"
+import {
+  projectEstimateRfqBidImportLines,
+  projectEstimateRfqBidImports,
+} from "@/db/schema-rfqs"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { decrypt } from "@/lib/crypto"
@@ -77,7 +82,7 @@ import {
   getGoogleCryptoSalt,
   parseServiceAccountKey,
 } from "@/lib/google/config"
-import { requirePermission } from "@/lib/permissions"
+import { can, requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
   projectDepartment,
@@ -282,6 +287,7 @@ export type ProjectEstimateSignerOption = {
 
 export type ProjectEstimateWorkspace = {
   readonly canEdit: boolean
+  readonly canDelete: boolean
   readonly projectNumber: string | null
   readonly projectName: string
   readonly projectAddress: string | null
@@ -1036,6 +1042,7 @@ export async function getProjectEstimateWorkspace(
 ): Promise<ProjectEstimateWorkspace> {
   const access = await estimateAccess(projectId, false)
   const canEdit = isInternalStaffRole(access.user.role)
+  const canDelete = can(access.user, "budget", "delete")
   const estimateRows = await access.db
     .select()
     .from(projectEstimates)
@@ -1220,6 +1227,7 @@ export async function getProjectEstimateWorkspace(
 
   return {
     canEdit,
+    canDelete,
     projectNumber: access.projectNumber,
     projectName: access.projectName,
     projectAddress: access.projectAddress,
@@ -1366,6 +1374,125 @@ export async function createProjectEstimateDraft(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to create estimate.",
+    }
+  }
+}
+
+export async function deleteProjectEstimateDraft(
+  projectId: string,
+  estimateId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    requirePermission(access.user, "budget", "delete")
+    const [estimateRows, linkedPacketRows] = await Promise.all([
+      access.db
+        .select({
+          id: projectEstimates.id,
+          estimateNumber: projectEstimates.estimateNumber,
+          versionNumber: projectEstimates.versionNumber,
+          status: projectEstimates.status,
+        })
+        .from(projectEstimates)
+        .where(
+          and(
+            eq(projectEstimates.id, estimateId),
+            eq(projectEstimates.projectId, projectId)
+          )
+        )
+        .limit(1),
+      access.db
+        .select({ id: contractPackets.id })
+        .from(contractPackets)
+        .where(
+          and(
+            eq(contractPackets.projectId, projectId),
+            eq(contractPackets.estimateId, estimateId)
+          )
+        )
+        .limit(1),
+    ])
+    const estimate = estimateRows[0]
+    if (!estimate) throw new Error("Estimate draft not found.")
+    if (estimate.status !== "draft") {
+      throw new Error("Only draft estimates can be deleted.")
+    }
+    if (linkedPacketRows[0]) {
+      throw new Error(
+        "Delete the contract packet linked to this draft before deleting the estimate."
+      )
+    }
+
+    // Imported RFQ provenance is intentionally removed with the draft so the
+    // approved bid can be imported into a replacement estimate later.
+    const deletionResults = await access.db.batch([
+      access.db
+        .delete(projectEstimateRfqBidImportLines)
+        .where(
+          inArray(
+            projectEstimateRfqBidImportLines.importId,
+            access.db
+              .select({ id: projectEstimateRfqBidImports.id })
+              .from(projectEstimateRfqBidImports)
+              .where(
+                and(
+                  eq(projectEstimateRfqBidImports.projectId, projectId),
+                  eq(projectEstimateRfqBidImports.estimateId, estimateId)
+                )
+              )
+          )
+        ),
+      access.db
+        .delete(projectEstimateRfqBidImports)
+        .where(
+          and(
+            eq(projectEstimateRfqBidImports.projectId, projectId),
+            eq(projectEstimateRfqBidImports.estimateId, estimateId)
+          )
+        ),
+      access.db
+        .delete(projectEstimates)
+        .where(
+          and(
+            eq(projectEstimates.id, estimateId),
+            eq(projectEstimates.projectId, projectId),
+            eq(projectEstimates.status, "draft")
+          )
+        ),
+    ])
+    const estimateDeletion = deletionResults[2]
+    if (!estimateDeletion || (estimateDeletion.meta.changes ?? 0) !== 1) {
+      throw new Error("The estimate changed before it could be deleted. Refresh and try again.")
+    }
+
+    if (access.organizationId) {
+      await recordActivityEvent({
+        db: access.db,
+        organizationId: access.organizationId,
+        projectId,
+        actor: access.user,
+        category: "financial",
+        action: "estimate_draft_deleted",
+        entityType: "project_estimate",
+        entityId: estimate.id,
+        summary: `Deleted draft ${estimate.estimateNumber} version ${estimate.versionNumber}.`,
+        metadata: {
+          estimateNumber: estimate.estimateNumber,
+          versionNumber: estimate.versionNumber,
+        },
+      })
+    }
+
+    revalidateEstimate(projectId)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    return { success: true, id: estimate.id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to delete the estimate draft.",
     }
   }
 }
