@@ -86,13 +86,24 @@ function accessStatusLabel(contact: ProjectContactItem): string {
     case "inactive":
       return "Inactive"
     case "not_invited":
-      return "Not invited"
+      return contact.compassAccountStatus === "active"
+        ? "No project access"
+        : contact.compassAccountStatus === "inactive"
+          ? "Account inactive"
+          : "Not invited"
   }
 }
 
 function accessStatusBadgeVariant(
   contact: ProjectContactItem
 ): "default" | "secondary" | "destructive" | "outline" {
+  if (
+    contact.accessStatus === "not_invited" &&
+    contact.compassAccountStatus === "inactive"
+  ) {
+    return "destructive"
+  }
+
   switch (contact.accessStatus) {
     case "active":
       return "default"
@@ -196,6 +207,7 @@ function ContactCard({
         contact.active &&
         contact.email &&
         !isCompanyOnlyVendor(contact) &&
+        contact.compassAccountStatus !== "inactive" &&
         projectContactCanInvite(contact.accessStatus) && (
           <div className="mt-3 flex justify-end">
             <ProjectContactInviteButton
@@ -205,6 +217,7 @@ function ContactCard({
               contactName={contact.displayName}
               contactEmail={contact.email}
               contactType={contact.contactType}
+              compassAccountStatus={contact.compassAccountStatus}
             />
           </div>
         )}
