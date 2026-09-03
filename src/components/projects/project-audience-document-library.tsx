@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { IconDownload, IconFileDescription, IconHistory } from "@tabler/icons-react"
+import { IconExternalLink, IconFileDescription, IconHistory } from "@tabler/icons-react"
 
 import type { AudienceDocument } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
@@ -66,7 +66,7 @@ export function ProjectAudienceDocumentLibrary({
               {document.downloadable && (
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/api/projects/${projectId}/documents/${document.id}/download`}>
-                    <IconDownload className="size-4" />Download
+                    <IconExternalLink className="size-4" />Open
                   </Link>
                 </Button>
               )}
@@ -98,7 +98,7 @@ export function ProjectAudienceDocumentLibrary({
                 {document.downloadable && (
                   <Button asChild size="sm" variant="ghost">
                     <Link href={`/api/projects/${projectId}/documents/${document.id}/download`}>
-                      <IconDownload className="size-4" />Download
+                      <IconExternalLink className="size-4" />Open
                     </Link>
                   </Button>
                 )}

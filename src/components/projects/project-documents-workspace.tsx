@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation"
 import {
   IconArchive,
   IconChevronLeft,
-  IconDownload,
+  IconExternalLink,
   IconFileDescription,
   IconFolder,
   IconFolderPlus,
@@ -327,7 +327,7 @@ export function ProjectDocumentsWorkspacePanel({
                 <div className="flex flex-wrap items-start gap-2 lg:justify-end">
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}>
-                      <IconDownload className="size-4" />Download
+                      <IconExternalLink className="size-4" />Open
                     </Link>
                   </Button>
                   <ProjectDocumentManagementActions
