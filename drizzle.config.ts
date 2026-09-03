@@ -18,6 +18,7 @@ export default defineConfig({
     "./src/db/schema-nutech.ts",
     "./src/db/schema-templates.ts",
     "./src/db/schema-social.ts",
+    "./src/db/schema-rfqs.ts",
     "./src/lib/sync/schema.ts",
   ],
   out: "./drizzle",

@@ -53,6 +53,7 @@ import {
   parsePortalRfqPayload,
   type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -283,6 +284,11 @@ export type CreateRfqRequestInput = {
 }
 
 export type UpdateRfqRequestInput = CreateRfqRequestInput
+
+export type DuplicateRfqRequestInput = {
+  readonly requestedFrom: string
+  readonly recipientEmail: string
+}
 
 export type SendPurchaseOrderEmailInput = {
   readonly to: string
@@ -1635,6 +1641,10 @@ export async function updateProjectOperationStatus(
   requestedStatus: string
 ): Promise<ProjectOperationActionResult> {
   try {
+    if (operationKind === "rfq" && requestedStatus === "awarded") {
+      const user = await requireAuth()
+      await requireFeaturePermission(user, "rfqs", "approve")
+    }
     const db = await verifyProjectUpdateAccess(
       projectId,
       operationKind === "purchase_order" ? "purchase-orders" : "rfqs"
@@ -1668,6 +1678,26 @@ export async function updateProjectOperationStatus(
           operationKind === "purchase_order"
             ? "Purchase order not found."
             : "RFQ not found.",
+      }
+    }
+    if (operationKind === "rfq") {
+      const approval = await db
+        .select({ id: projectRfqBidApprovals.id })
+        .from(projectRfqBidApprovals)
+        .where(eq(projectRfqBidApprovals.rfqOperationId, operationId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (approval && requestedStatus !== "awarded") {
+        return {
+          success: false,
+          error: "An approved RFQ is locked. Its awarded status cannot be changed.",
+        }
+      }
+      if (!approval && requestedStatus === "awarded") {
+        return {
+          success: false,
+          error: "Approve the submitted bid before marking this RFQ awarded.",
+        }
       }
     }
 
@@ -2123,6 +2153,133 @@ export async function createRfqRequest(
   }
 }
 
+export async function duplicateRfqRequest(
+  projectId: string,
+  rfqId: string,
+  input: DuplicateRfqRequestInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId, "rfqs")
+    const [projectRows, sourceRows, rfqRows] = await Promise.all([
+      db
+        .select({
+          projectNumber: projects.projectNumber,
+          sageJobId: projects.sageJobId,
+          sageJobNumber: projects.sageJobNumber,
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1),
+      db
+        .select()
+        .from(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.id, rfqId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "rfq")
+          )
+        )
+        .limit(1),
+      db
+        .select({ id: projectOperations.id })
+        .from(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "rfq")
+          )
+        ),
+    ])
+    const project = projectRows[0]
+    const source = sourceRows[0]
+    if (!source) return { success: false, error: "RFQ not found." }
+
+    const requestedFrom = requireText(input.requestedFrom, "Vendor or subcontractor")
+    const recipientEmail = requireText(input.recipientEmail, "Recipient email")
+      .toLowerCase()
+    if (!/^\S+@\S+\.\S+$/.test(recipientEmail)) {
+      return { success: false, error: "Enter a valid recipient email." }
+    }
+
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const sourceRecordNumber = projectDocumentNumberFor(
+      project?.projectNumber ?? null,
+      "RFQ",
+      rfqRows.length
+    )
+    const sageShortRecordNumber = sageShortProjectDocumentNumberFor(
+      project?.projectNumber ?? null,
+      "RFQ",
+      rfqRows.length
+    )
+    const sourcePayload = parseJsonRecord(source.sagePayloadJson) ?? {}
+    const bidPackageId =
+      stringValue(sourcePayload, "bidPackageId") ?? source.id
+    const payload = {
+      ...sourcePayload,
+      source: "compass_rfq",
+      jobId: project?.sageJobId ?? null,
+      jobNumber: project?.sageJobNumber ?? null,
+      rfqNumber: sourceRecordNumber,
+      sageShortRfqNumber: sageShortRecordNumber,
+      requestedFrom,
+      recipientEmail,
+      vendorResponse: null,
+      duplicateOfRfqId: source.id,
+      bidPackageId,
+      sageRfp: {
+        targetRecordType: "sage_rfp",
+        linkStrategy: "external_document_links",
+        suggestedRecordNumber: sageShortRecordNumber,
+        writeStatus: "not_ready",
+      },
+    }
+
+    await db.insert(projectOperations).values({
+      id,
+      projectId,
+      sourceSystem: "compass",
+      sourceRecordType: "rfq",
+      sourceRecordNumber,
+      title: source.title,
+      description: source.description,
+      status: "draft",
+      priority: source.priority,
+      assigneeType: "vendor",
+      assigneeName: requestedFrom,
+      siteContactPhone: source.siteContactPhone,
+      companyName: requestedFrom,
+      costCode: source.costCode,
+      startDate: source.startDate,
+      dueDate: source.dueDate,
+      sageJobId: project?.sageJobId ?? null,
+      sageJobNumber: project?.sageJobNumber ?? null,
+      sageVendorName: requestedFrom,
+      sagePhaseCode: source.sagePhaseCode,
+      sageCostCode: source.sageCostCode,
+      sageWriteStatus: "not_ready",
+      sagePayloadJson: JSON.stringify(payload),
+      syncDirection: "write",
+      syncStatus: "compass_only",
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    revalidatePath("/dashboard")
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to duplicate RFQ.",
+    }
+  }
+}
+
 export async function deletePurchaseOrderRequest(
   projectId: string,
   purchaseOrderId: string
@@ -2218,6 +2375,14 @@ export async function updateRfqRequest(
 
     if (!existing[0]) {
       return { success: false, error: "RFQ not found." }
+    }
+    if (
+      parsePortalRfqPayload(existing[0].sagePayloadJson).vendorResponse !== null
+    ) {
+      return {
+        success: false,
+        error: "A submitted RFQ response is immutable. Duplicate the RFQ for a new request.",
+      }
     }
 
     const now = new Date().toISOString()
@@ -2346,7 +2511,10 @@ export async function deleteRfqRequest(
   try {
     const db = await verifyProjectUpdateAccess(projectId, "rfqs")
     const [existing] = await db
-      .select({ id: projectOperations.id })
+      .select({
+        id: projectOperations.id,
+        status: projectOperations.status,
+      })
       .from(projectOperations)
       .where(
         and(
@@ -2359,6 +2527,12 @@ export async function deleteRfqRequest(
 
     if (!existing) {
       return { success: false, error: "RFQ not found." }
+    }
+    if (existing.status !== "draft") {
+      return {
+        success: false,
+        error: "Only an unsent RFQ draft can be deleted. Close or void a shared RFQ instead.",
+      }
     }
 
     await db

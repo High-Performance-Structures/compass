@@ -20,6 +20,7 @@ import * as contractSchema from "./schema-contracts"
 import * as participantSchema from "./schema-participants"
 import * as socialSchema from "./schema-social"
 import * as documentSchema from "./schema-documents"
+import * as rfqSchema from "./schema-rfqs"
 
 const allSchemas = {
   ...schema,
@@ -43,6 +44,7 @@ const allSchemas = {
   ...participantSchema,
   ...socialSchema,
   ...documentSchema,
+  ...rfqSchema,
 }
 
 // Legacy function - kept for backwards compatibility

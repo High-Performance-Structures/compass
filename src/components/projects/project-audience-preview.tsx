@@ -245,6 +245,7 @@ function RfqRow({
             rfqTitle={item.title}
             status={item.status}
             response={item.vendorResponse}
+            scopeItems={item.scopeItems}
             viewerIsInternal={viewerIsInternal}
           />
         </div>
@@ -325,6 +326,31 @@ function RfqRow({
             <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
               {item.vendorResponse.notes}
             </p>
+          )}
+          {item.vendorResponse.lines.length > 0 && (
+            <div className="mt-3 overflow-hidden border bg-background">
+              {item.vendorResponse.lines.map((line) => (
+                <div
+                  key={`${item.id}-submitted-line-${line.lineNumber}`}
+                  className="flex items-start justify-between gap-3 border-b px-3 py-2 last:border-b-0"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {line.lineNumber}.{" "}
+                      {item.scopeItems.find(
+                        (scope) => scope.lineNumber === line.lineNumber
+                      )?.description ?? "RFQ scope"}
+                    </p>
+                    {line.notes && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {line.notes}
+                      </p>
+                    )}
+                  </div>
+                  <span className="font-medium">{formatMoney(line.amount)}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
