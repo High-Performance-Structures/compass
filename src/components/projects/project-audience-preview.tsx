@@ -35,6 +35,7 @@ import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audie
 import { ProjectAudienceDocumentLibrary } from "@/components/projects/project-audience-document-library"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectAudiencePurchaseOrderResponseDialog } from "@/components/projects/project-audience-purchase-order-response-dialog"
+import { portalPurchaseOrderVendorStatusLabel } from "@/lib/purchase-orders/portal-response"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
@@ -138,12 +139,25 @@ function OperationRow({
           {item.acknowledgement && (
             <Badge variant="outline">Acknowledged</Badge>
           )}
+          {item.latestVendorStatus && (
+            <Badge variant="outline">
+              Vendor: {portalPurchaseOrderVendorStatusLabel(item.latestVendorStatus.status)}
+            </Badge>
+          )}
           <Badge variant="secondary">{statusLabel(item.status)}</Badge>
         </div>
       </div>
       {item.description && (
         <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
           {item.description}
+        </p>
+      )}
+      {item.latestVendorStatus && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Last vendor update by {item.latestVendorStatus.responderName}
+          {item.latestVendorStatus.note
+            ? ` · ${item.latestVendorStatus.note}`
+            : ""}
         </p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
@@ -160,6 +174,7 @@ function OperationRow({
             purchaseOrderLabel={item.sourceRecordNumber ?? item.title}
             status={item.status}
             acknowledgement={item.acknowledgement}
+            latestStatus={item.latestVendorStatus}
             recipients={recipients}
             viewerIsInternal={viewerIsInternal}
           />
@@ -1120,7 +1135,7 @@ export function ProjectAudiencePreview({
                 <IconUsers className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Commitments</h2>
               </div>
-              <Badge variant="outline">{data.operations.length} active</Badge>
+              <Badge variant="outline">{data.operations.length} assigned</Badge>
             </div>
             {data.operations.length > 0 ? (
               <div className="mt-4 grid gap-3">

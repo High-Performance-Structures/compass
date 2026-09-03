@@ -47,6 +47,7 @@ import {
   parsePortalPurchaseOrderPayload,
   portalPurchaseOrderMatchesRecipient,
   type PortalPurchaseOrderAcknowledgement,
+  type PortalPurchaseOrderStatusUpdate,
 } from "@/lib/purchase-orders/portal-response"
 import {
   isOwnerScheduleView,
@@ -134,6 +135,7 @@ export type AudienceOperationItem = {
   readonly dueDate: string | null
   readonly amount: number | null
   readonly acknowledgement: PortalPurchaseOrderAcknowledgement | null
+  readonly latestVendorStatus: PortalPurchaseOrderStatusUpdate | null
 }
 
 export type AudienceOwnerUpdate = {
@@ -1063,6 +1065,10 @@ export async function getProjectAudiencePreview(
         acknowledgement:
           operation.sourceRecordType === "purchase_order"
             ? payload.acknowledgement
+            : null,
+        latestVendorStatus:
+          operation.sourceRecordType === "purchase_order"
+            ? payload.latestStatus
             : null,
       }
     })

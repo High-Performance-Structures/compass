@@ -600,7 +600,22 @@ export async function ensureUserExists(workosUser: {
     .where(eq(users.id, workosUser.id))
     .get()
 
-  if (existing) return existing
+  if (existing) {
+    // Existing vendors may receive another project invitation between sign-ins.
+    // Claim it in the single auth callback request so the first redirected page
+    // does not race multiple server-component auth reads to provision access.
+    const now = new Date().toISOString()
+    const claimedInvitation = await claimProjectAccessInvitations(
+      db,
+      existing.id,
+      existing.email,
+      now
+    )
+    if (claimedInvitation) {
+      await setActiveOrgCookie(claimedInvitation.organizationId)
+    }
+    return existing
+  }
 
   const now = new Date().toISOString()
   const pendingInvitation = await db
