@@ -23,6 +23,7 @@ import { assertProjectAccess } from "@/lib/project-access"
 import {
   isProjectDocumentCategory,
   isProjectDocumentStatus,
+  normalizeProjectDocumentMetadata,
 } from "@/lib/project-documents"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -565,19 +566,23 @@ export async function updateProjectDocumentStatus(
   }
 }
 
-export async function deleteProjectDocument(
+export async function updateProjectDocument(
   projectId: string,
-  documentId: string
+  documentId: string,
+  input: {
+    readonly category: string | null
+    readonly title: string | null
+    readonly description: string | null
+    readonly documentDate: string | null
+    readonly revision: string | null
+  }
 ): Promise<ProjectDocumentActionResult> {
   try {
     const access = await internalDocumentAccess(projectId, true)
-    requirePermission(access.user, "document", "delete")
+    const metadata = normalizeProjectDocumentMetadata(input)
+    if (!metadata.success) throw new Error(metadata.error)
     const existing = await access.db
-      .select({
-        id: projectDocuments.id,
-        title: projectDocuments.title,
-        status: projectDocuments.status,
-      })
+      .select({ id: projectDocuments.id, title: projectDocuments.title })
       .from(projectDocuments)
       .where(
         and(
@@ -588,22 +593,10 @@ export async function deleteProjectDocument(
       .limit(1)
       .then((rows) => rows[0] ?? null)
     if (!existing) throw new Error("Project document not found.")
-    if (existing.status !== "archived" && existing.status !== "draft") {
-      throw new Error("Archive a published document before deleting its record.")
-    }
-    const estimateReference = await access.db
-      .select({ id: projectEstimateBasisDocuments.id })
-      .from(projectEstimateBasisDocuments)
-      .where(eq(projectEstimateBasisDocuments.projectDocumentId, documentId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (estimateReference) {
-      throw new Error(
-        "This document is part of an estimate or contract basis and must be retained."
-      )
-    }
+    const now = new Date().toISOString()
     await access.db
-      .delete(projectDocuments)
+      .update(projectDocuments)
+      .set({ ...metadata.value, updatedAt: now })
       .where(
         and(
           eq(projectDocuments.id, documentId),
@@ -617,17 +610,96 @@ export async function deleteProjectDocument(
       projectId,
       actor: access.user,
       category: "file",
-      action: "project_document.deleted",
+      action: "project_document.updated",
       entityType: "project_document",
       entityId: documentId,
-      summary: `Deleted the archived publication record for ${existing.title}.`,
+      summary: `Updated project document information for ${metadata.value.title}.`,
+      metadata: {
+        previousTitle: existing.title,
+        category: metadata.value.category,
+        revision: metadata.value.revision,
+      },
     })
     refreshDocumentPaths(projectId)
     return { success: true, id: documentId }
   } catch (error) {
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unable to delete document.",
+      error: error instanceof Error ? error.message : "Unable to update document.",
+    }
+  }
+}
+
+export async function removeProjectDocument(
+  projectId: string,
+  documentId: string
+): Promise<ProjectDocumentActionResult> {
+  try {
+    const access = await internalDocumentAccess(projectId, true)
+    requirePermission(access.user, "document", "delete")
+    const existing = await access.db
+      .select({
+        id: projectDocuments.id,
+        title: projectDocuments.title,
+      })
+      .from(projectDocuments)
+      .where(
+        and(
+          eq(projectDocuments.id, documentId),
+          eq(projectDocuments.projectId, projectId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!existing) throw new Error("Project document not found.")
+    const estimateReference = await access.db
+      .select({ id: projectEstimateBasisDocuments.id })
+      .from(projectEstimateBasisDocuments)
+      .where(eq(projectEstimateBasisDocuments.projectDocumentId, documentId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (estimateReference) {
+      throw new Error(
+        "This document is part of an estimate or contract basis and must remain in Compass."
+      )
+    }
+    const now = new Date().toISOString()
+    await access.db.batch([
+      access.db
+        .update(projectDocuments)
+        .set({ supersedesDocumentId: null, updatedAt: now })
+        .where(
+          and(
+            eq(projectDocuments.projectId, projectId),
+            eq(projectDocuments.supersedesDocumentId, documentId)
+          )
+        ),
+      access.db
+        .delete(projectDocuments)
+        .where(
+          and(
+            eq(projectDocuments.id, documentId),
+            eq(projectDocuments.projectId, projectId)
+          )
+        ),
+    ])
+    await recordActivityEvent({
+      db: access.db,
+      organizationId: access.organizationId,
+      projectId,
+      actor: access.user,
+      category: "file",
+      action: "project_document.removed",
+      entityType: "project_document",
+      entityId: documentId,
+      summary: `Removed ${existing.title} from Compass. The source Drive file was retained.`,
+    })
+    refreshDocumentPaths(projectId)
+    return { success: true, id: documentId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to remove document.",
     }
   }
 }

@@ -18,19 +18,18 @@ import {
   IconFolderPlus,
   IconHistory,
   IconPlus,
-  IconTrash,
   IconUsersGroup,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
-  deleteProjectDocument,
   listProjectDocumentSourceFolder,
   publishProjectDocument,
   updateProjectDocumentStatus,
   type ProjectDocumentWorkspace,
 } from "@/app/actions/project-documents"
 import { publishProjectDocumentFolder } from "@/app/actions/project-document-folders"
+import { ProjectDocumentManagementActions } from "@/components/projects/project-document-management-actions"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -243,23 +242,6 @@ export function ProjectDocumentsWorkspacePanel({
     })
   }
 
-  function remove(documentId: string, titleValue: string): void {
-    if (
-      !window.confirm(
-        `Permanently delete the archived Compass publication record for “${titleValue}”? The source Drive file will remain untouched.`
-      )
-    ) return
-    startTransition(async () => {
-      const result = await deleteProjectDocument(workspace.project.id, documentId)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Archived publication record deleted.")
-      router.refresh()
-    })
-  }
-
   return (
     <div className="space-y-5">
       <section className="border bg-background p-4 sm:p-5">
@@ -348,6 +330,10 @@ export function ProjectDocumentsWorkspacePanel({
                       <IconDownload className="size-4" />Download
                     </Link>
                   </Button>
+                  <ProjectDocumentManagementActions
+                    projectId={workspace.project.id}
+                    document={document}
+                  />
                   {document.status === "current" && (
                     <Button
                       size="sm"
@@ -366,17 +352,6 @@ export function ProjectDocumentsWorkspacePanel({
                       onClick={() => changeStatus(document.id, "archived", document.title)}
                     >
                       <IconArchive className="size-4" />Archive
-                    </Button>
-                  )}
-                  {document.status === "archived" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive"
-                      disabled={isPending}
-                      onClick={() => remove(document.id, document.title)}
-                    >
-                      <IconTrash className="size-4" />Delete
                     </Button>
                   )}
                 </div>
