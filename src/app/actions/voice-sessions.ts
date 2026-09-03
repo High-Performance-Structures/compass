@@ -1,31 +1,29 @@
 "use server"
 
-import { and, eq, gt, inArray, sql } from "drizzle-orm"
+import { and, eq, gt, sql } from "drizzle-orm"
 import type {
   CachedUserDetails,
   UserDetailsResponseV2,
 } from "@cloudflare/realtimekit"
 import { getDb } from "@/db"
-import { projectMembers, users } from "@/db/schema"
+import { users } from "@/db/schema"
 import {
-  channelMembers,
-  channels,
   voiceRealtimeKitMeetings,
   voiceParticipants,
   voiceSignals,
 } from "@/db/schema-conversations"
 import { getCloudflareContext } from "@/lib/db"
 import { getCurrentUser, type AuthUser } from "@/lib/auth"
-import { can, canUseOfficeTalk } from "@/lib/permissions"
-import { requireOrg } from "@/lib/org-scope"
+import { can } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  getVoiceChannelAccess,
+  type VoiceChannelAccess,
+} from "@/lib/voice-channel-access"
 
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
 const REALTIMEKIT_RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504])
-const OFFICE_TALK_CHANNEL_ID =
-  "voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899"
 
 type VoiceSignalType = "offer" | "answer" | "ice"
 
@@ -46,14 +44,6 @@ export type VoiceSignalData = {
   readonly createdAt: string
 }
 
-type VoiceChannelAccess = {
-  readonly id: string
-  readonly name: string
-  readonly organizationId: string
-  readonly projectId: string | null
-  readonly isPrivate: boolean
-  readonly audience: string
-}
 
 type VoiceActionResult<T> =
   | { readonly success: true; readonly data: T }
@@ -591,94 +581,6 @@ async function createRealtimeKitParticipantToken(
   return { success: false, error: lastError }
 }
 
-async function verifyVoiceChannelAccess(
-  db: ReturnType<typeof getDb>,
-  user: AuthUser,
-  channelId: string
-): Promise<VoiceChannelAccess | null> {
-  if (
-    channelId === OFFICE_TALK_CHANNEL_ID &&
-    !canUseOfficeTalk(user)
-  ) {
-    return null
-  }
-  const orgId = requireOrg(user)
-  const channel = await db
-    .select({
-      id: channels.id,
-      name: channels.name,
-      organizationId: channels.organizationId,
-      projectId: channels.projectId,
-      type: channels.type,
-      isPrivate: channels.isPrivate,
-      audience: channels.audience,
-      archivedAt: channels.archivedAt,
-    })
-    .from(channels)
-    .where(eq(channels.id, channelId))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
-  if (
-    !channel ||
-    channel.organizationId !== orgId ||
-    channel.type !== "voice" ||
-    channel.archivedAt !== null
-  ) {
-    return null
-  }
-
-  const membership = await db
-    .select({ id: channelMembers.id })
-    .from(channelMembers)
-    .where(
-      and(
-        eq(channelMembers.channelId, channelId),
-        eq(channelMembers.userId, user.id)
-      )
-    )
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
-  if (membership || can(user, "channels", "moderate")) {
-    return channel
-  }
-
-  if (channel.isPrivate) {
-    return null
-  }
-
-  if (channel.audience === "organization") {
-    return channel
-  }
-
-  if (channel.audience === "staff" && isInternalStaffRole(user.role)) {
-    return channel
-  }
-
-  const projectRoleCondition =
-    channel.audience === "clients"
-      ? eq(projectMembers.role, "owner")
-      : inArray(projectMembers.role, ["supplier", "subcontractor"])
-
-  const projectMembership = await db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.userId, user.id),
-        projectRoleCondition,
-        channel.projectId
-          ? eq(projectMembers.projectId, channel.projectId)
-          : undefined
-      )
-    )
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
-  return projectMembership ? channel : null
-}
-
 async function cleanupVoiceSession(
   db: ReturnType<typeof getDb>,
   channelId: string
@@ -754,7 +656,7 @@ export async function joinVoiceSession(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const channel = await verifyVoiceChannelAccess(db, user, channelId)
+    const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     const now = new Date().toISOString()
@@ -810,7 +712,7 @@ export async function joinRealtimeKitVoiceSession(
     }
 
     const db = getDb(env.DB)
-    const channel = await verifyVoiceChannelAccess(db, user, channelId)
+    const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     if (options?.resetMeeting) {
@@ -876,7 +778,7 @@ export async function leaveVoiceSession(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const channel = await verifyVoiceChannelAccess(db, user, channelId)
+    const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     await db
@@ -917,7 +819,7 @@ export async function updateVoicePresence(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const channel = await verifyVoiceChannelAccess(db, user, channelId)
+    const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     await cleanupVoiceSession(db, channelId)
@@ -967,7 +869,7 @@ export async function sendVoiceSignal(input: {
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const channel = await verifyVoiceChannelAccess(db, user, input.channelId)
+    const channel = await getVoiceChannelAccess(db, user, input.channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     const target = await db
@@ -1020,7 +922,7 @@ export async function pollVoiceSession(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const channel = await verifyVoiceChannelAccess(db, user, channelId)
+    const channel = await getVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     await cleanupVoiceSession(db, channelId)
