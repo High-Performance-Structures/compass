@@ -50,7 +50,8 @@ def invoice_fields(connection: Any, invoice_id: int) -> dict[str, Any]:
         """
         SELECT i.recnum, i.invnum, i.invdte, i.jobnum, i.dscrpt,
                i.usrdf1, i.usrdf2, i.ntetxt, i.invttl, i.invbal,
-               j.jobnme, j.shtnme, c.recnum AS clnnum, c.clnnme, c.e_mail
+               j.jobnme, j.shtnme, c.recnum AS clnnum, c.clnnme,
+               c.e_mail, c.email2, c.email3
         FROM dbo.acrinv i
         LEFT JOIN dbo.actrec j ON j.recnum = i.jobnum
         LEFT JOIN dbo.reccln c ON c.recnum = j.clnnum
