@@ -315,20 +315,24 @@ export default async function ProjectEstimatePrintPage({
                 <span>Project work before sales tax</span>
                 <span>{money(clientPreTaxSubtotalCents)}</span>
               </div>
-              <div className="border-l-2 border-black bg-neutral-100 px-3 py-1">
+              <div className="border-l-2 border-black bg-neutral-100 py-1 pl-3">
                 {taxSummary.groups.map((group) => (
                   <div className="flex justify-between py-1" key={group.key}>
                     <span>
                       Sales tax{group.label ? ` · ${group.label}` : ""} (
                       {percent(group.rateBasisPoints)})
                     </span>
-                    <span className="font-semibold">{money(group.taxCents)}</span>
+                    <span className="ml-4 text-right font-semibold tabular-nums">
+                      {money(group.taxCents)}
+                    </span>
                   </div>
                 ))}
                 {taxSummary.groups.length > 1 && (
                   <div className="flex justify-between border-t border-neutral-400 py-1 font-semibold">
                     <span>Total sales tax</span>
-                    <span>{money(taxSummary.taxCents)}</span>
+                    <span className="ml-4 text-right tabular-nums">
+                      {money(taxSummary.taxCents)}
+                    </span>
                   </div>
                 )}
               </div>
