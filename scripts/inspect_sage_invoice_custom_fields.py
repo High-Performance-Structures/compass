@@ -27,22 +27,47 @@ def candidate_columns(connection: Any) -> list[dict[str, Any]]:
     return list(cursor.fetchall())
 
 
+def invoice_fields(connection: Any, invoice_id: int) -> dict[str, Any]:
+    cursor = connection.cursor(as_dict=True)
+    cursor.execute(
+        """
+        SELECT i.recnum, i.invnum, i.invdte, i.jobnum, i.dscrpt,
+               i.usrdf1, i.usrdf2, i.ntetxt, i.invttl, i.invbal,
+               j.jobnme, j.shtnme, c.recnum AS clnnum, c.clnnme, c.e_mail
+        FROM dbo.acrinv i
+        LEFT JOIN dbo.actrec j ON j.recnum = i.jobnum
+        LEFT JOIN dbo.reccln c ON c.recnum = j.clnnum
+        WHERE i.recnum = %s
+        """,
+        (invoice_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        raise BridgeError(f"Sage invoice {invoice_id} was not found")
+    return row
+
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list-columns", action="store_true")
+    parser.add_argument("--invoice-id", type=int)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    if not args.list_columns:
-        raise BridgeError("--list-columns is required")
+    if not args.list_columns and args.invoice_id is None:
+        raise BridgeError("--list-columns or --invoice-id is required")
     connection = connect_sage()
     try:
-        rows = candidate_columns(connection)
+        value = (
+            {"columns": candidate_columns(connection)}
+            if args.list_columns
+            else {"invoice": invoice_fields(connection, args.invoice_id)}
+        )
     finally:
         connection.close()
-    print(json.dumps({"columns": rows}, indent=2, default=str))
+    print(json.dumps(value, indent=2, default=str))
     return 0
 
 
