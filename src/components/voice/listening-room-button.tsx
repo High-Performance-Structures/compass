@@ -365,7 +365,11 @@ export function ListeningRoomButton({
       ) : null}
 
       {/* Non-modal mode lets the same media element remain interactive as a dock. */}
-      <Dialog modal={false} open={open} onOpenChange={setOpen}>
+      <Dialog
+        modal={false}
+        open={standaloneWindow || open}
+        onOpenChange={setOpen}
+      >
         <DialogContent
           forceMount={room?.currentUserJoined ? true : undefined}
           showCloseButton={false}
