@@ -3,12 +3,10 @@ import { getDb } from "@/db"
 import { projectMembers } from "@/db/schema"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import type { AuthUser } from "@/lib/auth"
+import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { requireOrg } from "@/lib/org-scope"
 import { can, canUseOfficeTalk } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
-
-const OFFICE_TALK_CHANNEL_ID =
-  "voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899"
 
 export type VoiceChannelAccess = {
   readonly id: string
@@ -24,7 +22,10 @@ export async function getVoiceChannelAccess(
   user: AuthUser,
   channelId: string
 ): Promise<VoiceChannelAccess | null> {
-  if (channelId === OFFICE_TALK_CHANNEL_ID && !canUseOfficeTalk(user)) {
+  if (
+    channelId === OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID &&
+    !canUseOfficeTalk(user)
+  ) {
     return null
   }
   const organizationId = requireOrg(user)

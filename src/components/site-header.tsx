@@ -36,8 +36,8 @@ import { AccountModal } from "@/components/account-modal"
 import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
 import {
   ListeningRoomLauncher,
-  OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
 } from "@/components/voice/listening-room-button"
+import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"

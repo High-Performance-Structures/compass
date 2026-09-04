@@ -10,6 +10,9 @@ export const MUSIC_PROVIDERS = [
   "other",
 ] as const
 
+export const OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID =
+  "voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899"
+
 export type MusicProvider = (typeof MUSIC_PROVIDERS)[number]
 
 export type ListeningPlaybackState = "playing" | "paused"
