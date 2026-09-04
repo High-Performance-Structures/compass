@@ -44,6 +44,20 @@ def email_columns(connection: Any) -> list[dict[str, Any]]:
     return list(cursor.fetchall())
 
 
+def customer_contact_columns(connection: Any) -> list[dict[str, Any]]:
+    cursor = connection.cursor(as_dict=True)
+    cursor.execute(
+        """
+        SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, ORDINAL_POSITION
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'dbo'
+          AND TABLE_NAME IN ('reccln', 'clncnt')
+        ORDER BY TABLE_NAME, ORDINAL_POSITION
+        """
+    )
+    return list(cursor.fetchall())
+
+
 def invoice_fields(connection: Any, invoice_id: int) -> dict[str, Any]:
     cursor = connection.cursor(as_dict=True)
     cursor.execute(
@@ -69,15 +83,21 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list-columns", action="store_true")
     parser.add_argument("--list-email-columns", action="store_true")
+    parser.add_argument("--list-customer-contact-columns", action="store_true")
     parser.add_argument("--invoice-id", type=int)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    if not args.list_columns and not args.list_email_columns and args.invoice_id is None:
+    if (
+        not args.list_columns
+        and not args.list_email_columns
+        and not args.list_customer_contact_columns
+        and args.invoice_id is None
+    ):
         raise BridgeError(
-            "--list-columns, --list-email-columns, or --invoice-id is required"
+            "a metadata listing option or --invoice-id is required"
         )
     connection = connect_sage()
     try:
@@ -85,6 +105,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             value = {"columns": candidate_columns(connection)}
         elif args.list_email_columns:
             value = {"columns": email_columns(connection)}
+        elif args.list_customer_contact_columns:
+            value = {"columns": customer_contact_columns(connection)}
         else:
             value = {"invoice": invoice_fields(connection, args.invoice_id)}
     finally:
