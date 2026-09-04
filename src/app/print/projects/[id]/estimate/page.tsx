@@ -317,19 +317,12 @@ export default async function ProjectEstimatePrintPage({
               </div>
               <div className="border-l-2 border-black bg-neutral-100 px-3 py-1">
                 {taxSummary.groups.map((group) => (
-                  <div key={group.key}>
-                    <div className="flex justify-between py-1">
-                      <span>
-                        Taxable subtotal{group.label ? ` · ${group.label}` : ""}
-                      </span>
-                      <span>{money(group.taxableSubtotalCents)}</span>
-                    </div>
-                    <div className="flex justify-between py-1 pl-4 text-neutral-600">
-                      <span>Sales tax ({percent(group.rateBasisPoints)})</span>
-                      <span className="font-semibold text-black">
-                        {money(group.taxCents)}
-                      </span>
-                    </div>
+                  <div className="flex justify-between py-1" key={group.key}>
+                    <span>
+                      Sales tax{group.label ? ` · ${group.label}` : ""} (
+                      {percent(group.rateBasisPoints)})
+                    </span>
+                    <span className="font-semibold">{money(group.taxCents)}</span>
                   </div>
                 ))}
                 {taxSummary.groups.length > 1 && (
