@@ -7,6 +7,8 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Maximize2,
+  Minimize2,
   Music2,
   Pause,
   Play,
@@ -318,18 +320,40 @@ export function ListeningRoomButton({
         </TooltipContent>
       </Tooltip>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Radio className="size-5 text-primary" />
-              Listening Room · {channelName}
-            </DialogTitle>
-            <DialogDescription>
-              YouTube and SoundCloud play together inside Compass. Other services
-              remain available as clearly marked links while their playback
-              integrations are developed.
-            </DialogDescription>
+      {/* Non-modal mode lets the same media element remain interactive as a dock. */}
+      <Dialog modal={false} open={open} onOpenChange={setOpen}>
+        <DialogContent
+          forceMount={room?.currentUserJoined ? true : undefined}
+          showCloseButton={false}
+          className={cn(
+            "max-h-[88vh] overflow-y-auto sm:max-w-2xl",
+            !open &&
+              "right-3 bottom-3 left-auto top-auto w-[calc(100%-1.5rem)] max-w-none translate-x-0 translate-y-0 gap-3 p-3 data-[state=closed]:animate-none data-[state=closed]:opacity-100 sm:w-[22rem]"
+          )}
+        >
+          <DialogHeader className={cn(!open && "hidden")}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <DialogTitle className="flex items-center gap-2">
+                  <Radio className="size-5 text-primary" />
+                  Listening Room · {channelName}
+                </DialogTitle>
+                <DialogDescription>
+                  YouTube and SoundCloud play together inside Compass. Other services
+                  remain available as clearly marked links while their playback
+                  integrations are developed.
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => setOpen(false)}
+              >
+                <Minimize2 /> Minimize
+              </Button>
+            </div>
           </DialogHeader>
 
           {loading ? (
@@ -353,8 +377,11 @@ export function ListeningRoomButton({
               </Button>
             </div>
           ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+            <div className={cn("space-y-5", !open && "space-y-3")}>
+              <div className={cn(
+                "flex flex-wrap items-center justify-between gap-3 border-b pb-4",
+                !open && "hidden"
+              )}>
                 <div className="min-w-0">
                   <p className="text-sm font-medium">
                     Hosted by {room.hostDisplayName}
@@ -431,6 +458,17 @@ export function ListeningRoomButton({
                       <p className="text-sm text-muted-foreground">Queue a track to get started.</p>
                     )}
                   </div>
+                  {!open ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => setOpen(true)}
+                    >
+                      <Maximize2 /> Expand
+                    </Button>
+                  ) : null}
                 </div>
                 {currentTrack && preferredProvider ? (
                   <ListeningRoomPlayer
@@ -448,7 +486,10 @@ export function ListeningRoomButton({
                   />
                 ) : null}
                 {room.canControl ? (
-                  <div className="flex gap-2 border-t pt-3">
+                  <div className={cn(
+                    "flex gap-2 border-t pt-3",
+                    !open && "hidden"
+                  )}>
                     <Button
                       type="button"
                       size="sm"
@@ -484,7 +525,10 @@ export function ListeningRoomButton({
                 ) : null}
               </section>
 
-              <section className="border-t pt-4" aria-labelledby="queue-title">
+              <section
+                className={cn("border-t pt-4", !open && "hidden")}
+                aria-labelledby="queue-title"
+              >
                 <div className="mb-2 flex items-center justify-between">
                   <h3 id="queue-title" className="text-sm font-semibold">Shared queue</h3>
                   <span className="text-xs text-muted-foreground">
@@ -619,7 +663,10 @@ export function ListeningRoomButton({
               </section>
 
               {room.currentUserJoined ? (
-                <form className="space-y-3 border-t pt-4" onSubmit={(event) => void handleAddTrack(event)}>
+                <form
+                  className={cn("space-y-3 border-t pt-4", !open && "hidden")}
+                  onSubmit={(event) => void handleAddTrack(event)}
+                >
                   <div>
                     <h3 className="text-sm font-semibold">Add to the queue</h3>
                     <p className="text-xs text-muted-foreground">
@@ -647,7 +694,7 @@ export function ListeningRoomButton({
               ) : null}
 
               {room.canControl ? (
-                <div className="border-t pt-4">
+                <div className={cn("border-t pt-4", !open && "hidden")}>
                   <Button type="button" variant="destructive" size="sm" onClick={() => setCloseConfirmationOpen(true)}>
                     Close listening room
                   </Button>
