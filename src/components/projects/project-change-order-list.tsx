@@ -81,6 +81,9 @@ export function ProjectChangeOrderList({
                     {changeOrderDisplayStatus(item.status, item.sourceType)}
                   </Badge>
                   <Badge variant="secondary">{item.requesterType}</Badge>
+                  {item.budgetTreatment === "baseline_replacement" && (
+                    <Badge variant="outline">Baseline replacement</Badge>
+                  )}
                 </div>
                 <h2 className="mt-2 font-semibold">{item.title}</h2>
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">

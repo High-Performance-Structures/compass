@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gte, inArray } from "drizzle-orm"
+import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -1256,7 +1256,10 @@ export async function getProjectSageSyncQueue(
     }))
 
   const applicationItems: ProjectSageSyncItem[] = applicationRows
-    .filter((application) => application.syncStatus !== "synced")
+    .filter(
+      (application) =>
+        application.syncStatus !== "synced" && application.status !== "building"
+    )
     .map((application) => ({
       id: application.id,
       kind: "budget_application",
@@ -1273,8 +1276,17 @@ export async function getProjectSageSyncQueue(
       detail: application.ownerVisible ? "Owner visible" : "Internal only",
     }))
 
+  const buildingApplicationIds = new Set(
+    applicationRows
+      .filter((application) => application.status === "building")
+      .map((application) => application.id)
+  )
   const budgetLineItems: ProjectSageSyncItem[] = budgetLineRows
-    .filter((line) => line.syncStatus !== "synced")
+    .filter(
+      (line) =>
+        line.syncStatus !== "synced" &&
+        (!line.applicationId || !buildingApplicationIds.has(line.applicationId))
+    )
     .slice(0, 25)
     .map((line) => ({
       id: line.id,
@@ -1527,7 +1539,19 @@ export async function getProjectPurchaseOrderFormOptions(
         divisionName: projectBudgetLines.csiDivisionName,
       })
       .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.projectId, projectId))
+      .leftJoin(
+        projectBudgetApplications,
+        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
+      )
+      .where(
+        and(
+          eq(projectBudgetLines.projectId, projectId),
+          or(
+            isNull(projectBudgetApplications.status),
+            ne(projectBudgetApplications.status, "building")
+          )
+        )
+      )
       .orderBy(
         asc(projectBudgetLines.csiDivision),
         asc(projectBudgetLines.costCode)

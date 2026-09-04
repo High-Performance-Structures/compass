@@ -8,6 +8,27 @@ The module was originally designed to work both standalone (manual data entry in
 Current HPS direction: Sage 100 Contractor is the active financial, job-cost, purchase order, estimate, progress billing, and scheduling source of truth. The existing NetSuite financial model remains useful reference material, but new HPS financial workflows should be designed around Sage read models, approval-gated writes, and the security plan.
 
 
+preconstruction estimate rebaseline
+---
+
+An accepted estimate can be revised before construction through a change order
+whose budget treatment is `baseline_replacement`. The change order links the
+accepted estimate, a newer revision of the same estimate, the complete revised
+estimate document, and the version-comparison document.
+
+The replacement estimate must be frozen in `signature_pending`, and the change
+order must be owner-visible and signature-pending before an approver can execute
+the rebaseline. Compass blocks execution when it finds actual costs, non-void
+purchase orders, vendor bills, invoices or payments, payment applications, or a
+previously executed additive change order.
+
+Execution supersedes the old accepted estimate, accepts the linked revision,
+marks it ready for Sage, and builds a new current contract-budget revision. The
+old estimate and budget remain immutable history. A baseline-replacement change
+order is excluded from the additive change-order ledger and cannot transition to
+Sage pending, preventing the estimate difference from being counted twice.
+
+
 data model
 ---
 

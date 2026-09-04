@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -735,7 +735,19 @@ export async function getProjectFinancialCodingOptions(
         divisionName: projectBudgetLines.csiDivisionName,
       })
       .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.projectId, projectId))
+      .leftJoin(
+        projectBudgetApplications,
+        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
+      )
+      .where(
+        and(
+          eq(projectBudgetLines.projectId, projectId),
+          or(
+            isNull(projectBudgetApplications.status),
+            ne(projectBudgetApplications.status, "building")
+          )
+        )
+      )
       .orderBy(
         asc(projectBudgetLines.csiDivision),
         asc(projectBudgetLines.costCode)

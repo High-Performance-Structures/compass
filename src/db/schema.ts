@@ -2082,6 +2082,15 @@ export const projectChangeOrders = sqliteTable(
     sourceRecordId: text("source_record_id"),
     sourceHref: text("source_href"),
     internalNotes: text("internal_notes"),
+    budgetTreatment: text("budget_treatment").notNull().default("additive"),
+    baselineEstimateId: text("baseline_estimate_id"),
+    replacementEstimateId: text("replacement_estimate_id"),
+    rebaselineExecutionToken: text("rebaseline_execution_token"),
+    rebaselineCompletedAt: text("rebaseline_completed_at"),
+    rebaselineCompletedBy: text("rebaseline_completed_by").references(
+      () => users.id,
+      { onDelete: "set null" }
+    ),
     foxitStatus: text("foxit_status").notNull().default("not_started"),
     foxitEnvelopeId: text("foxit_envelope_id"),
     signatureRequestedAt: text("signature_requested_at"),
@@ -2108,6 +2117,17 @@ export const projectChangeOrders = sqliteTable(
     index("project_change_orders_requester_idx").on(
       table.projectId,
       table.requesterUserId
+    ),
+    index("project_change_orders_budget_treatment_idx").on(
+      table.projectId,
+      table.budgetTreatment,
+      table.status
+    ),
+    index("project_change_orders_replacement_estimate_idx").on(
+      table.replacementEstimateId
+    ),
+    uniqueIndex("project_change_orders_rebaseline_execution_token_uq").on(
+      table.rebaselineExecutionToken
     ),
   ]
 )

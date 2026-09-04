@@ -1,21 +1,29 @@
 "use server"
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { getDb } from "@/db"
 import {
   projectBudgetLines,
+  projectBudgetApplications,
   projectChangeOrderDocuments,
   projectChangeOrderHistory,
   projectChangeOrderLines,
   projectChangeOrders,
   projectContacts,
   projectMembers,
+  projectOperations,
   projects,
   sageCostCodes,
 } from "@/db/schema"
+import { invoices, payments, vendorBills } from "@/db/schema-netsuite"
+import {
+  projectContractBudgetRevisions,
+  projectEstimateLines,
+  projectEstimates,
+} from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import {
   changeOrderCostLinesTotalCents,
@@ -38,6 +46,12 @@ import {
 } from "@/lib/change-orders/access"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import {
+  isChangeOrderBudgetTreatment,
+  preconstructionRebaselineBlockers,
+  rebaselineEstimateDocumentLinks,
+  type ChangeOrderBudgetTreatment,
+} from "@/lib/change-orders/rebaseline"
 import {
   canFeature,
   requireFeaturePermission,
@@ -71,10 +85,21 @@ export type ProjectChangeOrderCompanyOption = {
   readonly description: string
 }
 
+export type ProjectChangeOrderEstimateOption = {
+  readonly id: string
+  readonly estimateNumber: string
+  readonly versionNumber: number
+  readonly title: string
+  readonly status: string
+  readonly estimateTotalCents: number
+}
+
 export type ProjectChangeOrderFormOptions = {
   readonly phases: readonly ProjectChangeOrderPhaseOption[]
   readonly costCodes: readonly ProjectChangeOrderCostCodeOption[]
   readonly companies: readonly ProjectChangeOrderCompanyOption[]
+  readonly estimates: readonly ProjectChangeOrderEstimateOption[]
+  readonly currentBaselineEstimateId: string | null
 }
 
 export type ProjectChangeOrderItem = {
@@ -96,6 +121,14 @@ export type ProjectChangeOrderItem = {
   readonly sourceRecordId: string | null
   readonly sourceHref: string | null
   readonly internalNotes: string | null
+  readonly budgetTreatment: ChangeOrderBudgetTreatment
+  readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
+  readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
+  readonly replacementEstimateUrl: string | null
+  readonly estimateComparisonUrl: string | null
+  readonly rebaselineCompletedAt: string | null
+  readonly rebaselineBlockers: readonly string[]
+  readonly canExecuteRebaseline: boolean
   readonly foxitStatus: string
   readonly sageStatus: string
   readonly submittedAt: string | null
@@ -142,6 +175,8 @@ export type CreateProjectChangeOrderInput = {
   readonly sourceHref: string | null
   readonly initialStatus: "draft" | "submitted"
   readonly documents: readonly ChangeOrderDocumentInput[]
+  readonly budgetTreatment: ChangeOrderBudgetTreatment
+  readonly replacementEstimateId: string | null
 }
 
 export type UpdateProjectChangeOrderInput = {
@@ -155,6 +190,8 @@ export type UpdateProjectChangeOrderInput = {
   readonly status: ChangeOrderStatus
   readonly transitionNote: string | null
   readonly documents: readonly ChangeOrderDocumentInput[]
+  readonly budgetTreatment: ChangeOrderBudgetTreatment
+  readonly replacementEstimateId: string | null
 }
 
 type ChangeOrderContext = {
@@ -231,6 +268,76 @@ function cleanDocuments(
       url: safeDocumentUrl(document.url),
       notes: cleanLimitedText(document.notes, "Document notes", 1_000),
     }))
+}
+
+type RebaselineSelection = {
+  readonly baseline: typeof projectEstimates.$inferSelect
+  readonly replacement: typeof projectEstimates.$inferSelect
+}
+
+async function requireRebaselineSelection(input: {
+  readonly context: ChangeOrderContext
+  readonly projectId: string
+  readonly replacementEstimateId: string | null
+  readonly expectedBaselineEstimateId?: string | null
+}): Promise<RebaselineSelection> {
+  if (!input.replacementEstimateId) {
+    throw new Error("Choose the revised estimate that will replace the baseline.")
+  }
+  const [baselineRows, replacementRows] = await Promise.all([
+    input.context.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, input.projectId),
+          eq(projectEstimates.status, "accepted")
+        )
+      )
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1),
+    input.context.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, input.projectId),
+          eq(projectEstimates.id, input.replacementEstimateId)
+        )
+      )
+      .limit(1),
+  ])
+  const baseline = baselineRows[0]
+  const replacement = replacementRows[0]
+  if (!baseline) {
+    throw new Error("Accept the original estimate before creating a rebaseline amendment.")
+  }
+  if (
+    input.expectedBaselineEstimateId &&
+    baseline.id !== input.expectedBaselineEstimateId
+  ) {
+    throw new Error("The accepted estimate changed. Review the amendment baseline again.")
+  }
+  if (!replacement) {
+    throw new Error("The replacement estimate could not be found.")
+  }
+  if (
+    !["draft", "internal_review", "signature_pending"].includes(
+      replacement.status
+    )
+  ) {
+    throw new Error("Choose an editable or signature-pending estimate revision.")
+  }
+  if (replacement.id === baseline.id) {
+    throw new Error("The replacement must be a different estimate version.")
+  }
+  if (replacement.estimateNumber !== baseline.estimateNumber) {
+    throw new Error("The replacement must be a revision of the accepted estimate.")
+  }
+  if (replacement.versionNumber <= baseline.versionNumber) {
+    throw new Error("The replacement must be newer than the accepted estimate.")
+  }
+  return { baseline, replacement }
 }
 
 async function changeOrderContext(
@@ -319,16 +426,216 @@ function actorName(user: AuthUser): string {
   return user.displayName ?? user.email
 }
 
+function estimateOption(
+  row: typeof projectEstimates.$inferSelect
+): ProjectChangeOrderEstimateOption {
+  return {
+    id: row.id,
+    estimateNumber: row.estimateNumber,
+    versionNumber: row.versionNumber,
+    title: row.title,
+    status: row.status,
+    estimateTotalCents: row.estimateTotalCents,
+  }
+}
+
+type RebaselineViewData = {
+  readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
+  readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
+  readonly blockers: readonly string[]
+}
+
+async function rebaselineViewData(
+  context: ChangeOrderContext,
+  row: typeof projectChangeOrders.$inferSelect
+): Promise<RebaselineViewData> {
+  if (
+    row.budgetTreatment !== "baseline_replacement" ||
+    !row.baselineEstimateId ||
+    !row.replacementEstimateId
+  ) {
+    return {
+      baselineEstimate: null,
+      replacementEstimate: null,
+      blockers: [],
+    }
+  }
+
+  const estimateRows = await context.db
+    .select()
+    .from(projectEstimates)
+    .where(
+      and(
+        eq(projectEstimates.projectId, row.projectId),
+        inArray(projectEstimates.id, [
+          row.baselineEstimateId,
+          row.replacementEstimateId,
+        ])
+      )
+    )
+  const baseline = estimateRows.find(
+    (estimate) => estimate.id === row.baselineEstimateId
+  )
+  const replacement = estimateRows.find(
+    (estimate) => estimate.id === row.replacementEstimateId
+  )
+  if (!baseline || !replacement) {
+    return {
+      baselineEstimate: baseline ? estimateOption(baseline) : null,
+      replacementEstimate: replacement ? estimateOption(replacement) : null,
+      blockers: ["A linked estimate version could not be found."],
+    }
+  }
+  if (row.rebaselineCompletedAt) {
+    return {
+      baselineEstimate: estimateOption(baseline),
+      replacementEstimate: estimateOption(replacement),
+      blockers: [],
+    }
+  }
+
+  const [
+    currentBaselineRows,
+    replacementLines,
+    budgetRows,
+    applicationRows,
+    purchaseOrderRows,
+    billRows,
+    invoiceRows,
+    paymentRows,
+    executedAdjustmentRows,
+  ] = await Promise.all([
+    context.db
+      .select({ id: projectEstimates.id })
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, row.projectId),
+          eq(projectEstimates.status, "accepted")
+        )
+      )
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1),
+    context.db
+      .select({ id: projectEstimateLines.id })
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, replacement.id))
+      .limit(1),
+    context.db
+      .select({
+        previousWorkCompleted: projectBudgetLines.previousWorkCompleted,
+        currentWorkCompleted: projectBudgetLines.currentWorkCompleted,
+        storedMaterials: projectBudgetLines.storedMaterials,
+        priorCosts: projectBudgetLines.priorCosts,
+        currentCosts: projectBudgetLines.currentCosts,
+        totalCosts: projectBudgetLines.totalCosts,
+      })
+      .from(projectBudgetLines)
+      .where(eq(projectBudgetLines.projectId, row.projectId)),
+    context.db
+      .select({
+        sourceSystem: projectBudgetApplications.sourceSystem,
+        status: projectBudgetApplications.status,
+      })
+      .from(projectBudgetApplications)
+      .where(eq(projectBudgetApplications.projectId, row.projectId)),
+    context.db
+      .select({ status: projectOperations.status })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, row.projectId),
+          inArray(projectOperations.sourceRecordType, [
+            "purchase_order",
+            "google_nutech_order",
+          ])
+        )
+      ),
+    context.db
+      .select({ id: vendorBills.id })
+      .from(vendorBills)
+      .where(eq(vendorBills.projectId, row.projectId))
+      .limit(1),
+    context.db
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(eq(invoices.projectId, row.projectId))
+      .limit(1),
+    context.db
+      .select({ id: payments.id })
+      .from(payments)
+      .where(eq(payments.projectId, row.projectId))
+      .limit(1),
+    context.db
+      .select({ id: projectChangeOrders.id })
+      .from(projectChangeOrders)
+      .where(
+        and(
+          eq(projectChangeOrders.projectId, row.projectId),
+          ne(projectChangeOrders.id, row.id),
+          eq(projectChangeOrders.budgetTreatment, "additive"),
+          inArray(projectChangeOrders.status, [
+            "executed",
+            "sage_pending",
+            "synced",
+            "closed",
+          ])
+        )
+      )
+      .limit(1),
+  ])
+
+  const hasActualCosts = budgetRows.some((budgetRow) =>
+    [
+      budgetRow.previousWorkCompleted,
+      budgetRow.currentWorkCompleted,
+      budgetRow.storedMaterials,
+      budgetRow.priorCosts,
+      budgetRow.currentCosts,
+      budgetRow.totalCosts,
+    ].some((amount) => amount !== 0)
+  )
+  const hasPaymentApplications = applicationRows.some(
+    (application) =>
+      application.sourceSystem !== "compass_contract_budget_projection"
+  )
+  const blockers = preconstructionRebaselineBlockers({
+    ownerAudience: row.audience === "owner",
+    replacementEstimateFrozen: replacement.status === "signature_pending",
+    replacementEstimateHasLines: replacementLines.length > 0,
+    currentBaselineMatches: currentBaselineRows[0]?.id === baseline.id,
+    hasActualCosts,
+    hasPurchaseOrders: purchaseOrderRows.some(
+      (purchaseOrder) =>
+        !["void", "cancelled", "canceled"].includes(
+          purchaseOrder.status.toLowerCase()
+        )
+    ),
+    hasVendorBills: billRows.length > 0,
+    hasInvoicesOrPayments: invoiceRows.length > 0 || paymentRows.length > 0,
+    hasPaymentApplications,
+    hasPriorExecutedAdjustments: executedAdjustmentRows.length > 0,
+  })
+
+  return {
+    baselineEstimate: estimateOption(baseline),
+    replacementEstimate: estimateOption(replacement),
+    blockers,
+  }
+}
+
 function viewModel(
   row: typeof projectChangeOrders.$inferSelect,
   context: ChangeOrderContext,
   lines: ProjectChangeOrderItem["lines"],
   documents: ProjectChangeOrderItem["documents"],
-  history: ProjectChangeOrderItem["history"]
+  history: ProjectChangeOrderItem["history"],
+  rebaseline: RebaselineViewData
 ): ProjectChangeOrderItem | null {
   if (
     !isChangeOrderStatus(row.status) ||
     !validAudience(row.audience) ||
+    !isChangeOrderBudgetTreatment(row.budgetTreatment) ||
     !["internal", "owner", "subcontractor"].includes(row.requesterType)
   ) {
     return null
@@ -360,6 +667,16 @@ function viewModel(
             canApprove,
           })
         )
+  const links =
+    row.baselineEstimateId && row.replacementEstimateId
+      ? rebaselineEstimateDocumentLinks({
+          projectId: row.projectId,
+          baselineEstimateId: row.baselineEstimateId,
+          replacementEstimateId: row.replacementEstimateId,
+        })
+      : null
+  const canSeeRebaselineEstimates =
+    context.internal || context.requesterType === "owner"
 
   return {
     id: row.id,
@@ -380,6 +697,27 @@ function viewModel(
     sourceRecordId: context.internal ? row.sourceRecordId : null,
     sourceHref: context.internal ? row.sourceHref : null,
     internalNotes: context.internal ? row.internalNotes : null,
+    budgetTreatment: row.budgetTreatment,
+    baselineEstimate: canSeeRebaselineEstimates
+      ? rebaseline.baselineEstimate
+      : null,
+    replacementEstimate: canSeeRebaselineEstimates
+      ? rebaseline.replacementEstimate
+      : null,
+    replacementEstimateUrl: canSeeRebaselineEstimates
+      ? links?.replacementEstimateUrl ?? null
+      : null,
+    estimateComparisonUrl: canSeeRebaselineEstimates
+      ? links?.comparisonUrl ?? null
+      : null,
+    rebaselineCompletedAt: row.rebaselineCompletedAt,
+    rebaselineBlockers: context.internal ? rebaseline.blockers : [],
+    canExecuteRebaseline:
+      context.internal &&
+      context.canApprove &&
+      row.budgetTreatment === "baseline_replacement" &&
+      row.status === "signature_pending" &&
+      rebaseline.blockers.length === 0,
     foxitStatus: row.foxitStatus,
     sageStatus: row.sageStatus,
     submittedAt: row.submittedAt,
@@ -387,7 +725,14 @@ function viewModel(
     updatedAt: row.updatedAt,
     canEdit,
     canApprove,
-    allowedTransitions: transitions.filter((status) => status !== "synced"),
+    allowedTransitions: transitions.filter(
+      (status) =>
+        status !== "synced" &&
+        !(
+          row.budgetTreatment === "baseline_replacement" &&
+          ["executed", "sage_pending"].includes(status)
+        )
+    ),
     lines,
     documents,
     history,
@@ -408,7 +753,13 @@ export async function getProjectChangeOrders(
 
   return rows
     .filter((row) => canExternalViewerSee(row, context))
-    .map((row) => viewModel(row, context, [], [], []))
+    .map((row) =>
+      viewModel(row, context, [], [], [], {
+        baselineEstimate: null,
+        replacementEstimate: null,
+        blockers: [],
+      })
+    )
     .filter((row): row is ProjectChangeOrderItem => row !== null)
 }
 
@@ -465,9 +816,15 @@ export async function getProjectChangeOrderFormOptions(
   const authorizedContext = await changeOrderContext(projectId, "read")
   const context = audiencePreviewContext(authorizedContext, viewAsAudience)
   if (!context.internal) {
-    return { phases: [], costCodes: [], companies: [] }
+    return {
+      phases: [],
+      costCodes: [],
+      companies: [],
+      estimates: [],
+      currentBaselineEstimateId: null,
+    }
   }
-  const [sageRows, budgetRows, contactRows] = await Promise.all([
+  const [sageRows, budgetRows, contactRows, estimateRows] = await Promise.all([
     context.db
       .select({
         code: sageCostCodes.code,
@@ -487,7 +844,19 @@ export async function getProjectChangeOrderFormOptions(
         divisionName: projectBudgetLines.csiDivisionName,
       })
       .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.projectId, projectId))
+      .leftJoin(
+        projectBudgetApplications,
+        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
+      )
+      .where(
+        and(
+          eq(projectBudgetLines.projectId, projectId),
+          or(
+            isNull(projectBudgetApplications.status),
+            ne(projectBudgetApplications.status, "building")
+          )
+        )
+      )
       .orderBy(
         asc(projectBudgetLines.csiDivision),
         asc(projectBudgetLines.costCode)
@@ -506,6 +875,11 @@ export async function getProjectChangeOrderFormOptions(
         )
       )
       .orderBy(asc(projectContacts.companyName), asc(projectContacts.displayName)),
+    context.db
+      .select()
+      .from(projectEstimates)
+      .where(eq(projectEstimates.projectId, projectId))
+      .orderBy(desc(projectEstimates.versionNumber)),
   ])
   const phaseMap = new Map<string, ProjectChangeOrderPhaseOption>()
   const costCodeMap = new Map<string, ProjectChangeOrderCostCodeOption>()
@@ -559,6 +933,9 @@ export async function getProjectChangeOrderFormOptions(
     companies: Array.from(companyMap.values()).sort((left, right) =>
       left.label.localeCompare(right.label)
     ),
+    estimates: estimateRows.map(estimateOption),
+    currentBaselineEstimateId:
+      estimateRows.find((estimate) => estimate.status === "accepted")?.id ?? null,
   }
 }
 
@@ -643,7 +1020,15 @@ export async function getProjectChangeOrder(
               : null,
         }))
 
-  return viewModel(row, context, lineRows, documentRows, visibleHistory)
+  const rebaseline = await rebaselineViewData(authorizedContext, row)
+  return viewModel(
+    row,
+    context,
+    lineRows,
+    documentRows,
+    visibleHistory,
+    rebaseline
+  )
 }
 
 export async function createProjectChangeOrder(
@@ -678,9 +1063,29 @@ export async function createProjectChangeOrder(
     if (!validAudience(audience)) {
       return { success: false, error: "Choose a valid audience." }
     }
+    const budgetTreatment: ChangeOrderBudgetTreatment = internal
+      ? input.budgetTreatment
+      : "additive"
+    if (!isChangeOrderBudgetTreatment(budgetTreatment)) {
+      return { success: false, error: "Choose a valid budget treatment." }
+    }
+    const rebaselineSelection =
+      budgetTreatment === "baseline_replacement"
+        ? await requireRebaselineSelection({
+            context,
+            projectId,
+            replacementEstimateId: input.replacementEstimateId,
+          })
+        : null
     const documents = cleanDocuments(input.documents)
-    const lines = cleanChangeOrderCostLines(input.lines)
-    const amountCents = changeOrderCostLinesTotalCents(lines)
+    const lines =
+      budgetTreatment === "baseline_replacement"
+        ? []
+        : cleanChangeOrderCostLines(input.lines)
+    const amountCents = rebaselineSelection
+      ? rebaselineSelection.replacement.estimateTotalCents -
+        rebaselineSelection.baseline.estimateTotalCents
+      : changeOrderCostLinesTotalCents(lines)
     const scheduleImpactDays = cleanScheduleImpactDays(
       input.scheduleImpactDays
     )
@@ -714,6 +1119,12 @@ export async function createProjectChangeOrder(
       sourceRecordId: cleanText(input.sourceRecordId),
       sourceHref: input.sourceHref ? safeDocumentUrl(input.sourceHref) : null,
       internalNotes: null,
+      budgetTreatment,
+      baselineEstimateId: rebaselineSelection?.baseline.id ?? null,
+      replacementEstimateId: rebaselineSelection?.replacement.id ?? null,
+      rebaselineExecutionToken: null,
+      rebaselineCompletedAt: null,
+      rebaselineCompletedBy: null,
       foxitStatus: "not_started",
       sageStatus: "not_ready",
       createdBy: context.user.id,
@@ -757,6 +1168,9 @@ export async function createProjectChangeOrder(
       metadataJson: JSON.stringify({
         audience,
         sourceType,
+        budgetTreatment,
+        baselineEstimateId: rebaselineSelection?.baseline.id ?? null,
+        replacementEstimateId: rebaselineSelection?.replacement.id ?? null,
         lineCount: lineRows.length,
         scheduleImpactDays,
       }),
@@ -860,9 +1274,73 @@ export async function updateProjectChangeOrder(
     if (!validAudience(audience)) {
       return { success: false, error: "Choose a valid audience." }
     }
+    if (!isChangeOrderBudgetTreatment(existing.budgetTreatment)) {
+      return { success: false, error: "The stored budget treatment is invalid." }
+    }
+    const budgetTreatment =
+      contentAllowed && context.internal
+        ? input.budgetTreatment
+        : existing.budgetTreatment
+    if (!isChangeOrderBudgetTreatment(budgetTreatment)) {
+      return { success: false, error: "Choose a valid budget treatment." }
+    }
+    if (budgetTreatment === "baseline_replacement" && !context.internal) {
+      return {
+        success: false,
+        error: "Only internal staff can configure a baseline replacement.",
+      }
+    }
+    const rebaselineSelection =
+      budgetTreatment === "baseline_replacement" &&
+      !existing.rebaselineCompletedAt
+        ? await requireRebaselineSelection({
+            context,
+            projectId,
+            replacementEstimateId:
+              contentAllowed && context.internal
+                ? input.replacementEstimateId
+                : existing.replacementEstimateId,
+            expectedBaselineEstimateId: existing.baselineEstimateId,
+          })
+        : null
+    if (
+      budgetTreatment === "baseline_replacement" &&
+      ["executed", "sage_pending", "synced"].includes(input.status)
+    ) {
+      return {
+        success: false,
+        error:
+          "Use the guarded Rebaseline budget action to execute this amendment. Baseline replacements are not additive Sage change orders.",
+      }
+    }
+    if (
+      budgetTreatment === "baseline_replacement" &&
+      input.status === "signature_pending" &&
+      audience !== "owner"
+    ) {
+      return {
+        success: false,
+        error: "Make the rebaseline amendment owner visible before signature.",
+      }
+    }
+    if (
+      budgetTreatment === "baseline_replacement" &&
+      input.status === "signature_pending" &&
+      rebaselineSelection?.replacement.status !== "signature_pending"
+    ) {
+      return {
+        success: false,
+        error:
+          "Freeze the replacement estimate for outside signature before moving the amendment to Signature Pending.",
+      }
+    }
     const now = new Date().toISOString()
     const documents = contentAllowed ? cleanDocuments(input.documents) : null
-    const lines = contentAllowed ? cleanChangeOrderCostLines(input.lines) : null
+    const lines = contentAllowed
+      ? budgetTreatment === "baseline_replacement"
+        ? []
+        : cleanChangeOrderCostLines(input.lines)
+      : null
     const title = contentAllowed
       ? requireText(input.title, "Title", 200)
       : existing.title
@@ -872,9 +1350,12 @@ export async function updateProjectChangeOrder(
     const reason = contentAllowed
       ? cleanLimitedText(input.reason, "Reason", 4_000)
       : existing.reason
-    const amountCents = lines
-      ? changeOrderCostLinesTotalCents(lines)
-      : existing.amountCents
+    const amountCents = rebaselineSelection
+      ? rebaselineSelection.replacement.estimateTotalCents -
+        rebaselineSelection.baseline.estimateTotalCents
+      : lines
+        ? changeOrderCostLinesTotalCents(lines)
+        : existing.amountCents
     const scheduleImpactDays = contentAllowed
       ? cleanScheduleImpactDays(input.scheduleImpactDays)
       : existing.scheduleImpactDays
@@ -923,6 +1404,16 @@ export async function updateProjectChangeOrder(
         internalNotes: context.internal
           ? cleanLimitedText(input.internalNotes, "Internal notes", 4_000)
           : existing.internalNotes,
+        budgetTreatment,
+        baselineEstimateId:
+          budgetTreatment === "baseline_replacement"
+            ? rebaselineSelection?.baseline.id ?? existing.baselineEstimateId
+            : null,
+        replacementEstimateId:
+          budgetTreatment === "baseline_replacement"
+            ? rebaselineSelection?.replacement.id ??
+              existing.replacementEstimateId
+            : null,
         status: input.status,
         submittedAt:
           input.status === "submitted"
@@ -965,6 +1456,16 @@ export async function updateProjectChangeOrder(
         ),
         metadataJson: JSON.stringify({
           audience: contentAllowed ? audience : existing.audience,
+          budgetTreatment,
+          baselineEstimateId:
+            budgetTreatment === "baseline_replacement"
+              ? rebaselineSelection?.baseline.id ?? existing.baselineEstimateId
+              : null,
+          replacementEstimateId:
+            budgetTreatment === "baseline_replacement"
+              ? rebaselineSelection?.replacement.id ??
+                existing.replacementEstimateId
+              : null,
           documentCount: documents?.length ?? null,
           lineCount: lines?.length ?? null,
           scheduleImpactDays,
@@ -1065,6 +1566,212 @@ export async function updateProjectChangeOrder(
         error instanceof Error
           ? error.message
           : "Failed to update change order request",
+    }
+  }
+}
+
+export async function executeProjectChangeOrderRebaseline(
+  projectId: string,
+  changeOrderId: string,
+  executionNote: string | null
+): Promise<ChangeOrderActionResult> {
+  try {
+    const context = await changeOrderContext(projectId, "read")
+    await requireFeaturePermission(context.user, "change-orders", "approve")
+    if (!context.internal || !context.canApprove) {
+      return {
+        success: false,
+        error: "Change-order approval permission is required to rebaseline a budget.",
+      }
+    }
+    const changeOrder = await context.db
+      .select()
+      .from(projectChangeOrders)
+      .where(
+        and(
+          eq(projectChangeOrders.id, changeOrderId),
+          eq(projectChangeOrders.projectId, projectId)
+        )
+      )
+      .get()
+    if (!changeOrder) {
+      return { success: false, error: "Change order request not found." }
+    }
+    if (
+      changeOrder.budgetTreatment !== "baseline_replacement" ||
+      !changeOrder.baselineEstimateId ||
+      !changeOrder.replacementEstimateId
+    ) {
+      return {
+        success: false,
+        error: "This change order is not configured as a baseline replacement.",
+      }
+    }
+    if (changeOrder.status !== "signature_pending") {
+      return {
+        success: false,
+        error: "The rebaseline amendment must be signature pending before execution.",
+      }
+    }
+
+    const assessment = await rebaselineViewData(context, changeOrder)
+    if (!assessment.replacementEstimate || assessment.blockers.length > 0) {
+      return {
+        success: false,
+        error:
+          assessment.blockers[0] ??
+          "The replacement estimate could not be validated.",
+      }
+    }
+
+    const preparedBudget = await rebuildProjectContractBudget({
+      db: context.db,
+      projectId,
+      actorUserId: context.user.id,
+      acceptedEstimateId: changeOrder.replacementEstimateId,
+      publish: false,
+    })
+    if (!preparedBudget.success) {
+      return {
+        success: false,
+        error: `The replacement budget could not be prepared: ${preparedBudget.error}`,
+      }
+    }
+
+    const now = new Date().toISOString()
+    const note = cleanLimitedText(executionNote, "Execution note", 2_000)
+    const projectionId = `contract-budget-view:${preparedBudget.revisionId}`
+    const executionToken = crypto.randomUUID()
+    await context.db.batch([
+      context.db
+        .update(projectChangeOrders)
+        .set({ rebaselineExecutionToken: executionToken, updatedAt: now })
+        .where(
+          and(
+            eq(projectChangeOrders.id, changeOrderId),
+            eq(projectChangeOrders.projectId, projectId),
+            eq(projectChangeOrders.status, "signature_pending"),
+            eq(projectChangeOrders.budgetTreatment, "baseline_replacement")
+          )
+        ),
+      context.db
+        .update(projectEstimates)
+        .set({ status: "superseded", updatedAt: now })
+        .where(
+          and(
+            eq(projectEstimates.projectId, projectId),
+            eq(projectEstimates.id, changeOrder.baselineEstimateId),
+            eq(projectEstimates.status, "accepted")
+          )
+        ),
+      context.db
+        .update(projectEstimates)
+        .set({
+          status: "accepted",
+          foxitStatus: "completed",
+          signedAt: now,
+          acceptanceMethod: "external_esignature",
+          acceptanceNote:
+            note ??
+            `Accepted through preconstruction rebaseline amendment ${changeOrder.changeOrderNumber}.`,
+          acceptanceEvidenceLabel: changeOrder.changeOrderNumber,
+          acceptanceRecordedByName: actorName(context.user),
+          acceptedAt: now,
+          acceptedBy: context.user.id,
+          sageStatus: "ready",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectEstimates.id, changeOrder.replacementEstimateId),
+            eq(projectEstimates.projectId, projectId),
+            eq(projectEstimates.status, "signature_pending")
+          )
+        ),
+      context.db
+        .update(projectContractBudgetRevisions)
+        .set({ status: "superseded" })
+        .where(
+          and(
+            eq(projectContractBudgetRevisions.projectId, projectId),
+            eq(projectContractBudgetRevisions.status, "current")
+          )
+        ),
+      context.db
+        .update(projectBudgetApplications)
+        .set({ status: "budget_superseded", updatedAt: now })
+        .where(
+          and(
+            eq(projectBudgetApplications.projectId, projectId),
+            eq(projectBudgetApplications.status, "budget_current"),
+            eq(
+              projectBudgetApplications.sourceSystem,
+              "compass_contract_budget_projection"
+            )
+          )
+        ),
+      context.db
+        .update(projectContractBudgetRevisions)
+        .set({ status: "current" })
+        .where(eq(projectContractBudgetRevisions.id, preparedBudget.revisionId)),
+      context.db
+        .update(projectBudgetApplications)
+        .set({ status: "budget_current", ownerVisible: true, updatedAt: now })
+        .where(eq(projectBudgetApplications.id, projectionId)),
+      context.db
+        .update(projectChangeOrders)
+        .set({
+          status: "executed",
+          executedAt: now,
+          rebaselineCompletedAt: now,
+          rebaselineCompletedBy: context.user.id,
+          foxitStatus: "completed",
+          sageStatus: "not_applicable_rebaseline",
+          updatedAt: now,
+        })
+        // Migration 0148 guards this status write against financial activity
+        // created after the read-side eligibility check. Any blocker aborts the
+        // entire D1 batch, including estimate and budget activation above.
+        .where(
+          and(
+            eq(projectChangeOrders.id, changeOrderId),
+            eq(projectChangeOrders.projectId, projectId),
+            eq(projectChangeOrders.status, "signature_pending"),
+            eq(projectChangeOrders.rebaselineExecutionToken, executionToken)
+          )
+        ),
+      context.db.insert(projectChangeOrderHistory).values({
+        id: crypto.randomUUID(),
+        projectId,
+        changeOrderId,
+        eventType: "baseline_replaced",
+        fromStatus: "signature_pending",
+        toStatus: "executed",
+        actorUserId: context.user.id,
+        actorName: actorName(context.user),
+        actorRole: context.user.role,
+        note,
+        metadataJson: JSON.stringify({
+          budgetTreatment: "baseline_replacement",
+          baselineEstimateId: changeOrder.baselineEstimateId,
+          replacementEstimateId: changeOrder.replacementEstimateId,
+          executionToken,
+        }),
+        createdAt: now,
+      }),
+    ])
+
+    revalidateChangeOrderPaths(projectId)
+    revalidatePath(`/dashboard/projects/${projectId}/estimate`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    return { success: true, id: changeOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to execute the preconstruction rebaseline.",
     }
   }
 }

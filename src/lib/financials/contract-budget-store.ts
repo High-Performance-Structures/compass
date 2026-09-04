@@ -101,23 +101,29 @@ export async function rebuildProjectContractBudget(input: {
   readonly db: CompassDb
   readonly projectId: string
   readonly actorUserId: string | null
+  readonly acceptedEstimateId?: string
+  readonly publish?: boolean
 }): Promise<ContractBudgetRebuildResult> {
-  const acceptedRows = await input.db
-    .select()
-    .from(projectEstimates)
-    .where(
-      and(
+  const estimateWhere = input.acceptedEstimateId
+    ? and(
+        eq(projectEstimates.projectId, input.projectId),
+        eq(projectEstimates.id, input.acceptedEstimateId)
+      )
+    : and(
         eq(projectEstimates.projectId, input.projectId),
         eq(projectEstimates.status, "accepted")
       )
-    )
+  const acceptedRows = await input.db
+    .select()
+    .from(projectEstimates)
+    .where(estimateWhere)
     .orderBy(desc(projectEstimates.versionNumber))
     .limit(1)
   const accepted = acceptedRows[0]
   if (!accepted) {
     return {
       success: false,
-      error: "Accept a signed estimate before building the contract budget.",
+      error: "Choose a signed estimate before building the contract budget.",
     }
   }
 
@@ -168,6 +174,7 @@ export async function rebuildProjectContractBudget(input: {
     .where(
       and(
         eq(projectChangeOrderLines.projectId, input.projectId),
+        eq(projectChangeOrders.budgetTreatment, "additive"),
         inArray(projectChangeOrders.status, BUDGET_CHANGE_ORDER_STATUSES)
       )
     )
@@ -224,6 +231,29 @@ export async function rebuildProjectContractBudget(input: {
       changed: false,
     }
   }
+  if (matching?.status === "building") {
+    if (input.publish === false) {
+      return {
+        success: true,
+        revisionId: matching.id,
+        revisionNumber: matching.revisionNumber,
+        changed: true,
+      }
+    }
+    const now = new Date().toISOString()
+    await activateContractBudgetRevision({
+      db: input.db,
+      projectId: input.projectId,
+      revisionId: matching.id,
+      now,
+    })
+    return {
+      success: true,
+      revisionId: matching.id,
+      revisionNumber: matching.revisionNumber,
+      changed: true,
+    }
+  }
 
   const priorRows = await input.db
     .select({ revisionNumber: projectContractBudgetRevisions.revisionNumber })
@@ -242,7 +272,7 @@ export async function rebuildProjectContractBudget(input: {
     adjustments,
   })
 
-  await input.db.insert(projectContractBudgetRevisions).values({
+  const revisionRow = {
     id: revisionId,
     projectId: input.projectId,
     acceptedEstimateId: accepted.id,
@@ -255,51 +285,45 @@ export async function rebuildProjectContractBudget(input: {
     sourceHash,
     createdBy: input.actorUserId,
     createdAt: now,
-  })
-
-  for (const line of budget.lines) {
-    await input.db.insert(projectContractBudgetLines).values({
-      id: crypto.randomUUID(),
-      projectId: input.projectId,
-      revisionId,
-      sourceEstimateLineId: line.sourceEstimateLineId,
-      divisionCode: line.divisionCode,
-      divisionName: line.divisionName,
-      costCode: line.costCode,
-      description: line.description,
-      originalEstimateCents: line.originalEstimateCents,
-      approvedChangeCents: line.approvedChangeCents,
-      adjustedBudgetCents: line.adjustedBudgetCents,
-      ownerVisible: line.ownerVisible,
-      sortOrder: line.sortOrder,
-      createdAt: now,
-    })
   }
-
-  for (const adjustment of adjustments) {
-    await input.db.insert(projectContractBudgetAdjustments).values({
-      id: crypto.randomUUID(),
-      projectId: input.projectId,
-      revisionId,
-      changeOrderId: adjustment.changeOrderId,
-      changeOrderLineId: adjustment.id,
-      costCode: adjustment.costCode,
-      description: adjustment.description,
-      amountCents: adjustment.amountCents,
-      executedAt: adjustment.executedAt,
-      createdAt: now,
-    })
-  }
+  const revisionLineRows = budget.lines.map((line) => ({
+    id: crypto.randomUUID(),
+    projectId: input.projectId,
+    revisionId,
+    sourceEstimateLineId: line.sourceEstimateLineId,
+    divisionCode: line.divisionCode,
+    divisionName: line.divisionName,
+    costCode: line.costCode,
+    description: line.description,
+    originalEstimateCents: line.originalEstimateCents,
+    approvedChangeCents: line.approvedChangeCents,
+    adjustedBudgetCents: line.adjustedBudgetCents,
+    ownerVisible: line.ownerVisible,
+    sortOrder: line.sortOrder,
+    createdAt: now,
+  }))
+  const adjustmentRows = adjustments.map((adjustment) => ({
+    id: crypto.randomUUID(),
+    projectId: input.projectId,
+    revisionId,
+    changeOrderId: adjustment.changeOrderId,
+    changeOrderLineId: adjustment.id,
+    costCode: adjustment.costCode,
+    description: adjustment.description,
+    amountCents: adjustment.amountCents,
+    executedAt: adjustment.executedAt,
+    createdAt: now,
+  }))
 
   const projectionId = `contract-budget-view:${revisionId}`
-  await input.db.insert(projectBudgetApplications).values({
+  const projectionRow = {
     id: projectionId,
     projectId: input.projectId,
     sourceSystem: "compass_contract_budget_projection",
     sourceRecordId: revisionId,
     applicationNumber: `Contract Budget R${revisionNumber}`,
     periodTo: now.slice(0, 10),
-    status: "budget_current",
+    status: "building",
     originalContractSum: budget.originalContractSumCents / 100,
     netChanges: budget.approvedChangesCents / 100,
     contractSumToDate: budget.revisedContractSumCents / 100,
@@ -309,94 +333,78 @@ export async function rebuildProjectContractBudget(input: {
     previousCertificates: 0,
     currentPaymentDue: 0,
     balanceToFinish: budget.revisedContractSumCents / 100,
-    ownerVisible: true,
+    ownerVisible: false,
     sourceUrl: null,
     budgetRevisionId: revisionId,
     syncStatus: "compass_only",
     lastSyncedAt: null,
     createdAt: now,
     updatedAt: now,
-  })
-  if (budget.lines.length > 0) {
-    const revisionLines = await input.db
-      .select()
-      .from(projectContractBudgetLines)
-      .where(eq(projectContractBudgetLines.revisionId, revisionId))
-    await input.db.insert(projectBudgetLines).values(
-      revisionLines.map((line) => ({
-        id: crypto.randomUUID(),
-        projectId: input.projectId,
-        applicationId: projectionId,
-        budgetRevisionLineId: line.id,
-        sourceSystem: "compass_contract_budget_projection",
-        sourceRecordId: line.id,
-        sourceRecordNumber: line.costCode,
-        costCode: line.costCode,
-        csiDivision: line.divisionCode,
-        csiDivisionName: line.divisionName,
-        description: line.description,
-        notes: null,
-        originalEstimate: line.originalEstimateCents / 100,
-        priorChanges: line.approvedChangeCents / 100,
-        currentChanges: 0,
-        totalChanges: line.approvedChangeCents / 100,
-        adjustedEstimate: line.adjustedBudgetCents / 100,
-        previousWorkCompleted: 0,
-        currentWorkCompleted: 0,
-        storedMaterials: 0,
-        priorCosts: 0,
-        currentCosts: 0,
-        totalCosts: 0,
-        percentComplete: 0,
-        balanceToFinish: line.adjustedBudgetCents / 100,
-        retainageHeld: 0,
-        vendorName: null,
-        ownerLabel: line.description,
-        ownerVisible: line.ownerVisible,
-        internalNotes: `Derived from accepted estimate and executed change orders, revision ${revisionNumber}.`,
-        sortOrder: line.sortOrder,
-        syncStatus: "compass_only",
-        lastSyncedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      }))
-    )
   }
+  const projectionLineRows = revisionLineRows.map((line) => ({
+    id: crypto.randomUUID(),
+    projectId: input.projectId,
+    applicationId: projectionId,
+    budgetRevisionLineId: line.id,
+    sourceSystem: "compass_contract_budget_projection",
+    sourceRecordId: line.id,
+    sourceRecordNumber: line.costCode,
+    costCode: line.costCode,
+    csiDivision: line.divisionCode,
+    csiDivisionName: line.divisionName,
+    description: line.description,
+    notes: null,
+    originalEstimate: line.originalEstimateCents / 100,
+    priorChanges: line.approvedChangeCents / 100,
+    currentChanges: 0,
+    totalChanges: line.approvedChangeCents / 100,
+    adjustedEstimate: line.adjustedBudgetCents / 100,
+    previousWorkCompleted: 0,
+    currentWorkCompleted: 0,
+    storedMaterials: 0,
+    priorCosts: 0,
+    currentCosts: 0,
+    totalCosts: 0,
+    percentComplete: 0,
+    balanceToFinish: line.adjustedBudgetCents / 100,
+    retainageHeld: 0,
+    vendorName: null,
+    ownerLabel: line.description,
+    ownerVisible: line.ownerVisible,
+    internalNotes: `Derived from accepted estimate and executed change orders, revision ${revisionNumber}.`,
+    sortOrder: line.sortOrder,
+    syncStatus: "compass_only",
+    lastSyncedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  }))
+  const preparationStatements = [
+    input.db.insert(projectContractBudgetRevisions).values(revisionRow),
+    ...revisionLineRows.map((line) =>
+      input.db.insert(projectContractBudgetLines).values(line)
+    ),
+    ...adjustmentRows.map((adjustment) =>
+      input.db.insert(projectContractBudgetAdjustments).values(adjustment)
+    ),
+    input.db.insert(projectBudgetApplications).values(projectionRow),
+    ...projectionLineRows.map((line) =>
+      input.db.insert(projectBudgetLines).values(line)
+    ),
+  ]
+  const firstStatement = preparationStatements[0]
+  if (!firstStatement) {
+    return { success: false, error: "The budget revision could not be prepared." }
+  }
+  await input.db.batch([firstStatement, ...preparationStatements.slice(1)])
 
-  await input.db
-    .update(projectContractBudgetRevisions)
-    .set({ status: "superseded" })
-    .where(
-      and(
-        eq(projectContractBudgetRevisions.projectId, input.projectId),
-        eq(projectContractBudgetRevisions.status, "current")
-      )
-    )
-    .run()
-  await input.db
-    .update(projectBudgetApplications)
-    .set({ status: "budget_superseded", updatedAt: now })
-    .where(
-      and(
-        eq(projectBudgetApplications.projectId, input.projectId),
-        eq(projectBudgetApplications.status, "budget_current"),
-        eq(
-          projectBudgetApplications.sourceSystem,
-          "compass_contract_budget_projection"
-        )
-      )
-    )
-    .run()
-  await input.db
-    .update(projectContractBudgetRevisions)
-    .set({ status: "current" })
-    .where(eq(projectContractBudgetRevisions.id, revisionId))
-    .run()
-  await input.db
-    .update(projectBudgetApplications)
-    .set({ status: "budget_current", updatedAt: now })
-    .where(eq(projectBudgetApplications.id, projectionId))
-    .run()
+  if (input.publish !== false) {
+    await activateContractBudgetRevision({
+      db: input.db,
+      projectId: input.projectId,
+      revisionId,
+      now,
+    })
+  }
 
   return {
     success: true,
@@ -404,4 +412,49 @@ export async function rebuildProjectContractBudget(input: {
     revisionNumber,
     changed: true,
   }
+}
+
+async function activateContractBudgetRevision(input: {
+  readonly db: CompassDb
+  readonly projectId: string
+  readonly revisionId: string
+  readonly now: string
+}): Promise<void> {
+  const projectionId = `contract-budget-view:${input.revisionId}`
+  await input.db.batch([
+    input.db
+      .update(projectContractBudgetRevisions)
+      .set({ status: "superseded" })
+      .where(
+        and(
+          eq(projectContractBudgetRevisions.projectId, input.projectId),
+          eq(projectContractBudgetRevisions.status, "current")
+        )
+      ),
+    input.db
+      .update(projectBudgetApplications)
+      .set({ status: "budget_superseded", updatedAt: input.now })
+      .where(
+        and(
+          eq(projectBudgetApplications.projectId, input.projectId),
+          eq(projectBudgetApplications.status, "budget_current"),
+          eq(
+            projectBudgetApplications.sourceSystem,
+            "compass_contract_budget_projection"
+          )
+        )
+      ),
+    input.db
+      .update(projectContractBudgetRevisions)
+      .set({ status: "current" })
+      .where(eq(projectContractBudgetRevisions.id, input.revisionId)),
+    input.db
+      .update(projectBudgetApplications)
+      .set({
+        status: "budget_current",
+        ownerVisible: true,
+        updatedAt: input.now,
+      })
+      .where(eq(projectBudgetApplications.id, projectionId)),
+  ])
 }

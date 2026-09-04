@@ -6,6 +6,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
 
 import { organizations, projectContacts, projects, users } from "./schema"
 import {
@@ -196,6 +197,9 @@ export const projectEstimates = sqliteTable(
       table.status,
       table.versionNumber
     ),
+    uniqueIndex("project_estimates_one_accepted_per_project_uq")
+      .on(table.projectId)
+      .where(sql`${table.status} = 'accepted'`),
   ]
 )
 
