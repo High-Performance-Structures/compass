@@ -34,6 +34,7 @@ import {
 } from "@/lib/rfis/status"
 import { buildProjectEmailRecipientOptions } from "@/lib/email/recipient-options"
 import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
+import { viewableRfiAttachmentUrl } from "@/lib/rfis/attachment-url"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
@@ -329,11 +330,12 @@ export default async function ProjectRfisPage({
                       Attachments
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {rfi.attachments.map((attachment) =>
-                        attachment.storageUrl ? (
+                      {rfi.attachments.map((attachment) => {
+                        const href = viewableRfiAttachmentUrl(attachment)
+                        return href ? (
                           <a
                             key={attachment.id}
-                            href={attachment.storageUrl}
+                            href={href}
                             target="_blank"
                             rel="noreferrer"
                             className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
@@ -343,12 +345,15 @@ export default async function ProjectRfisPage({
                         ) : (
                           <span
                             key={attachment.id}
+                            title="Attachment source is not viewable in Compass yet; the original source reference is retained for provenance."
+                            aria-label={`${attachment.fileName} (source unavailable in Compass)`}
                             className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground"
                           >
                             {attachment.fileName}
+                            <span className="ml-1 font-normal">(source unavailable)</span>
                           </span>
                         )
-                      )}
+                      })}
                     </div>
                   </div>
                 )}
