@@ -280,7 +280,9 @@ export function ProjectDocumentsWorkspacePanel({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <IconFileDescription className="size-4 shrink-0 text-muted-foreground" />
-                    <h3 className="font-medium">{document.title}</h3>
+                    <h3 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                      {document.title}
+                    </h3>
                     <Badge variant={document.status === "current" ? "default" : "outline"}>
                       {statusLabel(document.status)}
                     </Badge>

@@ -97,14 +97,17 @@ export function ProjectDocumentManagementActions({
     event.preventDefault()
     if (isReferenced) return
     setError(null)
+    setRemoveOpen(false)
+    const toastId = toast.loading("Removing document from Compass...")
     startTransition(async () => {
       const result = await removeProjectDocument(projectId, document.id)
       if (!result.success) {
-        setError(result.error)
+        toast.error(result.error, { id: toastId })
         return
       }
-      toast.success("Document removed from Compass. The Drive file was not changed.")
-      setRemoveOpen(false)
+      toast.success("Document removed from Compass. The Drive file was not changed.", {
+        id: toastId,
+      })
       router.refresh()
     })
   }
@@ -113,7 +116,7 @@ export function ProjectDocumentManagementActions({
     <>
       <Dialog open={editOpen} onOpenChange={changeEditOpen}>
         <DialogTrigger asChild>
-          <Button type="button" size="sm" variant="ghost">
+          <Button type="button" size="sm" variant="ghost" disabled={isPending}>
             <IconEdit className="size-4" />
             Edit information
           </Button>
@@ -201,14 +204,22 @@ export function ProjectDocumentManagementActions({
 
       <AlertDialog open={removeOpen} onOpenChange={changeRemoveOpen}>
         <AlertDialogTrigger asChild>
-          <Button type="button" size="sm" variant="ghost" className="text-destructive">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-destructive"
+            disabled={isPending}
+          >
             <IconTrash className="size-4" />
             Remove from Compass
           </Button>
         </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove “{document.title}” from Compass?</AlertDialogTitle>
+        <AlertDialogContent className="min-w-0">
+          <AlertDialogHeader className="min-w-0">
+            <AlertDialogTitle className="break-words [overflow-wrap:anywhere]">
+              Remove “{document.title}” from Compass?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {isReferenced
                 ? "This document is part of an estimate or contract basis. Remove those references before removing its Compass record."
@@ -217,7 +228,7 @@ export function ProjectDocumentManagementActions({
           </AlertDialogHeader>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={isPending || isReferenced}

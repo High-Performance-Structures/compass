@@ -52,7 +52,9 @@ export function ProjectAudienceDocumentLibrary({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <IconFileDescription className="size-4 text-muted-foreground" />
-                  <h2 className="font-medium">{document.title}</h2>
+                  <h2 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                    {document.title}
+                  </h2>
                   <Badge>Current</Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -89,7 +91,9 @@ export function ProjectAudienceDocumentLibrary({
             {superseded.map((document) => (
               <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <div>
-                  <p className="font-medium">{document.title}</p>
+                  <p className="break-words font-medium [overflow-wrap:anywhere]">
+                    {document.title}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {projectDocumentCategoryLabel(document.category)} · {dateLabel(document.documentDate)}
                     {document.revision ? ` · Revision ${document.revision}` : ""}
