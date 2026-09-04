@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/select"
 import {
   MUSIC_PROVIDERS,
+  findPreferredMusicLink,
   formatListeningPosition,
   isMusicProvider,
   musicProviderLabel,
@@ -80,17 +81,6 @@ type SnapshotResult =
   | { readonly success: true; readonly data: ListeningRoomSnapshot }
   | { readonly success: false; readonly error: string }
 
-function preferredLink(
-  track: ListeningQueueItemData,
-  provider: MusicProvider
-) {
-  return (
-    track.links.find((link) => link.provider === provider) ??
-    track.links[0] ??
-    null
-  )
-}
-
 export function ListeningRoomButton({
   channelId,
   channelName,
@@ -106,7 +96,7 @@ export function ListeningRoomButton({
   const [busy, setBusy] = React.useState(false)
   const [closeConfirmationOpen, setCloseConfirmationOpen] = React.useState(false)
   const [preferredProvider, setPreferredProvider] =
-    React.useState<MusicProvider>("spotify")
+    React.useState<MusicProvider | null>(null)
   const [title, setTitle] = React.useState("")
   const [artist, setArtist] = React.useState("")
   const [trackUrl, setTrackUrl] = React.useState("")
@@ -166,6 +156,10 @@ export function ListeningRoomButton({
   }
 
   async function handleJoin(): Promise<void> {
+    if (preferredProvider === null) {
+      toast.error("Choose your music service before joining")
+      return
+    }
     await applySnapshot(
       joinListeningRoom({ channelId, preferredProvider }),
       "You joined the listening room"
@@ -229,9 +223,18 @@ export function ListeningRoomButton({
   }
 
   function openTrack(track: ListeningQueueItemData): void {
-    const link = preferredLink(track, preferredProvider)
+    if (preferredProvider === null) {
+      toast.error("Choose your music service first")
+      return
+    }
+    const link = findPreferredMusicLink(track.links, preferredProvider)
     if (!link) {
-      toast.error("No service link is available for this track")
+      if (room?.currentUserJoined) setLinkTrackId(track.id)
+      toast.info(
+        room?.currentUserJoined
+          ? `No ${musicProviderLabel(preferredProvider)} link yet. Add one below or choose an available link.`
+          : `No ${musicProviderLabel(preferredProvider)} link yet. Join to add one, or choose an available link.`
+      )
       return
     }
     window.open(link.url, "_blank", "noopener,noreferrer")
@@ -240,6 +243,9 @@ export function ListeningRoomButton({
   const currentTrack = room?.queue.find(
     (track) => track.id === room.currentTrackId
   ) ?? null
+  const currentPreferredLink = currentTrack
+    ? findPreferredMusicLink(currentTrack.links, preferredProvider)
+    : null
 
   return (
     <>
@@ -312,11 +318,11 @@ export function ListeningRoomButton({
                 </div>
                 <div className="flex items-center gap-2">
                   <Select
-                    value={preferredProvider}
+                    value={preferredProvider ?? undefined}
                     onValueChange={(value) => void handleProviderChange(value)}
                   >
                     <SelectTrigger size="sm" aria-label="Preferred music service">
-                      <SelectValue />
+                      <SelectValue placeholder="Choose service" />
                     </SelectTrigger>
                     <SelectContent>
                       {MUSIC_PROVIDERS.map((provider) => (
@@ -341,7 +347,7 @@ export function ListeningRoomButton({
                       type="button"
                       size="sm"
                       onClick={() => void handleJoin()}
-                      disabled={busy}
+                      disabled={busy || preferredProvider === null}
                     >
                       <LogIn /> Join
                     </Button>
@@ -369,11 +375,23 @@ export function ListeningRoomButton({
                       <p className="text-sm text-muted-foreground">Queue a track to get started.</p>
                     )}
                   </div>
-                  {currentTrack && room.currentUserJoined ? (
-                    <Button type="button" size="sm" onClick={() => openTrack(currentTrack)}>
-                      <ExternalLink />
-                      Open on {musicProviderLabel(preferredLink(currentTrack, preferredProvider)?.provider ?? currentTrack.links[0]?.provider ?? "other")}
-                    </Button>
+                  {currentTrack && room.currentUserJoined && preferredProvider ? (
+                    currentPreferredLink ? (
+                      <Button type="button" size="sm" onClick={() => openTrack(currentTrack)}>
+                        <ExternalLink />
+                        Open on {musicProviderLabel(preferredProvider)}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setLinkTrackId(currentTrack.id)}
+                      >
+                        <Link2 />
+                        Add {musicProviderLabel(preferredProvider)} link
+                      </Button>
+                    )
                   ) : null}
                 </div>
                 {room.canControl ? (
@@ -425,7 +443,10 @@ export function ListeningRoomButton({
                 ) : (
                   <ol className="divide-y">
                     {room.queue.map((track) => {
-                      const selectedLink = preferredLink(track, preferredProvider)
+                      const selectedLink = findPreferredMusicLink(
+                        track.links,
+                        preferredProvider
+                      )
                       const canRemove =
                         track.addedBy === room.currentUserId || room.canControl
                       return (
@@ -517,12 +538,16 @@ export function ListeningRoomButton({
                               )
                             })}
                           </div>
-                          {linkTrackId === track.id ? (
+                          {room.currentUserJoined && linkTrackId === track.id ? (
                             <form className="mt-2 flex gap-2" onSubmit={(event) => void handleAddLink(event)}>
                               <Input
                                 value={alternateUrl}
                                 onChange={(event) => setAlternateUrl(event.target.value)}
-                                placeholder="Link to this track on another service"
+                                placeholder={
+                                  preferredProvider
+                                    ? `Paste ${musicProviderLabel(preferredProvider)} link`
+                                    : "Paste a link from another service"
+                                }
                                 aria-label={`Alternate service link for ${track.title}`}
                                 required
                               />
@@ -557,7 +582,7 @@ export function ListeningRoomButton({
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Input value={trackUrl} onChange={(event) => setTrackUrl(event.target.value)} placeholder="https://open.spotify.com/track/..." aria-label="Music service link" required />
+                    <Input value={trackUrl} onChange={(event) => setTrackUrl(event.target.value)} placeholder="Paste a link from your music service" aria-label="Music service link" required />
                     <Button type="submit" disabled={busy || !title.trim() || !trackUrl.trim()}>
                       <Plus /> Add
                     </Button>

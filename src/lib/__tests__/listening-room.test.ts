@@ -1,13 +1,25 @@
 import { describe, expect, it } from "vitest"
 import {
   canManageListeningTrackLink,
+  findPreferredMusicLink,
   formatListeningPosition,
   listeningPlaybackPositionMs,
   musicProviderFromUrl,
   normalizeMusicUrl,
+  type MusicProviderLink,
 } from "@/lib/listening-room"
 
 describe("listening room provider links", () => {
+  it("never substitutes another service for a listener's preference", () => {
+    const spotifyLink = {
+      provider: "spotify",
+    } satisfies MusicProviderLink
+
+    expect(findPreferredMusicLink([spotifyLink], "apple_music")).toBeNull()
+    expect(findPreferredMusicLink([spotifyLink], null)).toBeNull()
+    expect(findPreferredMusicLink([spotifyLink], "spotify")).toBe(spotifyLink)
+  })
+
   it("recognizes supported music-service hosts without trusting lookalikes", () => {
     expect(musicProviderFromUrl("https://open.spotify.com/track/123")).toBe("spotify")
     expect(musicProviderFromUrl("https://music.apple.com/us/album/example/123")).toBe("apple_music")
