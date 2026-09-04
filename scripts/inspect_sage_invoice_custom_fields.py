@@ -79,12 +79,28 @@ def invoice_fields(connection: Any, invoice_id: int) -> dict[str, Any]:
     return row
 
 
+def customer_contacts(connection: Any, customer_id: int) -> list[dict[str, Any]]:
+    cursor = connection.cursor(as_dict=True)
+    cursor.execute(
+        """
+        SELECT recnum, linnum, cntnme, jobttl, e_mail, linref, ntetxt,
+               insdte, upddte
+        FROM dbo.clncnt
+        WHERE recnum = %s
+        ORDER BY linnum
+        """,
+        (customer_id,),
+    )
+    return list(cursor.fetchall())
+
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list-columns", action="store_true")
     parser.add_argument("--list-email-columns", action="store_true")
     parser.add_argument("--list-customer-contact-columns", action="store_true")
     parser.add_argument("--invoice-id", type=int)
+    parser.add_argument("--customer-id", type=int)
     return parser.parse_args(argv)
 
 
@@ -95,6 +111,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         and not args.list_email_columns
         and not args.list_customer_contact_columns
         and args.invoice_id is None
+        and args.customer_id is None
     ):
         raise BridgeError(
             "a metadata listing option or --invoice-id is required"
@@ -107,6 +124,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             value = {"columns": email_columns(connection)}
         elif args.list_customer_contact_columns:
             value = {"columns": customer_contact_columns(connection)}
+        elif args.customer_id is not None:
+            value = {"contacts": customer_contacts(connection, args.customer_id)}
         else:
             value = {"invoice": invoice_fields(connection, args.invoice_id)}
     finally:
