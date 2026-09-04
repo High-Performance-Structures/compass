@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  canManageListeningPlaylist,
   canManageListeningTrackLink,
   findPreferredMusicLink,
   formatListeningPosition,
@@ -144,5 +145,28 @@ describe("listening room playback clock", () => {
     })
     expect(position).toBe(125_000)
     expect(formatListeningPosition(position)).toBe("2:05")
+  })
+})
+
+describe("listening room playlist ownership", () => {
+  it("lets the creator or a channel moderator edit a saved playlist", () => {
+    expect(canManageListeningPlaylist({
+      currentUserId: "user-a",
+      createdBy: "user-a",
+      canModerate: false,
+    })).toBe(true)
+    expect(canManageListeningPlaylist({
+      currentUserId: "moderator",
+      createdBy: "user-a",
+      canModerate: true,
+    })).toBe(true)
+  })
+
+  it("keeps unrelated listeners from editing another person's playlist", () => {
+    expect(canManageListeningPlaylist({
+      currentUserId: "user-b",
+      createdBy: "user-a",
+      canModerate: false,
+    })).toBe(false)
   })
 })

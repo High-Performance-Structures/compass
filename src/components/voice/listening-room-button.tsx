@@ -36,6 +36,7 @@ import {
   type ListeningRoomSnapshot,
 } from "@/app/actions/listening-room"
 import { ListeningRoomPlayer } from "@/components/voice/listening-room-player"
+import { ListeningRoomPlaylists } from "@/components/voice/listening-room-playlists"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -581,6 +582,17 @@ export function ListeningRoomButton({
                   </div>
                 ) : null}
               </section>
+
+              {open ? (
+                <ListeningRoomPlaylists
+                  channelId={channelId}
+                  currentQueueCount={room.queue.length}
+                  onQueueChanged={() => {
+                    realtime.notifyRoomChanged()
+                    void loadRoom(false)
+                  }}
+                />
+              ) : null}
 
               <section
                 className={cn("border-t pt-4", !open && "hidden")}

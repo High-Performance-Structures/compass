@@ -32,6 +32,14 @@ export type MusicPlaybackTarget = {
   readonly kind: "direct" | "search"
 }
 
+export function canManageListeningPlaylist(input: {
+  readonly currentUserId: string
+  readonly createdBy: string
+  readonly canModerate: boolean
+}): boolean {
+  return input.currentUserId === input.createdBy || input.canModerate
+}
+
 export function isMusicProvider(value: string): value is MusicProvider {
   return MUSIC_PROVIDERS.some((provider) => provider === value)
 }
