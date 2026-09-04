@@ -885,6 +885,7 @@ function OwnerProjectPreview({
         <ProjectAudienceSchedule
           audienceLabel="Client schedule"
           items={data.scheduleItems}
+          publicationAvailable={data.schedulePublicationAvailable}
           projectId={data.project.id}
           projectName={data.project.name}
           projectNumber={data.project.projectNumber}
@@ -1119,6 +1120,7 @@ export function ProjectAudiencePreview({
           <ProjectAudienceSchedule
             audienceLabel="Sub/vendor schedule"
             items={data.scheduleItems}
+            publicationAvailable={data.schedulePublicationAvailable}
             projectId={data.project.id}
             projectName={data.project.name}
             projectNumber={data.project.projectNumber}

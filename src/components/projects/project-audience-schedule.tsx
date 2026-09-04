@@ -163,6 +163,7 @@ function ScheduleConfirmationControl({
   const [proposalNote, setProposalNote] = React.useState(
     item.proposalNote ?? ""
   )
+  const [proposalError, setProposalError] = React.useState<string | null>(null)
   React.useEffect(() => {
     if (!proposalOpen) return
     setProposedStartDate(item.proposedStartDate ?? item.startDate)
@@ -196,18 +197,27 @@ function ScheduleConfirmationControl({
 
   const submitProposal = (): void => {
     startTransition(async () => {
-      const result = await proposeScheduleTaskChange(item.id, {
-        startDate: proposedStartDate,
-        workdays: proposedWorkdays,
-        note: proposalNote,
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      setProposalError(null)
+      try {
+        const result = await proposeScheduleTaskChange(item.id, {
+          startDate: proposedStartDate,
+          workdays: proposedWorkdays,
+          note: proposalNote,
+        })
+        if (!result.success) {
+          setProposalError(result.error)
+          toast.error(result.error)
+          return
+        }
+        toast.success("Your proposed date was sent to the project team for review.")
+        setProposalOpen(false)
+        router.refresh()
+      } catch (error) {
+        console.error("Unable to submit the schedule proposal", error)
+        const message = "Unable to send your proposal. Please try again."
+        setProposalError(message)
+        toast.error(message)
       }
-      toast.success("Your proposed date was sent to the project team for review.")
-      setProposalOpen(false)
-      router.refresh()
     })
   }
 
@@ -252,7 +262,13 @@ function ScheduleConfirmationControl({
           </Button>
         </>
       )}
-      <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+      <Dialog
+        open={proposalOpen}
+        onOpenChange={(open) => {
+          setProposalOpen(open)
+          if (open) setProposalError(null)
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Suggest a new schedule date</DialogTitle>
@@ -297,6 +313,11 @@ function ScheduleConfirmationControl({
               />
             </div>
           </div>
+          {proposalError && (
+            <p role="alert" className="text-sm text-destructive">
+              {proposalError}
+            </p>
+          )}
           <DialogFooter>
             <Button
               type="button"
@@ -333,6 +354,7 @@ function ScheduleAssigneeControl({
     assignee.proposedWorkdays ?? item.workdays,
   )
   const [message, setMessage] = React.useState(assignee.responseMessage ?? "")
+  const [proposalError, setProposalError] = React.useState<string | null>(null)
   const respond = (response: "confirmed" | "declined"): void => {
     startTransition(async () => {
       const result = await respondToScheduleTaskAssignee(assignee.id, {
@@ -349,19 +371,28 @@ function ScheduleAssigneeControl({
   }
   const submitProposal = (): void => {
     startTransition(async () => {
-      const result = await respondToScheduleTaskAssignee(assignee.id, {
-        response: "proposed",
-        proposedStartDate: startDate,
-        proposedWorkdays: workdays,
-        message,
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      setProposalError(null)
+      try {
+        const result = await respondToScheduleTaskAssignee(assignee.id, {
+          response: "proposed",
+          proposedStartDate: startDate,
+          proposedWorkdays: workdays,
+          message,
+        })
+        if (!result.success) {
+          setProposalError(result.error)
+          toast.error(result.error)
+          return
+        }
+        setProposalOpen(false)
+        toast.success("Your proposal was sent to the project team.")
+        router.refresh()
+      } catch (error) {
+        console.error("Unable to submit the assignee schedule proposal", error)
+        const failureMessage = "Unable to send your proposal. Please try again."
+        setProposalError(failureMessage)
+        toast.error(failureMessage)
       }
-      setProposalOpen(false)
-      toast.success("Your proposal was sent to the project team.")
-      router.refresh()
     })
   }
   return (
@@ -383,7 +414,13 @@ function ScheduleAssigneeControl({
           <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setProposalOpen(true)}>
             <IconPencil className="size-4" /> Suggest date
           </Button>
-          <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+          <Dialog
+            open={proposalOpen}
+            onOpenChange={(open) => {
+              setProposalOpen(open)
+              if (open) setProposalError(null)
+            }}
+          >
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Suggest a new schedule date</DialogTitle>
@@ -406,6 +443,11 @@ function ScheduleAssigneeControl({
                   <Textarea id={`assignee-response-message-${assignee.id}`} maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} />
                 </div>
               </div>
+              {proposalError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {proposalError}
+                </p>
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" disabled={pending} onClick={() => setProposalOpen(false)}>Cancel</Button>
                 <Button type="button" disabled={pending} onClick={submitProposal}>{pending ? "Sending…" : "Send proposal"}</Button>
@@ -904,6 +946,7 @@ function ProjectAudienceGantt({
 export function ProjectAudienceSchedule({
   audienceLabel,
   items,
+  publicationAvailable,
   projectId,
   projectName,
   projectNumber,
@@ -911,6 +954,7 @@ export function ProjectAudienceSchedule({
 }: {
   readonly audienceLabel: string
   readonly items: readonly AudienceScheduleItem[]
+  readonly publicationAvailable: boolean
   readonly projectId: string
   readonly projectName: string
   readonly projectNumber: string | null
@@ -989,7 +1033,9 @@ export function ProjectAudienceSchedule({
 
       {items.length === 0 ? (
         <p className="p-5 text-sm text-muted-foreground">
-          No schedule items are currently visible.
+          {publicationAvailable
+            ? "No schedule items are currently visible."
+            : "The project team has not published this schedule yet."}
         </p>
       ) : view === "list" ? (
         <div className="divide-y">
