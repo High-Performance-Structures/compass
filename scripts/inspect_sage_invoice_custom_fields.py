@@ -27,6 +27,23 @@ def candidate_columns(connection: Any) -> list[dict[str, Any]]:
     return list(cursor.fetchall())
 
 
+def email_columns(connection: Any) -> list[dict[str, Any]]:
+    cursor = connection.cursor(as_dict=True)
+    cursor.execute(
+        """
+        SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, ORDINAL_POSITION
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'dbo'
+          AND (
+            LOWER(COLUMN_NAME) LIKE '%mail%'
+            OR LOWER(COLUMN_NAME) LIKE '%email%'
+          )
+        ORDER BY TABLE_NAME, ORDINAL_POSITION
+        """
+    )
+    return list(cursor.fetchall())
+
+
 def invoice_fields(connection: Any, invoice_id: int) -> dict[str, Any]:
     cursor = connection.cursor(as_dict=True)
     cursor.execute(
@@ -50,21 +67,25 @@ def invoice_fields(connection: Any, invoice_id: int) -> dict[str, Any]:
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--list-columns", action="store_true")
+    parser.add_argument("--list-email-columns", action="store_true")
     parser.add_argument("--invoice-id", type=int)
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    if not args.list_columns and args.invoice_id is None:
-        raise BridgeError("--list-columns or --invoice-id is required")
+    if not args.list_columns and not args.list_email_columns and args.invoice_id is None:
+        raise BridgeError(
+            "--list-columns, --list-email-columns, or --invoice-id is required"
+        )
     connection = connect_sage()
     try:
-        value = (
-            {"columns": candidate_columns(connection)}
-            if args.list_columns
-            else {"invoice": invoice_fields(connection, args.invoice_id)}
-        )
+        if args.list_columns:
+            value = {"columns": candidate_columns(connection)}
+        elif args.list_email_columns:
+            value = {"columns": email_columns(connection)}
+        else:
+            value = {"invoice": invoice_fields(connection, args.invoice_id)}
     finally:
         connection.close()
     print(json.dumps(value, indent=2, default=str))
