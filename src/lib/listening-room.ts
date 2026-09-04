@@ -14,12 +14,35 @@ export type MusicProvider = (typeof MUSIC_PROVIDERS)[number]
 
 export type ListeningPlaybackState = "playing" | "paused"
 
+export const LISTENING_ROOM_START_DELAY_MS = 1_500
+
+export const SYNCHRONIZED_MUSIC_PROVIDERS = ["youtube", "soundcloud"] as const
+export type SynchronizedMusicProvider =
+  (typeof SYNCHRONIZED_MUSIC_PROVIDERS)[number]
+
 export type MusicProviderLink = {
   readonly provider: MusicProvider
 }
 
+export type MusicPlaybackTarget = {
+  readonly url: string
+  readonly kind: "direct" | "search"
+}
+
 export function isMusicProvider(value: string): value is MusicProvider {
   return MUSIC_PROVIDERS.some((provider) => provider === value)
+}
+
+export function isSynchronizedMusicProvider(
+  value: MusicProvider | null
+): value is SynchronizedMusicProvider {
+  return value === "youtube" || value === "soundcloud"
+}
+
+export function synchronizedProviderLabel(
+  provider: MusicProvider
+): "Synchronized" | "Link only" {
+  return isSynchronizedMusicProvider(provider) ? "Synchronized" : "Link only"
 }
 
 export function musicProviderLabel(provider: MusicProvider): string {
@@ -51,6 +74,60 @@ export function findPreferredMusicLink<T extends MusicProviderLink>(
 ): T | null {
   if (preferredProvider === null) return null
   return links.find((link) => link.provider === preferredProvider) ?? null
+}
+
+export function musicProviderSearchUrl(input: {
+  readonly provider: MusicProvider
+  readonly title: string
+  readonly artist: string | null
+}): string | null {
+  const query = [input.title.trim(), input.artist?.trim()]
+    .filter((part) => Boolean(part))
+    .join(" ")
+  if (!query) return null
+  const encodedQuery = encodeURIComponent(query)
+
+  switch (input.provider) {
+    case "spotify":
+      return `https://open.spotify.com/search/${encodedQuery}`
+    case "apple_music":
+      return `https://music.apple.com/us/search?term=${encodedQuery}`
+    case "youtube":
+      return `https://www.youtube.com/results?search_query=${encodedQuery}`
+    case "soundcloud":
+      return `https://soundcloud.com/search?q=${encodedQuery}`
+    case "amazon_music":
+      return `https://music.amazon.com/search/${encodedQuery}`
+    case "tidal":
+      return `https://listen.tidal.com/search?q=${encodedQuery}`
+    case "deezer":
+      return `https://www.deezer.com/search/${encodedQuery}`
+    case "pandora":
+      return `https://www.pandora.com/search/${encodedQuery}/all`
+    case "other":
+      return null
+  }
+}
+
+export function musicPlaybackTarget<T extends MusicProviderLink & { readonly url: string }>(input: {
+  readonly links: readonly T[]
+  readonly preferredProvider: MusicProvider | null
+  readonly title: string
+  readonly artist: string | null
+}): MusicPlaybackTarget | null {
+  if (input.preferredProvider === null) return null
+  const directLink = findPreferredMusicLink(
+    input.links,
+    input.preferredProvider
+  )
+  if (directLink) return { url: directLink.url, kind: "direct" }
+
+  const searchUrl = musicProviderSearchUrl({
+    provider: input.preferredProvider,
+    title: input.title,
+    artist: input.artist,
+  })
+  return searchUrl ? { url: searchUrl, kind: "search" } : null
 }
 
 function hostnameMatches(hostname: string, domain: string): boolean {
@@ -88,6 +165,36 @@ export function musicProviderFromUrl(value: string): MusicProvider | null {
   if (hostnameMatches(hostname, "deezer.com")) return "deezer"
   if (hostnameMatches(hostname, "pandora.com")) return "pandora"
   return "other"
+}
+
+export function youtubeVideoId(value: string): string | null {
+  const normalized = normalizeMusicUrl(value)
+  if (!normalized) return null
+  const url = new URL(normalized)
+  const hostname = url.hostname.toLowerCase()
+  let candidate: string | null = null
+  if (hostnameMatches(hostname, "youtu.be")) {
+    candidate = url.pathname.split("/").filter(Boolean)[0] ?? null
+  } else if (hostnameMatches(hostname, "youtube.com")) {
+    if (url.pathname === "/watch") candidate = url.searchParams.get("v")
+    else {
+      const segments = url.pathname.split("/").filter(Boolean)
+      if (["embed", "shorts", "live"].includes(segments[0] ?? "")) {
+        candidate = segments[1] ?? null
+      }
+    }
+  }
+  return candidate && /^[A-Za-z0-9_-]{6,20}$/.test(candidate)
+    ? candidate
+    : null
+}
+
+export function soundCloudTrackUrl(value: string): string | null {
+  const normalized = normalizeMusicUrl(value)
+  if (!normalized) return null
+  const url = new URL(normalized)
+  if (!hostnameMatches(url.hostname.toLowerCase(), "soundcloud.com")) return null
+  return url.pathname.split("/").filter(Boolean).length >= 2 ? normalized : null
 }
 
 export function listeningPlaybackPositionMs(input: {

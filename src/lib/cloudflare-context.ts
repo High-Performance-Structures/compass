@@ -293,7 +293,7 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
         if (value) Reflect.set(localEnv, key, value)
     }
 
-    return localEnv
+    return localEnv as unknown as CloudflareEnv
 }
 
 export async function getCloudflareContext(): Promise<CompassCloudflareContext> {
