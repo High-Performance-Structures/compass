@@ -13,6 +13,7 @@ from sage_square_invoice_bridge import (
     build_square_invoice,
     build_square_order,
     recipient_email,
+    resolve_sage_customer_email,
     route_square_location,
     sage_tax_amount,
     validate_existing_square_invoice,
@@ -45,6 +46,16 @@ def example_invoice() -> SageInvoice:
 
 
 class SageSquareInvoiceBridgeTests(unittest.TestCase):
+    def test_primary_email_precedes_general_information_email(self) -> None:
+        self.assertEqual(
+            resolve_sage_customer_email("primary@example.com", "general@example.com"),
+            "primary@example.com",
+        )
+        self.assertEqual(
+            resolve_sage_customer_email(None, "general@example.com"),
+            "general@example.com",
+        )
+
     def test_routes_all_department_prefixes(self) -> None:
         cases = {
             "H-100": ("H", "HPS"),

@@ -108,6 +108,33 @@ Publishing instructs Square to email the customer and activates the hosted
 payment page. It is an external financial communication and requires explicit
 operator approval.
 
+## Automated production polling
+
+After the automation cutoff has been explicitly approved, the private bridge
+host may run `sage_square_invoice_poller.py` from the paired systemd service
+and timer in `scripts/systemd/`. The production rollout starts at Sage invoice
+record `1627`; older open invoices are never considered.
+
+Each bounded poll reads open Sage invoices at or above the cutoff whose Sage
+**Square Status** custom field (`acrinv.usrdf1`) is exactly `SQUARE:READY`. It
+validates that value again before any Square API call. Record `1627` is
+therefore excluded unless an operator later sets that status in Sage. For
+ready invoices, the poller checks for an existing
+bridge-owned Square invoice before any write and then uses the same route,
+recipient, total, tax, and idempotency validations as the manual command. A
+missing Square customer is created only when Sage supplies a valid customer
+ID, name, and email. Missing or ambiguous data fails that invoice closed while
+the poll continues checking the remaining candidates. Recipient lookup checks
+Other Addresses → Primary Email (`clncnt`, line 1) first and falls back to the
+General Information email (`reccln.e_mail`). Square's Invoices API supports one
+primary recipient, so a valid Primary Email always proceeds even when General
+Information contains a different address; both source values are included in
+the poll result for audit visibility.
+
+The timer invokes the Signet secret wrapper and runs every minute. A dry-run
+without `--auto-publish` reports what would happen without creating customers,
+orders, or invoices.
+
 Completed payments for bridge-owned invoices are handled by the separate
 [Square to Sage payment posting runbook](sage-square-payment-posting.md). The
 payment workflow uses `jarvis.api`, posts all Square settlement activity to FSB

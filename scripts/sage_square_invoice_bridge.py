@@ -77,6 +77,9 @@ class SageInvoice:
     total: Decimal
     balance: Decimal
     lines: tuple[SageInvoiceLine, ...]
+    square_status: str | None = None
+    sage_customer_general_email: str | None = None
+    sage_customer_primary_email: str | None = None
 
 
 def text(value: Any) -> str | None:
@@ -121,6 +124,11 @@ def clean_line_text(value: Any) -> str | None:
     if normalized is None:
         return None
     return " ".join(normalized.replace("|", " ").split())
+
+
+def resolve_sage_customer_email(primary_email: Any, general_email: Any) -> str | None:
+    """Prefer Other Addresses primary email without blocking on General Info."""
+    return text(primary_email) or text(general_email)
 
 
 def job_prefix(job_short_name: str, job_name: str) -> str:
@@ -291,11 +299,16 @@ def load_sage_invoice(connection: Any, sage_invoice_id: int) -> SageInvoice:
     cursor.execute(
         """
         SELECT i.recnum, i.invnum, i.invdte, i.duedte, i.jobnum, i.status,
+               i.usrdf1 AS square_status,
                i.invttl, i.invbal, j.jobnme, j.shtnme, j.dptmnt,
-               c.recnum AS clnnum, c.clnnme, c.e_mail
+               c.recnum AS clnnum, c.clnnme,
+               c.e_mail AS general_email, primary_contact.e_mail AS primary_email
         FROM dbo.acrinv i
         LEFT JOIN dbo.actrec j ON j.recnum = i.jobnum
         LEFT JOIN dbo.reccln c ON c.recnum = j.clnnum
+        LEFT JOIN dbo.clncnt primary_contact
+          ON primary_contact.recnum = c.recnum
+         AND primary_contact.linnum = 1
         WHERE i.recnum = %s
         """,
         (sage_invoice_id,),
@@ -341,7 +354,9 @@ def load_sage_invoice(connection: Any, sage_invoice_id: int) -> SageInvoice:
         sage_job_id=int(row.get("jobnum") or 0),
         sage_customer_id=int(row.get("clnnum") or 0),
         sage_customer_name=text(row.get("clnnme")) or "",
-        sage_customer_email=text(row.get("e_mail")),
+        sage_customer_email=resolve_sage_customer_email(
+            row.get("primary_email"), row.get("general_email")
+        ),
         job_name=text(row.get("jobnme")) or "",
         job_short_name=text(row.get("shtnme")) or text(row.get("jobnme")) or "",
         sage_department=text(row.get("dptmnt")),
@@ -349,6 +364,9 @@ def load_sage_invoice(connection: Any, sage_invoice_id: int) -> SageInvoice:
         total=decimal_money(row.get("invttl")),
         balance=decimal_money(row.get("invbal")),
         lines=tuple(lines),
+        square_status=text(row.get("square_status")),
+        sage_customer_general_email=text(row.get("general_email")),
+        sage_customer_primary_email=text(row.get("primary_email")),
     )
     validate_invoice(invoice)
     return invoice
@@ -468,6 +486,16 @@ class SquareClient:
         if created_email is None or created_email.lower() != email.lower():
             raise BridgeError("Created Square customer email does not match Sage")
         return created
+
+    def customer_by_id(self, customer_id: str) -> dict[str, Any]:
+        value = self.request(
+            "GET",
+            f"/v2/customers/{urllib.parse.quote(customer_id, safe='')}",
+        )
+        customer = value.get("customer")
+        if not isinstance(customer, dict) or customer.get("id") != customer_id:
+            raise BridgeError("Square did not return the expected invoice customer")
+        return customer
 
     def calculate_order(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         order = payload.get("order")
@@ -649,6 +677,9 @@ def public_summary(
         "invoiceNumber": invoice.invoice_number,
         "sageJobId": invoice.sage_job_id,
         "jobNumber": invoice.job_short_name,
+        "squareStatus": invoice.square_status,
+        "sageGeneralEmail": invoice.sage_customer_general_email,
+        "sagePrimaryEmail": invoice.sage_customer_primary_email,
         "departmentPrefix": prefix,
         "squareLocation": location_name,
         "squareLocationId": location_id,
