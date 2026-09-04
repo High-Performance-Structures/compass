@@ -14,6 +14,10 @@ export type MusicProvider = (typeof MUSIC_PROVIDERS)[number]
 
 export type ListeningPlaybackState = "playing" | "paused"
 
+export type MusicProviderLink = {
+  readonly provider: MusicProvider
+}
+
 export function isMusicProvider(value: string): value is MusicProvider {
   return MUSIC_PROVIDERS.some((provider) => provider === value)
 }
@@ -39,6 +43,14 @@ export function musicProviderLabel(provider: MusicProvider): string {
     case "other":
       return "Other service"
   }
+}
+
+export function findPreferredMusicLink<T extends MusicProviderLink>(
+  links: readonly T[],
+  preferredProvider: MusicProvider | null
+): T | null {
+  if (preferredProvider === null) return null
+  return links.find((link) => link.provider === preferredProvider) ?? null
 }
 
 function hostnameMatches(hostname: string, domain: string): boolean {
