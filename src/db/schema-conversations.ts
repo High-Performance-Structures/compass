@@ -328,6 +328,85 @@ export const listeningRoomParticipants = sqliteTable(
   ]
 )
 
+// Saved playlists are shared within an organization. Deletes are soft so an
+// accidentally removed team playlist can be recovered from the audit record.
+export const listeningPlaylists = sqliteTable(
+  "listening_playlists",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    updatedBy: text("updated_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deletedAt: text("deleted_at"),
+    deletedBy: text("deleted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("listening_playlists_org_active_idx").on(
+      table.organizationId,
+      table.deletedAt,
+      table.updatedAt
+    ),
+    index("listening_playlists_creator_idx").on(table.createdBy),
+  ]
+)
+
+export const listeningPlaylistItems = sqliteTable(
+  "listening_playlist_items",
+  {
+    id: text("id").primaryKey(),
+    playlistId: text("playlist_id")
+      .notNull()
+      .references(() => listeningPlaylists.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    artist: text("artist"),
+    durationMs: integer("duration_ms"),
+    sortOrder: integer("sort_order").notNull(),
+    addedBy: text("added_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("listening_playlist_items_playlist_order_idx").on(
+      table.playlistId,
+      table.sortOrder
+    ),
+  ]
+)
+
+export const listeningPlaylistTrackLinks = sqliteTable(
+  "listening_playlist_track_links",
+  {
+    id: text("id").primaryKey(),
+    playlistItemId: text("playlist_item_id")
+      .notNull()
+      .references(() => listeningPlaylistItems.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    url: text("url").notNull(),
+    addedBy: text("added_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("listening_playlist_track_links_item_provider_idx").on(
+      table.playlistItemId,
+      table.provider
+    ),
+  ]
+)
+
 // type exports
 export type Channel = typeof channels.$inferSelect
 export type NewChannel = typeof channels.$inferInsert
@@ -367,3 +446,11 @@ export type ListeningRoomParticipant =
   typeof listeningRoomParticipants.$inferSelect
 export type NewListeningRoomParticipant =
   typeof listeningRoomParticipants.$inferInsert
+export type ListeningPlaylist = typeof listeningPlaylists.$inferSelect
+export type NewListeningPlaylist = typeof listeningPlaylists.$inferInsert
+export type ListeningPlaylistItem = typeof listeningPlaylistItems.$inferSelect
+export type NewListeningPlaylistItem = typeof listeningPlaylistItems.$inferInsert
+export type ListeningPlaylistTrackLink =
+  typeof listeningPlaylistTrackLinks.$inferSelect
+export type NewListeningPlaylistTrackLink =
+  typeof listeningPlaylistTrackLinks.$inferInsert
