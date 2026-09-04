@@ -26,6 +26,10 @@ import type { ProjectDepartment } from "@/lib/project-branding"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
 import { getUserSchedulePreferences } from "@/app/actions/user-schedule-preferences"
 import { getSchedulePublicationStatus } from "@/app/actions/schedule-publications"
+import {
+  getScheduleTaskAssigneeOptions,
+  type ProjectTaskAssigneeOption,
+} from "@/app/actions/project-contacts"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
 
@@ -172,6 +176,20 @@ export default async function SchedulePage({
         ? requestedView
         : "gantt"
     const primaryProject = data.projects[0] ?? null
+    let assigneeOptions: ProjectTaskAssigneeOption[] = []
+    if (primaryProject) {
+      try {
+        const assigneeData = await getScheduleTaskAssigneeOptions(
+          primaryProject.id
+        )
+        assigneeOptions = [
+          ...assigneeData.projectContacts,
+          ...assigneeData.directoryContacts,
+        ]
+      } catch (error) {
+        console.warn("Unable to load schedule assignee options", error)
+      }
+    }
     const ownerScheduleView =
       scope.kind === "project" && primaryProject
         ? await getOwnerScheduleView(primaryProject.id)
@@ -195,6 +213,7 @@ export default async function SchedulePage({
           allProjects={allProjects}
           scheduleProjects={data.projects}
           scope={scope}
+          assigneeOptions={assigneeOptions}
           initialView={initialView}
           globalMode
           ownerScheduleView={ownerScheduleView}

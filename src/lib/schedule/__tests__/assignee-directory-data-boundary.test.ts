@@ -35,12 +35,17 @@ describe("schedule assignee directory data boundary", () => {
     expect(scheduleAction).not.toContain("projectNameKeys")
   })
 
-  it("uses the schedule-specific directory loader on the schedule page", () => {
-    const page = source(
+  it("uses the schedule-specific directory loader on project schedule pages", () => {
+    const projectPage = source(
       "src/app/dashboard/projects/[id]/schedule/page.tsx"
     )
+    const portfolioPage = source("src/app/dashboard/schedule/page.tsx")
 
-    expect(page).toContain("getScheduleTaskAssigneeOptions(id)")
-    expect(page).not.toContain("getProjectTaskAssigneeOptions(id)")
+    expect(projectPage).toContain("getScheduleTaskAssigneeOptions(id)")
+    expect(projectPage).not.toContain("getProjectTaskAssigneeOptions(id)")
+    expect(portfolioPage).toContain(
+      "getScheduleTaskAssigneeOptions(\n          primaryProject.id\n        )"
+    )
+    expect(portfolioPage).toContain("assigneeOptions={assigneeOptions}")
   })
 })
