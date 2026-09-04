@@ -1,11 +1,9 @@
 import type * as React from "react"
 import { redirect } from "next/navigation"
 
-import {
-  ListeningRoomButton,
-  OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
-} from "@/components/voice/listening-room-button"
+import { ListeningRoomButton } from "@/components/voice/listening-room-button"
 import { getCurrentUser } from "@/lib/auth"
+import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { canUseOfficeTalk } from "@/lib/permissions"
 
 export const dynamic = "force-dynamic"

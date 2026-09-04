@@ -21,8 +21,8 @@ import { cn } from "@/lib/utils"
 import {
   ListeningRoomButton,
   ListeningRoomLauncher,
-  OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
 } from "@/components/voice/listening-room-button"
+import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 
 function RemoteVoiceAudio({
   stream,
