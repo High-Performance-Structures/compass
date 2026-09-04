@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation"
 import {
   IconArchive,
   IconChevronLeft,
-  IconDownload,
+  IconExternalLink,
   IconFileDescription,
   IconFolder,
   IconFolderPlus,
@@ -280,7 +280,9 @@ export function ProjectDocumentsWorkspacePanel({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <IconFileDescription className="size-4 shrink-0 text-muted-foreground" />
-                    <h3 className="font-medium">{document.title}</h3>
+                    <h3 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                      {document.title}
+                    </h3>
                     <Badge variant={document.status === "current" ? "default" : "outline"}>
                       {statusLabel(document.status)}
                     </Badge>
@@ -327,7 +329,7 @@ export function ProjectDocumentsWorkspacePanel({
                 <div className="flex flex-wrap items-start gap-2 lg:justify-end">
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}>
-                      <IconDownload className="size-4" />Download
+                      <IconExternalLink className="size-4" />Open
                     </Link>
                   </Button>
                   <ProjectDocumentManagementActions

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { IconDownload, IconFileDescription, IconHistory } from "@tabler/icons-react"
+import { IconExternalLink, IconFileDescription, IconHistory } from "@tabler/icons-react"
 
 import type { AudienceDocument } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
@@ -52,7 +52,9 @@ export function ProjectAudienceDocumentLibrary({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <IconFileDescription className="size-4 text-muted-foreground" />
-                  <h2 className="font-medium">{document.title}</h2>
+                  <h2 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                    {document.title}
+                  </h2>
                   <Badge>Current</Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -66,7 +68,7 @@ export function ProjectAudienceDocumentLibrary({
               {document.downloadable && (
                 <Button asChild size="sm" variant="outline">
                   <Link href={`/api/projects/${projectId}/documents/${document.id}/download`}>
-                    <IconDownload className="size-4" />Download
+                    <IconExternalLink className="size-4" />Open
                   </Link>
                 </Button>
               )}
@@ -89,7 +91,9 @@ export function ProjectAudienceDocumentLibrary({
             {superseded.map((document) => (
               <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <div>
-                  <p className="font-medium">{document.title}</p>
+                  <p className="break-words font-medium [overflow-wrap:anywhere]">
+                    {document.title}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {projectDocumentCategoryLabel(document.category)} · {dateLabel(document.documentDate)}
                     {document.revision ? ` · Revision ${document.revision}` : ""}
@@ -98,7 +102,7 @@ export function ProjectAudienceDocumentLibrary({
                 {document.downloadable && (
                   <Button asChild size="sm" variant="ghost">
                     <Link href={`/api/projects/${projectId}/documents/${document.id}/download`}>
-                      <IconDownload className="size-4" />Download
+                      <IconExternalLink className="size-4" />Open
                     </Link>
                   </Button>
                 )}
