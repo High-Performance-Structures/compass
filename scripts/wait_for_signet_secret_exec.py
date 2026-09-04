@@ -24,6 +24,21 @@ def job_id_from_output(output: str) -> str | None:
 
 
 def result_from_output(output: str) -> dict[str, object] | None:
+    decoder = json.JSONDecoder()
+    lines = output.splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        candidate = "\n".join(lines[index:]).lstrip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            value, end = decoder.raw_decode(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not candidate[end:].strip() and isinstance(value, dict):
+            return value
+
+    # Preserve compatibility with older Signet output that appended a
+    # standalone compact JSON result after human-readable status lines.
     for line in reversed(output.splitlines()):
         try:
             value = json.loads(line)

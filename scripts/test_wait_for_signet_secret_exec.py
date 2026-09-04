@@ -33,6 +33,23 @@ class SignetWaitParsingTests(unittest.TestCase):
             {"status": "error", "error": "HTTP 401"},
         )
 
+    def test_reads_pretty_printed_multiline_result(self) -> None:
+        self.assertEqual(
+            MODULE.result_from_output(
+                'Status: completed\n{\n  "status": "ok",\n  "requested": 1\n}'
+            ),
+            {"status": "ok", "requested": 1},
+        )
+
+    def test_reads_top_level_result_instead_of_nested_object(self) -> None:
+        self.assertEqual(
+            MODULE.result_from_output(
+                'Status: completed\n{\n  "status": "ok",\n'
+                '  "details": {"count": 1}\n}'
+            ),
+            {"status": "ok", "details": {"count": 1}},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
