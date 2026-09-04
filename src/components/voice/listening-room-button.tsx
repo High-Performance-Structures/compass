@@ -84,6 +84,42 @@ import {
 
 const PREFERRED_PROVIDER_KEY = "compass-listening-provider"
 
+export const OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID =
+  "voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899"
+const LISTENING_ROOM_WINDOW_NAME = "compass-listening-room"
+
+export function openListeningRoomWindow(channelId: string): void {
+  const availableWidth = window.screen.availWidth
+  const availableHeight = window.screen.availHeight
+  const width = Math.min(760, Math.max(520, availableWidth - 160))
+  const height = Math.min(820, Math.max(640, availableHeight - 160))
+  const left = Math.max(0, Math.round((availableWidth - width) / 2))
+  const top = Math.max(0, Math.round((availableHeight - height) / 2))
+  const features = [
+    "popup=yes",
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+    "resizable=yes",
+    "scrollbars=yes",
+  ].join(",")
+  const listeningWindow = window.open(
+    `/dashboard/conversations/${channelId}/listening-room`,
+    LISTENING_ROOM_WINDOW_NAME,
+    features
+  )
+  if (listeningWindow) {
+    listeningWindow.focus()
+    return
+  }
+  window.open(
+    `/dashboard/conversations/${channelId}/listening-room`,
+    "_blank",
+    "noopener,noreferrer"
+  )
+}
+
 type SnapshotResult =
   | { readonly success: true; readonly data: ListeningRoomSnapshot }
   | { readonly success: false; readonly error: string }
@@ -92,12 +128,18 @@ export function ListeningRoomButton({
   channelId,
   channelName,
   className,
+  showTrigger = true,
+  initialOpen = false,
+  standaloneWindow = false,
 }: {
   readonly channelId: string
   readonly channelName: string
   readonly className?: string
+  readonly showTrigger?: boolean
+  readonly initialOpen?: boolean
+  readonly standaloneWindow?: boolean
 }): React.ReactElement {
-  const [open, setOpen] = React.useState(false)
+  const [open, setOpen] = React.useState(initialOpen)
   const [room, setRoom] = React.useState<ListeningRoomSnapshot | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [busy, setBusy] = React.useState(false)
@@ -209,7 +251,9 @@ export function ListeningRoomButton({
       }
       realtime.notifyRoomChanged()
       setRoom(result.data.room)
+      setOpen(false)
       toast.success("You left the listening room")
+      if (standaloneWindow) window.close()
     } finally {
       setBusy(false)
     }
@@ -297,28 +341,30 @@ export function ListeningRoomButton({
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className={cn(
-              "relative flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
-              room && "border-primary/60 bg-primary/15 text-primary",
-              className
-            )}
-            aria-label="Open listening room"
-          >
-            <Music2 className="size-4" />
-            {room?.playbackState === "playing" ? (
-              <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
-            ) : null}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {room ? "Listening Room" : "Start a Listening Room"}
-        </TooltipContent>
-      </Tooltip>
+      {showTrigger ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className={cn(
+                "relative flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
+                room && "border-primary/60 bg-primary/15 text-primary",
+                className
+              )}
+              aria-label="Open listening room"
+            >
+              <Music2 className="size-4" />
+              {room?.playbackState === "playing" ? (
+                <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-primary ring-2 ring-sidebar" />
+              ) : null}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {room ? "Listening Room" : "Start a Listening Room"}
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
 
       {/* Non-modal mode lets the same media element remain interactive as a dock. */}
       <Dialog modal={false} open={open} onOpenChange={setOpen}>
@@ -326,10 +372,12 @@ export function ListeningRoomButton({
           forceMount={room?.currentUserJoined ? true : undefined}
           showCloseButton={false}
           className={cn(
-            "max-h-[88vh] overflow-y-auto sm:max-w-2xl",
-            !open &&
-              "right-3 bottom-3 left-auto top-auto w-[calc(100%-1.5rem)] max-w-none translate-x-0 translate-y-0 gap-3 p-3 data-[state=closed]:animate-none data-[state=closed]:opacity-100 sm:w-[22rem]"
-          )}
+                "max-h-[88vh] overflow-y-auto sm:max-w-2xl",
+                !open &&
+                  (standaloneWindow
+                    ? "inset-0 h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 gap-3 rounded-none border-0 p-3 data-[state=closed]:animate-none data-[state=closed]:opacity-100"
+                    : "right-3 bottom-3 left-auto top-auto w-[calc(100%-1.5rem)] max-w-none translate-x-0 translate-y-0 gap-3 p-3 data-[state=closed]:animate-none data-[state=closed]:opacity-100 sm:w-[22rem]")
+              )}
         >
           <DialogHeader className={cn(!open && "hidden")}>
             <div className="flex items-start justify-between gap-3">
@@ -349,7 +397,10 @@ export function ListeningRoomButton({
                 size="sm"
                 variant="outline"
                 className="shrink-0"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false)
+                  if (standaloneWindow) window.resizeTo(420, 430)
+                }}
               >
                 <Minimize2 /> Minimize
               </Button>
@@ -464,7 +515,10 @@ export function ListeningRoomButton({
                       size="sm"
                       variant="outline"
                       className="shrink-0"
-                      onClick={() => setOpen(true)}
+                      onClick={() => {
+                        setOpen(true)
+                        if (standaloneWindow) window.resizeTo(760, 820)
+                      }}
                     >
                       <Maximize2 /> Expand
                     </Button>
@@ -472,6 +526,7 @@ export function ListeningRoomButton({
                 </div>
                 {currentTrack && preferredProvider ? (
                   <ListeningRoomPlayer
+                    channelId={channelId}
                     clock={room}
                     track={currentTrack}
                     provider={preferredProvider}
@@ -743,5 +798,34 @@ export function ListeningRoomButton({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+export function ListeningRoomLauncher({
+  channelId,
+  className,
+}: {
+  readonly channelId: string
+  readonly className?: string
+}): React.ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => {
+            openListeningRoomWindow(channelId)
+          }}
+          className={cn(
+            "relative flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
+            className
+          )}
+          aria-label="Open listening room"
+        >
+          <Music2 className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>Listening Room</TooltipContent>
+    </Tooltip>
   )
 }

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { CircleAlert, Loader2, Radio } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useMusicDucking } from "@/hooks/use-music-ducking"
 import {
   findPreferredMusicLink,
   isSynchronizedMusicProvider,
@@ -33,6 +34,7 @@ type PlaybackClock = {
 type PlaybackTiming = Omit<PlaybackClock, "serverTime">
 
 type PlayerProps = {
+  readonly channelId: string
   readonly clock: PlaybackClock
   readonly track: PlayerTrack
   readonly provider: MusicProvider
@@ -46,6 +48,8 @@ type YouTubePlayer = {
   readonly pauseVideo: () => void
   readonly seekTo: (seconds: number, allowSeekAhead: boolean) => void
   readonly getCurrentTime: () => number
+  readonly getVolume: () => number
+  readonly setVolume: (volume: number) => void
   readonly destroy: () => void
 }
 
@@ -81,6 +85,8 @@ type SoundCloudWidget = {
   readonly pause: () => void
   readonly seekTo: (milliseconds: number) => void
   readonly getPosition: (listener: (milliseconds: number) => void) => void
+  readonly getVolume: (listener: (volume: number) => void) => void
+  readonly setVolume: (volume: number) => void
 }
 type SoundCloudWidgetFactory = {
   (iframe: HTMLIFrameElement): SoundCloudWidget
@@ -92,6 +98,11 @@ type SoundCloudWidgetFactory = {
   }
 }
 type SoundCloudNamespace = { readonly Widget: SoundCloudWidgetFactory }
+
+type VolumeController = {
+  readonly getVolume: (listener: (volume: number) => void) => void
+  readonly setVolume: (volume: number) => void
+}
 
 declare global {
   interface Window {
@@ -177,6 +188,40 @@ function scheduledDelayMs(clock: PlaybackTiming, offsetMs: number): number {
     : 0
 }
 
+function useDuckedVolume(input: {
+  readonly controller: VolumeController | null
+  readonly ducked: boolean
+}): void {
+  const baselineVolumeRef = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    baselineVolumeRef.current = null
+  }, [input.controller])
+
+  React.useEffect(() => {
+    const controller = input.controller
+    if (!controller) return
+    let cancelled = false
+
+    if (input.ducked) {
+      controller.getVolume((volume) => {
+        if (cancelled) return
+        if (baselineVolumeRef.current === null) {
+          baselineVolumeRef.current = volume
+        }
+        controller.setVolume(Math.min(volume, 25))
+      })
+    } else if (baselineVolumeRef.current !== null) {
+      controller.setVolume(baselineVolumeRef.current)
+      baselineVolumeRef.current = null
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [input.controller, input.ducked])
+}
+
 function useSynchronizedController(input: {
   readonly clock: PlaybackClock
   readonly controller: {
@@ -244,10 +289,12 @@ function useSynchronizedController(input: {
 function YouTubePlayerView({
   clock,
   videoId,
+  ducked,
   onEnded,
 }: {
   readonly clock: PlaybackClock
   readonly videoId: string
+  readonly ducked: boolean
   readonly onEnded: () => void
 }): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
@@ -307,6 +354,14 @@ function YouTubePlayerView({
     }
   }, [player])
   useSynchronizedController({ clock, controller })
+  const volumeController = React.useMemo<VolumeController | null>(() => {
+    if (!player) return null
+    return {
+      getVolume: (listener) => listener(player.getVolume()),
+      setVolume: (volume) => player.setVolume(volume),
+    }
+  }, [player])
+  useDuckedVolume({ controller: volumeController, ducked })
 
   return (
     <div className="space-y-2">
@@ -325,10 +380,12 @@ function YouTubePlayerView({
 function SoundCloudPlayerView({
   clock,
   url,
+  ducked,
   onEnded,
 }: {
   readonly clock: PlaybackClock
   readonly url: string
+  readonly ducked: boolean
   readonly onEnded: () => void
 }): React.ReactElement {
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null)
@@ -385,6 +442,14 @@ function SoundCloudPlayerView({
     }
   }, [widget])
   useSynchronizedController({ clock, controller })
+  const volumeController = React.useMemo<VolumeController | null>(() => {
+    if (!widget) return null
+    return {
+      getVolume: (listener) => widget.getVolume(listener),
+      setVolume: (volume) => widget.setVolume(volume),
+    }
+  }, [widget])
+  useDuckedVolume({ controller: volumeController, ducked })
 
   return (
     <div className="space-y-2">
@@ -420,6 +485,7 @@ function PlayerNotice({
 }
 
 export function ListeningRoomPlayer({
+  channelId,
   clock,
   track,
   provider,
@@ -428,6 +494,7 @@ export function ListeningRoomPlayer({
   onEnded,
 }: PlayerProps): React.ReactElement {
   const [enabled, setEnabled] = React.useState(false)
+  const ducked = useMusicDucking(channelId)
   const link = findPreferredMusicLink(track.links, provider)
   const synchronized = isSynchronizedMusicProvider(provider)
   const youtubeId = provider === "youtube" && link
@@ -488,6 +555,7 @@ export function ListeningRoomPlayer({
         key={`${track.id}:${youtubeId}`}
         clock={clock}
         videoId={youtubeId}
+        ducked={ducked}
         onEnded={onEnded}
       />
     )
@@ -498,6 +566,7 @@ export function ListeningRoomPlayer({
         key={`${track.id}:${soundCloudUrl}`}
         clock={clock}
         url={soundCloudUrl}
+        ducked={ducked}
         onEnded={onEnded}
       />
     )

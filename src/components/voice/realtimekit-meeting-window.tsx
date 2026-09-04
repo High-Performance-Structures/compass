@@ -7,6 +7,7 @@ import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
+import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
 
 type TranscriptEntry = {
   readonly id: string
@@ -437,6 +438,20 @@ export function RealtimeKitMeetingWindow({
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
+
+  const getVoiceTracks = React.useCallback((): readonly MediaStreamTrack[] => {
+    if (!meeting) return []
+    const tracks: MediaStreamTrack[] = []
+    if (meeting.self.audioEnabled) tracks.push(meeting.self.audioTrack)
+    for (const participant of meeting.participants.audioSubscribed.values()) {
+      if (participant.audioEnabled) tracks.push(participant.audioTrack)
+    }
+    return tracks
+  }, [meeting])
+  useVoiceActivityPublisher({
+    channelId: meeting ? channelId : null,
+    getTracks: getVoiceTracks,
+  })
 
   const setRealtimeKitCaptions = React.useCallback((enabled: boolean): void => {
     const meetingElement =
