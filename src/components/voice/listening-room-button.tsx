@@ -33,6 +33,7 @@ import {
   type ListeningQueueItemData,
   type ListeningRoomSnapshot,
 } from "@/app/actions/listening-room"
+import { ListeningRoomPlayer } from "@/components/voice/listening-room-player"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,13 +63,17 @@ import {
 } from "@/components/ui/select"
 import {
   MUSIC_PROVIDERS,
+  SYNCHRONIZED_MUSIC_PROVIDERS,
   findPreferredMusicLink,
   formatListeningPosition,
   isMusicProvider,
+  musicPlaybackTarget,
   musicProviderLabel,
+  synchronizedProviderLabel,
   type MusicProvider,
 } from "@/lib/listening-room"
 import { cn } from "@/lib/utils"
+import { useListeningRoomRealtime } from "@/hooks/use-listening-room-realtime"
 import {
   Tooltip,
   TooltipContent,
@@ -96,21 +101,28 @@ export function ListeningRoomButton({
   const [busy, setBusy] = React.useState(false)
   const [closeConfirmationOpen, setCloseConfirmationOpen] = React.useState(false)
   const [preferredProvider, setPreferredProvider] =
-    React.useState<MusicProvider | null>(null)
+    React.useState<MusicProvider | null>("youtube")
   const [title, setTitle] = React.useState("")
   const [artist, setArtist] = React.useState("")
   const [trackUrl, setTrackUrl] = React.useState("")
   const [linkTrackId, setLinkTrackId] = React.useState<string | null>(null)
   const [alternateUrl, setAlternateUrl] = React.useState("")
+  const loadingRoomRef = React.useRef(false)
 
   const loadRoom = React.useCallback(async (showError: boolean): Promise<void> => {
-    const result = await getListeningRoom(channelId)
-    if (result.success) {
-      setRoom(result.data.room)
-    } else if (showError) {
-      toast.error(result.error)
+    if (loadingRoomRef.current) return
+    loadingRoomRef.current = true
+    try {
+      const result = await getListeningRoom(channelId)
+      if (result.success) {
+        setRoom(result.data.room)
+      } else if (showError) {
+        toast.error(result.error)
+      }
+      setLoading(false)
+    } finally {
+      loadingRoomRef.current = false
     }
-    setLoading(false)
   }, [channelId])
 
   React.useEffect(() => {
@@ -122,10 +134,28 @@ export function ListeningRoomButton({
     void loadRoom(false)
     const interval = window.setInterval(
       () => void loadRoom(false),
-      open ? 5_000 : 30_000
+      open ? 30_000 : 60_000
     )
     return () => window.clearInterval(interval)
   }, [loadRoom, open])
+
+  React.useEffect(() => {
+    const refreshVisibleRoom = (): void => {
+      if (document.visibilityState === "visible") void loadRoom(false)
+    }
+    window.addEventListener("focus", refreshVisibleRoom)
+    document.addEventListener("visibilitychange", refreshVisibleRoom)
+    return () => {
+      window.removeEventListener("focus", refreshVisibleRoom)
+      document.removeEventListener("visibilitychange", refreshVisibleRoom)
+    }
+  }, [loadRoom])
+
+  const realtime = useListeningRoomRealtime({
+    channelId,
+    enabled: Boolean(room?.currentUserJoined),
+    onRoomChanged: () => void loadRoom(false),
+  })
 
   async function applySnapshot(
     promise: Promise<SnapshotResult>,
@@ -139,6 +169,7 @@ export function ListeningRoomButton({
         return false
       }
       setRoom(result.data)
+      realtime.notifyRoomChanged()
       if (successMessage) toast.success(successMessage)
       return true
     } catch (error) {
@@ -174,6 +205,7 @@ export function ListeningRoomButton({
         toast.error(result.error)
         return
       }
+      realtime.notifyRoomChanged()
       setRoom(result.data.room)
       toast.success("You left the listening room")
     } finally {
@@ -227,25 +259,39 @@ export function ListeningRoomButton({
       toast.error("Choose your music service first")
       return
     }
-    const link = findPreferredMusicLink(track.links, preferredProvider)
-    if (!link) {
+    const target = musicPlaybackTarget({
+      links: track.links,
+      preferredProvider,
+      title: track.title,
+      artist: track.artist,
+    })
+    if (!target) {
       if (room?.currentUserJoined) setLinkTrackId(track.id)
       toast.info(
         room?.currentUserJoined
-          ? `No ${musicProviderLabel(preferredProvider)} link yet. Add one below or choose an available link.`
-          : `No ${musicProviderLabel(preferredProvider)} link yet. Join to add one, or choose an available link.`
+          ? `Add an exact ${musicProviderLabel(preferredProvider)} link below, or choose an available service.`
+          : `No ${musicProviderLabel(preferredProvider)} link is available. Choose an available service.`
       )
       return
     }
-    window.open(link.url, "_blank", "noopener,noreferrer")
+    window.open(target.url, "_blank", "noopener,noreferrer")
+    if (target.kind === "search") {
+      toast.info(`Showing ${musicProviderLabel(preferredProvider)} results for this track`)
+    }
   }
 
   const currentTrack = room?.queue.find(
     (track) => track.id === room.currentTrackId
   ) ?? null
-  const currentPreferredLink = currentTrack
-    ? findPreferredMusicLink(currentTrack.links, preferredProvider)
-    : null
+  const orderedProviders = [
+    ...SYNCHRONIZED_MUSIC_PROVIDERS,
+    ...MUSIC_PROVIDERS.filter(
+      (provider) =>
+        !SYNCHRONIZED_MUSIC_PROVIDERS.some(
+          (synchronizedProvider) => synchronizedProvider === provider
+        )
+    ),
+  ]
 
   return (
     <>
@@ -280,8 +326,9 @@ export function ListeningRoomButton({
               Listening Room · {channelName}
             </DialogTitle>
             <DialogDescription>
-              Share a queue while everyone listens through their own music service.
-              Compass coordinates the room but never carries the audio.
+              YouTube and SoundCloud play together inside Compass. Other services
+              remain available as clearly marked links while their playback
+              integrations are developed.
             </DialogDescription>
           </DialogHeader>
 
@@ -296,7 +343,8 @@ export function ListeningRoomButton({
               <div>
                 <p className="font-medium">The office is quiet right now.</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Start a room, add a track link, and invite the channel to listen along.
+                  Start a room, add a YouTube or SoundCloud track, and invite the
+                  channel to listen along.
                 </p>
               </div>
               <Button type="button" onClick={() => void handleStart()} disabled={busy}>
@@ -314,6 +362,14 @@ export function ListeningRoomButton({
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Users className="size-3.5" />
                     {room.participants.length} listening
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {realtime.status === "connected"
+                        ? "Live sync connected"
+                        : realtime.status === "reconnecting"
+                          ? "Reconnecting sync"
+                          : "Sync starts after joining"}
+                    </span>
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -325,9 +381,9 @@ export function ListeningRoomButton({
                       <SelectValue placeholder="Choose service" />
                     </SelectTrigger>
                     <SelectContent>
-                      {MUSIC_PROVIDERS.map((provider) => (
+                      {orderedProviders.map((provider) => (
                         <SelectItem key={provider} value={provider}>
-                          {musicProviderLabel(provider)}
+                          {musicProviderLabel(provider)} · {synchronizedProviderLabel(provider)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -375,25 +431,22 @@ export function ListeningRoomButton({
                       <p className="text-sm text-muted-foreground">Queue a track to get started.</p>
                     )}
                   </div>
-                  {currentTrack && room.currentUserJoined && preferredProvider ? (
-                    currentPreferredLink ? (
-                      <Button type="button" size="sm" onClick={() => openTrack(currentTrack)}>
-                        <ExternalLink />
-                        Open on {musicProviderLabel(preferredProvider)}
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setLinkTrackId(currentTrack.id)}
-                      >
-                        <Link2 />
-                        Add {musicProviderLabel(preferredProvider)} link
-                      </Button>
-                    )
-                  ) : null}
                 </div>
+                {currentTrack && preferredProvider ? (
+                  <ListeningRoomPlayer
+                    clock={room}
+                    track={currentTrack}
+                    provider={preferredProvider}
+                    joined={room.currentUserJoined}
+                    onAddProviderLink={() => setLinkTrackId(currentTrack.id)}
+                    onEnded={() => {
+                      if (room.currentUserId !== room.hostUserId) return
+                      void applySnapshot(
+                        setListeningPlayback({ channelId, command: "skip" })
+                      )
+                    }}
+                  />
+                ) : null}
                 {room.canControl ? (
                   <div className="flex gap-2 border-t pt-3">
                     <Button
@@ -407,7 +460,7 @@ export function ListeningRoomButton({
                       }))}
                     >
                       {room.playbackState === "playing" ? <Pause /> : <Play />}
-                      {room.playbackState === "playing" ? "Pause cue" : "Play cue"}
+                      {room.playbackState === "playing" ? "Pause room" : "Play room"}
                     </Button>
                     <Button
                       type="button"
@@ -464,7 +517,9 @@ export function ListeningRoomButton({
                                 {track.title}
                               </span>
                               <span className="block truncate text-xs text-muted-foreground">
-                                {track.artist ?? "Unknown artist"} · {track.links.map((link) => musicProviderLabel(link.provider)).join(", ")}
+                                {track.artist ?? "Unknown artist"} · {track.links.length > 0
+                                  ? track.links.map((link) => musicProviderLabel(link.provider)).join(", ")
+                                  : "Needs a service link"}
                               </span>
                             </button>
                             {selectedLink ? (
@@ -545,7 +600,7 @@ export function ListeningRoomButton({
                                 onChange={(event) => setAlternateUrl(event.target.value)}
                                 placeholder={
                                   preferredProvider
-                                    ? `Paste ${musicProviderLabel(preferredProvider)} link`
+                                    ? `Optional exact ${musicProviderLabel(preferredProvider)} link`
                                     : "Paste a link from another service"
                                 }
                                 aria-label={`Alternate service link for ${track.title}`}
@@ -568,7 +623,8 @@ export function ListeningRoomButton({
                   <div>
                     <h3 className="text-sm font-semibold">Add to the queue</h3>
                     <p className="text-xs text-muted-foreground">
-                      Paste a link from any service. Teammates can add matching links from theirs.
+                      Add an exact YouTube or SoundCloud track link for synchronized
+                      playback. Everyone can contribute to the queue.
                     </p>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -582,8 +638,8 @@ export function ListeningRoomButton({
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Input value={trackUrl} onChange={(event) => setTrackUrl(event.target.value)} placeholder="Paste a link from your music service" aria-label="Music service link" required />
-                    <Button type="submit" disabled={busy || !title.trim() || !trackUrl.trim()}>
+                    <Input value={trackUrl} onChange={(event) => setTrackUrl(event.target.value)} placeholder="Paste a YouTube or SoundCloud track link" aria-label="Music service link" />
+                    <Button type="submit" disabled={busy || !title.trim()}>
                       <Plus /> Add
                     </Button>
                   </div>
@@ -624,6 +680,7 @@ export function ListeningRoomButton({
                       toast.error(result.error)
                       return
                     }
+                    realtime.notifyRoomChanged()
                     setRoom(null)
                     setOpen(false)
                     toast.success("Listening room closed")

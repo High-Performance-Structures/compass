@@ -52,6 +52,20 @@
 			"migrations_dir": "drizzle"
 		}
 	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "LISTENING_ROOM_COORDINATOR",
+				"class_name": "ListeningRoomCoordinator"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "listening-room-sync-v1",
+			"new_sqlite_classes": ["ListeningRoomCoordinator"]
+		}
+	],
 	"secrets": {
 		"required": [
 			"AGENT_AUTH_SECRET",

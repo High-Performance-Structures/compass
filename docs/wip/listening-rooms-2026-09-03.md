@@ -1,6 +1,6 @@
 # Listening Rooms
 
-Status: experimental MVP
+Status: synchronized playback pilot
 
 ## Purpose
 
@@ -9,27 +9,47 @@ can listen together during a break or quiet work period. Participation is
 explicitly opt-in. Compass stores room state, track metadata, and links, but it
 does not proxy, rebroadcast, record, or transcribe music.
 
-## MVP experience
+## Current experience
 
 - A staff member with channel-create permission can start one room per voice
   channel.
 - Any internal staff member with access to the voice channel can join.
 - Every joined listener can add a track to the shared queue.
-- A track may have links for several services. Listeners select a preferred
-  provider and Compass opens that provider when available, otherwise falling
-  back to the first link.
+- A track may have links for several services. Listeners select their own
+  provider; Compass never silently substitutes a different service.
+- YouTube and SoundCloud links play in embedded, individually delivered
+  players. After a listener enables audio once, Compass synchronizes play,
+  pause, restart, skip, automatic queue advancement, and drift correction.
+- Provider choices that do not yet expose an approved playback integration are
+  labeled `Link only` and open outside Compass.
 - Recognized providers are Spotify, Apple Music, YouTube, SoundCloud, Amazon
   Music, TIDAL, Deezer, and Pandora. Other HTTPS links remain usable.
-- The room host controls the shared play, pause, restart, and skip cues.
+- The room host controls shared playback. Playing tracks are scheduled 1.5
+  seconds ahead so connected clients can load before the common start time.
 - Contributors can remove their own tracks and service links. The host and
   channel moderators can moderate the whole queue.
 - Closing a room requires confirmation and deletes the ephemeral queue and
   participant list through cascading foreign keys.
 
-The MVP intentionally opens tracks in each provider rather than controlling
-provider playback. The shared clock and playback anchor are stored now so a
-future provider adapter can synchronize supported SDK players without changing
-the room model.
+The browser must receive one explicit `Enable synced playback` interaction
+before attempting audio, because autoplay policy is controlled by the browser.
+If autoplay is still blocked, the embedded provider controls remain available
+for the listener's one-time manual start.
+
+## Realtime architecture
+
+The D1 room record remains the authoritative durable playback and queue state.
+Each active room also maps to one `ListeningRoomCoordinator` Durable Object.
+Authenticated, joined listeners connect to it using hibernatable WebSockets.
+Mutations continue through permission-checked server actions, then send a small
+`room_changed` event so peers immediately reload the authoritative D1 snapshot.
+The coordinator persists a monotonically increasing event sequence before
+broadcasting it; it never accepts playback state from a browser.
+
+Each embedded player derives its target position from the server-time anchor.
+While playing, the client compares the provider position every five seconds and
+seeks when drift exceeds 750 milliseconds. The host's player advances the queue
+when the provider reports that the current track ended.
 
 ## Data model
 
@@ -46,11 +66,12 @@ internal-staff status, and demo read-only state.
 
 ## Follow-up stages
 
-1. Add catalog search and metadata lookup so users can paste only a URL or
-   search by title and artist.
-2. Add provider OAuth connections and playback adapters where provider policy
-   permits it. Each listener must authenticate their own account.
-3. Use the stored server playback anchor for SDK seek and drift correction.
+1. Add catalog search and metadata lookup so users can select a track inside
+   Compass instead of finding and copying a provider URL.
+2. Add Apple MusicKit authorization and playback for subscribers.
+3. Pursue additional playback adapters only where provider policy and account
+   access permit them. Spotify remains link-only pending written approval for a
+   commercial streaming integration.
 4. Add optional voice-aware local volume ducking. Music must remain excluded
    from meeting recordings and transcripts.
 5. Add queue ordering, DJ handoff, reactions, and organization-level feature

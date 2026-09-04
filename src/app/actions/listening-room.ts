@@ -15,6 +15,7 @@ import { getCurrentUser, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import {
+  LISTENING_ROOM_START_DELAY_MS,
   MUSIC_PROVIDERS,
   canManageListeningTrackLink,
   isMusicProvider,
@@ -37,7 +38,7 @@ const addTrackSchema = z.object({
   channelId: channelIdSchema,
   title: z.string().trim().min(1).max(160),
   artist: z.string().trim().max(160).optional(),
-  url: z.string().trim().min(1).max(2_048),
+  url: z.string().trim().max(2_048).optional(),
 })
 const addTrackLinkSchema = z.object({
   channelId: channelIdSchema,
@@ -48,6 +49,11 @@ const addTrackLinkSchema = z.object({
 type ListeningActionResult<T> =
   | { readonly success: true; readonly data: T }
   | { readonly success: false; readonly error: string }
+
+export type ListeningRoomSyncAuthorization = {
+  readonly roomId: string
+  readonly userId: string
+}
 
 export type ListeningTrackLinkData = {
   readonly id: string
@@ -149,6 +155,43 @@ async function roomForChannel(
     .from(listeningRooms)
     .where(eq(listeningRooms.channelId, channelId))
     .get()
+}
+
+export async function authorizeListeningRoomSync(
+  channelId: string
+): Promise<ListeningActionResult<ListeningRoomSyncAuthorization>> {
+  try {
+    const parsed = channelIdSchema.safeParse(channelId)
+    if (!parsed.success) return { success: false, error: "Invalid channel" }
+    const context = await listeningContext(parsed.data)
+    const room = await roomForChannel(context.db, context.channel.id)
+    if (!room) return { success: false, error: "Listening room not found" }
+    const participant = await context.db
+      .select({ id: listeningRoomParticipants.id })
+      .from(listeningRoomParticipants)
+      .where(
+        and(
+          eq(listeningRoomParticipants.roomId, room.id),
+          eq(listeningRoomParticipants.userId, context.user.id)
+        )
+      )
+      .get()
+    if (!participant) {
+      return { success: false, error: "Join the listening room first" }
+    }
+    return {
+      success: true,
+      data: {
+        roomId: room.id,
+        userId: context.user.id,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: actionError(error, "Unable to authorize listening room"),
+    }
+  }
 }
 
 async function roomSnapshot(
@@ -425,14 +468,15 @@ export async function addListeningTrack(input: {
   readonly channelId: string
   readonly title: string
   readonly artist?: string
-  readonly url: string
+  readonly url?: string
 }): Promise<ListeningActionResult<ListeningRoomSnapshot>> {
   try {
     const parsed = addTrackSchema.safeParse(input)
-    if (!parsed.success) return { success: false, error: "Enter a title and valid music link" }
-    const normalizedUrl = normalizeMusicUrl(parsed.data.url)
-    const provider = musicProviderFromUrl(parsed.data.url)
-    if (!normalizedUrl || !provider) {
+    if (!parsed.success) return { success: false, error: "Enter a track title" }
+    const suppliedUrl = parsed.data.url?.trim() || null
+    const normalizedUrl = suppliedUrl ? normalizeMusicUrl(suppliedUrl) : null
+    const provider = suppliedUrl ? musicProviderFromUrl(suppliedUrl) : null
+    if (suppliedUrl && (!normalizedUrl || !provider)) {
       return { success: false, error: "Use an http or https music link" }
     }
     const context = await listeningContext(parsed.data.channelId, { write: true })
@@ -456,14 +500,16 @@ export async function addListeningTrack(input: {
       playedAt: null,
       createdAt: now,
     })
-    await context.db.insert(listeningTrackLinks).values({
-      id: crypto.randomUUID(),
-      queueItemId,
-      provider,
-      url: normalizedUrl,
-      addedBy: context.user.id,
-      createdAt: now,
-    })
+    if (normalizedUrl && provider) {
+      await context.db.insert(listeningTrackLinks).values({
+        id: crypto.randomUUID(),
+        queueItemId,
+        provider,
+        url: normalizedUrl,
+        addedBy: context.user.id,
+        createdAt: now,
+      })
+    }
     await context.db
       .insert(listeningRoomParticipants)
       .values({
@@ -670,7 +716,11 @@ export async function setListeningPlayback(input: {
     ) {
       return { success: false, error: "Only the room host can control playback" }
     }
-    const now = new Date().toISOString()
+    const nowMs = Date.now()
+    const now = new Date(nowMs).toISOString()
+    const scheduledStart = new Date(
+      nowMs + LISTENING_ROOM_START_DELAY_MS
+    ).toISOString()
     if (parsed.data.command === "pause") {
       const positionMs = listeningPlaybackPositionMs({
         state: playbackState(room.playbackState),
@@ -687,7 +737,8 @@ export async function setListeningPlayback(input: {
     } else if (parsed.data.command === "restart") {
       await context.db.update(listeningRooms).set({
         anchorPositionMs: 0,
-        playbackStartedAt: room.playbackState === "playing" ? now : null,
+        playbackStartedAt:
+          room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
       }).where(eq(listeningRooms.id, room.id))
     } else if (parsed.data.command === "skip") {
@@ -746,7 +797,8 @@ export async function setListeningPlayback(input: {
         currentTrackId: next?.id ?? null,
         playbackState: next ? room.playbackState : "paused",
         anchorPositionMs: 0,
-        playbackStartedAt: next && room.playbackState === "playing" ? now : null,
+        playbackStartedAt:
+          next && room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
       }).where(eq(listeningRooms.id, room.id))
     } else {
@@ -773,7 +825,7 @@ export async function setListeningPlayback(input: {
       await context.db.update(listeningRooms).set({
         currentTrackId,
         playbackState: "playing",
-        playbackStartedAt: now,
+        playbackStartedAt: scheduledStart,
         updatedAt: now,
       }).where(eq(listeningRooms.id, room.id))
     }
@@ -828,12 +880,17 @@ export async function removeListeningTrack(input: {
           asc(listeningQueueItems.id)
         )
         .get()
-      const now = new Date().toISOString()
+      const nowMs = Date.now()
+      const now = new Date(nowMs).toISOString()
+      const scheduledStart = new Date(
+        nowMs + LISTENING_ROOM_START_DELAY_MS
+      ).toISOString()
       await context.db.update(listeningRooms).set({
         currentTrackId: next?.id ?? null,
         playbackState: next ? room.playbackState : "paused",
         anchorPositionMs: 0,
-        playbackStartedAt: next && room.playbackState === "playing" ? now : null,
+        playbackStartedAt:
+          next && room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
       }).where(eq(listeningRooms.id, room.id))
     }
