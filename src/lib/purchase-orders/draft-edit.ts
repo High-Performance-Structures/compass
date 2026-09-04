@@ -17,3 +17,10 @@ export function canEditPurchaseOrderDraft(
     )
   )
 }
+
+export function canRemovePurchaseOrderLine(
+  lineCount: number,
+  isExistingPurchaseOrder: boolean
+): boolean {
+  return lineCount > 1 || isExistingPurchaseOrder
+}

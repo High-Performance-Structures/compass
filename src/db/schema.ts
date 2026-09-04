@@ -1438,6 +1438,30 @@ export const projectOperations = sqliteTable("project_operations", {
   syncDirection: text("sync_direction").notNull().default("read"),
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
+  revision: integer("revision").notNull().default(0),
+  purchaseOrderEmailClaimToken: text("purchase_order_email_claim_token"),
+  purchaseOrderEmailClaimRevision: integer("purchase_order_email_claim_revision"),
+  purchaseOrderEmailClaimFingerprint: text(
+    "purchase_order_email_claim_fingerprint"
+  ),
+  purchaseOrderEmailClaimStatus: text("purchase_order_email_claim_status"),
+  purchaseOrderEmailClaimAttempt: integer("purchase_order_email_claim_attempt"),
+  purchaseOrderEmailProviderMessageId: text(
+    "purchase_order_email_provider_message_id"
+  ),
+  purchaseOrderEmailClaimError: text("purchase_order_email_claim_error"),
+  purchaseOrderEmailClaimReclaimAfter: text(
+    "purchase_order_email_claim_reclaim_after"
+  ),
+  purchaseOrderEmailClaimRetryUntil: text(
+    "purchase_order_email_claim_retry_until"
+  ),
+  purchaseOrderEmailClaimProviderPayload: text(
+    "purchase_order_email_claim_provider_payload"
+  ),
+  purchaseOrderEmailClaimProviderCredentialFingerprint: text(
+    "purchase_order_email_claim_provider_credential_fingerprint"
+  ),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
