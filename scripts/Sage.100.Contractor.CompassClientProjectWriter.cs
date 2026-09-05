@@ -23,7 +23,11 @@ namespace CompassSageClientProjectWriter
         private const string AppName = "Compass.Sage.ClientProjectWriter";
         private const string RequestsTarget = "/api/integrations/sage/client-project-writes/requests?limit=5";
         private const string ResultsTarget = "/api/integrations/sage/client-project-writes/results";
+        private const string LogPath = @"C:\ProgramData\HPS\CompassSageWriter\logs\writer.log";
+        private const string PreviousLogPath = @"C:\ProgramData\HPS\CompassSageWriter\logs\writer.previous.log";
+        private const long MaxLogBytes = 5L * 1024L * 1024L;
         private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
+        private static readonly object LogLock = new object();
         private static Type ImbxmlType;
         private static Type GlobalType;
         private static object ApiInstance;
@@ -46,6 +50,9 @@ namespace CompassSageClientProjectWriter
         }
         public sealed class ClientPayload
         {
+            public string compassCustomerId { get; set; }
+            public string sageClientId { get; set; }
+            public string sageClientNumber { get; set; }
             public string name { get; set; }
             public string shortName { get; set; }
             public string company { get; set; }
@@ -76,6 +83,26 @@ namespace CompassSageClientProjectWriter
             public int Number;
             public int StatusNumber;
             public int TypeNumber;
+            public string Email;
+        }
+        private sealed class WriteOutcome
+        {
+            public WriteRequest Request;
+            public SageRecord Client;
+            public SageRecord Job;
+            public int ClientStatus;
+            public int JobStatus;
+            public int JobType;
+            public Exception Error;
+        }
+        private sealed class BridgeRequestException : InvalidOperationException
+        {
+            public readonly bool IsTransient;
+            public BridgeRequestException(string message, bool isTransient, Exception inner)
+                : base(message, inner)
+            {
+                IsTransient = isTransient;
+            }
         }
         private sealed class ApiSession : IDisposable
         {
@@ -104,24 +131,23 @@ namespace CompassSageClientProjectWriter
                 }
                 catch
                 {
-                    ResetApi();
+                    ResetApi(true);
                     throw;
                 }
             }
-            public void Dispose() { ResetApi(); }
+            public void Dispose() { ResetApi(false); }
         }
 
-        private static void ResetApi()
+        private static void ResetApi(bool suppressErrors)
         {
             try { if (ApiInitialized && ApiInstance != null) Invoke("DeIntializeAPI", new object[0]); }
-            catch { }
+            catch { if (!suppressErrors) throw; }
             finally { ApiInitialized = false; ApiInstance = null; }
         }
 
         public static int Main(string[] args)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            bool once = args.Length > 0 && String.Equals(args[0], "--once", StringComparison.OrdinalIgnoreCase);
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -131,24 +157,29 @@ namespace CompassSageClientProjectWriter
                     RunDiagnostics();
                     return 0;
                 }
-                do
-                {
-                    PollOnce();
-                    if (!once) Thread.Sleep(30000);
-                } while (!once);
+                WriteLog("INFO", "Writer run started.");
+                PollOnce();
+                WriteLog("INFO", "Writer run completed.");
                 return 0;
             }
             catch (Exception error)
             {
-                Console.Error.WriteLine(DateTimeOffset.Now.ToString("o") + " FATAL " + error.Message);
+                WriteLog("FATAL", error.Message);
                 return 1;
             }
         }
 
         private static void RequireConfiguration(bool requireWriteSwitch)
         {
-            Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET");
+            string baseUrl = Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET");
             Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
+            Uri parsedBaseUrl;
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out parsedBaseUrl) ||
+                !String.Equals(parsedBaseUrl.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                String.IsNullOrWhiteSpace(parsedBaseUrl.Host) ||
+                !String.IsNullOrEmpty(parsedBaseUrl.Query) ||
+                !String.IsNullOrEmpty(parsedBaseUrl.Fragment))
+                throw new InvalidOperationException("COMPASS_BASE_URL must be an absolute HTTPS URL without a query or fragment.");
             string database = Environment.GetEnvironmentVariable("SAGE_SQL_DATABASE") ?? TargetCompany;
             if (!String.Equals(database.Trim(), TargetCompany, StringComparison.Ordinal))
                 throw new InvalidOperationException("SAGE_SQL_DATABASE must be exactly " + TargetCompany + ".");
@@ -179,13 +210,14 @@ namespace CompassSageClientProjectWriter
                 address = "1 Diagnostic Way", billingAddress = "1 Diagnostic Way",
                 email = "diagnostic@example.invalid", phone = "555-0100", notes = "Schema validation only"
             }, 1);
+            BuildClientEmailModXml(user, 1, "diagnostic@example.invalid");
             string jobRequestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
             BuildJobXml(jobRequestName, user, new JobPayload {
                 compassProjectNumber = "O-000-000", name = "Compass Diagnostic",
                 shortName = "Compass Diagnostic", address = "1 Diagnostic Way"
             }, 1, 1, 1);
             using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
-            Console.WriteLine("DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " jobRequest=" + jobRequestName);
+            WriteLog("INFO", "DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " clientModifyRequest=ClientModRq jobRequest=" + jobRequestName);
         }
 
         private static int CatalogCount(string table)
@@ -197,31 +229,53 @@ namespace CompassSageClientProjectWriter
 
         private static void PollOnce()
         {
-            string json = Send("GET", RequestsTarget, "");
-            Envelope envelope = Json.Deserialize<Envelope>(json);
-            WriteRequest[] requests = envelope == null || envelope.requests == null ? new WriteRequest[0] : envelope.requests;
-            foreach (WriteRequest request in requests)
+            List<WriteOutcome> outcomes = new List<WriteOutcome>();
+            using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))
             {
-                try { Process(request); }
-                catch (Exception error)
+                string json = Send("GET", RequestsTarget, "");
+                Envelope envelope = Json.Deserialize<Envelope>(json);
+                WriteRequest[] requests = envelope == null || envelope.requests == null ? new WriteRequest[0] : envelope.requests;
+                foreach (WriteRequest request in requests)
                 {
-                    Console.Error.WriteLine(DateTimeOffset.Now.ToString("o") + " " + request.id + " FAILED " + error.Message);
-                    PostFailure(request, error.Message);
+                    try { outcomes.Add(Process(request)); }
+                    catch (Exception error)
+                    {
+                        outcomes.Add(new WriteOutcome { Request = request, Error = error });
+                    }
                 }
+            }
+
+            // Sage commits accepted requests when ApiSession.Dispose completes. Never
+            // acknowledge Compass until that commit boundary has succeeded.
+            foreach (WriteOutcome outcome in outcomes)
+            {
+                if (outcome.Error != null)
+                {
+                    WriteLog("ERROR", outcome.Request.id + " FAILED " + outcome.Error.ToString());
+                    PostFailure(outcome.Request, outcome.Error.Message);
+                    continue;
+                }
+                PostSuccess(outcome.Request, outcome.Client, outcome.Job, outcome.ClientStatus, outcome.JobStatus, outcome.JobType);
+                WriteLog("INFO", outcome.Request.id + " SUCCEEDED client=" + outcome.Client.Number + (outcome.Job == null ? "" : " job=" + outcome.Job.Number));
             }
         }
 
-        private static void Process(WriteRequest request)
+        private static WriteOutcome Process(WriteRequest request)
         {
             if (request == null || request.payload == null || request.payload.client == null)
                 throw new InvalidOperationException("Compass payload is incomplete.");
             if (!String.Equals(request.payload.operationType, "ensure_client", StringComparison.Ordinal) &&
-                !String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal))
+                !String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) &&
+                !String.Equals(request.payload.operationType, "update_client_email", StringComparison.Ordinal))
                 throw new InvalidOperationException("Compass requested an unsupported Sage operation.");
             if (String.Equals(request.payload.operationType, "ensure_client_and_job", StringComparison.Ordinal) && request.payload.job == null)
                 throw new InvalidOperationException("Compass client/job operation is missing the job payload.");
             if (!String.Equals(request.payload.company, TargetCompany, StringComparison.Ordinal))
                 throw new InvalidOperationException("Compass payload targets the wrong Sage company.");
+            if (String.Equals(request.payload.operationType, "update_client_email", StringComparison.Ordinal))
+            {
+                return ProcessClientEmailUpdate(request);
+            }
             ClientPayload client = request.payload.client;
             int clientStatus = ResolveCatalog("clnsts", "stsnme", client.status.name);
             if (clientStatus != client.status.expectedNumber)
@@ -237,39 +291,79 @@ namespace CompassSageClientProjectWriter
             {
                 jobStatus = ResolveCatalog("jobsts", "stsnme", request.payload.job.statusName);
                 jobType = ResolveCatalog("jobtyp", "typnme", request.payload.job.typeName);
-                if (clientRecord != null) jobRecord = FindJob(request.payload.job, clientRecord.Number);
+                if (clientRecord != null)
+                    jobRecord = RunStage("find existing Sage job", delegate { return FindJob(request.payload.job, clientRecord.Number); });
             }
 
             if (clientRecord == null || (request.payload.job != null && jobRecord == null))
             {
                 string user = Required("SAGE_API_USER");
                 string password = Required("SAGE_API_PASSWORD");
-                using (new ApiSession(user, password))
+                if (clientRecord == null)
                 {
-                    if (clientRecord == null)
+                    string requestName = FindRequestName(new string[] { "ClientAddNextRq", "ClientAddRq" });
+                    RunStage("submit Sage client add", delegate { Submit(BuildClientXml(requestName, user, client, clientStatus), password); });
+                    clientRecord = RunStage("read Sage client after add", delegate { return FindClientAfterAdd(client); });
+                    if (clientRecord == null) throw new InvalidOperationException("Sage returned success but the client could not be read back.");
+                }
+                if (request.payload.job != null)
+                {
+                    jobRecord = RunStage("recheck Sage job", delegate { return FindJob(request.payload.job, clientRecord.Number); });
+                    if (jobRecord == null)
                     {
-                        string requestName = FindRequestName(new string[] { "ClientAddNextRq", "ClientAddRq" });
-                        Submit(BuildClientXml(requestName, user, client, clientStatus), password);
-                        clientRecord = FindClientAfterAdd(client);
-                        if (clientRecord == null) throw new InvalidOperationException("Sage returned success but the client could not be read back.");
-                    }
-                    if (request.payload.job != null)
-                    {
-                        jobRecord = FindJob(request.payload.job, clientRecord.Number);
-                        if (jobRecord == null)
-                        {
-                            string requestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
-                            Submit(BuildJobXml(requestName, user, request.payload.job, clientRecord.Number, jobStatus, jobType), password);
-                            jobRecord = FindJob(request.payload.job, clientRecord.Number);
-                            if (jobRecord == null) throw new InvalidOperationException("Sage returned success but the job could not be read back.");
-                        }
+                        string requestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
+                        RunStage("submit Sage job add", delegate { Submit(BuildJobXml(requestName, user, request.payload.job, clientRecord.Number, jobStatus, jobType), password); });
+                        jobRecord = RunStage("read Sage job after add", delegate { return FindJob(request.payload.job, clientRecord.Number); });
+                        if (jobRecord == null) throw new InvalidOperationException("Sage returned success but the job could not be read back.");
                     }
                 }
             }
             if (jobRecord != null && (jobRecord.StatusNumber != jobStatus || jobRecord.TypeNumber != jobType))
                 throw new InvalidOperationException("Matched Sage job status/type does not match the required Compass selections.");
-            PostSuccess(request, clientRecord, jobRecord, clientStatus, jobStatus, jobType);
-            Console.WriteLine(DateTimeOffset.Now.ToString("o") + " " + request.id + " SUCCEEDED client=" + clientRecord.Number + (jobRecord == null ? "" : " job=" + jobRecord.Number));
+            return new WriteOutcome {
+                Request = request,
+                Client = clientRecord,
+                Job = jobRecord,
+                ClientStatus = clientStatus,
+                JobStatus = jobStatus,
+                JobType = jobType
+            };
+        }
+
+        private static WriteOutcome ProcessClientEmailUpdate(WriteRequest request)
+        {
+            ClientPayload client = request.payload.client;
+            int clientNumber;
+            if (!Int32.TryParse(client.sageClientNumber, out clientNumber) || clientNumber <= 0)
+                throw new InvalidOperationException("Compass did not provide a valid Sage client number for the email update.");
+            if (String.IsNullOrWhiteSpace(client.sageClientId) || String.IsNullOrWhiteSpace(client.email))
+                throw new InvalidOperationException("Compass did not provide the Sage client identity and email required for the update.");
+
+            SageRecord clientRecord = RunStage("find Sage client for email update", delegate { return FindClientByNumber(clientNumber); });
+            if (clientRecord == null || !String.Equals(clientRecord.Id, client.sageClientId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("The stored Sage client ID and number do not identify the same client; no write was attempted.");
+            if (!String.IsNullOrWhiteSpace(clientRecord.Email))
+            {
+                if (!String.Equals(clientRecord.Email.Trim(), client.email.Trim(), StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("The Sage client already has a different email; no write was attempted.");
+            }
+            else
+            {
+                string user = Required("SAGE_API_USER");
+                string password = Required("SAGE_API_PASSWORD");
+                RunStage("submit Sage client email update", delegate { Submit(BuildClientEmailModXml(user, clientNumber, client.email), password); });
+                // Sage commits ClientModRq when the enclosing API session is disposed.
+                clientRecord.Email = client.email;
+            }
+
+            return new WriteOutcome {
+                Request = request,
+                Client = clientRecord,
+                Job = null,
+                ClientStatus = clientRecord.StatusNumber,
+                JobStatus = 0,
+                JobType = 0
+            };
         }
 
         private static int ResolveCatalog(string table, string nameColumn, string name)
@@ -292,7 +386,10 @@ namespace CompassSageClientProjectWriter
             if (String.IsNullOrWhiteSpace(client.email)) return FindClientByName(client.name);
             SageRecord emailMatch = FindClientByEmail(client.email);
             if (emailMatch != null) return emailMatch;
-            if (FindClientByName(client.name) != null)
+            SageRecord nameMatch = FindClientByName(client.name);
+            if (nameMatch != null && String.IsNullOrWhiteSpace(nameMatch.Email))
+                throw new InvalidOperationException("A Sage client matches the requested name but has no email. Link its Sage client ID and number in Compass before filling the email; no write was attempted.");
+            if (nameMatch != null)
                 throw new InvalidOperationException("A Sage client matches the requested name but not the requested email; no write was attempted.");
             return null;
         }
@@ -308,7 +405,7 @@ namespace CompassSageClientProjectWriter
         private static SageRecord FindClientByEmail(string email)
         {
             return SingleRecord(
-                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0 FROM dbo.reccln WHERE LOWER(LTRIM(RTRIM(e_mail))) = LOWER(LTRIM(RTRIM(@match)))",
+                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0, e_mail FROM dbo.reccln WHERE LOWER(LTRIM(RTRIM(e_mail))) = LOWER(LTRIM(RTRIM(@match)))",
                 email,
                 null);
         }
@@ -316,15 +413,23 @@ namespace CompassSageClientProjectWriter
         private static SageRecord FindClientByName(string name)
         {
             return SingleRecord(
-                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0 FROM dbo.reccln WHERE LOWER(LTRIM(RTRIM(clnnme))) = LOWER(LTRIM(RTRIM(@match)))",
+                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0, e_mail FROM dbo.reccln WHERE LOWER(LTRIM(RTRIM(clnnme))) = LOWER(LTRIM(RTRIM(@match)))",
                 name,
                 null);
+        }
+
+        private static SageRecord FindClientByNumber(int number)
+        {
+            return SingleRecord(
+                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0, e_mail FROM dbo.reccln WHERE recnum=@client",
+                null,
+                number);
         }
 
         private static SageRecord FindJob(JobPayload job, int clientNumber)
         {
             return SingleRecord(
-                "SELECT CONVERT(varchar(36), _idnum), recnum, status, jobtyp FROM dbo.actrec WHERE clnnum=@client AND LOWER(LTRIM(RTRIM(jobnme)))=LOWER(LTRIM(RTRIM(@match)))",
+                "SELECT CONVERT(varchar(36), _idnum), recnum, status, jobtyp, NULL FROM dbo.actrec WHERE clnnum=@client AND LOWER(LTRIM(RTRIM(jobnme)))=LOWER(LTRIM(RTRIM(@match)))",
                 job.name,
                 clientNumber);
         }
@@ -335,10 +440,16 @@ namespace CompassSageClientProjectWriter
             using (SqlConnection connection = OpenSql())
             using (SqlCommand command = new SqlCommand(sql, connection))
             {
-                command.Parameters.AddWithValue("@match", match);
+                if (match != null) command.Parameters.AddWithValue("@match", match);
                 if (clientNumber.HasValue) command.Parameters.AddWithValue("@client", clientNumber.Value);
                 using (SqlDataReader reader = command.ExecuteReader())
-                    while (reader.Read()) rows.Add(new SageRecord { Id = Convert.ToString(reader[0]), Number = Convert.ToInt32(reader[1]), StatusNumber = Convert.ToInt32(reader[2]), TypeNumber = Convert.ToInt32(reader[3]) });
+                    while (reader.Read()) rows.Add(new SageRecord {
+                        Id = Convert.ToString(reader[0]),
+                        Number = Convert.ToInt32(reader[1]),
+                        StatusNumber = Convert.ToInt32(reader[2]),
+                        TypeNumber = Convert.ToInt32(reader[3]),
+                        Email = reader.FieldCount > 4 && !reader.IsDBNull(4) ? Convert.ToString(reader[4]) : null
+                    });
             }
             if (rows.Count > 1) throw new InvalidOperationException("Duplicate Sage match is ambiguous; no write was attempted.");
             return rows.Count == 1 ? rows[0] : null;
@@ -390,6 +501,17 @@ namespace CompassSageClientProjectWriter
                 { "jobtype", typeNumber }, { "jobtyperef", typeNumber }
             };
             return BuildXml(requestName, user, values, references);
+        }
+
+        private static string BuildClientEmailModXml(string user, int clientNumber, string email)
+        {
+            Dictionary<string, string> values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                { "email", email }, { "email1", email }, { "primaryemail", email }
+            };
+            Dictionary<string, int> references = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+                { "objectref", clientNumber }
+            };
+            return BuildXml("ClientModRq", user, values, references);
         }
 
         private static string BuildXml(string requestName, string user, Dictionary<string, string> values, Dictionary<string, int> references)
@@ -495,12 +617,31 @@ namespace CompassSageClientProjectWriter
             if (errors.Length > 0) throw new InvalidOperationException("Sage XML validation failed before write: " + errors.ToString().Trim());
         }
 
-        private static void Submit(string xml, string password)
+        private static string Submit(string xml, string password)
         {
             object response = Invoke("submitXML", new object[] { xml, password });
             string text = Convert.ToString(response);
-            if (text.IndexOf("statusCode=\"0\"", StringComparison.OrdinalIgnoreCase) < 0)
-                throw new InvalidOperationException("Sage API rejected the add request: " + Truncate(text.Replace("\r", " ").Replace("\n", " "), 1000));
+            XmlDocument document = new XmlDocument();
+            try { document.LoadXml(text); }
+            catch (Exception error)
+            {
+                throw new InvalidOperationException("Sage API returned an invalid XML response: " + Truncate(text.Replace("\r", " ").Replace("\n", " "), 1000), error);
+            }
+            XmlNodeList statuses = document.SelectNodes("//*[@statusCode]");
+            if (statuses == null || statuses.Count == 0)
+                throw new InvalidOperationException("Sage API response did not include a status code.");
+            foreach (XmlNode node in statuses)
+            {
+                XmlElement element = node as XmlElement;
+                if (element == null) continue;
+                string code = element.GetAttribute("statusCode");
+                if (!String.Equals(code, "0", StringComparison.Ordinal))
+                {
+                    string message = element.GetAttribute("statusMessage");
+                    throw new InvalidOperationException("Sage API rejected the request (code " + code + "): " + message);
+                }
+            }
+            return text;
         }
 
         private static void PostSuccess(WriteRequest request, SageRecord client, SageRecord job, int clientStatus, int jobStatus, int jobType)
@@ -545,7 +686,55 @@ namespace CompassSageClientProjectWriter
                 HttpWebResponse response = error.Response as HttpWebResponse;
                 string details = "";
                 if (response != null) using (StreamReader reader = new StreamReader(response.GetResponseStream())) details = reader.ReadToEnd();
-                throw new InvalidOperationException("Compass bridge request failed: " + details, error);
+                string status = response == null
+                    ? error.Status.ToString()
+                    : ((int)response.StatusCode).ToString() + " " + response.StatusCode.ToString();
+                int statusCode = response == null ? 0 : (int)response.StatusCode;
+                bool transient = response != null
+                    ? statusCode == 408 || statusCode == 429 || statusCode >= 500
+                    : IsTransientWebStatus(error.Status);
+                throw new BridgeRequestException("Compass bridge request failed (" + status + "): " + details, transient, error);
+            }
+        }
+
+        private static bool IsTransientWebStatus(WebExceptionStatus status)
+        {
+            return status == WebExceptionStatus.ConnectFailure ||
+                status == WebExceptionStatus.ConnectionClosed ||
+                status == WebExceptionStatus.KeepAliveFailure ||
+                status == WebExceptionStatus.NameResolutionFailure ||
+                status == WebExceptionStatus.PipelineFailure ||
+                status == WebExceptionStatus.ReceiveFailure ||
+                status == WebExceptionStatus.SendFailure ||
+                status == WebExceptionStatus.Timeout;
+        }
+
+        private static void WriteLog(string level, string message)
+        {
+            string line = DateTimeOffset.Now.ToString("o") + " " + level + " " + message;
+            if (String.Equals(level, "ERROR", StringComparison.Ordinal) || String.Equals(level, "FATAL", StringComparison.Ordinal))
+                Console.Error.WriteLine(line);
+            else
+                Console.WriteLine(line);
+
+            try
+            {
+                lock (LogLock)
+                {
+                    string directory = Path.GetDirectoryName(LogPath);
+                    if (!Directory.Exists(directory)) Directory.CreateDirectory(directory);
+                    if (File.Exists(LogPath) && new FileInfo(LogPath).Length >= MaxLogBytes)
+                    {
+                        if (File.Exists(PreviousLogPath)) File.Delete(PreviousLogPath);
+                        File.Move(LogPath, PreviousLogPath);
+                    }
+                    File.AppendAllText(LogPath, line + Environment.NewLine, Encoding.UTF8);
+                }
+            }
+            catch
+            {
+                // Logging must never stop the accounting worker. Task Scheduler still
+                // retains the process exit code for fatal startup failures.
             }
         }
         private static string Sign(string secret, string payload)
@@ -582,6 +771,16 @@ namespace CompassSageClientProjectWriter
             if (String.IsNullOrWhiteSpace(value)) throw new InvalidOperationException(name + " is required."); return value.Trim();
         }
         private static string DataSource() { return Environment.GetEnvironmentVariable("SAGE_SQL_SERVER") ?? @"NUC-PC\SQLEXPRESS"; }
+        private static T RunStage<T>(string stage, Func<T> action)
+        {
+            try { return action(); }
+            catch (Exception error) { throw new InvalidOperationException(stage + " failed: " + error.GetType().Name + ": " + error.Message, error); }
+        }
+        private static void RunStage(string stage, Action action)
+        {
+            try { action(); }
+            catch (Exception error) { throw new InvalidOperationException(stage + " failed: " + error.GetType().Name + ": " + error.Message, error); }
+        }
         private static string Normalize(string value) { return (value ?? "").Replace("_", "").Replace("-", "").ToLowerInvariant(); }
         private static string Truncate(string value, int length) { if (String.IsNullOrEmpty(value)) return value; return value.Length <= length ? value : value.Substring(0, length); }
         private static string XmlEscape(string value) { return SecurityElement.Escape(value ?? "") ?? ""; }

@@ -58,6 +58,16 @@ export const sageClientProjectWritePayloadSchema = z.discriminatedUnion(
       client: sageClientPayloadSchema,
       job: sageJobPayloadSchema,
     }),
+    z.object({
+      operationType: z.literal("update_client_email"),
+      company: z.literal("High Performance Structures Inc"),
+      client: z.object({
+        compassCustomerId: z.string().min(1),
+        sageClientId: z.string().min(1),
+        sageClientNumber: z.string().min(1),
+        email: z.string().email().max(75),
+      }),
+    }),
   ]
 )
 
