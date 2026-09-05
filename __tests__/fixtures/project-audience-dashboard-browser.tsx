@@ -37,10 +37,12 @@ function Fixture(): React.ReactElement {
     },
     photos: empty
       ? []
-      : base.photos.map((photo) => ({
-          ...photo,
-          thumbnailUrl: `/api/projects/${projectId}/photos/${photo.id}?audience=${base.audience}`,
-        })),
+      : base.photos
+          .slice(0, url.searchParams.has("single") ? 1 : 2)
+          .map((photo) => ({
+            ...photo,
+            thumbnailUrl: `/api/projects/${projectId}/photos/${photo.id}?audience=${base.audience}`,
+          })),
     scheduleItems: empty ? [] : base.scheduleItems,
     ownerUpdates: empty ? [] : base.ownerUpdates,
     contacts: empty ? [] : base.contacts,

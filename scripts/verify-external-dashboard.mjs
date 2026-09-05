@@ -216,13 +216,53 @@ try {
   await page.keyboard.press("Escape")
   await page.goto(`${origin}/?empty=1`)
   await page
-    .getByText("Project photos will appear here", { exact: true })
+    .getByText("Approved project photos will appear here.", { exact: true })
     .waitFor()
   assert.equal(
     await page.getByRole("button", { name: "Next project photo" }).count(),
     0
   )
   await page.getByText(/Some summaries could not be loaded/).waitFor()
+  if (process.env.DASHBOARD_SCREENSHOTS) {
+    await page.setViewportSize({ width: 1560, height: 1100 })
+    await page
+      .locator('[aria-label="Project greeting"]')
+      .screenshot({
+        path: path.join(
+          process.env.DASHBOARD_SCREENSHOTS,
+          "implemented-empty-photo-light.png"
+        ),
+      })
+    await page.locator('button[aria-label="Toggle theme"]:visible').click()
+    await page
+      .locator('[aria-label="Project greeting"]')
+      .screenshot({
+        path: path.join(
+          process.env.DASHBOARD_SCREENSHOTS,
+          "implemented-empty-photo-dark.png"
+        ),
+      })
+  }
+  await page.goto(`${origin}/?single=1`)
+  await page.getByRole("heading", { name: "Good morning, Alex" }).waitFor()
+  assert.equal(
+    await page.getByRole("button", { name: "Next project photo" }).count(),
+    0
+  )
+  await page.route("**/api/projects/*/photos/*", (route) =>
+    route.fulfill({ status: 404, body: "Unavailable" })
+  )
+  await page.goto(origin)
+  await page
+    .getByRole("img", {
+      name: "Architectural illustration of a home under construction",
+    })
+    .waitFor()
+  assert.equal(
+    await page.getByRole("button", { name: "Next project photo" }).count(),
+    0
+  )
+  await page.unroute("**/api/projects/*/photos/*")
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.goto(origin)
   await page.getByRole("heading", { name: "Good morning, Alex" }).waitFor()
@@ -255,7 +295,7 @@ try {
   }
   assert.deepEqual(errors, [])
   console.log(
-    "PASS RFI form/action handoff, internal-preview write block, empty/error states, photo rotation + reduced motion, theme toggle; no browser runtime errors"
+    "PASS RFI form/action handoff, internal-preview write block, empty/error/single/failed-photo states, photo rotation + reduced motion, theme toggle; no browser runtime errors"
   )
 } catch (error) {
   if (page) {

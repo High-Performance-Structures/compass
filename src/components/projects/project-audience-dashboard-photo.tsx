@@ -4,12 +4,12 @@ import * as React from "react"
 import Image from "next/image"
 import {
   IconArrowRight,
-  IconHome,
   IconPlayerPause,
   IconPlayerPlay,
 } from "@tabler/icons-react"
 
 import { cn } from "@/lib/utils"
+import { ProjectAudienceDashboardPlaceholder } from "@/components/projects/project-audience-dashboard-placeholder"
 
 export type AudienceDashboardPhoto = {
   readonly id: string
@@ -75,12 +75,7 @@ export function ProjectAudienceDashboardPhoto({
           />
         ))
       ) : (
-        <div className="flex h-full min-h-52 flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/15 via-muted/30 to-background p-4 pr-10 text-center text-primary">
-          <IconHome className="size-8" aria-hidden="true" />
-          <span className="text-xs text-muted-foreground">
-            Project photos will appear here
-          </span>
-        </div>
+        <ProjectAudienceDashboardPlaceholder />
       )}
       {available.length > 1 && (
         <div className="absolute bottom-3 left-2 z-20 flex items-center rounded-md border bg-background text-foreground shadow-sm">

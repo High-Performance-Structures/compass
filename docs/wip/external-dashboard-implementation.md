@@ -9,7 +9,7 @@ Implements the approved internal-dashboard layout for owners and the shared sub/
 - Quick links retain each audience's existing routes for budget, updates, RFQs, RFIs, commitments, change requests, plans/documents, and photos. Owner warranty requests appear when the project is in the warranty stage.
 - Team contact details support phone/email access. The existing direct-message launcher remains in the dashboard and header. Expandable email/text instructions retain copying, routing tags, and SMS links.
 
-Photos come exclusively from the authorized project/audience preview data. Up to six recent photos rotate with a fade into the greeting. Project/audience/photo-source changes reset the carousel; failed photos are removed; zero photos show the themed fallback; one photo hides rotation controls. Reduced motion disables autoplay. Manual next pauses autoplay.
+Photos come exclusively from the authorized project/audience preview data. Up to six recent photos rotate with a fade into the greeting. Project/audience/photo-source changes reset the carousel; failed photos are removed; zero photos show a standardized architectural illustration using global theme colors and the same fade into the greeting; one photo hides rotation controls. Reduced motion disables autoplay. Manual next pauses autoplay.
 
 The five-day horizon follows the internal dashboard's default Mountain time calendar and becomes an agenda on phones. Optional financial-summary failures remain visibly unavailable while the dashboard and destination links still render.
 

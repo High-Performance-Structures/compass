@@ -36,7 +36,6 @@ import { ProjectAudienceSchedule } from "@/components/projects/project-audience-
 import {
   ownerUpdatePreviewHref,
   projectAudienceConversationHref,
-  projectAudienceSectionHref,
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
 import {
