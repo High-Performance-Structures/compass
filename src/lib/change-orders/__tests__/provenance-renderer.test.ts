@@ -9,6 +9,7 @@ vi.mock("@/components/developer-mode-provider", () => ({ DeveloperOnly: () => nu
 
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
 import { ProjectChangeOrderDetail } from "@/components/projects/project-change-order-detail"
+import { changeOrderReport } from "@/lib/print/audience-record-reports"
 
 const formOptions: ProjectChangeOrderFormOptions = {
   phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null,
@@ -47,6 +48,20 @@ function render(record: ProjectChangeOrderItem, internal: boolean): readonly str
 }
 
 describe("imported change-order provenance in shared list and detail", () => {
+  it("preserves the same provenance boundary in printed reports", () => {
+    const imported = JSON.stringify(changeOrderReport([item()]))
+    expect(imported).toContain("Not verified from Buildertrend")
+    expect(imported).toContain("Not classified")
+    expect(imported).toContain("Approved · Buildertrend")
+    expect(imported).toContain("$123.45")
+    expect(imported).not.toContain("Legacy project owner")
+    expect(imported).not.toContain("Legacy company")
+    expect(imported).not.toContain("Requested by")
+    const native = JSON.stringify(changeOrderReport([item({ sourceType: "owner_request" })]))
+    expect(native).toContain("Legacy project owner")
+    expect(native).toContain("Requested by")
+    expect(native).not.toContain("Not verified from Buildertrend")
+  })
   it.each([true, false])("separates unverified initiation and purpose from approval (internal=%s)", (internal) => {
     for (const markup of render(item(), internal)) {
       expect(markup).toContain("Initiator: Not verified from Buildertrend")
