@@ -44,6 +44,10 @@ import {
   changeOrderRequesterType,
   type ChangeOrderRequesterType,
 } from "@/lib/change-orders/access"
+import {
+  readChangeOrderRequesterType,
+  type RecordedChangeOrderRequesterType,
+} from "@/lib/change-orders/provenance"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import {
@@ -113,7 +117,7 @@ export type ProjectChangeOrderItem = {
   readonly scheduleImpactDays: number | null
   readonly status: ChangeOrderStatus
   readonly audience: ChangeOrderAudience
-  readonly requesterType: ChangeOrderRequesterType
+  readonly requesterType: RecordedChangeOrderRequesterType
   readonly requesterUserId: string | null
   readonly requesterName: string
   readonly requesterCompany: string | null
@@ -632,20 +636,15 @@ function viewModel(
   history: ProjectChangeOrderItem["history"],
   rebaseline: RebaselineViewData
 ): ProjectChangeOrderItem | null {
+  const requesterType = readChangeOrderRequesterType(row.sourceType, row.requesterType)
   if (
     !isChangeOrderStatus(row.status) ||
     !validAudience(row.audience) ||
     !isChangeOrderBudgetTreatment(row.budgetTreatment) ||
-    !["internal", "owner", "subcontractor"].includes(row.requesterType)
+    requesterType === null
   ) {
     return null
   }
-  const requesterType =
-    row.requesterType === "owner"
-      ? "owner"
-      : row.requesterType === "subcontractor"
-        ? "subcontractor"
-        : "internal"
   const status = row.status
   const isRequester = row.requesterUserId === context.user.id
   const canApprove = context.canApprove

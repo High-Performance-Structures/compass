@@ -9,8 +9,8 @@ import type {
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
 import {
   DeveloperOnly,
-  WorkerOnly,
 } from "@/components/developer-mode-provider"
+import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -66,10 +66,14 @@ export function ProjectChangeOrderDetail({
               {item.changeOrderNumber}
             </p>
             <h1 className="mt-1 text-2xl font-semibold">{item.title}</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Requested by {item.requesterName}
-              {item.requesterCompany ? ` · ${item.requesterCompany}` : ""}
-            </p>
+            {item.sourceType === "buildertrend_import" ? (
+              <ProjectChangeOrderProvenance />
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Requested by {item.requesterName}
+                {item.requesterCompany ? ` · ${item.requesterCompany}` : ""}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge>{changeOrderDisplayStatus(item.status, item.sourceType)}</Badge>
@@ -79,7 +83,9 @@ export function ProjectChangeOrderDetail({
                 ? "Schedule impact not set"
                 : `${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`}
             </Badge>
-            <Badge variant="secondary">{item.audience}</Badge>
+            <Badge variant="secondary">
+              {item.sourceType === "buildertrend_import" ? "Audience: " : ""}{item.audience}
+            </Badge>
             {item.budgetTreatment === "baseline_replacement" && (
               <Badge variant="outline">Baseline replacement</Badge>
             )}
@@ -210,7 +216,7 @@ export function ProjectChangeOrderDetail({
                     : event.eventType === "baseline_replaced"
                       ? "Estimate and budget baseline replaced"
                     : event.eventType === "buildertrend_import"
-                      ? <><DeveloperOnly>Imported from Buildertrend</DeveloperOnly><WorkerOnly>Request created</WorkerOnly></>
+                      ? "Historical record imported"
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}
