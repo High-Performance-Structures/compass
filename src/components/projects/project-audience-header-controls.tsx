@@ -8,6 +8,8 @@ import {
   IconSun,
 } from "@tabler/icons-react"
 
+import { QuickAddMenu } from "@/components/quick-add-menu"
+
 import { logout } from "@/app/actions/profile"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -51,6 +53,7 @@ export function ProjectAudienceHeaderControls({
 
   return (
     <div className="flex shrink-0 items-center justify-end gap-0.5">
+      <QuickAddMenu />
       {messageShortcut && (
         <>
           <Button

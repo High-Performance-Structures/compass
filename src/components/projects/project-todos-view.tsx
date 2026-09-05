@@ -180,6 +180,7 @@ export function ProjectTodosView({
   initialItemId,
   assigneeOptions,
   canManage,
+  initialCreateOpen = false,
 }: {
   readonly projectId: string
   readonly projectLabel: string
@@ -187,6 +188,7 @@ export function ProjectTodosView({
   readonly initialItemId: string | null
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly canManage: boolean
+  readonly initialCreateOpen?: boolean
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const initialItem =
@@ -246,6 +248,8 @@ export function ProjectTodosView({
             defaultDueDate={null}
             defaultPriority="normal"
             assigneeOptions={assigneeOptions}
+            defaultOpen={initialCreateOpen}
+            quickAddEnabled
           />
         )}
       </header>

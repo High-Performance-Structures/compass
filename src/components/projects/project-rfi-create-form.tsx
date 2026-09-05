@@ -30,6 +30,7 @@ import {
   RFI_CONTACT_GROUPS,
   type RfiContactOption,
 } from "@/lib/rfis/contact-options"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 
 type ProjectRfiCreateFormProps = {
   readonly projectId: string
@@ -136,6 +137,10 @@ export function ProjectRfiCreateForm({
   const [message, setMessage] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   const [open, setOpen] = React.useState(false)
+
+  useQuickAddEntry("rfi", () => {
+    setOpen(true)
+  })
 
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>

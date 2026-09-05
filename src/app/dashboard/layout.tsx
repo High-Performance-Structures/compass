@@ -41,6 +41,8 @@ import {
   canManageUserAccess,
   canManageProjectRegistry,
 } from "@/lib/permissions"
+import { getQuickAddProjects } from "@/lib/quick-add-server"
+import { QuickAddProvider } from "@/components/quick-add-menu"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { DeveloperModeProvider } from "@/components/developer-mode-provider"
 import {
@@ -76,6 +78,7 @@ export default async function DashboardLayout({
   const canAccessExecutiveAdmin = canUseExecutiveAdmin(authUser)
   const canAccessGreetingCards = canPrepareGreetingCards(authUser)
   const canUseDeveloperMode = canManageProjectRegistry(authUser)
+  const quickAddProjects = await getQuickAddProjects(authUser, projectList)
   const developerModeEnabled = developerModeFromCookie(
     cookieStore.get(DEVELOPER_MODE_COOKIE)?.value,
     canUseDeveloperMode,
@@ -100,6 +103,7 @@ export default async function DashboardLayout({
     <VoiceProvider>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
+    <QuickAddProvider projects={quickAddProjects}>
     <PageActionsProvider>
     <CommandMenuProvider canUseAskCompass={canUseCompassAgent}>
       <BiometricGuard userId={authUser?.id}>
@@ -155,6 +159,7 @@ export default async function DashboardLayout({
       </BiometricGuard>
     </CommandMenuProvider>
     </PageActionsProvider>
+    </QuickAddProvider>
     </ProjectListProvider>
     </SettingsProvider>
     </VoiceProvider>

@@ -39,14 +39,16 @@ import {
   type StagedAttachment,
 } from "./correspondence-workspace-utils"
 import type { CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
-type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string }
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean }
 type InboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"
 type ComposeMode = { readonly kind: "reply" } | { readonly kind: "new"; readonly subject: string; readonly recipientIds: readonly string[] }
 type NewDraft = { readonly subject: string; readonly recipientIds: readonly string[]; readonly body: string; readonly version: number }
 type PendingSend = { readonly input: SendCorrespondenceInput }
 type SearchHit = { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }
 const POLL_INTERVAL_MS = 20_000
-export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initialConversationId, initialMessageId }: ProjectCorrespondenceWorkspaceProps): React.ReactElement {
+export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initialConversationId, initialMessageId, initialNewMessage = false }: ProjectCorrespondenceWorkspaceProps): React.ReactElement {
+  const initialCompositionDraft = compositionDraft(initialInbox)
   const [inbox, setInbox] = React.useState(initialInbox)
   const [activeId, setActiveId] = React.useState<string | null>(
     initialConversationId ?? initialInbox.conversations[0]?.id ?? null,
@@ -56,10 +58,14 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const [query, setQuery] = React.useState("")
   const [searchHits, setSearchHits] = React.useState<readonly SearchHit[]>([])
   const [searchHasMore, setSearchHasMore] = React.useState(false)
-  const [mobileDetail, setMobileDetail] = React.useState(initialConversationId !== undefined)
-  const [compose, setCompose] = React.useState<ComposeMode | null>(null)
-  const [replyBody, setReplyBody] = React.useState("")
-  const [newDraft, setNewDraft] = React.useState<NewDraft>(() => compositionDraft(initialInbox))
+  const [mobileDetail, setMobileDetail] = React.useState(initialConversationId !== undefined || initialNewMessage)
+  const [newDraft, setNewDraft] = React.useState<NewDraft>(initialCompositionDraft)
+  const [compose, setCompose] = React.useState<ComposeMode | null>(() => initialNewMessage ? {
+    kind: "new",
+    subject: initialCompositionDraft.subject,
+    recipientIds: initialCompositionDraft.recipientIds,
+  } : null)
+  const [replyBody, setReplyBody] = React.useState(() => initialNewMessage ? initialCompositionDraft.body : "")
   const [stagedAttachments, setStagedAttachments] = React.useState<readonly StagedAttachment[]>([])
   const [status, setStatus] = React.useState<string | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = React.useState(false)
@@ -288,6 +294,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setMobileDetail(true)
     setStatus(null)
   }
+  useQuickAddEntry("message", () => { void startNewMessage() })
   async function applyState(next: CorrespondenceStateInput): Promise<void> {
     if (activeSummary === null) return
     const result = await setCorrespondenceState(projectId, activeSummary.id, next)

@@ -41,6 +41,7 @@ import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { QuickAddMenu } from "@/components/quick-add-menu"
 
 const OFFICE_TALK_MEETING_HREF =
   `/dashboard/conversations/${OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID}/meeting`
@@ -155,6 +156,7 @@ export function SiteHeader({
             <IconMoon className="size-4 block dark:hidden" />
           </button>
           <NotificationsPopover />
+          <QuickAddMenu />
           {canUseOfficeTalk && (
             <>
               <Button
@@ -292,6 +294,7 @@ export function SiteHeader({
             </Button>
           )}
           <NotificationsPopover />
+          <QuickAddMenu />
           {canUseOfficeTalk && (
             <>
               <Button
