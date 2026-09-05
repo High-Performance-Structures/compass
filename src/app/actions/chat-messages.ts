@@ -149,7 +149,7 @@ async function getAttachmentsByMessage(
       fileName: messageAttachments.fileName,
       mimeType: messageAttachments.mimeType,
       fileSize: messageAttachments.fileSize,
-      storageUrl: messageAttachments.r2Path,
+      attachmentId: messageAttachments.id,
     })
     .from(messageAttachments)
     .where(inArray(messageAttachments.messageId, messageIds))
@@ -162,7 +162,7 @@ async function getAttachmentsByMessage(
       fileName: row.fileName,
       mimeType: row.mimeType,
       fileSize: row.fileSize,
-      storageUrl: row.storageUrl,
+      storageUrl: `/api/conversations/attachments/${encodeURIComponent(row.attachmentId)}`,
     })
     attachments.set(row.messageId, existing)
   }
