@@ -42,3 +42,36 @@ The timer invokes a single, lock-protected poll each minute. The wrapper waits
 for Signet's asynchronous job and propagates the poller's real exit status to
 systemd. A successful idle run reports `requested: 0`, `processed: 0`, and the
 current `taxDistricts` count; that is a healthy state.
+
+## Feedback Desk bug-delivery consumer
+
+From the Compass repository root, create or reuse the real Git checkout that
+Hermes Kanban will use as its worktree anchor. The consumer script is installed
+separately because the service runs from a fixed private-runtime path:
+
+```bash
+install -d "$HOME/.local/src" \
+  "$HOME/.local/lib/compass" \
+  "$HOME/.local/state/hermes" \
+  "$HOME/.config/systemd/user"
+if [ -e "$HOME/.local/src/compass/.git" ]; then
+  git -C "$HOME/.local/src/compass" fetch origin main
+else
+  git clone --branch main --single-branch git@github.com:High-Performance-Structures/compass.git "$HOME/.local/src/compass"
+fi
+export COMPASS_KANBAN_REPO_ROOT="$HOME/.local/src/compass"
+install -m 0755 scripts/jarvis-feedback-delivery.py \
+  "$HOME/.local/lib/compass/jarvis-feedback-delivery.py"
+install -m 0644 ops/systemd/compass-jarvis-feedback-delivery.service \
+  "$HOME/.config/systemd/user/"
+systemctl --user daemon-reload
+systemctl --user enable --now compass-jarvis-feedback-delivery.service
+```
+
+The unit keeps `ProtectHome=read-only` and explicitly grants write access to the
+Kanban state directory and the Git checkout anchor. The checkout at
+`%h/.local/src/compass` is required because Hermes creates child worktrees from
+that repository; the service must not point `COMPASS_KANBAN_REPO_ROOT` at the
+directory containing only the installed consumer script. The consumer is the
+repository's `scripts/jarvis-feedback-delivery.py` copied to the fixed
+`%h/.local/lib/compass/jarvis-feedback-delivery.py` path used by `ExecStart`.

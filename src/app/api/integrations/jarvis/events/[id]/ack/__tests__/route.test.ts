@@ -24,7 +24,8 @@ vi.mock("@/lib/jarvis/visual-context", () => ({
 import { POST } from "../route"
 
 const event = {
-  id: "event-1",
+  id: "123e4567-e89b-12d3-a456-426614174000",
+  claimToken: "claim-1",
   eventType: "feedback.delivery_requested",
   payload: JSON.stringify({
     schemaVersion: 1,
@@ -56,23 +57,26 @@ function configureDb(item: Readonly<Record<string, unknown>> | null) {
   selectChain.from.mockReturnValue(selectChain)
   selectChain.where.mockReturnValue(selectChain)
 
-  const where = vi.fn().mockResolvedValue(undefined)
+  const where = vi.fn()
+  const getUpdated = vi.fn().mockResolvedValue({ id: event.id })
+  const returning = vi.fn().mockReturnValue({ get: getUpdated })
+  where.mockReturnValue({ returning, get: getUpdated })
   const set = vi.fn().mockReturnValue({ where })
   const update = vi.fn().mockReturnValue({ set })
   mocks.getDb.mockReturnValue({
     select: vi.fn().mockReturnValue(selectChain),
     update,
   })
-  return { update, set, where }
+  return { update, set, where, getUpdated }
 }
 
 async function acknowledge() {
   return POST(
-    new Request("https://compass.example/api/integrations/jarvis/events/event-1/ack", {
+    new Request("https://compass.example/api/integrations/jarvis/events/123e4567-e89b-12d3-a456-426614174000/ack", {
       method: "POST",
-      body: JSON.stringify({ status: "completed" }),
+      body: JSON.stringify({ status: "completed", claimToken: "claim-1" }),
     }),
-    { params: Promise.resolve({ id: "event-1" }) },
+    { params: Promise.resolve({ id: "123e4567-e89b-12d3-a456-426614174000" }) },
   )
 }
 
@@ -123,5 +127,17 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
     expect(db.set).toHaveBeenCalledWith(expect.objectContaining({
       status: "completed",
     }))
+  })
+
+  it("rejects an acknowledgement after another claimer fenced the event", async () => {
+    const db = configureDb(completeItem)
+    db.getUpdated.mockResolvedValue(null)
+
+    const response = await acknowledge()
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: "Event claim is no longer active",
+    })
   })
 })
