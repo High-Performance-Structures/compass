@@ -7,6 +7,7 @@ import type {
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
+import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
@@ -47,7 +48,7 @@ export function ProjectChangeOrderList({
             <h1 className="text-xl font-semibold">Change orders</h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Request, review, price, approve, and track project scope changes.
+            Request, review, price, approve, and track scope, cost, and budget changes.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -80,7 +81,9 @@ export function ProjectChangeOrderList({
                   <Badge variant="outline">
                     {changeOrderDisplayStatus(item.status, item.sourceType)}
                   </Badge>
-                  <Badge variant="secondary">{item.requesterType}</Badge>
+                  {item.sourceType !== "buildertrend_import" && (
+                    <Badge variant="secondary">{item.requesterType}</Badge>
+                  )}
                   {item.budgetTreatment === "baseline_replacement" && (
                     <Badge variant="outline">Baseline replacement</Badge>
                   )}
@@ -90,11 +93,15 @@ export function ProjectChangeOrderList({
                   {item.scope}
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {money(item.amountCents)} · Requested by {item.requesterName}
+                  {money(item.amountCents)}
+                  {item.sourceType !== "buildertrend_import"
+                    ? ` · Requested by ${item.requesterName}`
+                    : ""}
                   {item.scheduleImpactDays !== null
                     ? ` · ${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`
                     : ""}
                 </p>
+                {item.sourceType === "buildertrend_import" && <ProjectChangeOrderProvenance />}
               </div>
               <Button asChild variant="outline" size="sm">
                 <Link

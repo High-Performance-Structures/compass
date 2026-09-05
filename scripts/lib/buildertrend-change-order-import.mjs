@@ -88,11 +88,20 @@ function insertChangeOrder(project, order, capturedAt) {
     buildertrendStatus: order.status,
     buildertrendStatusDate: order.statusDate,
     buildertrendDocumentCount: order.documentCount,
+    initiatorProvenance: {
+      status: "unknown",
+      reason: "Buildertrend capture did not include independent initiator evidence",
+    },
+    projectAssociation: {
+      name: project.requesterName,
+      scope: "project_level_import_association",
+      sourceVerifiedForChangeOrder: false,
+    },
   })
   const historyAt = `${order.statusDate}T18:00:00.000Z`
 
   return [
-    `INSERT INTO project_change_orders (id, project_id, change_order_number, title, scope, reason, amount_cents, schedule_impact_days, status, audience, requester_type, requester_user_id, requester_name, requester_company, source_type, source_record_id, source_href, internal_notes, foxit_status, sage_status, created_by, submitted_at, created_at, updated_at) SELECT ${sql(id)}, ${sql(project.projectId)}, ${sql(order.number)}, ${sql(order.title)}, ${sql(order.title)}, NULL, ${sql(order.amountCents)}, NULL, ${sql(mapping.compassStatus)}, ${sql(mapping.audience)}, 'owner', NULL, ${sql(project.requesterName)}, NULL, 'buildertrend_import', ${sql(order.recordId)}, ${sql(sourceHref)}, ${sql(note)}, 'not_started', 'not_ready', NULL, ${sql(submittedAt)}, ${sql(order.createdAt)}, ${sql(capturedAt)} WHERE EXISTS (SELECT 1 FROM projects WHERE id = ${sql(project.projectId)} AND buildertrend_project_id = ${sql(project.buildertrendProjectId)}) ON CONFLICT(project_id, change_order_number) DO NOTHING;`,
+    `INSERT INTO project_change_orders (id, project_id, change_order_number, title, scope, reason, amount_cents, schedule_impact_days, status, audience, requester_type, requester_user_id, requester_name, requester_company, source_type, source_record_id, source_href, internal_notes, foxit_status, sage_status, created_by, submitted_at, created_at, updated_at) SELECT ${sql(id)}, ${sql(project.projectId)}, ${sql(order.number)}, ${sql(order.title)}, ${sql(order.title)}, NULL, ${sql(order.amountCents)}, NULL, ${sql(mapping.compassStatus)}, ${sql(mapping.audience)}, 'unknown', NULL, 'Initiator not verified from Buildertrend', NULL, 'buildertrend_import', ${sql(order.recordId)}, ${sql(sourceHref)}, ${sql(note)}, 'not_started', 'not_ready', NULL, ${sql(submittedAt)}, ${sql(order.createdAt)}, ${sql(capturedAt)} WHERE EXISTS (SELECT 1 FROM projects WHERE id = ${sql(project.projectId)} AND buildertrend_project_id = ${sql(project.buildertrendProjectId)}) ON CONFLICT(project_id, change_order_number) DO NOTHING;`,
     `INSERT OR IGNORE INTO project_change_order_lines (id, project_id, change_order_id, line_number, description, phase_code, cost_code, amount_cents, created_at, updated_at) SELECT ${sql(`${id}-line-1`)}, ${sql(project.projectId)}, ${sql(id)}, 1, ${sql(order.title)}, NULL, NULL, ${sql(order.amountCents)}, ${sql(order.createdAt)}, ${sql(capturedAt)} WHERE EXISTS (SELECT 1 FROM project_change_orders WHERE id = ${sql(id)});`,
     `INSERT OR IGNORE INTO project_change_order_history (id, project_id, change_order_id, event_type, from_status, to_status, actor_user_id, actor_name, actor_role, note, metadata_json, created_at) SELECT ${sql(`${id}-import`)}, ${sql(project.projectId)}, ${sql(id)}, 'buildertrend_import', NULL, ${sql(mapping.compassStatus)}, NULL, 'Buildertrend import', 'system', ${sql(note)}, ${sql(metadata)}, ${sql(historyAt)} WHERE EXISTS (SELECT 1 FROM project_change_orders WHERE id = ${sql(id)});`,
   ].join("\n")
