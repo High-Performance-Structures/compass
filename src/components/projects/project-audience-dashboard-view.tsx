@@ -208,6 +208,15 @@ export function ProjectAudienceDashboardView({
           </div>
         </div>
 
+        <div className="-mt-px">
+          <ProjectCommunicationInstructions
+            projectId={data.project.id}
+            projectNumber={data.project.projectNumber}
+            textPhoneNumber={data.project.textPhoneNumber}
+            compact
+          />
+        </div>
+
         <section
           className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b py-4 text-xs"
           aria-label={owner ? "Latest owner update" : "Project activity"}
@@ -586,14 +595,6 @@ export function ProjectAudienceDashboardView({
             <span>
               {owner ? "Owner workspace" : "Sub / supplier workspace"}
             </span>
-          </div>
-          <div className="mt-4">
-            <ProjectCommunicationInstructions
-              projectId={data.project.id}
-              projectNumber={data.project.projectNumber}
-              textPhoneNumber={data.project.textPhoneNumber}
-              compact
-            />
           </div>
         </footer>
       </div>
