@@ -68,6 +68,8 @@
 	],
 	"secrets": {
 		"required": [
+			"COMPASS_CORRESPONDENCE_DRIVE_USER",
+			"COMPASS_CORRESPONDENCE_STAGING_FOLDERS",
 			"AGENT_AUTH_SECRET",
 			"CLOUDFLARE_API_TOKEN",
 			"COMPASS_EMAIL_SYNC_SECRET",
@@ -109,6 +111,7 @@
 		]
 	},
 	"vars": {
+		"COMPASS_CORRESPONDENCE_ENABLED": "true",
 		"CLOUDFLARE_ACCOUNT_ID": "8716137c706ea3d5c209b330084fa9e2",
 		"COMPASS_PUBLIC_BASE_URL": "https://compass.openrangeconstruction.ltd",
 		"GIFTBIT_ENVIRONMENT": "testbed",
