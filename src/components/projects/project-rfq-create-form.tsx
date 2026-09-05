@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import {
   Popover,
   PopoverContent,
@@ -273,6 +274,11 @@ export function ProjectRfqCreateForm({
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
   const [open, setOpen] = React.useState(false)
+
+  useQuickAddEntry("rfq", () => {
+    setOpen(true)
+  })
+
   const [recipientPickerOpen, setRecipientPickerOpen] = React.useState(false)
   const [categoryPickerOpen, setCategoryPickerOpen] = React.useState(false)
   const [recipientQuery, setRecipientQuery] = React.useState("")

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
-  canFeature: vi.fn(async () => true),
+  canFeature: vi.fn(async (_user: unknown, _featureId: string, _action: string) => true),
   isDemoOrg: vi.fn(() => false),
   isDemoUser: vi.fn(() => false),
 }))
@@ -97,10 +97,27 @@ describe("getQuickAddProjects", () => {
           { action: "todo", href: "/dashboard/projects/project-a/todos?quickAdd=todo" },
           { action: "schedule-item", href: "/dashboard/projects/project-a/schedule?quickAdd=schedule-item" },
           { action: "rfi", href: "/dashboard/projects/project-a/rfis?quickAdd=rfi" },
+          { action: "purchase-order", href: "/dashboard/projects/project-a/purchase-orders?quickAdd=purchase-order" },
+          { action: "rfq", href: "/dashboard/projects/project-a/rfqs?quickAdd=rfq" },
         ],
       },
     ])
   })
+
+  it.each(["purchase-orders", "rfqs"])(
+    "independently hides procurement shortcuts without %s update permission",
+    async (deniedFeature) => {
+      const db = open()
+      mocks.canFeature.mockImplementation(async (_user, featureId, action) =>
+        featureId !== deniedFeature || action !== "update",
+      )
+      const result = await getQuickAddProjects(authUser(db, "staff-a"), [project("project-a")])
+      const actions = result[0]?.actions.map((item) => item.action)
+      expect(actions).not.toContain(deniedFeature === "rfqs" ? "rfq" : "purchase-order")
+      expect(actions).toContain(deniedFeature === "rfqs" ? "purchase-order" : "rfq")
+      expect(actions).toContain("message")
+    },
+  )
 
   it("keeps an invited owner message scoped to the target project organization", async () => {
     const db = open()
