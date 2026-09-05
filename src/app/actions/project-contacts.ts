@@ -37,7 +37,11 @@ import {
   type ProjectContactCompassAccountStatus,
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
-import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
+import {
+  isSameProjectContactDirectoryIdentity,
+  resolveProjectContactIdentity,
+  resolveProjectContactMutationIdentity,
+} from "@/lib/project-contact-directory-identity"
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -1489,7 +1493,7 @@ export async function saveProjectContact(
       if (!contactId && existingContact) contactId = existingContact.id
     }
 
-    const contactValues = {
+    let contactValues = {
       contactType: input.contactType,
       displayName: canonicalDisplayName ?? input.displayName.trim(),
       companyName: canonicalCompanyName ?? nullableInput(input.companyName),
@@ -1511,6 +1515,7 @@ export async function saveProjectContact(
     }
 
     if (
+      !contactId &&
       directoryIdentityManaged &&
       directoryIdentity &&
       contactIdentityChanged(directoryIdentity, contactValues)
@@ -1557,12 +1562,25 @@ export async function saveProjectContact(
         vendorId = existingContact.vendorId
         vendorContactId = existingContact.vendorContactId
       }
+      const sameDirectoryIdentity = isSameProjectContactDirectoryIdentity(
+        existingContact,
+        { sourceEntityType, sourceEntityId, vendorContactId }
+      )
+      const managedExistingIdentity =
+        directoryIdentityManaged && sameDirectoryIdentity
+      const mutationIdentity = resolveProjectContactMutationIdentity({
+        submittedIdentity: contactValues,
+        existingIdentity: sameDirectoryIdentity ? existingContact : null,
+        directoryIdentity,
+        managedByActiveUser: directoryIdentityManaged,
+      })
+      contactValues = { ...contactValues, ...mutationIdentity }
       const existingEmail = existingContact.email?.trim().toLowerCase() ?? ""
-      const updatedEmail = nullableInput(input.email)?.toLowerCase() ?? ""
+      const updatedEmail = contactValues.email?.toLowerCase() ?? ""
       const existingPhone = existingContact.phone?.trim() ?? ""
-      const updatedPhone = nullableInput(input.phone) ?? ""
+      const updatedPhone = contactValues.phone ?? ""
       const existingAddress = existingContact.address?.trim() ?? ""
-      const updatedAddress = nullableInput(input.address) ?? ""
+      const updatedAddress = contactValues.address ?? ""
       const identityChanged =
         existingEmail !== updatedEmail ||
         existingPhone !== updatedPhone ||
@@ -1577,6 +1595,7 @@ export async function saveProjectContact(
         const existingDirectoryEntityId =
           existingContact.vendorContactId ?? existingContact.sourceEntityId
         if (
+          !managedExistingIdentity &&
           existingDirectoryEntityType &&
           existingDirectoryEntityId &&
           (await directoryIdentityManagedByActiveUser({
@@ -1644,7 +1663,10 @@ export async function saveProjectContact(
                 )
                 .limit(1)
             : []
-        if (activeInvitationRows.length > 0 || linkedMembership.length > 0) {
+        if (
+          !managedExistingIdentity &&
+          (activeInvitationRows.length > 0 || linkedMembership.length > 0)
+        ) {
           return {
             success: false,
             error:
@@ -1763,7 +1785,13 @@ export async function saveProjectContact(
       })
     }
 
-    if (sourceEntityType === "customer" && sourceEntityId) {
+    // Active users own their directory identity. The project snapshot may be a
+    // fallback for blank profile fields, so it must never flow back upstream.
+    if (
+      !directoryIdentityManaged &&
+      sourceEntityType === "customer" &&
+      sourceEntityId
+    ) {
       await db.batch([
         db
           .update(customers)
@@ -1794,7 +1822,7 @@ export async function saveProjectContact(
             )
           ),
       ])
-    } else if (vendorContactId) {
+    } else if (!directoryIdentityManaged && vendorContactId) {
       await db.batch([
         db
           .update(vendorContacts)
@@ -1815,7 +1843,7 @@ export async function saveProjectContact(
           })
           .where(eq(projectContacts.vendorContactId, vendorContactId)),
       ])
-    } else if (vendorId) {
+    } else if (!directoryIdentityManaged && vendorId) {
       await db.batch([
         db
           .update(vendors)
