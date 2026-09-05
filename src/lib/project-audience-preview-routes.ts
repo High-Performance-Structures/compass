@@ -13,6 +13,7 @@ export type ProjectAudienceWorkspaceSection =
   | "documents"
   | "warranty"
   | "team"
+  | "selections"
 
 export function projectAudiencePreviewHref(
   projectId: string,

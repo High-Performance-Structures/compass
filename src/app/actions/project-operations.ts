@@ -4,7 +4,10 @@ import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
+import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
+import { specificationJson } from "@/lib/selections/decisions"
 import {
+  projectFinishSelections,
   projectBudgetApplications,
   projectBudgetLines,
   projectContacts,
@@ -259,6 +262,7 @@ export type CreatePurchaseOrderLineInput = {
 }
 
 export type CreateRfqScopeLineInput = {
+  readonly selectionId?: string | null
   readonly description: string | null
   readonly costCode: string | null
   readonly phaseCode: string | null
@@ -2132,7 +2136,11 @@ export async function createRfqRequest(
       },
     }
 
-    await db.insert(projectOperations).values({
+    const selectionIds = [...new Set(input.scopeItems.flatMap(line => line.selectionId ? [line.selectionId] : []))]
+    if (selectionIds.length > 50) throw new Error("Import no more than 50 selections per RFQ.")
+    const selections = selectionIds.length ? await db.select().from(projectFinishSelections).where(and(eq(projectFinishSelections.projectId, projectId), inArray(projectFinishSelections.id, selectionIds))) : []
+    if (selections.length !== selectionIds.length) throw new Error("A linked selection is no longer available in this project.")
+    const operationInsert = db.insert(projectOperations).values({
       id,
       projectId,
       sourceSystem: "compass",
@@ -2160,6 +2168,11 @@ export async function createRfqRequest(
       updatedAt: now,
     })
 
+    // The RFQ and its source specifications are committed together.
+    if (selections.length) {
+      await db.batch([operationInsert, ...selections.map(selection => db.insert(projectSelectionProcurementLinks).values({id: crypto.randomUUID(), projectId, selectionId: selection.id, operationId: id, specificationJson: specificationJson(selection), createdAt: now}))])
+    } else await operationInsert
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
     revalidatePath(`/dashboard/projects/${projectId}/financials`)

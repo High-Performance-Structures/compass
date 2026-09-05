@@ -1,5 +1,7 @@
 "use server"
 
+import { selectionDeletionAllowed } from "@/lib/selections/deletion"
+
 import { and, asc, eq, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -1005,10 +1007,12 @@ export async function importProjectFinishSchedule(
         conflictCount += 1
         continue
       }
-      await access.db
+      const removed = await access.db
         .delete(projectFinishSelections)
-        .where(eq(projectFinishSelections.id, stale.id))
-      removedCount += 1
+        .where(and(eq(projectFinishSelections.id, stale.id), selectionDeletionAllowed(stale.id)))
+        .returning({ id: projectFinishSelections.id })
+      removedCount += removed.length
+      if (!removed.length) conflictCount += 1
     }
     const staleCount = staleSelections.length - removedCount
 
@@ -1459,6 +1463,7 @@ export async function updateProjectSelection(
       changedTextField("Status", existing.status, status),
       changedTextField("Notes", existing.notes, notes)
     ].filter((change) => change !== null)
+    const specificationChanged = changes.some(change => change.field !== "Status" && change.field !== "Notes")
 
     await db
       .insert(projectFinishSelectionRooms)
@@ -1494,8 +1499,10 @@ export async function updateProjectSelection(
         costCode,
         phaseCode,
         status,
-        ownerApproved: status === "approved",
-        approvedAt: status === "approved" ? (existing.approvedAt ?? now) : null,
+        // Staff workflow status is not an owner signature. Material edits invalidate it.
+        ownerApproved: specificationChanged ? false : existing.ownerApproved,
+        approvedBy: specificationChanged ? null : existing.approvedBy,
+        approvedAt: specificationChanged ? null : existing.approvedAt,
         notes,
         syncStatus:
           existing.status === "approved" && changes.length > 0
@@ -1694,8 +1701,9 @@ export async function updateProjectSelectionStatus(
       .update(projectFinishSelections)
       .set({
         status,
-        ownerApproved: status === "approved",
-        approvedAt: status === "approved" ? now : null,
+        // Only the authenticated owner decision action records owner approval.
+        ownerApproved: existing.ownerApproved,
+        approvedAt: existing.approvedAt,
         syncStatus:
           status === "unavailable" && existing.status !== "unavailable"
             ? "selection_change_review"
@@ -1848,6 +1856,7 @@ export async function deleteProjectSelection(
 ): Promise<ActionResult> {
   try {
     const db = await verifyProjectAccess(projectId, "update")
+    await requireFeaturePermission(await requireAuth(), "finish-selections", "delete")
     const [existing] = await db
       .select({
         id: projectFinishSelections.id,
@@ -1875,14 +1884,16 @@ export async function deleteProjectSelection(
       }
     }
 
-    await db
+    const deleted = await db
       .delete(projectFinishSelections)
       .where(
         and(
           eq(projectFinishSelections.id, selectionId),
-          eq(projectFinishSelections.projectId, projectId)
+          eq(projectFinishSelections.projectId, projectId),
+          selectionDeletionAllowed(selectionId)
         )
-      )
+      ).returning({id:projectFinishSelections.id})
+    if (!deleted.length) return {success:false,error:"Unpublish the decision and remove procurement links before deleting. Selections with owner approval or request history must be retained."}
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}`)

@@ -25,7 +25,10 @@ import * as rfqSchema from "./schema-rfqs"
 import * as correspondenceSchema from "./schema-correspondence"
 import * as correspondenceEmailSchema from "./schema-correspondence-email"
 
+import * as selectionDecisionSchema from "./schema-selection-decisions"
+
 const allSchemas = {
+  ...selectionDecisionSchema,
   ...correspondenceSchema,
   ...correspondenceEmailSchema,
   ...schema,

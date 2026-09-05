@@ -57,6 +57,7 @@ import {
 import { cn } from "@/lib/utils"
 
 type DraftRfqScopeLine = {
+  readonly selectionId: string | null
   readonly id: string
   readonly description: string
   readonly phaseCode: string
@@ -93,6 +94,7 @@ const ALL = "all"
 
 function newLine(): DraftRfqScopeLine {
   return {
+    selectionId: null,
     id: crypto.randomUUID(),
     description: "",
     phaseCode: "",
@@ -115,6 +117,7 @@ function lineFromSelection(selection: ProjectSelectionItem): DraftRfqScopeLine {
 
   return {
     id: crypto.randomUUID(),
+    selectionId: selection.id,
     description: `${selection.roomName}: ${selection.name}`,
     phaseCode: selection.phaseCode ?? "",
     costCode: selection.costCode ?? "",
@@ -175,6 +178,7 @@ function categoryMatches(
 
 function toScopeInput(line: DraftRfqScopeLine): CreateRfqScopeLineInput {
   return {
+    selectionId: line.selectionId,
     description: cleanValue(line.description),
     phaseCode: cleanValue(line.phaseCode),
     costCode: cleanValue(line.costCode),
@@ -322,8 +326,8 @@ export function ProjectRfqCreateForm({
     categoryMatches(option, normalizedCategoryQuery)
   )
   const selectedRecipient = selectedRecipientId
-    ? recipientOptions.find((option) => option.id === selectedRecipientId) ??
-      null
+    ? (recipientOptions.find((option) => option.id === selectedRecipientId) ??
+      null)
     : null
   const lineCount = lines.filter(
     (line) => cleanValue(line.description) !== null
@@ -374,7 +378,9 @@ export function ProjectRfqCreateForm({
   )
   const selectedSelections = React.useMemo(
     () =>
-      allSelections.filter((selection) => selectedSelectionIds.has(selection.id)),
+      allSelections.filter((selection) =>
+        selectedSelectionIds.has(selection.id)
+      ),
     [allSelections, selectedSelectionIds]
   )
 
@@ -509,9 +515,7 @@ export function ProjectRfqCreateForm({
 
   function removeDocumentLink(id: string): void {
     setDocumentLinks((current) =>
-      current.length === 1
-        ? current
-        : current.filter((link) => link.id !== id)
+      current.length === 1 ? current : current.filter((link) => link.id !== id)
     )
   }
 
@@ -546,7 +550,9 @@ export function ProjectRfqCreateForm({
       vendorCategory: cleanValue(vendorCategory),
       requestedFrom: cleanValue(requestedFrom),
       recipientEmail: cleanValue(recipientEmail),
-      responseDueDate: cleanValue(String(formData.get("responseDueDate") ?? "")),
+      responseDueDate: cleanValue(
+        String(formData.get("responseDueDate") ?? "")
+      ),
       priority,
       scope: cleanValue(String(formData.get("scope") ?? "")),
       scopeItems: lines.map(toScopeInput),
@@ -590,7 +596,8 @@ export function ProjectRfqCreateForm({
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Request for Quote</SheetTitle>
           <SheetDescription>
-            Draft a scope, choose a vendor or trade, and track the response date.
+            Draft a scope, choose a vendor or trade, and track the response
+            date.
           </SheetDescription>
         </SheetHeader>
 
@@ -642,7 +649,8 @@ export function ProjectRfqCreateForm({
                       )}
                     >
                       <span className="min-w-0 truncate">
-                        {requestedFrom || "Choose vendor, sub, or type a name..."}
+                        {requestedFrom ||
+                          "Choose vendor, sub, or type a name..."}
                       </span>
                       <IconChevronDown className="size-4 shrink-0 opacity-60" />
                     </Button>
@@ -679,7 +687,8 @@ export function ProjectRfqCreateForm({
                                   {option.companyName ?? option.name}
                                 </span>
                                 <span className="block truncate text-xs text-muted-foreground">
-                                  {option.email ?? contactTypeLabel(option.contactType)}
+                                  {option.email ??
+                                    contactTypeLabel(option.contactType)}
                                 </span>
                               </span>
                               {selectedRecipientId === option.id && (
@@ -985,9 +994,7 @@ export function ProjectRfqCreateForm({
                       {filteredSelectionCostCodes.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
-                          {option.needsSageReview
-                            ? " - needs review"
-                            : ""}
+                          {option.needsSageReview ? " - needs review" : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1039,7 +1046,11 @@ export function ProjectRfqCreateForm({
                           {selection.roomName}: {selection.name}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {[selection.category, selection.manufacturer, selection.model]
+                          {[
+                            selection.category,
+                            selection.manufacturer,
+                            selection.model,
+                          ]
                             .filter((value): value is string => Boolean(value))
                             .join(" · ") || "Selection detail"}
                         </span>
@@ -1152,10 +1163,16 @@ export function ProjectRfqCreateForm({
                   Scope rows
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Use rows for cost codes, phases, alternates, or quote sections.
+                  Use rows for cost codes, phases, alternates, or quote
+                  sections.
                 </p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addLine}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addLine}
+              >
                 <IconPlus className="size-4" />
                 Add row
               </Button>

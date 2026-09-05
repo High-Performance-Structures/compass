@@ -1,3 +1,5 @@
+import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
+import { SelectionDecisionWorkspace } from "@/components/selections/selection-decision-workspace"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -40,7 +42,9 @@ function projectLabel(
     | undefined
 ): string {
   if (!project) return "Project"
-  return project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
+  return project.projectNumber
+    ? `${project.projectNumber} - ${project.name}`
+    : project.name
 }
 
 export default async function ProjectSelectionsPage({
@@ -129,6 +133,22 @@ export default async function ProjectSelectionsPage({
         </div>
       </div>
 
+      <Link
+        href={`/preview/projects/${id}/owner/selections`}
+        className="inline-block text-sm text-primary underline"
+      >
+        Open owner selections preview →
+      </Link>
+      <SelectionDecisionWorkspace
+        workspace={await getSelectionWorkspace(id, "staff")}
+      />
+      <div className="mt-8 border-t pt-6">
+        <h2 className="text-lg font-semibold">Edit finish specifications</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Maintain products, rooms, quantities, and internal notes below.
+          Publish changes in Selections & Decisions above.
+        </p>
+      </div>
       <ProjectSelectionsWorkspace
         brand={brand}
         clientName={project?.clientName ?? null}

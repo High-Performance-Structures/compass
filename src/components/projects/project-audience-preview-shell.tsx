@@ -2,6 +2,7 @@ import type * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
+  IconPalette,
   IconCalendar,
   IconClipboardCheck,
   IconEye,
@@ -43,6 +44,11 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Dashboard",
     section: "overview",
     icon: <IconHome className="size-4" />,
+  },
+  {
+    label: "Selections & Decisions",
+    section: "selections",
+    icon: <IconPalette className="size-4" />,
   },
   {
     label: "Owner Updates",
@@ -91,6 +97,11 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Dashboard",
     section: "overview",
     icon: <IconHome className="size-4" />,
+  },
+  {
+    label: "Approved Selections",
+    section: "selections",
+    icon: <IconPalette className="size-4" />,
   },
   {
     label: "Schedule",
@@ -287,8 +298,12 @@ export function ProjectAudiencePreviewShell({
         )}
       >
         <header className="sticky top-0 z-40 hidden h-12 items-center justify-between gap-4 border-b border-border/40 bg-background/80 px-4 backdrop-blur-sm md:flex">
-          <Link href={homeHref} className="min-w-0 truncate text-xs text-muted-foreground hover:text-foreground">
-            {projectNumber ? `${projectNumber} · ` : ""}{projectName}
+          <Link
+            href={homeHref}
+            className="min-w-0 truncate text-xs text-muted-foreground hover:text-foreground"
+          >
+            {projectNumber ? `${projectNumber} · ` : ""}
+            {projectName}
           </Link>
           <ProjectAudienceHeaderControls
             viewer={viewer}
@@ -359,7 +374,10 @@ export function ProjectAudiencePreviewShell({
               />
             </div>
           )}
-          <nav aria-label="Project workspace" className="mt-2 flex gap-1 overflow-x-auto border-t pt-2">
+          <nav
+            aria-label="Project workspace"
+            className="mt-2 flex gap-1 overflow-x-auto border-t pt-2"
+          >
             {navigation.map((item) => (
               <Link
                 key={item.section}
