@@ -9,40 +9,63 @@ if (-not (Test-Path -LiteralPath $SchemaPath -PathType Leaf)) {
 }
 
 [xml]$schema = Get-Content -LiteralPath $SchemaPath -Raw
-$namespace = New-Object System.Xml.XmlNamespaceManager($schema.NameTable)
-$namespace.AddNamespace("xsd", "http://www.w3.org/2001/XMLSchema")
 
-$keywords = @("receipt", "payment", "deposit", "check", "bank", "charge")
+# Include both the direct A/R candidates and the adjacent A/P and general-ledger
+# requests needed to distinguish customer receipts from other payment writes.
+$requestPattern = "(?i)(ARInvoice|Receipt|Payment|Pay|Deposit|Cash|GeneralLedger).*Rq$"
 $requests = @()
-foreach ($element in $schema.SelectNodes("//xsd:element[@name]", $namespace)) {
-    $name = [string]$element.name
-    $normalized = $name.ToLowerInvariant()
-    if (-not ($keywords | Where-Object { $normalized.Contains($_) })) {
-        continue
+foreach ($element in $schema.SelectNodes("//*[local-name()='element'][@name]")) {
+    $name = [string]$element.Attributes["name"].Value
+    if ($name -notmatch $requestPattern) { continue }
+
+    $typeName = ""
+    if ($element.Attributes["type"]) {
+        $typeName = [string]$element.Attributes["type"].Value
+        if ($typeName.Contains(":")) {
+            $typeName = $typeName.Substring($typeName.IndexOf(":") + 1)
+        }
     }
-    if (-not ($normalized.EndsWith("rq") -or $normalized.Contains("add"))) {
-        continue
+    $typeNode = $null
+    if ($typeName.Length -gt 0) {
+        $typeNode = $schema.SelectSingleNode(
+            "//*[local-name()='complexType'][@name='$typeName']"
+        )
     }
     $fields = @()
-    foreach ($field in $element.SelectNodes(".//xsd:element[@name or @ref]", $namespace)) {
-        $fieldName = if ($field.name) { [string]$field.name } else { [string]$field.ref }
-        if ($fieldName -eq $name) { continue }
-        $fields += [ordered]@{
-            name = $fieldName
-            type = [string]$field.type
-            minimum = [string]$field.minOccurs
-            maximum = [string]$field.maxOccurs
+    if ($typeNode) {
+        foreach ($field in $typeNode.SelectNodes(".//*[local-name()='element'][@name or @ref]")) {
+            $fieldName = if ($field.Attributes["name"]) {
+                [string]$field.Attributes["name"].Value
+            } else {
+                [string]$field.Attributes["ref"].Value
+            }
+            $fields += [ordered]@{
+                name = $fieldName
+                type = if ($field.Attributes["type"]) { [string]$field.Attributes["type"].Value } else { "" }
+                minimum = if ($field.Attributes["minOccurs"]) { [string]$field.Attributes["minOccurs"].Value } else { "" }
+                maximum = if ($field.Attributes["maxOccurs"]) { [string]$field.Attributes["maxOccurs"].Value } else { "" }
+            }
         }
     }
     $requests += [ordered]@{
         request = $name
+        type = $typeName
         fields = $fields
     }
 }
+
+$requestNames = @($requests | ForEach-Object { $_.request })
+$arReceiptRequests = @(
+    $requestNames |
+        Where-Object { $_ -match "(?i)(AR.*(Receipt|Payment|Pay)|CashReceipt|CustomerPayment).*Add.*Rq$" }
+)
 
 [ordered]@{
     schemaPath = $SchemaPath
     schemaSha256 = (Get-FileHash -LiteralPath $SchemaPath -Algorithm SHA256).Hash
     requestCount = $requests.Count
+    arReceiptWriteAvailable = $arReceiptRequests.Count -gt 0
+    arReceiptRequests = $arReceiptRequests
+    generalLedgerWriteAvailable = @($requestNames | Where-Object { $_ -match "(?i)^GeneralLedgerAdd.*Rq$" }).Count -gt 0
     requests = $requests
 } | ConvertTo-Json -Depth 8

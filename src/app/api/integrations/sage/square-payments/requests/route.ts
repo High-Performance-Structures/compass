@@ -87,11 +87,17 @@ export async function GET(request: Request): Promise<Response> {
     .select({ id: sageSquarePaymentOperations.id })
     .from(sageSquarePaymentOperations)
     .where(
-      or(
-        eq(sageSquarePaymentOperations.status, "queued"),
-        and(
-          eq(sageSquarePaymentOperations.status, "running"),
-          lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
+      and(
+        eq(
+          sageSquarePaymentOperations.operationType,
+          "post_square_processing_fee"
+        ),
+        or(
+          eq(sageSquarePaymentOperations.status, "queued"),
+          and(
+            eq(sageSquarePaymentOperations.status, "running"),
+            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
+          )
         )
       )
     )
@@ -113,6 +119,10 @@ export async function GET(request: Request): Promise<Response> {
       .where(
         and(
           eq(sageSquarePaymentOperations.id, candidate.id),
+          eq(
+            sageSquarePaymentOperations.operationType,
+            "post_square_processing_fee"
+          ),
           or(
             eq(sageSquarePaymentOperations.status, "queued"),
             and(

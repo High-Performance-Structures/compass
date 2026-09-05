@@ -9,6 +9,7 @@ import {
   verifySageBridgeRequest,
 } from "@/lib/sage/bridge-auth"
 import {
+  isSageSquareWriterOperation,
   sageSquarePaymentResultSchema,
   sageSquareWritesEnabled,
 } from "@/lib/sage/square-payment"
@@ -71,6 +72,12 @@ export async function POST(request: Request): Promise<Response> {
   if (!operation) {
     return Response.json(
       { error: "Sage payment claim is missing, stale, or already completed" },
+      { status: 409 }
+    )
+  }
+  if (!isSageSquareWriterOperation(operation.operationType)) {
+    return Response.json(
+      { error: "Only Square processing-fee operations may use this writer" },
       { status: 409 }
     )
   }

@@ -42,6 +42,7 @@ const scheduledMaintenancePaths = [
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
   "/api/operations/sage/health",
+  "/api/operations/sage/square-receipts",
 ]
 
 export function isPublicPath(pathname: string): boolean {

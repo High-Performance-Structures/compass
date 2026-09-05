@@ -13,6 +13,8 @@ const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
 const GOTO_MESSAGE_RECOVERY_TARGET =
   "/api/operations/goto/recover-message-bodies"
 const SAGE_BRIDGE_HEALTH_TARGET = "/api/operations/sage/health"
+const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
+  "/api/operations/sage/square-receipts"
 const LISTENING_ROOM_SOCKET_TARGET = "/api/listening-room-sync"
 const LISTENING_ROOM_AUTH_TARGET = "/api/listening-room/sync-authorize"
 
@@ -209,6 +211,38 @@ async function checkSageBridgeHealth(env: CloudflareEnv): Promise<void> {
   }
 }
 
+async function reconcileSageSquareReceipts(env: CloudflareEnv): Promise<void> {
+  const body = ""
+  const timestamp = String(Math.floor(Date.now() / 1_000))
+  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
+  if (!secret) throw new Error("JARVIS_BRIDGE_SECRET is required")
+  const signature = await createJarvisSignature(
+    secret,
+    timestamp,
+    "POST",
+    SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET,
+    body
+  )
+  const worker = env.WORKER_SELF_REFERENCE
+  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
+  const response = await worker.fetch(
+    `https://compass.internal${SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET}`,
+    {
+      method: "POST",
+      headers: {
+        "X-Compass-Timestamp": timestamp,
+        "X-Compass-Signature": signature,
+      },
+      body,
+    }
+  )
+  if (!response.ok) {
+    throw new Error(
+      `Sage Square receipt reconciliation failed with ${response.status}`
+    )
+  }
+}
+
 function maintenanceErrorLabel(error: unknown): string {
   if (!(error instanceof Error)) return "Unknown error"
   const status = /\b[1-5]\d{2}\b/.exec(error.message)?.[0]
@@ -245,6 +279,9 @@ export default {
         ),
         runMaintenanceJob("Sage bridge health", () =>
           checkSageBridgeHealth(env)
+        ),
+        runMaintenanceJob("Sage Square manual receipts", () =>
+          reconcileSageSquareReceipts(env)
         ),
       ]).then(() => undefined)
     )
