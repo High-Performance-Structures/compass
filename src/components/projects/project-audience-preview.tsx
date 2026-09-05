@@ -6,14 +6,9 @@ import { getCloudflareContext } from "@/lib/db"
 import Link from "next/link"
 import {
   IconArrowRight,
-  IconCalendarStats,
-  IconClipboardCheck,
   IconExternalLink,
-  IconFolder,
   IconMessageCircle,
   IconQuestionMark,
-  IconShoppingCartQuestion,
-  IconSparkles,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -22,19 +17,14 @@ import type {
   AudienceContact,
   AudienceOperationItem,
   AudienceOwnerUpdate,
-  AudienceProjectOption,
   AudienceRfi,
   AudienceRfq,
-  AudienceScheduleItem,
   ProjectAudience,
   ProjectAudiencePreview as ProjectAudiencePreviewData,
 } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
-import { ProjectAudienceSwitcher } from "@/components/projects/project-audience-switcher"
-import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
-import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
+import { ProjectAudienceDashboard } from "@/components/projects/project-audience-dashboard"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 import { ProjectAudienceDocumentLibrary } from "@/components/projects/project-audience-document-library"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
@@ -53,7 +43,6 @@ import {
   projectAudienceMessageShortcut,
   type ProjectAudienceMessageRecipient,
 } from "@/lib/project-audience-direct-message"
-import { selectUpcomingScheduleItems } from "@/lib/project-audience-schedule-selection"
 
 function formatDate(value: string | null): string {
   if (!value) return "Unscheduled"
@@ -78,16 +67,6 @@ function formatMoney(value: number | null): string {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(value)
-}
-
-function projectLabel(data: ProjectAudiencePreviewData): string {
-  return data.project.projectNumber ?? data.project.name
-}
-
-function projectOptionLabel(project: AudienceProjectOption): string {
-  return project.projectNumber
-    ? `${project.projectNumber} · ${project.name}`
-    : project.name
 }
 
 function recordTypeLabel(value: string): string {
@@ -124,7 +103,7 @@ function OperationRow({
   readonly viewerIsInternal: boolean
 }): React.ReactElement {
   return (
-    <div className="rounded-md border bg-background p-3">
+    <div id={`commitment-${item.id}`} className="scroll-mt-24 rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -198,7 +177,7 @@ function RfiRow({
   )
 
   return (
-    <article className="rounded-md border bg-background p-3">
+    <article id={`rfi-${item.id}`} className="scroll-mt-24 rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-xs font-medium text-muted-foreground">
@@ -534,12 +513,6 @@ function contactMessageHref(
   return `${href}?mention=${encodeURIComponent(contact.userId)}&label=${encodeURIComponent(contact.displayName)}`
 }
 
-function ownerHeroTitle(data: ProjectAudiencePreviewData): string {
-  return data.project.clientName
-    ? `${data.project.clientName} Project`
-    : projectLabel(data)
-}
-
 function OwnerUpdateCard({
   projectId,
   update,
@@ -591,96 +564,6 @@ function OwnerUpdateCard({
   )
 }
 
-function AudienceMetricStrip({
-  data,
-}: {
-  readonly data: ProjectAudiencePreviewData
-}): React.ReactElement {
-  const metrics: readonly {
-    readonly label: string
-    readonly value: string
-    readonly detail: string
-    readonly icon: React.ReactElement
-  }[] = [
-    {
-      label: "Schedule",
-      value: String(data.scheduleItems.length),
-      detail: "visible items",
-      icon: <IconCalendarStats className="size-4" />,
-    },
-    {
-      label: "RFIs",
-      value: String(data.rfis.length),
-      detail: "visible questions",
-      icon: <IconQuestionMark className="size-4" />,
-    },
-    {
-      label: "Commitments",
-      value: String(data.operations.length),
-      detail: "active records",
-      icon: <IconClipboardCheck className="size-4" />,
-    },
-    {
-      label: "RFQs",
-      value: String(data.rfqs.length),
-      detail: "quote requests",
-      icon: <IconShoppingCartQuestion className="size-4" />,
-    },
-  ]
-
-  return (
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {metrics.map((metric) => (
-        <div
-          key={metric.label}
-          className="rounded-lg border bg-background p-4 shadow-sm"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">{metric.icon}</span>
-            <span className="text-2xl font-semibold tabular-nums">
-              {metric.value}
-            </span>
-          </div>
-          <p className="mt-3 text-sm font-medium">{metric.label}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {metric.detail}
-          </p>
-        </div>
-      ))}
-    </section>
-  )
-}
-
-function OwnerScheduleCard({
-  item,
-}: {
-  readonly item: AudienceScheduleItem
-}): React.ReactElement {
-  return (
-    <article className="rounded-md border bg-background p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-medium">{item.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatDate(item.startDate)}
-            {" - "}
-            {formatDate(item.endDate)}
-          </p>
-        </div>
-        <Badge variant={item.isMilestone ? "default" : "secondary"}>
-          {item.isMilestone ? "Milestone" : `${item.percentComplete}%`}
-        </Badge>
-      </div>
-      <div className="mt-4 h-1.5 rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-[oklch(0.53_0.11_150)]"
-          style={{ width: `${item.percentComplete}%` }}
-        />
-      </div>
-    </article>
-  )
-}
-
 function OwnerProjectPreview({
   data,
   section,
@@ -688,178 +571,21 @@ function OwnerProjectPreview({
   readonly data: ProjectAudiencePreviewData
   readonly section: ProjectAudienceWorkspaceSection
 }): React.ReactElement {
-  const latestUpdate = data.ownerUpdates[0]
-  const olderUpdates = data.ownerUpdates.slice(1)
-  const upcomingScheduleItems = selectUpcomingScheduleItems(
-    data.scheduleItems,
-    new Date().toISOString().slice(0, 10)
-  )
-  const nextScheduleItem = upcomingScheduleItems[0]
-
   return (
-    <main className="min-h-screen bg-[oklch(0.96_0.018_115)]">
+    <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        {section === "overview" && (
-        <div>
-          <OwnerCoverPhotoControl
-            projectId={data.project.id}
-            projectTitle={ownerHeroTitle(data)}
-            projectLabel={projectLabel(data)}
-            projectAddress={data.project.address}
-            latestUpdate={
-              latestUpdate
-                ? {
-                    id: latestUpdate.id,
-                    title: latestUpdate.title,
-                  }
-                : null
-            }
-            nextScheduleItem={
-              nextScheduleItem
-                ? {
-                    title: nextScheduleItem.title,
-                    dateRange:
-                      `${formatDate(nextScheduleItem.startDate)} - ` +
-                      formatDate(nextScheduleItem.endDate),
-                  }
-                : null
-            }
-            approvedPhotos={data.photos.map((photo) => ({
-              id: photo.id,
-              fileName: photo.fileName,
-              driveFileId: photo.driveFileId,
-              thumbnailUrl: photo.thumbnailUrl,
-              caption: photo.caption,
-            }))}
-            latestUpdateHref={
-              latestUpdate
-                ? ownerUpdatePreviewHref(data.project.id, latestUpdate.id)
-                : null
-            }
-            photoGalleryHref={projectAudienceSectionHref(
-              data.project.id,
-              "owner",
-              "photos"
-            )}
-            editable={false}
-          />
-        </div>
-        )}
-
-        {section === "overview" && (
-          <ProjectCommunicationInstructions
-            projectId={data.project.id}
-            projectNumber={data.project.projectNumber}
-            textPhoneNumber={data.project.textPhoneNumber}
-          />
-        )}
-
-        {(section === "overview" || section === "updates") && (
-        <section
-          className={
-            section === "overview"
-              ? "grid gap-4 lg:grid-cols-[1.15fr_0.85fr]"
-              : "space-y-4"
-          }
-        >
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium uppercase text-muted-foreground">
-                  Project story
-                </p>
-                <h2 className="text-xl font-semibold">Recent updates</h2>
-              </div>
-              <Badge variant="outline">{data.ownerUpdates.length} published</Badge>
+        {section === "updates" && (
+          <section className="space-y-4">
+            <div>
+              <p className="text-xs font-medium uppercase text-muted-foreground">Project story</p>
+              <h1 className="text-xl font-semibold">Recent updates</h1>
             </div>
-            {latestUpdate ? (
-              <OwnerUpdateCard
-                projectId={data.project.id}
-                update={latestUpdate}
-                featured
-              />
-            ) : (
-              <div className="rounded-lg border bg-background p-5 text-sm text-muted-foreground">
-                No published owner updates are visible yet.
-              </div>
+            {data.ownerUpdates.length > 0 ? data.ownerUpdates.map((update, index) => (
+              <OwnerUpdateCard key={update.id} projectId={data.project.id} update={update} featured={index === 0} />
+            )) : (
+              <p className="rounded-lg border bg-background p-5 text-sm text-muted-foreground">No published owner updates are visible yet.</p>
             )}
-            {olderUpdates.length > 0 && (
-              <div className="grid gap-3 md:grid-cols-2">
-                {olderUpdates.map((update) => (
-                  <OwnerUpdateCard
-                    key={update.id}
-                    projectId={data.project.id}
-                    update={update}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {section === "overview" && (
-          <aside className="space-y-4">
-            <section
-              className="rounded-lg border bg-background p-5"
-            >
-              <div className="flex items-center gap-2">
-                <IconCalendarStats className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">What happens next</h2>
-              </div>
-              {upcomingScheduleItems.length > 0 ? (
-                <div className="mt-4 space-y-3">
-                  {upcomingScheduleItems.map((item) => (
-                    <OwnerScheduleCard key={item.id} item={item} />
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-                  No upcoming schedule items.
-                </p>
-              )}
-            </section>
-
-            <section className="rounded-lg border bg-background p-5">
-              <div className="flex items-center gap-2">
-                <IconSparkles className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">Your project team</h2>
-              </div>
-              <div className="mt-4 space-y-3 text-sm">
-                {data.project.projectManager && (
-                  <div>
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      Project manager
-                    </p>
-                    <p className="mt-1 font-medium">{data.project.projectManager}</p>
-                  </div>
-                )}
-                {data.contacts.slice(0, 3).map((contact) => {
-                  const contactDetail = [
-                    contact.companyName,
-                    contact.role,
-                    contact.trade,
-                  ].filter(Boolean).join(" · ")
-
-                  return (
-                    <div key={contact.id} className="border-t pt-3">
-                      <p className="font-medium">{contact.displayName}</p>
-                      {contactDetail && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {contactDetail}
-                        </p>
-                      )}
-                    </div>
-                  )
-                })}
-                {!data.project.projectManager && data.contacts.length === 0 && (
-                  <p className="rounded-md border p-3 text-sm text-muted-foreground">
-                    No approved project contacts yet.
-                  </p>
-                )}
-              </div>
-            </section>
-          </aside>
-          )}
-        </section>
+          </section>
         )}
 
         {section === "team" && (
@@ -938,19 +664,7 @@ export function ProjectAudiencePreview({
   readonly data: ProjectAudiencePreviewData
   readonly section?: ProjectAudienceWorkspaceSection
 }): React.ReactElement {
-  const label = projectLabel(data)
   const isOwner = data.audience === "owner"
-  const selectedProjectLabel = projectOptionLabel({
-    id: data.project.id,
-    name: data.project.name,
-    projectNumber: data.project.projectNumber,
-    status: "OPEN",
-  })
-  const partnerUpcomingScheduleItems = selectUpcomingScheduleItems(
-    data.scheduleItems,
-    new Date().toISOString().slice(0, 10)
-  )
-  const partnerNextScheduleItem = partnerUpcomingScheduleItems[0]
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: data.project.id,
     audience: data.audience,
@@ -958,6 +672,25 @@ export function ProjectAudiencePreview({
     contacts: data.contacts,
     messageChannels: data.messageChannels,
   })
+
+  if (section === "overview") {
+    return (
+      <ProjectAudiencePreviewShell
+        audience={data.audience}
+        projectId={data.project.id}
+        projectName={data.project.name}
+        projectNumber={data.project.projectNumber}
+        projectOptions={data.projectOptions}
+        viewer={data.viewer}
+        viewerIsInternal={data.viewerIsInternal}
+        messageShortcut={messageShortcut}
+        activeSection={section}
+        warrantyEnabled={data.project.warrantyEnabled}
+      >
+        <ProjectAudienceDashboard data={data} messageShortcut={messageShortcut} />
+      </ProjectAudiencePreviewShell>
+    )
+  }
 
   if (isOwner) {
     return (
@@ -993,114 +726,7 @@ export function ProjectAudiencePreview({
     >
       <main className="min-h-screen bg-muted/30">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        {section === "overview" && (
-          <OwnerCoverPhotoControl
-            projectId={data.project.id}
-            projectTitle={data.project.name}
-            projectLabel={label}
-            projectAddress={data.project.address}
-            latestUpdate={null}
-            nextScheduleItem={
-              partnerNextScheduleItem
-                ? {
-                    title: partnerNextScheduleItem.title,
-                    dateRange:
-                      `${formatDate(partnerNextScheduleItem.startDate)} - ` +
-                      formatDate(partnerNextScheduleItem.endDate),
-                  }
-                : null
-            }
-            approvedPhotos={data.photos.map((photo) => ({
-              id: photo.id,
-              fileName: photo.fileName,
-              driveFileId: photo.driveFileId,
-              thumbnailUrl: photo.thumbnailUrl,
-              caption: photo.caption,
-            }))}
-            latestUpdateHref={null}
-            photoGalleryHref={projectAudienceSectionHref(
-              data.project.id,
-              "sub-vendor",
-              "photos"
-            )}
-            workspaceLabel="Partner project home"
-            editable={false}
-          />
-        )}
-
-        {section === "overview" && (
-          <ProjectCommunicationInstructions
-            projectId={data.project.id}
-            projectNumber={data.project.projectNumber}
-            textPhoneNumber={data.project.textPhoneNumber}
-          />
-        )}
-
-        {section === "overview" && (
-          <section className="border bg-background p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="max-w-2xl">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Compass partner workspace
-                </p>
-                <h2 className="mt-1 text-lg font-semibold">Project command center</h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Keep questions, quotes, schedules, files, and project-team
-                  conversations together in one secure workspace.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <ProjectAudienceRfiCreateDialog
-                  projectId={data.project.id}
-                  recipients={messageShortcut?.recipients ?? []}
-                  viewerIsInternal={data.viewerIsInternal}
-                />
-                <Button asChild variant="outline">
-                  <Link
-                    href={projectAudienceSectionHref(
-                      data.project.id,
-                      "sub-vendor",
-                      "rfqs"
-                    )}
-                  >
-                    <IconShoppingCartQuestion className="size-4" />
-                    Review RFQs
-                  </Link>
-                </Button>
-                <ProjectAudienceMessageLauncher shortcut={messageShortcut} />
-              </div>
-            </div>
-          </section>
-        )}
-
-        {section === "overview" && (
-          <section className="rounded-lg border bg-background/80 px-3 py-2">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <IconFolder className="size-4 shrink-0 text-muted-foreground" />
-                <p className="min-w-0 text-sm">
-                  <span className="text-muted-foreground">Current project: </span>
-                  <span className="font-medium">{selectedProjectLabel}</span>
-                </p>
-              </div>
-              {data.projectOptions.length > 1 ? (
-                <ProjectAudienceSwitcher
-                  projects={data.projectOptions}
-                  currentProjectId={data.project.id}
-                  audience="sub-vendor"
-                  section="overview"
-                  className="h-8 w-auto max-w-[18rem]"
-                />
-              ) : (
-                <Badge variant="outline">Project scoped</Badge>
-              )}
-            </div>
-          </section>
-        )}
-
-        {section === "overview" && <AudienceMetricStrip data={data} />}
-
-        {(section === "overview" || section === "team") && (
+        {section === "team" && (
         <section
           className="rounded-lg border bg-background p-4 sm:p-5"
         >
