@@ -249,6 +249,7 @@ export function ProjectTodosView({
             defaultPriority="normal"
             assigneeOptions={assigneeOptions}
             defaultOpen={initialCreateOpen}
+            quickAddEnabled
           />
         )}
       </header>

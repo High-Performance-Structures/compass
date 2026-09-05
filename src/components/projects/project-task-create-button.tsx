@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
@@ -53,6 +54,7 @@ type ProjectTaskCreateButtonProps = {
   readonly defaultTaskType?: ProjectTaskRecordType
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   readonly compact?: boolean
+  readonly quickAddEnabled?: boolean
   readonly defaultOpen?: boolean
   readonly onCreated?: (todoId: string) => void
 }
@@ -103,10 +105,12 @@ export function ProjectTaskCreateButton({
   assigneeOptions = [],
   compact = false,
   defaultOpen = false,
+  quickAddEnabled = false,
   onCreated,
 }: ProjectTaskCreateButtonProps): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(defaultOpen)
+  useQuickAddEntry(quickAddEnabled ? "todo" : "", () => setOpen(true))
   const [selectedAssigneeId, setSelectedAssigneeId] = React.useState<
     string | null
   >(null)

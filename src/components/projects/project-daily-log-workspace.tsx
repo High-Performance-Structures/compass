@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -708,6 +709,7 @@ export function ProjectDailyLogWorkspace({
   const [filter, setFilter] = React.useState<LogFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
   const [showNewLog, setShowNewLog] = React.useState(initialShowNewLog)
+  useQuickAddEntry("daily-log", () => setShowNewLog(true))
   const [draft, setDraft] = React.useState<DailyLogDraft>(emptyDailyLogDraft)
   const [editingLogId, setEditingLogId] = React.useState<string | null>(null)
   const [editProjectId, setEditProjectId] = React.useState(

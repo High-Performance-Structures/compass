@@ -14,6 +14,7 @@ export default async function ProjectMessagesPage({
   readonly searchParams: Promise<{
     readonly conversationId?: string | readonly string[]
     readonly messageId?: string | readonly string[]
+    readonly quickAdd?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id: routeProjectId } = await params
@@ -45,6 +46,7 @@ export default async function ProjectMessagesPage({
       initialInbox={initialInbox.data}
       initialConversationId={singleQueryValue(query.conversationId)}
       initialMessageId={singleQueryValue(query.messageId)}
+      initialNewMessage={singleQueryValue(query.quickAdd) === "message"}
     />
     </div>
   )

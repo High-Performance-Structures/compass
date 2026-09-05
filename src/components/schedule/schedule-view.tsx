@@ -1,5 +1,7 @@
 "use client"
 
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+
 import {
   useState,
   useMemo,
@@ -230,6 +232,7 @@ export function ScheduleView({
         : "chronological"
     })
   const [taskFormOpen, setTaskFormOpen] = useState(initialTaskFormOpen)
+  useQuickAddEntry("schedule-item", () => setTaskFormOpen(true))
   const [filters, setFilters] = useState<TaskFilters>(() => ({
     status: requestedStatuses,
     phase: (searchParams.get("phase") ?? "").split(",").filter(Boolean),

@@ -41,8 +41,8 @@ import {
   canManageUserAccess,
   canManageProjectRegistry,
 } from "@/lib/permissions"
-import { canFeature } from "@/lib/permission-enforcement"
-import { getQuickAddActions } from "@/lib/quick-add"
+import { getQuickAddProjects } from "@/lib/quick-add-server"
+import { QuickAddProvider } from "@/components/quick-add-menu"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { DeveloperModeProvider } from "@/components/developer-mode-provider"
 import {
@@ -78,18 +78,7 @@ export default async function DashboardLayout({
   const canAccessExecutiveAdmin = canUseExecutiveAdmin(authUser)
   const canAccessGreetingCards = canPrepareGreetingCards(authUser)
   const canUseDeveloperMode = canManageProjectRegistry(authUser)
-  const [canCreateDailyLog, canCreateScheduleItem, canCreateTodo] = authUser
-    ? await Promise.all([
-        canFeature(authUser, "daily-logs", "update"),
-        canFeature(authUser, "schedule", "update"),
-        canFeature(authUser, "tasks", "update"),
-      ])
-    : [false, false, false]
-  const quickAddActions = getQuickAddActions(authUser, {
-    dailyLog: canCreateDailyLog,
-    scheduleItem: canCreateScheduleItem,
-    todo: canCreateTodo,
-  })
+  const quickAddProjects = await getQuickAddProjects(authUser, projectList)
   const developerModeEnabled = developerModeFromCookie(
     cookieStore.get(DEVELOPER_MODE_COOKIE)?.value,
     canUseDeveloperMode,
@@ -114,6 +103,7 @@ export default async function DashboardLayout({
     <VoiceProvider>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
+    <QuickAddProvider projects={quickAddProjects}>
     <PageActionsProvider>
     <CommandMenuProvider canUseAskCompass={canUseCompassAgent}>
       <BiometricGuard userId={authUser?.id}>
@@ -148,7 +138,6 @@ export default async function DashboardLayout({
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
             canUseDirectMessages={canUseDirectMessages}
-            quickAddActions={quickAddActions}
           />
           <NavigationProgress />
           <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -170,6 +159,7 @@ export default async function DashboardLayout({
       </BiometricGuard>
     </CommandMenuProvider>
     </PageActionsProvider>
+    </QuickAddProvider>
     </ProjectListProvider>
     </SettingsProvider>
     </VoiceProvider>

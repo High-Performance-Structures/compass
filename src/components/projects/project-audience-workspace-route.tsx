@@ -17,10 +17,12 @@ export async function ProjectAudienceWorkspaceRoute({
   projectId,
   audience,
   section,
+  initialNewMessage = false,
 }: {
   readonly projectId: string
   readonly audience: ProjectAudience
   readonly section: ProjectAudienceWorkspaceSection
+  readonly initialNewMessage?: boolean
 }): Promise<React.ReactElement> {
   let data: ProjectAudiencePreviewData
 
@@ -31,5 +33,5 @@ export async function ProjectAudienceWorkspaceRoute({
     notFound()
   }
 
-  return <ProjectAudiencePreview data={data} section={section} />
+  return <ProjectAudiencePreview data={data} section={section} initialNewMessage={initialNewMessage} />
 }
