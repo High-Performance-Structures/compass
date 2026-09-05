@@ -2,15 +2,18 @@ import { describe, expect, it } from "vitest"
 
 import {
   departmentFromSageJob,
+  isSageSquareWriterOperation,
   SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
   SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
   sageSquarePaymentPayloadSchema,
+  sageSquareInitialOperationStatus,
   squareProcessingFeeExpenseCents,
 } from "@/lib/sage/square-payment"
 import {
   SQUARE_WEBHOOK_NOTIFICATION_URL,
   verifySquareWebhookSignature,
 } from "@/lib/sage/square-webhook-auth"
+import { manualReceiptNotificationBody } from "@/lib/sage/square-payment-notifications"
 
 function base64(bytes: ArrayBuffer): string {
   const values = new Uint8Array(bytes)
@@ -82,6 +85,19 @@ describe("Square payment webhook", () => {
     expect(parsed.merchantFeeAccountNumber).toBe(62020)
   })
 
+  it("stages receipts for the supported Sage UI path and exposes only fees to the writer", () => {
+    expect(sageSquareInitialOperationStatus("post_square_receipt")).toBe(
+      "manual_action_required"
+    )
+    expect(
+      sageSquareInitialOperationStatus("post_square_processing_fee")
+    ).toBe("queued")
+    expect(isSageSquareWriterOperation("post_square_receipt")).toBe(false)
+    expect(isSageSquareWriterOperation("post_square_processing_fee")).toBe(
+      true
+    )
+  })
+
   it("normalizes Square fee deductions to a positive Sage expense", () => {
     expect(
       squareProcessingFeeExpenseCents([
@@ -98,5 +114,22 @@ describe("Square payment webhook", () => {
         { amount_money: { amount: 25, currency: "USD" } },
       ])
     ).toThrow("adjustments exceed assessed fees")
+  })
+
+  it("gives admins the supported Sage external-receipt posting instructions", () => {
+    expect(
+      manualReceiptNotificationBody({
+        squarePaymentId: "payment-1",
+        sageInvoiceNumber: "H-403-4378",
+        department: "HPS",
+        ownerPaymentCents: 690200,
+        depositAccountNumber: 10000,
+        merchantFeeAccountNumber: 62020,
+      })
+    ).toBe(
+      "Square received $6,902.00 for Sage invoice H-403-4378 (HPS). " +
+        "In Sage 3-3-2 Electronic Receipts, use Post—not Process and Post—apply the full amount to this invoice, and use account 10000 — FSB Project Checking. " +
+        "Compass is retaining the Square fee reconciliation for account 62020 — Merchant Service Fees. This is a posting step, not a second payment approval."
+    )
   })
 })

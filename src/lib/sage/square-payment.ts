@@ -1,15 +1,23 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, lt, or } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
+import { notifySageSquareManualReceipt } from "@/lib/sage/square-payment-notifications"
 
 export const SQUARE_API_VERSION = "2026-08-19"
 export const SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER = 10000
 export const SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER = 62020
 
+type SageSquareOperationType =
+  | "post_square_receipt"
+  | "post_square_processing_fee"
+type SageSquareOperationStatus = "queued" | "manual_action_required"
+
 const SQUARE_API_ORIGIN = "https://connect.squareup.com"
 const SQUARE_WEBHOOK_PROCESSING_LEASE_MS = 10 * 60 * 1000
+const SQUARE_PAYMENT_OPERATION_CLAIM_LEASE_MS = 10 * 60 * 1000
+const MANUAL_RECEIPT_RECONCILIATION_BATCH = 100
 
 const moneySchema = z.object({
   amount: z.number().int(),
@@ -187,6 +195,18 @@ export function sageSquareWritesEnabled(env: object): boolean {
   )
 }
 
+export function sageSquareInitialOperationStatus(
+  operationType: SageSquareOperationType
+): SageSquareOperationStatus {
+  return operationType === "post_square_receipt"
+    ? "manual_action_required"
+    : "queued"
+}
+
+export function isSageSquareWriterOperation(operationType: string): boolean {
+  return operationType === "post_square_processing_fee"
+}
+
 function getSquareAccessToken(env: object): string {
   const value = envString(env, "SQUARE_PRODUCTION_ACCESS_TOKEN")
   if (!value) throw new Error("Square production access is not configured")
@@ -361,7 +381,7 @@ function validatePayment(
 
 async function insertOperation(
   env: CloudflareEnv,
-  operationType: "post_square_receipt" | "post_square_processing_fee",
+  operationType: SageSquareOperationType,
   idempotencyKey: string,
   context: OperationContext,
   amountCents: number,
@@ -375,7 +395,7 @@ async function insertOperation(
        sage_invoice_id, sage_invoice_number, amount_cents, currency,
        deposit_account_number, merchant_fee_account_number, payload_json,
        status, payment_completed_at, requested_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, 'queued', ?, ?, ?)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(idempotency_key) DO NOTHING`
   )
     .bind(
@@ -393,6 +413,7 @@ async function insertOperation(
       SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
       SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
       JSON.stringify(payload),
+      sageSquareInitialOperationStatus(operationType),
       context.paymentCompletedAt,
       now,
       now
@@ -513,6 +534,14 @@ async function processInvoicePayment(
     const payment = await retrievePayment(env, paymentId)
     validatePayment(payment, invoice, order, cutoff)
     const context = await queueReceipt(env, payment, invoice, now)
+    await notifySageSquareManualReceipt(env, {
+      squarePaymentId: payment.id,
+      sageInvoiceNumber: invoice.invoiceNumber,
+      department: invoice.department,
+      ownerPaymentCents: payment.amount_money.amount,
+      depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
+      merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
+    })
     await queueFeeDelta(
       env,
       context,
@@ -544,6 +573,74 @@ function contextFromReceipt(
     sageInvoiceNumber: operation.sageInvoiceNumber,
     paymentCompletedAt: operation.paymentCompletedAt,
   }
+}
+
+export type SageSquareManualReceiptReconciliationResult = {
+  readonly scanned: number
+  readonly transitioned: number
+}
+
+export async function reconcileSageSquareManualReceipts(
+  env: CloudflareEnv,
+  now = new Date()
+): Promise<SageSquareManualReceiptReconciliationResult> {
+  const db = getDb(env.DB)
+  const staleClaimIso = new Date(
+    now.getTime() - SQUARE_PAYMENT_OPERATION_CLAIM_LEASE_MS
+  ).toISOString()
+  const receipts = await db
+    .select()
+    .from(sageSquarePaymentOperations)
+    .where(
+      and(
+        eq(sageSquarePaymentOperations.operationType, "post_square_receipt"),
+        or(
+          eq(sageSquarePaymentOperations.status, "queued"),
+          and(
+            eq(sageSquarePaymentOperations.status, "running"),
+            lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
+          )
+        )
+      )
+    )
+    .limit(MANUAL_RECEIPT_RECONCILIATION_BATCH)
+  let transitioned = 0
+  for (const receipt of receipts) {
+    const context = contextFromReceipt(receipt)
+    // Notify first so a transient delivery failure leaves the row queued for
+    // the next maintenance pass. Notification creation is itself deduplicated.
+    await notifySageSquareManualReceipt(env, {
+      squarePaymentId: context.squarePaymentId,
+      sageInvoiceNumber: context.sageInvoiceNumber,
+      department: context.department,
+      ownerPaymentCents: receipt.amountCents,
+      depositAccountNumber: receipt.depositAccountNumber,
+      merchantFeeAccountNumber: receipt.merchantFeeAccountNumber,
+    })
+    const updated = await db
+      .update(sageSquarePaymentOperations)
+      .set({
+        status: "manual_action_required",
+        claimToken: null,
+        claimedAt: null,
+        updatedAt: now.toISOString(),
+      })
+      .where(
+        and(
+          eq(sageSquarePaymentOperations.id, receipt.id),
+          or(
+            eq(sageSquarePaymentOperations.status, "queued"),
+            and(
+              eq(sageSquarePaymentOperations.status, "running"),
+              lt(sageSquarePaymentOperations.claimedAt, staleClaimIso)
+            )
+          )
+        )
+      )
+      .returning({ id: sageSquarePaymentOperations.id })
+    if (updated.length === 1) transitioned += 1
+  }
+  return { scanned: receipts.length, transitioned }
 }
 
 async function processPaymentUpdate(

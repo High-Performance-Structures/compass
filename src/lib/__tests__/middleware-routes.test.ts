@@ -80,10 +80,14 @@ describe("middleware public routes", () => {
       isPublicPath("/api/operations/goto/recover-message-bodies")
     ).toBe(true)
     expect(isPublicPath("/api/operations/sage/health")).toBe(true)
+    expect(isPublicPath("/api/operations/sage/square-receipts")).toBe(true)
     expect(isPublicPath("/api/operations/goto")).toBe(false)
     expect(
       isPublicPath("/api/operations/goto/recover-message-bodies/extra")
     ).toBe(false)
     expect(isPublicPath("/api/operations/sage/health/extra")).toBe(false)
+    expect(
+      isPublicPath("/api/operations/sage/square-receipts/extra")
+    ).toBe(false)
   })
 })

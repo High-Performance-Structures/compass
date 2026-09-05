@@ -6,8 +6,9 @@ Compass automatically accepts completed payments for invoices created by the
 Sage-to-Square bridge. It does not ask for a second approval after the invoice
 has been sent.
 
-- The owner payment is applied to the matching Sage receivable invoice so the
-  full owner-paid amount reduces accounts receivable.
+- Compass applies the owner payment to the matching Square invoice and stages
+  a supported Sage 3-3-2 posting task so the full owner-paid amount reduces
+  accounts receivable after the posting step.
 - Square settlement activity uses Sage account **10000 — FSB Project
   Checking**.
 - Square processing fees use Sage account **62020 — Merchant Service Fees**.
@@ -64,8 +65,9 @@ Cloudflare variables:
 
 - `SAGE_SQUARE_PAYMENT_WEBHOOK_ENABLED=true`
 - `SAGE_SQUARE_PAYMENT_CUTOFF_AT=2026-08-29T00:15:00.000Z`
-- `SAGE_SQUARE_PAYMENT_WRITES_ENABLED=false` until the installed Sage API
-  schema diagnostics and controlled write validation pass.
+- `SAGE_SQUARE_PAYMENT_WRITES_ENABLED=false` until the supported processing-fee
+  general-ledger writer passes its controlled validation. This switch never
+  exposes receipt operations.
 
 The Square application subscription uses the exact notification URL in
 `square-webhook-auth.ts` and these event types:
@@ -81,7 +83,36 @@ directly into the Cloudflare secret command; do not display or save the key.
 The helper accepts the Cloudflare-style `SQUARE_PRODUCTION_ACCESS_TOKEN` name
 and the private bridge's existing `HPS_SQUARE_PRODUCTION_ACCESS_TOKEN` alias.
 
-## Sage API diagnostics and activation
+## Installed Sage API result and supported workflow
+
+The installed `mbxml.xsd` contains `APInvoicePayAddRq` for vendor payments,
+but it does not contain an A/R receipt or customer-payment add request. It
+contains `ARInvoiceAddRq`, `ARInvoiceQryRq`, and general-ledger adds; a general
+ledger add alone must not be used to imitate a customer receipt because it
+would leave the A/R invoice and subledger inconsistent.
+
+For every eligible Square payment, Compass therefore:
+
+1. stores the full owner payment as `manual_action_required` against the exact
+   Sage invoice and sends one deduplicated in-app notification to active
+   Compass administrators;
+2. tells the administrator to use Sage **3-3-2 Electronic Receipts**, choose
+   **Post** rather than **Process and Post**, apply the full amount to the
+   invoice, and use account **10000 — FSB Project Checking**; and
+3. keeps the Square processing-fee operation separate for account **62020 —
+   Merchant Service Fees** and the supported general-ledger writer path.
+
+The ten-minute Compass maintenance cycle also converts any receipt left in the
+legacy `queued` state, or a legacy claim that has been stale for more than ten
+minutes, and creates its notification. Both the state transition and
+notification delivery are idempotent, so a retry cannot create a second
+posting task.
+
+This is a Sage posting and reconciliation step, not a second approval of the
+Square payment. Receipt operations are never exposed through the bridge writer
+endpoint. Direct SQL writes remain prohibited.
+
+## Sage API diagnostics and fee-writer activation
 
 Writes must use the existing `jarvis.api` Sage API identity. Direct SQL writes
 are prohibited even if the SQL login has inherited write permissions.
@@ -93,10 +124,11 @@ on the Sage Windows host:
 powershell -ExecutionPolicy Bypass -File .\inspect_sage_payment_mbxml.ps1
 ```
 
-The output identifies the installed MBXML request names and required fields for
-cash receipts and bank charges. Use the installed schema, validate every XML
-request locally, and run one explicitly controlled test before setting
-`SAGE_SQUARE_PAYMENT_WRITES_ENABLED=true`.
+The output identifies the installed MBXML request names and required fields.
+Use the installed schema, validate every XML request locally, and run one
+explicitly controlled processing-fee test before setting
+`SAGE_SQUARE_PAYMENT_WRITES_ENABLED=true`. That switch enables claims only for
+`post_square_processing_fee`; it cannot enable receipt claims.
 
 The writer endpoints are:
 

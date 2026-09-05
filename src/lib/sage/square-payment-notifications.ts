@@ -10,13 +10,46 @@ import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 const ADMIN_ROLES = ["admin", "secondary_admin"]
 const EXCEPTION_EVENT_TYPE = "sage.square_payment.exception"
+const MANUAL_RECEIPT_EVENT_TYPE = "sage.square_payment.manual_receipt"
 const EXCEPTION_SOURCE_TYPE = "sage_square_payment"
 
-export async function notifySageSquareException(
+type SageSquareAdminNotificationInput = {
+  readonly eventType: string
+  readonly sourceId: string
+  readonly title: string
+  readonly body: string
+  readonly priority: "normal" | "high"
+}
+
+export type SageSquareManualReceiptNotificationInput = {
+  readonly squarePaymentId: string
+  readonly sageInvoiceNumber: string
+  readonly department: "HPS" | "ORC" | "Nu-Tech"
+  readonly ownerPaymentCents: number
+  readonly depositAccountNumber: number
+  readonly merchantFeeAccountNumber: number
+}
+
+function usdFromCents(cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(cents / 100)
+}
+
+export function manualReceiptNotificationBody(
+  input: SageSquareManualReceiptNotificationInput
+): string {
+  return [
+    `Square received ${usdFromCents(input.ownerPaymentCents)} for Sage invoice ${input.sageInvoiceNumber} (${input.department}).`,
+    `In Sage 3-3-2 Electronic Receipts, use Post—not Process and Post—apply the full amount to this invoice, and use account ${input.depositAccountNumber} — FSB Project Checking.`,
+    `Compass is retaining the Square fee reconciliation for account ${input.merchantFeeAccountNumber} — Merchant Service Fees. This is a posting step, not a second payment approval.`,
+  ].join(" ")
+}
+
+async function notifySageSquareAdmins(
   env: CloudflareEnv,
-  sourceId: string,
-  title: string,
-  body: string
+  input: SageSquareAdminNotificationInput
 ): Promise<void> {
   const db = getDb(env.DB)
   const existing = await db
@@ -24,9 +57,9 @@ export async function notifySageSquareException(
     .from(notificationEvents)
     .where(
       and(
-        eq(notificationEvents.eventType, EXCEPTION_EVENT_TYPE),
+        eq(notificationEvents.eventType, input.eventType),
         eq(notificationEvents.sourceType, EXCEPTION_SOURCE_TYPE),
-        eq(notificationEvents.sourceId, sourceId)
+        eq(notificationEvents.sourceId, input.sourceId)
       )
     )
   const notifiedOrganizations = new Set(
@@ -55,16 +88,44 @@ export async function notifySageSquareException(
     await createSystemNotificationEvent({
       organizationId,
       projectId: null,
-      eventType: EXCEPTION_EVENT_TYPE,
+      eventType: input.eventType,
       sourceType: EXCEPTION_SOURCE_TYPE,
-      sourceId,
-      title,
-      body,
-      href: "/dashboard/financials",
-      priority: "high",
+      sourceId: input.sourceId,
+      title: input.title,
+      body: input.body,
+      href: "/dashboard/financials?tab=payments",
+      priority: input.priority,
       audience: "internal",
       recipients,
       delivery: { inApp: true, email: false, push: false },
     })
   }
+}
+
+export async function notifySageSquareException(
+  env: CloudflareEnv,
+  sourceId: string,
+  title: string,
+  body: string
+): Promise<void> {
+  await notifySageSquareAdmins(env, {
+    eventType: EXCEPTION_EVENT_TYPE,
+    sourceId,
+    title,
+    body,
+    priority: "high",
+  })
+}
+
+export async function notifySageSquareManualReceipt(
+  env: CloudflareEnv,
+  input: SageSquareManualReceiptNotificationInput
+): Promise<void> {
+  await notifySageSquareAdmins(env, {
+    eventType: MANUAL_RECEIPT_EVENT_TYPE,
+    sourceId: input.squarePaymentId,
+    title: `Post Square payment for Sage invoice ${input.sageInvoiceNumber}`,
+    body: manualReceiptNotificationBody(input),
+    priority: "high",
+  })
 }
