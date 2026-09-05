@@ -175,6 +175,18 @@ export const greetingCardRequests = sqliteTable(
     recipientState: text("recipient_state").notNull(),
     recipientPostalCode: text("recipient_postal_code").notNull(),
     recipientCountry: text("recipient_country").notNull().default("United States"),
+    recipientEmail: text("recipient_email"),
+    giftProvider: text("gift_provider"),
+    giftAmountCents: integer("gift_amount_cents"),
+    giftRegion: text("gift_region"),
+    giftCampaignUuid: text("gift_campaign_uuid"),
+    giftRewardUuid: text("gift_reward_uuid"),
+    giftClaimUrl: text("gift_claim_url"),
+    giftStatus: text("gift_status"),
+    publicToken: text("public_token"),
+    emailProvider: text("email_provider"),
+    emailProviderMessageId: text("email_provider_message_id"),
+    openedAt: text("opened_at"),
     approvalNote: text("approval_note"),
     providerError: text("provider_error"),
     approvedAt: text("approved_at"),
@@ -196,6 +208,7 @@ export const greetingCardRequests = sqliteTable(
       table.requestedBy,
       table.createdAt,
     ),
+    uniqueIndex("greeting_card_requests_public_token_idx").on(table.publicToken),
   ],
 )
 
@@ -2069,6 +2082,15 @@ export const projectChangeOrders = sqliteTable(
     sourceRecordId: text("source_record_id"),
     sourceHref: text("source_href"),
     internalNotes: text("internal_notes"),
+    budgetTreatment: text("budget_treatment").notNull().default("additive"),
+    baselineEstimateId: text("baseline_estimate_id"),
+    replacementEstimateId: text("replacement_estimate_id"),
+    rebaselineExecutionToken: text("rebaseline_execution_token"),
+    rebaselineCompletedAt: text("rebaseline_completed_at"),
+    rebaselineCompletedBy: text("rebaseline_completed_by").references(
+      () => users.id,
+      { onDelete: "set null" }
+    ),
     foxitStatus: text("foxit_status").notNull().default("not_started"),
     foxitEnvelopeId: text("foxit_envelope_id"),
     signatureRequestedAt: text("signature_requested_at"),
@@ -2095,6 +2117,17 @@ export const projectChangeOrders = sqliteTable(
     index("project_change_orders_requester_idx").on(
       table.projectId,
       table.requesterUserId
+    ),
+    index("project_change_orders_budget_treatment_idx").on(
+      table.projectId,
+      table.budgetTreatment,
+      table.status
+    ),
+    index("project_change_orders_replacement_estimate_idx").on(
+      table.replacementEstimateId
+    ),
+    uniqueIndex("project_change_orders_rebaseline_execution_token_uq").on(
+      table.rebaselineExecutionToken
     ),
   ]
 )

@@ -24,6 +24,21 @@ def job_id_from_output(output: str) -> str | None:
 
 
 def result_from_output(output: str) -> dict[str, object] | None:
+    decoder = json.JSONDecoder()
+    lines = output.splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        candidate = "\n".join(lines[index:]).lstrip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            value, end = decoder.raw_decode(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not candidate[end:].strip() and isinstance(value, dict):
+            return value
+
+    # Preserve compatibility with older Signet output that appended a
+    # standalone compact JSON result after human-readable status lines.
     for line in reversed(output.splitlines()):
         try:
             value = json.loads(line)
@@ -32,6 +47,29 @@ def result_from_output(output: str) -> dict[str, object] | None:
         if isinstance(value, dict):
             return value
     return None
+
+
+def result_succeeded(result: dict[str, object] | None) -> bool:
+    """Recognize supported command result envelopes without guessing success."""
+    if result is None or "error" in result:
+        return False
+
+    status = result.get("status")
+    if isinstance(status, str):
+        return status == "ok"
+
+    candidate_count = result.get("candidateCount")
+    results = result.get("results")
+    if type(candidate_count) is not int or not isinstance(results, list):
+        return False
+    if candidate_count != len(results):
+        return False
+    return all(
+        isinstance(item, dict)
+        and item.get("action") != "error"
+        and "error" not in item
+        for item in results
+    )
 
 
 def run_command(command: Sequence[str], timeout: float) -> subprocess.CompletedProcess[str]:
@@ -87,7 +125,7 @@ def main() -> int:
             if status_output:
                 print(status_output, flush=True)
             result = result_from_output(status_output)
-            return 0 if result is not None and result.get("status") == "ok" else 1
+            return 0 if result_succeeded(result) else 1
         if "status: failed" in normalized or "status: timed_out" in normalized:
             if status_output:
                 print(status_output, file=sys.stderr)

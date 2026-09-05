@@ -11,10 +11,12 @@ const source = readFileSync(
 )
 
 describe("Sage client/project worker source boundary", () => {
-  it("contains only the two approved queue operation names", () => {
+  it("contains only the three approved queue operations and no destructive request", () => {
     expect(source).toContain('"ensure_client"')
     expect(source).toContain('"ensure_client_and_job"')
-    expect(source).not.toMatch(/DeleteRq|ModRq|VoidRq/)
+    expect(source).toContain('"update_client_email"')
+    expect(source).toContain('BuildXml("ClientModRq"')
+    expect(source).not.toMatch(/DeleteRq|VoidRq/)
   })
 
   it("pins both API and SQL access to the HPS Sage company", () => {
@@ -59,7 +61,7 @@ describe("Sage client/project worker source boundary", () => {
   })
 
   it("limits exact-name reconciliation to post-add readback", () => {
-    expect(source).toContain("clientRecord = FindClientAfterAdd(client)")
+    expect(source).toContain("return FindClientAfterAdd(client)")
     expect(source).toContain("private static SageRecord FindClientAfterAdd")
     expect(source).toContain(
       "Sage can accept the client while leaving reccln.e_mail blank"
@@ -75,7 +77,7 @@ describe("Sage client/project worker source boundary", () => {
   })
 
   it("cleans up failed API initialization and exposes Sage errors", () => {
-    expect(source).toContain("catch\n                {\n                    ResetApi()")
+    expect(source).toContain("catch\n                {\n                    ResetApi(true)")
     expect(source).toContain("if (ApiInitialized && ApiInstance != null)")
     expect(source).toContain("catch (TargetInvocationException error)")
     expect(source).toContain("error.InnerException")

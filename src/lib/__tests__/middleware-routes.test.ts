@@ -7,6 +7,12 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/terms")).toBe(true)
   })
 
+  it("allows private-token e-card pages without exposing the card dashboard", () => {
+    expect(isPublicPath("/ecard/6b8bb215-7cf0-4c5c-a426-9689dd645ec7")).toBe(true)
+    expect(isPublicPath("/ecard")).toBe(false)
+    expect(isPublicPath("/dashboard/cards")).toBe(false)
+  })
+
   it("allows the HMAC-authenticated Jarvis bridge through WorkOS middleware", () => {
     expect(isPublicPath("/api/integrations/jarvis/events")).toBe(true)
     expect(
@@ -74,10 +80,14 @@ describe("middleware public routes", () => {
       isPublicPath("/api/operations/goto/recover-message-bodies")
     ).toBe(true)
     expect(isPublicPath("/api/operations/sage/health")).toBe(true)
+    expect(isPublicPath("/api/operations/sage/square-receipts")).toBe(true)
     expect(isPublicPath("/api/operations/goto")).toBe(false)
     expect(
       isPublicPath("/api/operations/goto/recover-message-bodies/extra")
     ).toBe(false)
     expect(isPublicPath("/api/operations/sage/health/extra")).toBe(false)
+    expect(
+      isPublicPath("/api/operations/sage/square-receipts/extra")
+    ).toBe(false)
   })
 })

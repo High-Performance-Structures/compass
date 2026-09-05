@@ -47,6 +47,7 @@ import {
   parsePortalPurchaseOrderPayload,
   portalPurchaseOrderMatchesRecipient,
   type PortalPurchaseOrderAcknowledgement,
+  type PortalPurchaseOrderStatusUpdate,
 } from "@/lib/purchase-orders/portal-response"
 import {
   isOwnerScheduleView,
@@ -56,6 +57,7 @@ import {
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import { selectAudienceScheduleSourceRows } from "@/lib/schedule/audience-publication"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
 import { sameScheduleAssigneeSet } from "@/lib/schedule/multi-assignee"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
@@ -134,6 +136,7 @@ export type AudienceOperationItem = {
   readonly dueDate: string | null
   readonly amount: number | null
   readonly acknowledgement: PortalPurchaseOrderAcknowledgement | null
+  readonly latestVendorStatus: PortalPurchaseOrderStatusUpdate | null
 }
 
 export type AudienceOwnerUpdate = {
@@ -243,6 +246,7 @@ export type ProjectAudiencePreview = {
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
   readonly documents: readonly AudienceDocument[]
+  readonly schedulePublicationAvailable: boolean
   readonly scheduleItems: readonly AudienceScheduleItem[]
   readonly operations: readonly AudienceOperationItem[]
   readonly rfis: readonly AudienceRfi[]
@@ -640,7 +644,7 @@ export async function getProjectAudiencePreview(
   const currentScheduleById = new Map(
     currentScheduleRows.map((task) => [task.id, task])
   )
-  const scheduleRowsUnsorted = publishedSchedule
+  const publishedScheduleRows = publishedSchedule
     ? publishedSnapshot
       ? publishedSnapshot.tasks.map((task) => {
           const currentTask = currentScheduleById.get(task.id)
@@ -705,12 +709,18 @@ export async function getProjectAudiencePreview(
           }
         })
       : []
-    : currentScheduleRows.map((task) => ({
-        ...task,
-        legacyResponseAllowed:
-          (scheduleAssigneesByTask.get(task.id) ?? []).length === 0,
-        assignees: visibleScheduleAssigneesByTask.get(task.id) ?? [],
-      }))
+    : null
+  const draftScheduleRows = currentScheduleRows.map((task) => ({
+    ...task,
+    legacyResponseAllowed:
+      (scheduleAssigneesByTask.get(task.id) ?? []).length === 0,
+    assignees: visibleScheduleAssigneesByTask.get(task.id) ?? [],
+  }))
+  const scheduleRowsUnsorted = selectAudienceScheduleSourceRows({
+    publishedRows: publishedScheduleRows,
+    draftRows: draftScheduleRows,
+    viewerIsInternal,
+  })
   const scheduleRows = [...scheduleRowsUnsorted].sort(
     (left, right) =>
       left.startDate.localeCompare(right.startDate) ||
@@ -1064,6 +1074,10 @@ export async function getProjectAudiencePreview(
           operation.sourceRecordType === "purchase_order"
             ? payload.acknowledgement
             : null,
+        latestVendorStatus:
+          operation.sourceRecordType === "purchase_order"
+            ? payload.latestStatus
+            : null,
       }
     })
 
@@ -1142,6 +1156,7 @@ export async function getProjectAudiencePreview(
       }
     }),
     documents: documentRows,
+    schedulePublicationAvailable: publishedSnapshot !== null,
     scheduleItems: audienceScheduleItems,
     operations: audienceOperations,
     rfis: rfiRows,

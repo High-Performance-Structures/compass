@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Compass Sage to Square invoice poll every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+RandomizedDelaySec=10s
+Persistent=true
+Unit=compass-sage-square-invoice-poller.service
+
+[Install]
+WantedBy=timers.target

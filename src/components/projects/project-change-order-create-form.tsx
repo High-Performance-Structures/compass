@@ -34,6 +34,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
 
 const DOCUMENT_INPUT_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"
@@ -90,10 +91,34 @@ export function ProjectChangeOrderCreateForm({
   const [saving, startSaving] = React.useTransition()
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [requesterCompany, setRequesterCompany] = React.useState("")
+  const [budgetTreatment, setBudgetTreatment] =
+    React.useState<ChangeOrderBudgetTreatment>("additive")
+  const [replacementEstimateId, setReplacementEstimateId] =
+    React.useState("")
   const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>([
     newDraftChangeOrderCostLine(),
   ])
-  const totalCents = draftChangeOrderTotalCents(lines)
+  const currentBaseline = formOptions.estimates.find(
+    (estimate) => estimate.id === formOptions.currentBaselineEstimateId
+  )
+  const replacementOptions = formOptions.estimates.filter(
+    (estimate) =>
+      estimate.id !== currentBaseline?.id &&
+      estimate.estimateNumber === currentBaseline?.estimateNumber &&
+      ["draft", "internal_review", "signature_pending"].includes(
+        estimate.status
+      )
+  )
+  const replacementEstimate = replacementOptions.find(
+    (estimate) => estimate.id === replacementEstimateId
+  )
+  const totalCents =
+    budgetTreatment === "baseline_replacement" &&
+    currentBaseline &&
+    replacementEstimate
+      ? replacementEstimate.estimateTotalCents -
+        currentBaseline.estimateTotalCents
+      : draftChangeOrderTotalCents(lines)
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -124,11 +149,18 @@ export function ProjectChangeOrderCreateForm({
               ? "submitted"
               : "draft",
           documents,
+          budgetTreatment: internal ? budgetTreatment : "additive",
+          replacementEstimateId:
+            internal && budgetTreatment === "baseline_replacement"
+              ? replacementEstimateId || null
+              : null,
         })
         if (!result.success) throw new Error(result.error)
 
         setOpen(false)
         setRequesterCompany("")
+        setBudgetTreatment("additive")
+        setReplacementEstimateId("")
         setLines([newDraftChangeOrderCostLine()])
         setSelectedFiles([])
         if (fileInputRef.current) fileInputRef.current.value = ""
@@ -229,12 +261,80 @@ export function ProjectChangeOrderCreateForm({
             </div>
           </div>
 
-          <ProjectChangeOrderCostLinesEditor
-            lines={lines}
-            phaseOptions={formOptions.phases}
-            costCodeOptions={formOptions.costCodes}
-            onLinesChange={setLines}
-          />
+          {internal && (
+            <div className="grid gap-4 border-y py-4 sm:grid-cols-2">
+              <Field label="Budget treatment">
+                <select
+                  id="change-order-budget-treatment"
+                  name="budgetTreatment"
+                  className={DOCUMENT_SELECT_CLASS}
+                  value={budgetTreatment}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value
+                    setBudgetTreatment(
+                      value === "baseline_replacement"
+                        ? "baseline_replacement"
+                        : "additive"
+                    )
+                  }}
+                >
+                  <option value="additive">Budget adjustment</option>
+                  <option
+                    value="baseline_replacement"
+                    disabled={!currentBaseline}
+                  >
+                    Preconstruction baseline replacement
+                  </option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {budgetTreatment === "baseline_replacement"
+                    ? "Uses the revised estimate as the new budget without adding this change order twice."
+                    : "Adds executed cost lines to the accepted estimate."}
+                </p>
+              </Field>
+              {budgetTreatment === "baseline_replacement" && (
+                <Field label="Replacement estimate">
+                  <select
+                    id="change-order-replacement-estimate"
+                    name="replacementEstimateId"
+                    className={DOCUMENT_SELECT_CLASS}
+                    value={replacementEstimateId}
+                    required
+                    onChange={(event) =>
+                      setReplacementEstimateId(event.currentTarget.value)
+                    }
+                  >
+                    <option value="">Choose a revised estimate</option>
+                    {replacementOptions.map((estimate) => (
+                      <option key={estimate.id} value={estimate.id}>
+                        {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Current baseline: {currentBaseline
+                      ? `${currentBaseline.estimateNumber} v${currentBaseline.versionNumber}`
+                      : "No accepted estimate"}
+                  </p>
+                </Field>
+              )}
+            </div>
+          )}
+
+          {budgetTreatment === "additive" ? (
+            <ProjectChangeOrderCostLinesEditor
+              lines={lines}
+              phaseOptions={formOptions.phases}
+              costCodeOptions={formOptions.costCodes}
+              onLinesChange={setLines}
+            />
+          ) : (
+            <div className="border-l-2 border-l-primary px-3 py-2 text-sm">
+              The signed package will include the complete revised estimate and
+              a comparison to the current baseline. Its displayed amount is the
+              estimate difference; no additive cost lines are created.
+            </div>
+          )}
 
           {internal && (
             <div className="grid gap-4 sm:grid-cols-2">

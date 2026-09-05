@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -368,7 +368,8 @@ export async function getProjectBudgetSummary(
             .where(
               and(
                 eq(projectBudgetApplications.projectId, projectId),
-                eq(projectBudgetApplications.ownerVisible, true)
+                eq(projectBudgetApplications.ownerVisible, true),
+                ne(projectBudgetApplications.status, "building")
               )
             )
             .orderBy(
@@ -387,7 +388,12 @@ export async function getProjectBudgetSummary(
           await access.db
             .select()
             .from(projectBudgetApplications)
-            .where(eq(projectBudgetApplications.projectId, projectId))
+            .where(
+              and(
+                eq(projectBudgetApplications.projectId, projectId),
+                ne(projectBudgetApplications.status, "building")
+              )
+            )
             .orderBy(
               desc(projectBudgetApplications.periodTo),
               desc(projectBudgetApplications.createdAt)

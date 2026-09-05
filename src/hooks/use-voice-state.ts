@@ -16,6 +16,7 @@ import {
   updateVoicePresence,
   type VoiceParticipantData,
 } from "@/app/actions/voice-sessions"
+import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
 
 type VoiceConnectionStatus = "idle" | "connecting" | "connected" | "error"
 
@@ -168,6 +169,17 @@ export function useVoiceStateLogic(): VoiceContextValue {
   const participantsRef = useRef<Map<string, VoiceParticipantData>>(new Map())
   const lastSignalAtRef = useRef<string | undefined>(undefined)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const getVoiceTracks = useCallback((): readonly MediaStreamTrack[] => {
+    const tracks: MediaStreamTrack[] = []
+    const local = localStreamRef.current
+    if (local) tracks.push(...local.getAudioTracks())
+    for (const remote of remoteStreamsRef.current.values()) {
+      tracks.push(...remote.getAudioTracks())
+    }
+    return tracks
+  }, [])
+  useVoiceActivityPublisher({ channelId, getTracks: getVoiceTracks })
 
   // Load devices
   const loadDevices = useCallback(async (): Promise<void> => {

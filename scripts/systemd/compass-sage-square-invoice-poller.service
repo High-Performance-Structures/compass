@@ -1,0 +1,9 @@
+[Unit]
+Description=Compass Sage to Square invoice poll
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=150
+ExecStart=/usr/bin/python3 %h/.local/lib/compass/wait_for_signet_secret_exec.py --signet %h/.bun/install/global/node_modules/signetai-linux-x64/bin/signet --secret HPS_SAGE_SQL_PASSWORD --secret HPS_SQUARE_PRODUCTION_ACCESS_TOKEN --timeout 120 /usr/bin/python3 %h/.local/lib/compass/sage_square_invoice_poller.py --once --environment production --minimum-sage-invoice-id 1627 --auto-publish

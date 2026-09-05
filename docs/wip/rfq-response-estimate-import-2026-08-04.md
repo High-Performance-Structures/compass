@@ -1,6 +1,31 @@
 # RFQ response, bid comparison, and estimate import
 
-Status: design only; no production behavior is implemented by this document.
+Status: first production workflow implemented September 2026; the normalized
+multi-recipient/revision model below remains the longer-term hardening plan.
+
+## Implemented first increment
+
+- Staff can duplicate an RFQ scope and document package into a separate draft
+  for each vendor or subcontractor. Each copy has its own recipient email and
+  remains within the existing recipient-scoped portal authorization boundary.
+- Vendors can enter a price and note for every requested scope row, then submit
+  a total response from their Compass sub/vendor workspace. Legacy RFQs without
+  scope rows retain the single-total response form.
+- Staff with RFQ approval permission can explicitly approve a submitted quote.
+  Approval writes an immutable snapshot using integer cents and moves that
+  bidder copy to `awarded`.
+- An approved bid can be imported once into a draft or internal-review estimate.
+  Each priced scope row becomes a new, traceable estimate line. New lines begin
+  with zero markup, zero tax, builder-fee exclusion, and internal-only visibility
+  so estimating staff must review coding and presentation choices.
+- Approval, import-batch, and imported-line provenance are additive records in
+  `project_rfq_bid_approvals`, `project_estimate_rfq_bid_imports`, and
+  `project_estimate_rfq_bid_import_lines`.
+
+The current increment intentionally models one confidential RFQ copy per bidder,
+matching the requested duplication workflow and the existing portal security
+model. A later phase may consolidate those copies under normalized revisions and
+recipient records for a single comparison matrix.
 
 ## Outcome
 

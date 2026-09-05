@@ -43,6 +43,7 @@ function contact(
     syncStatus: "synced",
     lastSyncedAt: null,
     accessStatus: "not_invited",
+    compassAccountStatus: "not_registered",
     identityManagedByActiveUser: false,
   }
 }

@@ -21,6 +21,10 @@ import {
   type ChannelMessageMention,
 } from "@/lib/notifications/audience"
 import { workflowRoleIdFromString } from "@/lib/project-workflow-roles"
+import {
+  portalPurchaseOrderVendorStatusLabel,
+  type PortalPurchaseOrderVendorStatus,
+} from "@/lib/purchase-orders/portal-response"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export {
@@ -61,6 +65,17 @@ type RfqResponseNotificationInput = {
   readonly title: string
   readonly decision: "quote" | "decline"
   readonly amount: number | null
+  readonly respondedBy: AuthUser
+}
+
+type PurchaseOrderVendorUpdateInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly purchaseOrderId: string
+  readonly purchaseOrderNumber: string | null
+  readonly title: string
+  readonly update: PortalPurchaseOrderVendorStatus | "acknowledged"
+  readonly note: string | null
   readonly respondedBy: AuthUser
 }
 
@@ -210,6 +225,53 @@ async function projectAssignmentRecipients(
     }
   }
 
+  return Array.from(recipients.values())
+}
+
+async function projectInternalRecipients(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  projectId: string,
+  excludedUserId: string
+): Promise<readonly NotificationRecipientInput[]> {
+  const members = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      googleEmail: users.googleEmail,
+      userRole: users.role,
+      organizationRole: organizationMembers.role,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .innerJoin(
+      organizationMembers,
+      and(
+        eq(organizationMembers.userId, users.id),
+        eq(organizationMembers.organizationId, organizationId)
+      )
+    )
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(users.isActive, true)
+      )
+    )
+
+  const recipients = new Map<string, NotificationRecipientInput>()
+  for (const member of members) {
+    if (
+      member.userId === excludedUserId ||
+      (!isInternalStaffRole(member.userRole) &&
+        !isInternalStaffRole(member.organizationRole))
+    ) {
+      continue
+    }
+    recipients.set(member.userId, {
+      userId: member.userId,
+      email: member.googleEmail?.trim() || member.email,
+    })
+  }
   return Array.from(recipients.values())
 }
 
@@ -399,6 +461,17 @@ export async function notifyRfiCreated(
   for (const recipient of assignedRecipients) {
     recipients.set(recipient.userId, recipient)
   }
+  if (!isInternalStaffRole(input.createdBy.role) && recipients.size === 0) {
+    const projectRecipients = await projectInternalRecipients(
+      db,
+      input.organizationId,
+      input.projectId,
+      input.createdBy.id
+    )
+    for (const recipient of projectRecipients) {
+      recipients.set(recipient.userId, recipient)
+    }
+  }
 
   const projectLabel = project?.projectNumber
     ? `${project.projectNumber} - ${project.name}`
@@ -553,6 +626,46 @@ export async function notifyRfqResponseReceived(
       `/dashboard/projects/${input.projectId}/rfqs?status=response_received` +
       `#rfq-${encodeURIComponent(input.rfqId)}`,
     priority: "normal",
+    audience: "project_team",
+    createdBy: input.respondedBy.id,
+    recipients,
+    delivery: { inApp: true, email: true, push: true },
+  })
+}
+
+export async function notifyPurchaseOrderVendorUpdate(
+  input: PurchaseOrderVendorUpdateInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const recipients = await projectInternalRecipients(
+    db,
+    input.organizationId,
+    input.projectId,
+    input.respondedBy.id
+  )
+  if (recipients.length === 0) return
+
+  const responder = input.respondedBy.displayName ?? input.respondedBy.email
+  const updateLabel =
+    input.update === "acknowledged"
+      ? "acknowledged receipt"
+      : `reported ${portalPurchaseOrderVendorStatusLabel(input.update).toLowerCase()}`
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType:
+      input.update === "acknowledged"
+        ? "po.vendor_acknowledged"
+        : "po.vendor_status_updated",
+    sourceType: "purchase_order",
+    sourceId: input.purchaseOrderId,
+    title: `${input.purchaseOrderNumber ?? "PO"}: ${input.title}`,
+    body: `${responder} ${updateLabel}.${
+      input.note ? ` ${notificationPreview(input.note)}` : ""
+    }`,
+    href: `/dashboard/projects/${input.projectId}/purchase-orders`,
+    priority: input.update === "on_hold" ? "high" : "normal",
     audience: "project_team",
     createdBy: input.respondedBy.id,
     recipients,

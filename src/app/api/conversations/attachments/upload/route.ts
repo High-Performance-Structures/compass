@@ -117,6 +117,12 @@ export async function POST(
 ): Promise<NextResponse<AttachmentUploadResult>> {
   try {
     const user = await requireAuth()
+    if (!user.isActive) {
+      return NextResponse.json(
+        { success: false, error: "Your account is inactive." },
+        { status: 403 }
+      )
+    }
     if (isDemoUser(user.id)) {
       return NextResponse.json(
         { success: false, error: "Demo mode is read-only." },
@@ -311,6 +317,7 @@ export async function POST(
 
     for (const file of files) {
       const mimeType = file.type || "application/octet-stream"
+      const id = crypto.randomUUID()
       const driveFile = await client.uploadFile(googleEmail, {
         name: safeFileName(file.name),
         mimeType,
@@ -318,8 +325,7 @@ export async function POST(
         driveId: auth.sharedDriveId ?? undefined,
         data: file,
       })
-      const id = crypto.randomUUID()
-      const storageUrl = `/api/google/download/${driveFile.id}`
+      const storageUrl = `/api/conversations/attachments/${encodeURIComponent(id)}`
       const fileSize = Number(driveFile.size ?? file.size)
       await db.insert(messageAttachments).values({
         id,
@@ -327,7 +333,7 @@ export async function POST(
         fileName: driveFile.name,
         mimeType: driveFile.mimeType || mimeType,
         fileSize,
-        r2Path: storageUrl,
+        r2Path: driveFile.id,
         width: null,
         height: null,
         uploadedAt,

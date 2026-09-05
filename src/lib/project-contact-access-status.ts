@@ -5,6 +5,19 @@ export type ProjectContactAccessStatus =
   | "expired"
   | "inactive"
 
+export type ProjectContactCompassAccountStatus =
+  | "active"
+  | "inactive"
+  | "not_registered"
+
+export function projectContactCompassAccountStatus(account: {
+  readonly id: string
+  readonly isActive: boolean
+}): ProjectContactCompassAccountStatus {
+  if (account.isActive) return "active"
+  return account.id.startsWith("user_") ? "inactive" : "not_registered"
+}
+
 export type ProjectContactInvitationSnapshot = {
   readonly status: string
   readonly workosExpiresAt: string | null
@@ -20,9 +33,11 @@ export function projectContactCanInvite(
 export function projectContactAccessStatus(input: {
   readonly activeProjectMember: boolean
   readonly latestInvitation: ProjectContactInvitationSnapshot | null
+  readonly compassAccountStatus?: ProjectContactCompassAccountStatus
   readonly now?: Date
 }): ProjectContactAccessStatus {
   if (input.activeProjectMember) return "active"
+  if (input.compassAccountStatus === "active") return "not_invited"
 
   const invitation = input.latestInvitation
   if (!invitation) return "not_invited"

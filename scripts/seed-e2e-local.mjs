@@ -154,6 +154,20 @@ const upsert = db.transaction(() => {
   `).run(now, now)
 
   db.prepare(`
+    INSERT INTO project_job_statuses (
+      id, organization_id, label, active, sort_order, created_at, updated_at
+    ) VALUES (
+      'current', 'demo-org-meridian', 'Current', 1, 1, ?, ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      organization_id = excluded.organization_id,
+      label = excluded.label,
+      active = excluded.active,
+      sort_order = excluded.sort_order,
+      updated_at = excluded.updated_at
+  `).run(now, now)
+
+  db.prepare(`
     INSERT INTO project_members (
       id, project_id, user_id, role, assigned_at
     ) VALUES (

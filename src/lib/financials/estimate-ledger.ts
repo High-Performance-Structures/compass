@@ -446,11 +446,22 @@ export async function estimateSourceHash(input: {
     readonly markupRateBasisPoints: number
     readonly taxable: boolean
     readonly taxCode: string | null
+    readonly taxName: string | null
     readonly taxRateBasisPoints: number
+    readonly taxCents: number
     readonly lineTotalCents: number
     readonly ownerVisible: boolean
     readonly includeInBuilderFee: boolean
     readonly sortOrder: number
+    readonly costItems: readonly {
+      readonly id: string
+      readonly taxCode: string | null
+      readonly taxName: string | null
+      readonly taxRateBasisPoints: number
+      readonly taxCents: number
+      readonly lineTotalCents: number
+      readonly sortOrder: number
+    }[]
   }[]
   readonly basisDocuments: readonly {
     readonly id: string
@@ -481,6 +492,14 @@ export async function estimateSourceHash(input: {
       if (sortOrder !== 0) return sortOrder
       return left.id.localeCompare(right.id)
     })
+    .map((line) => ({
+      ...line,
+      costItems: [...line.costItems].sort((left, right) => {
+        const sortOrder = left.sortOrder - right.sortOrder
+        if (sortOrder !== 0) return sortOrder
+        return left.id.localeCompare(right.id)
+      }),
+    }))
   const basisDocuments = [...input.basisDocuments].sort(
     (left, right) => left.sortOrder - right.sortOrder
   )

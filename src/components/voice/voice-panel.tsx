@@ -18,6 +18,11 @@ import {
 } from "@/components/ui/tooltip"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import { cn } from "@/lib/utils"
+import {
+  ListeningRoomButton,
+  ListeningRoomLauncher,
+} from "@/components/voice/listening-room-button"
+import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 
 function RemoteVoiceAudio({
   stream,
@@ -228,6 +233,17 @@ export function VoicePanel(): React.ReactElement {
             </TooltipTrigger>
             <TooltipContent>Noise Suppression</TooltipContent>
           </Tooltip>
+
+          {channelId ? (
+            channelId === OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID ? (
+              <ListeningRoomLauncher channelId={channelId} />
+            ) : (
+              <ListeningRoomButton
+                channelId={channelId}
+                channelName={channelName}
+              />
+            )
+          ) : null}
 
           <Tooltip>
             <TooltipTrigger asChild>

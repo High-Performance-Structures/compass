@@ -16,6 +16,7 @@ describe("canAccessConversationChannel", () => {
       canAccessConversationChannel({
         channelId: archiveChannelId,
         hasMembership: false,
+        isActive: true,
         isPrivate: false,
         audience: "staff",
         role: "project_manager",
@@ -28,6 +29,7 @@ describe("canAccessConversationChannel", () => {
       canAccessConversationChannel({
         channelId: archiveChannelId,
         hasMembership: false,
+        isActive: true,
         isPrivate: false,
         audience: "staff",
         role: "client",
@@ -40,6 +42,7 @@ describe("canAccessConversationChannel", () => {
       canAccessConversationChannel({
         channelId: archiveChannelId,
         hasMembership: true,
+        isActive: true,
         isPrivate: false,
         audience: "staff",
         role: "client",
@@ -52,6 +55,7 @@ describe("canAccessConversationChannel", () => {
       canAccessConversationChannel({
         channelId: "project-owner-123",
         hasMembership: true,
+        isActive: true,
         isPrivate: true,
         audience: "clients",
         role: "client",
@@ -64,9 +68,33 @@ describe("canAccessConversationChannel", () => {
       canAccessConversationChannel({
         channelId: "project-staff-123",
         hasMembership: false,
+        isActive: true,
         isPrivate: false,
         audience: "staff",
         role: "project_manager",
+      })
+    ).toBe(false)
+  })
+
+  it("denies inactive members before archive or ordinary-channel checks", () => {
+    expect(
+      canAccessConversationChannel({
+        channelId: archiveChannelId,
+        hasMembership: false,
+        isActive: false,
+        isPrivate: false,
+        audience: "staff",
+        role: "project_manager",
+      })
+    ).toBe(false)
+    expect(
+      canAccessConversationChannel({
+        channelId: "project-owner-123",
+        hasMembership: true,
+        isActive: false,
+        isPrivate: true,
+        audience: "clients",
+        role: "client",
       })
     ).toBe(false)
   })

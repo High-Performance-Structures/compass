@@ -1,28 +1,35 @@
 "use client"
 
-import { useMemo, useState, useTransition, type FormEvent } from "react"
+import {
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+  type MouseEvent,
+} from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconArchive,
   IconChevronLeft,
-  IconDownload,
+  IconExternalLink,
   IconFileDescription,
   IconFolder,
+  IconFolderPlus,
   IconHistory,
   IconPlus,
-  IconTrash,
   IconUsersGroup,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
-  deleteProjectDocument,
   listProjectDocumentSourceFolder,
   publishProjectDocument,
   updateProjectDocumentStatus,
   type ProjectDocumentWorkspace,
 } from "@/app/actions/project-documents"
+import { publishProjectDocumentFolder } from "@/app/actions/project-document-folders"
+import { ProjectDocumentManagementActions } from "@/components/projects/project-document-management-actions"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -178,6 +185,43 @@ export function ProjectDocumentsWorkspacePanel({
     })
   }
 
+  function publishFolder(event: MouseEvent<HTMLButtonElement>): void {
+    const form = event.currentTarget.form
+    const folder = folderTrail[folderTrail.length - 1]
+    if (!form || !folder) return
+    const categoryLabel = projectDocumentCategoryLabel(category)
+    if (
+      !window.confirm(
+        `Publish all downloadable files in “${folder.name}” and its subfolders as ${categoryLabel}? Already-published files will be skipped.`
+      )
+    ) return
+    const data = new FormData(form)
+    startTransition(async () => {
+      const result = await publishProjectDocumentFolder(workspace.project.id, {
+        sourceDriveFolderId: folder.id,
+        category,
+        description: String(data.get("description") ?? ""),
+        documentDate: String(data.get("documentDate") ?? ""),
+        revision: String(data.get("revision") ?? ""),
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.publishedCount === 0) {
+        toast.info("Every downloadable file in this folder is already published.")
+      } else {
+        const skipped = result.skippedCount > 0
+          ? ` ${result.skippedCount} duplicate or unsupported files were skipped.`
+          : ""
+        toast.success(
+          `${result.publishedCount} folder documents published to the entire project team.${skipped}`
+        )
+      }
+      router.refresh()
+    })
+  }
+
   function changeStatus(documentId: string, nextStatus: string, titleValue: string): void {
     const warning = nextStatus === "archived"
       ? `Archive “${titleValue}”? It will disappear from owner and subcontractor workspaces.`
@@ -194,23 +238,6 @@ export function ProjectDocumentsWorkspacePanel({
         return
       }
       toast.success("Document status updated.")
-      router.refresh()
-    })
-  }
-
-  function remove(documentId: string, titleValue: string): void {
-    if (
-      !window.confirm(
-        `Permanently delete the archived Compass publication record for “${titleValue}”? The source Drive file will remain untouched.`
-      )
-    ) return
-    startTransition(async () => {
-      const result = await deleteProjectDocument(workspace.project.id, documentId)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success("Archived publication record deleted.")
       router.refresh()
     })
   }
@@ -253,7 +280,9 @@ export function ProjectDocumentsWorkspacePanel({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <IconFileDescription className="size-4 shrink-0 text-muted-foreground" />
-                    <h3 className="font-medium">{document.title}</h3>
+                    <h3 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                      {document.title}
+                    </h3>
                     <Badge variant={document.status === "current" ? "default" : "outline"}>
                       {statusLabel(document.status)}
                     </Badge>
@@ -300,9 +329,13 @@ export function ProjectDocumentsWorkspacePanel({
                 <div className="flex flex-wrap items-start gap-2 lg:justify-end">
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/api/projects/${workspace.project.id}/documents/${document.id}/download`}>
-                      <IconDownload className="size-4" />Download
+                      <IconExternalLink className="size-4" />Open
                     </Link>
                   </Button>
+                  <ProjectDocumentManagementActions
+                    projectId={workspace.project.id}
+                    document={document}
+                  />
                   {document.status === "current" && (
                     <Button
                       size="sm"
@@ -323,17 +356,6 @@ export function ProjectDocumentsWorkspacePanel({
                       <IconArchive className="size-4" />Archive
                     </Button>
                   )}
-                  {document.status === "archived" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive"
-                      disabled={isPending}
-                      onClick={() => remove(document.id, document.title)}
-                    >
-                      <IconTrash className="size-4" />Delete
-                    </Button>
-                  )}
                 </div>
               </article>
             ))}
@@ -351,7 +373,8 @@ export function ProjectDocumentsWorkspacePanel({
           <h2 className="font-semibold">Publish from this project’s folder</h2>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Select the exact Drive file that belongs in the coordinated construction set.
+          Select one Drive file, or open a folder and publish all downloadable files
+          inside it and its subfolders.
         </p>
         {sourceError && sourceFiles.length === 0 ? (
           <p className="mt-4 border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
@@ -371,6 +394,16 @@ export function ProjectDocumentsWorkspacePanel({
                 >
                   <IconChevronLeft className="size-4" />
                   Up one folder
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isPending || isFolderPending || folderTrail.length === 0}
+                  onClick={publishFolder}
+                >
+                  <IconFolderPlus className="size-4" />
+                  {isPending ? "Publishing..." : "Publish this folder"}
                 </Button>
                 <span className="inline-flex min-w-0 items-center gap-1.5">
                   <IconFolder className="size-4 shrink-0" />
@@ -404,7 +437,7 @@ export function ProjectDocumentsWorkspacePanel({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="project-document-title">Display title</Label>
+              <Label htmlFor="project-document-title">Display title (single file)</Label>
               <Input
                 id="project-document-title"
                 value={title}

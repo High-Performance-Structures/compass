@@ -1,8 +1,4 @@
-import { and, eq } from "drizzle-orm"
 import { z } from "zod/v4"
-
-import { getDb } from "@/db"
-import { sageWriteApprovals } from "@/db/schema-sage"
 
 export const SAGE_CLIENT_STATUS_OPTIONS = [
   { id: 1, name: "Current" },
@@ -61,6 +57,16 @@ export const sageClientProjectWritePayloadSchema = z.discriminatedUnion(
       company: z.literal("High Performance Structures Inc"),
       client: sageClientPayloadSchema,
       job: sageJobPayloadSchema,
+    }),
+    z.object({
+      operationType: z.literal("update_client_email"),
+      company: z.literal("High Performance Structures Inc"),
+      client: z.object({
+        compassCustomerId: z.string().min(1),
+        sageClientId: z.string().min(1),
+        sageClientNumber: z.string().min(1),
+        email: z.string().email().max(75),
+      }),
     }),
   ]
 )
@@ -133,24 +139,6 @@ export function sageJobName(
     ? `${normalizedNumber}-${normalizedName}`
     : normalizedName
   return fullName.slice(0, 75)
-}
-
-export async function isSageWriteApproved(
-  db: ReturnType<typeof getDb>,
-  organizationId: string,
-  userId: string
-): Promise<boolean> {
-  const row = await db
-    .select({ id: sageWriteApprovals.id })
-    .from(sageWriteApprovals)
-    .where(
-      and(
-        eq(sageWriteApprovals.organizationId, organizationId),
-        eq(sageWriteApprovals.userId, userId)
-      )
-    )
-    .limit(1)
-  return Boolean(row[0])
 }
 
 export function sageClientProjectWritesEnabled(env: CloudflareEnv): boolean {

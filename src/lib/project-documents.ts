@@ -17,6 +17,18 @@ export type ProjectDocumentStatus =
   | "superseded"
   | "archived"
 
+export type ProjectDocumentMetadata = {
+  readonly category: ProjectDocumentCategory
+  readonly title: string
+  readonly description: string | null
+  readonly documentDate: string | null
+  readonly revision: string | null
+}
+
+export type ProjectDocumentMetadataResult =
+  | { readonly success: true; readonly value: ProjectDocumentMetadata }
+  | { readonly success: false; readonly error: string }
+
 export type ProjectDocumentCategoryOption = {
   readonly value: ProjectDocumentCategory
   readonly label: string
@@ -40,6 +52,48 @@ export function isProjectDocumentCategory(
   value: string
 ): value is ProjectDocumentCategory {
   return PROJECT_DOCUMENT_CATEGORIES.some((option) => option.value === value)
+}
+
+function optionalMetadataText(value: string | null): string | null {
+  const cleaned = value?.trim() ?? ""
+  return cleaned.length > 0 ? cleaned : null
+}
+
+export function normalizeProjectDocumentMetadata(input: {
+  readonly category: string | null
+  readonly title: string | null
+  readonly description: string | null
+  readonly documentDate: string | null
+  readonly revision: string | null
+}): ProjectDocumentMetadataResult {
+  const category = optionalMetadataText(input.category)
+  if (!category || !isProjectDocumentCategory(category)) {
+    return {
+      success: false,
+      error: "Choose a supported construction-document category.",
+    }
+  }
+  const title = optionalMetadataText(input.title)
+  if (!title) {
+    return { success: false, error: "Display title is required." }
+  }
+  const documentDate = optionalMetadataText(input.documentDate)
+  if (documentDate && !/^\d{4}-\d{2}-\d{2}$/.test(documentDate)) {
+    return {
+      success: false,
+      error: "Document date must use YYYY-MM-DD.",
+    }
+  }
+  return {
+    success: true,
+    value: {
+      category,
+      title,
+      description: optionalMetadataText(input.description),
+      documentDate,
+      revision: optionalMetadataText(input.revision),
+    },
+  }
 }
 
 export function projectDocumentCategoryLabel(value: string): string {
@@ -70,4 +124,18 @@ export function driveFileIdFromValue(value: string): string | null {
 
 export function isPublishedProjectDocumentStatus(status: string): boolean {
   return status === "current" || status === "superseded"
+}
+
+export function isPublishableProjectDocumentMimeType(mimeType: string): boolean {
+  if (mimeType === "application/vnd.google-apps.folder") return false
+  if (!mimeType.startsWith("application/vnd.google-apps.")) return true
+  return [
+    "application/vnd.google-apps.document",
+    "application/vnd.google-apps.spreadsheet",
+    "application/vnd.google-apps.presentation",
+  ].includes(mimeType)
+}
+
+export function projectDocumentTitleFromFileName(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "")
 }

@@ -31,12 +31,15 @@ import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import {
+  projectContactCompassAccountStatus,
   projectContactAccessStatus,
   type ProjectContactAccessStatus,
+  type ProjectContactCompassAccountStatus,
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
+import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectContactType =
@@ -75,6 +78,7 @@ export type ProjectContactItem = {
   readonly syncStatus: string
   readonly lastSyncedAt: string | null
   readonly accessStatus: ProjectContactAccessStatus
+  readonly compassAccountStatus: ProjectContactCompassAccountStatus
   readonly identityManagedByActiveUser: boolean
 }
 
@@ -375,7 +379,8 @@ function requireLinkIds(formData: FormData): readonly string[] {
 function toContactItem(
   row: typeof projectContacts.$inferSelect,
   accessStatus: ProjectContactAccessStatus = "not_invited",
-  directoryIdentityManaged = false
+  directoryIdentityManaged = false,
+  compassAccountStatus: ProjectContactCompassAccountStatus = "not_registered"
 ): ProjectContactItem {
   return {
     id: row.id,
@@ -405,6 +410,7 @@ function toContactItem(
     syncStatus: row.syncStatus,
     lastSyncedAt: row.lastSyncedAt,
     accessStatus,
+    compassAccountStatus,
     identityManagedByActiveUser:
       accessStatus === "active" || directoryIdentityManaged,
   }
@@ -579,6 +585,54 @@ function directoryContactToTaskAssigneeOption(input: {
     source: "directory",
     projectContactId: null,
     directoryContactId: input.id,
+    projectAccess: false,
+  }
+}
+
+function customerToTaskAssigneeOption(input: {
+  readonly id: string
+  readonly name: string
+  readonly company: string | null
+  readonly email: string | null
+  readonly phone: string | null
+}): ProjectTaskAssigneeOption {
+  const companySuffix =
+    input.company && input.company !== input.name ? ` - ${input.company}` : ""
+
+  return {
+    id: `directory:customer:${input.id}`,
+    label: `${input.name}${companySuffix}`,
+    name: input.name,
+    companyName: input.company,
+    email: input.email,
+    phone: input.phone,
+    contactType: "owner",
+    source: "directory",
+    projectContactId: null,
+    directoryContactId: null,
+    projectAccess: false,
+  }
+}
+
+function vendorPersonToTaskAssigneeOption(input: {
+  readonly id: string
+  readonly vendorName: string
+  readonly category: string
+  readonly name: string
+  readonly email: string | null
+  readonly phone: string | null
+}): ProjectTaskAssigneeOption {
+  return {
+    id: `directory:vendor-contact:${input.id}`,
+    label: `${input.name} - ${input.vendorName}`,
+    name: input.name,
+    companyName: input.vendorName,
+    email: input.email,
+    phone: input.phone,
+    contactType: vendorCategoryToContactType(input.category),
+    source: "directory",
+    projectContactId: null,
+    directoryContactId: null,
     projectAccess: false,
   }
 }
@@ -826,6 +880,52 @@ export async function getProjectContactsSummary(
         eq(users.isActive, true)
       )
     )
+  const contactEmails = Array.from(
+    new Set(
+      rows
+        .map((row) => row.email?.trim().toLowerCase() ?? "")
+        .filter((email) => email.length > 0)
+    )
+  )
+  const compassAccountRows = (
+    await Promise.all(
+      Array.from(
+        { length: Math.ceil(contactEmails.length / 80) },
+        (_, chunkIndex) =>
+          db
+            .select({
+              id: users.id,
+              email: users.email,
+              isActive: users.isActive,
+            })
+            .from(users)
+            .where(
+              inArray(
+                sql<string>`lower(trim(${users.email}))`,
+                contactEmails.slice(chunkIndex * 80, chunkIndex * 80 + 80)
+              )
+            )
+      )
+    )
+  ).flat()
+  const compassAccountStatusByEmail = new Map<
+    string,
+    ProjectContactCompassAccountStatus
+  >()
+  for (const account of compassAccountRows) {
+    const email = account.email.trim().toLowerCase()
+    if (!email) continue
+
+    const current = compassAccountStatusByEmail.get(email)
+    const next = projectContactCompassAccountStatus(account)
+    if (
+      current === undefined ||
+      next === "active" ||
+      (next === "inactive" && current === "not_registered")
+    ) {
+      compassAccountStatusByEmail.set(email, next)
+    }
+  }
   const latestInvitationByContactId = new Map<
     string,
     ProjectContactInvitationSnapshot
@@ -861,6 +961,8 @@ export async function getProjectContactsSummary(
     row: (typeof rows)[number]
   ): ProjectContactItem => {
     const email = row.email?.trim().toLowerCase() ?? ""
+    const compassAccountStatus =
+      compassAccountStatusByEmail.get(email) ?? "not_registered"
     const latestInvitation =
       latestInvitationByContactId.get(row.id) ??
       (email ? latestInvitationByEmail.get(email) : undefined) ??
@@ -877,6 +979,7 @@ export async function getProjectContactsSummary(
         ? projectContactAccessStatus({
             activeProjectMember,
             latestInvitation,
+            compassAccountStatus,
           })
         : "not_invited",
       (row.sourceEntityId !== null &&
@@ -884,7 +987,8 @@ export async function getProjectContactsSummary(
           `${row.sourceEntityType}:${row.sourceEntityId}`
         )) ||
         (row.vendorContactId !== null &&
-          directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`))
+          directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)),
+      compassAccountStatus
     )
   }
   const allContacts = rows.filter((row) => row.active).map(toProjectContactItem)
@@ -2049,6 +2153,127 @@ export async function getProjectTaskAssigneeOptions(
       ...organizationUserOptions,
     ],
     directoryContacts,
+  }
+}
+
+/**
+ * Schedule assignments intentionally use the complete organization directory.
+ * Project contact membership does not narrow these choices; it only supplies
+ * additional project-only contacts that may not have a directory record yet.
+ */
+export async function getScheduleTaskAssigneeOptions(
+  projectId: string
+): Promise<ProjectTaskAssigneeOptions> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "schedule", "update")
+  const db = await verifyProjectAccess(projectId)
+  const orgId = requireOrg(user)
+
+  const [
+    projectContactRows,
+    customerRows,
+    vendorRows,
+    vendorContactRows,
+    organizationUserRows,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true)
+        )
+      )
+      .orderBy(
+        asc(projectContacts.contactType),
+        asc(projectContacts.displayName)
+      ),
+    db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        company: customers.company,
+        email: customers.email,
+        phone: customers.phone,
+      })
+      .from(customers)
+      .where(eq(customers.organizationId, orgId))
+      .orderBy(asc(customers.name)),
+    db
+      .select({
+        id: vendors.id,
+        name: vendors.name,
+        category: vendors.category,
+        email: vendors.email,
+        phone: vendors.phone,
+      })
+      .from(vendors)
+      .where(
+        and(
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active")
+        )
+      )
+      .orderBy(asc(vendors.name)),
+    db
+      .select({
+        id: vendorContacts.id,
+        vendorName: vendors.name,
+        category: vendors.category,
+        name: vendorContacts.name,
+        email: vendorContacts.email,
+        phone: vendorContacts.phone,
+      })
+      .from(vendorContacts)
+      .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
+      .where(
+        and(
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active"),
+          eq(vendorContacts.active, true)
+        )
+      )
+      .orderBy(asc(vendors.name), asc(vendorContacts.name)),
+    db
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, orgId),
+          eq(users.isActive, true)
+        )
+      )
+      .orderBy(asc(users.displayName), asc(users.email)),
+  ])
+
+  const projectOptions = projectContactRows
+    .map((row) => toContactItem(row))
+    .map(projectContactToTaskAssigneeOption)
+  const teamOptions = uniqueInternalStaffMembers(organizationUserRows).map(
+    organizationUserToTaskAssigneeOption
+  )
+  const customerOptions = customerRows.map(customerToTaskAssigneeOption)
+  const vendorOptions = vendorRows.map(directoryContactToTaskAssigneeOption)
+  const vendorPersonOptions = vendorContactRows.map(
+    vendorPersonToTaskAssigneeOption
+  )
+
+  return {
+    projectContacts: [...projectOptions, ...teamOptions],
+    directoryContacts: [
+      ...customerOptions,
+      ...vendorOptions,
+      ...vendorPersonOptions,
+    ].sort((left, right) => left.label.localeCompare(right.label)),
   }
 }
 

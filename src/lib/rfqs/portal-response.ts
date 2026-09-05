@@ -16,6 +16,7 @@ export type PortalRfqDocumentLink = {
 export type PortalRfqVendorResponse = {
   readonly decision: "quote" | "decline"
   readonly amount: number | null
+  readonly lines: readonly PortalRfqVendorResponseLine[]
   readonly leadTime: string | null
   readonly validUntil: string | null
   readonly notes: string | null
@@ -23,6 +24,12 @@ export type PortalRfqVendorResponse = {
   readonly responderName: string
   readonly responderCompany: string | null
   readonly submittedAt: string
+}
+
+export type PortalRfqVendorResponseLine = {
+  readonly lineNumber: number
+  readonly amount: number
+  readonly notes: string | null
 }
 
 export type PortalRfqPayload = {
@@ -139,6 +146,7 @@ function parseVendorResponse(
   return {
     decision,
     amount: numberValue(response, "amount"),
+    lines: parseVendorResponseLines(response),
     leadTime: textValue(response, "leadTime"),
     validUntil: textValue(response, "validUntil"),
     notes: textValue(response, "notes"),
@@ -147,6 +155,29 @@ function parseVendorResponse(
     responderCompany: textValue(response, "responderCompany"),
     submittedAt,
   }
+}
+
+function parseVendorResponseLines(
+  response: Record<string, unknown>
+): readonly PortalRfqVendorResponseLine[] {
+  const lines = response.lines
+  if (!Array.isArray(lines)) return []
+
+  return lines.flatMap((line) => {
+    if (!isRecord(line)) return []
+    const lineNumber = numberValue(line, "lineNumber")
+    const amount = numberValue(line, "amount")
+    if (
+      lineNumber === null ||
+      !Number.isInteger(lineNumber) ||
+      lineNumber < 1 ||
+      amount === null ||
+      amount < 0
+    ) {
+      return []
+    }
+    return [{ lineNumber, amount, notes: textValue(line, "notes") }]
+  })
 }
 
 export function parsePortalRfqPayload(value: string | null): PortalRfqPayload {

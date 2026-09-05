@@ -1,4 +1,8 @@
 import type * as React from "react"
+import { getCorrespondenceInbox } from "@/app/actions/project-correspondence"
+import { ProjectCorrespondenceWorkspace } from "@/components/correspondence/project-correspondence-workspace"
+import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
+import { getCloudflareContext } from "@/lib/db"
 import Link from "next/link"
 import {
   IconArrowRight,
@@ -35,6 +39,7 @@ import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audie
 import { ProjectAudienceDocumentLibrary } from "@/components/projects/project-audience-document-library"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectAudiencePurchaseOrderResponseDialog } from "@/components/projects/project-audience-purchase-order-response-dialog"
+import { portalPurchaseOrderVendorStatusLabel } from "@/lib/purchase-orders/portal-response"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
@@ -138,12 +143,25 @@ function OperationRow({
           {item.acknowledgement && (
             <Badge variant="outline">Acknowledged</Badge>
           )}
+          {item.latestVendorStatus && (
+            <Badge variant="outline">
+              Vendor: {portalPurchaseOrderVendorStatusLabel(item.latestVendorStatus.status)}
+            </Badge>
+          )}
           <Badge variant="secondary">{statusLabel(item.status)}</Badge>
         </div>
       </div>
       {item.description && (
         <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
           {item.description}
+        </p>
+      )}
+      {item.latestVendorStatus && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Last vendor update by {item.latestVendorStatus.responderName}
+          {item.latestVendorStatus.note
+            ? ` · ${item.latestVendorStatus.note}`
+            : ""}
         </p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
@@ -160,6 +178,7 @@ function OperationRow({
             purchaseOrderLabel={item.sourceRecordNumber ?? item.title}
             status={item.status}
             acknowledgement={item.acknowledgement}
+            latestStatus={item.latestVendorStatus}
             recipients={recipients}
             viewerIsInternal={viewerIsInternal}
           />
@@ -245,6 +264,7 @@ function RfqRow({
             rfqTitle={item.title}
             status={item.status}
             response={item.vendorResponse}
+            scopeItems={item.scopeItems}
             viewerIsInternal={viewerIsInternal}
           />
         </div>
@@ -326,6 +346,31 @@ function RfqRow({
               {item.vendorResponse.notes}
             </p>
           )}
+          {item.vendorResponse.lines.length > 0 && (
+            <div className="mt-3 overflow-hidden border bg-background">
+              {item.vendorResponse.lines.map((line) => (
+                <div
+                  key={`${item.id}-submitted-line-${line.lineNumber}`}
+                  className="flex items-start justify-between gap-3 border-b px-3 py-2 last:border-b-0"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {line.lineNumber}.{" "}
+                      {item.scopeItems.find(
+                        (scope) => scope.lineNumber === line.lineNumber
+                      )?.description ?? "RFQ scope"}
+                    </p>
+                    {line.notes && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {line.notes}
+                      </p>
+                    )}
+                  </div>
+                  <span className="font-medium">{formatMoney(line.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -367,11 +412,20 @@ function MessageChannelRow({
   )
 }
 
-function AudienceConversationSection({
+async function AudienceConversationSection({
   data,
 }: {
   readonly data: ProjectAudiencePreviewData
-}): React.ReactElement {
+}): Promise<React.ReactElement> {
+  const { env } = await getCloudflareContext()
+  if (isCorrespondenceEnabled(data.project.id, env) || isCorrespondenceEnabled(data.project.id)) {
+    const inbox = await getCorrespondenceInbox(data.project.id)
+    return <section id="messages" className="min-w-0">
+      {data.viewerIsInternal && <p className="mb-3 text-sm text-muted-foreground">This is your staff inbox. A participant's historical access must be reviewed separately before activation.</p>}
+      {inbox.success ? <ProjectCorrespondenceWorkspace projectId={data.project.id} initialInbox={inbox.data} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
+      {data.messageChannels.length > 0 && <details className="mt-4 border-t pt-3"><summary className="cursor-pointer text-sm">Earlier Compass conversations</summary><div className="mt-3 grid gap-3">{data.messageChannels.map((channel) => <MessageChannelRow key={channel.id} channel={channel} projectId={data.project.id} audience={data.audience} />)}</div></details>}
+    </section>
+  }
   return (
     <section
       id="messages"
@@ -844,6 +898,7 @@ function OwnerProjectPreview({
         <ProjectAudienceSchedule
           audienceLabel="Client schedule"
           items={data.scheduleItems}
+          publicationAvailable={data.schedulePublicationAvailable}
           projectId={data.project.id}
           projectName={data.project.name}
           projectNumber={data.project.projectNumber}
@@ -1078,6 +1133,7 @@ export function ProjectAudiencePreview({
           <ProjectAudienceSchedule
             audienceLabel="Sub/vendor schedule"
             items={data.scheduleItems}
+            publicationAvailable={data.schedulePublicationAvailable}
             projectId={data.project.id}
             projectName={data.project.name}
             projectNumber={data.project.projectNumber}
@@ -1094,7 +1150,7 @@ export function ProjectAudiencePreview({
                 <IconUsers className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Commitments</h2>
               </div>
-              <Badge variant="outline">{data.operations.length} active</Badge>
+              <Badge variant="outline">{data.operations.length} assigned</Badge>
             </div>
             {data.operations.length > 0 ? (
               <div className="mt-4 grid gap-3">

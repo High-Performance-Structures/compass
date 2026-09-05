@@ -79,6 +79,7 @@ import {
   acceptedEstimateDocumentUrl,
   acceptedEstimateEvidenceUrl,
 } from "@/lib/estimates/accepted-document"
+import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -107,6 +108,11 @@ function formText(formData: FormData, name: string): string | null {
 function formNumber(formData: FormData, name: string): number | null {
   const value = Number(String(formData.get(name) ?? "").replaceAll(",", ""))
   return Number.isFinite(value) ? value : null
+}
+
+function draftNumber(value: string): number {
+  const parsed = Number(value.replaceAll(",", ""))
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function statusLabel(value: string): string {
@@ -314,6 +320,19 @@ export function ProjectEstimateWorkspacePanel({
       })),
     [workspace.taxEntities]
   )
+  const effectiveLineTaxEntityId = line.taxEntityId || defaultTaxEntityId
+  const effectiveLineTaxEntity = workspace.taxEntities.find(
+    (option) => option.value === effectiveLineTaxEntityId
+  )
+  const linePreview = calculateEstimateLine({
+    quantity: draftNumber(line.quantity),
+    unitCostCents: Math.round(Math.max(0, draftNumber(line.unitCost)) * 100),
+    markupRateBasisPoints: Math.round(
+      Math.max(0, draftNumber(line.markupPercent)) * 100
+    ),
+    taxable: line.taxable,
+    taxRateBasisPoints: effectiveLineTaxEntity?.rateBasisPoints ?? 0,
+  })
   const groupedLines = useMemo(() => {
     const groups = new Map<string, ProjectEstimateLineItem[]>()
     for (const item of workspace.lines) {
@@ -812,6 +831,7 @@ export function ProjectEstimateWorkspacePanel({
               estimates={workspace.estimates}
               activeEstimate={estimate}
               canEdit={workspace.canEdit}
+              canDelete={workspace.canDelete}
             />
             <Button variant="outline" asChild>
               <Link
@@ -1580,6 +1600,43 @@ export function ProjectEstimateWorkspacePanel({
                 </p>
               )}
             </div>
+            {!lineUsesCostBreakdown && (
+              <div
+                className="mt-3 grid gap-2 border-y py-3 text-sm sm:grid-cols-4"
+                aria-live="polite"
+              >
+                <div>
+                  <p className="text-xs text-muted-foreground">Direct cost</p>
+                  <p className="font-medium">
+                    {money(linePreview.directCostCents)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Markup</p>
+                  <p className="font-medium">{money(linePreview.markupCents)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    Sales tax
+                    {line.taxable && effectiveLineTaxEntity
+                      ? ` · ${percent(effectiveLineTaxEntity.rateBasisPoints)}`
+                      : ""}
+                  </p>
+                  <p className="font-medium">{money(linePreview.taxCents)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Line total</p>
+                  <p className="font-semibold">
+                    {money(linePreview.lineTotalCents)}
+                  </p>
+                </div>
+                {line.taxable && !effectiveLineTaxEntity && (
+                  <p className="text-xs text-destructive sm:col-span-4">
+                    Choose a tax entity before saving this taxable line.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-5">
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
@@ -1609,7 +1666,16 @@ export function ProjectEstimateWorkspacePanel({
               </label>
               <div className="ml-auto flex gap-2">
                 {(line.id || insertAfterLineId) && <Button type="button" variant="ghost" onClick={() => { setLine(EMPTY_LINE); setInsertAfterLineId(null) }}>Cancel</Button>}
-                <Button type="submit" disabled={isPending || !line.costCode}>
+                <Button
+                  type="submit"
+                  disabled={
+                    isPending ||
+                    !line.costCode ||
+                    (!lineUsesCostBreakdown &&
+                      line.taxable &&
+                      !effectiveLineTaxEntity)
+                  }
+                >
                   <IconPlus className="size-4" /> {line.id ? "Save line" : insertAfterLineId ? "Insert line" : "Add line"}
                 </Button>
               </div>

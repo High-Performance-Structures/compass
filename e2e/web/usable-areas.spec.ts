@@ -238,6 +238,61 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("project schedules expose single and multiple selection modes", async ({
+    page,
+  }) => {
+    const path = "/dashboard/schedule?mode=projects&scope=all&view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    await expect(page.getByText("Project selection", { exact: true })).toBeVisible()
+    await expect(page.locator('[data-slot="command-item"]').first()).toHaveAttribute(
+      "aria-label",
+      /Not the current project$/
+    )
+
+    const multipleMode = page.getByRole("radio", {
+      name: "Multiple schedules",
+    })
+    await multipleMode.click()
+    await expect(page).toHaveURL(/selection=multiple/)
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    await expect(
+      page.getByText("Check projects to compare their schedules.")
+    ).toBeVisible()
+
+    const projectRows = page.locator('[data-slot="command-item"]')
+    const project = projectRows.first()
+    await expect(project).toBeVisible()
+    await expect(project).toHaveAttribute(
+      "aria-label",
+      /Not selected for schedule comparison$/
+    )
+    await page.getByPlaceholder("Search projects...").focus()
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("Enter")
+    await expect(page).toHaveURL(/scope=selected.*projects=[^&]+/)
+    await page.reload()
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
+    const selectedProject = page.locator('[data-schedule-selected="true"]').first()
+    await expect(selectedProject).toBeVisible()
+    await expect(selectedProject).toHaveAttribute(
+      "aria-label",
+      /Selected for schedule comparison$/
+    )
+
+    await selectedProject.dispatchEvent("click")
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("projects"))
+      .toBe("")
+    await expect(page.getByText("No projects selected", { exact: true }).last()).toBeVisible()
+    await expect(page.locator('[data-slot="command-item"]').first()).toHaveAttribute(
+      "aria-label",
+      /Not selected for schedule comparison$/
+    )
+  })
+
   test("Schedule keeps controls compact and gives views a scrollable workspace", async ({
     page,
   }) => {

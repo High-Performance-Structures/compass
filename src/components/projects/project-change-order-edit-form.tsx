@@ -9,6 +9,7 @@ import {
   validateChangeOrderDocumentCount,
 } from "@/components/projects/project-change-order-document-upload"
 import {
+  executeProjectChangeOrderRebaseline,
   updateProjectChangeOrder,
   type ProjectChangeOrderFormOptions,
   type ProjectChangeOrderItem,
@@ -29,6 +30,7 @@ import {
   changeOrderStatusLabel,
   isChangeOrderStatus,
 } from "@/lib/change-orders/status"
+import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
 
 function optionalText(formData: FormData, name: string): string | null {
   const value = formData.get(name)
@@ -64,8 +66,35 @@ export function ProjectChangeOrderEditForm({
   const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>(
     initialDraftChangeOrderCostLines(item.lines, item.amountCents)
   )
+  const [budgetTreatment, setBudgetTreatment] =
+    React.useState<ChangeOrderBudgetTreatment>(item.budgetTreatment)
+  const [replacementEstimateId, setReplacementEstimateId] = React.useState(
+    item.replacementEstimate?.id ?? ""
+  )
   const [saving, startSaving] = React.useTransition()
-  const totalCents = draftChangeOrderTotalCents(lines)
+  const currentBaseline =
+    formOptions.estimates.find(
+      (estimate) => estimate.id === formOptions.currentBaselineEstimateId
+    ) ?? item.baselineEstimate
+  const replacementOptions = formOptions.estimates.filter(
+    (estimate) =>
+      estimate.id !== currentBaseline?.id &&
+      estimate.estimateNumber === currentBaseline?.estimateNumber &&
+      ["draft", "internal_review", "signature_pending"].includes(
+        estimate.status
+      )
+  )
+  const selectedReplacement =
+    replacementOptions.find(
+      (estimate) => estimate.id === replacementEstimateId
+    ) ?? item.replacementEstimate
+  const totalCents =
+    budgetTreatment === "baseline_replacement" &&
+    currentBaseline &&
+    selectedReplacement
+      ? selectedReplacement.estimateTotalCents -
+        currentBaseline.estimateTotalCents
+      : draftChangeOrderTotalCents(lines)
   const readOnly = !item.canEdit && item.allowedTransitions.length === 0
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
@@ -111,6 +140,11 @@ export function ProjectChangeOrderEditForm({
           status,
           transitionNote: optionalText(formData, "transitionNote"),
           documents: nextDocuments,
+          budgetTreatment: internal ? budgetTreatment : item.budgetTreatment,
+          replacementEstimateId:
+            internal && budgetTreatment === "baseline_replacement"
+              ? replacementEstimateId || null
+              : null,
         })
         if (!result.success) throw new Error(result.error)
 
@@ -130,6 +164,32 @@ export function ProjectChangeOrderEditForm({
           error instanceof Error ? error.message : "Could not update change order."
         )
       }
+    })
+  }
+
+  function executeRebaseline(): void {
+    const form = formRef.current
+    if (!form) return
+    if (
+      !window.confirm(
+        "Replace the current Compass estimate and budget baseline with the linked revised estimate? The prior estimate and budget remain in immutable history."
+      )
+    ) {
+      return
+    }
+    const formData = new FormData(form)
+    startSaving(async () => {
+      const result = await executeProjectChangeOrderRebaseline(
+        item.projectId,
+        item.id,
+        optionalText(formData, "transitionNote")
+      )
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Estimate and Compass budget rebaselined.")
+      router.refresh()
     })
   }
 
@@ -189,13 +249,85 @@ export function ProjectChangeOrderEditForm({
           required
         />
       </div>
-      <ProjectChangeOrderCostLinesEditor
-        lines={lines}
-        phaseOptions={formOptions.phases}
-        costCodeOptions={formOptions.costCodes}
-        disabled={!item.canEdit}
-        onLinesChange={setLines}
-      />
+      {internal && (
+        <div className="grid gap-4 border-y py-4 lg:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="change-order-edit-budget-treatment">
+              Budget treatment
+            </Label>
+            <select
+              id="change-order-edit-budget-treatment"
+              name="budgetTreatment"
+              value={budgetTreatment}
+              disabled={!item.canEdit}
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              onChange={(event) => {
+                const value = event.currentTarget.value
+                setBudgetTreatment(
+                  value === "baseline_replacement"
+                    ? "baseline_replacement"
+                    : "additive"
+                )
+              }}
+            >
+              <option value="additive">Budget adjustment</option>
+              <option value="baseline_replacement">
+                Preconstruction baseline replacement
+              </option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {budgetTreatment === "baseline_replacement"
+                ? "Replaces the current estimate baseline without adding this amount again."
+                : "Adds executed cost lines to the current estimate baseline."}
+            </p>
+          </div>
+          {budgetTreatment === "baseline_replacement" && (
+            <div className="space-y-2">
+              <Label htmlFor="change-order-edit-replacement-estimate">
+                Replacement estimate
+              </Label>
+              <select
+                id="change-order-edit-replacement-estimate"
+                name="replacementEstimateId"
+                value={replacementEstimateId}
+                disabled={!item.canEdit}
+                required
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                onChange={(event) =>
+                  setReplacementEstimateId(event.currentTarget.value)
+                }
+              >
+                <option value="">Choose a revised estimate</option>
+                {replacementOptions.map((estimate) => (
+                  <option key={estimate.id} value={estimate.id}>
+                    {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Current baseline: {currentBaseline
+                  ? `${currentBaseline.estimateNumber} v${currentBaseline.versionNumber}`
+                  : "No accepted estimate"}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+      {budgetTreatment === "additive" ? (
+        <ProjectChangeOrderCostLinesEditor
+          lines={lines}
+          phaseOptions={formOptions.phases}
+          costCodeOptions={formOptions.costCodes}
+          disabled={!item.canEdit}
+          onLinesChange={setLines}
+        />
+      ) : (
+        <div className="border-l-2 border-l-primary px-3 py-2 text-sm">
+          The linked estimate controls the replacement budget. The displayed
+          amount is the difference between estimate versions and will not be
+          applied as an additional change-order line.
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="change-order-edit-reason">Reason</Label>
         <Textarea
@@ -316,6 +448,35 @@ export function ProjectChangeOrderEditForm({
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
+      {item.budgetTreatment === "baseline_replacement" &&
+        item.status === "signature_pending" && (
+          <div className="border-t pt-4">
+            {item.rebaselineBlockers.length > 0 ? (
+              <div className="border-l-2 border-l-destructive px-3 py-2">
+                <p className="text-sm font-medium">Rebaseline is blocked</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                  {item.rebaselineBlockers.map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                All preconstruction checks passed. Execution will switch the
+                accepted estimate and current Compass budget in one approved
+                workflow while retaining both prior revisions.
+              </p>
+            )}
+            <Button
+              type="button"
+              className="mt-3"
+              disabled={saving || !item.canExecuteRebaseline}
+              onClick={executeRebaseline}
+            >
+              {saving ? "Rebaselining…" : "Execute and rebaseline budget"}
+            </Button>
+          </div>
+        )}
     </form>
   )
 }

@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, lte, or, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, lt, lte, or, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
 import {
@@ -104,12 +104,11 @@ export async function GET(request: Request): Promise<Response> {
     requestedEventType !== null
       ? eq(jarvisBridgeEvents.eventType, requestedEventType)
       : undefined
-  const now = new Date()
-  const nowIso = now.toISOString()
+  const candidateNow = new Date()
+  const candidateNowIso = candidateNow.toISOString()
   const staleClaimIso = new Date(
-    now.getTime() - CLAIM_RETRY_MILLISECONDS,
+    candidateNow.getTime() - CLAIM_RETRY_MILLISECONDS,
   ).toISOString()
-  const claimToken = crypto.randomUUID()
   const db = getDb(env.DB)
 
   const candidates = await db
@@ -119,7 +118,7 @@ export async function GET(request: Request): Promise<Response> {
       and(
         eq(jarvisBridgeEvents.direction, "outbound"),
         eventTypeFilter,
-        lte(jarvisBridgeEvents.availableAt, nowIso),
+        lte(jarvisBridgeEvents.availableAt, candidateNowIso),
         or(
           eq(jarvisBridgeEvents.status, "pending"),
           and(
@@ -132,35 +131,56 @@ export async function GET(request: Request): Promise<Response> {
     .orderBy(asc(jarvisBridgeEvents.createdAt))
     .limit(limit)
 
+  const claimTokens: string[] = []
   for (const candidate of candidates) {
-    await db
+    const claimToken = crypto.randomUUID()
+    // Capture each lease after the candidate query and immediately before its CAS.
+    // A slow pull must not hand out a lease that is already stale when acquired.
+    const claimNow = new Date()
+    const claimIso = claimNow.toISOString()
+    const claimStaleIso = new Date(
+      claimNow.getTime() - CLAIM_RETRY_MILLISECONDS,
+    ).toISOString()
+    const claimed = await db
       .update(jarvisBridgeEvents)
       .set({
         status: "processing",
         claimToken,
-        claimedAt: nowIso,
+        claimedAt: claimIso,
         attemptCount: sql`${jarvisBridgeEvents.attemptCount} + 1`,
-        updatedAt: nowIso,
+        updatedAt: claimIso,
       })
       .where(
         and(
           eq(jarvisBridgeEvents.id, candidate.id),
+          eq(jarvisBridgeEvents.direction, "outbound"),
           eventTypeFilter,
+          lte(jarvisBridgeEvents.availableAt, claimIso),
           or(
             eq(jarvisBridgeEvents.status, "pending"),
             and(
               eq(jarvisBridgeEvents.status, "processing"),
-              lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
+              lt(jarvisBridgeEvents.claimedAt, claimStaleIso),
             ),
           ),
         ),
       )
+      .returning({ id: jarvisBridgeEvents.id })
+      .get()
+    if (claimed) claimTokens.push(claimToken)
   }
+
+  if (claimTokens.length === 0) return Response.json({ events: [] })
 
   const claimed = await db
     .select()
     .from(jarvisBridgeEvents)
-    .where(eq(jarvisBridgeEvents.claimToken, claimToken))
+    .where(and(
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eventTypeFilter,
+      eq(jarvisBridgeEvents.status, "processing"),
+      inArray(jarvisBridgeEvents.claimToken, claimTokens),
+    ))
     .orderBy(asc(jarvisBridgeEvents.createdAt))
 
   return Response.json({
@@ -169,6 +189,7 @@ export async function GET(request: Request): Promise<Response> {
       eventType: event.eventType,
       source: event.source,
       attempt: event.attemptCount,
+      claimToken: event.claimToken,
       payload:
         event.eventType === "agent.prompt"
           ? jarvisPayloadForDelivery(event.id, event.payload)

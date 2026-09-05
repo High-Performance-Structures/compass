@@ -1,10 +1,11 @@
 "use server"
 
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  projectBudgetApplications,
   projectBudgetLines,
   projectContacts,
   projectFinishSelectionRooms,
@@ -1091,7 +1092,19 @@ export async function getProjectSelectionOptions(
         csiDivisionName: projectBudgetLines.csiDivisionName
       })
       .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.projectId, projectId))
+      .leftJoin(
+        projectBudgetApplications,
+        eq(projectBudgetApplications.id, projectBudgetLines.applicationId)
+      )
+      .where(
+        and(
+          eq(projectBudgetLines.projectId, projectId),
+          or(
+            isNull(projectBudgetApplications.status),
+            ne(projectBudgetApplications.status, "building")
+          )
+        )
+      )
       .orderBy(asc(projectBudgetLines.csiDivision), asc(projectBudgetLines.costCode)),
     db
       .select({

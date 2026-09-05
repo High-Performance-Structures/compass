@@ -49,7 +49,6 @@ export function ProjectAudienceRfiCreateDialog({
     recipients[0]?.userId ?? ""
   )
   const [state, setState] = React.useState<SubmitState>({ kind: "idle" })
-  const unavailable = recipients.length === 0
 
   function reset(): void {
     setSubject("")
@@ -75,7 +74,7 @@ export function ProjectAudienceRfiCreateDialog({
         subject,
         question,
         priority,
-        recipientUserId,
+        recipientUserId: recipientUserId || null,
       })
       if (!result.success) {
         setState({ kind: "error", message: result.error })
@@ -92,13 +91,10 @@ export function ProjectAudienceRfiCreateDialog({
       <DialogTrigger asChild>
         <Button
           type="button"
-          disabled={unavailable}
           title={
-            recipients.length === 0
-              ? "Add an active internal staff member first."
-              : viewerIsInternal
-                ? "Preview the RFI form an assigned sub/vendor can send."
-                : undefined
+            viewerIsInternal
+              ? "Preview the RFI form an assigned sub/vendor can send."
+              : undefined
           }
         >
           <IconQuestionMark className="size-4" />
@@ -110,8 +106,8 @@ export function ProjectAudienceRfiCreateDialog({
           <DialogHeader>
             <DialogTitle>Send a request for information</DialogTitle>
             <DialogDescription>
-              Route a project question directly to an assigned internal team
-              member. The response will remain visible in this workspace.
+              Route a project question to the internal project team. The
+              response will remain visible in this workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-5 grid gap-4">
@@ -122,22 +118,34 @@ export function ProjectAudienceRfiCreateDialog({
                 recorded as the external requester.
               </p>
             )}
-            <label className="grid gap-1.5 text-sm font-medium">
-              Send to
-              <Select value={recipientUserId} onValueChange={setRecipientUserId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a project team member" />
-                </SelectTrigger>
-                <SelectContent>
-                  {recipients.map((recipient) => (
-                    <SelectItem key={recipient.userId} value={recipient.userId}>
-                      {recipient.displayName}
-                      {recipient.role ? ` · ${recipient.role}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+            {recipients.length > 0 ? (
+              <label className="grid gap-1.5 text-sm font-medium">
+                Send to
+                <Select value={recipientUserId} onValueChange={setRecipientUserId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Choose a project team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {recipients.map((recipient) => (
+                      <SelectItem key={recipient.userId} value={recipient.userId}>
+                        {recipient.displayName}
+                        {recipient.role ? ` · ${recipient.role}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : (
+              <div className="grid gap-1.5 text-sm">
+                <span className="font-medium">Send to</span>
+                <p className="border bg-muted/40 p-3">
+                  Project team
+                  <span className="mt-1 block text-muted-foreground">
+                    Compass will route this RFI to the internal project team.
+                  </span>
+                </p>
+              </div>
+            )}
             <label className="grid gap-1.5 text-sm font-medium">
               Subject
               <Input
@@ -182,7 +190,7 @@ export function ProjectAudienceRfiCreateDialog({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !recipientUserId}>
+            <Button type="submit" disabled={pending}>
               {pending ? "Sending..." : "Send RFI"}
             </Button>
           </DialogFooter>

@@ -24,7 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import type { PortalRfqVendorResponse } from "@/lib/rfqs/portal-response"
+import type {
+  PortalRfqScopeItem,
+  PortalRfqVendorResponse,
+} from "@/lib/rfqs/portal-response"
 import { portalRfqCanReceiveResponse } from "@/lib/rfqs/portal-response"
 
 type Decision = "quote" | "decline"
@@ -35,6 +38,7 @@ export function ProjectAudienceRfqResponseDialog({
   rfqTitle,
   status,
   response,
+  scopeItems,
   viewerIsInternal,
 }: {
   readonly projectId: string
@@ -42,6 +46,7 @@ export function ProjectAudienceRfqResponseDialog({
   readonly rfqTitle: string
   readonly status: string
   readonly response: PortalRfqVendorResponse | null
+  readonly scopeItems: readonly PortalRfqScopeItem[]
   readonly viewerIsInternal: boolean
 }): React.ReactElement {
   const router = useRouter()
@@ -58,6 +63,32 @@ export function ProjectAudienceRfqResponseDialog({
   const [leadTime, setLeadTime] = React.useState(response?.leadTime ?? "")
   const [validUntil, setValidUntil] = React.useState(response?.validUntil ?? "")
   const [notes, setNotes] = React.useState(response?.notes ?? "")
+  const [lineAmounts, setLineAmounts] = React.useState<
+    ReadonlyMap<number, string>
+  >(
+    () =>
+      new Map(
+        scopeItems.map((line) => [
+          line.lineNumber,
+          response?.lines.find(
+            (responseLine) => responseLine.lineNumber === line.lineNumber
+          )?.amount.toString() ?? "",
+        ])
+      )
+  )
+  const [lineNotes, setLineNotes] = React.useState<
+    ReadonlyMap<number, string>
+  >(
+    () =>
+      new Map(
+        scopeItems.map((line) => [
+          line.lineNumber,
+          response?.lines.find(
+            (responseLine) => responseLine.lineNumber === line.lineNumber
+          )?.notes ?? "",
+        ])
+      )
+  )
   const [error, setError] = React.useState<string | null>(null)
   const acceptsResponse = portalRfqCanReceiveResponse(status)
 
@@ -73,6 +104,14 @@ export function ProjectAudienceRfqResponseDialog({
       const result = await submitSubVendorRfqResponse(projectId, rfqId, {
         decision,
         amount: parsedAmount,
+        lines: scopeItems.map((line) => {
+          const lineAmount = lineAmounts.get(line.lineNumber)?.trim() ?? ""
+          return {
+            lineNumber: line.lineNumber,
+            amount: lineAmount.length > 0 ? Number(lineAmount) : null,
+            notes: lineNotes.get(line.lineNumber) ?? null,
+          }
+        }),
         leadTime,
         validUntil,
         notes,
@@ -127,7 +166,7 @@ export function ProjectAudienceRfqResponseDialog({
                 </SelectContent>
               </Select>
             </label>
-            {decision === "quote" && (
+            {decision === "quote" && scopeItems.length === 0 && (
               <label className="grid gap-1.5 text-sm font-medium">
                 Quote amount
                 <Input
@@ -140,6 +179,67 @@ export function ProjectAudienceRfqResponseDialog({
                   required
                 />
               </label>
+            )}
+            {decision === "quote" && scopeItems.length > 0 && (
+              <div className="grid gap-2 sm:col-span-2">
+                <p className="text-sm font-medium">Scope pricing</p>
+                <div className="overflow-hidden border">
+                  {scopeItems.map((line) => (
+                    <div
+                      key={line.lineNumber}
+                      className="grid gap-2 border-b p-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_9rem]"
+                    >
+                      <div className="min-w-0 text-sm">
+                        <p className="font-medium">
+                          {line.lineNumber}. {line.description}
+                        </p>
+                        <Input
+                          value={lineNotes.get(line.lineNumber) ?? ""}
+                          onChange={(event) =>
+                            setLineNotes((current) => {
+                              const next = new Map(current)
+                              next.set(line.lineNumber, event.currentTarget.value)
+                              return next
+                            })
+                          }
+                          maxLength={2_000}
+                          className="mt-2"
+                          placeholder="Line note or exclusion"
+                        />
+                      </div>
+                      <label className="grid content-start gap-1 text-xs font-medium text-muted-foreground">
+                        Price
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={lineAmounts.get(line.lineNumber) ?? ""}
+                          onChange={(event) =>
+                            setLineAmounts((current) => {
+                              const next = new Map(current)
+                              next.set(line.lineNumber, event.currentTarget.value)
+                              return next
+                            })
+                          }
+                          placeholder="0.00"
+                          required
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-right text-sm font-medium">
+                  Total: {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                  }).format(
+                    [...lineAmounts.values()].reduce((total, value) => {
+                      const parsed = Number(value)
+                      return total + (Number.isFinite(parsed) ? parsed : 0)
+                    }, 0)
+                  )}
+                </p>
+              </div>
             )}
             <label className="grid gap-1.5 text-sm font-medium">
               Lead time

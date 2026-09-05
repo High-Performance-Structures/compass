@@ -22,6 +22,8 @@ export type ScheduleScopeKind =
   | "department"
   | "all"
 
+export type ScheduleSelectionMode = "single" | "multiple"
+
 export type ScheduleProjectData = {
   readonly id: string
   readonly name: string
@@ -66,6 +68,74 @@ export type ScheduleScope =
       readonly department: null
     }
 
+export type ScheduleScopeLink =
+  | { readonly scope: "all" }
+  | { readonly scope: "department"; readonly department: string }
+  | { readonly scope: "selected"; readonly projectIds: readonly string[] }
+  | { readonly scope: "project"; readonly projectId: string }
+
+export function scheduleProjectSelection(
+  mode: ScheduleSelectionMode,
+  selectedProjectIds: readonly string[],
+  projectId: string
+): readonly string[] {
+  if (mode === "single") return [projectId]
+  return selectedProjectIds.includes(projectId)
+    ? selectedProjectIds.filter((selectedId) => selectedId !== projectId)
+    : [...selectedProjectIds, projectId]
+}
+
+export function scheduleSelectionModeFor(
+  value: string | null | undefined,
+  scopeKind: ScheduleScopeKind
+): ScheduleSelectionMode {
+  if (value === "multiple") return "multiple"
+  if (value === "single") return "single"
+  return scopeKind === "selected" ? "multiple" : "single"
+}
+
+export function scheduleScopeForSelection(
+  mode: ScheduleSelectionMode,
+  projectIds: readonly string[]
+): ScheduleScope {
+  if (mode === "single" && projectIds[0]) {
+    return {
+      kind: "project",
+      projectIds: [projectIds[0]],
+      department: null,
+    }
+  }
+  return {
+    kind: "selected",
+    projectIds,
+    department: null,
+  }
+}
+
+export function scheduleScopeHref(
+  searchParams: URLSearchParams,
+  next: ScheduleScopeLink,
+  selectionMode: ScheduleSelectionMode
+): string {
+  const params = new URLSearchParams(searchParams.toString())
+  params.set("mode", "projects")
+  params.set("selection", selectionMode)
+  params.set("scope", next.scope)
+  params.delete("department")
+  params.delete("project")
+  params.delete("projects")
+
+  if (next.scope === "department") {
+    params.set("department", next.department)
+  } else if (next.scope === "selected") {
+    params.set("projects", next.projectIds.join(","))
+  } else if (next.scope === "project") {
+    params.set("project", next.projectId)
+  }
+
+  return `/dashboard/schedule?${params.toString()}`
+}
+
 function stableHash(value: string): number {
   let hash = 0
   for (const character of value) {
@@ -98,7 +168,11 @@ export function scheduleScopeLabel(
       return project ? projectScheduleLabel(project) : "Project schedule"
     }
     case "selected":
-      return `${scope.projectIds.length} selected projects`
+      return scope.projectIds.length === 0
+        ? "No projects selected"
+        : `${scope.projectIds.length} selected project${
+            scope.projectIds.length === 1 ? "" : "s"
+          }`
     case "department":
       return `${scope.department} department`
     case "all":

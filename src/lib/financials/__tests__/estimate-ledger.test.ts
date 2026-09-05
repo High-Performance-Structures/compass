@@ -297,11 +297,14 @@ describe("estimate ledger", () => {
           markupRateBasisPoints: 1_000,
           taxable: false,
           taxCode: null,
+          taxName: null,
           taxRateBasisPoints: 0,
+          taxCents: 0,
           lineTotalCents: 110_000,
           ownerVisible: true,
           includeInBuilderFee: true,
           sortOrder: 1,
+          costItems: [],
         },
       ],
       basisDocuments: [
@@ -357,6 +360,26 @@ describe("estimate ledger", () => {
       ...input,
       clientMailingAddress: "PO Box 200\nWoodland Park, CO 80866",
     })
+    const differentTaxPresentation = await estimateSourceHash({
+      ...input,
+      lines: [
+        {
+          ...input.lines[0],
+          taxName: "Denver",
+          costItems: [
+            {
+              id: "cost-item-1",
+              taxCode: "DENVER",
+              taxName: "Denver",
+              taxRateBasisPoints: 881,
+              taxCents: 881,
+              lineTotalCents: 10_881,
+              sortOrder: 1,
+            },
+          ],
+        },
+      ],
+    })
 
     expect(revised).not.toBe(original)
     expect(differentBasis).not.toBe(original)
@@ -364,5 +387,6 @@ describe("estimate ledger", () => {
     expect(differentPresentation).not.toBe(original)
     expect(differentSigner).not.toBe(original)
     expect(differentPreparedForAddress).not.toBe(original)
+    expect(differentTaxPresentation).not.toBe(original)
   })
 })

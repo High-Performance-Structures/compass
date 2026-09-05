@@ -10,7 +10,7 @@ import { getSchedule, getScheduleProjects } from "@/app/actions/schedule"
 import { getBaselines } from "@/app/actions/baselines"
 import type { ProjectListItem } from "@/app/actions/projects"
 import {
-  getProjectTaskAssigneeOptions,
+  getScheduleTaskAssigneeOptions,
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import { ScheduleView } from "@/components/schedule/schedule-view"
@@ -98,7 +98,7 @@ export default async function SchedulePage({
   }
 
   try {
-    const assigneeData = await getProjectTaskAssigneeOptions(id)
+    const assigneeData = await getScheduleTaskAssigneeOptions(id)
     assigneeOptions = [
       ...assigneeData.projectContacts,
       ...assigneeData.directoryContacts,

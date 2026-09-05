@@ -80,6 +80,9 @@ export function ProjectChangeOrderDetail({
                 : `${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`}
             </Badge>
             <Badge variant="secondary">{item.audience}</Badge>
+            {item.budgetTreatment === "baseline_replacement" && (
+              <Badge variant="outline">Baseline replacement</Badge>
+            )}
           </div>
         </div>
       </header>
@@ -91,6 +94,59 @@ export function ProjectChangeOrderDetail({
       />
 
       <section className="grid gap-4 lg:grid-cols-2">
+        {item.budgetTreatment === "baseline_replacement" && (
+          <div className="border-y bg-background p-4">
+            <h2 className="text-sm font-semibold">Linked estimate package</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {item.baselineEstimate
+                ? `${item.baselineEstimate.estimateNumber} v${item.baselineEstimate.versionNumber}`
+                : "Original estimate"}
+              {" → "}
+              {item.replacementEstimate
+                ? `${item.replacementEstimate.estimateNumber} v${item.replacementEstimate.versionNumber}`
+                : "Revised estimate"}
+            </p>
+            <div className="mt-3 grid gap-2">
+              {internal && item.replacementEstimate && (
+                <Link
+                  href={`/dashboard/projects/${encodeURIComponent(item.projectId)}/estimate?estimateId=${encodeURIComponent(item.replacementEstimate.id)}`}
+                  className="flex items-center justify-between gap-3 border px-3 py-2 text-sm hover:bg-muted"
+                >
+                  Open revised estimate workspace
+                  <IconExternalLink className="size-4 shrink-0" />
+                </Link>
+              )}
+              {item.replacementEstimateUrl && (
+                <a
+                  href={item.replacementEstimateUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 border px-3 py-2 text-sm hover:bg-muted"
+                >
+                  Complete revised estimate
+                  <IconExternalLink className="size-4 shrink-0" />
+                </a>
+              )}
+              {item.estimateComparisonUrl && (
+                <a
+                  href={item.estimateComparisonUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 border px-3 py-2 text-sm hover:bg-muted"
+                >
+                  Estimate version comparison
+                  <IconExternalLink className="size-4 shrink-0" />
+                </a>
+              )}
+            </div>
+            {item.rebaselineCompletedAt && (
+              <p className="mt-3 border-l-2 border-l-primary px-3 py-2 text-xs text-muted-foreground">
+                Compass budget rebaselined {formatDate(item.rebaselineCompletedAt)}.
+                The prior estimate and budget remain in revision history.
+              </p>
+            )}
+          </div>
+        )}
         <div className="border-y bg-background p-4">
           <h2 className="text-sm font-semibold">Supporting documents</h2>
           {item.documents.length > 0 ? (
@@ -151,6 +207,8 @@ export function ProjectChangeOrderDetail({
                 <p className="font-medium">
                   {event.eventType === "status_transition"
                     ? `${event.fromStatus ? historyStatusLabel(event.fromStatus) : "Created"} → ${historyStatusLabel(event.toStatus)}`
+                    : event.eventType === "baseline_replaced"
+                      ? "Estimate and budget baseline replaced"
                     : event.eventType === "buildertrend_import"
                       ? <><DeveloperOnly>Imported from Buildertrend</DeveloperOnly><WorkerOnly>Request created</WorkerOnly></>
                     : event.eventType === "created"

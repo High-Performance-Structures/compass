@@ -11,7 +11,6 @@ import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import {
-  isSageWriteApproved,
   parseSageClientStatusId,
   sageClientStatusName,
   sageShortName,
@@ -94,7 +93,6 @@ export async function createCustomer(
     }
     const name = data.name.trim()
     if (!name) return { success: false, error: "Customer name is required." }
-    const approved = await isSageWriteApproved(db, orgId, user.id)
     const operationId = crypto.randomUUID()
     const customerValues = {
       id,
@@ -140,7 +138,7 @@ export async function createCustomer(
         operationType: "ensure_client",
         idempotencyKey: `customer:${id}`,
         payloadJson: JSON.stringify(payload),
-        status: approved ? "queued" : "approval_required",
+        status: "queued",
         requestedAt: now,
         updatedAt: now,
       }),
@@ -150,7 +148,7 @@ export async function createCustomer(
     return {
       success: true,
       id,
-      sageStatus: approved ? "queued" : "approval_required",
+      sageStatus: "queued",
     }
   } catch (err) {
     return {
@@ -314,21 +312,65 @@ export async function updateCustomer(
       data.relationshipType === "lead"
         ? { ...data, relationshipType: "client" }
         : data
-    await db.batch([
-      db
-        .update(customers)
-        .set({ ...safeData, updatedAt })
-        .where(and(eq(customers.id, id), eq(customers.organizationId, orgId))),
-      db
-        .update(projectContacts)
-        .set({ ...nextIdentity, updatedAt })
-        .where(
-          and(
-            eq(projectContacts.sourceEntityType, "customer"),
-            eq(projectContacts.sourceEntityId, id)
-          )
-        ),
-    ])
+    const normalizedExistingEmail = existing.email?.trim() || null
+    const normalizedNextEmail =
+      safeData.email === undefined
+        ? normalizedExistingEmail
+        : safeData.email?.trim() || null
+    const shouldQueueSageEmailUpdate =
+      normalizedExistingEmail === null &&
+      normalizedNextEmail !== null &&
+      Boolean(existing.sageClientId) &&
+      Boolean(existing.sageClientNumber)
+    const customerUpdate = db
+      .update(customers)
+      .set({ ...safeData, email: normalizedNextEmail, updatedAt })
+      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
+    const projectContactUpdate = db
+      .update(projectContacts)
+      .set({ ...nextIdentity, email: normalizedNextEmail, updatedAt })
+      .where(
+        and(
+          eq(projectContacts.sourceEntityType, "customer"),
+          eq(projectContacts.sourceEntityId, id)
+        )
+      )
+
+    if (shouldQueueSageEmailUpdate) {
+      const operationId = crypto.randomUUID()
+      const payload = {
+        operationType: "update_client_email" as const,
+        company: "High Performance Structures Inc" as const,
+        client: {
+          compassCustomerId: id,
+          sageClientId: existing.sageClientId,
+          sageClientNumber: existing.sageClientNumber,
+          email: normalizedNextEmail,
+        },
+      }
+      await db.batch([
+        customerUpdate,
+        projectContactUpdate,
+        db.insert(sageClientProjectWriteOperations).values({
+          id: operationId,
+          organizationId: orgId,
+          customerId: id,
+          projectId: null,
+          requestedByUserId: user.id,
+          operationType: "update_client_email",
+          // A Sage client can only transition from a blank email once. Keeping
+          // this key stable prevents concurrent blank-to-known edits from
+          // enqueueing competing writes for the same client.
+          idempotencyKey: `customer:${id}:email-fill`,
+          payloadJson: JSON.stringify(payload),
+          status: "queued",
+          requestedAt: updatedAt,
+          updatedAt,
+        }),
+      ])
+    } else {
+      await db.batch([customerUpdate, projectContactUpdate])
+    }
 
     revalidatePath("/dashboard/customers")
     revalidatePath("/dashboard/contacts")

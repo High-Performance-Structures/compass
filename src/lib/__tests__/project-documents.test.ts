@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest"
 import {
   driveFileIdFromValue,
   isProjectDocumentCategory,
+  isPublishableProjectDocumentMimeType,
   isPublishedProjectDocumentStatus,
+  normalizeProjectDocumentMetadata,
+  projectDocumentTitleFromFileName,
 } from "@/lib/project-documents"
 
 describe("project documents", () => {
@@ -27,5 +30,72 @@ describe("project documents", () => {
     expect(isPublishedProjectDocumentStatus("superseded")).toBe(true)
     expect(isPublishedProjectDocumentStatus("draft")).toBe(false)
     expect(isPublishedProjectDocumentStatus("archived")).toBe(false)
+  })
+
+  it("accepts downloadable folder contents and rejects unsupported Google-native items", () => {
+    expect(isPublishableProjectDocumentMimeType("application/pdf")).toBe(true)
+    expect(
+      isPublishableProjectDocumentMimeType("application/vnd.google-apps.document")
+    ).toBe(true)
+    expect(
+      isPublishableProjectDocumentMimeType("application/vnd.google-apps.form")
+    ).toBe(false)
+    expect(
+      isPublishableProjectDocumentMimeType("application/vnd.google-apps.folder")
+    ).toBe(false)
+  })
+
+  it("uses the Drive file name as a clean bulk-publication title", () => {
+    expect(projectDocumentTitleFromFileName("Interior Specifications.pdf")).toBe(
+      "Interior Specifications"
+    )
+    expect(projectDocumentTitleFromFileName("Finish Schedule")).toBe(
+      "Finish Schedule"
+    )
+  })
+
+  it("normalizes editable Compass document information", () => {
+    expect(
+      normalizeProjectDocumentMetadata({
+        category: " specifications ",
+        title: " Interior selections ",
+        description: " Finish schedule ",
+        documentDate: "2026-09-03",
+        revision: " Rev 2 ",
+      })
+    ).toEqual({
+      success: true,
+      value: {
+        category: "specifications",
+        title: "Interior selections",
+        description: "Finish schedule",
+        documentDate: "2026-09-03",
+        revision: "Rev 2",
+      },
+    })
+  })
+
+  it("rejects invalid editable document information", () => {
+    expect(
+      normalizeProjectDocumentMetadata({
+        category: "internal_pricing",
+        title: "Selections",
+        description: null,
+        documentDate: null,
+        revision: null,
+      })
+    ).toEqual({
+      success: false,
+      error: "Choose a supported construction-document category.",
+    })
+    expect(
+      normalizeProjectDocumentMetadata({
+        category: "specifications",
+        title: "  ",
+        description: null,
+        documentDate: null,
+        revision: null,
+      })
+    ).toEqual({ success: false, error: "Display title is required." })
   })
 })

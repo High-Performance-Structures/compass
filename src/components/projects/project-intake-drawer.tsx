@@ -139,9 +139,7 @@ export function ProjectIntakeDrawer({
         else {
           toast.success(
             developerModeEnabled
-              ? result.sageStatus === "queued"
-                ? `${result.projectNumber} created; the Sage client/job write is queued.`
-                : `${result.projectNumber} created in Compass; the Sage write requires an approved user.`
+              ? `${result.projectNumber} created; the Sage client/job write is queued.`
               : `${result.projectNumber} created.`
           )
         }

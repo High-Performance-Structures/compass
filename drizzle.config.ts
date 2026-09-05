@@ -2,6 +2,8 @@ import { defineConfig } from "drizzle-kit"
 
 export default defineConfig({
   schema: [
+    "./src/db/schema-correspondence.ts",
+    "./src/db/schema-correspondence-email.ts",
     "./src/db/schema.ts",
     "./src/db/schema-netsuite.ts",
     "./src/db/schema-plugins.ts",
@@ -18,6 +20,7 @@ export default defineConfig({
     "./src/db/schema-nutech.ts",
     "./src/db/schema-templates.ts",
     "./src/db/schema-social.ts",
+    "./src/db/schema-rfqs.ts",
     "./src/lib/sync/schema.ts",
   ],
   out: "./drizzle",

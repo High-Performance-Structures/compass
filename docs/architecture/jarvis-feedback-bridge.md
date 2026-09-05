@@ -275,8 +275,12 @@ Confirmed bugs that an administrator moves into `triaged` also enqueue one
 private Hermes/Kanban runtime: it contains only the Feedback Desk item's opaque
 ID, the `CFD-<UUID>` reference, and the fixed `bug` kind. It never contains the
 request title, description, reporter, source ID, channel, thread, or metadata.
-The event's idempotency key is `feedback-delivery-graph:<item-id>`, so a
-maintenance retry or repeated status callback cannot create a second graph.
+The event's stable graph idempotency key is
+`feedback-delivery-graph:<item-id>`, so a maintenance retry or repeated status
+callback cannot create a second graph. Each Kanban stage creation then uses its
+own distinct stable key, `feedback-delivery:<item-id>:<stage>` for
+`implementation`, `review`, or `release`; retries reuse the stage key without
+colliding the three intentional task creations.
 The private runtime creates the implementation, independent-review, and
 release-steward tasks through its normal Kanban tools, then attaches all three
 task IDs to the protected Feedback Desk record with a signed callback. A
@@ -292,17 +296,32 @@ terminal failure remains visible in the protected operations health and
 Feedback Desk records. Features never enqueue this event and remain blocked by
 the persisted leadership priority decision.
 
-Both private relay services post a signed heartbeat to
+The implementation task is the parent of the review task, and the review task
+is the parent of the release-steward task. The signed lifecycle callback uses
+its own stable `delivery-graph-attach:<item-id>` idempotency key. Replaying that
+callback after an ambiguous response therefore adopts the existing attachment
+without reusing the graph-level event key or any of the three stage-creation
+keys.
+
+All private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
 Feedback Desk shows heartbeat age, last failure, and pending/processing/failed
-bridge counts. A missing heartbeat is an operational failure even when the
-process manager still reports the service as running.
+bridge counts. The delivery consumer reports `degraded` when any claimed event
+fails or is returned for retry, so a healthy process cannot mask per-event
+failures. A missing heartbeat is an operational failure even when the process
+manager still reports the service as running.
 
 ### Acknowledge an event
 
 ```text
 POST /api/integrations/jarvis/events/<event-id>/ack
 ```
+
+The pull response includes an opaque `claimToken` for each claimed event. A
+`feedback.delivery_requested` acknowledgement must echo that token; the server
+fences the terminal update to the active claim so an expired worker cannot
+complete a replacement worker's event. Completed acknowledgements remain
+idempotent after the worker loses its response.
 
 Completed:
 

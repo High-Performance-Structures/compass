@@ -42,7 +42,14 @@ function visibilityLabel(contact: ProjectContactItem): string {
   const labels = []
   if (contact.ownerPortalVisible) labels.push("Owner")
   if (contact.subVendorPortalVisible) labels.push("Sub/vendor")
-  if (contact.internalVisible) labels.push("Internal")
+  // Internal visibility is an audience flag, not a second role. Showing it
+  // on owner/vendor cards made external contacts appear to be internal users.
+  if (
+    contact.contactType === "internal" &&
+    contact.internalVisible
+  ) {
+    labels.push("Internal")
+  }
   return labels.join(" · ") || "Hidden"
 }
 
@@ -79,13 +86,24 @@ function accessStatusLabel(contact: ProjectContactItem): string {
     case "inactive":
       return "Inactive"
     case "not_invited":
-      return "Not invited"
+      return contact.compassAccountStatus === "active"
+        ? "No project access"
+        : contact.compassAccountStatus === "inactive"
+          ? "Account inactive"
+          : "Not invited"
   }
 }
 
 function accessStatusBadgeVariant(
   contact: ProjectContactItem
 ): "default" | "secondary" | "destructive" | "outline" {
+  if (
+    contact.accessStatus === "not_invited" &&
+    contact.compassAccountStatus === "inactive"
+  ) {
+    return "destructive"
+  }
+
   switch (contact.accessStatus) {
     case "active":
       return "default"
@@ -189,6 +207,7 @@ function ContactCard({
         contact.active &&
         contact.email &&
         !isCompanyOnlyVendor(contact) &&
+        contact.compassAccountStatus !== "inactive" &&
         projectContactCanInvite(contact.accessStatus) && (
           <div className="mt-3 flex justify-end">
             <ProjectContactInviteButton
@@ -198,6 +217,7 @@ function ContactCard({
               contactName={contact.displayName}
               contactEmail={contact.email}
               contactType={contact.contactType}
+              compassAccountStatus={contact.compassAccountStatus}
             />
           </div>
         )}
@@ -400,3 +420,4 @@ export function ProjectContactsDirectory({
     </div>
   )
 }
+
