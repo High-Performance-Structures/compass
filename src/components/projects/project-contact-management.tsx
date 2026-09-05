@@ -433,6 +433,7 @@ export function ProjectContactEditor({
       ? (contact?.identityManagedByActiveUser ?? false)
       : (selectedVendorContact?.identityManagedByActiveUser ??
         selectedDirectory?.identityManagedByActiveUser ??
+        contact?.identityManagedByActiveUser ??
         false)
   const identityReadOnly = selectedDirectory !== null || identityManagedByActiveUser
 
