@@ -28,6 +28,8 @@ import {
   type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
 import { getProjects } from "@/app/actions/projects"
+import { getProjectHistoricalRfqWorkspace } from "@/app/actions/project-historical-rfq-history"
+import { ProjectHistoricalRfqList } from "@/components/projects/project-historical-rfq-list"
 import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-form"
 import { ProjectRfqBidActions } from "@/components/projects/project-rfq-bid-actions"
 import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
@@ -40,6 +42,7 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
@@ -435,6 +438,7 @@ export default async function ProjectRfqsPage({
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
     readonly status?: string | readonly string[]
+    readonly historyAfter?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
@@ -444,7 +448,11 @@ export default async function ProjectRfqsPage({
     ? query.created[0] ?? null
     : query.created ?? null
   const statusFilter = parseProjectOperationStatusFilter(query.status)
+  const historyCursor = typeof query.historyAfter === "string"
+    ? query.historyAfter : query.historyAfter?.[0] ?? null
   const currentUser = await getCurrentUser()
+  const showInternalHistory = currentUser?.isActive && currentUser.organizationType === "internal"
+    && isInternalStaffRole(currentUser.role)
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
   )
@@ -455,6 +463,7 @@ export default async function ProjectRfqsPage({
     selectionsSummary,
     selectionOptions,
     bidWorkspace,
+    historicalWorkspace,
   ] = await Promise.all([
     getProjects(),
     getProjectRfqs(id),
@@ -462,6 +471,7 @@ export default async function ProjectRfqsPage({
     getProjectSelections(id),
     getProjectSelectionOptions(id),
     getProjectRfqBidWorkspace(id),
+    showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -604,6 +614,9 @@ export default async function ProjectRfqsPage({
           </div>
         )}
       </section>
+      {historicalWorkspace && (
+        <ProjectHistoricalRfqList workspace={historicalWorkspace} statusFilter={statusFilter} />
+      )}
     </div>
   )
 }
