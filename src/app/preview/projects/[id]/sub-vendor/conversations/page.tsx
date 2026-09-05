@@ -7,16 +7,24 @@ import { ProjectAudienceWorkspaceRoute } from "@/components/projects/project-aud
 
 export default async function PartnerConversationsPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{ readonly quickAdd?: string | readonly string[] }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
+  const query = await searchParams
   const id = await requireProjectRouteId(rawProjectId)
   return (
     <ProjectAudienceWorkspaceRoute
       projectId={id}
       audience="sub_vendor"
       section="conversations"
+      initialNewMessage={singleQueryValue(query.quickAdd) === "message"}
     />
   )
+}
+
+function singleQueryValue(value: string | readonly string[] | undefined): string | undefined {
+  return typeof value === "string" ? value : value?.[0]
 }

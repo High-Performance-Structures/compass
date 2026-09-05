@@ -18,10 +18,14 @@ function hasDigest(error: unknown): error is { readonly digest: string } {
 
 export default async function ProjectDailyLogsPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{
+    readonly quickAdd?: string | readonly string[]
+  }>
 }): Promise<React.ReactElement> {
-  const { id: rawProjectId } = await params
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
   let workspace: Awaited<ReturnType<typeof getProjectDailyLogWorkspace>>
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
@@ -48,6 +52,11 @@ export default async function ProjectDailyLogsPage({
     <ProjectDailyLogWorkspace
       workspace={workspace}
       assigneeOptions={assigneeOptions}
+      initialShowNewLog={
+        (typeof query.quickAdd === "string"
+          ? query.quickAdd
+          : query.quickAdd?.[0]) === "daily-log"
+      }
     />
   )
 }

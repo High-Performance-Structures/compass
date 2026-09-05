@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import type { ProjectAudienceMessageRecipient } from "@/lib/project-audience-direct-message"
 
 type SubmitState =
@@ -49,6 +50,10 @@ export function ProjectAudienceRfiCreateDialog({
     recipients[0]?.userId ?? ""
   )
   const [state, setState] = React.useState<SubmitState>({ kind: "idle" })
+
+  useQuickAddEntry("rfi", () => {
+    setOpen(true)
+  })
 
   function reset(): void {
     setSubject("")

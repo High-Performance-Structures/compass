@@ -392,15 +392,17 @@ function MessageChannelRow({
 
 async function AudienceConversationSection({
   data,
+  initialNewMessage = false,
 }: {
   readonly data: ProjectAudiencePreviewData
+  readonly initialNewMessage?: boolean
 }): Promise<React.ReactElement> {
   const { env } = await getCloudflareContext()
   if (isCorrespondenceEnabled(data.project.id, env) || isCorrespondenceEnabled(data.project.id)) {
     const inbox = await getCorrespondenceInbox(data.project.id)
     return <section id="messages" className="min-w-0">
       {data.viewerIsInternal && <p className="mb-3 text-sm text-muted-foreground">This is your staff inbox. A participant's historical access must be reviewed separately before activation.</p>}
-      {inbox.success ? <ProjectCorrespondenceWorkspace projectId={data.project.id} initialInbox={inbox.data} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
+      {inbox.success ? <ProjectCorrespondenceWorkspace projectId={data.project.id} initialInbox={inbox.data} initialNewMessage={initialNewMessage} /> : <p className="p-4 text-sm">Messages are unavailable. {inbox.error}</p>}
       {data.messageChannels.length > 0 && <details className="mt-4 border-t pt-3"><summary className="cursor-pointer text-sm">Earlier Compass conversations</summary><div className="mt-3 grid gap-3">{data.messageChannels.map((channel) => <MessageChannelRow key={channel.id} channel={channel} projectId={data.project.id} audience={data.audience} />)}</div></details>}
     </section>
   }
@@ -566,9 +568,11 @@ function OwnerUpdateCard({
 function OwnerProjectPreview({
   data,
   section,
+  initialNewMessage,
 }: {
   readonly data: ProjectAudiencePreviewData
   readonly section: ProjectAudienceWorkspaceSection
+  readonly initialNewMessage: boolean
 }): React.ReactElement {
   return (
     <main className="min-h-screen bg-background">
@@ -632,7 +636,7 @@ function OwnerProjectPreview({
         )}
 
         {section === "conversations" && (
-        <AudienceConversationSection data={data} />
+        <AudienceConversationSection data={data} initialNewMessage={initialNewMessage} />
         )}
 
         {section === "photos" && (
@@ -659,9 +663,11 @@ function OwnerProjectPreview({
 export function ProjectAudiencePreview({
   data,
   section = "overview",
+  initialNewMessage = false,
 }: {
   readonly data: ProjectAudiencePreviewData
   readonly section?: ProjectAudienceWorkspaceSection
+  readonly initialNewMessage?: boolean
 }): React.ReactElement {
   const isOwner = data.audience === "owner"
   const messageShortcut = projectAudienceMessageShortcut({
@@ -705,7 +711,7 @@ export function ProjectAudiencePreview({
         activeSection={section}
         warrantyEnabled={data.project.warrantyEnabled}
       >
-        <OwnerProjectPreview data={data} section={section} />
+        <OwnerProjectPreview data={data} section={section} initialNewMessage={initialNewMessage} />
       </ProjectAudiencePreviewShell>
     )
   }
@@ -867,7 +873,7 @@ export function ProjectAudiencePreview({
         )}
 
         {section === "conversations" && (
-          <AudienceConversationSection data={data} />
+          <AudienceConversationSection data={data} initialNewMessage={initialNewMessage} />
         )}
 
         {section === "photos" && (
