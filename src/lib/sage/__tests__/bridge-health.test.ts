@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   isSageBridgeHeartbeatOnline,
+  recoveredSageBridgeRecipientIds,
   SAGE_BRIDGE_HEARTBEAT_MAX_AGE_MILLISECONDS,
 } from "@/lib/sage/bridge-health"
 
@@ -29,5 +30,45 @@ describe("Sage bridge heartbeat health", () => {
     expect(
       isSageBridgeHeartbeatOnline(new Date(now + 1).toISOString(), now)
     ).toBe(false)
+  })
+
+  it("selects only active incident recipients for recovered bridge IDs", () => {
+    expect(
+      recoveredSageBridgeRecipientIds(
+        [
+          {
+            recipientId: "client-recipient",
+            sourceId: "client-project-writer:2026-09-05T12:30:49.652Z",
+          },
+          {
+            recipientId: "pay-recipient",
+            sourceId: "pay-application-poller:2026-09-05T12:30:49.029Z",
+          },
+          { recipientId: "unrelated", sourceId: "another-service:outage" },
+          { recipientId: "missing-source", sourceId: null },
+        ],
+        [
+          {
+            id: "client-project-writer",
+            lastSeenAt: "2026-09-05T14:07:21.635Z",
+          },
+        ]
+      )
+    ).toEqual(["client-recipient"])
+  })
+
+  it("does not resolve an incident without a strictly newer heartbeat", () => {
+    const sourceId = "client-project-writer:2026-09-05T14:07:21.635Z"
+    expect(
+      recoveredSageBridgeRecipientIds(
+        [{ recipientId: "same-heartbeat", sourceId }],
+        [
+          {
+            id: "client-project-writer",
+            lastSeenAt: "2026-09-05T14:07:21.635Z",
+          },
+        ]
+      )
+    ).toEqual([])
   })
 })
