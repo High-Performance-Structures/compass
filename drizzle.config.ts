@@ -2,6 +2,7 @@ import { defineConfig } from "drizzle-kit"
 
 export default defineConfig({
   schema: [
+    "./src/db/schema-selection-decisions.ts",
     "./src/db/schema-correspondence.ts",
     "./src/db/schema-correspondence-email.ts",
     "./src/db/schema.ts",

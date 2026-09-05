@@ -1,4 +1,5 @@
 import type * as React from "react"
+import type { SelectionDashboardSummary } from "@/lib/selections/dashboard"
 import Link from "next/link"
 import {
   IconArrowRight,
@@ -69,11 +70,13 @@ export function ProjectAudienceDashboardView({
   messageShortcut,
   today,
   greeting,
+  selectionSummary = { kind: "unavailable" },
 }: {
   readonly data: ProjectAudiencePreview
   readonly financials: AudienceDashboardFinancials
   readonly messageShortcut: ProjectAudienceMessageShortcut | null
   readonly today: string
+  readonly selectionSummary?: SelectionDashboardSummary
   readonly greeting: string
 }): React.ReactElement {
   const owner = data.audience === "owner"
@@ -101,6 +104,11 @@ export function ProjectAudienceDashboardView({
     readonly section: ProjectAudienceWorkspaceSection
     readonly icon: React.ReactElement
   }[] = [
+    {
+      label: owner ? "Selections & Decisions" : "Approved selections",
+      section: "selections",
+      icon: <IconFileText className="size-4" />,
+    },
     ...(owner
       ? ([
           {
@@ -359,43 +367,91 @@ export function ProjectAudienceDashboardView({
         </div>
 
         <div className="grid gap-5 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,0.85fr)]">
-          <section aria-label="Your priorities">
-            <h2 className="text-sm font-semibold">Your priorities</h2>
-            <p className="mt-1 mb-4 text-xs text-muted-foreground">
-              Responses and reviews needing your attention
-            </p>
-            {model.priorities.length === 0 ? (
-              <p className="border-t py-5 text-sm text-muted-foreground">
-                No pending responses in the available project records.
+          <div>
+            {owner && (
+              <section
+                aria-label="Selection decisions"
+                className="mb-6 border-b pb-5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold">
+                    Selections & Decisions
+                  </h2>
+                  <Link
+                    href={href("selections")}
+                    className="text-xs text-primary"
+                  >
+                    All selections →
+                  </Link>
+                </div>
+                {selectionSummary.kind === "available" ? (
+                  <>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {selectionSummary.awaitingApproval} ready for your
+                      approval · {selectionSummary.awaitingTeam} awaiting team
+                      response
+                    </p>
+                    {selectionSummary.items.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`${href("selections")}#selection-${encodeURIComponent(item.id)}`}
+                        className="mt-3 flex justify-between gap-3 text-sm"
+                      >
+                        <span>
+                          {item.roomName} · {item.name}
+                        </span>
+                        <span className="text-xs text-primary">
+                          {item.dueDate ?? "Review"}
+                        </span>
+                      </Link>
+                    ))}
+                  </>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Selection counts are unavailable. Open selections to review
+                    your decisions.
+                  </p>
+                )}
+              </section>
+            )}
+            <section aria-label="Your priorities">
+              <h2 className="text-sm font-semibold">Your priorities</h2>
+              <p className="mt-1 mb-4 text-xs text-muted-foreground">
+                Responses and reviews needing your attention
               </p>
-            ) : (
-              model.priorities
-                .slice(0, 6)
-                .map((item) => (
-                  <PriorityRow key={item.id} item={item} today={today} />
-                ))
-            )}
-            {model.priorities.length > 6 && (
-              <details className="border-t">
-                <summary className="cursor-pointer py-3 text-xs text-primary">
-                  Show {model.priorities.length - 6} more responses
-                </summary>
-                {model.priorities.slice(6).map((item) => (
-                  <PriorityRow key={item.id} item={item} today={today} />
-                ))}
-              </details>
-            )}
-            {model.recent.length > 0 && (
-              <>
-                <h3 className="mt-5 mb-3 text-xs font-medium text-muted-foreground">
-                  Keep up with your project
-                </h3>
-                {model.recent.map((item) => (
-                  <PriorityRow key={item.id} item={item} today={today} />
-                ))}
-              </>
-            )}
-          </section>
+              {model.priorities.length === 0 ? (
+                <p className="border-t py-5 text-sm text-muted-foreground">
+                  No pending responses in the available project records.
+                </p>
+              ) : (
+                model.priorities
+                  .slice(0, 6)
+                  .map((item) => (
+                    <PriorityRow key={item.id} item={item} today={today} />
+                  ))
+              )}
+              {model.priorities.length > 6 && (
+                <details className="border-t">
+                  <summary className="cursor-pointer py-3 text-xs text-primary">
+                    Show {model.priorities.length - 6} more responses
+                  </summary>
+                  {model.priorities.slice(6).map((item) => (
+                    <PriorityRow key={item.id} item={item} today={today} />
+                  ))}
+                </details>
+              )}
+              {model.recent.length > 0 && (
+                <>
+                  <h3 className="mt-5 mb-3 text-xs font-medium text-muted-foreground">
+                    Keep up with your project
+                  </h3>
+                  {model.recent.map((item) => (
+                    <PriorityRow key={item.id} item={item} today={today} />
+                  ))}
+                </>
+              )}
+            </section>
+          </div>
 
           <section
             className="lg:border-l lg:pl-5"
