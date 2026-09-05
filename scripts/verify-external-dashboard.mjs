@@ -72,6 +72,11 @@ const image = photoMatch
   : await readFile(path.join(root, "public/department-logos/hps-h-green.svg"))
 const server = createServer(async (request, response) => {
   const url = request.url ?? "/"
+  if (url === "/images/dashboard/custom-home-inspiration.webp") {
+    response.setHeader("Content-Type", "image/webp")
+    response.end(await readFile(path.join(root, "public", url)))
+    return
+  }
   if (url.startsWith("/api/projects/")) {
     response.setHeader(
       "Content-Type",
@@ -223,25 +228,31 @@ try {
     0
   )
   await page.getByText(/Some summaries could not be loaded/).waitFor()
+  await page.waitForFunction(() => {
+    const placeholder = document.querySelector(
+      'img[src="/images/dashboard/custom-home-inspiration.webp"]'
+    )
+    return (
+      placeholder instanceof HTMLImageElement &&
+      placeholder.complete &&
+      placeholder.naturalWidth > 0
+    )
+  })
   if (process.env.DASHBOARD_SCREENSHOTS) {
     await page.setViewportSize({ width: 1560, height: 1100 })
-    await page
-      .locator('[aria-label="Project greeting"]')
-      .screenshot({
-        path: path.join(
-          process.env.DASHBOARD_SCREENSHOTS,
-          "implemented-empty-photo-light.png"
-        ),
-      })
+    await page.locator('[aria-label="Project greeting"]').screenshot({
+      path: path.join(
+        process.env.DASHBOARD_SCREENSHOTS,
+        "implemented-empty-photo-light.png"
+      ),
+    })
     await page.locator('button[aria-label="Toggle theme"]:visible').click()
-    await page
-      .locator('[aria-label="Project greeting"]')
-      .screenshot({
-        path: path.join(
-          process.env.DASHBOARD_SCREENSHOTS,
-          "implemented-empty-photo-dark.png"
-        ),
-      })
+    await page.locator('[aria-label="Project greeting"]').screenshot({
+      path: path.join(
+        process.env.DASHBOARD_SCREENSHOTS,
+        "implemented-empty-photo-dark.png"
+      ),
+    })
   }
   await page.goto(`${origin}/?single=1`)
   await page.getByRole("heading", { name: "Good morning, Alex" }).waitFor()
@@ -255,7 +266,7 @@ try {
   await page.goto(origin)
   await page
     .getByRole("img", {
-      name: "Architectural illustration of a home under construction",
+      name: "Custom-home inspiration: a sunlit limestone and oak entry courtyard",
     })
     .waitFor()
   assert.equal(

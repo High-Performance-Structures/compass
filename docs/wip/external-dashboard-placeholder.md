@@ -1,0 +1,9 @@
+# Custom-home dashboard placeholder
+
+Asset: `public/images/dashboard/custom-home-inspiration.webp`.
+
+Created with the built-in Imagegen tool. The generated portrait was resized to 768 × 1152 and encoded as WebP for dashboard delivery. It depicts a fictional custom-home entry courtyard and is labeled “Custom-home inspiration” in the UI. It replaces missing or unavailable project photos for both audiences, with the same theme-aware fade into the greeting.
+
+## Final generation prompt
+
+Create a single photorealistic editorial architectural photograph for a high-end custom home builder's project-dashboard placeholder. Portrait composition, 2:3 aspect ratio, designed to remain beautiful cropped into a narrow left-side dashboard panel. A quietly spectacular mountain-modern custom home courtyard: sculptural pale limestone walls, tall warm oak entry door recessed under a deep timber soffit, a slender bronze-framed glass wall glowing with warm interior light, a single artful multi-stem tree, restrained ornamental grasses and large natural stone paving. A glimpse of hazy mountain landscape beyond. Sophisticated bespoke residential architecture, exceptional craftsmanship, authentic natural materials and subtle weathering, intimate human scale rather than a huge mansion. Creative composition with layered planes and a beautiful late-afternoon shaft of sunlight; warm cream, muted forest green, bronze and honey-colored wood. Architectural Digest caliber, realistic perspective and construction, premium editorial photography, calm, welcoming, refined. Focus the doorway and tree around the left-center; the far right edge should be quiet pale sunlit stone so the UI can fade that edge into a greeting. Full bleed image, no borders, no collage, no text, no logos, no watermarks, no people, no vehicles, no swimming pool. This is a standardized aspirational image, not a depiction of a real client's project.
