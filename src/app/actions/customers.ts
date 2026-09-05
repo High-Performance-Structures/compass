@@ -11,7 +11,6 @@ import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import {
-  isSageWriteApproved,
   parseSageClientStatusId,
   sageClientStatusName,
   sageShortName,
@@ -94,7 +93,6 @@ export async function createCustomer(
     }
     const name = data.name.trim()
     if (!name) return { success: false, error: "Customer name is required." }
-    const approved = await isSageWriteApproved(db, orgId, user.id)
     const operationId = crypto.randomUUID()
     const customerValues = {
       id,
@@ -140,7 +138,7 @@ export async function createCustomer(
         operationType: "ensure_client",
         idempotencyKey: `customer:${id}`,
         payloadJson: JSON.stringify(payload),
-        status: approved ? "queued" : "approval_required",
+        status: "queued",
         requestedAt: now,
         updatedAt: now,
       }),
@@ -150,7 +148,7 @@ export async function createCustomer(
     return {
       success: true,
       id,
-      sageStatus: approved ? "queued" : "approval_required",
+      sageStatus: "queued",
     }
   } catch (err) {
     return {

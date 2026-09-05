@@ -34,6 +34,10 @@ import {
   updateCreditMemo,
   deleteCreditMemo,
 } from "@/app/actions/credit-memos"
+import {
+  getSageSquareReceipts,
+  type SquareReceiptListItem,
+} from "@/app/actions/sage-square-receipts"
 
 import type { Customer, Vendor } from "@/db/schema"
 import type {
@@ -52,6 +56,7 @@ import { VendorBillsTable } from "@/components/financials/vendor-bills-table"
 import { VendorBillDialog } from "@/components/financials/vendor-bill-dialog"
 import { PaymentsTable } from "@/components/financials/payments-table"
 import { PaymentDialog } from "@/components/financials/payment-dialog"
+import { SquareReceiptsTable } from "@/components/financials/square-receipts-table"
 import { CreditMemosTable } from "@/components/financials/credit-memos-table"
 import { CreditMemoDialog } from "@/components/financials/credit-memo-dialog"
 
@@ -83,6 +88,7 @@ function FinancialsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const initialTab = (searchParams.get("tab") as Tab) || "invoices"
+  const selectedSquareReceipt = searchParams.get("squareReceipt")
 
   const [tab, setTab] = React.useState<Tab>(initialTab)
   const [loading, setLoading] = React.useState(true)
@@ -94,6 +100,9 @@ function FinancialsContent() {
   const [invoicesList, setInvoicesList] = React.useState<Invoice[]>([])
   const [billsList, setBillsList] = React.useState<VendorBill[]>([])
   const [paymentsList, setPaymentsList] = React.useState<Payment[]>([])
+  const [squareReceipts, setSquareReceipts] = React.useState<
+    SquareReceiptListItem[]
+  >([])
   const [memosList, setMemosList] = React.useState<CreditMemo[]>([])
 
   const [invoiceDialogOpen, setInvoiceDialogOpen] = React.useState(false)
@@ -114,7 +123,7 @@ function FinancialsContent() {
 
   const loadAll = async () => {
     try {
-      const [c, v, p, inv, bills, pay, cm] = await Promise.all([
+      const [c, v, p, inv, bills, pay, cm, receipts] = await Promise.all([
         getCustomers(),
         getVendors(),
         getProjects(),
@@ -122,6 +131,7 @@ function FinancialsContent() {
         getVendorBills(),
         getPayments(),
         getCreditMemos(),
+        getSageSquareReceipts(),
       ])
       setCustomersList(c)
       setVendorsList(v)
@@ -130,6 +140,7 @@ function FinancialsContent() {
       setBillsList(bills)
       setPaymentsList(pay)
       setMemosList(cm)
+      setSquareReceipts(receipts)
     } catch {
       toast.error("Failed to load financial data")
     } finally {
@@ -138,6 +149,16 @@ function FinancialsContent() {
   }
 
   React.useEffect(() => { loadAll() }, [])
+
+  React.useEffect(() => {
+    if (tab !== "payments") return
+    const refresh = window.setInterval(() => {
+      void getSageSquareReceipts()
+        .then(setSquareReceipts)
+        .catch(() => undefined)
+    }, 15_000)
+    return () => window.clearInterval(refresh)
+  }, [tab])
 
   const openInvoice = React.useCallback(() => {
     setEditingInvoice(null)
@@ -403,17 +424,23 @@ function FinancialsContent() {
           </TabsContent>
 
           <TabsContent value="payments" className="mt-4">
-            <PaymentsTable
-              payments={paymentsList}
-              customerMap={customerMap}
-              vendorMap={vendorMap}
-              projectMap={projectMap}
-              onEdit={(pay) => {
-                setEditingPayment(pay)
-                setPaymentDialogOpen(true)
-              }}
-              onDelete={handleDeletePayment}
-            />
+            <div className="space-y-4">
+              <SquareReceiptsTable
+                receipts={squareReceipts}
+                selectedReceiptId={selectedSquareReceipt}
+              />
+              <PaymentsTable
+                payments={paymentsList}
+                customerMap={customerMap}
+                vendorMap={vendorMap}
+                projectMap={projectMap}
+                onEdit={(pay) => {
+                  setEditingPayment(pay)
+                  setPaymentDialogOpen(true)
+                }}
+                onDelete={handleDeletePayment}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="credit-memos" className="mt-4">

@@ -20,6 +20,10 @@ type TestDatabaseModule = {
   readonly Database: TestDatabaseConstructor
 }
 
+type NodeTestDatabaseModule = {
+  readonly DatabaseSync: TestDatabaseConstructor
+}
+
 function isTestDatabaseModule(value: unknown): value is TestDatabaseModule {
   return (
     value !== null &&
@@ -29,13 +33,33 @@ function isTestDatabaseModule(value: unknown): value is TestDatabaseModule {
   )
 }
 
+function isNodeTestDatabaseModule(
+  value: unknown
+): value is NodeTestDatabaseModule {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "DatabaseSync" in value &&
+    typeof value.DatabaseSync === "function"
+  )
+}
+
 async function openDatabase(): Promise<TestDatabase> {
-  const bunSqliteSpecifier = "bun:sqlite"
-  const sqliteModule: unknown = await import(bunSqliteSpecifier)
-  if (!isTestDatabaseModule(sqliteModule)) {
-    throw new Error("bun:sqlite did not provide a Database constructor")
+  if ("Bun" in globalThis) {
+    const sqliteSpecifier = "bun:sqlite"
+    const sqliteModule: unknown = await import(sqliteSpecifier)
+    if (!isTestDatabaseModule(sqliteModule)) {
+      throw new Error("bun:sqlite did not provide a Database constructor")
+    }
+    return new sqliteModule.Database(":memory:")
   }
-  return new sqliteModule.Database(":memory:")
+
+  const sqliteSpecifier = "node:sqlite"
+  const sqliteModule: unknown = await import(sqliteSpecifier)
+  if (!isNodeTestDatabaseModule(sqliteModule)) {
+    throw new Error("node:sqlite did not provide a DatabaseSync constructor")
+  }
+  return new sqliteModule.DatabaseSync(":memory:")
 }
 
 describe("preconstruction estimate rebaseline persistence", () => {

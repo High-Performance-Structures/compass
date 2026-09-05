@@ -10,6 +10,8 @@ import {
 } from "@/lib/sage/bridge-auth"
 import {
   isSageSquareWriterOperation,
+  hydrateLegacySageSquarePaymentScopes,
+  sageSquareOrganizationId,
   sageSquarePaymentResultSchema,
   sageSquareWritesEnabled,
 } from "@/lib/sage/square-payment"
@@ -90,14 +92,48 @@ export async function POST(request: Request): Promise<Response> {
         errorMessage: result.error,
         completedAt: now,
         updatedAt: now,
-      })
+    })
       .where(eq(sageSquarePaymentOperations.id, operation.id))
-    await notifySageSquareException(
-      env,
-      operation.id,
-      "Square payment could not be posted to Sage",
-      `${operation.operationType} failed for Sage invoice ${operation.sageInvoiceNumber}: ${result.error}`
-    )
+    await hydrateLegacySageSquarePaymentScopes(env, operation.squarePaymentId)
+    const receipt = await db
+      .select({
+        id: sageSquarePaymentOperations.id,
+        organizationId: sageSquarePaymentOperations.organizationId,
+        projectId: sageSquarePaymentOperations.projectId,
+      })
+      .from(sageSquarePaymentOperations)
+      .where(
+        and(
+          eq(
+            sageSquarePaymentOperations.squarePaymentId,
+            operation.squarePaymentId
+          ),
+          eq(
+            sageSquarePaymentOperations.operationType,
+            "post_square_receipt"
+          )
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    const organizationId =
+      receipt?.organizationId ??
+      operation.organizationId ??
+      sageSquareOrganizationId(env)
+    const projectId = receipt?.projectId ?? operation.projectId ?? null
+    if (organizationId) {
+      await notifySageSquareException(
+        env,
+        {
+          organizationId,
+          projectId,
+          receiptOperationId: receipt?.id,
+        },
+        operation.id,
+        "Square payment could not be posted to Sage",
+        `${operation.operationType} failed for Sage invoice ${operation.sageInvoiceNumber}: ${result.error}`
+      )
+    }
     return Response.json({ success: true, status: "failed" }, { status: 202 })
   }
   await db

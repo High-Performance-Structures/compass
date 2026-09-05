@@ -220,6 +220,12 @@ export const sageSquarePaymentOperations = sqliteTable(
   "sage_square_payment_operations",
   {
     id: text("id").primaryKey(),
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     operationType: text("operation_type").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     squarePaymentId: text("square_payment_id").notNull(),
@@ -227,6 +233,7 @@ export const sageSquarePaymentOperations = sqliteTable(
     squareOrderId: text("square_order_id").notNull(),
     squareLocationId: text("square_location_id").notNull(),
     department: text("department").notNull(),
+    sageJobShortName: text("sage_job_short_name"),
     sageInvoiceId: text("sage_invoice_id").notNull(),
     sageInvoiceNumber: text("sage_invoice_number").notNull(),
     amountCents: integer("amount_cents").notNull(),
@@ -262,6 +269,11 @@ export const sageSquarePaymentOperations = sqliteTable(
     index("sage_square_payment_operations_invoice_idx").on(
       table.squareInvoiceId,
       table.status
+    ),
+    index("sage_square_payment_operations_org_project_idx").on(
+      table.organizationId,
+      table.projectId,
+      table.paymentCompletedAt
     ),
   ]
 )

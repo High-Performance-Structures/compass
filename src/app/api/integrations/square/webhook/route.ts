@@ -75,12 +75,22 @@ export async function POST(request: Request): Promise<Response> {
     } else {
       await failSquareWebhookEvent(env, event.event_id, message, now)
     }
-    await notifySageSquareException(
-      env,
-      event.event_id,
-      "Square payment needs Sage review",
-      `${message}. No automatic Sage retry will bypass this exception.`
-    )
+    if (
+      error instanceof SageSquarePaymentAttentionError &&
+      error.organizationId
+    ) {
+      await notifySageSquareException(
+        env,
+        {
+          organizationId: error.organizationId,
+          projectId: error.projectId,
+          receiptOperationId: error.receiptOperationId ?? undefined,
+        },
+        event.event_id,
+        "Square payment needs Sage review",
+        `${message}. No automatic Sage retry will bypass this exception.`
+      )
+    }
     return error instanceof SageSquarePaymentAttentionError
       ? Response.json({ success: true, attention: true })
       : Response.json(

@@ -28,6 +28,7 @@ Only signed `invoice.payment_made` events are allowed to create Sage payment
 operations. The invoice must contain both bridge markers:
 
 - `Sage Record` custom field with the numeric Sage invoice record ID.
+- `Sage Job` custom field matching exactly one open Compass project number.
 - `Source record RECORD_ID.` in the Square invoice description.
 
 Compass retrieves the Square order and payment before enqueueing anything. It
@@ -52,6 +53,9 @@ Migration `0138_sage_square_payment_queue.sql` adds:
 Each Square payment has a deterministic receipt idempotency key. Processing
 fees are stored as positive deltas against the latest total Square fee, so a
 later fee update does not duplicate an already queued or posted amount.
+Migration `0150_sage_square_receipt_projects.sql` adds the organization,
+Compass project, and Sage job short-name linkage used to scope the queue and
+notifications.
 
 ## Production configuration
 
@@ -63,6 +67,8 @@ Cloudflare secrets:
 
 Cloudflare variables:
 
+- `SAGE_SQUARE_ORGANIZATION_ID=org-1` pins this HPS Square merchant bridge to
+  its Compass organization before project-number matching.
 - `SAGE_SQUARE_PAYMENT_WEBHOOK_ENABLED=true`
 - `SAGE_SQUARE_PAYMENT_CUTOFF_AT=2026-08-29T00:15:00.000Z`
 - `SAGE_SQUARE_PAYMENT_WRITES_ENABLED=false` until the supported processing-fee
@@ -94,8 +100,8 @@ would leave the A/R invoice and subledger inconsistent.
 For every eligible Square payment, Compass therefore:
 
 1. stores the full owner payment as `manual_action_required` against the exact
-   Sage invoice and sends one deduplicated in-app notification to active
-   Compass administrators;
+   Sage invoice and active Compass project, then sends one deduplicated in-app
+   notification to active administrators in that project organization;
 2. tells the administrator to use Sage **3-3-2 Electronic Receipts**, choose
    **Post** rather than **Process and Post**, apply the full amount to the
    invoice, and use account **10000 — FSB Project Checking**; and
@@ -111,6 +117,13 @@ posting task.
 This is a Sage posting and reconciliation step, not a second approval of the
 Square payment. Receipt operations are never exposed through the bridge writer
 endpoint. Direct SQL writes remain prohibited.
+
+The existing company **Financials → Payments** tab and each active project's
+**Financials** page show a dedicated Square receipt queue. It includes the
+linked project and client, Sage invoice and record, Square payment ID, gross
+receipt, Square fee, deposit/fee accounts, timestamps, and independent
+receipt/fee statuses. Notification links open the project Financials page and
+highlight the exact receipt. The view does not offer an approval control.
 
 ## Sage API diagnostics and fee-writer activation
 

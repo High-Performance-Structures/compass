@@ -10,17 +10,27 @@ import {
   type ProjectFinancialCodingOptions,
   type ProjectFinancialWorkflowItem,
 } from "@/app/actions/project-financial-workflows"
+import {
+  getSageSquareReceipts,
+  type SquareReceiptListItem,
+} from "@/app/actions/sage-square-receipts"
 import { getProjects } from "@/app/actions/projects"
+import { SquareReceiptsTable } from "@/components/financials/square-receipts-table"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
 
 export default async function ProjectFinancialsPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ id: string }>
+  readonly searchParams: Promise<{
+    readonly squareReceipt?: string | readonly string[]
+  }>
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
+  const query = await searchParams
   const id = decodeProjectRouteId(rawProjectId)
   let items: readonly ProjectFinancialWorkflowItem[] = []
   let codingOptions: ProjectFinancialCodingOptions = {
@@ -28,6 +38,7 @@ export default async function ProjectFinancialsPage({
     costCodes: [],
   }
   let projectDriveFolderId: string | null = null
+  let squareReceipts: readonly SquareReceiptListItem[] = []
 
   try {
     items = await getProjectFinancialWorkflowItems(id)
@@ -43,6 +54,14 @@ export default async function ProjectFinancialsPage({
   } catch (error) {
     console.warn("Project financial coding options unavailable", error)
   }
+  try {
+    squareReceipts = await getSageSquareReceipts(id)
+  } catch (error) {
+    console.warn("Project Square receipts unavailable", error)
+  }
+  const selectedSquareReceipt = Array.isArray(query.squareReceipt)
+    ? (query.squareReceipt[0] ?? null)
+    : (query.squareReceipt ?? null)
 
   return (
     <ProjectContextWatermarkShell>
@@ -75,13 +94,19 @@ export default async function ProjectFinancialsPage({
           />
         </div>
 
-        <ProjectFinancialWorkspace
-          projectId={id}
-          items={items}
-          phaseOptions={codingOptions.phases}
-          costCodeOptions={codingOptions.costCodes}
-          projectDriveFolderId={projectDriveFolderId}
-        />
+        <div className="space-y-5">
+          <SquareReceiptsTable
+            receipts={squareReceipts}
+            selectedReceiptId={selectedSquareReceipt}
+          />
+          <ProjectFinancialWorkspace
+            projectId={id}
+            items={items}
+            phaseOptions={codingOptions.phases}
+            costCodeOptions={codingOptions.costCodes}
+            projectDriveFolderId={projectDriveFolderId}
+          />
+        </div>
       </div>
     </ProjectContextWatermarkShell>
   )

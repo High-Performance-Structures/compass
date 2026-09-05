@@ -1149,11 +1149,7 @@ export function ProjectsHub({
       }
 
       form.reset()
-      setCreateProjectMessage(
-        result.sageStatus === "queued"
-          ? "Project shell created; Sage write queued."
-          : "Project shell created; Sage write requires an approved user."
-      )
+      setCreateProjectMessage("Project shell created; Sage write queued.")
       router.push(`/dashboard/projects/${result.id}`)
       router.refresh()
     })

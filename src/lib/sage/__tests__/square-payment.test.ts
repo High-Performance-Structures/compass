@@ -73,6 +73,9 @@ describe("Square payment webhook", () => {
       department: "HPS",
       sageInvoiceId: "123",
       sageInvoiceNumber: "INV-123",
+      organizationId: "org-1",
+      projectId: "project-1",
+      sageJobShortName: "H-403-4378",
       ownerPaymentCents: 690200,
       clientPaidFeeCents: 0,
       currency: "USD",
@@ -83,6 +86,27 @@ describe("Square payment webhook", () => {
 
     expect(parsed.depositAccountNumber).toBe(10000)
     expect(parsed.merchantFeeAccountNumber).toBe(62020)
+  })
+
+  it("keeps pre-project-link fee payloads readable during deployment", () => {
+    const parsed = sageSquarePaymentPayloadSchema.safeParse({
+      operationType: "post_square_processing_fee",
+      company: "High Performance Structures Inc",
+      squarePaymentId: "payment-legacy",
+      squareInvoiceId: "invoice-legacy",
+      squareOrderId: "order-legacy",
+      squareLocationId: "location-legacy",
+      department: "HPS",
+      sageInvoiceId: "123",
+      sageInvoiceNumber: "INV-123",
+      processingFeeCents: 200,
+      currency: "USD",
+      depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
+      merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
+      paymentCompletedAt: "2026-08-29T00:30:00.000Z",
+    })
+
+    expect(parsed.success).toBe(true)
   })
 
   it("stages receipts for the supported Sage UI path and exposes only fees to the writer", () => {
@@ -119,6 +143,9 @@ describe("Square payment webhook", () => {
   it("gives admins the supported Sage external-receipt posting instructions", () => {
     expect(
       manualReceiptNotificationBody({
+        organizationId: "org-1",
+        projectId: "project-1",
+        operationId: "operation-1",
         squarePaymentId: "payment-1",
         sageInvoiceNumber: "H-403-4378",
         department: "HPS",

@@ -25,18 +25,14 @@ The worker resolves status and type names from the live company before every add
 5. Archive
 6. Other
 
-## Approved Compass users
+## Compass authorization policy
 
-The migration seeds approvals using the exact production Compass user IDs for:
-
-- Rebekah Jones
-- Cassandra Rodriguez-Vance
-- Sylvi Vogel
-- Martine Vogel
-- Wes Jones
-- Dan Vogel
-
-Other users retain their normal Compass permissions, but any Sage operation they originate is stored as `approval_required`. The Sage worker can only claim `queued` operations.
+Creating the customer or project is the business authorization for its expected
+Sage record. A user who passes the normal Compass customer/project create
+permission queues the narrow Sage operation immediately; there is no second
+Sage-specific person approval. Authentication, organization scoping, RBAC, the
+two operational write switches, claim tokens, idempotency, schema validation,
+and read-back verification remain enforced.
 
 ## Safety controls
 
@@ -117,7 +113,11 @@ C:\ProgramData\HPS\CompassSageWriter\CompassSageClientProjectWriter.exe --once
 
 Use a specifically approved test client/job. Verify in Sage that the client, client status, job status, job type, and client-to-job link are correct. Verify Compass received the Sage client/job IDs. If schema validation or permissions fail, the worker performs no unvalidated add and posts a failed receipt for review.
 
-Before enabling the Cloudflare switch, inspect `sage_client_project_write_operations` and confirm only the approved validation row is `queued`. Hold any other rows as `approval_required` until validation is complete. `--once` may claim up to five queued rows.
+Before enabling the Cloudflare switch, inspect
+`sage_client_project_write_operations` and confirm that each queued row came
+from an intentional Compass customer/project creation. `--once` may claim up
+to five queued rows, so use a controlled environment or temporarily hold any
+rows that are outside the validation scope.
 
 ### 6. Start continuous operation
 
