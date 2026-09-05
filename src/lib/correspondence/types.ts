@@ -19,6 +19,8 @@ export type CorrespondenceSummary = {
   readonly subject: string
   readonly excerpt: string
   readonly lastActivityAt: string
+  readonly lastActivityDisplay?: string | null
+  readonly lastActivitySourceLocal?: boolean
   readonly people: readonly CorrespondencePerson[]
   readonly unread: boolean
   readonly saved: boolean
@@ -41,6 +43,13 @@ export type CorrespondenceMessage = {
   readonly authorName: string
   readonly authorUserId: string | null
   readonly sentAt: string
+  readonly sourceSentDisplay?: string | null
+  readonly sourceSentAt?: string | null
+  readonly sourceAttachmentReadiness?: {
+    readonly expectedRecoverableFileCount: number
+    readonly linkedAttachmentCount: number
+    readonly pendingFileCount: number
+  } | null
   readonly body: string
   readonly recipients: readonly { readonly name: string; readonly kind: "to" | "cc" }[]
   readonly attachments: readonly CorrespondenceAttachment[]

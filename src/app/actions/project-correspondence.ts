@@ -1,8 +1,9 @@
 "use server"
 
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { correspondence, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceRevisions, correspondenceState } from "@/db/schema-correspondence"
+import { correspondenceSourceMessages } from "@/db/schema-correspondence-source"
 import { authorizedConversation, correspondenceContacts, correspondenceContext, currentParticipants } from "@/lib/correspondence/access"
 import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/read"
 import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
@@ -135,7 +136,7 @@ export async function setCorrespondenceReceiptPreference(projectId: string, conv
 }
 
 export async function searchCorrespondence(projectId: string, query: string): Promise<CorrespondenceResult<{
-  readonly hits: readonly { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }[]
+  readonly hits: readonly { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string; readonly sourceSentDisplay: string | null; readonly sourceSentAt: string | null }[]
   readonly hasMore: boolean
 }>> {
   try {
@@ -149,11 +150,30 @@ export async function searchCorrespondence(projectId: string, query: string): Pr
       .where(and(eq(correspondence.projectId, projectId), eq(correspondence.organizationId, ctx.organizationId), isNull(correspondenceMessages.retractedAt),
         or(sql`instr(lower(${correspondence.subject}), lower(${term})) > 0`, sql`instr(lower(${correspondenceMessages.body}), lower(${term})) > 0`)))
       .orderBy(desc(correspondenceMessages.sentAt), desc(correspondenceMessages.sequence)).limit(51)
+    const sourceByMessage = new Map<string, { readonly sourceSentDisplay: string; readonly sourceSentAt: string | null }>()
+    if (rows.length > 0) {
+      try {
+        const sourceRows = await ctx.db.select({ messageId: correspondenceSourceMessages.messageId, conversationId: correspondenceSourceMessages.conversationId, sourceSentDisplay: correspondenceSourceMessages.sourceSentDisplay, sourceSentAt: correspondenceSourceMessages.sourceSentAt })
+          .from(correspondenceSourceMessages)
+          .where(and(eq(correspondenceSourceMessages.organizationId, ctx.organizationId), eq(correspondenceSourceMessages.projectId, projectId), inArray(correspondenceSourceMessages.messageId, rows.map((row) => row.messageId))))
+        const visibleConversationByMessage = new Map(rows.map((row) => [row.messageId, row.conversationId]))
+        for (const source of sourceRows) if (visibleConversationByMessage.get(source.messageId) === source.conversationId) sourceByMessage.set(source.messageId, source)
+      } catch (error) {
+        if (!isMissingSourceAudienceTable(error)) throw error
+      }
+    }
     return { success: true, data: { hits: rows.slice(0, 50).map((row) => {
       const start = Math.max(0, row.body.toLowerCase().indexOf(term.toLowerCase()) - 50)
-      return { conversationId: row.conversationId, messageId: row.messageId, subject: row.subject, sentAt: row.sentAt, excerpt: `${start ? "…" : ""}${row.body.slice(start, start + 180)}` }
+      const source = sourceByMessage.get(row.messageId)
+      return { conversationId: row.conversationId, messageId: row.messageId, subject: row.subject, sentAt: row.sentAt, sourceSentDisplay: source?.sourceSentAt === null ? source.sourceSentDisplay : null, sourceSentAt: source?.sourceSentAt ?? null, excerpt: `${start ? "…" : ""}${row.body.slice(start, start + 180)}` }
     }), hasMore: rows.length > 50 } }
   } catch (error) { return failure(error) }
+}
+
+function isMissingSourceAudienceTable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  if (/no such table: correspondence_source_(messages|recipients)/i.test(error.message)) return true
+  return error.cause !== undefined && isMissingSourceAudienceTable(error.cause)
 }
 
 export async function saveCorrespondenceCompositionDraft(projectId: string, draft: CorrespondenceCompositionDraft): Promise<CorrespondenceResult<{ readonly version: number }>> {

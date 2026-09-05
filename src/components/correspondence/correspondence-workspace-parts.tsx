@@ -14,12 +14,12 @@ import type {
 } from "@/lib/correspondence/types"
 
 export function SearchResults({ hits, hasMore, onOpen }: {
-  readonly hits: readonly { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }[]
+  readonly hits: readonly { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string; readonly sourceSentDisplay?: string | null; readonly sourceSentAt?: string | null }[]
   readonly hasMore: boolean
   readonly onOpen: (conversationId: string, messageId: string) => void
 }): React.ReactElement {
   if (hits.length === 0) return <p className="p-5 text-sm text-muted-foreground">No authorized messages match this search.</p>
-  return <div>{hits.map((hit) => <button key={hit.messageId} type="button" onClick={() => onOpen(hit.conversationId, hit.messageId)} className="w-full border-b px-4 py-3 text-left hover:bg-accent"><p className="truncate font-medium">{hit.subject}</p><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{hit.excerpt}</p><time className="mt-1 block text-xs text-muted-foreground" dateTime={hit.sentAt}>{formatSearchTime(hit.sentAt)}</time></button>)}{hasMore && <p className="p-4 text-xs text-muted-foreground">Refine your search to narrow these results.</p>}</div>
+  return <div>{hits.map((hit) => <button key={hit.messageId} type="button" onClick={() => onOpen(hit.conversationId, hit.messageId)} className="w-full border-b px-4 py-3 text-left hover:bg-accent"><p className="truncate font-medium">{hit.subject}</p><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{hit.excerpt}</p>{unknownSourceSearchLabel(hit) === null ? <time className="mt-1 block text-xs text-muted-foreground" dateTime={hit.sentAt}>{formatSearchTime(hit.sentAt)}</time> : <span className="mt-1 block text-xs text-muted-foreground" title="Source-local timestamp; timezone not proven">Source time: {unknownSourceSearchLabel(hit)}</span>}</button>)}{hasMore && <p className="p-4 text-xs text-muted-foreground">Refine your search to narrow these results.</p>}</div>
 }
 
 export function ConversationMenu({
@@ -57,3 +57,4 @@ export function EmptyDetail(): React.ReactElement {
 }
 
 function formatSearchTime(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString([], { month: "short", day: "numeric" }) }
+function unknownSourceSearchLabel(hit: { readonly sourceSentDisplay?: string | null; readonly sourceSentAt?: string | null }): string | null { return hit.sourceSentAt === null && hit.sourceSentDisplay !== null && hit.sourceSentDisplay !== undefined ? hit.sourceSentDisplay : null }
