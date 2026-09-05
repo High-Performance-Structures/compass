@@ -22,10 +22,13 @@ export function isBuildertrendArchiveChannelId(channelId: string): boolean {
 export function canAccessConversationChannel(input: {
   readonly channelId: string
   readonly hasMembership: boolean
+  readonly isActive: boolean
   readonly isPrivate: boolean
   readonly audience: string
   readonly role: string
 }): boolean {
+  if (!input.isActive) return false
+
   if (isBuildertrendArchiveChannelId(input.channelId)) {
     return (
       !input.isPrivate &&
@@ -102,6 +105,7 @@ export async function getConversationChannelAccess(input: {
   if (!channel || channel.organizationId !== requireOrg(input.user)) {
     return null
   }
+  if (!input.user.isActive) return null
 
   const membership = await input.db
     .select({ id: channelMembers.id })
@@ -118,6 +122,7 @@ export async function getConversationChannelAccess(input: {
   return canAccessConversationChannel({
     channelId: channel.id,
     hasMembership: membership !== null,
+    isActive: input.user.isActive,
     isPrivate: channel.isPrivate,
     audience: channel.audience,
     role: input.user.role,
