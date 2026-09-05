@@ -8,6 +8,12 @@ import { ProjectAudienceDashboardView } from "@/components/projects/project-audi
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import type { ProjectAudienceWorkspaceSection } from "@/lib/project-audience-preview-routes"
+import { QuickAddProvider } from "@/components/quick-add-menu"
+import {
+  quickAddHref,
+  type QuickAddAction,
+  type QuickAddProject,
+} from "@/lib/quick-add"
 
 function Fixture(): React.ReactElement {
   const [location, setLocation] = React.useState(window.location.href)
@@ -60,31 +66,49 @@ function Fixture(): React.ReactElement {
   )
     ? "schedule"
     : "overview"
+  // The production layout supplies server-authorized destinations. Exercise the
+  // real provider/menu here; server permission coverage lives in quick-add-server.test.ts.
+  const quickAddActions: readonly QuickAddAction[] = partner
+    ? ["message", "rfi"]
+    : ["message"]
+  const quickAddProjects: readonly QuickAddProject[] = url.searchParams.has(
+    "noQuickAdd"
+  )
+    ? []
+    : data.projectOptions.map((option) => ({
+        ...option,
+        actions: quickAddActions.map((action) => ({
+          action,
+          href: quickAddHref(action, option.id, data.audience),
+        })),
+      }))
   return (
-    <ProjectAudiencePreviewShell
-      audience={data.audience}
-      projectId={projectId}
-      projectName={data.project.name}
-      projectNumber={data.project.projectNumber}
-      projectOptions={data.projectOptions}
-      viewer={data.viewer}
-      viewerIsInternal={data.viewerIsInternal}
-      messageShortcut={shortcut}
-      activeSection={section}
-      warrantyEnabled={data.project.warrantyEnabled}
-    >
-      <ProjectAudienceDashboardView
-        data={data}
-        financials={
-          empty
-            ? { applications: null, changeOrders: null }
-            : dashboardFinancials()
-        }
+    <QuickAddProvider projects={quickAddProjects}>
+      <ProjectAudiencePreviewShell
+        audience={data.audience}
+        projectId={projectId}
+        projectName={data.project.name}
+        projectNumber={data.project.projectNumber}
+        projectOptions={data.projectOptions}
+        viewer={data.viewer}
+        viewerIsInternal={data.viewerIsInternal}
         messageShortcut={shortcut}
-        today="2026-09-08"
-        greeting="Good morning"
-      />
-    </ProjectAudiencePreviewShell>
+        activeSection={section}
+        warrantyEnabled={data.project.warrantyEnabled}
+      >
+        <ProjectAudienceDashboardView
+          data={data}
+          financials={
+            empty
+              ? { applications: null, changeOrders: null }
+              : dashboardFinancials()
+          }
+          messageShortcut={shortcut}
+          today="2026-09-08"
+          greeting="Good morning"
+        />
+      </ProjectAudiencePreviewShell>
+    </QuickAddProvider>
   )
 }
 

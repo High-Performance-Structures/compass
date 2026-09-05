@@ -2,6 +2,8 @@
 
 Implements the approved internal-dashboard layout for owners and the shared sub/supplier workspace. The existing workspace shell owns account/logout, project selection and its remembered cookie, desktop and mobile navigation, notifications, appearance, and internal-preview controls.
 
+The branch incorporates the existing permission-aware Quick Add feature from `6a0820b5` (#573). Its layout provider, header menu, server-authorized destinations, project picker, and creation entry hooks remain intact. Dashboard regression coverage uses the real Quick Add components for both audiences at desktop, tablet, and phone widths, including project selection, message navigation, partner RFI creation, and the absence of a menu when no actions are authorized. Review the dashboard diff against that integration baseline.
+
 ## Workflows
 
 - Owner priorities: authorized schedule confirmations, change orders ready for owner review, and requests for more information that the viewer can edit. Published pay applications and recent updates appear separately from pending responses.

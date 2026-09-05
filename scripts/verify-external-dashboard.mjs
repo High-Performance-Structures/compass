@@ -13,7 +13,7 @@ import path from "node:path"
 const root = process.cwd()
 const output = await mkdtemp(path.join(tmpdir(), "compass-dashboard-browser-"))
 const mocks = {
-  "next/navigation": `export function useRouter(){return {push(href){history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))},refresh(){document.body.dataset.refreshed='true'}}}`,
+  "next/navigation": `export function usePathname(){return window.location.pathname}export function useSearchParams(){return new URLSearchParams(window.location.search)}export function useRouter(){return {push(href){history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))},refresh(){document.body.dataset.refreshed='true'}}}`,
   "next/link": `import React from 'react';export default function Link({href,children,...props}){return React.createElement('a',{...props,href,onClick(e){if(!e.metaKey&&!e.ctrlKey){e.preventDefault();history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))}}},children)}`,
   "next/image": `import React from 'react';export default function Image({fill,unoptimized,priority,...props}){return React.createElement('img',{...props,style:fill?{position:'absolute',inset:0,width:'100%',height:'100%'}:props.style})}`,
   "@/app/actions/profile": `export async function logout(){document.body.dataset.loggedOut='true'};export async function updateWorkspacePhoto(){return {success:true}}`,
@@ -119,7 +119,8 @@ try {
   for (const role of ["owner", "partner"]) {
     for (const width of [1560, 1024, 390]) {
       await page.setViewportSize({ width, height: 1100 })
-      await page.goto(`${origin}/?role=${role}`)
+      const workspace = role === "owner" ? "owner" : "sub-vendor"
+      await page.goto(`${origin}/preview/projects/cedar/${workspace}`)
       await page.getByRole("heading", { name: "Good morning, Alex" }).waitFor()
       assert.equal(
         await page.evaluate(
@@ -128,6 +129,29 @@ try {
         false,
         `${role} overflow at ${width}`
       )
+      await page.locator("[data-quick-add-trigger]:visible").click()
+      assert.deepEqual(
+        await page
+          .locator('[role="menuitem"][data-quick-add-action]')
+          .allTextContents(),
+        role === "owner" ? ["Project Message"] : ["Project Message", "RFI"]
+      )
+      await page
+        .getByRole("menuitem", { name: "Project Message", exact: true })
+        .click()
+      const picker = page.getByRole("combobox", {
+        name: "Choose project for Quick Add",
+      })
+      assert.match(await picker.innerText(), /O-123/)
+      await picker.click()
+      await page.getByRole("option", { name: /O-124/ }).click()
+      await page
+        .getByRole("button", { name: "Compose message", exact: true })
+        .click()
+      await page.waitForURL(
+        `${origin}/preview/projects/meadow/${workspace}/conversations?quickAdd=message`
+      )
+      await page.goto(`${origin}/preview/projects/cedar/${workspace}`)
       await page
         .locator('button[aria-label="Open account menu"]:visible')
         .click()
@@ -194,12 +218,24 @@ try {
         })
       }
       console.log(
-        `PASS ${role} ${width}px: account/logout, project switch + remembered selection, section retention, communication links, layout`
+        `PASS ${role} ${width}px: Quick Add actions/project picker/message destination, account/logout, project switch + remembered selection, section retention, communication links, layout`
       )
     }
   }
-  await page.goto(`${origin}/?role=partner`)
-  await page.getByRole("button", { name: "Send an RFI", exact: true }).click()
+  await page.goto(`${origin}/?noQuickAdd=1`)
+  assert.equal(await page.locator("[data-quick-add-trigger]").count(), 0)
+  await page.goto(`${origin}/preview/projects/cedar/sub-vendor`)
+  await page.locator("[data-quick-add-trigger]:visible").click()
+  await page.getByRole("menuitem", { name: "RFI", exact: true }).click()
+  await page.getByRole("button", { name: "Continue", exact: true }).click()
+  await page
+    .getByRole("dialog", { name: "Send a request for information" })
+    .waitFor()
+  assert.equal(
+    new URL(page.url()).pathname,
+    "/preview/projects/cedar/sub-vendor/rfis"
+  )
+  assert.equal(new URL(page.url()).searchParams.has("quickAdd"), false)
   await page.getByLabel("Subject", { exact: true }).fill("Confirm roof detail")
   await page
     .getByLabel("Question", { exact: true })
