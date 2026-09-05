@@ -4,7 +4,7 @@
 
 This integration has one narrow purpose: when Compass creates a client or a client plus project, it may ensure the matching client and job exist in **High Performance Structures Inc** in Sage 100 Contractor.
 
-It does not expose modify, void, post, or delete operations. The Compass routes only claim `ensure_client` and `ensure_client_and_job` operations. The Sage worker contains no delete request.
+It does not expose void, post, or delete operations. The Compass routes only claim `ensure_client`, `ensure_client_and_job`, and `update_client_email` operations. The modification-only operation requires the already-stored Sage client ID and number, verifies that they identify the same record, and may only fill a blank primary email. It has no client-creation fallback and will not overwrite a different nonblank Sage email. An ensure request with a known email also stops when it finds only a same-name Sage client with a blank email; link that client's Sage ID and number in Compass before using the guarded email-fill operation. The Sage worker contains no delete request.
 
 ## Verified configuration
 
@@ -40,10 +40,10 @@ and read-back verification remain enforced.
 2. Every bridge request uses the existing HMAC `SAGE_BRIDGE_SECRET`, a timestamp, and a single-use request ID.
 3. Queue claims have a random token and ten-minute lease. Results without the active claim token are rejected.
 4. Idempotency keys prevent a second operation for the same Compass customer or project.
-5. Before an add, the worker checks Sage for an exact email/name match and refuses ambiguous duplicates.
+5. Before an add, the worker checks Sage for an exact email/name match and refuses ambiguous duplicates. A matching client with a blank email may be enriched later, but a different nonblank Sage email is never overwritten.
 6. Client status numbers are verified against their live names. Job status and type numbers are resolved by live name.
 7. Generated MBXML is validated against the Sage machine's installed `mbxml.xsd` before `submitXML` is called.
-8. The worker reads back `_idnum` and `recnum` after success; Compass accepts only those receipts.
+8. The worker reads back `_idnum` and `recnum` after client/job creation; Compass accepts only those receipts. Sage commits an accepted client-email modification when the API session closes, so that narrow update relies on the validated `ClientModRq` response.
 9. Existing Sage records with a conflicting selected status or type are not modified automatically.
 
 ## Deployment
@@ -119,28 +119,55 @@ from an intentional Compass customer/project creation. `--once` may claim up
 to five queued rows, so use a controlled environment or temporarily hold any
 rows that are outside the validation scope.
 
-### 6. Start continuous operation
+### 6. Start one-minute operation
 
-After the controlled validation passes, register the compiled executable as an at-startup scheduled task under the approved Windows identity, set both switches to `true`, and start it. It polls every 30 seconds. From an elevated PowerShell prompt:
+After the controlled validation passes, register the compiled executable under the approved Windows identity, set both switches to `true`, and start it. The task launches a fresh `--once` process every minute. This is required because the Sage 2026.1 API can fail in `EnableRequests()` when one long-running process repeatedly deinitializes and reinitializes the API. A short run also releases the Sage API license between polls.
+
+For an existing installation, use the guarded repair script from an elevated PowerShell prompt. It compiles a candidate, backs up the task and executable, runs the Sage diagnostic under the scheduled-task identity, installs the one-minute task, and automatically rolls back on failure:
+
+```powershell
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass `
+  -File .\repair_sage_client_project_writer.ps1
+```
+
+For a new manual registration:
 
 ```powershell
 $binary = "C:\ProgramData\HPS\CompassSageWriter\CompassSageClientProjectWriter.exe"
-$action = New-ScheduledTaskAction -Execute $binary
-$trigger = New-ScheduledTaskTrigger -AtStartup
+$action = New-ScheduledTaskAction -Execute $binary -Argument "--once"
+$startupTrigger = New-ScheduledTaskTrigger -AtStartup
+$minuteTrigger = New-ScheduledTaskTrigger `
+  -Once `
+  -At (Get-Date).AddMinutes(1) `
+  -RepetitionInterval (New-TimeSpan -Minutes 1) `
+  -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet `
-  -RestartCount 3 `
+  -RestartCount 999 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
-  -ExecutionTimeLimit (New-TimeSpan -Days 3650)
+  -ExecutionTimeLimit ([TimeSpan]::Zero) `
+  -MultipleInstances IgnoreNew `
+  -StartWhenAvailable `
+  -AllowStartIfOnBatteries `
+  -DontStopIfGoingOnBatteries
 Register-ScheduledTask `
   -TaskName "HPS Compass Sage Client Project Writer" `
   -Action $action `
-  -Trigger $trigger `
+  -Trigger @($startupTrigger, $minuteTrigger) `
   -Settings $settings `
   -User "<approved Windows service identity>" `
   -RunLevel Highest
 ```
 
 The task identity must have read access to the HPS Sage SQL database and permission to read the machine-level environment variables. The Sage write itself still authenticates as `jarvis.api` through the API.
+
+Operational logs rotate at 5 MiB and are stored in:
+
+```text
+C:\ProgramData\HPS\CompassSageWriter\logs\writer.log
+C:\ProgramData\HPS\CompassSageWriter\logs\writer.previous.log
+```
+
+Between runs, Task Scheduler should show `Ready`. Confirm `LastTaskResult=0`, a `PT1M` repetition interval, and paired `Writer run started` / `Writer run completed` log entries.
 
 ## Rollback
 

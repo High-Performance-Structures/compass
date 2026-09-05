@@ -94,4 +94,26 @@ describe("Sage client/project write contract", () => {
       }).success
     ).toBe(true)
   })
+
+  it("requires an existing Sage identity for email-only updates", () => {
+    const update = {
+      operationType: "update_client_email",
+      company: "High Performance Structures Inc",
+      client: {
+        compassCustomerId: "customer-1",
+        sageClientId: "client-guid",
+        sageClientNumber: "2901",
+        email: "client@example.com",
+      },
+    }
+    expect(sageClientProjectWritePayloadSchema.safeParse(update).success).toBe(
+      true
+    )
+    expect(
+      sageClientProjectWritePayloadSchema.safeParse({
+        ...update,
+        client: { ...update.client, sageClientId: "" },
+      }).success
+    ).toBe(false)
+  })
 })
