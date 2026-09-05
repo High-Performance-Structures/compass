@@ -695,7 +695,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
             <button key={conversation.id} type="button" onClick={() => openConversation(conversation.id)} className={cn("w-full border-b px-4 py-3 text-left hover:bg-accent", conversation.id === activeId && "bg-accent")}>
               <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                 <span className="truncate">{conversation.people.map((person) => person.name).join(", ")}</span>
-                <time dateTime={conversation.lastActivityAt}>{formatTime(conversation.lastActivityAt)}</time>
+                {conversation.lastActivityDisplay !== null && conversation.lastActivityDisplay !== undefined ? <span title="Source-local timestamp; timezone not proven">Source time: {conversation.lastActivityDisplay}</span> : <time dateTime={conversation.lastActivityAt}>{formatTime(conversation.lastActivityAt)}</time>}
               </div>
               <div className="mt-1 flex items-center gap-2">
                 {conversation.unread && <span className="size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
