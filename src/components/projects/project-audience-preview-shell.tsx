@@ -40,7 +40,7 @@ type PreviewNavigationItem = {
 
 const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
   {
-    label: "Overview",
+    label: "Dashboard",
     section: "overview",
     icon: <IconHome className="size-4" />,
   },
@@ -88,7 +88,7 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
 
 const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
   {
-    label: "Overview",
+    label: "Dashboard",
     section: "overview",
     icon: <IconHome className="size-4" />,
   },
@@ -286,7 +286,10 @@ export function ProjectAudiencePreviewShell({
             "flex h-dvh min-h-0 flex-col overflow-hidden"
         )}
       >
-        <header className="sticky top-0 z-40 hidden h-12 items-center justify-end border-b border-border/40 bg-background/80 px-4 backdrop-blur-sm md:flex">
+        <header className="sticky top-0 z-40 hidden h-12 items-center justify-between gap-4 border-b border-border/40 bg-background/80 px-4 backdrop-blur-sm md:flex">
+          <Link href={homeHref} className="min-w-0 truncate text-xs text-muted-foreground hover:text-foreground">
+            {projectNumber ? `${projectNumber} · ` : ""}{projectName}
+          </Link>
           <ProjectAudienceHeaderControls
             viewer={viewer}
             messageShortcut={messageShortcut}
@@ -356,7 +359,7 @@ export function ProjectAudiencePreviewShell({
               />
             </div>
           )}
-          <nav className="mt-2 flex gap-1 overflow-x-auto border-t pt-2">
+          <nav aria-label="Project workspace" className="mt-2 flex gap-1 overflow-x-auto border-t pt-2">
             {navigation.map((item) => (
               <Link
                 key={item.section}
