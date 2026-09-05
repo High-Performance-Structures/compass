@@ -226,7 +226,7 @@ export async function createDirectMessage(targetUserIds: readonly string[]) {
 export async function listChannels() {
   try {
     const user = await getCurrentUser()
-    if (!user) {
+    if (!user || !user.isActive) {
       return { success: false, error: "Unauthorized" }
     }
     const orgId = requireOrg(user)
@@ -300,7 +300,7 @@ export async function listChannels() {
 export async function getChannel(channelId: string) {
   try {
     const user = await getCurrentUser()
-    if (!user) {
+    if (!user || !user.isActive) {
       return { success: false, error: "Unauthorized" }
     }
 
