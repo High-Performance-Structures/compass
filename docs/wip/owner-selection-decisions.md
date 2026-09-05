@@ -10,7 +10,7 @@ Scope baseline: branch `codex/owner-selections`, based on `0c930870` on main. Th
 - Approval requires known pricing and timing, no pending request, and an executed owner change order when pricing differs from the allowance or staff mark a change order required. Approval records the actual owner, timestamp, and exact terms. It neither purchases goods nor replaces change-order approval.
 - Product edits make a published specification stale. Republishing clears the current approval and retains prior approval history. Staff lifecycle statuses cannot manufacture an owner signature.
 - Importing selections into a new supplier RFQ preserves source-selection links and specification snapshots atomically. Staff can link/unlink existing project purchase orders; links do not issue or authorize orders.
-- Partners see current approved specifications only through RFQs or commitments already visible to them. Owner pricing, allowances, notes, requests and approval history are excluded.
+- Partners see current approved specifications only through RFQs or commitments already visible to them. Owner pricing, allowances, notes, requests, decision deadlines, timing terms, approval identities/timestamps, and approval history are excluded.
 - Published, requested, linked, or previously owner-approved decisions are protected against selection deletion. Requests are withdrawn with confirmation and retained for audit; procurement unlinking also records an audit entry.
 
 ## Storage and release
@@ -26,3 +26,5 @@ Integration tests exercise the actual actions against a transactional SQLite/D1 
 Local structured autoreview is required before shipping. The user explicitly waived the separate GitHub independent-review requirement and authorized squash merge and deployment.
 
 Review corrections: owner approval preserves procurement/install lifecycle status; any owner request history protects the selection from deletion, including resolved and withdrawn requests. Focused regressions cover both cases.
+
+Second review classification: supplier decision-metadata redaction is an in-scope exposure at the existing selection read boundary. It needs no new workflow, storage, or permission protocol; remove the fields and extend the supplier projection test.

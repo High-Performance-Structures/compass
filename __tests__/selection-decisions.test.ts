@@ -271,6 +271,11 @@ describe("owner selection decisions", () => {
   it("requires an executed project owner change order for a price difference", async () => {
     await testDb.db.insert(projectChangeOrders).values({
       id: "co-a",
+      changeOrderNumber: "CO-1",
+      sourceType: "manual",
+      scope: "Fixture finish upgrade",
+      requesterType: "owner",
+      requesterName: "Owner A",
       projectId: "project-a",
       title: "Brass upgrade",
       audience: "owner",
@@ -291,6 +296,11 @@ describe("owner selection decisions", () => {
   it("rechecks change order status at the write", async () => {
     await testDb.db.insert(projectChangeOrders).values({
       id: "co-a",
+      changeOrderNumber: "CO-1",
+      sourceType: "manual",
+      scope: "Fixture finish upgrade",
+      requesterType: "owner",
+      requesterName: "Owner A",
       projectId: "project-a",
       title: "Upgrade",
       audience: "owner",
@@ -445,6 +455,10 @@ describe("supplier access through procurement", () => {
       allowanceCents: null,
       quotedCents: null,
       ownerNote: null,
+      approvedByName: null,
+      approvedAt: null,
+      scheduleImpact: null,
+      decisionDueDate: null,
       requests: [],
       history: [],
     })

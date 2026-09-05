@@ -87,9 +87,11 @@ function DecisionCard({
           <h2 className="mt-1 font-semibold">{spec.name}</h2>
         </div>
         <p className="text-xs text-muted-foreground">
-          {item.decisionDueDate
-            ? `Decision due ${item.decisionDueDate}`
-            : "Deadline to be confirmed"}
+          {workspace.audience === "sub_vendor"
+            ? `Approved specification · Revision ${item.revision}`
+            : item.decisionDueDate
+              ? `Decision due ${item.decisionDueDate}`
+              : "Deadline to be confirmed"}
         </p>
       </div>
       <p className="mt-2 text-sm">

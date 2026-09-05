@@ -151,23 +151,23 @@ export async function getSelectionWorkspace(
         revision: decision?.revision ?? 0,
         published: decision?.published ?? false,
         current,
-        decisionDueDate: decision?.decisionDueDate ?? null,
+        decisionDueDate: partner ? null : (decision?.decisionDueDate ?? null),
         allowanceCents: partner ? null : (decision?.allowanceCents ?? null),
         quotedCents: partner ? null : (decision?.quotedCents ?? null),
-        scheduleImpact: decision?.scheduleImpact ?? null,
+        scheduleImpact: partner ? null : (decision?.scheduleImpact ?? null),
         ownerNote: partner ? null : (decision?.ownerNote ?? null),
         requiresChangeOrder:
           !partner && (decision?.requiresChangeOrder ?? false),
         changeOrderId: partner ? null : (change?.id ?? null),
-        approvedAt: decision?.approvedAt ?? null,
-        approvedByName: decision?.approvedByName ?? null,
+        approvedAt: partner ? null : (decision?.approvedAt ?? null),
+        approvedByName: partner ? null : (decision?.approvedByName ?? null),
         status:
           audience === "owner" &&
           row.status === "approved" &&
           !decision?.approvedAt
             ? "awaiting_owner_approval"
             : row.status,
-        selectionUpdatedAt: row.updatedAt,
+        selectionUpdatedAt: partner ? "" : row.updatedAt,
         approvalBlocker: partner
           ? "Shared approved specification"
           : approvalBlocker({

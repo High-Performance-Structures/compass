@@ -34,15 +34,17 @@ const item: SelectionDecisionItem = {
   revision: 1,
   published: true,
   current: true,
-  decisionDueDate: "2026-10-01",
+  decisionDueDate: partner ? null : "2026-10-01",
   allowanceCents: partner ? null : 250000,
   quotedCents: partner ? null : 250000,
-  scheduleImpact: "Six-week lead time. No change to your completion date.",
+  scheduleImpact: partner
+    ? null
+    : "Six-week lead time. No change to your completion date.",
   ownerNote: partner ? null : "Price includes delivery and installation.",
   requiresChangeOrder: false,
   changeOrderId: null,
-  approvedAt: partner ? "2026-09-05T12:00:00Z" : null,
-  approvedByName: partner ? "Alex Morgan" : null,
+  approvedAt: null,
+  approvedByName: null,
   approvalBlocker: partner
     ? "Already approved"
     : params.has("request")
