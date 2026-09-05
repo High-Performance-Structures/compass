@@ -8,6 +8,7 @@ import type { PortalReport, PortalReportItem } from "./portal-report"
 import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders"
 import type { WarrantyClaimItem } from "@/app/actions/project-warranty"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
+import { HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT } from "@/lib/change-orders/provenance"
 
 function label(value: string): string {
   return value.replaceAll("_", " ")
@@ -212,8 +213,16 @@ export function changeOrderReport(
             ["Submitted", item.submittedAt],
           ],
           paragraphs: [
-            ["Scope", item.scope],
-            ["Reason", item.reason],
+            ...(item.sourceType === "buildertrend_import"
+              ? ([
+                  ["Historical text", HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT],
+                  ["Recorded scope", item.scope],
+                  ["Recorded reason", item.reason],
+                ] satisfies NonNullable<PortalReportItem["paragraphs"]>)
+              : ([
+                  ["Scope", item.scope],
+                  ["Reason", item.reason],
+                ] satisfies NonNullable<PortalReportItem["paragraphs"]>)),
           ],
         },
         ...item.lines.map((line) => ({

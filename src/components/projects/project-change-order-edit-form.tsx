@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  changeOrderDisplayStatus,
   changeOrderStatusLabel,
   isChangeOrderStatus,
 } from "@/lib/change-orders/status"
@@ -239,7 +240,9 @@ export function ProjectChangeOrderEditForm({
         </div>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="change-order-edit-scope">Scope</Label>
+        <Label htmlFor="change-order-edit-scope">
+          {item.sourceType === "buildertrend_import" ? "Recorded scope" : "Scope"}
+        </Label>
         <Textarea
           id="change-order-edit-scope"
           name="scope"
@@ -329,7 +332,9 @@ export function ProjectChangeOrderEditForm({
         </div>
       )}
       <div className="space-y-2">
-        <Label htmlFor="change-order-edit-reason">Reason</Label>
+        <Label htmlFor="change-order-edit-reason">
+          {item.sourceType === "buildertrend_import" ? "Recorded reason" : "Reason"}
+        </Label>
         <Textarea
           id="change-order-edit-reason"
           name="reason"
@@ -421,7 +426,7 @@ export function ProjectChangeOrderEditForm({
             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
           >
             <option value={item.status}>
-              {changeOrderStatusLabel(item.status)}
+              {changeOrderDisplayStatus(item.status, item.sourceType)}
             </option>
             {item.allowedTransitions.map((status) => (
               <option key={status} value={status}>
