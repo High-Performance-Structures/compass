@@ -131,9 +131,7 @@ export async function getSelectionWorkspace(
     const ownLinks = links.filter((link) => link.selectionId === row.id)
     if (
       audience === "sub_vendor" &&
-      (!decision?.approvedAt ||
-        !current ||
-        !ownLinks.some((link) => partnerOperations.has(link.operationId)))
+      (!decision?.approvedAt || !current)
     )
       return []
     const itemRequests = requests.filter(

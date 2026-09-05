@@ -7,6 +7,7 @@ import { isInboundSmsTodoDestination } from "@/lib/goto/review-routing"
 
 type Destination =
   | ""
+  | "message"
   | "rfi"
   | "rfq"
   | "change_order"
@@ -35,6 +36,7 @@ export function InboundSmsRoutingFields({
             const value = event.target.value
             if (
               value === "" ||
+              value === "message" ||
               value === "rfi" ||
               value === "rfq" ||
               value === "change_order" ||
@@ -49,6 +51,7 @@ export function InboundSmsRoutingFields({
           className="h-10 border bg-background px-3 font-normal"
         >
           <option value="" disabled>Select destination…</option>
+          <option value="message">Project Messages</option>
           <option value="rfi">RFI</option>
           <option value="rfq">RFQ draft</option>
           <option value="change_order">Change-order draft</option>

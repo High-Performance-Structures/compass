@@ -14,12 +14,20 @@ import type {
   SelectionWorkspace,
 } from "@/lib/selections/types"
 import { selectionMoney, safeSelectionUrl } from "@/lib/selections/decisions"
+import {
+  SelectionBatchPublish,
+  useSelectionBatch,
+  type SelectionBatchState,
+} from "./selection-batch-publish"
 import { SelectionPublishForm } from "./selection-publish-form"
 import {
   SelectionRequestForm,
   SelectionRequestCard,
 } from "./selection-request-form"
 import { Button } from "@/components/ui/button"
+import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
+import { selectionReport } from "@/lib/selections/report"
+import type { ReportProject } from "@/lib/print/portal-report"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,9 +50,11 @@ function productHref(value: string | null): string | null {
 function DecisionCard({
   item,
   workspace,
+  reportProject,
 }: {
   readonly item: SelectionDecisionItem
   readonly workspace: SelectionWorkspace
+  readonly reportProject?: ReportProject
 }): React.ReactElement {
   const router = useRouter(),
     [requestOpen, setRequestOpen] = React.useState(false),
@@ -67,7 +77,7 @@ function DecisionCard({
       const result = await approveSelectionDecision(
         workspace.projectId,
         item.id,
-        item.revision
+        item.revision,
       )
       if (!result.success) setError(result.error)
       else router.refresh()
@@ -79,6 +89,15 @@ function DecisionCard({
       className="scroll-mt-20 border-t py-5"
       aria-label={spec.name}
     >
+      {reportProject && (
+        <div className="mb-2 flex justify-end">
+          <ProjectPortalPrintButton
+            project={reportProject}
+            report={selectionReport([item], workspace.audience)}
+            label="Print selection"
+          />
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs text-muted-foreground">
@@ -267,11 +286,11 @@ function DecisionCard({
                   const result = await linkSelectionPurchaseOrder(
                     workspace.projectId,
                     item.id,
-                    values.operationId
+                    values.operationId,
                   )
                   if (!result.success) setError(result.error)
                   else router.refresh()
-                })
+                }),
               )}
             >
               <select
@@ -335,7 +354,7 @@ function DecisionCard({
                             const result = await unlinkSelectionProcurement(
                               workspace.projectId,
                               item.id,
-                              link.id
+                              link.id,
                             )
                             if (!result.success) setError(result.error)
                             else router.refresh()
@@ -408,51 +427,82 @@ function DecisionCard({
 function StaffDecisionRow({
   item,
   workspace,
+  batch,
 }: {
   readonly item: SelectionDecisionItem
+  readonly batch: SelectionBatchState
   readonly workspace: SelectionWorkspace
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const pendingRequests = item.requests.filter(
-    (request) => request.status === "open"
+    (request) => request.status === "open",
   ).length
   return (
-    <div className="border-t">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-label={`${open ? "Close" : "Review"} ${item.currentSpec.roomName}: ${item.currentSpec.name}`}
-        onClick={() => setOpen(!open)}
-        className="flex w-full flex-wrap items-center justify-between gap-2 py-4 text-left text-sm"
-      >
-        <span>
-          <span className="text-muted-foreground">
-            {item.currentSpec.roomName} ·{" "}
+    <div className="flex items-start gap-3 border-t">
+      {workspace.canWrite && (
+        <input
+          type="checkbox"
+          className="mt-5"
+          aria-label={`Select ${item.currentSpec.roomName}: ${item.currentSpec.name}`}
+          checked={!item.published && batch.selected.has(item.id)}
+          disabled={batch.pending || item.published}
+          onChange={(event) => batch.toggle(item.id, event.target.checked)}
+        />
+      )}
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          disabled={batch.pending}
+          aria-expanded={open}
+          aria-label={`${open ? "Close" : !workspace.canWrite ? "Review" : item.published ? "Manage owner view for" : "Publish to owner —"} ${item.currentSpec.roomName}: ${item.currentSpec.name}`}
+          onClick={() => setOpen(!open)}
+          className="flex w-full flex-wrap items-center justify-between gap-2 py-4 text-left text-sm"
+        >
+          <span>
+            <span className="text-muted-foreground">
+              {item.currentSpec.roomName} ·{" "}
+            </span>
+            <span className="font-medium">{item.currentSpec.name}</span>
           </span>
-          <span className="font-medium">{item.currentSpec.name}</span>
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {pendingRequests > 0 ? `${pendingRequests} owner requests · ` : ""}
-          {!item.published
-            ? "Unpublished"
-            : !item.current
-              ? "Revision needed"
-              : item.approvedAt
-                ? "Owner approved"
-                : "Published for owner"}{" "}
-          · {open ? "Close ↑" : "Review ↓"}
-        </span>
-      </button>
-      {open && <DecisionCard item={item} workspace={workspace} />}
+          <span className="text-xs text-muted-foreground">
+            {pendingRequests > 0 ? `${pendingRequests} owner requests · ` : ""}
+            {!item.published
+              ? "Unpublished"
+              : !item.current
+                ? "Revision needed"
+                : item.approvedAt
+                  ? "Owner approved"
+                  : "Published for owner"}{" "}
+            ·{" "}
+            <span className="inline-flex rounded-md border px-2.5 py-1.5 font-medium text-primary">
+              {open
+                ? "Close ↑"
+                : !workspace.canWrite
+                  ? "Review ↓"
+                  : item.published
+                    ? "Manage owner view ↓"
+                    : "Publish to owner ↓"}
+            </span>
+          </span>
+        </button>
+        {open && (
+          <fieldset disabled={batch.pending}>
+            <DecisionCard item={item} workspace={workspace} />
+          </fieldset>
+        )}
+      </div>
     </div>
   )
 }
 
 export function SelectionDecisionWorkspace({
   workspace,
+  reportProject,
 }: {
   readonly workspace: SelectionWorkspace
+  readonly reportProject?: ReportProject
 }): React.ReactElement {
+  const batch = useSelectionBatch(workspace.projectId)
   const [room, setRoom] = React.useState(""),
     [pendingOnly, setPendingOnly] = React.useState(false),
     [search, setSearch] = React.useState("")
@@ -475,7 +525,7 @@ export function SelectionDecisionWorkspace({
       (!pendingOnly ||
         !item.approvedAt ||
         !item.current ||
-        item.requests.some((request) => request.status === "open"))
+        item.requests.some((request) => request.status === "open")),
   )
   return (
     <section aria-label="Selections and decisions" className="min-w-0">
@@ -490,9 +540,35 @@ export function SelectionDecisionWorkspace({
             ? "Publish owner-ready specifications and pricing, resolve requests, and connect approved choices to procurement."
             : workspace.audience === "owner"
               ? "Choose the details that make this home yours. Review choices by room, request pricing, and approve the exact specification and terms."
-              : "The current approved specifications connected to your project quotes and commitments."}
+              : "Current owner-approved selections for the entire project. Review these before and during construction, and raise conflicts with the project team through an RFI."}
         </p>
       </div>
+      {reportProject && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          <ProjectPortalPrintButton
+            project={reportProject}
+            report={selectionReport(items, workspace.audience)}
+            label="Print selections / Save PDF"
+          />
+          <ProjectPortalPrintButton
+            project={reportProject}
+            report={selectionReport(items, workspace.audience)}
+            roomSheets
+            label="Print room sheets"
+          />
+        </div>
+      )}
+      {workspace.audience === "staff" && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          {workspace.items.filter((item) => item.published).length} visible to
+          owner · {workspace.items.filter((item) => !item.published).length}{" "}
+          unpublished.
+          {workspace.canWrite
+            ? " Choose Publish to owner next to an item to share a pending or already-selected choice."
+            : " You have view-only access. A project teammate with selection editing permission can publish items."}
+        </p>
+      )}
+
       <div className="mb-3 flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm">
           Find a selection
@@ -520,8 +596,8 @@ export function SelectionDecisionWorkspace({
                     (workspace.audience === "staff"
                       ? item.currentSpec
                       : item.spec
-                    ).roomName
-                )
+                    ).roomName,
+                ),
               ),
             ].map((value) => (
               <option key={value}>{value}</option>
@@ -542,6 +618,13 @@ export function SelectionDecisionWorkspace({
           {items.length} selections
         </span>
       </div>
+      {workspace.audience === "staff" && workspace.canWrite && (
+        <SelectionBatchPublish
+          state={batch}
+          items={workspace.items}
+          shown={items}
+        />
+      )}
       {items.length === 0 ? (
         <p className="border-t py-8 text-sm text-muted-foreground">
           {workspace.items.length > 0
@@ -550,19 +633,25 @@ export function SelectionDecisionWorkspace({
               ? "Add a finish selection below, then publish it here for the owner."
               : workspace.audience === "owner"
                 ? "Your team will publish room-by-room selections here when they are ready for your input."
-                : "No approved selections have been shared with your quotes or commitments yet."}
+                : "Owner-approved selections will appear here for everyone assigned to this project once published and approved."}
         </p>
       ) : (
         items.map((item) =>
           workspace.audience === "staff" ? (
-            <StaffDecisionRow key={item.id} item={item} workspace={workspace} />
+            <StaffDecisionRow
+              key={item.id}
+              item={item}
+              workspace={workspace}
+              batch={batch}
+            />
           ) : (
             <DecisionCard
               key={`${item.id}:${item.revision}`}
               item={item}
               workspace={workspace}
+              reportProject={reportProject}
             />
-          )
+          ),
         )
       )}
     </section>

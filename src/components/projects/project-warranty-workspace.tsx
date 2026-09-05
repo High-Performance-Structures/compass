@@ -1,6 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
+import { warrantyReport } from "@/lib/print/audience-record-reports"
+import type { ReportProject } from "@/lib/print/portal-report"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -400,12 +403,13 @@ function ClaimActions({
 }
 
 function ClaimRow({
-  projectId,
+  projectId, project,
   claim,
   viewerIsInternal,
   assigneeNames,
 }: {
   readonly projectId: string
+  readonly project: ReportProject
   readonly claim: WarrantyClaimItem
   readonly viewerIsInternal: boolean
   readonly assigneeNames: readonly string[]
@@ -420,7 +424,7 @@ function ClaimRow({
             {[claim.location, claim.category, `Submitted by ${claim.claimantName}`].filter(Boolean).join(" · ")}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={project} report={warrantyReport([claim])} />
           <Badge variant={claim.priority === "urgent" || claim.priority === "high" ? "destructive" : "outline"}>{label(claim.priority)}</Badge>
           <Badge variant={claim.status === "closed" ? "outline" : "secondary"}>{label(claim.status)}</Badge>
         </div>
@@ -488,7 +492,7 @@ export function ProjectWarrantyWorkspace({
             Submit issues, attach evidence, schedule visits, and track resolution.
           </p>
         </div>
-        <ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} />
+        <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} label="Print warranty requests" /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
       </div>
       {!workspace.project.warrantyEnabled && workspace.viewerIsInternal && (
         <p className="border-b bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-50 sm:px-6">
@@ -498,7 +502,7 @@ export function ProjectWarrantyWorkspace({
       <div className="px-4 sm:px-6">
         {workspace.claims.length > 0 ? (
           workspace.claims.map((claim) => (
-            <ClaimRow key={claim.id} projectId={workspace.project.id} claim={claim} viewerIsInternal={workspace.viewerIsInternal} assigneeNames={assigneeNames} />
+            <ClaimRow project={workspace.project} key={claim.id} projectId={workspace.project.id} claim={claim} viewerIsInternal={workspace.viewerIsInternal} assigneeNames={assigneeNames} />
           ))
         ) : (
           <div className="py-16 text-center">

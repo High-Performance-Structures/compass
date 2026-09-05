@@ -11,6 +11,7 @@ import type {
   SelectionDecisionItem,
   SelectionWorkspace,
 } from "@/lib/selections/types"
+import { selectionPublicationInput } from "@/lib/selections/publication"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -37,24 +38,8 @@ export function SelectionPublishForm({
     [confirmation, setConfirmation] =
       React.useState<PublishSelectionInput | null>(null),
     [pending, start] = React.useTransition()
-  const { register, handleSubmit } = useForm<PublishSelectionInput>({
-    defaultValues: {
-      selectionId: item.id,
-      expectedRevision: item.revision,
-      selectionUpdatedAt: item.selectionUpdatedAt,
-      published: item.published,
-      decisionDueDate: item.decisionDueDate ?? "",
-      allowance:
-        item.allowanceCents === null
-          ? ""
-          : (item.allowanceCents / 100).toFixed(2),
-      price:
-        item.quotedCents === null ? "" : (item.quotedCents / 100).toFixed(2),
-      scheduleImpact: item.scheduleImpact ?? "",
-      ownerNote: item.ownerNote ?? "",
-      requiresChangeOrder: item.requiresChangeOrder,
-      changeOrderId: item.changeOrderId ?? "",
-    },
+  const { register, handleSubmit, watch } = useForm<PublishSelectionInput>({
+    defaultValues: selectionPublicationInput(item),
   })
   function save(values: PublishSelectionInput): void {
     start(async () => {
@@ -65,10 +50,8 @@ export function SelectionPublishForm({
     })
   }
   return (
-    <details className="mt-3 border-t pt-3">
-      <summary className="cursor-pointer text-sm font-medium text-primary">
-        Publish decision / pricing
-      </summary>
+    <section className="mt-3 border-t pt-3" aria-label="Owner publication">
+      <h3 className="text-sm font-semibold">Publish to owner</h3>
       <form
         className="mt-3 space-y-3"
         onSubmit={handleSubmit((values) =>
@@ -76,10 +59,14 @@ export function SelectionPublishForm({
         )}
       >
         <p className="text-xs text-muted-foreground">
-          Publishes the current staff specification shown below as a new
-          revision. Use the existing Finish Selections editor to change the
-          product first.
+          Share a pending choice for an owner decision or an already-selected
+          item for reference. Publishing does not record owner approval.
+          To change the product, use Edit finish specifications below first.
         </p>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" {...register("published")} />
+          Visible in the owner workspace
+        </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
             Decision deadline
@@ -132,10 +119,6 @@ export function SelectionPublishForm({
           <input type="checkbox" {...register("requiresChangeOrder")} />
           Requires an approved change order (even when the price is unchanged)
         </label>
-        <label className="flex items-start gap-2 text-sm">
-          <input type="checkbox" {...register("published")} />
-          Visible in the owner workspace
-        </label>
         <p className="text-xs text-muted-foreground">
           Blank pricing remains pending. A price difference requires an approved
           owner change order. Supplier costs and internal notes are never
@@ -147,7 +130,7 @@ export function SelectionPublishForm({
           </p>
         )}
         <Button disabled={pending} type="submit">
-          {pending ? "Saving…" : "Save decision revision"}
+          {pending ? "Saving…" : !watch("published") ? "Save as internal draft" : item.published ? "Update owner view" : "Publish to owner"}
         </Button>
       </form>
       <AlertDialog
@@ -178,6 +161,6 @@ export function SelectionPublishForm({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </details>
+    </section>
   )
 }

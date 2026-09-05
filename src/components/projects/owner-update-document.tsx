@@ -99,9 +99,9 @@ export function OwnerUpdateDocument({
               {previewMode ? "Owner Compass" : "Project"}
             </Link>
           </Button>
-          {!previewMode && (
             <OwnerUpdateActions
-              canManage={document.canManage}
+              canManage={!previewMode && document.canManage}
+              printOnly={Boolean(previewMode)}
               projectId={document.project.id}
               updateId={document.update.id}
               status={document.update.status}
@@ -111,7 +111,6 @@ export function OwnerUpdateDocument({
               projectLabel={label}
               updateTitle={document.update.title}
             />
-          )}
         </div>
 
         {!previewMode &&

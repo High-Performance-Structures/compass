@@ -191,18 +191,17 @@ try {
       await page.waitForURL(
         /\/preview\/projects\/cedar\/(owner|sub-vendor)\/schedule$/
       )
-      await page
-        .getByText("Email or text this project", { exact: true })
-        .click()
-      assert.equal(
-        (await page.getByRole("link", { name: /project\+/ }).count()) > 0 ||
-          (await page.locator('a[href^="mailto:"]').count()) > 0,
-        true
-      )
-      assert.equal(await page.locator('a[href^="sms:"]').count(), 1)
-      await page
-        .getByText("Email or text this project", { exact: true })
-        .click()
+      const communication = page.getByRole("region", { name: "Project communication", exact: true })
+      assert.ok((await communication.boundingBox()).height < 115)
+      assert.equal(await communication.getByRole("link", { name: "Email", exact: true }).count(), 1)
+      assert.equal(await communication.getByRole("link", { name: "Text", exact: true }).count(), 1)
+      const instructions = communication.locator("summary")
+      await instructions.focus()
+      await page.keyboard.press("Enter")
+      assert.equal(await communication.getByRole("button", { name: "Copy", exact: true }).count(), 2)
+      assert.equal(await communication.locator('a[href^="sms:"]:visible').count(), 2)
+      await instructions.click()
+      assert.equal(await communication.getByRole("button", { name: "Copy", exact: true }).count(), 0)
       if (process.env.DASHBOARD_SCREENSHOTS) {
         await page.goto(`${origin}/?role=${role}`)
         await page

@@ -428,7 +428,17 @@ describe("pricing and alternative requests", () => {
 })
 
 describe("supplier access through procurement", () => {
-  it("shares only approved linked selections for visible procurement and omits owner financial terms", async () => {
+  it("requires an assigned sub/vendor membership even for project-wide approved specifications", async () => {
+    await publish()
+    signIn("owner-a")
+    await approveSelectionDecision("project-a", "selection-a", 1)
+    await expect(getSelectionWorkspace("project-a", "sub_vendor")).rejects.toThrow("Project not found")
+    testDb.sqlite.exec("UPDATE project_members SET role='subcontractor' WHERE user_id='owner-a'")
+    expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(1)
+    testDb.sqlite.exec("DELETE FROM project_members WHERE user_id='owner-a'")
+    await expect(getSelectionWorkspace("project-a", "sub_vendor")).rejects.toThrow("Project not found")
+  })
+  it("shares approved selections project-wide while restricting procurement links and owner financial terms", async () => {
     await testDb.db.insert(projectOperations).values({
       id: "po-a",
       projectId: "project-a",
@@ -447,7 +457,8 @@ describe("supplier access through procurement", () => {
     signIn()
     expect(
       (await getSelectionWorkspace("project-a", "sub_vendor")).items
-    ).toHaveLength(0)
+    ).toHaveLength(1)
+    expect((await getSelectionWorkspace("project-a", "sub_vendor")).items[0]?.links).toEqual([])
     mocks.preview.mockResolvedValue({ rfqs: [], operations: [{ id: "po-a" }] })
     const item = (await getSelectionWorkspace("project-a", "sub_vendor"))
       .items[0]
@@ -469,8 +480,22 @@ describe("supplier access through procurement", () => {
     ).toEqual({ success: true })
     expect(
       (await getSelectionWorkspace("project-a", "sub_vendor")).items
-    ).toHaveLength(0)
+    ).toHaveLength(1)
   })
+  it("withholds pending, unpublished, and stale approved choices from suppliers", async () => {
+    await publish()
+    signIn()
+    expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(0)
+    signIn("owner-a")
+    await approveSelectionDecision("project-a", "selection-a", 1)
+    signIn()
+    testDb.sqlite.exec("UPDATE project_selection_decisions SET published=0")
+    expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(0)
+    testDb.sqlite.exec("UPDATE project_selection_decisions SET published=1")
+    testDb.sqlite.exec("UPDATE project_finish_selections SET model='Changed model'")
+    expect((await getSelectionWorkspace("project-a", "sub_vendor")).items).toHaveLength(0)
+  })
+
 })
 
 describe("RFQ selection integration", () => {

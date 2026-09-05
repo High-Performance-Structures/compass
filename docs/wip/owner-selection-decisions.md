@@ -10,7 +10,7 @@ Scope baseline: branch `codex/owner-selections`, based on `0c930870` on main. Th
 - Approval requires known pricing and timing, no pending request, and an executed owner change order when pricing differs from the allowance or staff mark a change order required. Approval records the actual owner, timestamp, and exact terms. It neither purchases goods nor replaces change-order approval.
 - Product edits make a published specification stale. Republishing clears the current approval and retains prior approval history. Staff lifecycle statuses cannot manufacture an owner signature.
 - Importing selections into a new supplier RFQ preserves source-selection links and specification snapshots atomically. Staff can link/unlink existing project purchase orders; links do not issue or authorize orders.
-- Partners see current approved specifications only through RFQs or commitments already visible to them. Owner pricing, allowances, notes, requests, decision deadlines, timing terms, approval identities/timestamps, and approval history are excluded.
+- Assigned partners see current published owner-approved specifications across the project; procurement links remain limited to RFQs and commitments already visible to them. Owner pricing, allowances, notes, requests, decision deadlines, timing terms, approval identities/timestamps, and approval history are excluded.
 - Published, requested, linked, or previously owner-approved decisions are protected against selection deletion. Requests are withdrawn with confirmation and retained for audit; procurement unlinking also records an audit entry.
 
 ## Storage and release
@@ -28,3 +28,17 @@ Local structured autoreview is required before shipping. The user explicitly wai
 Review corrections: owner approval preserves procurement/install lifecycle status; any owner request history protects the selection from deletion, including resolved and withdrawn requests. Focused regressions cover both cases.
 
 Second review classification: supplier decision-metadata redaction is an in-scope exposure at the existing selection read boundary. It needs no new workflow, storage, or permission protocol; remove the fields and extend the supplier projection test.
+
+## Publishing controls
+
+Unpublished staff rows expose **Publish to owner** directly. The form opens with owner visibility selected, and publication still requires submitting the form. Pending and already-selected choices can both be shared without recording owner approval.
+
+Staff can select multiple unpublished rows, use **Select all shown** within the current filters, and confirm **Publish selected to owner**. The confirmation includes selected items outside the current filter. Each item retains its displayed owner terms and uses the existing permission, draft timestamp, decision revision, and audit checks. Already-published items are excluded to avoid replacing approvals accidentally. Publication runs in small request groups with progress; successful items clear from the selection and errors remain selected with an explanation. Keep the page open until publishing finishes.
+
+### Project-wide trade coordination and reports
+
+Every assigned subcontractor/vendor can read current, published owner-approved specifications across the project. A procurement link is no longer required for technical visibility. Drafts, pending decisions and outdated specifications remain withheld; the general selections page does not present estimates as approved choices. RFQ import already carries selection specification details to the assigned bidder for pricing before approval. RFQ and PO links still appear only for procurement records the viewer can access.
+
+Owner and partner selections support individual printouts, filtered packets and room sheets using the internal branded packet layout. Partner reports include technical specifications without owner financial terms, private notes or approval identity. Owners retain their published pricing and decision status. Printing does not approve or publish a selection.
+
+Assigned RFQs, commitments/POs and RFIs have individual and combined reports. Change orders, warranty claims and the project directory also have report controls. Published owner updates expose their existing print layout; schedule and owner budget printing remain available. Reports are generated only from authorized workspace projections, without a staff data fetch or an additional access grant.

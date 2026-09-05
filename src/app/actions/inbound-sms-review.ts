@@ -215,6 +215,7 @@ function requiredDueDate(formData: FormData): string {
 
 function reviewedDestination(value: string): ProjectEmailDestination {
   if (
+    value === "message" ||
     value === "rfi" ||
     value === "rfq" ||
     value === "change_order" ||
@@ -230,7 +231,8 @@ function reviewedDestination(value: string): ProjectEmailDestination {
 
 function destinationFeature(
   destination: ProjectEmailDestination
-): "rfis" | "rfqs" | "change-orders" | "tasks" | "daily-logs" {
+): "rfis" | "rfqs" | "change-orders" | "tasks" | "daily-logs" | "conversations" {
+  if (destination === "message") return "conversations"
   if (destination === "rfi") return "rfis"
   if (destination === "rfq") return "rfqs"
   if (destination === "change_order") return "change-orders"
@@ -241,6 +243,7 @@ function destinationFeature(
 }
 
 function destinationTag(destination: ProjectEmailDestination): string {
+  if (destination === "message") return "[MESSAGE]"
   if (destination === "rfi") return "[RFI]"
   if (destination === "rfq") return "[RFQ]"
   if (destination === "change_order") return "[CHANGE ORDER]"

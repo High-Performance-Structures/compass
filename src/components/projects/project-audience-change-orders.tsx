@@ -1,4 +1,6 @@
 import type * as React from "react"
+import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
+import { changeOrderReport } from "@/lib/print/audience-record-reports"
 import { notFound } from "next/navigation"
 
 import {
@@ -88,6 +90,7 @@ export async function ProjectAudienceChangeOrders({
     >
       <main className="min-h-screen bg-muted/20 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">
+          <div className="mb-4 flex justify-end"><ProjectPortalPrintButton project={preview.project} report={changeOrderReport(item ? [item] : items)} /></div>
           {item ? (
             <ProjectChangeOrderDetail
               item={item}

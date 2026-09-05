@@ -40,7 +40,7 @@ export async function AudienceSelectionPage({
     >
       <main className="min-h-screen bg-background">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-          <SelectionDecisionWorkspace workspace={workspace} />
+          <SelectionDecisionWorkspace workspace={workspace} reportProject={data.project} />
         </div>
       </main>
     </ProjectAudiencePreviewShell>

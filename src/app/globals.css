@@ -1178,6 +1178,17 @@ em-emoji-picker {
     word-break: break-all;
   }
 
+  .portal-report-printable .portal-report-paragraph {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .portal-report-printable .selection-print-grid p,
+  .portal-report-printable .selection-print-item-title h3 {
+    overflow-wrap: anywhere;
+  }
+
   .selection-print-notes {
     border: 1px solid #999999;
     height: 0.46in;

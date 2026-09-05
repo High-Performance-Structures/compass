@@ -67,7 +67,20 @@ export function ProjectEmailAddressCard({
           </span>
         ))}
       </div>
+      <ProjectMessageRoutingHint />
     </section>
+  )
+}
+
+function ProjectMessageRoutingHint(): React.ReactElement {
+  return (
+    <p className="mt-2 text-xs text-muted-foreground">
+      Use <span className="font-mono text-foreground">[MESSAGE] @FirstName</span>{" "}
+      to save a message for an internal teammate and notify them in Compass.
+      For a shared first name, use <span className="font-mono text-foreground">@&quot;First Last&quot;</span>.
+      Without a mention, messages go to assigned internal project staff.
+      Unmatched names and messages with attachments go to staff for review.
+    </p>
   )
 }
 
@@ -147,6 +160,7 @@ function ProjectTextAddressCard({
           ))}
         </div>
       )}
+      <ProjectMessageRoutingHint />
     </section>
   )
 }
@@ -162,6 +176,43 @@ export function ProjectCommunicationInstructions({
   readonly textPhoneNumber: string
   readonly compact?: boolean
 }): React.ReactElement {
+  if (compact) {
+    const address = projectInboundEmailAddress(projectId)
+    const starter = projectNumber ? `${projectNumber} ` : ""
+
+    return (
+      <section aria-label="Project communication" className="border-y py-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <p className="text-xs font-medium">Email or text this project</p>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm">
+              <a href={`mailto:${address}`}>
+                <IconMail className="size-4" />
+                Email
+              </a>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <a href={`sms:${textPhoneNumber}?body=${encodeURIComponent(starter)}`}>
+                <IconMessageCircle className="size-4" />
+                Text
+              </a>
+            </Button>
+          </div>
+        </div>
+        <details>
+          <summary className="w-fit cursor-pointer py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-ring">
+            Addresses &amp; routing instructions
+          </summary>
+          <ProjectCommunicationInstructions
+            projectId={projectId}
+            projectNumber={projectNumber}
+            textPhoneNumber={textPhoneNumber}
+          />
+        </details>
+      </section>
+    )
+  }
+
   return (
     <div>
       <ProjectEmailAddressCard projectId={projectId} compact={compact} />
