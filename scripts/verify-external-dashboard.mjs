@@ -192,7 +192,12 @@ try {
         /\/preview\/projects\/cedar\/(owner|sub-vendor)\/schedule$/
       )
       const communication = page.getByRole("region", { name: "Project communication", exact: true })
-      assert.ok((await communication.boundingBox()).height < 115)
+      const communicationBox = await communication.boundingBox()
+      const greetingBox = await page.getByRole("region", { name: "Project greeting", exact: true }).boundingBox()
+      assert.ok(communicationBox && greetingBox)
+      assert.ok(communicationBox.height < 115)
+      assert.ok(communicationBox.y + communicationBox.height <= greetingBox.y, "Email/text controls must appear above the greeting")
+      assert.equal(await page.locator("footer").getByRole("region", { name: "Project communication", exact: true }).count(), 0)
       assert.equal(await communication.getByRole("link", { name: "Email", exact: true }).count(), 1)
       assert.equal(await communication.getByRole("link", { name: "Text", exact: true }).count(), 1)
       const instructions = communication.locator("summary")
