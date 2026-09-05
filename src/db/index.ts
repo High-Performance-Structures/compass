@@ -22,7 +22,12 @@ import * as socialSchema from "./schema-social"
 import * as documentSchema from "./schema-documents"
 import * as rfqSchema from "./schema-rfqs"
 
+import * as correspondenceSchema from "./schema-correspondence"
+import * as correspondenceEmailSchema from "./schema-correspondence-email"
+
 const allSchemas = {
+  ...correspondenceSchema,
+  ...correspondenceEmailSchema,
   ...schema,
   ...netsuiteSchema,
   ...pluginSchema,
