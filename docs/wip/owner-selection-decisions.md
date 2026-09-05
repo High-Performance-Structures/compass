@@ -4,6 +4,7 @@ Scope baseline: branch `codex/owner-selections`, based on `0c930870` on main. Th
 
 ## Behavior
 
+- Staff decision rows expand on demand and support product/room search, keeping large project lists manageable.
 - Staff maintain room/product specifications in the existing Finish Selections editor, then explicitly publish an owner revision with a deadline, allowance, total owner price, schedule impact, and optional owner change order.
 - Owners see published specifications, request pricing or propose alternatives, edit or withdraw their own pending requests, and approve the displayed revision. Internal owner previews cannot submit decisions.
 - Approval requires known pricing and timing, no pending request, and an executed owner change order when pricing differs from the allowance or staff mark a change order required. Approval records the actual owner, timestamp, and exact terms. It neither purchases goods nor replaces change-order approval.
@@ -23,3 +24,5 @@ The owner boundary is the selection decision lifecycle and its links to existing
 Integration tests exercise the actual actions against a transactional SQLite/D1 adapter and the new migration, including authorization, stale revisions, write races, failed audit rollback, change-order requirements, request ownership, RFQ link persistence, staff status changes, and partner data projection. Browser checks exercise the actual React components with isolated action boundaries: approval terms, request creation/edit/withdrawal, staff publication, filters, previews, empty states, and desktop/mobile layouts. The existing dashboard browser suite checks Quick Add, project switching, logout, photos and theme controls.
 
 Local structured autoreview is required before shipping. The user explicitly waived the separate GitHub independent-review requirement and authorized squash merge and deployment.
+
+Review corrections: owner approval preserves procurement/install lifecycle status; any owner request history protects the selection from deletion, including resolved and withdrawn requests. Focused regressions cover both cases.

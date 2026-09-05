@@ -1893,7 +1893,7 @@ export async function deleteProjectSelection(
           selectionDeletionAllowed(selectionId)
         )
       ).returning({id:projectFinishSelections.id})
-    if (!deleted.length) return {success:false,error:"Unpublish the decision, close pending requests, and remove procurement links before deleting. Owner-approved decisions must be retained."}
+    if (!deleted.length) return {success:false,error:"Unpublish the decision and remove procurement links before deleting. Selections with owner approval or request history must be retained."}
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
     revalidatePath(`/dashboard/projects/${projectId}`)

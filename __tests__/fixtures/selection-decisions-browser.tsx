@@ -87,7 +87,11 @@ const workspace: SelectionWorkspace = {
             model: "Library",
             colorFinish: "Aged iron",
           },
-          currentSpec: { ...spec, name: "Bedside sconces" },
+          currentSpec: {
+            ...spec,
+            roomName: "Primary suite",
+            name: "Bedside sconces",
+          },
           requests: [],
           allowanceCents: partner ? null : 180000,
           quotedCents: partner ? null : 180000,
@@ -97,9 +101,20 @@ const workspace: SelectionWorkspace = {
   purchaseOrders: [{ id: "po-1", label: "Kitchen fixtures PO" }],
 }
 const data = dashboardFixture(partner ? "sub_vendor" : "owner")
+const displayWorkspace = params.has("large")
+  ? {
+      ...workspace,
+      items: Array.from({ length: 732 }, (_, index) => ({
+        ...item,
+        id: `selection-${index + 1}`,
+        spec: { ...spec, name: `Selection ${index + 1}` },
+        currentSpec: { ...spec, name: `Selection ${index + 1}` },
+      })),
+    }
+  : workspace
 const content = (
   <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-    <SelectionDecisionWorkspace workspace={workspace} />
+    <SelectionDecisionWorkspace workspace={displayWorkspace} />
   </div>
 )
 const container = document.getElementById("root")

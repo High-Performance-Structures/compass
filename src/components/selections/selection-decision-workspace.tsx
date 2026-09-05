@@ -403,16 +403,73 @@ function DecisionCard({
   )
 }
 
+function StaffDecisionRow({
+  item,
+  workspace,
+}: {
+  readonly item: SelectionDecisionItem
+  readonly workspace: SelectionWorkspace
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  const pendingRequests = item.requests.filter(
+    (request) => request.status === "open"
+  ).length
+  return (
+    <div className="border-t">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`${open ? "Close" : "Review"} ${item.currentSpec.roomName}: ${item.currentSpec.name}`}
+        onClick={() => setOpen(!open)}
+        className="flex w-full flex-wrap items-center justify-between gap-2 py-4 text-left text-sm"
+      >
+        <span>
+          <span className="text-muted-foreground">
+            {item.currentSpec.roomName} ·{" "}
+          </span>
+          <span className="font-medium">{item.currentSpec.name}</span>
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {pendingRequests > 0 ? `${pendingRequests} owner requests · ` : ""}
+          {!item.published
+            ? "Unpublished"
+            : !item.current
+              ? "Revision needed"
+              : item.approvedAt
+                ? "Owner approved"
+                : "Published for owner"}{" "}
+          · {open ? "Close ↑" : "Review ↓"}
+        </span>
+      </button>
+      {open && <DecisionCard item={item} workspace={workspace} />}
+    </div>
+  )
+}
+
 export function SelectionDecisionWorkspace({
   workspace,
 }: {
   readonly workspace: SelectionWorkspace
 }): React.ReactElement {
   const [room, setRoom] = React.useState(""),
-    [pendingOnly, setPendingOnly] = React.useState(false)
+    [pendingOnly, setPendingOnly] = React.useState(false),
+    [search, setSearch] = React.useState("")
   const items = workspace.items.filter(
     (item) =>
-      (!room || item.spec.roomName === room) &&
+      (!room ||
+        (workspace.audience === "staff" ? item.currentSpec : item.spec)
+          .roomName === room) &&
+      (!search.trim() ||
+        [
+          item.currentSpec.roomName,
+          item.currentSpec.name,
+          item.currentSpec.manufacturer,
+          item.currentSpec.model,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(search.trim().toLowerCase())) &&
       (!pendingOnly ||
         !item.approvedAt ||
         !item.current ||
@@ -436,6 +493,16 @@ export function SelectionDecisionWorkspace({
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm">
+          Find a selection
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-9 w-44 rounded-md border bg-background px-2"
+            placeholder="Product or room"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
           Room
           <select
             className="h-9 rounded-md border bg-background px-2"
@@ -445,7 +512,15 @@ export function SelectionDecisionWorkspace({
           >
             <option value="">All rooms</option>
             {[
-              ...new Set(workspace.items.map((item) => item.spec.roomName)),
+              ...new Set(
+                workspace.items.map(
+                  (item) =>
+                    (workspace.audience === "staff"
+                      ? item.currentSpec
+                      : item.spec
+                    ).roomName
+                )
+              ),
             ].map((value) => (
               <option key={value}>{value}</option>
             ))}
@@ -476,13 +551,17 @@ export function SelectionDecisionWorkspace({
                 : "No approved selections have been shared with your quotes or commitments yet."}
         </p>
       ) : (
-        items.map((item) => (
-          <DecisionCard
-            key={`${item.id}:${item.revision}`}
-            item={item}
-            workspace={workspace}
-          />
-        ))
+        items.map((item) =>
+          workspace.audience === "staff" ? (
+            <StaffDecisionRow key={item.id} item={item} workspace={workspace} />
+          ) : (
+            <DecisionCard
+              key={`${item.id}:${item.revision}`}
+              item={item}
+              workspace={workspace}
+            />
+          )
+        )
       )}
     </section>
   )

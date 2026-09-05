@@ -139,7 +139,14 @@ try {
       await page
         .getByLabel("Room", { exact: true })
         .selectOption("Primary suite")
-      assert.equal(await page.getByRole("article").count(), 1)
+      assert.equal(
+        await (
+          role === "staff"
+            ? page.getByRole("button", { name: /^Review / })
+            : page.getByRole("article")
+        ).count(),
+        1
+      )
       await page.getByLabel("Room", { exact: true }).selectOption("")
       if (role === "partner")
         assert.equal(
@@ -210,6 +217,12 @@ try {
     0
   )
   await page.goto(`${origin}/?staff`)
+  await page
+    .getByRole("button", {
+      name: "Review Kitchen: Kitchen faucet",
+      exact: true,
+    })
+    .click()
   const staffCard = page.getByRole("article", {
     name: "Kitchen faucet",
     exact: true,
@@ -226,6 +239,23 @@ try {
     await page.evaluate(() => document.body.dataset.published),
     /2700/
   )
+  await page.goto(`${origin}/?staff&large`)
+  await page
+    .getByRole("button", { name: "Review Kitchen: Selection 732", exact: true })
+    .waitFor()
+  assert.equal(
+    await page.locator("form").count(),
+    0,
+    "Staff forms should load only when expanded"
+  )
+  await page.getByLabel("Find a selection").fill("Selection 732")
+  assert.equal(await page.getByRole("button", { name: /^Review / }).count(), 1)
+  await page
+    .getByRole("button", { name: "Review Kitchen: Selection 732", exact: true })
+    .click()
+  await page
+    .getByRole("article", { name: "Selection 732", exact: true })
+    .waitFor()
   await page.goto(`${origin}/?empty`)
   await page.getByText(/Your team will publish room-by-room/).waitFor()
   assert.deepEqual(errors, [])

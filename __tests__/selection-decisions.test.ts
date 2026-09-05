@@ -591,3 +591,54 @@ it("allows only the request's owner to edit or withdraw it", async () => {
     status: "open",
   })
 })
+
+it.each(["ordered", "installed", "rfq_sent", "deferred"])(
+  "owner approval preserves %s progress",
+  async (status) => {
+    await testDb.db.update(projectFinishSelections).set({ status })
+    await publish()
+    signIn("owner-a")
+    expect(
+      await approveSelectionDecision("project-a", "selection-a", 1)
+    ).toEqual({ success: true })
+    expect(
+      await testDb.db.select().from(projectFinishSelections).get()
+    ).toMatchObject({ status, ownerApproved: true })
+  }
+)
+
+it.each(["withdraw", "resolve"])(
+  "retains request history after %s and unpublication",
+  async (mode) => {
+    await publish()
+    const row = await request()
+    if (mode === "resolve") signIn()
+    const result =
+      mode === "resolve"
+        ? await closeSelectionRequest(
+            "project-a",
+            row.id,
+            row.updatedAt,
+            "resolve",
+            "No change needed"
+          )
+        : await closeSelectionRequest(
+            "project-a",
+            row.id,
+            row.updatedAt,
+            "withdraw",
+            ""
+          )
+    expect(result).toEqual({ success: true })
+    await publish({ published: false, expectedRevision: 1 })
+    const { selectionDeletionAllowed } =
+      await import("@/lib/selections/deletion")
+    expect(
+      await testDb.db
+        .delete(projectFinishSelections)
+        .where(selectionDeletionAllowed("selection-a"))
+        .returning()
+    ).toHaveLength(0)
+    expect(await testDb.db.select().from(requests)).toHaveLength(1)
+  }
+)

@@ -362,7 +362,8 @@ export async function approveSelectionDecision(
           ownerApproved: true,
           approvedBy: user.id,
           approvedAt: now,
-          status: "approved",
+          // Signature collection must not rewind procurement or installation progress.
+          status: sql`CASE WHEN ${projectFinishSelections.status} IN ('needed', 'proposed', 'owner_review') THEN 'approved' ELSE ${projectFinishSelections.status} END`,
           updatedAt: now,
         })
         .where(
