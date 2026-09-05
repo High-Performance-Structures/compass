@@ -62,7 +62,6 @@ import {
   projectJobStatusLabel,
 } from "@/lib/project-profile"
 import {
-  isSageWriteApproved,
   parseSageClientStatusId,
   parseSageJobTypeId,
   sageClientStatusName,
@@ -133,7 +132,7 @@ type CreateProjectShellResult =
   | {
       readonly success: true
       readonly id: string
-      readonly sageStatus: "queued" | "approval_required"
+      readonly sageStatus: "queued"
     }
   | { readonly success: false; readonly error: string }
 
@@ -163,7 +162,7 @@ export type CreateProjectIntakeResult =
       readonly projectNumber: string
       readonly trackerStatus: "written" | "pending"
       readonly driveStatus: "provisioned" | "pending"
-      readonly sageStatus: "queued" | "approval_required"
+      readonly sageStatus: "queued"
       readonly warning: string | null
     }
   | { readonly success: false; readonly error: string }
@@ -447,11 +446,6 @@ export async function createProjectIntake(
     if (!sageJobType) {
       return { success: false, error: "Choose a Sage job type." }
     }
-    const sageWriteApproved = await isSageWriteApproved(
-      db,
-      organizationId,
-      user.id
-    )
     const department = normalizedIntakeDepartment(input.department)
     if (!department) {
       return { success: false, error: "Choose ORC, HPS, Nu-Tech, or Design." }
@@ -899,16 +893,15 @@ export async function createProjectIntake(
           sourceRecordId: projectNumber,
           sourceRecordNumber: projectNumber,
           title: `${projectNumber} Sage client/job write`,
-          description: sageWriteApproved
-            ? "Approved Compass intake queued for the narrow Sage client/job writer."
-            : "Compass intake recorded; Sage write is blocked until requested by an approved user.",
-          status: sageWriteApproved ? "open" : "needs_review",
+          description:
+            "Compass intake queued for the narrow Sage client/job writer.",
+          status: "open",
           priority: "high",
           assigneeType: "internal",
           assigneeName: cleanText(input.assignedTo),
           companyName: intakeClientName(input),
           externalUrl: null,
-          sageWriteStatus: sageWriteApproved ? "queued" : "approval_required",
+          sageWriteStatus: "queued",
           sagePayloadJson: JSON.stringify(sageWritePayload),
           syncDirection: "write",
           syncStatus: "pending_sage",
@@ -924,7 +917,7 @@ export async function createProjectIntake(
           operationType: "ensure_client_and_job",
           idempotencyKey: `project:${projectId}`,
           payloadJson: JSON.stringify(sageWritePayload),
-          status: sageWriteApproved ? "queued" : "approval_required",
+          status: "queued",
           requestedAt: now,
           updatedAt: now,
         }),
@@ -1124,7 +1117,7 @@ export async function createProjectIntake(
         department,
         trackerStatus,
         driveStatus,
-        sageStatus: sageWriteApproved ? "queued" : "approval_required",
+        sageStatus: "queued",
       },
     })
     revalidatePath("/dashboard/projects")
@@ -1136,7 +1129,7 @@ export async function createProjectIntake(
       projectNumber,
       trackerStatus,
       driveStatus,
-      sageStatus: sageWriteApproved ? "queued" : "approval_required",
+      sageStatus: "queued",
       warning,
     }
   } catch (error) {
@@ -1443,8 +1436,6 @@ export async function createProjectShell(
     if (!sageJobType) {
       return { success: false, error: "Choose a Sage job type." }
     }
-    const approved = await isSageWriteApproved(db, orgId, user.id)
-
     if (projectNumber) {
       const duplicate = await db
         .select({ id: projects.id })
@@ -1598,7 +1589,7 @@ export async function createProjectShell(
         operationType: "ensure_client_and_job",
         idempotencyKey: `project:${id}`,
         payloadJson: JSON.stringify(payload),
-        status: approved ? "queued" : "approval_required",
+        status: "queued",
         requestedAt: now,
         updatedAt: now,
       }),
@@ -1610,7 +1601,7 @@ export async function createProjectShell(
     return {
       success: true,
       id,
-      sageStatus: approved ? "queued" : "approval_required",
+      sageStatus: "queued",
     }
   } catch (error) {
     return {

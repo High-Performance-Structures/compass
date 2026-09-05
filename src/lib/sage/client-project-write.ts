@@ -1,8 +1,4 @@
-import { and, eq } from "drizzle-orm"
 import { z } from "zod/v4"
-
-import { getDb } from "@/db"
-import { sageWriteApprovals } from "@/db/schema-sage"
 
 export const SAGE_CLIENT_STATUS_OPTIONS = [
   { id: 1, name: "Current" },
@@ -133,24 +129,6 @@ export function sageJobName(
     ? `${normalizedNumber}-${normalizedName}`
     : normalizedName
   return fullName.slice(0, 75)
-}
-
-export async function isSageWriteApproved(
-  db: ReturnType<typeof getDb>,
-  organizationId: string,
-  userId: string
-): Promise<boolean> {
-  const row = await db
-    .select({ id: sageWriteApprovals.id })
-    .from(sageWriteApprovals)
-    .where(
-      and(
-        eq(sageWriteApprovals.organizationId, organizationId),
-        eq(sageWriteApprovals.userId, userId)
-      )
-    )
-    .limit(1)
-  return Boolean(row[0])
 }
 
 export function sageClientProjectWritesEnabled(env: CloudflareEnv): boolean {
