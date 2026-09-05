@@ -16,6 +16,8 @@ const mocks = {
   "next/navigation": `export function usePathname(){return window.location.pathname}export function useSearchParams(){return new URLSearchParams(window.location.search)}export function useRouter(){return {push(href){history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))},refresh(){document.body.dataset.refreshed='true'}}}`,
   "next/link": `import React from 'react';export default function Link({href,children,...props}){return React.createElement('a',{...props,href,onClick(e){if(!e.metaKey&&!e.ctrlKey){e.preventDefault();history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))}}},children)}`,
   "next/image": `import React from 'react';export default function Image({fill,unoptimized,priority,...props}){return React.createElement('img',{...props,style:fill?{position:'absolute',inset:0,width:'100%',height:'100%'}:props.style})}`,
+  "@/app/actions/project-change-orders": `export async function createProjectChangeOrder(projectId,input){document.body.dataset.changeRequest=JSON.stringify({projectId,input});return {success:true,id:'new-change'}};export async function getProjectChangeOrderUploadSessionUrl(){throw new Error('Unexpected upload')}`,
+  "@/app/actions/project-warranty": `export async function createProjectWarrantyClaim(projectId,input){document.body.dataset.warrantyRequest=JSON.stringify({projectId,input});return {success:true,id:'new-warranty'}};export async function confirmProjectWarrantyResolution(){throw new Error('Unexpected update')};export async function deleteProjectWarrantyClaim(){throw new Error('Unexpected deletion')};export async function updateProjectWarrantyClaim(){throw new Error('Unexpected update')}`,
   "@/app/actions/profile": `export async function logout(){document.body.dataset.loggedOut='true'};export async function updateWorkspacePhoto(){return {success:true}}`,
   "@/app/actions/project-audience-sub-vendor": `export async function createSubVendorRfi(projectId,input){document.body.dataset.rfi=JSON.stringify({projectId,input});return {success:true}}`,
   "@/components/theme-provider": `import React from 'react';export function useTheme(){const [theme,set]=React.useState(document.documentElement.classList.contains('dark')?'dark':'light');return {theme,setTheme(v){set(v);document.documentElement.classList.toggle('dark',v==='dark')}}};export function useCompassTheme(){return {activeThemeId:'default',async setVisualTheme(){}}}`,
@@ -129,12 +131,14 @@ try {
         false,
         `${role} overflow at ${width}`
       )
+      assert.equal(await page.getByRole("main").getByRole("link", { name: "Project conversations", exact: true }).count(), 0)
+      assert.equal(await page.getByRole("main").getByRole("button", { name: "Message project team", exact: true }).count(), 0)
       await page.locator("[data-quick-add-trigger]:visible").click()
       assert.deepEqual(
         await page
           .locator('[role="menuitem"][data-quick-add-action]')
           .allTextContents(),
-        role === "owner" ? ["Project Message"] : ["Project Message", "RFI"]
+        role === "owner" ? ["Project Message", "Change Request", "Warranty Request"] : ["Project Message", "RFI", "Change Request"]
       )
       await page
         .getByRole("menuitem", { name: "Project Message", exact: true })
@@ -226,6 +230,30 @@ try {
       )
     }
   }
+  for (const [workspace, action, title, section, field] of [
+    ["owner", "Change Request", "Request a change order", "change-orders", 'input[name="title"]'],
+    ["sub-vendor", "Change Request", "Request a change order", "change-orders", 'input[name="title"]'],
+    ["owner", "Warranty Request", "New warranty claim", "warranty", 'input[name="title"]'],
+  ]) {
+    await page.goto(`${origin}/preview/projects/cedar/${workspace}`)
+    await page.locator("[data-quick-add-trigger]:visible").click()
+    await page.getByRole("menuitem", { name: action, exact: true }).click()
+    await page.getByRole("button", { name: "Continue", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: title, exact: true })
+    await dialog.waitFor()
+    assert.equal(new URL(page.url()).pathname, `/preview/projects/cedar/${workspace}/${section}`)
+    assert.equal(new URL(page.url()).searchParams.has("quickAdd"), false)
+    await dialog.locator(field).fill("Keep this draft")
+    await page.keyboard.press("Escape")
+    await page.locator("[data-quick-add-trigger]:visible").click()
+    await page.getByRole("menuitem", { name: action, exact: true }).click()
+    await page.getByRole("button", { name: "Continue", exact: true }).click()
+    await dialog.waitFor()
+    // Sheet fields unmount on close; verify reopening enters the form without navigation.
+    assert.equal(new URL(page.url()).searchParams.has("quickAdd"), false)
+    await page.keyboard.press("Escape")
+  }
+  console.log("PASS change/warranty Quick Add opens existing forms and reopens on the current route")
   await page.goto(`${origin}/?noQuickAdd=1`)
   assert.equal(await page.locator("[data-quick-add-trigger]").count(), 0)
   await page.goto(`${origin}/preview/projects/cedar/sub-vendor`)

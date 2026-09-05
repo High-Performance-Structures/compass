@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { warrantyReport } from "@/lib/print/audience-record-reports"
 import type { ReportProject } from "@/lib/print/portal-report"
@@ -108,6 +109,7 @@ function ClaimCreateSheet({
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
   const [open, setOpen] = React.useState(false)
+  useQuickAddEntry("warranty-request", () => setOpen(true))
   const [submitting, setSubmitting] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [files, setFiles] = React.useState<readonly File[]>([])

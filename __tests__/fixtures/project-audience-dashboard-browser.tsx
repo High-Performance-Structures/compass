@@ -8,6 +8,8 @@ import { ProjectAudienceDashboardView } from "@/components/projects/project-audi
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import type { ProjectAudienceWorkspaceSection } from "@/lib/project-audience-preview-routes"
+import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
+import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
 import { QuickAddProvider } from "@/components/quick-add-menu"
 import {
   quickAddHref,
@@ -69,8 +71,8 @@ function Fixture(): React.ReactElement {
   // The production layout supplies server-authorized destinations. Exercise the
   // real provider/menu here; server permission coverage lives in quick-add-server.test.ts.
   const quickAddActions: readonly QuickAddAction[] = partner
-    ? ["message", "rfi"]
-    : ["message"]
+    ? ["message", "rfi", "change-request"]
+    : ["message", "change-request", "warranty-request"]
   const quickAddProjects: readonly QuickAddProject[] = url.searchParams.has(
     "noQuickAdd"
   )
@@ -96,6 +98,12 @@ function Fixture(): React.ReactElement {
         activeSection={section}
         warrantyEnabled={data.project.warrantyEnabled}
       >
+        {url.pathname.endsWith("/change-orders") && !data.viewerIsInternal && (
+          <ProjectChangeOrderCreateForm projectId={projectId} detailBaseHref={url.pathname} internal={false} formOptions={{ phases: [], costCodes: [], companies: [], estimates: [], currentBaselineEstimateId: null }} />
+        )}
+        {url.pathname.endsWith("/warranty") && (
+          <ProjectWarrantyWorkspace workspace={{ project: { ...data.project, googleDriveFolderId: null }, viewerIsInternal: false, claims: [] }} />
+        )}
         <ProjectAudienceDashboardView
           data={data}
           financials={

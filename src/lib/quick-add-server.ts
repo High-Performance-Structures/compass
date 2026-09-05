@@ -11,6 +11,8 @@ import {
   projects,
 } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
+import { changeOrderRequesterType } from "@/lib/change-orders/access"
+import { isWarrantyProjectStage } from "@/lib/warranty/status"
 import { isCorrespondenceEnabled } from "@/lib/correspondence/access"
 import { chunkD1Values } from "@/lib/d1-query"
 import { getCloudflareContext } from "@/lib/db"
@@ -215,9 +217,11 @@ export async function getQuickAddProjects(
     if (!env?.DB) return []
     const db = getDb(env.DB)
     const projectIds = Array.from(new Set(projectList.map((project) => project.id)))
-    const [rows, capabilities] = await Promise.all([
+    const [rows, capabilities, changeRequestRead, changeRequestCreate] = await Promise.all([
       accessRows(db, user.id, projectIds),
       internalCapabilities(user),
+      canFeature(user, "change-orders", "read"),
+      canFeature(user, "change-orders", "create"),
     ])
     const accessByProject = new Map(rows.map((row) => [row.projectId, row]))
     const subVendorIds = rows
@@ -253,6 +257,27 @@ export async function getQuickAddProjects(
         contactProjects.has(project.id)
       ) {
         actions.push(destination("rfi", project.id, "sub_vendor"))
+      }
+      // Match the external forms; staff previews must remain read-only.
+      if (
+        workspace &&
+        workspace !== "staff" &&
+        !isInternalStaffRole(user.role) &&
+        hasProjectAccess(user, access)
+      ) {
+        if (
+          changeRequestRead &&
+          changeRequestCreate &&
+          changeOrderRequesterType({
+            internal: false,
+            projectRole: access.projectRole,
+          })
+        ) {
+          actions.push(destination("change-request", project.id, workspace))
+        }
+        if (workspace === "owner" && isWarrantyProjectStage(project)) {
+          actions.push(destination("warranty-request", project.id, workspace))
+        }
       }
       return actions.length > 0
         ? [{
