@@ -501,12 +501,15 @@ def run_once() -> None:
     for event in events:
         result = handle_event(event)
         counts[result] = counts.get(result, 0) + 1
-    heartbeat("healthy", metadata={
-        "claimedEventCount": len(events),
-        "completedCount": counts["completed"],
-        "failedCount": counts["failed"],
-        "retryableCount": counts["retryable"],
-    })
+    heartbeat(
+        "degraded" if counts["failed"] or counts["retryable"] else "healthy",
+        metadata={
+            "claimedEventCount": len(events),
+            "completedCount": counts["completed"],
+            "failedCount": counts["failed"],
+            "retryableCount": counts["retryable"],
+        },
+    )
 
 
 def run() -> None:

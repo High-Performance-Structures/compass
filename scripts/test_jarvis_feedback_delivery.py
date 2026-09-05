@@ -63,7 +63,7 @@ class DeliveryConsumerTests(unittest.TestCase):
         payload = self.payload()
         for invalid in (
             {**payload, "kind": "feature"},
-            {**payload, "reporterEmail": "private@example.com"},
+            {**payload, "reporterEmail": "redacted"},
             {**payload, "reference": "CFD-other"},
         ):
             with self.subTest(invalid=invalid):
@@ -179,6 +179,32 @@ class DeliveryConsumerTests(unittest.TestCase):
         self.assertEqual(health["serviceName"], "jarvis-feedback-delivery-consumer")
         self.assertEqual(health["metadata"]["claimedEventCount"], 1)
         self.assertEqual(health["metadata"]["completedCount"], 1)
+
+    def test_run_once_marks_health_degraded_when_an_event_fails(self) -> None:
+        event = {
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "claimToken": "claim-1",
+            "eventType": "feedback.delivery_requested",
+            "source": "feedback-desk",
+            "payload": self.payload(),
+        }
+        requests: list[tuple[str, str, object]] = []
+
+        def request(method: str, target: str, payload: object = None) -> object:
+            requests.append((method, target, payload))
+            return {"events": [event]} if method == "GET" else {"success": True}
+
+        with (
+            patch.object(MODULE, "compass_request", side_effect=request),
+            patch.object(MODULE, "handle_event", return_value="failed"),
+        ):
+            MODULE.run_once()
+
+        health = requests[-1][2]
+        if not isinstance(health, dict):
+            self.fail("health request payload was not a dictionary")
+        self.assertEqual(health["status"], "degraded")
+        self.assertEqual(health["metadata"]["failedCount"], 1)
 
     def test_kanban_command_uses_idempotency_and_does_not_pass_bridge_secrets(self) -> None:
         captured: dict[str, object] = {}

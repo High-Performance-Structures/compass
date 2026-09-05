@@ -306,8 +306,10 @@ keys.
 All private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
 Feedback Desk shows heartbeat age, last failure, and pending/processing/failed
-bridge counts. A missing heartbeat is an operational failure even when the
-process manager still reports the service as running.
+bridge counts. The delivery consumer reports `degraded` when any claimed event
+fails or is returned for retry, so a healthy process cannot mask per-event
+failures. A missing heartbeat is an operational failure even when the process
+manager still reports the service as running.
 
 ### Acknowledge an event
 
