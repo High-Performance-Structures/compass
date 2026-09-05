@@ -193,8 +193,17 @@ export function changeOrderReport(
           title: "Change details",
           status: changeOrderDisplayStatus(item.status, item.sourceType),
           fields: [
-            ["Requested by", item.requesterName],
-            ["Company", item.requesterCompany],
+            // Historical requester fields are project defaults, not evidence
+            // of who initiated this change. Match the shared detail view.
+            ...(item.sourceType === "buildertrend_import"
+              ? ([
+                  ["Initiator", "Not verified from Buildertrend"],
+                  ["Purpose", "Not classified"],
+                ] satisfies PortalReportItem["fields"])
+              : ([
+                  ["Requested by", item.requesterName],
+                  ["Company", item.requesterCompany],
+                ] satisfies PortalReportItem["fields"])),
             [
               "Amount",
               money(item.amountCents === null ? null : item.amountCents / 100),
