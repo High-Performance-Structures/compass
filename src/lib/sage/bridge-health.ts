@@ -1,8 +1,9 @@
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
   notificationEvents,
+  notificationRecipients,
   organizationMembers,
   users,
 } from "@/db/schema"
@@ -19,6 +20,7 @@ type SageBridgeHealthCheckResult = {
   readonly checked: number
   readonly offline: number
   readonly notificationsCreated: number
+  readonly notificationsResolved: number
 }
 
 export function isSageBridgeHeartbeatOnline(
@@ -45,6 +47,85 @@ function incidentSourceId(id: string, lastSeenAt: string): string {
   return `${id}:${lastSeenAt}`
 }
 
+type SageBridgeIncidentRecipient = {
+  readonly recipientId: string
+  readonly sourceId: string | null
+}
+
+type SageBridgeHeartbeatObservation = {
+  readonly id: string
+  readonly lastSeenAt: string
+}
+
+export function recoveredSageBridgeRecipientIds(
+  incidents: readonly SageBridgeIncidentRecipient[],
+  onlineHeartbeats: readonly SageBridgeHeartbeatObservation[]
+): string[] {
+  return incidents.flatMap((incident) => {
+    if (incident.sourceId === null) return []
+    for (const heartbeat of onlineHeartbeats) {
+      const prefix = `${heartbeat.id}:`
+      if (!incident.sourceId.startsWith(prefix)) continue
+      const incidentTimestamp = Date.parse(incident.sourceId.slice(prefix.length))
+      const recoveryTimestamp = Date.parse(heartbeat.lastSeenAt)
+      if (
+        Number.isFinite(incidentTimestamp) &&
+        Number.isFinite(recoveryTimestamp) &&
+        recoveryTimestamp > incidentTimestamp
+      ) {
+        return [incident.recipientId]
+      }
+    }
+    return []
+  })
+}
+
+async function dismissRecoveredNotifications(
+  env: CloudflareEnv,
+  onlineHeartbeats: readonly SageBridgeHeartbeatObservation[],
+  dismissedAt: string
+): Promise<number> {
+  if (onlineHeartbeats.length === 0) return 0
+  const db = getDb(env.DB)
+  const activeIncidents = await db
+    .select({
+      recipientId: notificationRecipients.id,
+      sourceId: notificationEvents.sourceId,
+    })
+    .from(notificationRecipients)
+    .innerJoin(
+      notificationEvents,
+      eq(notificationEvents.id, notificationRecipients.eventId)
+    )
+    .where(
+      and(
+        eq(notificationEvents.eventType, OFFLINE_EVENT_TYPE),
+        eq(notificationEvents.sourceType, HEALTH_SOURCE_TYPE),
+        isNull(notificationRecipients.dismissedAt)
+      )
+    )
+  const recipientIds = recoveredSageBridgeRecipientIds(
+    activeIncidents,
+    onlineHeartbeats
+  )
+  let resolved = 0
+  for (let offset = 0; offset < recipientIds.length; offset += 75) {
+    const chunk = recipientIds.slice(offset, offset + 75)
+    const updated = await db
+      .update(notificationRecipients)
+      .set({ dismissedAt })
+      .where(
+        and(
+          inArray(notificationRecipients.id, chunk),
+          isNull(notificationRecipients.dismissedAt)
+        )
+      )
+      .returning({ id: notificationRecipients.id })
+    resolved += updated.length
+  }
+  return resolved
+}
+
 export async function runSageBridgeHealthCheck(
   env: CloudflareEnv,
   now = new Date()
@@ -60,8 +141,22 @@ export async function runSageBridgeHealthCheck(
     (heartbeat) =>
       !isSageBridgeHeartbeatOnline(heartbeat.lastSeenAt, now.getTime())
   )
+  const offlineIds = new Set(offline.map((heartbeat) => heartbeat.id))
+  const onlineHeartbeats = heartbeats.flatMap((heartbeat) =>
+    offlineIds.has(heartbeat.id) ? [] : [heartbeat]
+  )
+  const notificationsResolved = await dismissRecoveredNotifications(
+    env,
+    onlineHeartbeats,
+    now.toISOString()
+  )
   if (offline.length === 0) {
-    return { checked: heartbeats.length, offline: 0, notificationsCreated: 0 }
+    return {
+      checked: heartbeats.length,
+      offline: 0,
+      notificationsCreated: 0,
+      notificationsResolved,
+    }
   }
 
   const admins = await db
@@ -80,6 +175,7 @@ export async function runSageBridgeHealthCheck(
       checked: heartbeats.length,
       offline: offline.length,
       notificationsCreated: 0,
+      notificationsResolved,
     }
   }
 
@@ -144,5 +240,6 @@ export async function runSageBridgeHealthCheck(
     checked: heartbeats.length,
     offline: offline.length,
     notificationsCreated,
+    notificationsResolved,
   }
 }
