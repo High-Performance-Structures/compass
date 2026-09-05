@@ -13,6 +13,8 @@ describe("Quick Add routes", () => {
       "todo",
       "schedule-item",
       "rfi",
+      "purchase-order",
+      "rfq",
     ])
   })
 
@@ -31,6 +33,15 @@ describe("Quick Add routes", () => {
     )
     expect(quickAddHref("rfi", "project one", "staff")).toBe(
       "/dashboard/projects/project%20one/rfis?quickAdd=rfi",
+    )
+  })
+
+  it("routes procurement actions to their existing project forms", () => {
+    expect(quickAddHref("purchase-order", "project one", "staff")).toBe(
+      "/dashboard/projects/project%20one/purchase-orders?quickAdd=purchase-order",
+    )
+    expect(quickAddHref("rfq", "project one", "staff")).toBe(
+      "/dashboard/projects/project%20one/rfqs?quickAdd=rfq",
     )
   })
 

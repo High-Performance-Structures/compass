@@ -42,6 +42,8 @@ type InternalCapabilities = {
   readonly todo: boolean
   readonly scheduleItem: boolean
   readonly rfi: boolean
+  readonly purchaseOrder: boolean
+  readonly rfq: boolean
 }
 
 function workspaceFor(row: AccessRow): QuickAddWorkspace | null {
@@ -91,19 +93,23 @@ function destination(
 
 async function internalCapabilities(user: AuthUser): Promise<InternalCapabilities> {
   if (user.organizationType !== "internal" || !isInternalStaffRole(user.role)) {
-    return { dailyLog: false, todo: false, scheduleItem: false, rfi: false }
+    return { dailyLog: false, todo: false, scheduleItem: false, rfi: false, purchaseOrder: false, rfq: false }
   }
-  const [dailyLog, todo, scheduleFeature, rfi] = await Promise.all([
+  const [dailyLog, todo, scheduleFeature, rfi, purchaseOrder, rfq] = await Promise.all([
     canFeature(user, "daily-logs", "update"),
     canFeature(user, "tasks", "update"),
     canFeature(user, "schedule", "update"),
     canFeature(user, "rfis", "update"),
+    canFeature(user, "purchase-orders", "update"),
+    canFeature(user, "rfqs", "update"),
   ])
   return {
     dailyLog,
     todo,
     scheduleItem: scheduleFeature && can(user, "schedule", "update"),
     rfi,
+    purchaseOrder,
+    rfq,
   }
 }
 
@@ -240,6 +246,8 @@ export async function getQuickAddProjects(
         if (capabilities.todo) actions.push(destination("todo", project.id, "staff"))
         if (capabilities.scheduleItem) actions.push(destination("schedule-item", project.id, "staff"))
         if (capabilities.rfi) actions.push(destination("rfi", project.id, "staff"))
+        if (capabilities.purchaseOrder) actions.push(destination("purchase-order", project.id, "staff"))
+        if (capabilities.rfq) actions.push(destination("rfq", project.id, "staff"))
       } else if (
         (access.projectRole === "subcontractor" || access.projectRole === "supplier") &&
         contactProjects.has(project.id)

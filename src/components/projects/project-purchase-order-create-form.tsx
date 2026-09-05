@@ -22,6 +22,7 @@ import {
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -330,6 +331,15 @@ type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
       }
   )
 
+function PurchaseOrderQuickAddEntry({
+  onEntry,
+}: {
+  readonly onEntry: () => void
+}): null {
+  useQuickAddEntry("purchase-order", onEntry)
+  return null
+}
+
 function ProjectPurchaseOrderForm(
   props: PurchaseOrderFormProps
 ): React.ReactElement {
@@ -512,6 +522,10 @@ function ProjectPurchaseOrderForm(
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
+      {/* Edit forms share this component but must never consume a create request. */}
+      {props.kind === "create" && (
+        <PurchaseOrderQuickAddEntry onEntry={() => setOpen(true)} />
+      )}
       <SheetTrigger asChild>
         <Button
           type="button"

@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { IconCalendarStats, IconClipboardText, IconListCheck, IconMessageCircle, IconMessageQuestion, IconPlus } from "@tabler/icons-react"
+import { IconCalendarStats, IconClipboardText, IconListCheck, IconMessageCircle, IconMessageQuestion, IconPlus, IconShoppingCart, IconFileText } from "@tabler/icons-react"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -25,6 +25,8 @@ function ActionIcon({ action }: { readonly action: QuickAddAction }): React.Reac
     case "schedule-item": return <IconCalendarStats className="size-4" />
     case "todo": return <IconListCheck className="size-4" />
     case "rfi": return <IconMessageQuestion className="size-4" />
+    case "purchase-order": return <IconShoppingCart className="size-4" />
+    case "rfq": return <IconFileText className="size-4" />
   }
 }
 

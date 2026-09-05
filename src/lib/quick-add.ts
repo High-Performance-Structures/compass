@@ -4,6 +4,8 @@ export const QUICK_ADD_ACTIONS = [
   "todo",
   "schedule-item",
   "rfi",
+  "purchase-order",
+  "rfq",
 ] as const
 
 export type QuickAddAction = (typeof QUICK_ADD_ACTIONS)[number]
@@ -27,6 +29,8 @@ export const QUICK_ADD_ACTION_LABELS: Readonly<Record<QuickAddAction, string>> =
   todo: "To-Do",
   "schedule-item": "Schedule Item",
   rfi: "RFI",
+  "purchase-order": "Purchase Order",
+  rfq: "RFQ",
 }
 
 export function quickAddHref(
@@ -52,6 +56,10 @@ export function quickAddHref(
           ? "schedule"
           : action === "rfi"
             ? "rfis"
-            : "todos"
+            : action === "purchase-order"
+              ? "purchase-orders"
+              : action === "rfq"
+                ? "rfqs"
+                : "todos"
   return `/dashboard/projects/${encodedProjectId}/${section}?quickAdd=${action}`
 }
