@@ -32,7 +32,7 @@ const item: SelectionDecisionItem = {
   spec,
   currentSpec: spec,
   revision: 1,
-  published: true,
+  published: !params.has("unpublished"),
   current: true,
   decisionDueDate: partner ? null : "2026-10-01",
   allowanceCents: partner ? null : 250000,
@@ -116,7 +116,7 @@ const displayWorkspace = params.has("large")
   : workspace
 const content = (
   <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-    <SelectionDecisionWorkspace workspace={displayWorkspace} />
+    <SelectionDecisionWorkspace workspace={displayWorkspace} reportProject={staff ? undefined : { id: "proj-o-cedar", name: "Cedar House", projectNumber: "O-210" }} />
   </div>
 )
 const container = document.getElementById("root")

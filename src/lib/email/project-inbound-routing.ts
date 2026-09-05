@@ -42,6 +42,7 @@ import {
   isYoutubeApiAuditApproved,
   youtubePrivacyForAudience,
 } from "@/lib/videos/youtube-audit"
+import { routeInboundProjectMessage } from "@/lib/email/project-message-routing"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
@@ -90,6 +91,7 @@ export type ProjectInboundRouteResult =
         | "routed_rfq"
         | "routed_change_order"
         | "routed_video"
+        | "routed_message"
     }
 
 function candidateBody(candidate: InboundCandidate): string {
@@ -189,6 +191,7 @@ function inboundActor(
 }
 
 function destinationLabel(destination: ProjectEmailDestination): string {
+  if (destination === "message") return "project message"
   if (destination === "rfi") return "RFI"
   if (destination === "rfq") return "RFQ draft"
   if (destination === "change_order") return "change-order draft"
@@ -199,6 +202,7 @@ function destinationLabel(destination: ProjectEmailDestination): string {
 }
 
 function destinationEntityType(destination: ProjectEmailDestination): string {
+  if (destination === "message") return "project_correspondence"
   if (destination === "rfi") return "rfi"
   if (destination === "rfq") return "rfq"
   if (destination === "change_order") return "change_order"
@@ -704,7 +708,11 @@ async function routeDestination(input: {
     | "routed_rfq"
     | "routed_change_order"
     | "routed_video"
-}> {
+    | "routed_message"
+} | null> {
+  if (input.destination === "message") {
+    return routeInboundProjectMessage({ ...input, body: candidateBody(input.candidate), source: input.source.kind === "email" ? "email" : "sms" })
+  }
   if (input.destination === "rfi") return routeRfi(input)
   if (input.destination === "rfq") return routeRfq(input)
   if (input.destination === "change_order") return routeChangeOrder(input)
@@ -774,6 +782,23 @@ async function routeVerifiedProjectInboundMessage(input: {
     now: new Date().toISOString(),
     source: input.source,
   })
+  if (!routed) {
+    await recordActivityEvent({
+      db: input.db,
+      id: `project-${input.source.idPrefix}-review-${input.candidate.gmailMessageId}`,
+      organizationId: input.organizationId,
+      projectId,
+      actor: inboundActor(input.candidate, input.source),
+      category: input.source.kind === "email" ? "email" : "conversation",
+      action: `project_${input.source.sourceSystem}.needs_review`,
+      entityType: `project_${input.source.sourceSystem}`,
+      entityId: input.candidate.gmailMessageId,
+      summary: "Project message needs review: check internal @names, assigned project staff, attachment import, and messaging availability.",
+      metadata: { senderAuthorized: true, destination },
+      createdAt: input.candidate.receivedAt,
+    })
+    return { kind: "needs_review", projectId }
+  }
   const title =
     projectEmailTitle(input.candidate.subject) || input.candidate.subject
   await recordActivityEvent({

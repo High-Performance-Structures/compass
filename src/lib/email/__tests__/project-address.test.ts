@@ -19,6 +19,9 @@ describe("project inbound email addressing", () => {
   })
 
   it.each([
+    ["[MESSAGE] @Alex Please check", "message"],
+    ["[message]: Project update", "message"],
+    ["[Messages] Project update", "message"],
     ["[RFI] Missing roof detail", "rfi"],
     ["[RFQ] Framing package", "rfq"],
     ["[CHANGE ORDER] Add patio heater", "change_order"],
@@ -30,6 +33,10 @@ describe("project inbound email addressing", () => {
     ["[VIDEO] Railing stain demonstration", "video"],
   ] as const)("routes %s", (subject, destination) => {
     expect(projectEmailDestination(subject)).toBe(destination)
+  })
+
+  it("removes the message tag but keeps the internal mention", () => {
+    expect(projectEmailTitle("[message] @Alex Please check")).toBe("@Alex Please check")
   })
 
   it("does not guess an untagged destination", () => {

@@ -22,6 +22,9 @@ import type {
   ProjectAudience,
   ProjectAudiencePreview as ProjectAudiencePreviewData,
 } from "@/app/actions/project-audience-preview"
+import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
+import { commitmentReport, rfiReport, rfqReport, directoryReport } from "@/lib/print/audience-record-reports"
+import type { ReportProject } from "@/lib/print/portal-report"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ProjectAudienceDashboard } from "@/components/projects/project-audience-dashboard"
@@ -92,11 +95,13 @@ function operationReferenceLabel(item: AudienceOperationItem): string {
 
 function OperationRow({
   item,
+  project,
   projectId,
   recipients,
   viewerIsInternal,
 }: {
   readonly item: AudienceOperationItem
+  readonly project: ReportProject
   readonly projectId: string
   readonly recipients: readonly ProjectAudienceMessageRecipient[]
   readonly viewerIsInternal: boolean
@@ -118,6 +123,7 @@ function OperationRow({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ProjectPortalPrintButton project={project} report={commitmentReport([item])} />
           {item.acknowledgement && (
             <Badge variant="outline">Acknowledged</Badge>
           )}
@@ -168,8 +174,10 @@ function OperationRow({
 
 function RfiRow({
   item,
+  project,
 }: {
   readonly item: AudienceRfi
+  readonly project: ReportProject
 }): React.ReactElement {
   const isActive = !["complete", "closed", "void", "cancelled"].includes(
     item.status.toLowerCase()
@@ -186,7 +194,8 @@ function RfiRow({
             {item.subject}
           </h3>
         </div>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
+          <ProjectPortalPrintButton project={project} report={rfiReport([item])} />
           <Badge variant={isActive ? "secondary" : "outline"}>
             {statusLabel(item.status)}
           </Badge>
@@ -212,10 +221,12 @@ function RfiRow({
 
 function RfqRow({
   item,
+  project,
   projectId,
   viewerIsInternal,
 }: {
   readonly item: AudienceRfq
+  readonly project: ReportProject
   readonly projectId: string
   readonly viewerIsInternal: boolean
 }): React.ReactElement {
@@ -236,6 +247,7 @@ function RfqRow({
           <Badge variant={item.status === "sent" ? "secondary" : "outline"}>
             {statusLabel(item.status)}
           </Badge>
+          <ProjectPortalPrintButton project={project} report={rfqReport([item])} />
           <ProjectAudienceRfqResponseDialog
             projectId={projectId}
             rfqId={item.id}
@@ -603,7 +615,7 @@ function OwnerProjectPreview({
                   <h1 className="text-xl font-semibold">Your project team</h1>
                 </div>
               </div>
-              <Badge variant="outline">{data.contacts.length} contacts</Badge>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.contacts.length} contacts</Badge><ProjectPortalPrintButton project={data.project} report={directoryReport(data)} /></div>
             </div>
             {data.contacts.length > 0 ? (
               <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -740,7 +752,7 @@ export function ProjectAudiencePreview({
               <IconUsers className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold">Visible Contacts</h2>
             </div>
-            <Badge variant="outline">{data.contacts.length} contacts</Badge>
+            <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.contacts.length} contacts</Badge><ProjectPortalPrintButton project={data.project} report={directoryReport(data)} /></div>
           </div>
           {data.contacts.length > 0 ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -781,12 +793,13 @@ export function ProjectAudiencePreview({
                 <IconUsers className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Commitments</h2>
               </div>
-              <Badge variant="outline">{data.operations.length} assigned</Badge>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.operations.length} assigned</Badge><ProjectPortalPrintButton project={data.project} report={commitmentReport(data.operations)} label="Print commitments" /></div>
             </div>
             {data.operations.length > 0 ? (
               <div className="mt-4 grid gap-3">
                 {data.operations.map((item) => (
                   <OperationRow
+                    project={data.project}
                     key={item.id}
                     item={item}
                     projectId={data.project.id}
@@ -815,7 +828,7 @@ export function ProjectAudiencePreview({
                   <h2 className="text-sm font-semibold">RFIs</h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{data.rfis.length} visible</Badge>
+                  <Badge variant="outline">{data.rfis.length} visible</Badge><ProjectPortalPrintButton project={data.project} report={rfiReport(data.rfis)} label="Print RFIs" />
                   <ProjectAudienceRfiCreateDialog
                     projectId={data.project.id}
                     recipients={messageShortcut?.recipients ?? []}
@@ -826,7 +839,7 @@ export function ProjectAudiencePreview({
               {data.rfis.length > 0 ? (
                 <div className="mt-4 grid gap-3">
                   {data.rfis.map((item) => (
-                    <RfiRow key={item.id} item={item} />
+                    <RfiRow key={item.id} item={item} project={data.project} />
                   ))}
                 </div>
               ) : (
@@ -851,12 +864,13 @@ export function ProjectAudiencePreview({
                   internal project team.
                 </p>
               </div>
-              <Badge variant="outline">{data.rfqs.length} assigned</Badge>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.rfqs.length} assigned</Badge><ProjectPortalPrintButton project={data.project} report={rfqReport(data.rfqs)} label="Print RFQs" /></div>
             </div>
             {data.rfqs.length > 0 ? (
               <div className="grid gap-3">
                 {data.rfqs.map((item) => (
                   <RfqRow
+                    project={data.project}
                     key={item.id}
                     item={item}
                     projectId={data.project.id}

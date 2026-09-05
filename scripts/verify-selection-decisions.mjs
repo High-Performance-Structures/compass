@@ -13,7 +13,7 @@ import path from "node:path"
 const root = process.cwd()
 const output = await mkdtemp(path.join(tmpdir(), "compass-dashboard-browser-"))
 const mocks = {
-  "@/app/actions/selection-decisions": `const save=(name,args)=>{document.body.dataset[name]=JSON.stringify(args);return {success:true}};export async function approveSelectionDecision(...args){return save('approved',args)}export async function publishSelectionDecision(...args){return save('published',args)}export async function linkSelectionPurchaseOrder(...args){return save('linked',args)}export async function unlinkSelectionProcurement(...args){return save('unlinked',args)}`,
+  "@/app/actions/selection-decisions": `const save=(name,args)=>{document.body.dataset[name]=JSON.stringify(args);return {success:true}};export async function approveSelectionDecision(...args){return save('approved',args)}export async function publishSelectionDecision(...args){const calls=JSON.parse(document.body.dataset.publications||'[]');calls.push(args);document.body.dataset.publications=JSON.stringify(calls);if(new URLSearchParams(location.search).has('batchFail')&&args[1].selectionId==='lighting')return {success:false,error:'The selection changed. Refresh and review it.'};return save('published',args)}export async function linkSelectionPurchaseOrder(...args){return save('linked',args)}export async function unlinkSelectionProcurement(...args){return save('unlinked',args)}`,
   "@/app/actions/selection-requests": `export async function saveSelectionRequest(...args){document.body.dataset.request=JSON.stringify(args);return {success:true}}export async function closeSelectionRequest(...args){document.body.dataset.closed=JSON.stringify(args);return {success:true}}`,
   "next/navigation": `export function usePathname(){return window.location.pathname}export function useSearchParams(){return new URLSearchParams(window.location.search)}export function useRouter(){return {push(href){history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))},refresh(){document.body.dataset.refreshed='true'}}}`,
   "next/link": `import React from 'react';export default function Link({href,children,...props}){return React.createElement('a',{...props,href,onClick(e){if(!e.metaKey&&!e.ctrlKey){e.preventDefault();history.pushState(null,'',href);window.dispatchEvent(new PopStateEvent('popstate'))}}},children)}`,
@@ -84,6 +84,11 @@ const server = createServer(async (request, response) => {
     response.end(image)
     return
   }
+  if (url.startsWith("/department-logos/")) {
+    response.setHeader("Content-Type", url.endsWith(".svg") ? "image/svg+xml" : "image/png")
+    response.end(await readFile(path.join(root, "public", url)))
+    return
+  }
   if (url === "/app.js" || url === "/app.css") {
     response.setHeader(
       "Content-Type",
@@ -142,7 +147,7 @@ try {
       assert.equal(
         await (
           role === "staff"
-            ? page.getByRole("button", { name: /^Review / })
+            ? page.getByRole("button", { name: /^(Review |Publish to owner — |Manage owner view for )/ })
             : page.getByRole("article")
         ).count(),
         1
@@ -167,6 +172,40 @@ try {
       )
     }
   }
+  // Print the real audience projection, including active room filters and iOS's synchronous path.
+  for (const role of ["owner", "partner"]) {
+    await page.goto(`${origin}/?${role}`)
+    await page.getByLabel("Room", { exact: true }).selectOption("Kitchen")
+    await page.evaluate(() => { window.print = () => { document.body.dataset.printCalls = String(Number(document.body.dataset.printCalls || "0") + 1) } })
+    await page.getByRole("button", { name: "Print room sheets", exact: true }).click()
+    await page.waitForFunction(() => document.body.dataset.printCalls === "1")
+    const printed = page.locator('[data-selection-print-root="true"]')
+    assert.equal(await printed.getByText("Kitchen faucet", { exact: true }).count(), 1)
+    assert.equal(await printed.getByText("Bedside sconces", { exact: true }).count(), 0)
+    assert.equal(await printed.locator(".selection-print-room-sheet").count(), 1)
+    const printText = await printed.textContent()
+    assert(printText.includes("Henry") && printText.includes("Quantity"))
+    assert.equal(printText.includes("$2,500.00"), role === "owner")
+    assert.equal(printText.includes("Price includes delivery"), role === "owner")
+    await page.emulateMedia({ media: "print" })
+    assert.equal(await page.locator("#root").isVisible(), false)
+    assert.equal(await printed.isVisible(), true)
+    if (process.env.SELECTION_SCREENSHOTS) {
+      await page.screenshot({ path: `${process.env.SELECTION_SCREENSHOTS}/${role}-room-sheet.png`, fullPage: true })
+      await page.pdf({ path: `${process.env.SELECTION_SCREENSHOTS}/${role}-room-sheet.pdf`, format: "Letter", printBackground: true })
+    }
+    await page.evaluate(() => window.dispatchEvent(new Event("afterprint")))
+    assert.equal(await printed.count(), 0)
+    await page.emulateMedia({ media: "screen" })
+  }
+  await page.goto(`${origin}/?owner`)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "userAgent", { configurable: true, value: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1" })
+    window.print = () => { document.body.dataset.iosPrinted = String(navigator.userActivation.isActive); window.dispatchEvent(new Event("afterprint")) }
+  })
+  await page.getByRole("article", { name: "Kitchen faucet", exact: true }).getByRole("button", { name: "Print selection", exact: true }).click()
+  assert.equal(await page.evaluate(() => document.body.dataset.iosPrinted), "true")
+  assert.equal(await page.locator('[data-selection-print-root="true"]').count(), 1)
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.goto(`${origin}/?owner`)
   const faucet = page.getByRole("article", {
@@ -219,7 +258,7 @@ try {
   await page.goto(`${origin}/?staff`)
   await page
     .getByRole("button", {
-      name: "Review Kitchen: Kitchen faucet",
+      name: "Manage owner view for Kitchen: Kitchen faucet",
       exact: true,
     })
     .click()
@@ -227,21 +266,42 @@ try {
     name: "Kitchen faucet",
     exact: true,
   })
-  await staffCard
-    .getByText("Publish decision / pricing", { exact: true })
-    .click()
   await staffCard.getByLabel("Total price to owner ($)").fill("2700")
   await staffCard
-    .getByRole("button", { name: "Save decision revision" })
+    .getByRole("button", { name: "Update owner view" })
     .click()
   await page.waitForFunction(() => document.body.dataset.published)
   assert.match(
     await page.evaluate(() => document.body.dataset.published),
     /2700/
   )
+  await page.goto(`${origin}/?staff&unpublished`)
+  await page.getByRole("button", { name: "Publish to owner — Kitchen: Kitchen faucet", exact: true }).click()
+  const publication = page.getByRole("region", { name: "Owner publication", exact: true }).first()
+  assert.equal(await publication.getByLabel("Visible in the owner workspace").isChecked(), true)
+  await publication.getByRole("button", { name: "Publish to owner", exact: true }).click()
+  await page.waitForFunction(() => document.body.dataset.published)
+  assert.equal(JSON.parse(await page.evaluate(() => document.body.dataset.published))[1].published, true)
+  await page.goto(`${origin}/?staff&unpublished`)
+  await page.getByRole("checkbox", { name: "Select all shown (2 unpublished)", exact: true }).check()
+  await page.getByLabel("Room", { exact: true }).selectOption("Kitchen")
+  await page.getByRole("button", { name: "Publish selected to owner", exact: true }).click()
+  const batchDialog = page.getByRole("alertdialog")
+  await batchDialog.getByText("Primary suite: Bedside sconces", { exact: true }).waitFor()
+  await batchDialog.getByRole("button", { name: "Publish 2 selections", exact: true }).click()
+  await page.getByText("2 of 2 selections published to owner.", { exact: true }).waitFor()
+  const batchInputs = JSON.parse(await page.evaluate(() => document.body.dataset.publications))
+  assert.deepEqual(batchInputs.map((call) => [call[1].selectionId, call[1].published, call[1].price]), [["faucet", true, "2500.00"], ["lighting", true, "1800.00"]])
+  await page.goto(`${origin}/?staff&unpublished&batchFail`)
+  await page.getByRole("checkbox", { name: "Select all shown (2 unpublished)", exact: true }).check()
+  await page.getByRole("button", { name: "Publish selected to owner", exact: true }).click()
+  await page.getByRole("alertdialog").getByRole("button", { name: "Publish 2 selections", exact: true }).click()
+  await page.getByText("1 of 2 selections published to owner. 1 need attention.", { exact: true }).waitFor()
+  assert.equal(await page.getByRole("checkbox", { name: "Select Primary suite: Bedside sconces", exact: true }).isChecked(), true)
+  assert.equal(await page.getByRole("checkbox", { name: "Select Kitchen: Kitchen faucet", exact: true }).isChecked(), false)
   await page.goto(`${origin}/?staff&large`)
   await page
-    .getByRole("button", { name: "Review Kitchen: Selection 732", exact: true })
+    .getByRole("button", { name: "Manage owner view for Kitchen: Selection 732", exact: true })
     .waitFor()
   assert.equal(
     await page.locator("form").count(),
@@ -249,9 +309,9 @@ try {
     "Staff forms should load only when expanded"
   )
   await page.getByLabel("Find a selection").fill("Selection 732")
-  assert.equal(await page.getByRole("button", { name: /^Review / }).count(), 1)
+  assert.equal(await page.getByRole("button", { name: /^(Review |Publish to owner — |Manage owner view for )/ }).count(), 1)
   await page
-    .getByRole("button", { name: "Review Kitchen: Selection 732", exact: true })
+    .getByRole("button", { name: "Manage owner view for Kitchen: Selection 732", exact: true })
     .click()
   await page
     .getByRole("article", { name: "Selection 732", exact: true })

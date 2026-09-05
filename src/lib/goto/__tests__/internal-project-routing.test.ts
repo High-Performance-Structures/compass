@@ -6,6 +6,12 @@ import {
 } from "@/lib/goto/internal-project-routing"
 
 describe("internal project SMS routing", () => {
+  it("routes numbered [message] texts with internal mentions", () => {
+    const input = { body: 'O-197-5565 [message] @"Staff A" Please check', projectNumber: "O-197-5565" }
+    expect(gotoInboundSmsSubject(input)).toBe('[message] @"Staff A" Please check')
+    expect(shouldRouteInternalProjectSms({ ...input, matchReason: "project_number" })).toBe(true)
+  })
+
   it("allows an explicitly numbered staff text with a supported routing tag", () => {
     expect(
       shouldRouteInternalProjectSms({

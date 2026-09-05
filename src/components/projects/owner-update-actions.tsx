@@ -29,9 +29,11 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
+  IOS_PRINT_STATE_TIMEOUT_MS,
   PRINT_STATE_TIMEOUT_MS,
   waitForPrintLayout,
 } from "@/lib/print/readiness"
+import { requiresSynchronousPrint } from "@/lib/print/ios-print"
 
 export function OwnerUpdateActions({
   canManage,
@@ -43,6 +45,7 @@ export function OwnerUpdateActions({
   updatePath,
   projectLabel,
   updateTitle,
+  printOnly = false,
 }: {
   readonly canManage: boolean
   readonly projectId: string
@@ -53,6 +56,7 @@ export function OwnerUpdateActions({
   readonly updatePath: string
   readonly projectLabel: string
   readonly updateTitle: string
+  readonly printOnly?: boolean
 }): React.ReactElement {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
@@ -149,6 +153,11 @@ export function OwnerUpdateActions({
       window.removeEventListener("afterprint", resetPrintState)
     }
 
+    if (requiresSynchronousPrint(window.navigator)) {
+      window.print()
+      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
+      return
+    }
     window.addEventListener("afterprint", resetPrintState)
     await waitForPrintLayout(printRoot)
     window.print()
@@ -196,6 +205,8 @@ export function OwnerUpdateActions({
       setIsRecalling(false)
     }
   }
+
+  if (printOnly) return <Button size="sm" onClick={printOwnerUpdate}><IconPrinter className="size-4" />Print / Save PDF</Button>
 
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">

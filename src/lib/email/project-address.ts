@@ -2,6 +2,7 @@ const PROJECT_EMAIL_MAILBOX = "jarvis@hps-colorado.com"
 const PROJECT_ADDRESS_PREFIX = "project-"
 
 export const PROJECT_EMAIL_SUBJECT_TAGS = [
+  { tag: "[MESSAGE]", destination: "Project Messages" },
   { tag: "[RFI]", destination: "RFI" },
   { tag: "[RFQ]", destination: "RFQ draft" },
   { tag: "[CHANGE ORDER]", destination: "Change Order draft" },
@@ -12,6 +13,7 @@ export const PROJECT_EMAIL_SUBJECT_TAGS = [
 ] as const
 
 export type ProjectEmailDestination =
+  | "message"
   | "rfi"
   | "rfq"
   | "change_order"
@@ -49,6 +51,7 @@ export function projectEmailDestination(
   subject: string
 ): ProjectEmailDestination | null {
   const normalized = subject.trim()
+  if (/^\[(?:message|messages)\](?:\s|:|-|$)/i.test(normalized)) return "message"
   if (/^\[rfi\](?:\s|:|-|$)/i.test(normalized)) return "rfi"
   if (/^\[rfq\](?:\s|:|-|$)/i.test(normalized)) return "rfq"
   if (/^\[change order\](?:\s|:|-|$)/i.test(normalized)) {
@@ -65,6 +68,6 @@ export function projectEmailDestination(
 
 export function projectEmailTitle(subject: string): string {
   return subject
-    .replace(/^\[(?:rfi|rfq|change order|to-do|todo|task|delivery|daily log|daily-log|log|video)\]\s*(?::|-)?\s*/i, "")
+    .replace(/^\[(?:message|messages|rfi|rfq|change order|to-do|todo|task|delivery|daily log|daily-log|log|video)\]\s*(?::|-)?\s*/i, "")
     .trim()
 }

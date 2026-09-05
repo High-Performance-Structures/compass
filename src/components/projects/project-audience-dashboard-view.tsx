@@ -587,17 +587,14 @@ export function ProjectAudienceDashboardView({
               {owner ? "Owner workspace" : "Sub / supplier workspace"}
             </span>
           </div>
-          <details className="mt-4">
-            <summary className="cursor-pointer py-2 text-xs font-medium text-primary">
-              Email or text this project
-            </summary>
+          <div className="mt-4">
             <ProjectCommunicationInstructions
               projectId={data.project.id}
               projectNumber={data.project.projectNumber}
               textPhoneNumber={data.project.textPhoneNumber}
               compact
             />
-          </details>
+          </div>
         </footer>
       </div>
     </main>
