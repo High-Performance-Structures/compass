@@ -204,6 +204,9 @@ export async function GET(
       },
     })
   } catch (error) {
+    if (error instanceof Error && error.message === "Project not found") {
+      return new Response("Photo not found", { status: 404 })
+    }
     console.error("Audience photo download error", error)
     return new Response("Photo could not be loaded", { status: 500 })
   }

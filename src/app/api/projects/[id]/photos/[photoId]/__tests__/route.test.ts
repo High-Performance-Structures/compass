@@ -83,14 +83,20 @@ function configureDb({
   viewerRole,
   membershipRole,
   visiblePhoto,
+  projectAccessError,
 }: {
   readonly viewerRole: string
   readonly membershipRole: string | null
   readonly visiblePhoto: typeof photo | null
+  readonly projectAccessError?: Error
 }): void {
   mocks.requireAuth.mockResolvedValue({ ...baseUser, role: viewerRole })
   mocks.resolveProjectRouteId.mockResolvedValue(project.id)
-  mocks.assertProjectAccess.mockResolvedValue(project)
+  if (projectAccessError) {
+    mocks.assertProjectAccess.mockRejectedValue(projectAccessError)
+  } else {
+    mocks.assertProjectAccess.mockResolvedValue(project)
+  }
   mocks.getCloudflareContext.mockResolvedValue({
     env: {
       DB: "db",
@@ -162,10 +168,36 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
   })
 
+  it("serves an approved owner-visible photo to a member with the owner role", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "owner",
+      visiblePhoto: photo,
+    })
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(200)
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+  })
+
   it("serves an approved sub/vendor-visible photo only to a partner member", async () => {
     configureDb({
       viewerRole: "subcontractor",
       membershipRole: "subcontractor",
+      visiblePhoto: photo,
+    })
+
+    const response = await getPhoto("sub_vendor")
+
+    expect(response.status).toBe(200)
+    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+  })
+
+  it("serves an approved sub/vendor-visible photo to a member with the supplier role", async () => {
+    configureDb({
+      viewerRole: "supplier",
+      membershipRole: "supplier",
       visiblePhoto: photo,
     })
 
@@ -190,6 +222,31 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     const response = await getPhoto(audience)
 
     expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["a cross-project request", "project-2"],
+    ["a cross-organization request", "project-from-org-2"],
+  ] as const)("stops %s at the project-access boundary", async (_label, resolvedProjectId) => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: photo,
+      projectAccessError: new Error("Project not found"),
+    })
+    mocks.resolveProjectRouteId.mockResolvedValue(resolvedProjectId)
+
+    const response = await getPhoto("owner")
+
+    // Access-helper rejection must have the same not-found semantics as the
+    // route's other external denial paths, without touching photo or Drive.
+    expect(response.status).toBe(404)
+    expect(mocks.assertProjectAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.any(Function) }),
+      expect.objectContaining({ id: "viewer-1", role: "client" }),
+      resolvedProjectId
+    )
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 })
