@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { isPublicPath } from "@/lib/public-paths"
+import {
+  isAuthSessionWritePath,
+  isPublicPath,
+} from "@/lib/public-paths"
 
 describe("middleware public routes", () => {
   it("keeps legal and compliance disclosures public", () => {
@@ -89,5 +92,14 @@ describe("middleware public routes", () => {
     expect(
       isPublicPath("/api/operations/sage/square-receipts/extra")
     ).toBe(false)
+  })
+
+  it("isolates handlers that replace the WorkOS session cookie", () => {
+    expect(isAuthSessionWritePath("/callback")).toBe(true)
+    expect(isAuthSessionWritePath("/api/auth/callback")).toBe(true)
+    expect(isAuthSessionWritePath("/api/auth/login")).toBe(true)
+    expect(isAuthSessionWritePath("/api/auth/mobile/session")).toBe(true)
+    expect(isAuthSessionWritePath("/login")).toBe(false)
+    expect(isAuthSessionWritePath("/api/auth/password-reset")).toBe(false)
   })
 })

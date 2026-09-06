@@ -13,6 +13,13 @@ const publicPaths = [
   "/api/mobile/health",
 ]
 
+const authSessionWritePaths = [
+  "/callback",
+  "/api/auth/callback",
+  "/api/auth/login",
+  "/api/auth/mobile/session",
+]
+
 const bridgePaths = [
   "/api/bridge/register",
   "/api/bridge/tools",
@@ -62,4 +69,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/api/netsuite/") ||
     pathname.startsWith("/api/google/")
   )
+}
+
+export function isAuthSessionWritePath(pathname: string): boolean {
+  return authSessionWritePaths.includes(pathname)
 }

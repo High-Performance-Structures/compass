@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { IconLoader } from "@tabler/icons-react"
@@ -15,12 +15,21 @@ import { PasswordInput } from "@/components/auth/password-input"
 import { loginSchema, type LoginInput } from "@/lib/validations/auth"
 
 export function LoginForm() {
-    const router = useRouter()
     const searchParams = useSearchParams()
     const [isLoading, setIsLoading] = React.useState(false)
     
     // get the return URL from query params (set by middleware)
-    const returnTo = searchParams.get("from") || "/dashboard"
+    const requestedReturnTo = searchParams.get("from")
+    const returnTo =
+        requestedReturnTo?.startsWith("/") && !requestedReturnTo.startsWith("//")
+            ? requestedReturnTo
+            : "/dashboard"
+
+    React.useEffect(() => {
+        if (searchParams.get("notice") === "password_reset_complete") {
+            toast.success("Password updated. Sign in with your new password.")
+        }
+    }, [searchParams])
 
     const {
         register,
@@ -52,8 +61,9 @@ export function LoginForm() {
             }
 
             if (result.success) {
-                toast.success("Welcome back!")
-                router.push(returnTo)
+                // A document navigation verifies the new cookie through middleware
+                // before any success state is shown.
+                window.location.assign(returnTo)
             } else {
                 toast.error(result.error || "Login failed")
             }
