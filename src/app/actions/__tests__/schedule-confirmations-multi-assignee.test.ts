@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(), getDb: vi.fn(), requireAuth: vi.fn(),
   requirePermission: vi.fn(), assertProjectAccess: vi.fn(),
   recordActivityEvent: vi.fn(), createNotificationEvent: vi.fn(),
-  revalidatePath: vi.fn(), isInternalStaffRole: vi.fn(),
+  revalidatePath: vi.fn(), isInternalStaffRole: vi.fn(), updateSet: vi.fn(),
 }))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
@@ -30,7 +30,7 @@ function query(value: Value): Record<string, unknown> {
   return builder
 }
 
-function setupDb(capabilitiesJson: string): void {
+function setupDb(capabilitiesJson: string, role = "staff", ownerVisible = true): void {
   const values: readonly Value[] = [
     {
       id: "assignment-1", taskId: "task-1", projectId: "project-1", title: "Concrete",
@@ -46,6 +46,7 @@ function setupDb(capabilitiesJson: string): void {
           workdays: 3, endDateCalculated: "2026-09-16", phase: "Build", displayColor: "blue",
           status: "PENDING", isCriticalPath: false, isMilestone: false, percentComplete: 0,
           assignedTo: null, assignedUserId: "user-1", assigneeParticipantIds: ["participant-1"],
+          ownerVisible, subVendorVisible: true,
           confirmationRequired: true, confirmationStatus: "pending", confirmationRequestedAt: null,
           confirmationRespondedAt: null, reminderSentAt: null, proposedStartDate: null,
           proposedWorkdays: null, proposalNote: null, proposalSubmittedAt: null, sortOrder: 0,
@@ -59,12 +60,13 @@ function setupDb(capabilitiesJson: string): void {
       projectContactId: null, reviewStatus: "reviewed", identityStatus: "matched",
       membershipStatus: "active", active: true, capabilitiesJson,
     },
-    { id: "user-1" },
+    { id: "user-1", role },
+    [],
   ]
   let index = 0
   mocks.getDb.mockReturnValue({
     select: () => query(values[index++] ?? null),
-    update: () => ({ set: () => ({ where: async () => undefined }) }),
+    update: () => ({ set: (value: unknown) => { mocks.updateSet(value); return { where: async () => undefined } } }),
   })
   mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
   mocks.assertProjectAccess.mockResolvedValue({ id: "project-1", organizationId: "org-1", projectNumber: null })
@@ -86,5 +88,25 @@ describe("multi-assignee schedule action gates", () => {
     mocks.requireAuth.mockResolvedValue({ id: "attacker", role: "field_crew" })
     await expect(respondToScheduleTaskAssignee("assignment-1", "confirmed"))
       .resolves.toEqual({ success: false, error: "This confirmation is not assigned to you." })
+  })
+})
+
+
+describe("owner individual commitments", () => {
+  it.each(["confirmed", "declined", "proposed"] as const)("records the owner’s %s response without editing published dates", async (response) => {
+    setupDb(JSON.stringify(["schedule.respond"]), "owner")
+    mocks.requireAuth.mockResolvedValue({ id: "user-1", role: "guest" })
+    await expect(respondToScheduleTaskAssignee("assignment-1", {
+      response, message: "Owner-supplied windows need coordination.",
+      ...(response === "proposed" ? { proposedStartDate: "2026-09-21", proposedWorkdays: 5 } : {}),
+    })).resolves.toEqual({ success: true })
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({ responseStatus: response, responseMessage: "Owner-supplied windows need coordination." }))
+    expect(mocks.updateSet.mock.calls[0][0]).not.toHaveProperty("startDate")
+  })
+  it("rejects a published task hidden from owners", async () => {
+    setupDb(JSON.stringify(["schedule.respond"]), "owner", false)
+    mocks.requireAuth.mockResolvedValue({ id: "user-1", role: "guest" })
+    expect((await respondToScheduleTaskAssignee("assignment-1", "confirmed")).success).toBe(false)
+    expect(mocks.updateSet).not.toHaveBeenCalled()
   })
 })

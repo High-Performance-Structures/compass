@@ -117,3 +117,12 @@ export function summarizeOwnerScheduleByPhase(
       left.title.localeCompare(right.title)
   )
 }
+
+/** Keep only actionable personal commitments beside a phase overview. */
+export function selectOwnScheduleCommitments<T extends {
+  readonly viewerCanConfirm: boolean
+  readonly assignees: readonly { readonly viewerCanRespond: boolean }[]
+}>(items: readonly T[]): readonly T[] {
+  return items.filter((item) => item.viewerCanConfirm ||
+    item.assignees.some((assignee) => assignee.viewerCanRespond))
+}

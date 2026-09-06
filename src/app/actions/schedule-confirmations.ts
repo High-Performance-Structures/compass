@@ -89,6 +89,7 @@ async function notifyInternalScheduleResponse(input: {
   readonly actorId: string
   readonly actorName: string
   readonly response: "confirmed" | "declined" | "proposed"
+  readonly note?: string | null
   readonly proposal?: ScheduleResponseNotificationProposal
 }): Promise<void> {
   const members = await input.db
@@ -132,7 +133,7 @@ async function notifyInternalScheduleResponse(input: {
     sourceType: "schedule_item",
     sourceId: input.taskId,
     title: `Schedule response: ${input.taskTitle}`,
-    body: `${input.actorName} ${responseText}.`,
+    body: `${input.actorName} ${responseText}.${input.note?.trim() ? ` ${input.note.trim()}` : ""}`,
     href: `/dashboard/projects/${input.projectId}/schedule?view=list&item=${input.taskId}`,
     priority: input.response === "proposed" ? "high" : "normal",
     audience: "internal",
@@ -573,11 +574,15 @@ export async function sendScheduleTaskReminder(
 
 export async function respondToScheduleTaskConfirmation(
   taskId: string,
-  response: ConfirmationResponse
+  response: ConfirmationResponse,
+  note = ""
 ): Promise<ScheduleConfirmationResult> {
   try {
     if (response !== "confirmed" && response !== "declined") {
       return { success: false, error: "Unsupported confirmation response." }
+    }
+    if (typeof note !== "string" || note.length > 1000) {
+      return { success: false, error: "Notes must be 1,000 characters or fewer." }
     }
     const user = await requireAuth()
     requirePermission(user, "schedule", "read")
@@ -639,15 +644,23 @@ export async function respondToScheduleTaskConfirmation(
       .get()
     if (
       membership?.role !== "subcontractor" &&
-      membership?.role !== "supplier"
+      membership?.role !== "supplier" &&
+      membership?.role !== "client" &&
+      membership?.role !== "owner"
     ) {
       return {
         success: false,
-        error: "Only the assigned subcontractor or supplier can respond.",
+        error: "Only the assigned owner or vendor can respond.",
       }
     }
     if (
-      !publishedTask.subVendorVisible ||
+      !isPublishedScheduleAssignmentVisible({
+        currentAssignedUserId: task.assignedUserId,
+        publishedAssignedUserId: publishedTask.assignedUserId,
+        projectRole: membership.role,
+        ownerVisible: publishedTask.ownerVisible,
+        subVendorVisible: publishedTask.subVendorVisible,
+      }) ||
       task.startDate !== publishedTask.startDate ||
       task.workdays !== publishedTask.workdays
     ) {
@@ -665,7 +678,7 @@ export async function respondToScheduleTaskConfirmation(
         confirmationRespondedAt: now,
         proposedStartDate: null,
         proposedWorkdays: null,
-        proposalNote: null,
+        proposalNote: note.trim() || null,
         proposalSubmittedAt: null,
         updatedAt: now,
       })
@@ -684,6 +697,7 @@ export async function respondToScheduleTaskConfirmation(
       action: `schedule.assignment_${response}`,
       entityType: "schedule_item",
       entityId: task.id,
+      metadata: { note: note.trim() || null },
       summary:
         response === "confirmed"
           ? `Confirmed the assignment for “${task.title}”.`
@@ -698,6 +712,7 @@ export async function respondToScheduleTaskConfirmation(
       actorId: user.id,
       actorName: user.displayName ?? user.email,
       response,
+      note,
     })
     revalidateConfirmationPaths(task.projectId)
     return { success: true }
@@ -750,11 +765,13 @@ export async function proposeScheduleTaskChange(
       .get()
     if (
       membership?.role !== "subcontractor" &&
-      membership?.role !== "supplier"
+      membership?.role !== "supplier" &&
+      membership?.role !== "client" &&
+      membership?.role !== "owner"
     ) {
       return {
         success: false,
-        error: "Only the assigned subcontractor or supplier can suggest dates.",
+        error: "Only the assigned owner or vendor can suggest dates.",
       }
     }
     const publication = await db
@@ -773,7 +790,13 @@ export async function proposeScheduleTaskChange(
       !publishedTask ||
       publishedTask.assignedUserId !== user.id ||
       !publishedTask.confirmationRequired ||
-      !publishedTask.subVendorVisible ||
+      !isPublishedScheduleAssignmentVisible({
+        currentAssignedUserId: task.assignedUserId,
+        publishedAssignedUserId: publishedTask.assignedUserId,
+        projectRole: membership.role,
+        ownerVisible: publishedTask.ownerVisible,
+        subVendorVisible: publishedTask.subVendorVisible,
+      }) ||
       task.startDate !== publishedTask.startDate ||
       task.workdays !== publishedTask.workdays
     ) {
@@ -1532,6 +1555,7 @@ export async function respondToScheduleTaskAssignee(
         actorId: user.id,
         actorName: user.displayName ?? user.email,
         response: responseInput.response,
+        note: responseInput.message,
         proposal:
           responseInput.response === "proposed"
             ? {

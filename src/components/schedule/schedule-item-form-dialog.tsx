@@ -81,6 +81,7 @@ import {
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
+import { ScheduleCommitmentResponses } from "@/components/schedule/schedule-commitment-responses"
 import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
 import { DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS } from "@/components/schedule/schedule-item-defaults"
 import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
@@ -732,7 +733,7 @@ export function ScheduleItemFormDialog({
     }
     setChangeProposal(null)
     setAcceptProposalOnSave(false)
-    toast.success("The proposed dates were declined. The subcontractor can respond again.")
+    toast.success("The proposed dates were declined. The assignee can respond again.")
     router.refresh()
   }
 
@@ -1237,6 +1238,9 @@ export function ScheduleItemFormDialog({
                             onValueChange={(value, option) => {
                               field.onChange(value)
                               setAssignedOptionId(option?.id ?? null)
+                              if (option?.contactType === "owner" || option?.contactType === "subcontractor" || option?.contactType === "supplier") {
+                                form.setValue("confirmationRequired", true, { shouldDirty: true })
+                              }
                               if (option?.contactType === "owner") {
                                 form.setValue("ownerVisible", true, {
                                   shouldDirty: true
@@ -1356,16 +1360,21 @@ export function ScheduleItemFormDialog({
                         )}
                       />
                     </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Assign owner-performed work or owner-supplied deliveries to the owner.
+                      Require confirmation and publish to request their commitment.
+                      Use a milestone for a delivery deadline.
+                    </p>
                     {proposalLoading && (
                       <p className="mt-3 border bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-                        Loading subcontractor proposal…
+                        Loading assignment proposal…
                       </p>
                     )}
                     {changeProposal && (
                       <div className="mt-3 space-y-3 border border-amber-400/50 bg-amber-500/5 px-3 py-3">
                         <div>
                           <p className="text-xs font-medium">
-                            Subcontractor proposed new dates
+                            Assignee proposed new dates
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {format(parseISO(changeProposal.startDate), "MMM d, yyyy")} ·{" "}
@@ -1414,6 +1423,11 @@ export function ScheduleItemFormDialog({
                             .replace(/_/g, " ")
                             .replace(/^\w/, (letter) => letter.toUpperCase())}
                         </span>
+                        {editingTask.proposalNote && editingTask.confirmationStatus !== "proposed" && (
+                          <p className="w-full whitespace-pre-wrap text-muted-foreground">
+                            Response note: {editingTask.proposalNote}
+                          </p>
+                        )}
                         {editingTask.confirmationStatus !== "confirmed" && (
                           <Button
                             type="button"
@@ -1428,6 +1442,21 @@ export function ScheduleItemFormDialog({
                       </div>
                     )}
                   </div>
+
+                  {isEditing && open && (
+                    <ScheduleCommitmentResponses
+                      taskId={editingTask.id}
+                      onUseProposal={(proposal) => {
+                        if (proposal.startDate !== null) {
+                          form.setValue("startDate", proposal.startDate, { shouldDirty: true, shouldValidate: true })
+                        }
+                        if (proposal.workdays !== null) {
+                          form.setValue("workdays", proposal.workdays, { shouldDirty: true, shouldValidate: true })
+                        }
+                        toast.info("Proposed dates loaded. Review and save, then publish the schedule.")
+                      }}
+                    />
+                  )}
 
                   {isEditing && <ScheduleItemLinks taskId={editingTask.id} />}
 

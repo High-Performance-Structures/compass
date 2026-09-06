@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   isOwnerScheduleView,
+  selectOwnScheduleCommitments,
   summarizeOwnerScheduleByPhase,
   type OwnerScheduleSourceItem,
 } from "../owner-visibility"
@@ -93,5 +94,19 @@ describe("owner schedule visibility", () => {
 
     expect(serialized).not.toContain("Private")
     expect(serialized).not.toContain("Vendor")
+  })
+})
+
+
+describe("personal commitments beside the owner phase overview", () => {
+  it("retains legacy and individual assignments, including confirmed commitments", () => {
+    const items = [
+      { id: "legacy-owner", viewerCanConfirm: true, assignees: [] },
+      { id: "owner-delivery", viewerCanConfirm: false, assignees: [{ viewerCanRespond: true, responseStatus: "confirmed" }] },
+      { id: "other-party", viewerCanConfirm: false, assignees: [{ viewerCanRespond: false, responseStatus: "pending" }] },
+      { id: "phase-summary", viewerCanConfirm: false, assignees: [] },
+    ]
+    expect(selectOwnScheduleCommitments(items).map((item) => item.id))
+      .toEqual(["legacy-owner", "owner-delivery"])
   })
 })
