@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { attachmentPreviewKind } from "@/lib/correspondence/attachment-preview"
 
 import {
   CorrespondenceAttachmentError,
@@ -47,11 +48,17 @@ export async function GET(
   }
   try {
     const download = await downloadCorrespondenceAttachment(input)
+    const preview = new URL(request.url).searchParams.get("preview") === "1"
+    if (preview && attachmentPreviewKind(download.contentType) === null) {
+      await download.body.body?.cancel()
+      return NextResponse.json({ success: false, error: "Preview is not available for this file type." }, { status: 415 })
+    }
     const headers = new Headers()
     headers.set("content-type", download.contentType)
-    headers.set("content-disposition", `attachment; filename="${safeDownloadName(download.name)}"`)
+    headers.set("content-disposition", `${preview ? "inline" : "attachment"}; filename="${safeDownloadName(download.name)}"`)
     headers.set("x-content-type-options", "nosniff")
     headers.set("cache-control", "private, no-store")
+    if (preview) headers.set("content-security-policy", "default-src 'none'; frame-ancestors 'self'")
     return new Response(download.body.body, { status: download.body.status, headers })
   } catch (error) {
     return attachmentResponseError(error)

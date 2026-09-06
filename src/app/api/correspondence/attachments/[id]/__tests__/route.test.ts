@@ -49,6 +49,22 @@ describe("correspondence attachment download and staged deletion", () => {
     })
   })
 
+  it.each(["application/pdf", "image/jpeg", "text/plain", "video/mp4", "audio/mpeg"])("previews authorized %s bytes inline without caching", async (contentType) => {
+    mocks.download.mockResolvedValue({ body: new Response("preview-bytes"), name: "example", contentType })
+    const response = await GET(new Request("https://compass.example/api/correspondence/attachments/attachment-1?projectId=project-1&preview=1"), params)
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-disposition")).toContain("inline;")
+    expect(response.headers.get("content-type")).toBe(contentType)
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'self'")
+  })
+
+  it.each(["text/html", "image/svg+xml", "application/octet-stream"])("never renders active or unsupported %s inline", async (contentType) => {
+    mocks.download.mockResolvedValue({ body: new Response("file"), name: "example", contentType })
+    const response = await GET(new Request("https://compass.example/api/correspondence/attachments/attachment-1?projectId=project-1&preview=1"), params)
+    expect(response.status).toBe(415)
+  })
+
   it("requires the project scope for reads and staged deletes", async () => {
     const request = new Request("https://compass.example/api/correspondence/attachments/attachment-1")
 

@@ -7,6 +7,7 @@ vi.mock("@/lib/correspondence/access", async (original) => {
   return { ...actual, correspondenceContext: mocks.context }
 })
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }))
+import { updateCorrespondenceInbox } from "@/app/actions/correspondence-inbox"
 import { discardCorrespondenceDraft, getCorrespondenceDetail, markCorrespondenceOpened, reviseCorrespondenceMessage, saveCorrespondenceDraft, searchCorrespondence, sendCorrespondence, setCorrespondenceReceiptPreference, setCorrespondenceState } from "@/app/actions/project-correspondence"
 
 describe("correspondence actions against SQLite", () => {
@@ -22,6 +23,54 @@ describe("correspondence actions against SQLite", () => {
     mocks.context.mockImplementation(async () => context(database, "owner-a", "project-a"))
   })
   afterEach(() => { database.close(); vi.clearAllMocks() })
+
+  it("marks every received message in selected conversations as read for this user only", async () => {
+    for (let index = 0; index < 65; index++) {
+      const id = `older-${index}`
+      insertMessage(database.sqlite, { id, conversationId: "thread", authorUserId: "staff-a", body: id })
+      insertGrant(database.sqlite, { id: `${id}-owner`, messageId: id, userId: "owner-a", kind: "to" })
+    }
+    expect((await updateCorrespondenceInbox("project-a", ["thread"], "read")).success).toBe(true)
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_recipients WHERE user_id='owner-a' AND opened_at IS NULL").get()).toEqual({ count: 0 })
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_recipients WHERE user_id='staff-a' AND opened_at IS NULL").get()).toEqual({ count: 2 })
+    const detail = await getCorrespondenceDetail("project-a", "thread")
+    expect(detail.success && detail.data.conversation.unread).toBe(false)
+  })
+
+  it("bulk archive, restore and needs-reply preserve other personal flags", async () => {
+    await setCorrespondenceState("project-a", "thread", { saved: true, followUp: false, archived: false })
+    for (const action of ["archive", "follow-up", "restore"] as const) expect((await updateCorrespondenceInbox("project-a", ["thread"], action)).success).toBe(true)
+    expect(database.sqlite.prepare("SELECT saved,follow_up,archived FROM correspondence_user_state WHERE user_id='owner-a'").get()).toEqual({ saved: 1, follow_up: 1, archived: 0 })
+    await updateCorrespondenceInbox("project-a", ["thread"], "clear-follow-up")
+    expect(database.sqlite.prepare("SELECT saved,follow_up,archived FROM correspondence_user_state WHERE user_id='owner-a'").get()).toEqual({ saved: 1, follow_up: 0, archived: 0 })
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_user_state WHERE user_id='staff-a'").get()).toEqual({ count: 0 })
+  })
+
+  it("rejects an unauthorized selection before changing any conversation", async () => {
+    insertConversation(database.sqlite, { id: "private-thread", projectId: "project-a", subject: "Private" })
+    expect((await updateCorrespondenceInbox("project-a", ["thread", "private-thread"], "archive")).success).toBe(false)
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_user_state").get()).toEqual({ count: 0 })
+    expect((await updateCorrespondenceInbox("project-a", [], "read")).success).toBe(false)
+  })
+
+  it("rolls back a failed inbox batch", async () => {
+    insertConversation(database.sqlite, { id: "second", projectId: "project-a", subject: "Second" })
+    insertParticipant(database.sqlite, { id: "second-owner", conversationId: "second", userId: "owner-a", role: "owner" })
+    database.sqlite.exec("CREATE TRIGGER fail_second_archive BEFORE INSERT ON correspondence_user_state WHEN NEW.conversation_id='second' BEGIN SELECT RAISE(ABORT, 'Test batch failure'); END;")
+    expect((await updateCorrespondenceInbox("project-a", ["thread", "second"], "archive")).success).toBe(false)
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_user_state").get()).toEqual({ count: 0 })
+  })
+
+  it("applies unread, needs reply and archive filters during body search", async () => {
+    expect((await searchCorrespondence("project-a", "unseen", "unread")).success).toBe(true)
+    await updateCorrespondenceInbox("project-a", ["thread"], "read")
+    expect(await searchCorrespondence("project-a", "unseen", "unread")).toMatchObject({ success: true, data: { hits: [] } })
+    await updateCorrespondenceInbox("project-a", ["thread"], "follow-up")
+    expect(await searchCorrespondence("project-a", "unseen", "follow-up")).toMatchObject({ success: true, data: { hits: [{ messageId: "unseen" }] } })
+    await updateCorrespondenceInbox("project-a", ["thread"], "archive")
+    expect(await searchCorrespondence("project-a", "unseen", "inbox")).toMatchObject({ success: true, data: { hits: [] } })
+    expect(await searchCorrespondence("project-a", "unseen", "archived")).toMatchObject({ success: true, data: { hits: [{ messageId: "unseen" }] } })
+  })
 
   it("saves drafts with version fencing and cannot resurrect a discarded draft", async () => {
     expect(await saveCorrespondenceDraft("project-a", "thread", "Draft", 0)).toEqual({ success: true, data: { version: 1 } })

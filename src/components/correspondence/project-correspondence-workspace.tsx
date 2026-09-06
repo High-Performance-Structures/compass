@@ -1,6 +1,6 @@
 "use client"
 import * as React from "react"
-import { ArrowLeft, ChevronDown, LoaderCircle, Search } from "lucide-react"
+import { ArrowLeft, ChevronDown, LoaderCircle } from "lucide-react"
 import {
   discardCorrespondenceDraft,
   getCorrespondenceDetail,
@@ -16,20 +16,17 @@ import {
   setCorrespondenceState,
 } from "@/app/actions/project-correspondence"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { CorrespondenceInboxPanel } from "./correspondence-inbox-panel"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import {
   ConversationMenu,
-  ConversationTags,
   EmptyDetail,
-  SearchResults,
 } from "./correspondence-workspace-parts"
 import { MessageCard } from "./correspondence-message-card"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
 import {
   earliestSequence,
-  filterConversations,
   applyMessageRevision,
   composerTransitionBlock,
   detailForConversation,
@@ -51,7 +48,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const initialCompositionDraft = compositionDraft(initialInbox)
   const [inbox, setInbox] = React.useState(initialInbox)
   const [activeId, setActiveId] = React.useState<string | null>(
-    initialConversationId ?? initialInbox.conversations[0]?.id ?? null,
+    initialConversationId ?? null,
   )
   const [detail, setDetail] = React.useState<CorrespondenceDetail | null>(null)
   const [filter, setFilter] = React.useState<InboxFilter>("inbox")
@@ -97,10 +94,6 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     () => inbox.conversations.find((conversation) => conversation.id === activeId) ?? null,
     [activeId, inbox.conversations],
   )
-  const visibleConversations = React.useMemo(
-    () => filterConversations(inbox.conversations, filter, query),
-    [filter, inbox.conversations, query],
-  )
   const activeDetail = detailForConversation(detail, activeId)
   React.useEffect(() => {
     detailRef.current = detail
@@ -118,7 +111,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     }
     let current = true
     const timer = window.setTimeout(() => {
-      void searchCorrespondence(projectId, trimmed).then((result) => {
+      void searchCorrespondence(projectId, trimmed, filter).then((result) => {
         if (!current) return
         if (!result.success) { setSearchHits([]); setSearchHasMore(false); setStatus(result.error); return }
         setSearchHits(result.data.hits)
@@ -126,7 +119,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       })
     }, 250)
     return () => { current = false; window.clearTimeout(timer) }
-  }, [projectId, query])
+  }, [projectId, query, filter])
   const refreshInbox = React.useCallback(async (): Promise<CorrespondenceInbox | null> => {
     const request = ++inboxRequest.current
     const result = await getCorrespondenceInbox(projectId)
@@ -669,44 +662,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   const composingNew = compose?.kind === "new"
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden bg-background" aria-label="Project messages">
-      <aside className={cn("flex w-full shrink-0 flex-col border-r md:w-92", mobileDetail && "hidden md:flex")}>
-        <div className="border-b p-4">
-          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Project messages</p>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <h1 className="truncate text-lg font-semibold">{inbox.projectName}</h1>
-            <Button size="sm" onClick={startNewMessage}>New message</Button>
-          </div>
-          <label className="relative mt-4 block">
-            <Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" aria-hidden="true" />
-            <Input className="pl-9" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subjects and messages" aria-label="Search conversations" />
-          </label>
-          <div className="mt-3 flex gap-1 overflow-x-auto" role="tablist" aria-label="Conversation filters">
-            {(["inbox", "unread", "follow-up", "saved", "archived"] as const).map((item) => (
-              <Button key={item} type="button" variant={filter === item ? "secondary" : "ghost"} size="sm" onClick={() => setFilter(item)}>
-                {filterName(item)}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {query.trim().length >= 2 ? <SearchResults hits={searchHits} hasMore={searchHasMore} onOpen={openConversation} /> : visibleConversations.length === 0 ? (
-            <p className="p-5 text-sm text-muted-foreground">No conversations match this view.</p>
-          ) : visibleConversations.map((conversation) => (
-            <button key={conversation.id} type="button" onClick={() => openConversation(conversation.id)} className={cn("w-full border-b px-4 py-3 text-left hover:bg-accent", conversation.id === activeId && "bg-accent")}>
-              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span className="truncate">{conversation.people.map((person) => person.name).join(", ")}</span>
-                {conversation.lastActivityDisplay !== null && conversation.lastActivityDisplay !== undefined ? <span title="Source-local timestamp; timezone not proven">Source time: {conversation.lastActivityDisplay}</span> : <time dateTime={conversation.lastActivityAt}>{formatTime(conversation.lastActivityAt)}</time>}
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                {conversation.unread && <span className="size-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
-                <span className="truncate font-medium">{conversation.subject}</span>
-              </div>
-              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{conversation.excerpt}</p>
-              <ConversationTags conversation={conversation} />
-            </button>
-          ))}
-        </div>
-      </aside>
+      <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} onFilter={setFilter} onNewMessage={startNewMessage} onOpen={openConversation} onRefresh={refreshInbox} />
       <main className={cn("min-w-0 flex-1 overflow-y-auto", !mobileDetail && "hidden md:block")}>
         {composingNew ? (
           <NewMessagePanel
@@ -907,10 +863,8 @@ function ConversationDetail(props: {
     </div>
   )
 }
-function filterName(filter: InboxFilter): string { return filter === "follow-up" ? "Needs reply" : filter[0].toUpperCase() + filter.slice(1) }
 function roleName(role: CorrespondencePerson["role"]): string { return role === "sub_vendor" ? "Sub/Vendor" : role[0].toUpperCase() + role.slice(1) }
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) }
-function formatTime(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString([], { month: "short", day: "numeric" }) }
 function compositionDraft(inbox: CorrespondenceInbox): NewDraft {
   const draft = inbox.compositionDraft
   return draft === null ? { subject: "", body: "", recipientIds: [], version: 0 } : { subject: draft.subject, body: draft.body, recipientIds: draft.recipientUserIds, version: draft.version }

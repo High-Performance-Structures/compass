@@ -95,3 +95,5 @@ export type CorrespondenceStateInput = {
   readonly followUp: boolean
   readonly archived: boolean
 }
+
+export type CorrespondenceInboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"

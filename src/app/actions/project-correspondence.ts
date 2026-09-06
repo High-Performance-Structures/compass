@@ -9,7 +9,7 @@ import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/rea
 import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
 import { persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
-import type { CorrespondenceCompositionDraft, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
+import type { CorrespondenceInboxFilter, CorrespondenceCompositionDraft, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 
 function failure(error: unknown): { readonly success: false; readonly error: string } {
   // Never return SQL/provider internals or another participant's content.
@@ -135,19 +135,30 @@ export async function setCorrespondenceReceiptPreference(projectId: string, conv
   } catch (error) { return failure(error) }
 }
 
-export async function searchCorrespondence(projectId: string, query: string): Promise<CorrespondenceResult<{
+export async function searchCorrespondence(projectId: string, query: string, filter?: CorrespondenceInboxFilter): Promise<CorrespondenceResult<{
   readonly hits: readonly { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string; readonly sourceSentDisplay: string | null; readonly sourceSentAt: string | null }[]
   readonly hasMore: boolean
 }>> {
   try {
     if (typeof query !== "string" || query.trim().length < 2 || query.length > 200) throw new Error("Enter between 2 and 200 characters to search messages.")
     const ctx = await correspondenceContext(projectId)
+    if (filter !== undefined && !["inbox", "unread", "follow-up", "saved", "archived"].includes(filter)) throw new Error("Invalid inbox filter.")
     const term = query.trim()
+    const stateValue = (field: "archived" | "follow_up" | "saved") => sql`COALESCE((SELECT ${sql.raw(field)} FROM correspondence_user_state s WHERE s.conversation_id=${correspondence.id} AND s.user_id=${ctx.user.id}), 0)`
+    const inboxFilter = filter === undefined ? undefined : and(
+      sql`${stateValue("archived")}=${filter === "archived" ? 1 : 0}`,
+      filter === "saved" ? sql`${stateValue("saved")}=1` : undefined,
+      filter === "follow-up" ? sql`${stateValue("follow_up")}=1` : undefined,
+      filter === "unread" ? sql`EXISTS(SELECT 1 FROM correspondence_messages unread_message JOIN correspondence_recipients unread_grant ON unread_grant.message_id=unread_message.id
+        WHERE unread_message.conversation_id=${correspondence.id} AND unread_grant.user_id=${ctx.user.id}
+        AND unread_grant.opened_at IS NULL AND unread_grant.baseline=0 AND unread_message.retracted_at IS NULL
+        AND (unread_message.author_user_id IS NULL OR unread_message.author_user_id<>${ctx.user.id}))` : undefined,
+    )
     const rows = await ctx.db.select({ conversationId: correspondence.id, messageId: correspondenceMessages.id, subject: correspondence.subject, body: correspondenceMessages.body, sentAt: correspondenceMessages.sentAt })
       .from(correspondenceMessages).innerJoin(correspondence, eq(correspondence.id, correspondenceMessages.conversationId))
       .innerJoin(correspondenceRecipients, and(eq(correspondenceRecipients.messageId, correspondenceMessages.id), eq(correspondenceRecipients.userId, ctx.user.id)))
       .innerJoin(correspondenceParticipants, and(eq(correspondenceParticipants.conversationId, correspondence.id), eq(correspondenceParticipants.userId, ctx.user.id), eq(correspondenceParticipants.role, ctx.workspace), isNull(correspondenceParticipants.revokedAt)))
-      .where(and(eq(correspondence.projectId, projectId), eq(correspondence.organizationId, ctx.organizationId), isNull(correspondenceMessages.retractedAt),
+      .where(and(eq(correspondence.projectId, projectId), eq(correspondence.organizationId, ctx.organizationId), isNull(correspondenceMessages.retractedAt), inboxFilter,
         or(sql`instr(lower(${correspondence.subject}), lower(${term})) > 0`, sql`instr(lower(${correspondenceMessages.body}), lower(${term})) > 0`)))
       .orderBy(desc(correspondenceMessages.sentAt), desc(correspondenceMessages.sequence)).limit(51)
     const sourceByMessage = new Map<string, { readonly sourceSentDisplay: string; readonly sourceSentAt: string | null }>()
