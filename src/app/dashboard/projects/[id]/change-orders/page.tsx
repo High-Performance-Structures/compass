@@ -8,7 +8,9 @@ import {
   getProjectChangeOrderFormOptions,
   getProjectChangeOrders,
 } from "@/app/actions/project-change-orders"
+import { getProjectArchivedBuildertrendChangeOrders } from "@/app/actions/project-archived-change-orders"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectArchivedChangeOrderSection } from "@/components/projects/project-archived-change-order-list"
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Button } from "@/components/ui/button"
@@ -21,9 +23,10 @@ export default async function ProjectChangeOrdersPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const [projects, items, capabilities, formOptions] = await Promise.all([
+  const [projects, items, archived, capabilities, formOptions] = await Promise.all([
     getProjects(),
     getProjectChangeOrders(id),
+    getProjectArchivedBuildertrendChangeOrders(id),
     getProjectChangeOrderCapabilities(id),
     getProjectChangeOrderFormOptions(id),
   ]).catch((error: unknown) => {
@@ -63,6 +66,10 @@ export default async function ProjectChangeOrdersPage({
         internal
         formOptions={formOptions}
         canCreate={capabilities.canCreate}
+      />
+      <ProjectArchivedChangeOrderSection
+        workspace={archived}
+        detailBaseHref={baseHref}
       />
     </div>
   )
