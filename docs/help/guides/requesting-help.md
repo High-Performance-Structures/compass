@@ -4,15 +4,15 @@
   "featureId": "help-resources",
   "slug": "requesting-help",
   "title": "Requesting Help or Reporting a Problem",
-  "summary": "Report a Compass problem clearly while protecting project, account, and financial data.",
-  "contextSummary": "Stop risky retries, preserve the exact error and context, and report expected versus actual behavior without sharing credentials.",
+  "summary": "Email or call Compass Help with a clear problem report while protecting project, account, and financial data.",
+  "contextSummary": "Stop risky retries, preserve the exact error and context, then contact compasshelp@hps-colorado.com or 719-896-6149 without sharing credentials.",
   "category": "Support",
   "tags": ["help", "feedback", "bug report", "permissions", "authentication", "support"],
   "audiences": ["staff", "owner", "subcontractor", "supplier", "guest"],
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-09-06"
 }
 ---
 
@@ -28,9 +28,13 @@ Use the small Compass Help symbol beside an unfamiliar tool to see its official 
 
 For a product defect, access problem, or missing documentation, submit feedback even if the guide helps you continue. That gives the product team a durable report.
 
+Owners and trade partners who do not have the in-app feedback tool can email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request) or call or text [719-896-6149](tel:+17198966149). Use these contacts for Compass access, navigation, missing-information, or product-behavior questions. For project decisions, schedules, pricing, approvals, or field coordination, continue to contact the project team through the project workspace.
+
 ## Submit a Useful Report {#submit-report}
 
 Include the project, page, record, approximate time and timezone, device/browser or app, what you did, what you expected, what happened, and the exact message. State what you already tried and whether you stopped before retrying.
+
+When emailing Compass Help, use a subject that identifies the project and issue, such as **Project name — unable to open an RFI**. Screenshots are useful when they do not expose another project's information. Do not send passwords, sign-in links, authentication codes, or other secrets.
 
 For access requests, include the feature and whether you need to view, create, edit, approve, delete, or administer it. Never borrow another person's account.
 
@@ -42,7 +46,7 @@ For offline sync, preserve the device data and report the project, item, time, w
 
 ## Escalate Urgent Issues {#urgent-issues}
 
-Contact an administrator directly when data may be exposed to the wrong audience, a financial record may be duplicated, staff cannot reach active work, offline records appear at risk, or an outage blocks several users.
+Email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Urgent%20Compass%20Help%20Request), call or text [719-896-6149](tel:+17198966149), and contact the project team directly when data may be exposed to the wrong audience, a financial record may be duplicated, staff cannot reach active work, offline records appear at risk, or an outage blocks several users.
 
 ## Report Missing Help {#missing-help}
 

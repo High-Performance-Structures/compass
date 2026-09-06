@@ -113,6 +113,20 @@ describe("help registry", () => {
     ).toBe(false)
   })
 
+  it("gives external audiences a direct Compass support contact", () => {
+    const supportAddress = "compasshelp@hps-colorado.com"
+    const supportPhone = "719-896-6149"
+
+    for (const slug of [
+      "requesting-help",
+      "owner-workspace",
+      "trade-partner-workspace",
+    ]) {
+      expect(getHelpGuide(slug)?.content).toContain(supportAddress)
+      expect(getHelpGuide(slug)?.content).toContain(supportPhone)
+    }
+  })
+
   it("retains canonical audience and resource-permission metadata", () => {
     expect(helpAudienceForRole("client")).toBe("owner")
     expect(helpAudienceForRole("field_superintendent")).toBe("staff")

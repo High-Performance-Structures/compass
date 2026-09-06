@@ -120,6 +120,12 @@ describe("Compass Help UI model", () => {
     expect(layoutSource).not.toContain("ChatProvider")
     expect(controlsSource).toContain("<HelpDrawer")
     expect(controlsSource).toContain("useCanViewHelp()")
+    const drawerSource = readFileSync(
+      join(process.cwd(), "src/components/help/help-drawer.tsx"),
+      "utf8",
+    )
+    expect(drawerSource).toContain("mailto:compasshelp@hps-colorado.com")
+    expect(drawerSource).toContain("tel:+17198966149")
   })
 
   it("keeps full-guide launches separate from the active workspace", () => {

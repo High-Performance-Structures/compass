@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation"
 import {
   IconArrowRight,
   IconBook2,
+  IconMail,
+  IconPhone,
   IconSearch,
   IconSparkles,
 } from "@tabler/icons-react"
@@ -173,7 +175,7 @@ export function HelpDrawer({
                 <p className="mt-1 text-sm leading-5 text-muted-foreground">
                   {canUseJarvis && agent && chat
                     ? "Try another term, or let Jarvis use the official guide and this page as context."
-                    : "Try another term, browse the full guide, or contact your Compass administrator."}
+                    : "Try another term, browse the full guide, or email Compass Help."}
                 </p>
                 {canUseJarvis && agent && chat && query.trim().length > 0 ? (
                   <Button className="mt-4" onClick={() => void askJarvis()}>
@@ -203,7 +205,29 @@ export function HelpDrawer({
               <IconSparkles className="size-4" />
               Ask Jarvis
             </Button>
-          ) : null}
+          ) : (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" asChild>
+                <a
+                  href="mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request"
+                  onClick={() => setOpen(false)}
+                >
+                  <IconMail className="size-4" />
+                  Email
+                </a>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <a
+                  href="tel:+17198966149"
+                  aria-label="Call Compass Help at 719-896-6149"
+                  onClick={() => setOpen(false)}
+                >
+                  <IconPhone className="size-4" />
+                  Call
+                </a>
+              </Button>
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>
