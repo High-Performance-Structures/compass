@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { IconMailPlus } from "@tabler/icons-react"
+import { IconExternalLink, IconMailPlus } from "@tabler/icons-react"
 
 import {
   getGreetingCardCatalog,
+  refreshGreetingCardSession,
   submitGreetingCardRequest,
   type GreetingCardCatalogItem,
   type GreetingCardDeliveryMethod,
@@ -108,12 +109,14 @@ export function GreetingCardRequestDialog({
   const [recipient, setRecipient] = useState<RecipientForm>(EMPTY_RECIPIENT)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [sessionExpired, setSessionExpired] = useState(false)
 
   useEffect(() => {
     if (!open || deliveryMethod !== "physical_mail" || catalog.length > 0) return
     let mounted = true
     setCatalogLoading(true)
     setError(null)
+    setSessionExpired(false)
     void getGreetingCardCatalog().then((result) => {
       if (!mounted) return
       if (result.success) {
@@ -177,12 +180,21 @@ export function GreetingCardRequestDialog({
     setRecipient(EMPTY_RECIPIENT)
     setSelectedRecipientId("")
     setError(null)
+    setSessionExpired(false)
   }
 
   async function submit(): Promise<void> {
     if (deliveryMethod === "physical_mail" && cardId === null) return
     setSubmitting(true)
     setError(null)
+    setSessionExpired(false)
+    const session = await refreshGreetingCardSession()
+    if (!session.success) {
+      setSubmitting(false)
+      setSessionExpired(isExpiredSessionMessage(session.error))
+      setError(session.error)
+      return
+    }
     const common = { recipientType, occasion, message, wishes, recipient }
     const result =
       deliveryMethod === "physical_mail"
@@ -199,6 +211,7 @@ export function GreetingCardRequestDialog({
           })
     setSubmitting(false)
     if (!result.success) {
+      setSessionExpired(isExpiredSessionMessage(result.error))
       setError(result.error)
       return
     }
@@ -364,6 +377,8 @@ export function GreetingCardRequestDialog({
                 <p className="text-xs text-muted-foreground">
                   Leave blank for an e-card only. A $5–$500 gift uses Giftbit's
                   US reward catalog and is purchased only when Executive Admin releases it.
+                  The recipient has 363 days to claim the reward; after claiming,
+                  the selected retailer&apos;s gift-card terms apply.
                 </p>
               </div>
             </div>
@@ -492,7 +507,19 @@ export function GreetingCardRequestDialog({
           </fieldset>
         </div>
 
-        {error ? <p className="text-sm text-destructive" role="status">{error}</p> : null}
+        {error ? (
+          <div className="space-y-2" role="status">
+            <p className="text-sm text-destructive">{error}</p>
+            {sessionExpired ? (
+              <Button type="button" variant="outline" size="sm" asChild>
+                <a href="/login?from=%2Fdashboard%2Fcards" target="_blank" rel="noreferrer">
+                  <IconExternalLink className="size-4" />
+                  Sign in again in a new tab
+                </a>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
@@ -575,6 +602,12 @@ function isGiftAmountInputValid(value: string): boolean {
 
 function giftAmountCentsForPreview(value: string): number | null {
   return isGiftAmountInputValid(value) ? giftAmountCents(value) : null
+}
+
+function isExpiredSessionMessage(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return normalized.includes("session") &&
+    (normalized.includes("expired") || normalized.includes("sign in again"))
 }
 
 function recipientComboboxOption(option: GreetingCardRecipientOption): {

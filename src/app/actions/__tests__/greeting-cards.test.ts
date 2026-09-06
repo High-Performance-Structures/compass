@@ -12,10 +12,12 @@ const mocks = vi.hoisted(() => ({
   getHandwryttenApiKey: vi.fn(),
   getHandwryttenConfig: vi.fn(),
   getGiftbitConfig: vi.fn(),
+  isWorkOSConfigured: vi.fn(),
   listCards: vi.fn(),
   listRewards: vi.fn(),
   cancelReward: vi.fn(),
   revalidatePath: vi.fn(),
+  refreshSession: vi.fn(),
   requireAuth: vi.fn(),
   sendCompassEmail: vi.fn(),
   submitOrder: vi.fn(),
@@ -23,7 +25,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
+vi.mock("@workos-inc/authkit-nextjs", () => ({
+  refreshSession: mocks.refreshSession,
+}))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/auth-config", () => ({
+  isWorkOSConfigured: mocks.isWorkOSConfigured,
+}))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({
@@ -50,6 +58,7 @@ vi.mock("@/lib/email/compass-email", () => ({
 import {
   approveGreetingCardRequest,
   cancelGreetingCardRequest,
+  refreshGreetingCardSession,
   releaseGreetingCardRequest,
   submitGreetingCardRequest,
   type SubmitGreetingCardRequestInput,
@@ -119,6 +128,7 @@ const DIGITAL_APPROVED_ROW = {
   giftRewardUuid: null,
   giftClaimUrl: null,
   giftStatus: null,
+  giftExpiresOn: null,
   publicToken: "6b8bb215-7cf0-4c5c-a426-9689dd645ec7",
   emailProvider: null,
   emailProviderMessageId: null,
@@ -161,6 +171,8 @@ describe("greeting-card approval workflow", () => {
     })
     mocks.canPrepareGreetingCards.mockReturnValue(true)
     mocks.canApproveGreetingCards.mockReturnValue(false)
+    mocks.isWorkOSConfigured.mockReturnValue(false)
+    mocks.refreshSession.mockResolvedValue({ user: { id: "staff-1" } })
     mocks.getCloudflareContext.mockResolvedValue({
       env: {
         DB: {},
@@ -243,6 +255,24 @@ describe("greeting-card approval workflow", () => {
     })
     mocks.getDb.mockReset()
     mocks.revalidatePath.mockReset()
+  })
+
+  it("offers reauthentication for a wrapped unauthorized refresh failure", async () => {
+    mocks.isWorkOSConfigured.mockReturnValue(true)
+    const unauthorized = new Error("Could not authorize the request.")
+    unauthorized.name = "UnauthorizedException"
+    Reflect.set(unauthorized, "status", 401)
+    mocks.refreshSession.mockRejectedValue(
+      new Error("Failed to refresh session: Could not authorize the request.", {
+        cause: unauthorized,
+      }),
+    )
+
+    await expect(refreshGreetingCardSession()).resolves.toEqual({
+      success: false,
+      error:
+        "Your Compass session expired. Sign in again, then return to this card and submit it.",
+    })
   })
 
   it("lets office staff submit a non-billable request for approval", async () => {
@@ -429,6 +459,7 @@ describe("greeting-card approval workflow", () => {
       id: `compass-ecard-${approvedRow.id}`,
       priceInCents: 2500,
       region: "USA",
+      expiresOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     })
     expect(mocks.sendCompassEmail).toHaveBeenCalledWith(
       expect.objectContaining({

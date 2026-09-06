@@ -18,6 +18,7 @@ describe("Giftbit client", () => {
           price_in_cents: 2500,
           region: "USA",
           link_count: 1,
+          expiry: "2027-09-05",
         })
         return jsonResponse({
           direct_links: ["https://reward.giftbit.com/getReward/private-link"],
@@ -30,6 +31,7 @@ describe("Giftbit client", () => {
       id: "compass-ecard-request-1",
       priceInCents: 2500,
       region: "USA",
+      expiresOn: "2027-09-05",
     })
 
     expect(result).toEqual({
@@ -49,6 +51,7 @@ describe("Giftbit client", () => {
       id: "compass-ecard-request-2",
       priceInCents: 1000,
       region: "USA",
+      expiresOn: "2027-09-05",
     })
 
     expect(result).toEqual({

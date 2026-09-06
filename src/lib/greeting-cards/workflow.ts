@@ -46,6 +46,7 @@ export type GreetingCardGift = {
   readonly region: "USA"
   readonly campaignUuid: string | null
   readonly status: string | null
+  readonly expiresOn: string | null
 }
 
 export type GreetingCardRequest = {
@@ -271,6 +272,7 @@ export function buildNewGreetingCardRequest(input: {
             region: "USA",
             campaignUuid: null,
             status: null,
+            expiresOn: null,
           }
         : null,
     recipientType: input.validated.recipientType,
