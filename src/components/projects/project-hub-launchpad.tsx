@@ -15,6 +15,7 @@ import {
   IconLayoutCards,
   IconList,
   IconPaint,
+  IconSelector,
   IconSettings,
   IconTool,
 } from "@tabler/icons-react"
@@ -30,6 +31,19 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -38,13 +52,19 @@ import {
 } from "@/components/ui/select"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import { cn } from "@/lib/utils"
+import { projectClientStatusLabel } from "@/lib/project-profile"
 import {
-  projectClientStatusLabel,
-  projectJobStatusBucket,
-} from "@/lib/project-profile"
+  ALL_PROJECT_HUB_STATUSES_FILTER,
+  DEFAULT_PROJECT_HUB_STATUS_FILTER,
+  projectHubStatusFilterKey,
+  projectHubStatusFilterLabel,
+  projectHubStatusFilterOptions,
+  projectMatchesProjectHubStatusFilter,
+  type ProjectHubStatusFilter,
+  type ProjectHubStatusFilterOption,
+} from "@/lib/project-hub-status-filter"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
-type StatusFilter = "active" | "warranty" | "complete" | "all"
 type ProjectLayout = "cards" | "list"
 type ProjectPageSize = 5 | 10 | 25 | 50 | "all"
 
@@ -63,16 +83,6 @@ const DEPARTMENTS: readonly DepartmentDefinition[] = [
   { id: "OTHER", label: "Other", icon: <IconSettings className="size-4" /> },
 ]
 
-const STATUS_OPTIONS: readonly {
-  readonly value: StatusFilter
-  readonly label: string
-}[] = [
-  { value: "active", label: "Active" },
-  { value: "warranty", label: "Warranty" },
-  { value: "complete", label: "Complete" },
-  { value: "all", label: "All" },
-]
-
 const PROJECT_PAGE_SIZES: readonly ProjectPageSize[] = [5, 10, 25, 50, "all"]
 
 function parseProjectPageSize(value: string): ProjectPageSize {
@@ -89,15 +99,6 @@ function departmentForProject(project: ProjectListItem): DepartmentFilter {
     return prefix
   }
   return "OTHER"
-}
-
-function statusForProject(project: ProjectListItem): StatusFilter {
-  const bucket = projectJobStatusBucket({
-    jobStatusId: project.jobStatusId,
-    jobStatusLabel: project.jobStatusLabel,
-  })
-  if (bucket === "active" || bucket === "warranty" || bucket === "complete") return bucket
-  return "all"
 }
 
 function departmentAccent(department: DepartmentFilter): string {
@@ -279,6 +280,32 @@ function ProjectCard({
   )
 }
 
+function StatusFilterItem({
+  option,
+  selectedKey,
+  onSelect,
+}: {
+  readonly option: ProjectHubStatusFilterOption
+  readonly selectedKey: string
+  readonly onSelect: (filter: ProjectHubStatusFilter) => void
+}): React.ReactElement {
+  const selected = option.key === selectedKey
+  return (
+    <CommandItem
+      value={`${option.label} ${option.key}`}
+      onSelect={() => onSelect(option.filter)}
+    >
+      <IconCheck
+        className={cn("size-4", selected ? "opacity-100" : "opacity-0")}
+      />
+      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+      <span className="text-xs tabular-nums text-muted-foreground">
+        {option.count}
+      </span>
+    </CommandItem>
+  )
+}
+
 export function ProjectHubLaunchpad({
   projects,
   overview,
@@ -292,24 +319,32 @@ export function ProjectHubLaunchpad({
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
-  const [status, setStatus] = useState<StatusFilter>("active")
+  const [status, setStatus] = useState<ProjectHubStatusFilter>(
+    DEFAULT_PROJECT_HUB_STATUS_FILTER,
+  )
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false)
   const [layout, setLayout] = useState<ProjectLayout>("cards")
   const [pageSize, setPageSize] = useState<ProjectPageSize>(10)
   const [pageIndex, setPageIndex] = useState(0)
 
-  const statusCounts = useMemo(
-    () => ({
-      active: projects.filter((project) => statusForProject(project) === "active").length,
-      warranty: projects.filter((project) => statusForProject(project) === "warranty").length,
-      complete: projects.filter((project) => statusForProject(project) === "complete").length,
-      all: projects.length,
-    }),
-    [projects]
+  const statusOptions = useMemo(
+    () => projectHubStatusFilterOptions(projects),
+    [projects],
+  )
+  const selectedStatusKey = projectHubStatusFilterKey(status)
+  const selectedStatusOption = statusOptions.find(
+    (option) => option.key === selectedStatusKey,
+  )
+  const statusViewOptions = statusOptions.filter(
+    (option) => option.group === "views",
+  )
+  const jobStatusOptions = statusOptions.filter(
+    (option) => option.group === "job-statuses",
   )
 
   const departmentCounts = useMemo(() => {
     const inStatus = projects.filter(
-      (project) => status === "all" || statusForProject(project) === status
+      (project) => projectMatchesProjectHubStatusFilter(project, status),
     )
     return new Map(
       DEPARTMENTS.map((item) => [
@@ -325,7 +360,7 @@ export function ProjectHubLaunchpad({
     () =>
       projects.filter(
         (project) =>
-          (status === "all" || statusForProject(project) === status) &&
+          projectMatchesProjectHubStatusFilter(project, status) &&
           (department === "ALL" || departmentForProject(project) === department)
       ),
     [department, projects, status]
@@ -416,37 +451,74 @@ export function ProjectHubLaunchpad({
           <p className="w-24 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Status
           </p>
-          <div className="flex flex-wrap gap-2">
-            {STATUS_OPTIONS.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => {
-                  setStatus(value)
-                  setPageIndex(0)
-                }}
-                className={cn(
-                  "flex h-8 items-center gap-2 border px-3 text-sm transition-colors hover:bg-muted",
-                  status === value && "border-primary bg-primary/[0.07] font-semibold text-primary"
-                )}
-              >
-                <span
-                  className={cn(
-                    "size-2 rounded-full border",
-                    status === value && "border-primary bg-primary"
-                  )}
-                />
-                {label}
-                <span
-                  className={cn(
-                    "text-xs tabular-nums text-muted-foreground",
-                    status === value && "text-primary/80"
-                  )}
+          <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+            <Popover open={statusFilterOpen} onOpenChange={setStatusFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={statusFilterOpen}
+                  aria-label="Filter projects by status"
+                  className="h-9 w-full justify-between px-3 font-normal sm:max-w-xs"
                 >
-                  {statusCounts[value]}
-                </span>
-              </button>
-            ))}
+                  <span className="min-w-0 truncate">
+                    {selectedStatusOption?.label ??
+                      projectHubStatusFilterLabel(status)}
+                  </span>
+                  <span className="ml-3 flex shrink-0 items-center gap-2 text-muted-foreground">
+                    <span className="text-xs tabular-nums">
+                      {selectedStatusOption?.count ?? 0}
+                    </span>
+                    <IconSelector className="size-4" />
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[var(--radix-popover-trigger-width)] min-w-[18rem] max-w-[calc(100vw-2rem)] p-0"
+              >
+                <Command>
+                  <CommandInput placeholder="Search statuses..." />
+                  <CommandList className="compass-content-scroll max-h-80">
+                    <CommandEmpty>No matching statuses.</CommandEmpty>
+                    <CommandGroup heading="Lifecycle views">
+                      {statusViewOptions.map((option) => (
+                        <StatusFilterItem
+                          key={option.key}
+                          option={option}
+                          selectedKey={selectedStatusKey}
+                          onSelect={(filter) => {
+                            setStatus(filter)
+                            setPageIndex(0)
+                            setStatusFilterOpen(false)
+                          }}
+                        />
+                      ))}
+                    </CommandGroup>
+                    {jobStatusOptions.length > 0 ? (
+                      <CommandGroup heading="Job statuses">
+                        {jobStatusOptions.map((option) => (
+                          <StatusFilterItem
+                            key={option.key}
+                            option={option}
+                            selectedKey={selectedStatusKey}
+                            onSelect={(filter) => {
+                              setStatus(filter)
+                              setPageIndex(0)
+                              setStatusFilterOpen(false)
+                            }}
+                          />
+                        ))}
+                      </CommandGroup>
+                    ) : null}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-muted-foreground">
+              Choose a lifecycle view or an exact job status.
+            </p>
           </div>
         </div>
       </section>
@@ -455,7 +527,8 @@ export function ProjectHubLaunchpad({
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold">
-              {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)} projects
+              {selectedStatusOption?.label ?? projectHubStatusFilterLabel(status)}{" "}
+              projects
             </h2>
             <p className="text-xs text-muted-foreground">
               {visibleProjects.length} project{visibleProjects.length === 1 ? "" : "s"} match · use ⌘K for global search
@@ -506,7 +579,7 @@ export function ProjectHubLaunchpad({
               type="button"
               onClick={() => {
                 setDepartment("ALL")
-                setStatus("all")
+                setStatus(ALL_PROJECT_HUB_STATUSES_FILTER)
                 setPageIndex(0)
               }}
               className="mt-2 text-sm font-medium text-primary hover:underline"
