@@ -36,7 +36,12 @@ const projectAreas = [
 ]
 
 async function enterDemo(page: Page): Promise<void> {
-  await page.goto("/demo")
+  await page.goto("/")
+  const host = new URL(page.url()).hostname
+  await page.context().addCookies([
+    { name: "compass-demo", value: "true", domain: host, path: "/" },
+  ])
+  await page.goto("/dashboard")
   await page.waitForURL(/\/dashboard/)
   await expect(page.locator("body")).not.toContainText(applicationErrorText)
 }
@@ -722,6 +727,109 @@ test.describe("usable Compass areas", () => {
     await expect(
       page.getByRole("button", { name: "Reload conversation" })
     ).toBeVisible()
+  })
+
+  test("project conversation history aligns messages and preserves navigation", async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 1366, height: 768 })
+    const path = "/dashboard/conversations/e2e-channel-001"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, path)
+
+    // App Router can briefly retain a hidden streamed tree in WebKit.
+    const viewport = page
+      .locator('[data-slot="scroll-area-viewport"]:visible')
+      .last()
+    await expect(viewport).toBeVisible()
+    await expect(viewport.locator('[data-message-id="e2e-message-001"]')).toHaveClass(
+      /justify-end/
+    )
+    await expect(
+      viewport.locator('[data-message-id="e2e-message-history-064"]')
+    ).toHaveClass(/justify-start/)
+
+    const alignment = await viewport.evaluate((element) => {
+      const viewportBounds = element.getBoundingClientRect()
+      const own = element
+        .querySelector('[data-message-id="e2e-message-001"] [data-slot="avatar"]')
+        ?.getBoundingClientRect()
+      const other = element
+        .querySelector('[data-message-id="e2e-message-history-064"] [data-slot="avatar"]')
+        ?.getBoundingClientRect()
+      if (!own || !other) {
+        throw new Error("Conversation alignment fixtures did not render")
+      }
+      return {
+        ownLeft: own.left,
+        otherLeft: other.left,
+        viewportRight: viewportBounds.right,
+        ownRight: own.right,
+      }
+    })
+    expect(alignment.ownLeft).toBeGreaterThan(alignment.otherLeft)
+    expect(alignment.ownRight).toBeLessThanOrEqual(alignment.viewportRight)
+
+    const newestEdge = async () =>
+      viewport.evaluate((element) => {
+        if (!(element instanceof HTMLElement)) {
+          throw new Error("Conversation viewport is not an HTMLElement")
+        }
+        return {
+          distance: element.scrollHeight - (element.scrollTop + element.clientHeight),
+          scrollTop: element.scrollTop,
+          scrollHeight: element.scrollHeight,
+        }
+      })
+
+    await expect.poll(async () => (await newestEdge()).distance).toBeLessThanOrEqual(24)
+    await page.screenshot({ path: testInfo.outputPath("conversation-newest.png") })
+
+    await viewport.evaluate((element) => {
+      element.scrollTop = 0
+    })
+    await expect(
+      page.getByRole("button", { name: "Jump to newest messages" })
+    ).toBeVisible()
+    const beforeHistory = await viewport.evaluate((element) => {
+      if (!(element instanceof HTMLElement)) {
+        throw new Error("Conversation viewport is not an HTMLElement")
+      }
+      return {
+        scrollTop: element.scrollTop,
+        scrollHeight: element.scrollHeight,
+      }
+    })
+    await page.screenshot({ path: testInfo.outputPath("conversation-jump-control.png") })
+
+    await page.getByRole("button", { name: "Load older messages" }).click()
+    await expect(page.getByText("History message 001", { exact: true })).toBeVisible()
+    await expect
+      .poll(async () =>
+        viewport.evaluate((element) => {
+          if (!(element instanceof HTMLElement)) {
+            throw new Error("Conversation viewport is not an HTMLElement")
+          }
+          return element.scrollTop
+        }),
+      )
+      .toBeGreaterThan(beforeHistory.scrollTop)
+    const afterHistory = await viewport.evaluate((element) => {
+      if (!(element instanceof HTMLElement)) {
+        throw new Error("Conversation viewport is not an HTMLElement")
+      }
+      return {
+        scrollTop: element.scrollTop,
+        scrollHeight: element.scrollHeight,
+      }
+    })
+    expect(afterHistory.scrollTop).toBeGreaterThan(
+      afterHistory.scrollHeight - beforeHistory.scrollHeight - 24
+    )
+    await page.screenshot({ path: testInfo.outputPath("conversation-history-prepended.png") })
+
+    await page.getByRole("button", { name: "Jump to newest messages" }).click()
+    await expect.poll(async () => (await newestEdge()).distance).toBeLessThanOrEqual(24)
   })
 
   test("schedule list exposes edit and selection actions", async ({ page }) => {
