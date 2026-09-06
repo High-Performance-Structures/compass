@@ -1,10 +1,46 @@
 import Database from "better-sqlite3"
-import { drizzle } from "drizzle-orm/better-sqlite3"
 import { describe, expect, it } from "vitest"
 
-import { projects, projectMembers } from "@/db/schema"
+import { getDb } from "@/db"
 import { assertProjectAccess } from "@/lib/project-access"
 import type { AuthUser } from "@/lib/auth"
+
+type D1Statement = Readonly<{
+  readonly __query: string
+  readonly bind: (...values: unknown[]) => D1Statement
+  readonly all: () => Promise<Readonly<{
+    readonly success: true
+    readonly results: readonly unknown[]
+  }>>
+  readonly raw: () => Promise<readonly unknown[][]>
+}>
+
+function createD1(sqlite: InstanceType<typeof Database>) {
+  function prepared(query: string, values: readonly unknown[] = []): D1Statement {
+    const statement = sqlite.prepare(query)
+    return {
+      __query: query,
+      bind: (...nextValues) => prepared(query, nextValues),
+      async all() {
+        return { success: true, results: statement.all(...values) }
+      },
+      async raw() {
+        return statement.all(...values).map((row) =>
+          row !== null && typeof row === "object" ? Object.values(row) : [row]
+        )
+      },
+    }
+  }
+
+  return {
+    prepare(query: string): D1Statement {
+      return prepared(query)
+    },
+    async batch(statements: readonly D1Statement[]) {
+      return Promise.all(statements.map(async (statement) => statement.all()))
+    },
+  }
+}
 
 function createDatabase(): InstanceType<typeof Database> {
   const sqlite = new Database(":memory:")
@@ -59,7 +95,10 @@ describe("assertProjectAccess photo-route boundary", () => {
   it("allows a project member for the exact project", async () => {
     const sqlite = createDatabase()
     try {
-      const db = drizzle(sqlite, { schema: { projects, projectMembers } })
+      const d1 = createD1(sqlite)
+      // This focused adapter implements only the D1 methods exercised here.
+      // @ts-expect-error The focused adapter omits unused D1 methods.
+      const db = getDb(d1)
       await expect(
         assertProjectAccess(
           db,
@@ -80,7 +119,10 @@ describe("assertProjectAccess photo-route boundary", () => {
   it("rejects a member request for a different project", async () => {
     const sqlite = createDatabase()
     try {
-      const db = drizzle(sqlite, { schema: { projects, projectMembers } })
+      const d1 = createD1(sqlite)
+      // This focused adapter implements only the D1 methods exercised here.
+      // @ts-expect-error The focused adapter omits unused D1 methods.
+      const db = getDb(d1)
       await expect(
         assertProjectAccess(
           db,
@@ -101,7 +143,10 @@ describe("assertProjectAccess photo-route boundary", () => {
   it("rejects an internal user from another organization without membership", async () => {
     const sqlite = createDatabase()
     try {
-      const db = drizzle(sqlite, { schema: { projects, projectMembers } })
+      const d1 = createD1(sqlite)
+      // This focused adapter implements only the D1 methods exercised here.
+      // @ts-expect-error The focused adapter omits unused D1 methods.
+      const db = getDb(d1)
       await expect(
         assertProjectAccess(
           db,
