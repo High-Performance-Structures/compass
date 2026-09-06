@@ -126,17 +126,17 @@ export function projectHubStatusFilterOptions(
   }
 
   const jobStatusOptions: ProjectHubStatusFilterOption[] = []
+  // The filter is also a status directory, so approved choices stay visible at zero.
   for (const definition of PROJECT_JOB_STATUS_DEFINITIONS) {
     const status = statusCounts.get(definition.id)
-    if (!status) continue
     const filter: ProjectHubStatusFilter = {
       kind: "job",
       jobStatusId: definition.id,
     }
     jobStatusOptions.push({
       key: projectHubStatusFilterKey(filter),
-      label: status.label,
-      count: status.count,
+      label: definition.label,
+      count: status?.count ?? 0,
       group: "job-statuses",
       filter,
     })
