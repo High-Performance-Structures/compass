@@ -189,7 +189,7 @@ describe("getQuickAddProjects", () => {
     )).resolves.toEqual([])
   })
 
-  it("denies a project member who is not in the target organization", async () => {
+  it("keeps change requests independent of correspondence organization membership", async () => {
     const db = open()
     db.sqlite.prepare(
       "DELETE FROM organization_members WHERE organization_id = ? AND user_id = ?",
@@ -198,7 +198,7 @@ describe("getQuickAddProjects", () => {
     await expect(getQuickAddProjects(
       authUser(db, "owner-a"),
       [project("project-a")],
-    )).resolves.toEqual([])
+    )).resolves.toMatchObject([{ actions: [{ action: "change-request" }] }])
   })
 
   it("grants sub/vendor RFI only when its verified project contact exists", async () => {
@@ -257,7 +257,67 @@ describe("getQuickAddProjects", () => {
     expect(result[0]?.actions).toEqual([{
       action: "rfi",
       href: "/preview/projects/project-a/sub-vendor/rfis?quickAdd=rfi",
+    }, {
+      action: "change-request",
+      href: "/preview/projects/project-a/sub-vendor/change-orders?quickAdd=change-request",
     }])
+  })
+
+  it("offers owners change requests and limits warranty to eligible projects", async () => {
+    const db = open()
+    const user = authUser(db, "owner-a")
+    const active = await getQuickAddProjects(user, [project("project-a")])
+    expect(active[0]?.actions.map((item) => item.action)).toEqual([
+      "message",
+      "change-request",
+    ])
+    const warranty = await getQuickAddProjects(user, [
+      { ...project("project-a"), jobStatusId: "warranty" },
+    ])
+    expect(warranty[0]?.actions.map((item) => item.action)).toEqual([
+      "message",
+      "change-request",
+      "warranty-request",
+    ])
+    const service = await getQuickAddProjects(user, [
+      { ...project("project-a"), status: "Service" },
+    ])
+    expect(service[0]?.actions.map((item) => item.action)).toContain(
+      "warranty-request",
+    )
+  })
+
+  it.each(["read", "create"])(
+    "hides change requests without %s permission",
+    async (deniedAction) => {
+      const db = open()
+      mocks.canFeature.mockImplementation(
+        async (_user, feature, action) =>
+          feature !== "change-orders" || action !== deniedAction,
+      )
+      const result = await getQuickAddProjects(authUser(db, "owner-a"), [
+        project("project-a"),
+      ])
+      expect(result[0]?.actions.map((item) => item.action)).toEqual(["message"])
+    },
+  )
+
+  it("offers subcontractor change requests without widening supplier or warranty permissions", async () => {
+    const db = open()
+    const user = authUser(db, "owner-a")
+    for (const role of ["subcontractor", "supplier"]) {
+      db.sqlite
+        .prepare(
+          "UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?",
+        )
+        .run(role, "project-a", "owner-a")
+      const result = await getQuickAddProjects(user, [
+        { ...project("project-a"), jobStatusId: "warranty" },
+      ])
+      expect(result[0]?.actions.map((item) => item.action)).toEqual(
+        role === "subcontractor" ? ["message", "change-request"] : ["message"],
+      )
+    }
   })
 
   it("fails closed when data access is unavailable", async () => {

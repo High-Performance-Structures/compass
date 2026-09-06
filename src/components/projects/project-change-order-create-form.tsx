@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { IconFilePlus, IconPaperclip } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -88,6 +89,7 @@ export function ProjectChangeOrderCreateForm({
   const formRef = React.useRef<HTMLFormElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [open, setOpen] = React.useState(false)
+  useQuickAddEntry("change-request", () => setOpen(true))
   const [saving, startSaving] = React.useTransition()
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [requesterCompany, setRequesterCompany] = React.useState("")

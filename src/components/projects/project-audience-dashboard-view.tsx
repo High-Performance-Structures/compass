@@ -14,10 +14,8 @@ import {
 
 import type { ProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { ProjectAudienceDashboardPhoto } from "@/components/projects/project-audience-dashboard-photo"
-import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
-import { Button } from "@/components/ui/button"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
 import {
   audienceDashboardDateLabel,
@@ -191,21 +189,13 @@ export function ProjectAudienceDashboardView({
                 : "Your scope, your schedule, and your project team"}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {!owner && (
-              <ProjectAudienceRfiCreateDialog
-                projectId={data.project.id}
-                recipients={messageShortcut?.recipients ?? []}
-                viewerIsInternal={data.viewerIsInternal}
-              />
-            )}
-            <ProjectAudienceMessageLauncher shortcut={messageShortcut} />
-            {!messageShortcut && (
-              <Button asChild variant="outline">
-                <Link href={href("conversations")}>Project conversations</Link>
-              </Button>
-            )}
-          </div>
+          {!owner && (
+            <ProjectAudienceRfiCreateDialog
+              projectId={data.project.id}
+              recipients={messageShortcut?.recipients ?? []}
+              viewerIsInternal={data.viewerIsInternal}
+            />
+          )}
         </div>
 
         <div className="-mt-px">

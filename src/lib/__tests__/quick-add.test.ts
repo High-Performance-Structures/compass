@@ -15,6 +15,8 @@ describe("Quick Add routes", () => {
       "rfi",
       "purchase-order",
       "rfq",
+      "change-request",
+      "warranty-request",
     ])
   })
 
@@ -42,6 +44,18 @@ describe("Quick Add routes", () => {
     )
     expect(quickAddHref("rfq", "project one", "staff")).toBe(
       "/dashboard/projects/project%20one/rfqs?quickAdd=rfq",
+    )
+  })
+
+  it("opens the existing external request forms", () => {
+    expect(quickAddHref("change-request", "project/one", "owner")).toBe(
+      "/preview/projects/project%2Fone/owner/change-orders?quickAdd=change-request",
+    )
+    expect(quickAddHref("change-request", "project/one", "sub_vendor")).toBe(
+      "/preview/projects/project%2Fone/sub-vendor/change-orders?quickAdd=change-request",
+    )
+    expect(quickAddHref("warranty-request", "project/one", "owner")).toBe(
+      "/preview/projects/project%2Fone/owner/warranty?quickAdd=warranty-request",
     )
   })
 
