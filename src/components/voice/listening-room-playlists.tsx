@@ -5,6 +5,7 @@ import {
   ListMusic,
   Loader2,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Save,
@@ -44,10 +45,12 @@ import {
 export function ListeningRoomPlaylists({
   channelId,
   currentQueueCount,
+  canControl,
   onQueueChanged,
 }: {
   readonly channelId: string
   readonly currentQueueCount: number
+  readonly canControl: boolean
   readonly onQueueChanged: () => void
 }): React.ReactElement {
   const [playlists, setPlaylists] = React.useState<readonly ListeningPlaylistData[]>([])
@@ -143,6 +146,26 @@ export function ListeningRoomPlaylists({
       toast.success(
         `${result.data.addedCount} track${result.data.addedCount === 1 ? "" : "s"} added to the room`
       )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleStartFrom(item: ListeningPlaylistData["items"][number]): Promise<void> {
+    if (!selected) return
+    setBusy(true)
+    try {
+      const result = await addListeningPlaylistToRoom({
+        channelId,
+        playlistId: selected.id,
+        startAtItemId: item.id,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      onQueueChanged()
+      toast.success(`Starting ${item.title}`)
     } finally {
       setBusy(false)
     }
@@ -282,11 +305,32 @@ export function ListeningRoomPlaylists({
 
               <ol className="max-h-36 divide-y overflow-y-auto border-y">
                 {selected.items.map((item) => (
-                  <li key={item.id} className="py-2 text-sm">
-                    <span className="font-medium">{item.title}</span>
-                    {item.artist ? (
-                      <span className="text-muted-foreground"> · {item.artist}</span>
-                    ) : null}
+                  <li key={item.id}>
+                    {canControl ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 py-2 text-left text-sm hover:text-primary disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => void handleStartFrom(item)}
+                        aria-label={`Start ${item.title} here`}
+                      >
+                        <Play className="size-3.5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="font-medium">{item.title}</span>
+                          {item.artist ? (
+                            <span className="text-muted-foreground"> · {item.artist}</span>
+                          ) : null}
+                        </span>
+                        <span className="text-xs text-muted-foreground">Start here</span>
+                      </button>
+                    ) : (
+                      <div className="py-2 text-sm">
+                        <span className="font-medium">{item.title}</span>
+                        {item.artist ? (
+                          <span className="text-muted-foreground"> · {item.artist}</span>
+                        ) : null}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ol>

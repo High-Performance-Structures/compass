@@ -509,7 +509,11 @@ export function ListeningRoomButton({
                         </p>
                       </>
                     ) : (
-                      <p className="text-sm text-muted-foreground">Queue a track to get started.</p>
+                      <p className="text-sm text-muted-foreground">
+                        {room.queue.length > 0
+                          ? "Playback finished. Restart the queue or choose a saved song."
+                          : "Queue a track to get started."}
+                      </p>
                     )}
                   </div>
                   {!open ? (
@@ -552,14 +556,18 @@ export function ListeningRoomButton({
                       type="button"
                       size="sm"
                       variant="outline"
-                      disabled={busy || !currentTrack}
+                      disabled={busy || room.queue.length === 0}
                       onClick={() => void applySnapshot(setListeningPlayback({
                         channelId,
                         command: room.playbackState === "playing" ? "pause" : "play",
                       }))}
                     >
                       {room.playbackState === "playing" ? <Pause /> : <Play />}
-                      {room.playbackState === "playing" ? "Pause room" : "Play room"}
+                      {room.playbackState === "playing"
+                        ? "Pause room"
+                        : currentTrack
+                          ? "Play room"
+                          : "Restart queue"}
                     </Button>
                     <Button
                       type="button"
@@ -587,6 +595,7 @@ export function ListeningRoomButton({
                 <ListeningRoomPlaylists
                   channelId={channelId}
                   currentQueueCount={room.queue.length}
+                  canControl={room.canControl}
                   onQueueChanged={() => {
                     realtime.notifyRoomChanged()
                     void loadRoom(false)

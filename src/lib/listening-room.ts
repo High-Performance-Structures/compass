@@ -32,6 +32,55 @@ export type MusicPlaybackTarget = {
   readonly kind: "direct" | "search"
 }
 
+export type MatchableListeningTrack = {
+  readonly title: string
+  readonly artist: string | null
+  readonly links: readonly {
+    readonly provider: string
+    readonly url: string
+  }[]
+}
+
+export function findMatchingPlaylistRun(
+  queue: readonly MatchableListeningTrack[],
+  playlist: readonly MatchableListeningTrack[]
+): number | null {
+  if (playlist.length === 0 || playlist.length > queue.length) return null
+
+  function matches(
+    queueItem: MatchableListeningTrack,
+    playlistItem: MatchableListeningTrack
+  ): boolean {
+    const playlistLinks = new Set(
+      playlistItem.links.map((link) => `${link.provider}\n${link.url}`)
+    )
+    if (
+      playlistLinks.size > 0 &&
+      queueItem.links.some((link) =>
+        playlistLinks.has(`${link.provider}\n${link.url}`)
+      )
+    ) {
+      return true
+    }
+    return (
+      queueItem.title === playlistItem.title &&
+      queueItem.artist === playlistItem.artist
+    )
+  }
+
+  for (let start = 0; start <= queue.length - playlist.length; start += 1) {
+    if (
+      playlist.every((playlistItem, offset) => {
+        const queueItem = queue[start + offset]
+        return queueItem ? matches(queueItem, playlistItem) : false
+      })
+    ) {
+      return start
+    }
+  }
+  return null
+}
+
 export function canManageListeningPlaylist(input: {
   readonly currentUserId: string
   readonly createdBy: string
