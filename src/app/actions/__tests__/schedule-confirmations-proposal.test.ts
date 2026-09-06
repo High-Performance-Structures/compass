@@ -21,7 +21,7 @@ vi.mock("@/lib/activity-log", () => ({ recordActivityEvent: mocks.recordActivity
 vi.mock("@/lib/notifications/events", () => ({ createNotificationEvent: mocks.createNotificationEvent }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 
-import { proposeScheduleTaskChange } from "@/app/actions/schedule-confirmations"
+import { proposeScheduleTaskChange, respondToScheduleTaskConfirmation } from "@/app/actions/schedule-confirmations"
 
 type QueryValue = unknown
 
@@ -41,7 +41,7 @@ function query(value: QueryValue): Record<string, unknown> {
   return builder
 }
 
-function publishedSnapshot(): string {
+function publishedSnapshot(ownerVisible = false, subVendorVisible = true): string {
   return JSON.stringify({
     version: 1,
     tasks: [
@@ -61,8 +61,8 @@ function publishedSnapshot(): string {
         assignedTo: "Test Subcontractor",
         assignedUserId: "user-1",
         assigneeParticipantIds: [],
-        ownerVisible: false,
-        subVendorVisible: true,
+        ownerVisible,
+        subVendorVisible,
         confirmationRequired: true,
         confirmationStatus: "pending",
         confirmationRequestedAt: null,
@@ -139,5 +139,83 @@ describe("legacy subcontractor schedule proposals", () => {
       }),
     )
     expect(mocks.recordActivityEvent).toHaveBeenCalledOnce()
+  })
+})
+
+
+function setupLegacyResponse(input: {
+  readonly role: string
+  readonly action: "response" | "proposal"
+  readonly ownerVisible?: boolean
+  readonly subVendorVisible?: boolean
+  readonly assignedUserId?: string
+  readonly startDate?: string
+}): void {
+  const snapshot = [{ snapshotData: publishedSnapshot(input.ownerVisible ?? true, input.subVendorVisible ?? false) }]
+  const membership = { role: input.role }
+  const values: readonly QueryValue[] = [
+    { id: "task-1", projectId: "project-1", title: "Owner windows", startDate: input.startDate ?? "2026-09-14", workdays: 3, assignedUserId: input.assignedUserId ?? "user-1", confirmationRequired: true },
+    [],
+    ...(input.action === "response" ? [snapshot, membership] : [membership, snapshot]),
+    [{ id: "staff-1", email: "staff@example.test", googleEmail: null, role: "project_manager" }],
+  ]
+  let index = 0
+  mocks.getDb.mockReturnValue({
+    select: () => query(values[index++] ?? null),
+    update: () => ({ set: (value: unknown) => {
+      mocks.updateSet(value)
+      return { where: async () => undefined }
+    } }),
+  })
+  mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+  mocks.requireAuth.mockResolvedValue({ id: "user-1", displayName: "Owner", email: "owner@example.test", role: "guest" })
+  mocks.assertProjectAccess.mockResolvedValue({ id: "project-1", organizationId: "org-1" })
+}
+
+describe("owner and vendor commitment responses", () => {
+  it.each(["owner", "client"])("allows an assigned %s to report a conflict without vendor visibility", async (role) => {
+    setupLegacyResponse({ role, action: "response" })
+    await expect(respondToScheduleTaskConfirmation("task-1", "declined", "Windows arrive a week late."))
+      .resolves.toEqual({ success: true })
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      confirmationStatus: "declined", proposalNote: "Windows arrive a week late.", proposedStartDate: null,
+    }))
+    expect(mocks.updateSet.mock.calls[0][0]).not.toHaveProperty("startDate")
+    expect(mocks.recordActivityEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: { note: "Windows arrive a week late." } }))
+    expect(mocks.createNotificationEvent).toHaveBeenCalledWith(expect.objectContaining({
+      body: "Owner declined the scheduled date. Windows arrive a week late.",
+      href: "/dashboard/projects/project-1/schedule?view=list&item=task-1",
+      audience: "internal",
+    }))
+  })
+  it.each(["owner", "client"])("allows an assigned %s to propose dates and duration", async (role) => {
+    setupLegacyResponse({ role, action: "proposal" })
+    await expect(proposeScheduleTaskChange("task-1", { startDate: "2026-09-21", workdays: 5, note: "Delivery delay" }))
+      .resolves.toEqual({ success: true })
+    expect(mocks.updateSet).toHaveBeenCalledWith(expect.objectContaining({ confirmationStatus: "proposed", proposedWorkdays: 5 }))
+    expect(mocks.updateSet.mock.calls[0][0]).not.toHaveProperty("startDate")
+  })
+  it.each(["response", "proposal"] as const)("rejects owner-hidden items for %s", async (action) => {
+    setupLegacyResponse({ role: "owner", action, ownerVisible: false, subVendorVisible: true })
+    const result = action === "response"
+      ? await respondToScheduleTaskConfirmation("task-1", "confirmed")
+      : await proposeScheduleTaskChange("task-1", { startDate: "2026-09-21", workdays: 3, note: "" })
+    expect(result.success).toBe(false)
+    expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+  it.each([
+    { role: "owner", assignedUserId: "someone-else" },
+    { role: "owner", startDate: "2026-09-28" },
+    { role: "supplier", subVendorVisible: false },
+    { role: "viewer" },
+  ])("rejects an unauthorized or unpublished commitment: %o", async (input) => {
+    setupLegacyResponse({ ...input, action: "response" })
+    expect((await respondToScheduleTaskConfirmation("task-1", "confirmed")).success).toBe(false)
+    expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+  it("rejects oversized notes before writing", async () => {
+    await expect(respondToScheduleTaskConfirmation("task-1", "declined", "x".repeat(1001)))
+      .resolves.toEqual({ success: false, error: "Notes must be 1,000 characters or fewer." })
+    expect(mocks.updateSet).not.toHaveBeenCalled()
   })
 })

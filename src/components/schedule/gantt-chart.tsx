@@ -157,6 +157,7 @@ interface GanttChartProps {
   exceptions?: readonly WorkdayExceptionData[]
   viewMode: ViewMode
   columnWidth?: number
+  readOnly?: boolean
   panMode?: boolean
   criticalPathMode?: boolean
   displayColorPalette?: DisplayColorPalette
@@ -167,6 +168,7 @@ interface GanttChartProps {
   ) => void
   onProgressChange?: (task: FrappeTask, progress: number) => void
   onZoom?: (direction: "in" | "out") => void
+  onTaskClick?: (task: FrappeTask) => void
   onTaskDoubleClick?: (task: FrappeTask) => void
   onContainerReady?: (container: HTMLElement | null) => void
   onScrollPositionChange?: (position: GanttScrollPosition) => void
@@ -182,12 +184,14 @@ export function GanttChart({
   exceptions = [],
   viewMode,
   columnWidth,
+  readOnly = false,
   panMode = false,
   criticalPathMode = false,
   displayColorPalette,
   onDateChange,
   onProgressChange,
   onZoom,
+  onTaskClick,
   onTaskDoubleClick,
   onContainerReady,
   onScrollPositionChange,
@@ -203,6 +207,7 @@ export function GanttChart({
   const latestTasksRef = useRef(tasks)
   latestTasksRef.current = tasks
   const interactionCallbacksRef = useRef({
+    onTaskClick,
     onTaskDoubleClick,
     onContainerReady,
     onScrollPositionChange,
@@ -211,6 +216,7 @@ export function GanttChart({
     onTaskVisibilityReady,
   })
   interactionCallbacksRef.current = {
+    onTaskClick,
     onTaskDoubleClick,
     onContainerReady,
     onScrollPositionChange,
@@ -388,9 +394,16 @@ export function GanttChart({
         containerRef.current.removeChild(containerRef.current.firstChild)
       }
 
+      // Frappe inserts labels and popup titles as HTML; task titles are plain text.
       const ganttTasks = tasks.map((t) => ({
         id: t.id,
-        name: t.name,
+        name: t.name.replace(/[&<>"']/g, (character) => {
+          if (character === "&") return "&amp;"
+          if (character === "<") return "&lt;"
+          if (character === ">") return "&gt;"
+          if (character === '"') return "&quot;"
+          return "&#39;"
+        }),
         start: t.start,
         end: t.end,
         progress: t.progress,
@@ -418,23 +431,27 @@ export function GanttChart({
           : mode
       )
 
+      const popupOptions: { readonly popup?: false } = readOnly ? { popup: false } : {}
       ganttRef.current = new Gantt(containerRef.current, ganttTasks, {
         view_mode: viewMode,
         view_modes: viewModes,
         infinite_padding: false,
+        readonly: readOnly,
+        today_button: !readOnly,
+        ...popupOptions,
         holidays: {
           "var(--background)": "weekend",
         },
         is_weekend: (date: Date) => isNonWorkday(date, exceptions),
         ...(columnWidth ? { column_width: columnWidth } : {}),
         on_date_change: (task: { id: string }, start: Date, end: Date) => {
-          if (onDateChange) {
+          if (!readOnly && onDateChange) {
             const original = tasks.find((t) => t.id === task.id)
             if (original) onDateChange(original, start, end)
           }
         },
         on_progress_change: (task: { id: string }, progress: number) => {
-          if (onProgressChange) {
+          if (!readOnly && onProgressChange) {
             const original = tasks.find((t) => t.id === task.id)
             if (original) onProgressChange(original, progress)
           }
@@ -558,13 +575,7 @@ export function GanttChart({
       interactionCallbacksRef.current.onDateScrollReady?.(null)
       interactionCallbacksRef.current.onTaskVisibilityReady?.(null)
     }
-  }, [tasks, exceptions, viewMode, columnWidth, onDateChange, onProgressChange])
-
-  useEffect(() => {
-    if (ganttRef.current && loaded) {
-      ganttRef.current.change_view_mode(viewMode)
-    }
-  }, [viewMode, loaded])
+  }, [tasks, exceptions, viewMode, columnWidth, readOnly, onDateChange, onProgressChange])
 
   useEffect(() => {
     const wrapper = wrapperRef.current
@@ -637,6 +648,10 @@ export function GanttChart({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onClick={(event) => {
+        const task = taskForEventTarget(event.target)
+        if (task) interactionCallbacksRef.current.onTaskClick?.(task)
+      }}
       onDoubleClick={handleDoubleClick}
     >
       <div ref={containerRef} className="h-full" />

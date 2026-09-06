@@ -1237,6 +1237,9 @@ export function ScheduleItemFormDialog({
                             onValueChange={(value, option) => {
                               field.onChange(value)
                               setAssignedOptionId(option?.id ?? null)
+                              if (option?.contactType === "owner" || option?.contactType === "subcontractor" || option?.contactType === "supplier") {
+                                form.setValue("confirmationRequired", true, { shouldDirty: true })
+                              }
                               if (option?.contactType === "owner") {
                                 form.setValue("ownerVisible", true, {
                                   shouldDirty: true
@@ -1356,16 +1359,21 @@ export function ScheduleItemFormDialog({
                         )}
                       />
                     </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Assign owner-performed work or owner-supplied deliveries to the owner.
+                      Require confirmation and publish to request their commitment.
+                      Use a milestone for a delivery deadline.
+                    </p>
                     {proposalLoading && (
                       <p className="mt-3 border bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
-                        Loading subcontractor proposal…
+                        Loading assignment proposal…
                       </p>
                     )}
                     {changeProposal && (
                       <div className="mt-3 space-y-3 border border-amber-400/50 bg-amber-500/5 px-3 py-3">
                         <div>
                           <p className="text-xs font-medium">
-                            Subcontractor proposed new dates
+                            Assignee proposed new dates
                           </p>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {format(parseISO(changeProposal.startDate), "MMM d, yyyy")} ·{" "}

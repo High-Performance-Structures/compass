@@ -186,3 +186,28 @@ known issues
 ---
 
 **Gantt chart vertical panning.** Horizontal zoom and pan work correctly. Vertical panning (scrolling through tasks) conflicts with frappe-gantt's container sizing model. The chart renders at a fixed height based on task count, and the container handles overflow. A proper fix would require a transform-based rendering approach with a fixed header, which is a non-trivial change to the third-party library integration.
+
+
+### Owner and vendor commitments
+
+Owner and vendor Gantt views use the same renderer, row sizes, date scales, and
+zoom controls as the internal schedule. Published dates and progress cannot be
+dragged or edited in these workspaces. Selecting a bar or item opens published
+details and the viewer’s permitted response controls. List, calendar, and printed
+schedule views remain available.
+
+To track owner-performed work or owner-supplied materials, staff create a schedule
+item, choose the owner’s linked contact as responsible, and set its dates. Use a
+milestone for a delivery deadline or a duration for work. Choosing an owner or
+vendor enables **Require confirmation** by default; staff can change that setting.
+Publish the item with visibility for the appropriate audience to request a
+commitment. A typed name alone cannot receive account-based responses: the
+responsible person needs a linked, active project account.
+
+Assigned owners and vendors can confirm availability, report a conflict with a
+note, or propose a start date and duration. They may update their response if a
+previously confirmed commitment becomes impossible. Responses are recorded and
+notify the internal team; proposed dates do not update the published schedule.
+Staff review proposals and publish any approved schedule changes. Owner phase
+summaries also include their own actionable published commitments, without
+exposing other participants’ detailed assignments or private responses.

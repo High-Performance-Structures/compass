@@ -13,6 +13,9 @@ declare module "frappe-gantt" {
     view_mode?: string
     view_modes?: readonly GanttViewMode[]
     column_width?: number
+    readonly?: boolean
+    popup?: false
+    today_button?: boolean
     infinite_padding?: boolean
     holidays?: Readonly<Record<string, "weekend">>
     is_weekend?: (date: Date) => boolean

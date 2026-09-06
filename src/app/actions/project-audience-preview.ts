@@ -52,6 +52,7 @@ import {
 import {
   isOwnerScheduleView,
   summarizeOwnerScheduleByPhase,
+  selectOwnScheduleCommitments,
   type OwnerScheduleView,
 } from "@/lib/schedule/owner-visibility"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
@@ -916,7 +917,7 @@ export async function getProjectAudiencePreview(
     isMilestone: item.isMilestone,
     confirmationRequired: item.confirmationRequired,
     confirmationStatus: item.confirmationStatus,
-    viewerCanConfirm: item.legacyResponseAllowed && item.assignees.length === 0 && audience === "sub_vendor" &&
+    viewerCanConfirm: item.legacyResponseAllowed && item.assignees.length === 0 &&
       canViewerConfirmScheduleTask({
         viewerIsInternal,
         viewerId: viewer.id,
@@ -975,7 +976,7 @@ export async function getProjectAudiencePreview(
   })
   const audienceScheduleItems: readonly AudienceScheduleItem[] =
     ownerScheduleView === "phases"
-      ? summarizeOwnerScheduleByPhase(audienceScheduleRows).map((item) => ({
+      ? [...summarizeOwnerScheduleByPhase(audienceScheduleRows).map((item) => ({
           ...item,
           confirmationRequired: false,
           confirmationStatus: "not_requested",
@@ -985,7 +986,10 @@ export async function getProjectAudiencePreview(
           proposalNote: null,
           proposalSubmittedAt: null,
           assignees: [],
-        }))
+        })),
+        // A phase overview must still show the owner’s own published commitments.
+        ...selectOwnScheduleCommitments(audienceScheduleRows.map(visibleScheduleItem)),
+      ]
       : audienceScheduleRows.map(visibleScheduleItem)
 
   const audienceRfqs: readonly AudienceRfq[] = operationRows
