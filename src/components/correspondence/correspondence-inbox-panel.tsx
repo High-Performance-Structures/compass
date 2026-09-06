@@ -1,7 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { Archive, ArchiveRestore, CheckCheck, Flag, Search } from "lucide-react"
+import {
+  Archive,
+  ArchiveRestore,
+  Bookmark,
+  BookmarkMinus,
+  CheckCheck,
+  Flag,
+  Search,
+} from "lucide-react"
 import { updateCorrespondenceInbox } from "@/app/actions/correspondence-inbox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -63,7 +71,14 @@ export function CorrespondenceInboxPanel(props: {
     })
   }
   async function update(
-    action: "read" | "archive" | "restore" | "follow-up" | "clear-follow-up",
+    action:
+      | "read"
+      | "archive"
+      | "restore"
+      | "follow-up"
+      | "clear-follow-up"
+      | "save"
+      | "unsave",
   ): Promise<void> {
     if (locked || selectedIds.length === 0) return
     setPending(true)
@@ -90,8 +105,17 @@ export function CorrespondenceInboxPanel(props: {
           (current) => new Set([...current].filter((id) => !ids.includes(id))),
         )
       }
+      const outcome = {
+        read: "marked as read",
+        archive: "archived",
+        restore: "restored",
+        "follow-up": "flagged as needs reply",
+        "clear-follow-up": "cleared from needs reply",
+        save: "saved",
+        unsave: "removed from Saved",
+      }[action]
       setStatus(
-        `${completed} ${completed === 1 ? "conversation" : "conversations"} ${action === "read" ? "marked as read" : action === "archive" ? "archived" : action === "restore" ? "restored" : action === "follow-up" ? "flagged as needs reply" : "cleared from needs reply"}.`,
+        `${completed} ${completed === 1 ? "conversation" : "conversations"} ${outcome}.`,
       )
     } catch {
       setStatus("The update could not be confirmed. Refresh and try again.")
@@ -212,6 +236,17 @@ export function CorrespondenceInboxPanel(props: {
               {props.filter === "follow-up"
                 ? "Clear needs reply"
                 : "Needs reply"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={locked}
+              onClick={() =>
+                void update(props.filter === "saved" ? "unsave" : "save")
+              }
+            >
+              {props.filter === "saved" ? <BookmarkMinus /> : <Bookmark />}
+              {props.filter === "saved" ? "Remove from Saved" : "Save"}
             </Button>
             <Button
               size="sm"

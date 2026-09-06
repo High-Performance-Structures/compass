@@ -15,7 +15,14 @@ import type { CorrespondenceResult } from "@/lib/correspondence/types"
 export async function updateCorrespondenceInbox(
   projectId: string,
   conversationIds: readonly string[],
-  action: "read" | "archive" | "restore" | "follow-up" | "clear-follow-up",
+  action:
+    | "read"
+    | "archive"
+    | "restore"
+    | "follow-up"
+    | "clear-follow-up"
+    | "save"
+    | "unsave",
 ): Promise<CorrespondenceResult<null>> {
   try {
     if (
@@ -23,9 +30,15 @@ export async function updateCorrespondenceInbox(
       conversationIds.length === 0 ||
       conversationIds.length > 100 ||
       conversationIds.some((id) => typeof id !== "string" || !id.trim()) ||
-      !["read", "archive", "restore", "follow-up", "clear-follow-up"].includes(
-        action,
-      )
+      ![
+        "read",
+        "archive",
+        "restore",
+        "follow-up",
+        "clear-follow-up",
+        "save",
+        "unsave",
+      ].includes(action)
     ) {
       return {
         success: false,
@@ -37,6 +50,12 @@ export async function updateCorrespondenceInbox(
     // Authorize the entire selection before any write; a forged ID cannot cause a partial update.
     for (const id of ids) await authorizedConversation(ctx, id)
     const now = new Date().toISOString()
+    const statePatch =
+      action === "save" || action === "unsave"
+        ? { saved: action === "save" }
+        : action === "follow-up" || action === "clear-follow-up"
+          ? { followUp: action === "follow-up" }
+          : { archived: action === "archive" }
     const writes = ids.map((conversationId) =>
       action === "read"
         ? ctx.db
@@ -60,19 +79,14 @@ export async function updateCorrespondenceInbox(
               id: crypto.randomUUID(),
               conversationId,
               userId: ctx.user.id,
-              ...(action === "follow-up" || action === "clear-follow-up"
-                ? { followUp: action === "follow-up" }
-                : { archived: action === "archive" }),
+              ...statePatch,
             })
             .onConflictDoUpdate({
               target: [
                 correspondenceState.conversationId,
                 correspondenceState.userId,
               ],
-              set:
-                action === "follow-up" || action === "clear-follow-up"
-                  ? { followUp: action === "follow-up" }
-                  : { archived: action === "archive" },
+              set: statePatch,
             }),
     )
     const [first, ...rest] = writes
