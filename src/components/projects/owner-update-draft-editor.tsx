@@ -19,6 +19,7 @@ import {
   draftOwnerProjectUpdateWithJarvis,
   type OwnerProjectUpdateDocument,
 } from "@/app/actions/project-field"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
@@ -526,7 +527,10 @@ export function OwnerUpdateDraftEditor({
       >
         <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
           <div>
-            <h2 className="text-base font-semibold">Create Owner Update</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-base font-semibold">Create Owner Update</h2>
+              <ContextualHelpBeacon topicId="owner.updates.publish-share" />
+            </div>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Choose the source material, ask Jarvis for a draft, then edit
               every owner-facing section before publishing.

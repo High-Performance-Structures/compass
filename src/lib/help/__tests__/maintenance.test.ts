@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { describe, expect, it } from "vitest"
+import { validateHelpRoute } from "../../../../scripts/generate-help-resources.mjs"
 import { HELP_GUIDES } from "@/lib/help"
 import type { HelpGuide } from "@/lib/help/types"
 import {
@@ -23,10 +24,12 @@ function filesBelow(directory: string, filename?: string): readonly string[] {
 }
 
 function applicationRoutes(): readonly string[] {
-  return filesBelow(join(APP_ROOT, "dashboard"), "page.tsx").map((path) => {
-    const directory = relative(APP_ROOT, dirname(path)).replaceAll("\\", "/")
-    return `/${directory}`
-  })
+  return ["dashboard", "preview"].flatMap((root) =>
+    filesBelow(join(APP_ROOT, root), "page.tsx").map((path) => {
+      const directory = relative(APP_ROOT, dirname(path)).replaceAll("\\", "/")
+      return `/${directory}`
+    })
+  )
 }
 
 function contextualTopicIds(): readonly string[] {
@@ -53,6 +56,28 @@ function contextualTopicIds(): readonly string[] {
 }
 
 describe("help maintenance", () => {
+  it("accepts canonical dashboard and preview guide routes", () => {
+    expect(validateHelpRoute("/dashboard/projects/[id]/schedule")).toBe(
+      "/dashboard/projects/[id]/schedule"
+    )
+    expect(
+      validateHelpRoute(
+        "/preview/projects/[id]/owner/updates/[updateId]"
+      )
+    ).toBe("/preview/projects/[id]/owner/updates/[updateId]")
+  })
+
+  it.each([
+    "/preview/../package.json",
+    "/preview/projects//owner",
+    "/preview/projects/[id]/owner/",
+    "/preview/projects/[id]/owner?mode=all",
+    "/preview-other/projects/[id]",
+    "/api/projects/[id]",
+  ])("rejects non-canonical or unsupported guide route %s", (route) => {
+    expect(() => validateHelpRoute(route)).toThrow()
+  })
+
   it("keeps registered sources, routes, monitored workflows, and beacons valid", () => {
     for (const guide of HELP_GUIDES) {
       expect(existsSync(join(REPOSITORY_ROOT, guide.sourcePath))).toBe(true)

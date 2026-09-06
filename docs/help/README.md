@@ -27,7 +27,9 @@ Each guide begins with JSON frontmatter. JSON keeps generation deterministic wit
 - `permissions`: baseline resource/action requirements used for metadata and
   validation; server authorization also requires effective access to
   `featureId`, including organization and team overrides;
-- `routes`: real App Router pages where the guide is relevant;
+- `routes`: real `/dashboard` or external-audience `/preview` App Router pages
+  where the guide is relevant; routes must be canonical pathnames without a
+  query, fragment, trailing slash, or `.` / `..` segment;
 - `owner`: team responsible for accuracy; and
 - `lastReviewed`: verified date in `YYYY-MM-DD` form.
 

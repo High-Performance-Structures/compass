@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { publishSelectionDecision } from "@/app/actions/selection-decisions"
 import { selectionPublicationInput } from "@/lib/selections/publication"
 import type { SelectionDecisionItem } from "@/lib/selections/types"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -168,6 +169,10 @@ export function SelectionBatchPublish({
   return (
     <div className="sticky top-0 z-10 mb-3 border-y bg-background py-3">
       <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="flex items-center gap-1.5">
+          <h2 className="font-medium">Owner publishing</h2>
+          <ContextualHelpBeacon topicId="selections.status-approval" />
+        </div>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"

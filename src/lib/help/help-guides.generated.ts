@@ -98,10 +98,7 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       "channels"
     ],
     "audiences": [
-      "staff",
-      "owner",
-      "subcontractor",
-      "supplier"
+      "staff"
     ],
     "permissions": [
       "help:read",
@@ -346,8 +343,7 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       "products"
     ],
     "audiences": [
-      "staff",
-      "owner"
+      "staff"
     ],
     "permissions": [
       "help:read",
@@ -430,10 +426,7 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       "context"
     ],
     "audiences": [
-      "staff",
-      "owner",
-      "subcontractor",
-      "supplier"
+      "staff"
     ],
     "permissions": [
       "help:read",
@@ -649,6 +642,134 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
     "readingMinutes": 2
   },
   {
+    "id": "audience.owner",
+    "featureId": "project-hub",
+    "slug": "owner-workspace",
+    "title": "Using Your Owner Workspace",
+    "summary": "Review approved project information, make owner decisions, contact the team, and follow warranty work.",
+    "contextSummary": "Your Owner Workspace shows information the project team has published for owners. Confirm the active project and exact revision before approving or submitting anything.",
+    "category": "Start Here",
+    "tags": [
+      "owner",
+      "client",
+      "portal",
+      "project dashboard",
+      "selections",
+      "G703",
+      "pay applications",
+      "change orders",
+      "warranty"
+    ],
+    "audiences": [
+      "owner"
+    ],
+    "permissions": [
+      "help:read",
+      "project:read"
+    ],
+    "routes": [
+      "/preview/projects/[id]/owner",
+      "/preview/projects/[id]/owner/budget",
+      "/preview/projects/[id]/owner/change-orders",
+      "/preview/projects/[id]/owner/change-orders/[changeOrderId]",
+      "/preview/projects/[id]/owner/conversations",
+      "/preview/projects/[id]/owner/conversations/[channelId]",
+      "/preview/projects/[id]/owner/documents",
+      "/preview/projects/[id]/owner/photos",
+      "/preview/projects/[id]/owner/schedule",
+      "/preview/projects/[id]/owner/selections",
+      "/preview/projects/[id]/owner/team",
+      "/preview/projects/[id]/owner/updates",
+      "/preview/projects/[id]/owner/updates/[updateId]",
+      "/preview/projects/[id]/owner/warranty"
+    ],
+    "owner": "Compass product team",
+    "lastReviewed": "2026-09-06",
+    "sourcePath": "docs/help/guides/owner-workspace.md",
+    "content": "## Start in the Right Project\nThe project name and number at the top identify the workspace you are viewing. If you have access to more than one project, use the project switcher and confirm the name and number again before approving a selection, requesting a change, sending a message, or submitting a warranty claim.\n\nThe navigation shows only the areas available for the active project and your assignment. Information in this workspace is owner-approved or owner-published; it is not the project team's complete internal record. An empty page can mean nothing has been published for owners yet.\n\n## Use the Dashboard\n**Dashboard** is the owner summary. Use it to see current published information and jump to the full area for details. Counts and status summaries reflect the active project and the information currently shared with you.\n\nUse the left navigation on a larger screen or the project controls on a smaller screen to move between areas. **Print** creates a printable view of the information currently shown; it does not change or approve a record.\n\n## Review Selections and Decisions\n**Selections & Decisions** contains specifications the project team has published for owner review. Open an item and check the product, manufacturer, model, color or finish, allowance, quoted price, difference, schedule impact, notes, and revision.\n\nUse **Request pricing / alternative** when you need another option or clarification. Use **Approve selection** only after reviewing the exact revision and terms in the confirmation. Compass records your name, time, and approved revision. A selection approval does not place an order and does not replace a required change-order approval. If the specification changes, wait for the project team to publish a new revision before approving again.\n\n## Follow Updates and Schedule\n**Owner Updates** contains the project stories and progress summaries published to owners. Open an update to read the full entry and its approved attachments.\n\n**Schedule** shows the owner-visible plan. Switch between the available list, phase, or calendar presentations and use **Print** when you need a point-in-time copy. Dates can change as work is coordinated. If a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise.\n\n## Read Budget and Pay Applications\n**Budget / G703** shows the approved Schedule of Values and current published payment progress. Pay applications list the covered period, application total, current amount, deposit treatment when applicable, and contract total to date.\n\nUse **Open PDF** to review the published application in a new view or **Save** to download a copy. If Compass says current detail is being reconciled, rely on the published application PDF and contact the project team before acting on line-level detail. This page is for review; it does not submit payment or alter accounting records.\n\n## Request and Track Changes\n**Change Orders** lists owner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open an item to review the complete record rather than relying on its list summary.\n\nWhen **Request change** is available, describe the requested scope and reason clearly and attach only relevant files. Submitting a request starts review; it does not approve work, authorize cost, or change the contract. Follow the recorded status and project-team instructions for any separate approval or signature step. Do not submit a second request simply because the first remains under review.\n\n## Message the Project Team\n**Conversations** is the project communication area available to owners. Use **New message** or a contact's **Message** action, choose the intended project-team recipient when offered, and keep related replies in the same conversation or thread. Attachments shared there become visible to the conversation participants.\n\n**Project Team** lists contacts approved for your owner workspace. It is not a complete company directory. If a person or conversation is missing, ask your project contact to verify your assignment instead of using another person's account or forwarding a private workspace link.\n\n## View Photos and Documents\n**Photos** contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. **Plans & Documents** contains files the team has published to the project workspace; open or download the displayed revision as needed.\n\nThese areas do not expose the team's entire photo library or Drive folder. A downloaded copy can become outdated, so return to Compass for the current published version before construction, purchasing, or approval decisions.\n\n## Submit a Warranty Request\nWhen warranty service is enabled, **Warranty** lets you submit an issue, choose its location, category, and priority, describe the problem, and attach supporting photos or documents. Submit one claim per distinct issue so each can be scheduled and resolved clearly.\n\nOpen a claim to follow its status, planned visit, attachments, and owner-visible resolution. Use **Confirm resolution** only after verifying the work. If the option is available, withdraw or delete only a claim that is genuinely unnecessary; do not remove a claim merely to correct or hide unresolved work. Contact the project team when the claim needs clarification.\n\n## Protect Access and Get Help\nYour workspace is limited to projects assigned to your account. Do not share sign-in links, authentication codes, downloaded financial documents, or private project files. If you see an unfamiliar project or information that appears intended for another audience, stop and report it to the project team immediately.\n\nUse the Compass Help symbol for a short explanation and **Read full guide** for the searchable procedure. For a product problem, include the project, page, approximate time, what you expected, and what happened, without including passwords or sign-in links.\n\n## Quick Check\n- [ ] I confirmed the project name and number.\n- [ ] I reviewed the current published revision before approving.\n- [ ] I understand that a request is not an approval, order, payment, or contract change.\n- [ ] I kept messages and files within the intended project audience.\n- [ ] I returned to Compass for the current version before acting.",
+    "searchText": "using your owner workspace review approved project information, make owner decisions, contact the team, and follow warranty work. your owner workspace shows information the project team has published for owners. confirm the active project and exact revision before approving or submitting anything. owner client portal project dashboard selections g703 pay applications change orders warranty start in the right project the project name and number at the top identify the workspace you are viewing. if you have access to more than one project, use the project switcher and confirm the name and number again before approving a selection, requesting a change, sending a message, or submitting a warranty claim. the navigation shows only the areas available for the active project and your assignment. information in this workspace is owner approved or owner published; it is not the project team's complete internal record. an empty page can mean nothing has been published for owners yet. use the dashboard dashboard is the owner summary. use it to see current published information and jump to the full area for details. counts and status summaries reflect the active project and the information currently shared with you. use the left navigation on a larger screen or the project controls on a smaller screen to move between areas. print creates a printable view of the information currently shown; it does not change or approve a record. review selections and decisions selections & decisions contains specifications the project team has published for owner review. open an item and check the product, manufacturer, model, color or finish, allowance, quoted price, difference, schedule impact, notes, and revision. use request pricing / alternative when you need another option or clarification. use approve selection only after reviewing the exact revision and terms in the confirmation. compass records your name, time, and approved revision. a selection approval does not place an order and does not replace a required change order approval. if the specification changes, wait for the project team to publish a new revision before approving again. follow updates and schedule owner updates contains the project stories and progress summaries published to owners. open an update to read the full entry and its approved attachments. schedule shows the owner visible plan. switch between the available list, phase, or calendar presentations and use print when you need a point in time copy. dates can change as work is coordinated. if a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise. read budget and pay applications budget / g703 shows the approved schedule of values and current published payment progress. pay applications list the covered period, application total, current amount, deposit treatment when applicable, and contract total to date. use open pdf to review the published application in a new view or save to download a copy. if compass says current detail is being reconciled, rely on the published application pdf and contact the project team before acting on line level detail. this page is for review; it does not submit payment or alter accounting records. request and track changes change orders lists owner visible requests with scope, price when determined, schedule impact, documents, status, and activity history. open an item to review the complete record rather than relying on its list summary. when request change is available, describe the requested scope and reason clearly and attach only relevant files. submitting a request starts review; it does not approve work, authorize cost, or change the contract. follow the recorded status and project team instructions for any separate approval or signature step. do not submit a second request simply because the first remains under review. message the project team conversations is the project communication area available to owners. use new message or a contact's message action, choose the intended project team recipient when offered, and keep related replies in the same conversation or thread. attachments shared there become visible to the conversation participants. project team lists contacts approved for your owner workspace. it is not a complete company directory. if a person or conversation is missing, ask your project contact to verify your assignment instead of using another person's account or forwarding a private workspace link. view photos and documents photos contains images approved for owners. use its date, phase, and sorting controls to find progress photos. plans & documents contains files the team has published to the project workspace; open or download the displayed revision as needed. these areas do not expose the team's entire photo library or drive folder. a downloaded copy can become outdated, so return to compass for the current published version before construction, purchasing, or approval decisions. submit a warranty request when warranty service is enabled, warranty lets you submit an issue, choose its location, category, and priority, describe the problem, and attach supporting photos or documents. submit one claim per distinct issue so each can be scheduled and resolved clearly. open a claim to follow its status, planned visit, attachments, and owner visible resolution. use confirm resolution only after verifying the work. if the option is available, withdraw or delete only a claim that is genuinely unnecessary; do not remove a claim merely to correct or hide unresolved work. contact the project team when the claim needs clarification. protect access and get help your workspace is limited to projects assigned to your account. do not share sign in links, authentication codes, downloaded financial documents, or private project files. if you see an unfamiliar project or information that appears intended for another audience, stop and report it to the project team immediately. use the compass help symbol for a short explanation and read full guide for the searchable procedure. for a product problem, include the project, page, approximate time, what you expected, and what happened, without including passwords or sign in links. quick check i confirmed the project name and number. i reviewed the current published revision before approving. i understand that a request is not an approval, order, payment, or contract change. i kept messages and files within the intended project audience. i returned to compass for the current version before acting.",
+    "sections": [
+      {
+        "id": "start",
+        "topicId": "audience.owner.start",
+        "title": "Start in the Right Project",
+        "summary": "The project name and number at the top identify the workspace you are viewing. If you have access to more than one project, use the project switcher and confirm the name and number again before approving a selection, requesting a change, sending a message, or submitting a warranty claim.",
+        "content": "The project name and number at the top identify the workspace you are viewing. If you have access to more than one project, use the project switcher and confirm the name and number again before approving a selection, requesting a change, sending a message, or submitting a warranty claim.\n\nThe navigation shows only the areas available for the active project and your assignment. Information in this workspace is owner-approved or owner-published; it is not the project team's complete internal record. An empty page can mean nothing has been published for owners yet."
+      },
+      {
+        "id": "dashboard",
+        "topicId": "audience.owner.dashboard",
+        "title": "Use the Dashboard",
+        "summary": "Dashboard is the owner summary. Use it to see current published information and jump to the full area for details. Counts and status summaries reflect the active project and the information currently shared with you.",
+        "content": "**Dashboard** is the owner summary. Use it to see current published information and jump to the full area for details. Counts and status summaries reflect the active project and the information currently shared with you.\n\nUse the left navigation on a larger screen or the project controls on a smaller screen to move between areas. **Print** creates a printable view of the information currently shown; it does not change or approve a record."
+      },
+      {
+        "id": "selections",
+        "topicId": "audience.owner.selections",
+        "title": "Review Selections and Decisions",
+        "summary": "Selections & Decisions contains specifications the project team has published for owner review. Open an item and check the product, manufacturer, model, color or finish, allowance, quoted price, difference, schedule impact, notes, and revision.",
+        "content": "**Selections & Decisions** contains specifications the project team has published for owner review. Open an item and check the product, manufacturer, model, color or finish, allowance, quoted price, difference, schedule impact, notes, and revision.\n\nUse **Request pricing / alternative** when you need another option or clarification. Use **Approve selection** only after reviewing the exact revision and terms in the confirmation. Compass records your name, time, and approved revision. A selection approval does not place an order and does not replace a required change-order approval. If the specification changes, wait for the project team to publish a new revision before approving again."
+      },
+      {
+        "id": "updates-schedule",
+        "topicId": "audience.owner.updates-schedule",
+        "title": "Follow Updates and Schedule",
+        "summary": "Owner Updates contains the project stories and progress summaries published to owners. Open an update to read the full entry and its approved attachments.",
+        "content": "**Owner Updates** contains the project stories and progress summaries published to owners. Open an update to read the full entry and its approved attachments.\n\n**Schedule** shows the owner-visible plan. Switch between the available list, phase, or calendar presentations and use **Print** when you need a point-in-time copy. Dates can change as work is coordinated. If a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise."
+      },
+      {
+        "id": "budget",
+        "topicId": "audience.owner.budget",
+        "title": "Read Budget and Pay Applications",
+        "summary": "Budget / G703 shows the approved Schedule of Values and current published payment progress. Pay applications list the covered period, application total, current amount, deposit treatment when applicable, and contract total to date.",
+        "content": "**Budget / G703** shows the approved Schedule of Values and current published payment progress. Pay applications list the covered period, application total, current amount, deposit treatment when applicable, and contract total to date.\n\nUse **Open PDF** to review the published application in a new view or **Save** to download a copy. If Compass says current detail is being reconciled, rely on the published application PDF and contact the project team before acting on line-level detail. This page is for review; it does not submit payment or alter accounting records."
+      },
+      {
+        "id": "change-orders",
+        "topicId": "audience.owner.change-orders",
+        "title": "Request and Track Changes",
+        "summary": "Change Orders lists owner visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open an item to review the complete record rather than relying on its list summary.",
+        "content": "**Change Orders** lists owner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open an item to review the complete record rather than relying on its list summary.\n\nWhen **Request change** is available, describe the requested scope and reason clearly and attach only relevant files. Submitting a request starts review; it does not approve work, authorize cost, or change the contract. Follow the recorded status and project-team instructions for any separate approval or signature step. Do not submit a second request simply because the first remains under review."
+      },
+      {
+        "id": "conversations",
+        "topicId": "audience.owner.conversations",
+        "title": "Message the Project Team",
+        "summary": "Conversations is the project communication area available to owners. Use New message or a contact's Message action, choose the intended project team recipient when offered, and keep related replies in the same conversation or thread. Attachments shared there become visible to the conversation participants.",
+        "content": "**Conversations** is the project communication area available to owners. Use **New message** or a contact's **Message** action, choose the intended project-team recipient when offered, and keep related replies in the same conversation or thread. Attachments shared there become visible to the conversation participants.\n\n**Project Team** lists contacts approved for your owner workspace. It is not a complete company directory. If a person or conversation is missing, ask your project contact to verify your assignment instead of using another person's account or forwarding a private workspace link."
+      },
+      {
+        "id": "files",
+        "topicId": "audience.owner.files",
+        "title": "View Photos and Documents",
+        "summary": "Photos contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. Plans & Documents contains files the team has published to the project workspace; open or download the displayed revision as needed.",
+        "content": "**Photos** contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. **Plans & Documents** contains files the team has published to the project workspace; open or download the displayed revision as needed.\n\nThese areas do not expose the team's entire photo library or Drive folder. A downloaded copy can become outdated, so return to Compass for the current published version before construction, purchasing, or approval decisions."
+      },
+      {
+        "id": "warranty",
+        "topicId": "audience.owner.warranty",
+        "title": "Submit a Warranty Request",
+        "summary": "When warranty service is enabled, Warranty lets you submit an issue, choose its location, category, and priority, describe the problem, and attach supporting photos or documents. Submit one claim per distinct issue so each can be scheduled and resolved clearly.",
+        "content": "When warranty service is enabled, **Warranty** lets you submit an issue, choose its location, category, and priority, describe the problem, and attach supporting photos or documents. Submit one claim per distinct issue so each can be scheduled and resolved clearly.\n\nOpen a claim to follow its status, planned visit, attachments, and owner-visible resolution. Use **Confirm resolution** only after verifying the work. If the option is available, withdraw or delete only a claim that is genuinely unnecessary; do not remove a claim merely to correct or hide unresolved work. Contact the project team when the claim needs clarification."
+      },
+      {
+        "id": "access-help",
+        "topicId": "audience.owner.access-help",
+        "title": "Protect Access and Get Help",
+        "summary": "Your workspace is limited to projects assigned to your account. Do not share sign in links, authentication codes, downloaded financial documents, or private project files. If you see an unfamiliar project or information that appears intended for another audience, stop and report it to the project team immediately.",
+        "content": "Your workspace is limited to projects assigned to your account. Do not share sign-in links, authentication codes, downloaded financial documents, or private project files. If you see an unfamiliar project or information that appears intended for another audience, stop and report it to the project team immediately.\n\nUse the Compass Help symbol for a short explanation and **Read full guide** for the searchable procedure. For a product problem, include the project, page, approximate time, what you expected, and what happened, without including passwords or sign-in links."
+      },
+      {
+        "id": "quick-check",
+        "topicId": "audience.owner.quick-check",
+        "title": "Quick Check",
+        "summary": "I confirmed the project name and number. I reviewed the current published revision before approving. I understand that a request is not an approval, order, payment, or contract change. I kept messages and files within the intended project audience. I returned to Compass for the current version before acting.",
+        "content": "- [ ] I confirmed the project name and number.\n- [ ] I reviewed the current published revision before approving.\n- [ ] I understand that a request is not an approval, order, payment, or contract change.\n- [ ] I kept messages and files within the intended project audience.\n- [ ] I returned to Compass for the current version before acting."
+      }
+    ],
+    "readingMinutes": 5
+  },
+  {
     "id": "photos.visibility",
     "featureId": "project-photos",
     "slug": "photo-review-and-visibility",
@@ -742,9 +863,7 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       "bids"
     ],
     "audiences": [
-      "staff",
-      "subcontractor",
-      "supplier"
+      "staff"
     ],
     "permissions": [
       "help:read",
@@ -913,10 +1032,7 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       "workdays"
     ],
     "audiences": [
-      "staff",
-      "owner",
-      "subcontractor",
-      "supplier"
+      "staff"
     ],
     "permissions": [
       "help:read",
@@ -997,5 +1113,134 @@ export const HELP_GUIDES: readonly HelpGuide[] = [
       }
     ],
     "readingMinutes": 3
+  },
+  {
+    "id": "audience.trade",
+    "featureId": "project-hub",
+    "slug": "trade-partner-workspace",
+    "title": "Using Your Trade Partner Workspace",
+    "summary": "Review assigned project work, answer RFQs and RFIs, update commitments, and coordinate with the project team.",
+    "contextSummary": "Your Trade Partner Workspace shows only information approved for your assigned company. Confirm the project, scope, and current record before responding.",
+    "category": "Start Here",
+    "tags": [
+      "subcontractor",
+      "supplier",
+      "vendor",
+      "trade partner",
+      "portal",
+      "commitments",
+      "purchase orders",
+      "RFI",
+      "RFQ",
+      "quote"
+    ],
+    "audiences": [
+      "subcontractor",
+      "supplier"
+    ],
+    "permissions": [
+      "help:read",
+      "project:read"
+    ],
+    "routes": [
+      "/preview/projects/[id]/sub-vendor",
+      "/preview/projects/[id]/sub-vendor/change-orders",
+      "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]",
+      "/preview/projects/[id]/sub-vendor/commitments",
+      "/preview/projects/[id]/sub-vendor/conversations",
+      "/preview/projects/[id]/sub-vendor/conversations/[channelId]",
+      "/preview/projects/[id]/sub-vendor/documents",
+      "/preview/projects/[id]/sub-vendor/photos",
+      "/preview/projects/[id]/sub-vendor/rfis",
+      "/preview/projects/[id]/sub-vendor/rfqs",
+      "/preview/projects/[id]/sub-vendor/schedule",
+      "/preview/projects/[id]/sub-vendor/selections",
+      "/preview/projects/[id]/sub-vendor/team"
+    ],
+    "owner": "Compass product team",
+    "lastReviewed": "2026-09-06",
+    "sourcePath": "docs/help/guides/trade-partner-workspace.md",
+    "content": "## Start in the Right Project\nThe project name and number at the top identify the workspace you are viewing. If your company works on more than one project, use the project switcher and confirm the active project before acknowledging a commitment, submitting a quote, asking an RFI, requesting a change, or sending a message.\n\nCompass shows only records assigned or published to your company and audience. It is not the contractor's complete internal project record. If an expected item is missing, contact the project team rather than creating an unrelated substitute.\n\n## Use the Dashboard\n**Dashboard** summarizes current trade-partner information and links to each full area. Counts and status labels reflect the active project and the work visible to your account.\n\nUse the navigation to move between assigned work. **Print** creates a point-in-time copy of the visible report; it does not acknowledge, accept, or update a record.\n\n## Review Schedule and Selections\n**Schedule** shows items published for trade partners. Review dates, phases, and assignments, and use **Print** if a field copy is useful. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.\n\n**Approved Selections** shows current owner-approved specifications that have been published to your project audience. Review these before procurement and installation. Raise a conflict or missing decision through an RFI instead of changing the specification based on a private note or an older download.\n\n## Respond to Commitments\n**Commitments** lists work and purchase orders assigned or shared with your company. Open the relevant item and verify its number, scope, dates, amount when shown, and current status before responding.\n\nUse **Review & respond** to acknowledge receipt. After acknowledgement, use **Update status** to report fulfillment progress or a blocker, or **Ask a question** to route a clarification to the project team. An acknowledgement confirms receipt; it does not silently change scope, price, or contract terms. Keep later progress on the same commitment rather than creating duplicate messages.\n\n## Ask and Follow RFIs\n**RFIs** contains questions and answers visible to your project audience. Search the existing list before creating one. When **New RFI** is available, enter a focused subject and the decision or clarification needed, choose the intended project-team recipient when offered, and submit it once.\n\nReturn to the same RFI for its answer and status. Use a project message for ordinary coordination; use an RFI when the answer needs to remain with the formal project record. Do not include information belonging to another project or company.\n\n## Respond to RFQs\n**RFQs** lists pricing requests assigned to your company. Open the correct request and review the scope lines, documents, due date, phase or cost-code references, and any existing response.\n\nChoose **Submit a quote** or **Decline to quote**. For a quote, enter the requested line pricing, total, lead time, validity date, and notes needed to understand inclusions or exclusions. Check that the total and individual lines agree before submitting. If **Revise response** is available, update the existing response instead of submitting a second quote outside the record. A submitted quote is a response for project-team review; it is not a purchase order or notice to proceed.\n\n## Request and Track Changes\n**Change Orders** lists trade-partner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open the full record before acting.\n\nWhen **Request change** is available, describe the changed condition or scope, explain why it is needed, and attach only relevant support. Submission begins review; it does not authorize extra work, revise a commitment, or guarantee payment. Track the existing request and follow the project team's recorded approval process rather than duplicating it.\n\n## Message the Project Team\n**Conversations** is the communication area approved for your project audience. Use **New message** or a contact's **Message** action, select the intended internal recipient when offered, and keep replies about the same issue in one conversation or thread. Files attached to a conversation are shared with its participants.\n\n**Project Team** lists contacts approved for your workspace, not the contractor's full directory. If a recipient is missing, ask the project team to correct access rather than borrowing another account or forwarding a private workspace link.\n\n## View Photos and Documents\n**Photos** contains images approved for trade partners. Use date, phase, and sorting controls to find relevant progress photos. **Plans & Documents** contains files published to the project workspace; open or download the displayed revision as needed.\n\nThese areas do not expose the team's entire photo library or Drive folder. Before pricing, fabrication, procurement, or installation, return to Compass and verify that you have the current published document instead of relying on an older saved copy.\n\n## Protect Access and Get Help\nYour workspace is limited to projects and company assignments tied to your account. Do not share sign-in links, authentication codes, pricing, documents, or project information outside the intended team. If you see another company's work or an unfamiliar project, stop and report it immediately.\n\nUse the Compass Help symbol for a short explanation and **Read full guide** for the searchable procedure. For a product problem, include the project, page, record number, approximate time, what you expected, and what happened, without including passwords or sign-in links.\n\n## Quick Check\n- [ ] I confirmed the project and my company's assigned record.\n- [ ] I reviewed the current scope, documents, dates, and status.\n- [ ] Quote lines and totals agree, with lead time and exclusions stated.\n- [ ] I understand that a response or request is not authorization to proceed.\n- [ ] I used the existing record instead of creating a duplicate.",
+    "searchText": "using your trade partner workspace review assigned project work, answer rfqs and rfis, update commitments, and coordinate with the project team. your trade partner workspace shows only information approved for your assigned company. confirm the project, scope, and current record before responding. subcontractor supplier vendor trade partner portal commitments purchase orders rfi rfq quote start in the right project the project name and number at the top identify the workspace you are viewing. if your company works on more than one project, use the project switcher and confirm the active project before acknowledging a commitment, submitting a quote, asking an rfi, requesting a change, or sending a message. compass shows only records assigned or published to your company and audience. it is not the contractor's complete internal project record. if an expected item is missing, contact the project team rather than creating an unrelated substitute. use the dashboard dashboard summarizes current trade partner information and links to each full area. counts and status labels reflect the active project and the work visible to your account. use the navigation to move between assigned work. print creates a point in time copy of the visible report; it does not acknowledge, accept, or update a record. review schedule and selections schedule shows items published for trade partners. review dates, phases, and assignments, and use print if a field copy is useful. coordinate a conflict through an rfi or project message; do not assume that a printed date overrides a later update. approved selections shows current owner approved specifications that have been published to your project audience. review these before procurement and installation. raise a conflict or missing decision through an rfi instead of changing the specification based on a private note or an older download. respond to commitments commitments lists work and purchase orders assigned or shared with your company. open the relevant item and verify its number, scope, dates, amount when shown, and current status before responding. use review & respond to acknowledge receipt. after acknowledgement, use update status to report fulfillment progress or a blocker, or ask a question to route a clarification to the project team. an acknowledgement confirms receipt; it does not silently change scope, price, or contract terms. keep later progress on the same commitment rather than creating duplicate messages. ask and follow rfis rfis contains questions and answers visible to your project audience. search the existing list before creating one. when new rfi is available, enter a focused subject and the decision or clarification needed, choose the intended project team recipient when offered, and submit it once. return to the same rfi for its answer and status. use a project message for ordinary coordination; use an rfi when the answer needs to remain with the formal project record. do not include information belonging to another project or company. respond to rfqs rfqs lists pricing requests assigned to your company. open the correct request and review the scope lines, documents, due date, phase or cost code references, and any existing response. choose submit a quote or decline to quote . for a quote, enter the requested line pricing, total, lead time, validity date, and notes needed to understand inclusions or exclusions. check that the total and individual lines agree before submitting. if revise response is available, update the existing response instead of submitting a second quote outside the record. a submitted quote is a response for project team review; it is not a purchase order or notice to proceed. request and track changes change orders lists trade partner visible requests with scope, price when determined, schedule impact, documents, status, and activity history. open the full record before acting. when request change is available, describe the changed condition or scope, explain why it is needed, and attach only relevant support. submission begins review; it does not authorize extra work, revise a commitment, or guarantee payment. track the existing request and follow the project team's recorded approval process rather than duplicating it. message the project team conversations is the communication area approved for your project audience. use new message or a contact's message action, select the intended internal recipient when offered, and keep replies about the same issue in one conversation or thread. files attached to a conversation are shared with its participants. project team lists contacts approved for your workspace, not the contractor's full directory. if a recipient is missing, ask the project team to correct access rather than borrowing another account or forwarding a private workspace link. view photos and documents photos contains images approved for trade partners. use date, phase, and sorting controls to find relevant progress photos. plans & documents contains files published to the project workspace; open or download the displayed revision as needed. these areas do not expose the team's entire photo library or drive folder. before pricing, fabrication, procurement, or installation, return to compass and verify that you have the current published document instead of relying on an older saved copy. protect access and get help your workspace is limited to projects and company assignments tied to your account. do not share sign in links, authentication codes, pricing, documents, or project information outside the intended team. if you see another company's work or an unfamiliar project, stop and report it immediately. use the compass help symbol for a short explanation and read full guide for the searchable procedure. for a product problem, include the project, page, record number, approximate time, what you expected, and what happened, without including passwords or sign in links. quick check i confirmed the project and my company's assigned record. i reviewed the current scope, documents, dates, and status. quote lines and totals agree, with lead time and exclusions stated. i understand that a response or request is not authorization to proceed. i used the existing record instead of creating a duplicate.",
+    "sections": [
+      {
+        "id": "start",
+        "topicId": "audience.trade.start",
+        "title": "Start in the Right Project",
+        "summary": "The project name and number at the top identify the workspace you are viewing. If your company works on more than one project, use the project switcher and confirm the active project before acknowledging a commitment, submitting a quote, asking an RFI, requesting a change, or sending a message.",
+        "content": "The project name and number at the top identify the workspace you are viewing. If your company works on more than one project, use the project switcher and confirm the active project before acknowledging a commitment, submitting a quote, asking an RFI, requesting a change, or sending a message.\n\nCompass shows only records assigned or published to your company and audience. It is not the contractor's complete internal project record. If an expected item is missing, contact the project team rather than creating an unrelated substitute."
+      },
+      {
+        "id": "dashboard",
+        "topicId": "audience.trade.dashboard",
+        "title": "Use the Dashboard",
+        "summary": "Dashboard summarizes current trade partner information and links to each full area. Counts and status labels reflect the active project and the work visible to your account.",
+        "content": "**Dashboard** summarizes current trade-partner information and links to each full area. Counts and status labels reflect the active project and the work visible to your account.\n\nUse the navigation to move between assigned work. **Print** creates a point-in-time copy of the visible report; it does not acknowledge, accept, or update a record."
+      },
+      {
+        "id": "schedule-selections",
+        "topicId": "audience.trade.schedule-selections",
+        "title": "Review Schedule and Selections",
+        "summary": "Schedule shows items published for trade partners. Review dates, phases, and assignments, and use Print if a field copy is useful. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.",
+        "content": "**Schedule** shows items published for trade partners. Review dates, phases, and assignments, and use **Print** if a field copy is useful. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.\n\n**Approved Selections** shows current owner-approved specifications that have been published to your project audience. Review these before procurement and installation. Raise a conflict or missing decision through an RFI instead of changing the specification based on a private note or an older download."
+      },
+      {
+        "id": "commitments",
+        "topicId": "audience.trade.commitments",
+        "title": "Respond to Commitments",
+        "summary": "Commitments lists work and purchase orders assigned or shared with your company. Open the relevant item and verify its number, scope, dates, amount when shown, and current status before responding.",
+        "content": "**Commitments** lists work and purchase orders assigned or shared with your company. Open the relevant item and verify its number, scope, dates, amount when shown, and current status before responding.\n\nUse **Review & respond** to acknowledge receipt. After acknowledgement, use **Update status** to report fulfillment progress or a blocker, or **Ask a question** to route a clarification to the project team. An acknowledgement confirms receipt; it does not silently change scope, price, or contract terms. Keep later progress on the same commitment rather than creating duplicate messages."
+      },
+      {
+        "id": "rfis",
+        "topicId": "audience.trade.rfis",
+        "title": "Ask and Follow RFIs",
+        "summary": "RFIs contains questions and answers visible to your project audience. Search the existing list before creating one. When New RFI is available, enter a focused subject and the decision or clarification needed, choose the intended project team recipient when offered, and submit it once.",
+        "content": "**RFIs** contains questions and answers visible to your project audience. Search the existing list before creating one. When **New RFI** is available, enter a focused subject and the decision or clarification needed, choose the intended project-team recipient when offered, and submit it once.\n\nReturn to the same RFI for its answer and status. Use a project message for ordinary coordination; use an RFI when the answer needs to remain with the formal project record. Do not include information belonging to another project or company."
+      },
+      {
+        "id": "rfqs",
+        "topicId": "audience.trade.rfqs",
+        "title": "Respond to RFQs",
+        "summary": "RFQs lists pricing requests assigned to your company. Open the correct request and review the scope lines, documents, due date, phase or cost code references, and any existing response.",
+        "content": "**RFQs** lists pricing requests assigned to your company. Open the correct request and review the scope lines, documents, due date, phase or cost-code references, and any existing response.\n\nChoose **Submit a quote** or **Decline to quote**. For a quote, enter the requested line pricing, total, lead time, validity date, and notes needed to understand inclusions or exclusions. Check that the total and individual lines agree before submitting. If **Revise response** is available, update the existing response instead of submitting a second quote outside the record. A submitted quote is a response for project-team review; it is not a purchase order or notice to proceed."
+      },
+      {
+        "id": "change-orders",
+        "topicId": "audience.trade.change-orders",
+        "title": "Request and Track Changes",
+        "summary": "Change Orders lists trade partner visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open the full record before acting.",
+        "content": "**Change Orders** lists trade-partner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open the full record before acting.\n\nWhen **Request change** is available, describe the changed condition or scope, explain why it is needed, and attach only relevant support. Submission begins review; it does not authorize extra work, revise a commitment, or guarantee payment. Track the existing request and follow the project team's recorded approval process rather than duplicating it."
+      },
+      {
+        "id": "conversations",
+        "topicId": "audience.trade.conversations",
+        "title": "Message the Project Team",
+        "summary": "Conversations is the communication area approved for your project audience. Use New message or a contact's Message action, select the intended internal recipient when offered, and keep replies about the same issue in one conversation or thread. Files attached to a conversation are shared with its participants.",
+        "content": "**Conversations** is the communication area approved for your project audience. Use **New message** or a contact's **Message** action, select the intended internal recipient when offered, and keep replies about the same issue in one conversation or thread. Files attached to a conversation are shared with its participants.\n\n**Project Team** lists contacts approved for your workspace, not the contractor's full directory. If a recipient is missing, ask the project team to correct access rather than borrowing another account or forwarding a private workspace link."
+      },
+      {
+        "id": "files",
+        "topicId": "audience.trade.files",
+        "title": "View Photos and Documents",
+        "summary": "Photos contains images approved for trade partners. Use date, phase, and sorting controls to find relevant progress photos. Plans & Documents contains files published to the project workspace; open or download the displayed revision as needed.",
+        "content": "**Photos** contains images approved for trade partners. Use date, phase, and sorting controls to find relevant progress photos. **Plans & Documents** contains files published to the project workspace; open or download the displayed revision as needed.\n\nThese areas do not expose the team's entire photo library or Drive folder. Before pricing, fabrication, procurement, or installation, return to Compass and verify that you have the current published document instead of relying on an older saved copy."
+      },
+      {
+        "id": "access-help",
+        "topicId": "audience.trade.access-help",
+        "title": "Protect Access and Get Help",
+        "summary": "Your workspace is limited to projects and company assignments tied to your account. Do not share sign in links, authentication codes, pricing, documents, or project information outside the intended team. If you see another company's work or an unfamiliar project, stop and report it immediately.",
+        "content": "Your workspace is limited to projects and company assignments tied to your account. Do not share sign-in links, authentication codes, pricing, documents, or project information outside the intended team. If you see another company's work or an unfamiliar project, stop and report it immediately.\n\nUse the Compass Help symbol for a short explanation and **Read full guide** for the searchable procedure. For a product problem, include the project, page, record number, approximate time, what you expected, and what happened, without including passwords or sign-in links."
+      },
+      {
+        "id": "quick-check",
+        "topicId": "audience.trade.quick-check",
+        "title": "Quick Check",
+        "summary": "I confirmed the project and my company's assigned record. I reviewed the current scope, documents, dates, and status. Quote lines and totals agree, with lead time and exclusions stated. I understand that a response or request is not authorization to proceed. I used the existing record instead of creating a duplicate.",
+        "content": "- [ ] I confirmed the project and my company's assigned record.\n- [ ] I reviewed the current scope, documents, dates, and status.\n- [ ] Quote lines and totals agree, with lead time and exclusions stated.\n- [ ] I understand that a response or request is not authorization to proceed.\n- [ ] I used the existing record instead of creating a duplicate."
+      }
+    ],
+    "readingMinutes": 5
   }
 ]

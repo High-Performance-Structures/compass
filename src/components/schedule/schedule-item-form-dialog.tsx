@@ -83,6 +83,7 @@ import { ProjectAssigneePicker } from "@/components/projects/project-assignee-pi
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ScheduleCommitmentResponses } from "@/components/schedule/schedule-commitment-responses"
 import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS } from "@/components/schedule/schedule-item-defaults"
 import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
 import {
@@ -1462,9 +1463,12 @@ export function ScheduleItemFormDialog({
 
                   {/* Predecessors */}
                   <div className="space-y-2">
-                    <span className="text-[11px] text-muted-foreground font-medium block">
-                      Predecessors
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-[11px] font-medium text-muted-foreground">
+                        Predecessors
+                      </h3>
+                      <ContextualHelpBeacon topicId="schedule.predecessors" />
+                    </div>
 
                     {existingPredecessors.map((dep) => {
                       const edit = existingPredecessorEdits[dep.id] ?? {

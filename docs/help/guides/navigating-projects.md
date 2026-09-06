@@ -8,7 +8,7 @@
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
   "tags": ["projects", "navigation", "status", "project switcher", "context"],
-  "audiences": ["staff", "owner", "subcontractor", "supplier"],
+  "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects"],
   "owner": "Compass product team",

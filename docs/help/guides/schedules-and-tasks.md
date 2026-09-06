@@ -8,7 +8,7 @@
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
   "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays"],
-  "audiences": ["staff", "owner", "subcontractor", "supplier"],
+  "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",

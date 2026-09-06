@@ -8,7 +8,7 @@
   "contextSummary": "Questions, pricing requests, commitments, and vendor invoices are different controlled records. Confirm project, recipients, files, totals, approval, and Sage status.",
   "category": "Project Operations",
   "tags": ["RFI", "RFQ", "purchase orders", "vendor bills", "Sage", "bids"],
-  "audiences": ["staff", "subcontractor", "supplier"],
+  "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",

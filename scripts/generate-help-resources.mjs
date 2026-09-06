@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url"
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)))
 const SOURCE_DIRECTORY = resolve(ROOT, "docs/help/guides")
 const OUTPUT = resolve(ROOT, "src/lib/help/help-guides.generated.ts")
+const APP_DIRECTORY = resolve(ROOT, "src/app")
+const VALID_ROUTE_ROOTS = new Set(["dashboard", "preview"])
 const REQUIRED_FIELDS = [
   "id",
   "featureId",
@@ -185,8 +187,34 @@ export function parseHelpMarkdown(raw, sourcePath = "help guide") {
   }
 }
 
+export function validateHelpRoute(route, sourcePath = "help guide") {
+  if (typeof route !== "string") fail("route must be a string", sourcePath)
+  if (
+    route !== route.trim() ||
+    !route.startsWith("/") ||
+    route.endsWith("/") ||
+    /[?#\\\u0000-\u001f\u007f]/.test(route)
+  ) {
+    fail(`route must be a canonical application pathname: ${route}`, sourcePath)
+  }
+
+  const segments = route.slice(1).split("/")
+  if (!VALID_ROUTE_ROOTS.has(segments[0])) {
+    fail(`route must begin with /dashboard or /preview: ${route}`, sourcePath)
+  }
+  if (
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === ".."
+    )
+  ) {
+    fail(`route must be a canonical application pathname: ${route}`, sourcePath)
+  }
+
+  return route
+}
+
 function routeToPagePath(route) {
-  return resolve(ROOT, `src/app${route}/page.tsx`)
+  return resolve(APP_DIRECTORY, `.${route}`, "page.tsx")
 }
 
 async function loadGuides(maxReviewAgeDays) {
@@ -223,7 +251,7 @@ async function loadGuides(maxReviewAgeDays) {
       topicIds.add(section.topicId)
     }
     for (const route of guide.routes) {
-      if (!route.startsWith("/dashboard")) fail(`route must begin with /dashboard: ${route}`, sourcePath)
+      validateHelpRoute(route, sourcePath)
       try {
         const routeStats = await stat(routeToPagePath(route))
         if (!routeStats.isFile()) fail(`route has no page.tsx: ${route}`, sourcePath)

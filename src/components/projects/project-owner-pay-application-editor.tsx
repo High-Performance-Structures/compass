@@ -10,6 +10,7 @@ import {
   type ProjectOwnerPayApplicationDraft,
   type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
@@ -167,6 +168,7 @@ export function ProjectOwnerPayApplicationEditor({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-semibold">Pay application {application.applicationNumber}</h2>
+              <ContextualHelpBeacon topicId="financials.pay-applications" />
               <Badge>{application.status.replaceAll("_", " ")}</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">

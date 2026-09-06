@@ -25,6 +25,7 @@ import {
   type ProjectPhotoLibrary,
   type ProjectPhotoLibraryItem,
 } from "@/app/actions/project-photos"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -804,9 +805,12 @@ export function ProjectPhotoReview({
 
             <div className="flex flex-wrap items-center gap-2 border-t pt-3">
               <div className="mr-2 min-w-40">
-                <p className="text-sm font-medium">
-                  {selectedIds.length} selected
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium">
+                    {selectedIds.length} selected
+                  </p>
+                  <ContextualHelpBeacon topicId="photos.visibility.batch-actions" />
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Apply updates visibility.
                 </p>

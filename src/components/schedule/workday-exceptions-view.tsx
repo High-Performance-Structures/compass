@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import {
   IconCalendarPlus,
   IconPlus,
@@ -196,7 +197,10 @@ export function WorkdayExceptionsView({
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-        <h2 className="text-lg font-medium min-w-0 break-words">Workday Exceptions</h2>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h2 className="min-w-0 break-words text-lg font-medium">Workday Exceptions</h2>
+          <ContextualHelpBeacon topicId="schedule.workday-exceptions" />
+        </div>
         <Button
           size="sm"
           onClick={() => {

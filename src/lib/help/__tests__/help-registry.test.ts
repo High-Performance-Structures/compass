@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -22,9 +23,12 @@ describe("help registry", () => {
   })
 
   it("provides the initial canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(12)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(12)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(12)
+    expect(HELP_GUIDES).toHaveLength(14)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(14)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(14)
+    expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
+      expect.arrayContaining(["audience.owner", "audience.trade"])
+    )
 
     const topicIds = HELP_GUIDES.flatMap((guide) =>
       guide.sections.map((section) => section.topicId)
@@ -69,6 +73,44 @@ describe("help registry", () => {
         "/dashboard/projects/project-123/owner-updates/update-456?preview=1"
       ).map((guide) => guide.id)
     ).toContain("owner.updates")
+    expect(
+      getHelpGuidesForRoute(
+        "/preview/projects/project-123/owner/updates/update-456"
+      ).map((guide) => guide.id)
+    ).toContain("audience.owner")
+    expect(
+      getHelpGuidesForRoute(
+        "/preview/projects/project-123/sub-vendor/rfqs"
+      ).map((guide) => guide.id)
+    ).toContain("audience.trade")
+  })
+
+  it("keeps portal guidance limited to its intended external audience", () => {
+    const ownerGuide = getHelpGuide("owner-workspace")
+    const tradePartnerGuide = getHelpGuide("trade-partner-workspace")
+    expect(ownerGuide?.audiences).toEqual(["owner"])
+    expect(tradePartnerGuide?.audiences).toEqual([
+      "subcontractor",
+      "supplier",
+    ])
+    if (!ownerGuide || !tradePartnerGuide) return
+
+    const permissions = ["help:read", "project:read"] as const
+    expect(canAccessHelpGuide(ownerGuide, { role: "client", permissions })).toBe(
+      true
+    )
+    expect(
+      canAccessHelpGuide(ownerGuide, { role: "supplier", permissions })
+    ).toBe(false)
+    expect(
+      canAccessHelpGuide(tradePartnerGuide, {
+        role: "subcontractor",
+        permissions,
+      })
+    ).toBe(true)
+    expect(
+      canAccessHelpGuide(tradePartnerGuide, { role: "client", permissions })
+    ).toBe(false)
   })
 
   it("retains canonical audience and resource-permission metadata", () => {
@@ -76,28 +118,29 @@ describe("help registry", () => {
     expect(helpAudienceForRole("field_superintendent")).toBe("staff")
     expect(helpAudienceForRole("guest")).toBe("guest")
 
+    const ownerWorkspace = getHelpGuide("owner-workspace")
     const selections = getHelpGuide("finish-selections")
+    expect(ownerWorkspace).not.toBeNull()
     expect(selections).not.toBeNull()
-    if (!selections) return
+    if (!ownerWorkspace || !selections) return
 
     expect(
-      canAccessHelpGuide(selections, {
+      canAccessHelpGuide(ownerWorkspace, {
         role: "client",
         permissions: ["help:read", "project:read"],
       })
     ).toBe(true)
     expect(
       canAccessHelpGuide(selections, {
-        role: "supplier",
+        role: "client",
         permissions: ["help:read", "project:read"],
       })
     ).toBe(false)
     expect(
-      canAccessHelpGuide(selections, {
+      canAccessHelpGuide(ownerWorkspace, {
         role: "client",
         permissions: ["help:read"],
       })
     ).toBe(false)
   })
 })
-import { spawnSync } from "node:child_process"

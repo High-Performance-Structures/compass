@@ -8,7 +8,7 @@
   "contextSummary": "Choose a project channel for durable project communication, direct messages for private coordination, and announcements only for truly audience-wide information.",
   "category": "Communication",
   "tags": ["conversations", "messages", "announcements", "mentions", "notifications", "channels"],
-  "audiences": ["staff", "owner", "subcontractor", "supplier"],
+  "audiences": ["staff"],
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/settings"],
   "owner": "Compass product team",

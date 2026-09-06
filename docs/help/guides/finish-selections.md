@@ -8,7 +8,7 @@
   "contextSummary": "Selections turn owner decisions into usable estimating, purchasing, and field information. Approved changes need a reason and follow-up trail.",
   "category": "Client Communication",
   "tags": ["finish selections", "rooms", "cost codes", "approvals", "RFQ", "products"],
-  "audiences": ["staff", "owner"],
+  "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/selections"],
   "owner": "Project operations",

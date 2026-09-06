@@ -35,6 +35,7 @@ import {
   type ProjectDailyLogWorkspace as ProjectDailyLogWorkspaceData,
 } from "@/app/actions/project-field"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -1450,6 +1451,10 @@ export function ProjectDailyLogWorkspace({
           id="owner-update-builder"
           className="scroll-mt-4 rounded-lg border p-3 sm:p-4"
         >
+          <div className="mb-3 flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Owner update builder</h2>
+            <ContextualHelpBeacon topicId="daily.logs.draft-owner-update" />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <select

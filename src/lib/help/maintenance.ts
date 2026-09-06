@@ -21,6 +21,8 @@ export const MONITORED_HELP_WORKFLOW_ROUTES: readonly string[] = [
   "/dashboard/projects/[id]/selections",
   "/dashboard/projects/[id]/financials",
   "/dashboard/projects/[id]/conversations",
+  "/preview/projects/[id]/owner",
+  "/preview/projects/[id]/sub-vendor",
 ]
 
 export type HelpMaintenanceIssue = Readonly<{
