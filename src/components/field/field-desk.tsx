@@ -17,6 +17,8 @@ import {
 import type { CherishStory } from "@/app/actions/cherish-stories"
 import { useChatPanel } from "@/components/agent/chat-provider"
 import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invitation"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
+import { HelpDrawer } from "@/components/help/help-drawer"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -58,10 +60,12 @@ export function FieldDesk({
   offlineScopeKey,
   displayName,
   cherishRecognitions,
+  canViewHelp = false,
 }: {
   readonly offlineScopeKey: string
   readonly displayName: string
   readonly cherishRecognitions: readonly CherishStory[]
+  readonly canViewHelp?: boolean
 }): React.ReactElement {
   const chatPanel = useChatPanel()
   const [online, setOnline] = useState(true)
@@ -212,7 +216,13 @@ export function FieldDesk({
                 <IconCloudOff className="size-5" />
               )}
               <span>{online ? "Online" : "Offline — changes will sync later"}</span>
+              {canViewHelp ? (
+                <ContextualHelpBeacon
+                  topicId={online ? "offline.prepare" : "offline.sync"}
+                />
+              ) : null}
             </div>
+            {canViewHelp ? <HelpDrawer /> : null}
             <Button asChild variant="outline" size="sm">
               <Link href="/dashboard/projects">Full Compass</Link>
             </Button>

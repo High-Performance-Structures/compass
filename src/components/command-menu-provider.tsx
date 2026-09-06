@@ -22,9 +22,11 @@ export function useCommandMenu() {
 export function CommandMenuProvider({
   children,
   canUseAskCompass,
+  canViewHelp = false,
 }: {
   readonly children: React.ReactNode
   readonly canUseAskCompass: boolean
+  readonly canViewHelp?: boolean
 }) {
   const isMobile = useIsMobile()
   const [isOpen, setIsOpen] = React.useState(false)
@@ -74,11 +76,13 @@ export function CommandMenuProvider({
             setOpen={handleSetOpen}
             initialQuery={initialQuery}
             canUseAskCompass={canUseAskCompass}
+            canViewHelp={canViewHelp}
           />
           <MobileSearch
             open={mobileSearchOpen}
             setOpen={setMobileSearchOpen}
             canUseAskCompass={canUseAskCompass}
+            canViewHelp={canViewHelp}
           />
         </>
       )}

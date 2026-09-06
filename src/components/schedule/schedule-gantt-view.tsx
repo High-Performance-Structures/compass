@@ -88,6 +88,7 @@ import type {
 } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -1032,6 +1033,8 @@ export function ScheduleGanttView({
           >
             <IconZoomIn className="size-3.5" />
           </Button>
+
+          <ContextualHelpBeacon topicId="schedule.gantt" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

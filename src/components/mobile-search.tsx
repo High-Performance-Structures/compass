@@ -17,6 +17,7 @@ import {
   IconUsers,
   IconBuildingStore,
   IconSparkles,
+  IconHelpCircle,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 import {
@@ -37,6 +38,7 @@ interface MobileSearchProps {
   readonly open: boolean
   readonly setOpen: (open: boolean) => void
   readonly canUseAskCompass: boolean
+  readonly canViewHelp?: boolean
 }
 
 type ItemCategory =
@@ -79,6 +81,12 @@ const staticItems: SearchItem[] = [
     icon: IconCalendarStats,
     label: "Work Calendar",
     href: "/dashboard/schedule",
+    category: "navigation",
+  },
+  {
+    icon: IconHelpCircle,
+    label: "Help & Resources",
+    href: "/dashboard/help",
     category: "navigation",
   },
   {
@@ -143,6 +151,7 @@ export function MobileSearch({
   open,
   setOpen,
   canUseAskCompass,
+  canViewHelp = false,
 }: MobileSearchProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
@@ -284,7 +293,10 @@ export function MobileSearch({
         ]
       : []
 
-  const allItems = [...agentItems, ...staticItems, ...dynamicItems]
+  const availableStaticItems = canViewHelp
+    ? staticItems
+    : staticItems.filter((item) => item.href !== "/dashboard/help")
+  const allItems = [...agentItems, ...availableStaticItems, ...dynamicItems]
 
   const filtered = allItems.filter((item) => {
     const searchable = [item.label, item.sublabel]

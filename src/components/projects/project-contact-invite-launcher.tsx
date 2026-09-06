@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { sendProjectAccessInvitation } from "@/app/actions/project-access-invitations"
 import type { ProjectContactItem } from "@/app/actions/project-contacts"
 import { Button } from "@/components/ui/button"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import {
   Command,
   CommandEmpty,
@@ -149,7 +150,10 @@ export function ProjectContactInviteLauncher({
       <Sheet open={sheetOpen} onOpenChange={handleOpenChange}>
         <SheetContent className="flex w-full flex-col overflow-y-auto sm:max-w-xl">
           <SheetHeader className="border-b pb-4 text-left">
-            <SheetTitle>Manage project access</SheetTitle>
+            <div className="flex items-center gap-2">
+              <SheetTitle>Manage project access</SheetTitle>
+              <ContextualHelpBeacon topicId="contacts.access.add-and-invite" />
+            </div>
             <SheetDescription>
               Choose a contact, review the welcome email, and grant access to
               this project only.

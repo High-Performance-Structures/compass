@@ -42,6 +42,8 @@
 		"test:e2e:web": "bun run test:e2e:prepare && playwright test e2e/web",
 		"test:e2e:ui": "playwright test --ui",
 		"test:e2e:desktop": "bun run desktop:compile && bun scripts/run-desktop-e2e.mjs",
+		"help:generate": "bun scripts/generate-help-resources.mjs",
+		"help:check": "bun scripts/generate-help-resources.mjs --check --max-review-age-days=180 && bunx vitest run src/lib/help/__tests__/maintenance.test.ts",
 		"db:init-local": "node scripts/init-local-db.mjs"
 	},
 	"dependencies": {

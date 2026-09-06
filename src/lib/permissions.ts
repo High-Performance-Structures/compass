@@ -448,7 +448,7 @@ const EXTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
   bill_submission: ["create", "read"],
   agent: [],
   channels: ["read"],
-  help: [],
+  help: ["read"],
 }
 
 const EXTERNAL_CHANGE_REQUEST_PERMISSIONS: RolePermissionSet = {

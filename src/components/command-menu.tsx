@@ -12,6 +12,7 @@ import {
   IconReceipt,
   IconCalendarStats,
   IconMessageCircle,
+  IconHelpCircle,
   IconSettings,
   IconSun,
   IconSparkles,
@@ -35,11 +36,13 @@ export function CommandMenu({
   setOpen,
   initialQuery = "",
   canUseAskCompass,
+  canViewHelp = false,
 }: {
   readonly open: boolean
   readonly setOpen: (open: boolean) => void
   readonly initialQuery?: string
   readonly canUseAskCompass: boolean
+  readonly canViewHelp?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -117,6 +120,12 @@ export function CommandMenu({
             <IconMessageCircle />
             Conversations
           </CommandItem>
+          {canViewHelp ? (
+            <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/help"))}>
+              <IconHelpCircle />
+              Help &amp; Resources
+            </CommandItem>
+          ) : null}
           <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/contacts"))}>
             <IconAddressBook />
             Contacts

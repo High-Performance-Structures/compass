@@ -9,6 +9,28 @@ vi.mock("@/lib/auth", () => ({
   getCurrentUser: authMocks.getCurrentUser,
 }))
 
+// These server actions import Next server-only modules that are irrelevant to
+// the guest guard exercised here.
+vi.mock("@/app/actions/provider-config", () => ({
+  getProviderConfigForJwt: vi.fn(),
+}))
+vi.mock("@/app/actions/anthropic-oauth", () => ({
+  getOAuthAccessToken: vi.fn(),
+}))
+
+// The guest guard returns before help access resolution. Mock the server-only
+// module so this route contract remains testable in Vitest.
+vi.mock("@/lib/help/server-access", () => ({
+  getEffectiveHelpGuideAccess: vi.fn(),
+}))
+vi.mock("@/lib/agent/render/action-registry", () => ({
+  actionRegistry: {},
+  checkActionPermission: vi.fn(),
+}))
+vi.mock("@/lib/agent/render/catalog", () => ({
+  compassCatalog: { prompt: vi.fn(() => "") },
+}))
+
 import { POST as postAgent } from "@/app/api/agent/route"
 import { POST as postAgentAction } from "@/app/api/agent/action/route"
 import { POST as postAgentRender } from "@/app/api/agent/render/route"

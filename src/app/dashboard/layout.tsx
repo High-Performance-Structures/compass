@@ -45,6 +45,10 @@ import { getQuickAddProjects } from "@/lib/quick-add-server"
 import { QuickAddProvider } from "@/components/quick-add-menu"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { DeveloperModeProvider } from "@/components/developer-mode-provider"
+import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { getHelpGuides } from "@/lib/help"
+import { toHelpGuidePreview } from "@/components/help/help-ui-model"
+import { HelpUiProvider } from "@/components/help/help-ui-provider"
 import {
   DEVELOPER_MODE_COOKIE,
   developerModeFromCookie,
@@ -70,6 +74,12 @@ export default async function DashboardLayout({
   const canUseCompassAgent = canUseAskCompass(authUser)
   const canUseCompassFieldDesk = canUseFieldDesk(authUser)
   const canUseCompassOfficeTalk = canUseOfficeTalk(authUser)
+  const helpAccess = await getEffectiveHelpGuideAccess(authUser)
+  const canViewHelp = helpAccess.canViewHelp
+  const allowedHelpGuideIds = new Set(helpAccess.allowedGuideIds)
+  const helpGuides = getHelpGuides()
+    .filter((guide) => allowedHelpGuideIds.has(guide.id))
+    .map(toHelpGuidePreview)
   const canViewActivity = authUser
     ? isInternalStaffRole(authUser.role)
     : false
@@ -93,6 +103,7 @@ export default async function DashboardLayout({
       canUseDeveloperMode={canUseDeveloperMode}
       initialEnabled={developerModeEnabled}
     >
+    <HelpUiProvider guides={helpGuides}>
     <ChatProvider
       enabled={canUseCompassAgent}
       offlineScopeKey={offlineScopeKey}
@@ -105,7 +116,10 @@ export default async function DashboardLayout({
     <ProjectListProvider projects={projectList}>
     <QuickAddProvider projects={quickAddProjects}>
     <PageActionsProvider>
-    <CommandMenuProvider canUseAskCompass={canUseCompassAgent}>
+    <CommandMenuProvider
+      canUseAskCompass={canUseCompassAgent}
+      canViewHelp={canViewHelp}
+    >
       <BiometricGuard userId={authUser?.id}>
       <DesktopShell>
       <FeedbackWidget>
@@ -138,6 +152,7 @@ export default async function DashboardLayout({
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
             canUseDirectMessages={canUseDirectMessages}
+            canViewHelp={canViewHelp}
           />
           <NavigationProgress />
           <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -166,6 +181,7 @@ export default async function DashboardLayout({
     </PresenceProvider>
     </ConversationPanelProvider>
     </ChatProvider>
+    </HelpUiProvider>
     </DeveloperModeProvider>
   )
 }

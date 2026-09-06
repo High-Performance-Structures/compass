@@ -41,6 +41,7 @@ import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { HelpDrawer } from "@/components/help/help-drawer"
 import { QuickAddMenu } from "@/components/quick-add-menu"
 
 const OFFICE_TALK_MEETING_HREF =
@@ -82,11 +83,13 @@ export function SiteHeader({
   canUseAskCompass,
   canUseOfficeTalk,
   canUseDirectMessages,
+  canViewHelp = false,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
   readonly canUseOfficeTalk: boolean
   readonly canUseDirectMessages: boolean
+  readonly canViewHelp?: boolean
 }) {
   const { theme, setTheme } = useTheme()
   const { open: openCommand, openWithQuery } = useCommandMenu()
@@ -187,6 +190,11 @@ export function SiteHeader({
               <IconMessageCircle className="size-4" />
             </Button>
           )}
+          {canViewHelp ? (
+            <HelpDrawer
+              triggerClassName="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            />
+          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -325,6 +333,11 @@ export function SiteHeader({
               <IconMessageCircle className="size-4" />
             </Button>
           )}
+          {canViewHelp ? (
+            <HelpDrawer
+              triggerClassName="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            />
+          ) : null}
           {canUseAskCompass && (
             <Button
               variant="ghost"

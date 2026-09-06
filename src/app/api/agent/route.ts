@@ -42,6 +42,11 @@ import {
   MAX_JARVIS_VISUALS,
   MAX_JARVIS_VISUAL_DATA_URL_CHARACTERS,
 } from "@/lib/agent/visual-context"
+import {
+  addHelpContextToRelayMessages,
+  resolveJarvisHelpContext,
+} from "@/lib/help/jarvis-context"
+import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 
 const visualAttachmentSchema = z
   .object({
@@ -81,6 +86,7 @@ const chatRequestSchema = z.object({
     .array(visualAttachmentSchema)
     .max(MAX_JARVIS_VISUALS)
     .default([]),
+  helpTopicId: z.string().trim().min(1).max(180).optional(),
 })
 
 export async function POST(
@@ -134,6 +140,13 @@ export async function POST(
     request.headers.get("x-current-page") ?? "/dashboard"
   const timezone =
     request.headers.get("x-timezone") ?? "UTC"
+  const helpAccess = await getEffectiveHelpGuideAccess(user)
+  const helpContext = resolveJarvisHelpContext({
+    currentPage,
+    messages: body.messages,
+    requestedTopicId: body.helpTopicId,
+    allowedGuideIds: helpAccess.allowedGuideIds,
+  })
 
   // Get env context early for fallback
   const { env } = await getCloudflareContext()
@@ -169,7 +182,7 @@ export async function POST(
         request.headers.get("x-session-id") ?? crypto.randomUUID(),
       currentPage,
       timezone,
-      messages: body.messages,
+      messages: addHelpContextToRelayMessages(body.messages, helpContext),
       visuals: body.visuals,
     })
     if (!relayResult.success) {
@@ -365,7 +378,7 @@ export async function POST(
 
   const msgs = body.messages
 
-  const systemPrompt = buildSystemPrompt({
+  const baseSystemPrompt = buildSystemPrompt({
     context: {
       userId: user.id,
       orgId: user.organizationId ?? "",
@@ -380,6 +393,7 @@ export async function POST(
         ? externalMcpTools
         : undefined,
   })
+  const systemPrompt = `${baseSystemPrompt}${helpContext?.prompt ?? ""}`
 
   const isOAuth =
     provider.apiKey?.startsWith("sk-ant-oat") ?? false

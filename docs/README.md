@@ -60,6 +60,13 @@ How to work on Compass.
 - [sidebar](development/sidebar.md) -- sidebar component architecture, desktop vs mobile, collapsed state, animations
 - [theming](development/theming.md) -- oklch color system, preset themes, custom theme generation, how applyTheme works
 - [plugins](development/plugins.md) -- skills system, plugin manifests, registry, building new plugins
+- [help authoring](help/README.md) -- canonical user-guide content, stable contextual topics, generation, and maintenance checks
+
+
+user guides
+---
+
+The searchable in-app guide and Jarvis help grounding are generated from the canonical articles in [help/guides](help/guides/). Update the affected article whenever visible UX, labels, permissions, routes, or workflows change.
 
 
 quick reference
@@ -75,6 +82,8 @@ bun run db:migrate:prod   # apply migrations to production
 bun run desktop:dev  # electron desktop dev
 bun run desktop:dist # electron desktop production package
 bun lint             # eslint
+bun run help:generate # rebuild in-app help from canonical Markdown
+bun run help:check    # validate help coverage, review age, and generated data
 ```
 
 See [getting started](development/getting-started.md) for full setup instructions.
