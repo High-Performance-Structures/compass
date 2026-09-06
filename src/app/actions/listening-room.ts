@@ -803,8 +803,9 @@ export async function setListeningPlayback(input: {
       }).where(eq(listeningRooms.id, room.id))
     } else {
       let currentTrackId = room.currentTrackId
+      let selectedFreshTrack = false
       if (!currentTrackId) {
-        const first = await context.db
+        let first = await context.db
           .select({ id: listeningQueueItems.id })
           .from(listeningQueueItems)
           .where(
@@ -819,12 +820,34 @@ export async function setListeningPlayback(input: {
             asc(listeningQueueItems.id)
           )
           .get()
+        if (!first) {
+          first = await context.db
+            .select({ id: listeningQueueItems.id })
+            .from(listeningQueueItems)
+            .where(eq(listeningQueueItems.roomId, room.id))
+            .orderBy(
+              asc(listeningQueueItems.sortOrder),
+              asc(listeningQueueItems.createdAt),
+              asc(listeningQueueItems.id)
+            )
+            .get()
+          if (first) {
+            // An exhausted queue is restartable; clear its played markers when
+            // the host presses Play after the final track.
+            await context.db
+              .update(listeningQueueItems)
+              .set({ playedAt: null })
+              .where(eq(listeningQueueItems.roomId, room.id))
+          }
+        }
         currentTrackId = first?.id ?? null
+        selectedFreshTrack = currentTrackId !== null
       }
       if (!currentTrackId) return { success: false, error: "Add a track first" }
       await context.db.update(listeningRooms).set({
         currentTrackId,
         playbackState: "playing",
+        anchorPositionMs: selectedFreshTrack ? 0 : room.anchorPositionMs,
         playbackStartedAt: scheduledStart,
         updatedAt: now,
       }).where(eq(listeningRooms.id, room.id))

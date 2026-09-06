@@ -3,6 +3,7 @@ import {
   canManageListeningPlaylist,
   canManageListeningTrackLink,
   findPreferredMusicLink,
+  findMatchingPlaylistRun,
   formatListeningPosition,
   listeningPlaybackPositionMs,
   musicPlaybackTarget,
@@ -168,5 +169,28 @@ describe("listening room playlist ownership", () => {
       createdBy: "user-a",
       canModerate: false,
     })).toBe(false)
+  })
+})
+
+describe("listening room saved playlist matching", () => {
+  const songA = {
+    title: "Song A",
+    artist: "Artist",
+    links: [{ provider: "youtube", url: "https://youtu.be/song-a" }],
+  }
+  const songB = {
+    title: "Song B",
+    artist: "Artist",
+    links: [{ provider: "youtube", url: "https://youtu.be/song-b" }],
+  }
+
+  it("reuses a complete ordered playlist run", () => {
+    expect(findMatchingPlaylistRun([songA, songB], [songA, songB])).toBe(0)
+    expect(findMatchingPlaylistRun([songB, songA, songB], [songA, songB])).toBe(1)
+  })
+
+  it("does not treat one matching song as the whole playlist", () => {
+    expect(findMatchingPlaylistRun([songA], [songA, songB])).toBeNull()
+    expect(findMatchingPlaylistRun([songA, songB], [songB, songA])).toBeNull()
   })
 })

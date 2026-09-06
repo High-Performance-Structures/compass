@@ -20,7 +20,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import {
   canManageListeningPlaylist,
+  findMatchingPlaylistRun,
   isMusicProvider,
+  LISTENING_ROOM_START_DELAY_MS,
   type MusicProvider,
 } from "@/lib/listening-room"
 import { can } from "@/lib/permissions"
@@ -32,6 +34,7 @@ import {
 
 const channelIdSchema = z.string().trim().min(1).max(200)
 const playlistIdSchema = z.string().trim().min(1).max(200)
+const playlistItemIdSchema = z.string().trim().min(1).max(200)
 const playlistNameSchema = z.string().trim().min(1).max(120)
 
 type PlaylistActionResult<T> =
@@ -518,11 +521,22 @@ export async function deleteListeningPlaylist(input: {
 export async function addListeningPlaylistToRoom(input: {
   readonly channelId: string
   readonly playlistId: string
-}): Promise<PlaylistActionResult<{ readonly addedCount: number }>> {
+  readonly startAtItemId?: string
+}): Promise<PlaylistActionResult<{
+  readonly addedCount: number
+  readonly started: boolean
+}>> {
   try {
     const channelId = channelIdSchema.safeParse(input.channelId)
     const playlistId = playlistIdSchema.safeParse(input.playlistId)
-    if (!channelId.success || !playlistId.success) {
+    const startAtItemId = input.startAtItemId === undefined
+      ? null
+      : playlistItemIdSchema.safeParse(input.startAtItemId)
+    if (
+      !channelId.success ||
+      !playlistId.success ||
+      (startAtItemId !== null && !startAtItemId.success)
+    ) {
       return { success: false, error: "Invalid playlist" }
     }
     const context = await playlistContext(channelId.data, true)
@@ -534,6 +548,13 @@ export async function addListeningPlaylistToRoom(input: {
       .where(eq(listeningRooms.channelId, context.channel.id))
       .get()
     if (!room) return { success: false, error: "Start a listening room first" }
+    if (
+      startAtItemId !== null &&
+      room.hostUserId !== context.user.id &&
+      !can(context.user, "channels", "moderate")
+    ) {
+      return { success: false, error: "Only the room host can start playback" }
+    }
 
     const items = await context.db
       .select()
@@ -543,8 +564,14 @@ export async function addListeningPlaylistToRoom(input: {
         asc(listeningPlaylistItems.sortOrder),
         asc(listeningPlaylistItems.createdAt),
         asc(listeningPlaylistItems.id)
-      )
+    )
     if (items.length === 0) return { success: false, error: "This playlist is empty" }
+    const selectedItem = startAtItemId === null
+      ? null
+      : items.find((item) => item.id === startAtItemId.data) ?? null
+    if (startAtItemId !== null && !selectedItem) {
+      return { success: false, error: "Playlist track not found" }
+    }
     const links = await context.db
       .select()
       .from(listeningPlaylistTrackLinks)
@@ -554,6 +581,53 @@ export async function addListeningPlaylistToRoom(input: {
           items.map((item) => item.id)
         )
       )
+    const existingQueue = await context.db
+      .select()
+      .from(listeningQueueItems)
+      .where(eq(listeningQueueItems.roomId, room.id))
+      .orderBy(
+        asc(listeningQueueItems.sortOrder),
+        asc(listeningQueueItems.createdAt),
+        asc(listeningQueueItems.id)
+      )
+    const existingLinks = await context.db
+      .select({
+        queueItemId: listeningTrackLinks.queueItemId,
+        provider: listeningTrackLinks.provider,
+        url: listeningTrackLinks.url,
+      })
+      .from(listeningTrackLinks)
+      .innerJoin(
+        listeningQueueItems,
+        eq(listeningQueueItems.id, listeningTrackLinks.queueItemId)
+      )
+      .where(eq(listeningQueueItems.roomId, room.id))
+
+    const playlistRunStart = selectedItem
+      ? findMatchingPlaylistRun(
+          existingQueue.map((item) => ({
+            title: item.title,
+            artist: item.artist,
+            links: existingLinks.filter((link) => link.queueItemId === item.id),
+          })),
+          items.map((item) => ({
+            title: item.title,
+            artist: item.artist,
+            links: links.filter((link) => link.playlistItemId === item.id),
+          }))
+        )
+      : null
+    const selectedPlaylistIndex = selectedItem
+      ? items.findIndex((item) => item.id === selectedItem.id)
+      : -1
+    const matchingQueueItemId =
+      selectedItem && playlistRunStart !== null && selectedPlaylistIndex >= 0
+        ? existingQueue[playlistRunStart + selectedPlaylistIndex]?.id ?? null
+        : null
+
+    // Starting a playlist already present in the room should reuse its queue
+    // entry instead of appending another duplicate copy.
+    const shouldAppend = selectedItem === null || matchingQueueItemId === null
     const maxOrder = await context.db
       .select({ value: sql<number>`coalesce(max(${listeningQueueItems.sortOrder}), -1)` })
       .from(listeningQueueItems)
@@ -561,7 +635,7 @@ export async function addListeningPlaylistToRoom(input: {
       .get()
     const now = new Date().toISOString()
     const queueIds = new Map<string, string>()
-    const queueValues = items.map((item, index) => {
+    const queueValues = shouldAppend ? items.map((item, index) => {
       const id = crypto.randomUUID()
       queueIds.set(item.id, id)
       return {
@@ -575,8 +649,10 @@ export async function addListeningPlaylistToRoom(input: {
         playedAt: null,
         createdAt: now,
       }
-    })
-    await context.db.insert(listeningQueueItems).values(queueValues)
+    }) : []
+    if (queueValues.length > 0) {
+      await context.db.insert(listeningQueueItems).values(queueValues)
+    }
     const queueLinkValues = links.flatMap((link) => {
       const queueItemId = queueIds.get(link.playlistItemId)
       if (!queueItemId || !isMusicProvider(link.provider)) return []
@@ -592,14 +668,58 @@ export async function addListeningPlaylistToRoom(input: {
     if (queueLinkValues.length > 0) {
       await context.db.insert(listeningTrackLinks).values(queueLinkValues)
     }
-    if (!room.currentTrackId) {
+    const selectedQueueItemId = selectedItem
+      ? matchingQueueItemId ?? queueIds.get(selectedItem.id) ?? null
+      : null
+    if (selectedQueueItemId) {
+      const orderedQueue = [...existingQueue, ...queueValues].sort((left, right) =>
+        left.sortOrder - right.sortOrder ||
+        left.createdAt.localeCompare(right.createdAt) ||
+        left.id.localeCompare(right.id)
+      )
+      const selectedIndex = orderedQueue.findIndex(
+        (item) => item.id === selectedQueueItemId
+      )
+      await context.db
+        .update(listeningQueueItems)
+        .set({ playedAt: null })
+        .where(eq(listeningQueueItems.roomId, room.id))
+      const precedingIds = orderedQueue
+        .slice(0, Math.max(0, selectedIndex))
+        .map((item) => item.id)
+      if (precedingIds.length > 0) {
+        await context.db
+          .update(listeningQueueItems)
+          .set({ playedAt: now })
+          .where(inArray(listeningQueueItems.id, precedingIds))
+      }
+      const scheduledStart = new Date(
+        Date.now() + LISTENING_ROOM_START_DELAY_MS
+      ).toISOString()
+      await context.db
+        .update(listeningRooms)
+        .set({
+          currentTrackId: selectedQueueItemId,
+          playbackState: "playing",
+          anchorPositionMs: 0,
+          playbackStartedAt: scheduledStart,
+          updatedAt: now,
+        })
+        .where(eq(listeningRooms.id, room.id))
+    } else if (!room.currentTrackId) {
       await context.db
         .update(listeningRooms)
         .set({ currentTrackId: queueValues[0]?.id ?? null, updatedAt: now })
         .where(eq(listeningRooms.id, room.id))
     }
     revalidatePlaylistPaths(context.channel.id)
-    return { success: true, data: { addedCount: items.length } }
+    return {
+      success: true,
+      data: {
+        addedCount: queueValues.length,
+        started: selectedQueueItemId !== null,
+      },
+    }
   } catch (error) {
     return { success: false, error: actionError(error, "Failed to add playlist") }
   }
