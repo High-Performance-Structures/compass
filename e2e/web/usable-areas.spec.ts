@@ -171,8 +171,12 @@ test.describe("usable Compass areas", () => {
 
     const response = await page.goto(`/dashboard/projects/${projectId}/information`)
     await expectHealthyNavigation(page, response, `/dashboard/projects/${projectId}/information`)
-    await expect(page.getByRole("combobox", { name: "Approved job status" })).toBeVisible()
-    await expect(page.getByText(/Choose the approved operational stage for this project/)).toBeVisible()
+    const jobStatus = page.getByRole("combobox", { name: "Approved job status" })
+    await expect(jobStatus).toBeVisible()
+    await expect(jobStatus).toHaveAttribute("aria-describedby", "job-status-help")
+    await expect(
+      page.getByRole("main").getByText(/Choose the approved operational stage for this project/)
+    ).toBeVisible()
   })
 
   test("timezone preference persists after reloading settings", async ({ page }) => {
