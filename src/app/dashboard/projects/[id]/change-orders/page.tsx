@@ -10,7 +10,7 @@ import {
 } from "@/app/actions/project-change-orders"
 import { getProjectArchivedBuildertrendChangeOrders } from "@/app/actions/project-archived-change-orders"
 import { getProjects } from "@/app/actions/projects"
-import { ProjectArchivedChangeOrderList } from "@/components/projects/project-archived-change-order-list"
+import { ProjectArchivedChangeOrderSection } from "@/components/projects/project-archived-change-order-list"
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Button } from "@/components/ui/button"
@@ -67,13 +67,10 @@ export default async function ProjectChangeOrdersPage({
         formOptions={formOptions}
         canCreate={capabilities.canCreate}
       />
-      {archived.success && (
-        <ProjectArchivedChangeOrderList
-          records={archived.records}
-          holds={archived.holds}
-          detailBaseHref={baseHref}
-        />
-      )}
+      <ProjectArchivedChangeOrderSection
+        workspace={archived}
+        detailBaseHref={baseHref}
+      />
     </div>
   )
 }

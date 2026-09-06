@@ -284,9 +284,38 @@ describe("archived Buildertrend change-order action", () => {
       configure(state, user)
       const result = await getProjectArchivedBuildertrendChangeOrders(projectId)
       expect(result.success).toBe(false)
+      expect(result).toMatchObject({ reason: "forbidden" })
       expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
       vi.clearAllMocks()
     }
+  })
+
+  it("keeps auth, org, feature, and project-access failures forbidden", async () => {
+    mocks.requireAuth.mockRejectedValueOnce(new Error("No session"))
+    expect(await getProjectArchivedBuildertrendChangeOrders(projectId)).toMatchObject({
+      success: false,
+      reason: "forbidden",
+    })
+
+    configure(state, { ...actor, organizationId: null })
+    expect(await getProjectArchivedBuildertrendChangeOrders(projectId)).toMatchObject({
+      success: false,
+      reason: "forbidden",
+    })
+
+    configure(state)
+    mocks.requireFeaturePermission.mockRejectedValueOnce(new Error("Denied"))
+    expect(await getProjectArchivedBuildertrendChangeOrders(projectId)).toMatchObject({
+      success: false,
+      reason: "forbidden",
+    })
+
+    configure(state)
+    mocks.assertProjectAccess.mockRejectedValueOnce(new Error("Denied"))
+    expect(await getProjectArchivedBuildertrendChangeOrders(projectId)).toMatchObject({
+      success: false,
+      reason: "forbidden",
+    })
   })
 
   it("deduplicates an archive row already represented by a native Buildertrend record", async () => {
@@ -311,5 +340,23 @@ describe("archived Buildertrend change-order action", () => {
       sourceRecordId: sourceRowId,
       reason: "Matching immutable source evidence is not available.",
     }])
+  })
+
+  it("distinguishes not-applicable projects from genuine load failures", async () => {
+    statement(state.sqlite, "UPDATE projects SET buildertrend_project_id = NULL WHERE id = ?").run(projectId)
+    expect(await getProjectArchivedBuildertrendChangeOrders(projectId)).toMatchObject({
+      success: false,
+      reason: "not_applicable",
+    })
+
+    statement(state.sqlite, "UPDATE projects SET buildertrend_project_id = ? WHERE id = ?").run(jobId, projectId)
+    mocks.getDb.mockImplementation(() => {
+      throw new Error("Synthetic load failure")
+    })
+    expect(await getProjectArchivedBuildertrendChangeOrders(projectId)).toMatchObject({
+      success: false,
+      reason: "load_error",
+      error: "Archived change-order evidence could not be loaded. Historical source records may still exist.",
+    })
   })
 })

@@ -4,10 +4,43 @@ import type * as React from "react"
 
 import type {
   ArchivedBuildertrendChangeOrderHold,
+  ProjectArchivedChangeOrderWorkspace,
 } from "@/app/actions/project-archived-change-orders"
 import type { ArchivedBuildertrendChangeOrder } from "@/lib/change-orders/buildertrend-archive"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+
+export function ProjectArchivedChangeOrderSection({
+  workspace,
+  detailBaseHref,
+}: {
+  readonly workspace: ProjectArchivedChangeOrderWorkspace
+  readonly detailBaseHref: string
+}): React.ReactElement | null {
+  if (workspace.success) {
+    return (
+      <ProjectArchivedChangeOrderList
+        records={workspace.records}
+        holds={workspace.holds}
+        detailBaseHref={detailBaseHref}
+      />
+    )
+  }
+  if (workspace.reason !== "load_error") return null
+  return (
+    <section
+      role="alert"
+      className="border-y border-destructive/30 bg-destructive/5 px-4 py-3"
+    >
+      <p className="text-sm font-medium">
+        Buildertrend archive could not be loaded
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {workspace.error} This is not an empty-history result.
+      </p>
+    </section>
+  )
+}
 
 export function ProjectArchivedChangeOrderList({
   records,

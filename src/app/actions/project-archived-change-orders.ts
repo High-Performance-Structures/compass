@@ -21,6 +21,10 @@ import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const MAX_ARCHIVED_RECORDS = 100
+const FORBIDDEN_ERROR =
+  "Archived change-order evidence is available only to authorized internal staff."
+const LOAD_ERROR =
+  "Archived change-order evidence could not be loaded. Historical source records may still exist."
 
 export type ArchivedBuildertrendChangeOrderHold = {
   readonly sourceRecordId: string
@@ -34,30 +38,50 @@ export type ProjectArchivedChangeOrderWorkspace =
       readonly records: readonly ArchivedBuildertrendChangeOrder[]
       readonly holds: readonly ArchivedBuildertrendChangeOrderHold[]
     }
-  | { readonly success: false; readonly error: string }
+  | {
+      readonly success: false
+      readonly reason: "forbidden" | "not_applicable" | "load_error"
+      readonly error: string
+    }
 
 /** Internal source history only. Never call this from an owner or vendor route. */
 export async function getProjectArchivedBuildertrendChangeOrders(
   projectId: string
 ): Promise<ProjectArchivedChangeOrderWorkspace> {
-  try {
-    const user = await requireAuth()
-    if (
-      !user.isActive ||
-      isDemoUser(user.id) ||
-      user.organizationType !== "internal" ||
-      !isInternalStaffRole(user.role)
-    ) {
-      return {
-        success: false,
-        error: "Archived change-order evidence is available only to authorized internal staff.",
-      }
+  const user = await requireAuth().catch(() => null)
+  if (
+    !user ||
+    !user.isActive ||
+    isDemoUser(user.id) ||
+    user.organizationType !== "internal" ||
+    !isInternalStaffRole(user.role)
+  ) {
+    return {
+      success: false,
+      reason: "forbidden",
+      error: FORBIDDEN_ERROR,
     }
+  }
+  let organizationId: string
+  try {
     await requireFeaturePermission(user, "change-orders", "read")
-    const organizationId = requireOrg(user)
+    organizationId = requireOrg(user)
+  } catch {
+    return { success: false, reason: "forbidden", error: FORBIDDEN_ERROR }
+  }
+  const db = await (async () => {
     const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    return getDb(env.DB)
+  })().catch(() => null)
+  if (!db) {
+    return { success: false, reason: "load_error", error: LOAD_ERROR }
+  }
+  try {
     await assertProjectAccess(db, user, projectId)
+  } catch {
+    return { success: false, reason: "forbidden", error: FORBIDDEN_ERROR }
+  }
+  try {
     const project = await db
       .select({
         id: projects.id,
@@ -76,6 +100,7 @@ export async function getProjectArchivedBuildertrendChangeOrders(
     if (!project?.buildertrendJobId) {
       return {
         success: false,
+        reason: "not_applicable",
         error: "Archived change-order project identity is not available.",
       }
     }
@@ -119,6 +144,7 @@ export async function getProjectArchivedBuildertrendChangeOrders(
     if (sourceRows.length > MAX_ARCHIVED_RECORDS) {
       return {
         success: false,
+        reason: "load_error",
         error: "Archived change-order evidence exceeds the bounded review window.",
       }
     }
@@ -202,8 +228,8 @@ export async function getProjectArchivedBuildertrendChangeOrders(
   } catch {
     return {
       success: false,
-      error:
-        "Archived change-order evidence could not be loaded. This is not an empty-history result.",
+      reason: "load_error",
+      error: LOAD_ERROR,
     }
   }
 }

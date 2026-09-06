@@ -3,7 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 
 import { ProjectArchivedChangeOrderDetail } from "@/components/projects/project-archived-change-order-detail"
-import { ProjectArchivedChangeOrderList } from "@/components/projects/project-archived-change-order-list"
+import {
+  ProjectArchivedChangeOrderList,
+  ProjectArchivedChangeOrderSection,
+} from "@/components/projects/project-archived-change-order-list"
 import {
   parseArchivedBuildertrendChangeOrder,
   type BuildertrendArchiveObservationRow,
@@ -245,5 +248,33 @@ describe("Buildertrend archived change-order evidence", () => {
       observation: observation(payload),
     })
     expect(result.kind).toBe("held")
+  })
+
+  it("shows genuine archive load failures without turning forbidden or inapplicable results into history disclosures", () => {
+    const loadFailure = renderToStaticMarkup(
+      React.createElement(ProjectArchivedChangeOrderSection, {
+        workspace: {
+          success: false,
+          reason: "load_error",
+          error: "Archived change-order evidence exceeds the bounded review window.",
+        },
+        detailBaseHref: "/dashboard/projects/project-loomis/change-orders",
+      })
+    )
+    expect(loadFailure).toContain("Buildertrend archive could not be loaded")
+    expect(loadFailure).toContain("not an empty-history result")
+    const hiddenReasons: readonly ("forbidden" | "not_applicable")[] = [
+      "forbidden",
+      "not_applicable",
+    ]
+    for (const reason of hiddenReasons) {
+      const hidden = renderToStaticMarkup(
+        React.createElement(ProjectArchivedChangeOrderSection, {
+          workspace: { success: false, reason, error: "Hidden result" },
+          detailBaseHref: "/dashboard/projects/project-loomis/change-orders",
+        })
+      )
+      expect(hidden).toBe("")
+    }
   })
 })
