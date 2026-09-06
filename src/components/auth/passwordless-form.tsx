@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -26,7 +25,6 @@ type EmailFormData = z.infer<typeof emailSchema>;
 type CodeFormData = z.infer<typeof codeSchema>;
 
 export function PasswordlessForm() {
-  const router = useRouter();
   const [step, setStep] = React.useState<"email" | "code">("email");
   const [email, setEmail] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
@@ -96,8 +94,12 @@ export function PasswordlessForm() {
       };
 
       if (result.success) {
-        toast.success("Welcome back!");
-        router.push(result.redirectUrl as string);
+        const redirectUrl = result.redirectUrl;
+        const returnTo =
+          redirectUrl?.startsWith("/") && !redirectUrl.startsWith("//")
+            ? redirectUrl
+            : "/dashboard";
+        window.location.assign(returnTo);
       } else {
         toast.error(result.error || "Invalid code");
       }

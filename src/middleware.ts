@@ -5,7 +5,10 @@ import {
   isWorkOSConfigured,
 } from "@/lib/auth-config"
 import { legacyProjectResolutionPathname } from "@/lib/legacy-project-route"
-import { isPublicPath } from "@/lib/public-paths"
+import {
+  isAuthSessionWritePath,
+  isPublicPath,
+} from "@/lib/public-paths"
 
 function legacyResolutionUrl(request: NextRequest): URL | null {
   if (request.nextUrl.searchParams.get("legacyResolved") === "1") return null
@@ -41,6 +44,13 @@ export default async function middleware(request: NextRequest) {
     loginUrl.searchParams.set("error", "auth_unavailable")
     loginUrl.searchParams.set("from", `${pathname}${request.nextUrl.search}`)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // These handlers establish a new session themselves. Running AuthKit first
+  // can append a stale-session deletion after their new Set-Cookie header,
+  // especially immediately after a password reset revokes the old session.
+  if (isAuthSessionWritePath(pathname)) {
+    return NextResponse.next()
   }
 
   const { session, headers } = await authkit(request)
