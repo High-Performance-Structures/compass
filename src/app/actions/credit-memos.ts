@@ -10,6 +10,7 @@ import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
 
 export async function getCreditMemos() {
   const user = await requireAuth()
@@ -24,8 +25,12 @@ export async function getCreditMemos() {
     .select({
       id: creditMemos.id,
       netsuiteId: creditMemos.netsuiteId,
+      organizationId: creditMemos.organizationId,
       customerId: creditMemos.customerId,
       projectId: creditMemos.projectId,
+      sourceSystem: creditMemos.sourceSystem,
+      sourceExternalId: creditMemos.sourceExternalId,
+      cashReceipt: creditMemos.cashReceipt,
       memoNumber: creditMemos.memoNumber,
       status: creditMemos.status,
       issueDate: creditMemos.issueDate,
@@ -55,8 +60,12 @@ export async function getCreditMemo(id: string) {
     .select({
       id: creditMemos.id,
       netsuiteId: creditMemos.netsuiteId,
+      organizationId: creditMemos.organizationId,
       customerId: creditMemos.customerId,
       projectId: creditMemos.projectId,
+      sourceSystem: creditMemos.sourceSystem,
+      sourceExternalId: creditMemos.sourceExternalId,
+      cashReceipt: creditMemos.cashReceipt,
       memoNumber: creditMemos.memoNumber,
       status: creditMemos.status,
       issueDate: creditMemos.issueDate,
@@ -105,10 +114,13 @@ export async function createCreditMemo(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const safeData = omitOwnerArSourceFields(data)
 
     await db.insert(creditMemos).values({
       id,
-      ...data,
+      ...safeData,
+      organizationId: orgId,
+      sourceSystem: "compass",
       createdAt: now,
       updatedAt: now,
     })
@@ -153,9 +165,20 @@ export async function updateCreditMemo(
       return { success: false, error: "Credit memo not found or access denied" }
     }
 
+    const safeData = omitOwnerArSourceFields(data)
+    if (safeData.projectId !== undefined && safeData.projectId !== null && safeData.projectId !== existing.projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, safeData.projectId), eq(projects.organizationId, orgId)))
+        .limit(1)
+      if (!project) {
+        return { success: false, error: "Project not found or access denied" }
+      }
+    }
     await db
       .update(creditMemos)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+      .set({ ...safeData, updatedAt: new Date().toISOString() })
       .where(eq(creditMemos.id, id))
 
     revalidatePath("/dashboard/financials")

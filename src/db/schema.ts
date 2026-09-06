@@ -685,7 +685,9 @@ export const projects = sqliteTable("projects", {
   publicLocationCity: text("public_location_city"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
-})
+}, (table) => [
+  uniqueIndex("projects_organization_id_unique").on(table.organizationId, table.id),
+])
 
 export const projectNumberReservations = sqliteTable(
   "project_number_reservations",

@@ -10,6 +10,7 @@ import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
 
 export async function getInvoices(projectId?: string) {
   const user = await requireAuth()
@@ -38,13 +39,16 @@ export async function getInvoices(projectId?: string) {
   }
 
   // join through projects to filter by org
-  return db
-    .select({
-      id: invoices.id,
-      netsuiteId: invoices.netsuiteId,
-      customerId: invoices.customerId,
-      projectId: invoices.projectId,
-      invoiceNumber: invoices.invoiceNumber,
+    return db
+      .select({
+        id: invoices.id,
+        netsuiteId: invoices.netsuiteId,
+        organizationId: invoices.organizationId,
+        customerId: invoices.customerId,
+        projectId: invoices.projectId,
+        sourceSystem: invoices.sourceSystem,
+        sourceExternalId: invoices.sourceExternalId,
+        invoiceNumber: invoices.invoiceNumber,
       status: invoices.status,
       issueDate: invoices.issueDate,
       dueDate: invoices.dueDate,
@@ -76,8 +80,11 @@ export async function getInvoice(id: string) {
     .select({
       id: invoices.id,
       netsuiteId: invoices.netsuiteId,
+      organizationId: invoices.organizationId,
       customerId: invoices.customerId,
       projectId: invoices.projectId,
+      sourceSystem: invoices.sourceSystem,
+      sourceExternalId: invoices.sourceExternalId,
       invoiceNumber: invoices.invoiceNumber,
       status: invoices.status,
       issueDate: invoices.issueDate,
@@ -129,10 +136,13 @@ export async function createInvoice(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const safeData = omitOwnerArSourceFields(data)
 
     await db.insert(invoices).values({
       id,
-      ...data,
+      ...safeData,
+      organizationId: orgId,
+      sourceSystem: "compass",
       createdAt: now,
       updatedAt: now,
     })
@@ -174,9 +184,20 @@ export async function updateInvoice(
       return { success: false, error: "Invoice not found or access denied" }
     }
 
+    const safeData = omitOwnerArSourceFields(data)
+    if (safeData.projectId !== undefined && safeData.projectId !== null && safeData.projectId !== existing.projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, safeData.projectId), eq(projects.organizationId, orgId)))
+        .limit(1)
+      if (!project) {
+        return { success: false, error: "Project not found or access denied" }
+      }
+    }
     await db
       .update(invoices)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+      .set({ ...safeData, updatedAt: new Date().toISOString() })
       .where(eq(invoices.id, id))
 
     revalidatePath("/dashboard/financials")

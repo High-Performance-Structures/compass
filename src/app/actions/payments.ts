@@ -10,6 +10,7 @@ import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { omitOwnerArSourceFields } from "@/lib/financials/owner-ar"
 
 export async function getPayments() {
   const user = await requireAuth()
@@ -24,11 +25,18 @@ export async function getPayments() {
     .select({
       id: payments.id,
       netsuiteId: payments.netsuiteId,
+      organizationId: payments.organizationId,
       customerId: payments.customerId,
       vendorId: payments.vendorId,
       projectId: payments.projectId,
+      sourceSystem: payments.sourceSystem,
+      sourceExternalId: payments.sourceExternalId,
       paymentType: payments.paymentType,
       amount: payments.amount,
+      grossAmountCents: payments.grossAmountCents,
+      processingFeeCents: payments.processingFeeCents,
+      netAmountCents: payments.netAmountCents,
+      cashReceipt: payments.cashReceipt,
       paymentDate: payments.paymentDate,
       paymentMethod: payments.paymentMethod,
       referenceNumber: payments.referenceNumber,
@@ -54,11 +62,18 @@ export async function getPayment(id: string) {
     .select({
       id: payments.id,
       netsuiteId: payments.netsuiteId,
+      organizationId: payments.organizationId,
       customerId: payments.customerId,
       vendorId: payments.vendorId,
       projectId: payments.projectId,
+      sourceSystem: payments.sourceSystem,
+      sourceExternalId: payments.sourceExternalId,
       paymentType: payments.paymentType,
       amount: payments.amount,
+      grossAmountCents: payments.grossAmountCents,
+      processingFeeCents: payments.processingFeeCents,
+      netAmountCents: payments.netAmountCents,
+      cashReceipt: payments.cashReceipt,
       paymentDate: payments.paymentDate,
       paymentMethod: payments.paymentMethod,
       referenceNumber: payments.referenceNumber,
@@ -103,10 +118,13 @@ export async function createPayment(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const safeData = omitOwnerArSourceFields(data)
 
     await db.insert(payments).values({
       id,
-      ...data,
+      ...safeData,
+      organizationId: orgId,
+      sourceSystem: "compass",
       createdAt: now,
       updatedAt: now,
     })
@@ -149,9 +167,20 @@ export async function updatePayment(
       return { success: false, error: "Payment not found or access denied" }
     }
 
+    const safeData = omitOwnerArSourceFields(data)
+    if (safeData.projectId !== undefined && safeData.projectId !== null && safeData.projectId !== existing.projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, safeData.projectId), eq(projects.organizationId, orgId)))
+        .limit(1)
+      if (!project) {
+        return { success: false, error: "Project not found or access denied" }
+      }
+    }
     await db
       .update(payments)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+      .set({ ...safeData, updatedAt: new Date().toISOString() })
       .where(eq(payments.id, id))
 
     revalidatePath("/dashboard/financials")
