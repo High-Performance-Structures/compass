@@ -49,6 +49,14 @@ describe("correspondence attachment download and staged deletion", () => {
     })
   })
 
+  it("passes explicit history scope to the staff-authorized attachment service", async () => {
+    mocks.download.mockResolvedValue({ body: new Response("preview-bytes"), name: "plans.pdf", contentType: "application/pdf" })
+    const response = await GET(new Request("https://compass.example/api/correspondence/attachments/attachment-1?projectId=project-1&scope=project&preview=1"), params)
+    expect(response.status).toBe(200)
+    expect(mocks.download).toHaveBeenCalledWith({ projectId: "project-1", attachmentId: "attachment-1", projectHistory: true })
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+  })
+
   it.each(["application/pdf", "image/jpeg", "text/plain", "video/mp4", "audio/mpeg"])("previews authorized %s bytes inline without caching", async (contentType) => {
     mocks.download.mockResolvedValue({ body: new Response("preview-bytes"), name: "example", contentType })
     const response = await GET(new Request("https://compass.example/api/correspondence/attachments/attachment-1?projectId=project-1&preview=1"), params)

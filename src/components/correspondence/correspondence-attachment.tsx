@@ -17,13 +17,15 @@ import type { CorrespondenceAttachment } from "@/lib/correspondence/types"
 export function CorrespondenceAttachmentRow({
   projectId,
   attachment,
+  projectHistory = false,
 }: {
   readonly projectId: string
   readonly attachment: CorrespondenceAttachment
+  readonly projectHistory?: boolean
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [failed, setFailed] = React.useState(false)
-  const href = `/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}`
+  const href = `/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}${projectHistory ? "&scope=project" : ""}`
   const previewHref = `${href}&preview=1`
   const kind = attachmentPreviewKind(attachment.contentType)
   const size =

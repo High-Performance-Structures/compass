@@ -7,6 +7,7 @@ import type { DriveFile } from "@/lib/google/client/types"
 
 import {
   authorizedConversation,
+  authorizedProjectConversation,
   correspondenceContext,
   currentParticipants,
   type CorrespondenceContext,
@@ -288,7 +289,11 @@ async function attachmentForProject(input: {
 async function assertAttachmentReadAccess(input: {
   readonly ctx: CorrespondenceContext
   readonly attachment: AttachmentRow
+  readonly projectHistory?: boolean
 }): Promise<void> {
+  if (input.projectHistory && (input.ctx.workspace !== "staff" || input.attachment.messageId === null)) {
+    throw new CorrespondenceAttachmentError(404, "Attachment not found.")
+  }
   if (input.attachment.messageId === null) {
     if (
       input.attachment.ownerUserId !== input.ctx.user.id ||
@@ -304,6 +309,10 @@ async function assertAttachmentReadAccess(input: {
     input.attachment.conversationId === null
   ) {
     throw new CorrespondenceAttachmentError(404, "Attachment not found.")
+  }
+  if (input.projectHistory) {
+    await authorizedProjectConversation(input.ctx, input.attachment.conversationId)
+    return
   }
   await authorizedConversation(input.ctx, input.attachment.conversationId)
   const participants = await currentParticipants(
@@ -331,6 +340,7 @@ async function assertAttachmentReadAccess(input: {
 export async function downloadCorrespondenceAttachment(input: {
   readonly projectId: string
   readonly attachmentId: string
+  readonly projectHistory?: boolean
 }): Promise<{
   readonly body: Response
   readonly name: string
@@ -344,7 +354,7 @@ export async function downloadCorrespondenceAttachment(input: {
   if (!attachment || !attachment.driveFileId) {
     throw new CorrespondenceAttachmentError(404, "Attachment not found.")
   }
-  await assertAttachmentReadAccess({ ctx, attachment })
+  await assertAttachmentReadAccess({ ctx, attachment, projectHistory: input.projectHistory })
   const { drive, folder } = await safeDriveContext(ctx)
   const file = await drive.client.getFile(folder.userEmail, attachment.driveFileId)
   if (file.trashed === true || !file.parents?.includes(folder.id)) {

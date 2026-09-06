@@ -47,7 +47,8 @@ export async function GET(
     )
   }
   try {
-    const download = await downloadCorrespondenceAttachment(input)
+    const projectHistory = new URL(request.url).searchParams.get("scope") === "project"
+    const download = await downloadCorrespondenceAttachment({ ...input, ...(projectHistory ? { projectHistory: true } : {}) })
     const preview = new URL(request.url).searchParams.get("preview") === "1"
     if (preview && attachmentPreviewKind(download.contentType) === null) {
       await download.body.body?.cancel()

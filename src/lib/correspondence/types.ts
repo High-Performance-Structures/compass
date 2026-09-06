@@ -97,3 +97,18 @@ export type CorrespondenceStateInput = {
 }
 
 export type CorrespondenceInboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"
+
+export type ProjectMessageHistoryPage = {
+  readonly projectName: string
+  readonly viewerId: string
+  readonly conversations: readonly {
+    readonly id: string
+    readonly subject: string
+    readonly authorName: string
+    readonly excerpt: string
+    readonly sentAt: string
+    readonly sourceSentDisplay: string | null
+    readonly sourceSentAt: string | null
+  }[]
+  readonly nextCursor: { readonly sentAt: string; readonly conversationId: string } | null
+}
