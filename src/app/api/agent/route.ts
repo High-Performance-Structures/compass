@@ -393,7 +393,9 @@ export async function POST(
         ? externalMcpTools
         : undefined,
   })
-  const systemPrompt = `${baseSystemPrompt}${helpContext?.prompt ?? ""}`
+  const systemPrompt = helpContext
+    ? `${baseSystemPrompt}\n\n${helpContext.prompt}`
+    : baseSystemPrompt
 
   const isOAuth =
     provider.apiKey?.startsWith("sk-ant-oat") ?? false

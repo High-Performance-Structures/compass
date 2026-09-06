@@ -48,7 +48,9 @@ describe("Compass Help UI model", () => {
 
     expect(prompt).toContain("schedule.critical-path")
     expect(prompt).toContain("official Compass Help topic")
-    expect(prompt).toContain("page I am currently viewing")
+    expect(prompt).toContain("Lead with the useful next step")
+    expect(prompt).toContain("Write naturally and concisely")
+    expect(prompt).not.toContain("Clearly separate official workflow guidance")
   })
 
   it("searches only server-approved previews and preserves an exact section link", () => {
@@ -96,5 +98,52 @@ describe("Compass Help UI model", () => {
       expect(source).not.toContain('from "@/lib/help"')
       expect(source).not.toContain("help-guides.generated")
     }
+  })
+
+  it("wires server-filtered Help into previews without enabling Jarvis", () => {
+    const layoutSource = readFileSync(
+      join(process.cwd(), "src/app/preview/layout.tsx"),
+      "utf8",
+    )
+    const controlsSource = readFileSync(
+      join(
+        process.cwd(),
+        "src/components/projects/project-audience-header-controls.tsx",
+      ),
+      "utf8",
+    )
+
+    expect(layoutSource).toContain("getEffectiveHelpGuideAccess(user)")
+    expect(layoutSource).toContain("allowedHelpGuideIds.has(guide.id)")
+    expect(layoutSource).toContain("<HelpUiProvider")
+    expect(layoutSource).toContain("canUseJarvis={false}")
+    expect(layoutSource).not.toContain("ChatProvider")
+    expect(controlsSource).toContain("<HelpDrawer")
+    expect(controlsSource).toContain("useCanViewHelp()")
+  })
+
+  it("keeps full-guide launches separate from the active workspace", () => {
+    const drawerSource = readFileSync(
+      join(process.cwd(), "src/components/help/help-drawer.tsx"),
+      "utf8",
+    )
+    const beaconSource = readFileSync(
+      join(process.cwd(), "src/components/help/contextual-help-beacon.tsx"),
+      "utf8",
+    )
+    const closeSource = readFileSync(
+      join(process.cwd(), "src/components/help/close-help-button.tsx"),
+      "utf8",
+    )
+    const messageSource = readFileSync(
+      join(process.cwd(), "src/components/ai/message.tsx"),
+      "utf8",
+    )
+
+    expect(drawerSource).toContain('target="_blank"')
+    expect(beaconSource).toContain('target="_blank"')
+    expect(closeSource).toContain("window.close()")
+    expect(closeSource).toContain("Close help")
+    expect(messageSource).toContain('href?.startsWith("/dashboard/help")')
   })
 })

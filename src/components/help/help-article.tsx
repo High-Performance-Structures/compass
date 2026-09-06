@@ -6,6 +6,7 @@ import { IconSparkles } from "@tabler/icons-react"
 
 import { useAgentOptional, useChatStateOptional } from "@/components/agent/chat-provider"
 import { buildHelpTopicPrompt } from "@/components/help/help-ui-model"
+import { useCanUseHelpJarvis } from "@/components/help/help-ui-provider"
 import { Button } from "@/components/ui/button"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import type { HelpGuideSection } from "@/lib/help"
@@ -24,6 +25,7 @@ export function HelpArticle({
   const articleRef = React.useRef<HTMLElement>(null)
   const agent = useAgentOptional()
   const chat = useChatStateOptional()
+  const canUseJarvis = useCanUseHelpJarvis()
 
   React.useEffect(() => {
     const article = articleRef.current
@@ -44,7 +46,7 @@ export function HelpArticle({
   }, [sections])
 
   async function askJarvis(): Promise<void> {
-    if (!agent || !chat) return
+    if (!canUseJarvis || !agent || !chat) return
     agent.open()
     await chat.sendMessage({
       text: buildHelpTopicPrompt({ topicId: guideId, title }),
@@ -66,7 +68,7 @@ export function HelpArticle({
             </li>
           ))}
         </ol>
-        {agent && chat ? (
+        {canUseJarvis && agent && chat ? (
           <Button
             variant="ghost"
             size="sm"

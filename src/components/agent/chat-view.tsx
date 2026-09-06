@@ -73,6 +73,7 @@ import {
   prepareJarvisVisuals,
   type JarvisVisualAttachment,
 } from "@/lib/agent/visual-context"
+import { normalizeAssistantMarkdown } from "@/lib/agent/assistant-markdown"
 
 type RepoStats = {
   readonly stargazers_count: number
@@ -371,15 +372,16 @@ const ChatMessage = memo(
     flushText(msg.parts.length, true)
 
     const hasContent = elements.length > 0
+    const normalizedAllText = normalizeAssistantMarkdown(allText)
 
     return (
       <Message from="assistant">
         {hasContent ? elements : <Loader />}
-        {allText && (
+        {normalizedAllText && (
           <Actions>
             <Action
               tooltip="Copy"
-              onClick={() => onCopy(msg.id, allText)}
+              onClick={() => onCopy(msg.id, normalizedAllText)}
             >
               {copiedId === msg.id ? (
                 <Check className="size-4" />

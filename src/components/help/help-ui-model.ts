@@ -168,9 +168,10 @@ export function buildHelpTopicPrompt(input: {
   readonly title: string
 }): string {
   return [
-    `Using the official Compass Help topic \`${input.topicId}\`, explain “${input.title}”`,
-    "in the context of the page I am currently viewing.",
-    "Start with what I am looking at and what I should do next.",
-    "Clearly separate official workflow guidance from page-specific advice.",
+    `Using the official Compass Help topic \`${input.topicId}\`, answer my question about “${input.title}.”`,
+    "Lead with the useful next step, then give only the details I need.",
+    "Write naturally and concisely; do not restate my request, announce what page I am looking at, or use canned headings such as “Official workflow guidance” and “Page-specific advice.”",
+    "If live page context does not identify a specific record, omit record-specific claims instead of adding a disclaimer about missing context.",
+    "End with one relevant full-guide link.",
   ].join(" ")
 }

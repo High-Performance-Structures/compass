@@ -16,7 +16,10 @@ import {
   helpGuidesForPathname,
   searchAllowedHelpGuides,
 } from "@/components/help/help-ui-model"
-import { useAllowedHelpGuides } from "@/components/help/help-ui-provider"
+import {
+  useAllowedHelpGuides,
+  useCanUseHelpJarvis,
+} from "@/components/help/help-ui-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -28,7 +31,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 export function HelpDrawer({
   triggerClassName,
@@ -38,6 +46,7 @@ export function HelpDrawer({
   const pathname = usePathname()
   const agent = useAgentOptional()
   const chat = useChatStateOptional()
+  const canUseJarvis = useCanUseHelpJarvis()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const accessibleGuides = useAllowedHelpGuides()
@@ -62,7 +71,7 @@ export function HelpDrawer({
 
   async function askJarvis(): Promise<void> {
     const question = query.trim()
-    if (!question || !agent || !chat) return
+    if (!question || !canUseJarvis || !agent || !chat) return
     setOpen(false)
     agent.open()
     await chat.sendMessage({
@@ -72,21 +81,23 @@ export function HelpDrawer({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={triggerClassName}
-              aria-label="Open Compass Help"
-            >
-              <HelpCompassIcon />
-            </Button>
-          </SheetTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">Compass Help</TooltipContent>
-      </Tooltip>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={triggerClassName}
+                aria-label="Open Compass Help"
+              >
+                <HelpCompassIcon />
+              </Button>
+            </SheetTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Compass Help</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <SheetContent className="w-full gap-0 sm:max-w-lg" aria-label="Compass Help">
         <SheetHeader className="border-b border-border px-5 pb-4 pt-5">
@@ -134,6 +145,8 @@ export function HelpDrawer({
                     key={result.guide.slug}
                     href={result.href}
                     onClick={() => setOpen(false)}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="group block py-4 first:pt-2"
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -158,11 +171,11 @@ export function HelpDrawer({
                 <IconSearch className="mx-auto size-6 text-muted-foreground" />
                 <p className="mt-3 font-medium">No matching guide yet</p>
                 <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                  {agent && chat
+                  {canUseJarvis && agent && chat
                     ? "Try another term, or let Jarvis use the official guide and this page as context."
                     : "Try another term, browse the full guide, or contact your Compass administrator."}
                 </p>
-                {agent && chat && query.trim().length > 0 ? (
+                {canUseJarvis && agent && chat && query.trim().length > 0 ? (
                   <Button className="mt-4" onClick={() => void askJarvis()}>
                     <IconSparkles className="size-4" />
                     Ask Jarvis about this
@@ -175,12 +188,17 @@ export function HelpDrawer({
 
         <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard/help" onClick={() => setOpen(false)}>
+            <Link
+              href="/dashboard/help"
+              onClick={() => setOpen(false)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <IconBook2 className="size-4" />
               Open full guide
             </Link>
           </Button>
-          {query.trim().length > 0 && agent && chat ? (
+          {query.trim().length > 0 && canUseJarvis && agent && chat ? (
             <Button variant="ghost" size="sm" onClick={() => void askJarvis()}>
               <IconSparkles className="size-4" />
               Ask Jarvis

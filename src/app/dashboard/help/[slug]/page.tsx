@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation"
 import { IconArrowLeft, IconBook2 } from "@tabler/icons-react"
 
 import { HelpArticle } from "@/components/help/help-article"
+import { CloseHelpButton } from "@/components/help/close-help-button"
 import { getCurrentUser } from "@/lib/auth"
 import { getHelpGuide } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
@@ -36,13 +37,16 @@ export default async function HelpGuidePage({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-5 sm:px-6 sm:py-7">
-      <Link
-        href="/dashboard/help"
-        className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-      >
-        <IconArrowLeft className="size-4" />
-        Help &amp; Resources
-      </Link>
+      <div className="flex items-center justify-between gap-4">
+        <Link
+          href="/dashboard/help"
+          className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+        >
+          <IconArrowLeft className="size-4" />
+          Help &amp; Resources
+        </Link>
+        <CloseHelpButton />
+      </div>
 
       <header className="mt-5 border-b border-border pb-6">
         <div className="max-w-3xl">

@@ -35,6 +35,12 @@ describe("Jarvis canonical help context", () => {
     ])
     expect(context?.prompt).toContain(section.summary)
     expect(context?.prompt).toContain(section.content.slice(0, 80))
+    expect(context?.prompt).toContain("Answer directly in natural language")
+    expect(context?.prompt).toContain("one to three short paragraphs")
+    expect(context?.prompt).not.toMatch(/^\s/)
+    expect(context?.prompt).not.toContain(
+      "Clearly separate official workflow guidance"
+    )
   })
 
   it("never injects help that the user cannot read", () => {

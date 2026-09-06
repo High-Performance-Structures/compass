@@ -9,6 +9,8 @@ import {
 } from "@tabler/icons-react"
 
 import { QuickAddMenu } from "@/components/quick-add-menu"
+import { HelpDrawer } from "@/components/help/help-drawer"
+import { useCanViewHelp } from "@/components/help/help-ui-provider"
 
 import { logout } from "@/app/actions/profile"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -42,6 +44,7 @@ export function ProjectAudienceHeaderControls({
   readonly messageShortcut: ProjectAudienceMessageShortcut | null
 }): React.ReactElement {
   const { theme, setTheme } = useTheme()
+  const canViewHelp = useCanViewHelp()
   const [messageOpen, setMessageOpen] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
 
@@ -73,6 +76,11 @@ export function ProjectAudienceHeaderControls({
           />
         </>
       )}
+      {canViewHelp ? (
+        <HelpDrawer
+          triggerClassName="size-7 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        />
+      ) : null}
       <NotificationsPopover />
       <ProjectAudienceNotificationSettings
         compact

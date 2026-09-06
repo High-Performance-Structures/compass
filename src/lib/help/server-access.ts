@@ -32,15 +32,17 @@ export async function getEffectiveHelpGuideAccess(
     )
   )
 
+  const allowedGuideIds = selectAllowedHelpGuideIds(
+    user.role,
+    new Set(
+      featureAccess
+        .filter((result) => result.allowed)
+        .map((result) => result.featureId)
+    )
+  )
+
   return {
-    canViewHelp,
-    allowedGuideIds: selectAllowedHelpGuideIds(
-      user.role,
-      new Set(
-        featureAccess
-          .filter((result) => result.allowed)
-          .map((result) => result.featureId)
-      )
-    ),
+    canViewHelp: allowedGuideIds.length > 0,
+    allowedGuideIds,
   }
 }

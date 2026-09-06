@@ -103,7 +103,10 @@ export default async function DashboardLayout({
       canUseDeveloperMode={canUseDeveloperMode}
       initialEnabled={developerModeEnabled}
     >
-    <HelpUiProvider guides={helpGuides}>
+    <HelpUiProvider
+      guides={helpGuides}
+      canUseJarvis={canUseCompassAgent}
+    >
     <ChatProvider
       enabled={canUseCompassAgent}
       offlineScopeKey={offlineScopeKey}

@@ -238,13 +238,14 @@ export function resolveJarvisHelpContext(
     lastReviewed: topic.guide.lastReviewed,
   }))
   const sourceBlocks = topics.map(topicBlock).join("\n\n---\n\n")
-  const prompt = `
-
-Official Compass Help context (trusted, version-controlled application content):
+  const prompt = `Official Compass Help context (trusted, version-controlled application content):
 - For questions about what Compass does or how a workflow works, treat the sources below as canonical.
 - Do not contradict these sources. Distinguish live project data or your own inference from the official instructions.
 - If the requested detail is not covered, say that plainly instead of inventing a workflow.
-- Link the relevant full guide in your answer using the supplied Compass path.
+- Answer directly in natural language. Prefer one to three short paragraphs or a short list.
+- Do not restate the request, announce the user's current page, repeat the same guidance in multiple sections, or use canned headings such as "Official workflow guidance" and "Page-specific advice."
+- If live context does not identify a specific record, omit record-specific claims rather than leading with a missing-context disclaimer.
+- Link one relevant full guide at the end using the supplied Compass path.
 - Never expose a guide that the current user cannot access.
 
 ${sourceBlocks}`.slice(0, MAX_JARVIS_HELP_CONTEXT_CHARACTERS)

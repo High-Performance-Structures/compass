@@ -8,6 +8,7 @@ import {
   searchAllowedHelpGuides,
   type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
+import { CloseHelpButton } from "@/components/help/close-help-button"
 import { Input } from "@/components/ui/input"
 
 export type HelpGuideSummary = HelpGuidePreview
@@ -60,6 +61,9 @@ export function HelpResourcesLibrary({
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-5 sm:px-6 sm:py-7">
       <header className="border-b border-border pb-6">
+        <div className="mb-4 flex justify-end">
+          <CloseHelpButton />
+        </div>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">

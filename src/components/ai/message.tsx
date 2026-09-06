@@ -11,6 +11,7 @@ import type {
 } from "react"
 import { createContext, memo, useContext, useEffect, useState } from "react"
 import { Streamdown, type Components } from "streamdown"
+import { normalizeAssistantMarkdown } from "@/lib/agent/assistant-markdown"
 import { Button } from "@/components/ui/button"
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -278,11 +279,16 @@ function MessageLink({
   href,
   node: _node,
   onClick,
+  rel,
   target,
   ...props
 }: MessageLinkProps): ReactElement {
   const router = useRouter()
   void _node
+  const resolvedTarget =
+    target ?? (href?.startsWith("/dashboard/help") ? "_blank" : undefined)
+  const resolvedRel =
+    resolvedTarget === "_blank" ? (rel ?? "noopener noreferrer") : rel
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>): void {
     onClick?.(event)
@@ -294,7 +300,8 @@ function MessageLink({
       event.shiftKey ||
       event.altKey ||
       download !== undefined ||
-      href === undefined
+      href === undefined ||
+      (resolvedTarget !== undefined && resolvedTarget !== "_self")
     ) {
       return
     }
@@ -316,7 +323,8 @@ function MessageLink({
       download={download}
       href={href}
       onClick={handleClick}
-      target={target}
+      rel={resolvedRel}
+      target={resolvedTarget}
       {...props}
     />
   )
@@ -327,13 +335,22 @@ const MESSAGE_COMPONENTS: Components = {
 }
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
-      components={MESSAGE_COMPONENTS}
-      {...props}
-    />
-  ),
+  ({ className, children, ...props }: MessageResponseProps) => {
+    const compactChildren =
+      typeof children === "string"
+        ? normalizeAssistantMarkdown(children)
+        : children
+
+    return (
+      <Streamdown
+        className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+        components={MESSAGE_COMPONENTS}
+        {...props}
+      >
+        {compactChildren}
+      </Streamdown>
+    )
+  },
   (prevProps, nextProps) => prevProps.children === nextProps.children,
 )
 
