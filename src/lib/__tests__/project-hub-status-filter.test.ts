@@ -8,6 +8,7 @@ import {
   type ProjectHubStatusFilter,
   type ProjectHubStatusProject,
 } from "@/lib/project-hub-status-filter"
+import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 
 const ESTIMATING_PROJECT: ProjectHubStatusProject = {
   jobStatusId: "estimating",
@@ -28,7 +29,7 @@ const PROJECTS: readonly ProjectHubStatusProject[] = [
 ]
 
 describe("project hub status filters", () => {
-  it("offers lifecycle views and every job status represented in the project list", () => {
+  it("offers lifecycle views and the complete approved job status directory", () => {
     const options = projectHubStatusFilterOptions(PROJECTS)
 
     expect(
@@ -44,17 +45,31 @@ describe("project hub status filters", () => {
       ["Archive", 0],
       ["Other", 0],
     ])
+    const jobStatusOptions = options.filter(
+      (option) => option.group === "job-statuses",
+    )
+    expect(jobStatusOptions).toHaveLength(
+      PROJECT_JOB_STATUS_DEFINITIONS.length + 1,
+    )
     expect(
-      options
-        .filter((option) => option.group === "job-statuses")
-        .map((option) => [option.label, option.count]),
+      jobStatusOptions.map((option) => option.label),
     ).toEqual([
-      ["Estimating", 2],
-      ["Under Construction", 1],
-      ["Complete", 1],
-      ["Inactive", 1],
-      ["Coverage Review", 1],
+      ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.label),
+      "Coverage Review",
     ])
+    expect(
+      jobStatusOptions.find((option) => option.label === "Estimating")?.count,
+    ).toBe(2)
+    expect(
+      jobStatusOptions.find(
+        (option) => option.label === "Awaiting Payment",
+      )?.count,
+    ).toBe(0)
+    expect(
+      jobStatusOptions.find(
+        (option) => option.label === "Coverage Review",
+      )?.count,
+    ).toBe(1)
   })
 
   it("matches broad lifecycle views separately from exact job statuses", () => {
