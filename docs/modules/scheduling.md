@@ -208,6 +208,8 @@ Assigned owners and vendors can confirm availability, report a conflict with a
 note, or propose a start date and duration. They may update their response if a
 previously confirmed commitment becomes impossible. Responses are recorded and
 notify the internal team; proposed dates do not update the published schedule.
-Staff review proposals and publish any approved schedule changes. Owner phase
+The internal item editor shows individual confirmations, conflicts, notes, and
+proposals. **Use proposed dates** fills the editor without saving; staff review,
+save, and publish any approved schedule changes. Owner phase
 summaries also include their own actionable published commitments, without
 exposing other participants’ detailed assignments or private responses.

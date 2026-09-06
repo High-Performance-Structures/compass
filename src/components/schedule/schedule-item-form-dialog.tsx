@@ -81,6 +81,7 @@ import {
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
+import { ScheduleCommitmentResponses } from "@/components/schedule/schedule-commitment-responses"
 import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
 import { DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS } from "@/components/schedule/schedule-item-defaults"
 import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
@@ -732,7 +733,7 @@ export function ScheduleItemFormDialog({
     }
     setChangeProposal(null)
     setAcceptProposalOnSave(false)
-    toast.success("The proposed dates were declined. The subcontractor can respond again.")
+    toast.success("The proposed dates were declined. The assignee can respond again.")
     router.refresh()
   }
 
@@ -1422,6 +1423,11 @@ export function ScheduleItemFormDialog({
                             .replace(/_/g, " ")
                             .replace(/^\w/, (letter) => letter.toUpperCase())}
                         </span>
+                        {editingTask.proposalNote && editingTask.confirmationStatus !== "proposed" && (
+                          <p className="w-full whitespace-pre-wrap text-muted-foreground">
+                            Response note: {editingTask.proposalNote}
+                          </p>
+                        )}
                         {editingTask.confirmationStatus !== "confirmed" && (
                           <Button
                             type="button"
@@ -1436,6 +1442,21 @@ export function ScheduleItemFormDialog({
                       </div>
                     )}
                   </div>
+
+                  {isEditing && open && (
+                    <ScheduleCommitmentResponses
+                      taskId={editingTask.id}
+                      onUseProposal={(proposal) => {
+                        if (proposal.startDate !== null) {
+                          form.setValue("startDate", proposal.startDate, { shouldDirty: true, shouldValidate: true })
+                        }
+                        if (proposal.workdays !== null) {
+                          form.setValue("workdays", proposal.workdays, { shouldDirty: true, shouldValidate: true })
+                        }
+                        toast.info("Proposed dates loaded. Review and save, then publish the schedule.")
+                      }}
+                    />
+                  )}
 
                   {isEditing && <ScheduleItemLinks taskId={editingTask.id} />}
 

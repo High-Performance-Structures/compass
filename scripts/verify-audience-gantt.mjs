@@ -20,6 +20,8 @@ async function record(kind,id,input){document.body.dataset.response=JSON.stringi
 export const respondToScheduleTaskAssignee=(id,input)=>record('assignment',id,input);
 export const respondToScheduleTaskConfirmation=(id,response,note)=>record('legacy',id,{response,note});
 export const proposeScheduleTaskChange=(id,input)=>record('proposal',id,input);
+export async function getScheduleTaskAssignees(){if(new URLSearchParams(location.search).has('fail'))throw Error('Unavailable');return [{id:'assignment-a',displayName:'Alex Owner',responseStatus:'declined',responseMessage:'Windows delayed one week.',proposedStartDate:null,proposedWorkdays:null},{id:'assignment-b',displayName:'Stoneworks',responseStatus:'proposed',responseMessage:'Crew available Monday.',proposedStartDate:'2026-09-21',proposedWorkdays:5}]}
+
 `
 )
 await writeFile(
@@ -32,12 +34,13 @@ await writeFile(
 import React from 'react';import {createRoot} from 'react-dom/client';
 import {ProjectAudienceSchedule} from '@/components/projects/project-audience-schedule';
 import {GanttChart} from '@/components/schedule/gantt-chart';
+import {ScheduleCommitmentResponses} from '@/components/schedule/schedule-commitment-responses';
 const query=new URLSearchParams(location.search);const owner=query.has('owner');const readonly=query.has('readonly');
 const titles=['Owner-supplied windows delivered','Foundation and waterproofing','Custom steel framing','Roof dry-in','Owner-installed lighting','Stone and millwork','Final walkthrough'];
 const items=Array.from({length:24},(_,i)=>({id:'task-'+i,title:titles[i%titles.length]+(i>=titles.length?' '+i:''),startDate:'2026-09-'+String(7+i%18).padStart(2,'0'),endDate:'2026-09-'+String(10+i%18).padStart(2,'0'),workdays:3,status:i===1?'COMPLETE':'PENDING',phase:'Construction',displayColor:['blue','green','purple','orange','yellow','teal','gray'][i%7],assignedTo:i===0?'Alex Owner':'Stoneworks',percentComplete:i===1?100:i===2?40:0,isMilestone:i===0,confirmationRequired:true,confirmationStatus:'confirmed',viewerCanConfirm:i===4,proposedStartDate:null,proposedWorkdays:null,proposalNote:null,proposalSubmittedAt:null,assignees:i===4?[]:[{id:'assignment-'+i,assignedUserId:owner?'owner':'vendor',projectContactId:null,displayName:owner?'Alex Owner':'Stoneworks',responseStatus:i===0?'confirmed':'pending',dateResponseStatus:'pending',durationResponseStatus:'pending',proposedStartDate:null,proposedWorkdays:null,responseMessage:null,viewerCanRespond:i===0}]}));
 items.push({...items[1],id:'safe-title',title:'Trim <image href="bad" onload="window.unsafe=true" /> & finish',assignees:[]});
 const tasks=items.map(i=>({id:i.id,name:i.title,start:i.startDate,end:i.endDate,progress:i.percentComplete,dependencies:'',custom_class:'display-color-'+i.displayColor,displayColor:i.displayColor,isMilestone:i.isMilestone,isCriticalPath:false}));
-createRoot(document.getElementById('root')).render(<main style={{padding:16}}>{query.has('internal')?<div style={{height:600}}><GanttChart tasks={tasks} viewMode="Week" readOnly={readonly} onDateChange={()=>document.body.dataset.dateChanged='yes'} onProgressChange={()=>document.body.dataset.progressChanged='yes'} /></div>:<ProjectAudienceSchedule audienceLabel={owner?'Owner':'Vendor'} items={items} publicationAvailable projectId="project-a" projectName="Cedar Ridge Residence" projectNumber="CR-26" />}</main>);
+createRoot(document.getElementById('root')).render(<main style={{padding:16}}>{query.has('commitments')?<ScheduleCommitmentResponses taskId="task-1" onUseProposal={(p)=>document.body.dataset.applied=JSON.stringify(p)} />:query.has('internal')?<div style={{height:600}}><GanttChart tasks={tasks} viewMode="Week" readOnly={readonly} onDateChange={()=>document.body.dataset.dateChanged='yes'} onProgressChange={()=>document.body.dataset.progressChanged='yes'} /></div>:<ProjectAudienceSchedule audienceLabel={owner?'Owner':'Vendor'} items={items} publicationAvailable projectId="project-a" projectName="Cedar Ridge Residence" projectNumber="CR-26" />}</main>);
 `
 )
 await build({
@@ -181,7 +184,13 @@ try {
   )
   assert.equal(response.input.proposedStartDate, "2026-09-21")
   assert.equal(response.input.proposedWorkdays, 5)
-  await page.getByRole("dialog", { name: "Owner-supplied windows delivered", exact: true }).getByRole("button", { name: "Close", exact: true }).click()
+  await page
+    .getByRole("dialog", {
+      name: "Owner-supplied windows delivered",
+      exact: true
+    })
+    .getByRole("button", { name: "Close", exact: true })
+    .click()
   await page
     .getByRole("button", { name: "Foundation and waterproofing", exact: true })
     .click()
@@ -210,9 +219,17 @@ try {
         (await page.locator(".gantt-container").evaluate((el) => el.scrollTop))
     ) < 2
   )
-  await page.locator(".gantt-container").evaluate((el) => { el.scrollTop = el.scrollHeight })
+  await page.locator(".gantt-container").evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
   await page.waitForTimeout(100)
-  assert.ok(Math.abs(await list.evaluate(el => el.scrollTop) - await page.locator(".gantt-container").evaluate(el => el.scrollTop)) < 2, "bottom rows stay aligned")
+  assert.ok(
+    Math.abs(
+      (await list.evaluate((el) => el.scrollTop)) -
+        (await page.locator(".gantt-container").evaluate((el) => el.scrollTop))
+    ) < 2,
+    "bottom rows stay aligned"
+  )
   await page.getByRole("button", { name: "List", exact: true }).click()
   assert.ok(
     (await page.getByRole("button", { name: "Confirm availability" }).count()) >
@@ -288,18 +305,39 @@ try {
     path: path.join(screenshots, "internal-gantt-reference.png"),
     fullPage: true
   })
-  await page.locator(".popup-wrapper").evaluate(el => { el.style.display = "none" })
+  await page.locator(".popup-wrapper").evaluate((el) => {
+    el.style.display = "none"
+  })
   const editableBar = page.locator('.bar-wrapper[data-id="task-2"] .bar')
   const editableBounds = await editableBar.boundingBox()
   assert.ok(editableBounds)
   await page.mouse.move(editableBounds.x + 10, editableBounds.y + 10)
   await page.mouse.down()
-  await page.mouse.move(editableBounds.x + 150, editableBounds.y + 10, {steps: 10})
+  await page.mouse.move(editableBounds.x + 150, editableBounds.y + 10, {
+    steps: 10
+  })
   await page.mouse.up()
   await page.waitForFunction(() => document.body.dataset.dateChanged === "yes")
   await page.goto(url + "?internal&readonly")
   await page.locator(".bar-wrapper").first().waitFor()
   assert.equal(await page.locator(".handle").count(), 0)
+  await page.goto(url + "?commitments")
+  await page.getByText("Windows delayed one week.", { exact: true }).waitFor()
+  await page.getByText("Cannot commit", { exact: true }).waitFor()
+  await page
+    .getByRole("button", { name: "Use proposed dates", exact: true })
+    .click()
+  assert.deepEqual(
+    JSON.parse(await page.locator("body").getAttribute("data-applied")),
+    { startDate: "2026-09-21", workdays: 5 }
+  )
+  assert.equal(await page.locator("body").getAttribute("data-response"), null)
+  await page.goto(url + "?commitments&fail")
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Unable to load individual responses" })
+    .waitFor()
+  await page.getByRole("button", { name: "Retry", exact: true }).waitFor()
   assert.deepEqual(errors, [])
   console.log(JSON.stringify({ passed: true, screenshots, geometry }))
 } finally {
