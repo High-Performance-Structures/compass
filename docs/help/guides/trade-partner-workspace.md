@@ -88,7 +88,7 @@ These areas do not expose the team's entire photo library or Drive folder. Befor
 
 Your workspace is limited to projects and company assignments tied to your account. Do not share sign-in links, authentication codes, pricing, documents, or project information outside the intended team. If you see another company's work or an unfamiliar project, stop and report it immediately.
 
-Use the Compass Help symbol for a short explanation and **Read full guide** for the searchable procedure. For a Compass product or access problem, email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request) or call or text [719-896-6149](tel:+17198966149), and include the project, page, record number, approximate time, what you expected, and what happened. Do not include passwords, sign-in links, or authentication codes. Continue to use your project contact or project conversation for scope, schedule, pricing, approvals, deliveries, and field coordination.
+Small compass-and-question-mark symbols beside selected controls are Help beacons. Hover over one for a short explanation, click or tap it for a compact Help card, or double-click it to open the matching full guide without replacing your workspace. For a Compass product or access problem, email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request) or call or text [719-896-6149](tel:+17198966149), and include the project, page, record number, approximate time, what you expected, and what happened. Do not include passwords, sign-in links, or authentication codes. Continue to use your project contact or project conversation for scope, schedule, pricing, approvals, deliveries, and field coordination.
 
 ## Quick Check {#quick-check}
 

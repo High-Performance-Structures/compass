@@ -7,12 +7,12 @@
   "summary": "Find projects, switch jobs without losing your workflow, and confirm project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "status", "project switcher", "context"],
+  "tags": ["projects", "navigation", "status", "project switcher", "context", "help beacon", "tooltip"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-09-06"
 }
 ---
 
@@ -28,6 +28,10 @@ The active project determines where Compass saves records and uploads. When a pr
 
 Global pages such as Schedules, RFIs, Purchase Orders, Conversations, Contacts, and Files may show work from several projects. A project page narrows that tool to one job. Use the project selector when a global entry point asks you to choose context.
 
+## Use Help Without Losing Context {#help-beacons}
+
+The Help icon in the main header opens the searchable guide drawer without leaving the current page. Small compass-and-question-mark beacons appear beside selected tools that need extra explanation. Hover or focus a beacon for a short tooltip, click or tap it for a compact Help card, or double-click it to open the matching full guide in a separate tab. Close that guide to return to the unchanged project workspace.
+
 ## Project Status {#project-status}
 
 Status controls how a job appears in the Project Hub. Typical states distinguish active work, leads, warranty work, completed jobs, inactive work, and archived records. Only authorized users should change status, and historical projects should be retained rather than recreated.
@@ -41,4 +45,5 @@ Stop before saving. Switch to the correct job and confirm its number and client.
 - [ ] I verified the project number and department.
 - [ ] I searched the queue before creating a record.
 - [ ] I used the project switcher to preserve workflow context.
+- [ ] I know the small compass-and-question-mark beacons provide contextual Help.
 - [ ] I stopped and reported anything saved to the wrong job.

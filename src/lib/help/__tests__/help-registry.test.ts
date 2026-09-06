@@ -127,6 +127,19 @@ describe("help registry", () => {
     }
   })
 
+  it("teaches users how to recognize and use contextual Help beacons", () => {
+    const supportGuide = getHelpGuide("requesting-help")
+    const navigationGuide = getHelpGuide("navigating-projects")
+
+    expect(supportGuide?.content).toContain("compass ring with a question mark")
+    expect(supportGuide?.content).toContain("Hover over a beacon")
+    expect(supportGuide?.content).toContain("Double-clicking a beacon")
+    expect(supportGuide?.content).toContain("Close help")
+    expect(navigationGuide?.content).toContain(
+      "compass-and-question-mark beacons"
+    )
+  })
+
   it("retains canonical audience and resource-permission metadata", () => {
     expect(helpAudienceForRole("client")).toBe("owner")
     expect(helpAudienceForRole("field_superintendent")).toBe("staff")

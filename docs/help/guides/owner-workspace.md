@@ -89,7 +89,7 @@ Open a claim to follow its status, planned visit, attachments, and owner-visible
 
 Your workspace is limited to projects assigned to your account. Do not share sign-in links, authentication codes, downloaded financial documents, or private project files. If you see an unfamiliar project or information that appears intended for another audience, stop and report it to the project team immediately.
 
-Use the Compass Help symbol for a short explanation and **Read full guide** for the searchable procedure. For a Compass product or access problem, email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request) or call or text [719-896-6149](tel:+17198966149), and include the project, page, approximate time, what you expected, and what happened. Do not include passwords, sign-in links, or authentication codes. Continue to use your project contact or project conversation for schedule, pricing, approval, warranty, and construction questions.
+Small compass-and-question-mark symbols beside selected controls are Help beacons. Hover over one for a short explanation, click or tap it for a compact Help card, or double-click it to open the matching full guide without replacing your workspace. For a Compass product or access problem, email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request) or call or text [719-896-6149](tel:+17198966149), and include the project, page, approximate time, what you expected, and what happened. Do not include passwords, sign-in links, or authentication codes. Continue to use your project contact or project conversation for schedule, pricing, approval, warranty, and construction questions.
 
 ## Quick Check {#quick-check}
 
