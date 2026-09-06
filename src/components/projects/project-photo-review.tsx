@@ -58,6 +58,10 @@ import {
   projectInternalPhotoUrl,
   resolvePhotoImageSource,
 } from "@/lib/photo-sources"
+import {
+  nextPhotoImageRetryAttempt,
+  photoImageSourceForRetry,
+} from "@/lib/photos/image-retry"
 import { adjacentPhoto } from "@/lib/photos/carousel"
 
 type VisibilityFilter =
@@ -287,6 +291,20 @@ export function ProjectPhotoReview({
   const [failedImageIds, setFailedImageIds] = React.useState<readonly string[]>(
     []
   )
+  const [imageRetryAttempts, setImageRetryAttempts] = React.useState<
+    Readonly<Record<string, number>>
+  >({})
+  const imageRetryAttemptsRef = React.useRef<Record<string, number>>({})
+  const imageRetryTimersRef = React.useRef<Record<string, number>>({})
+
+  React.useEffect(
+    () => () => {
+      for (const timerId of Object.values(imageRetryTimersRef.current)) {
+        window.clearTimeout(timerId)
+      }
+    },
+    []
+  )
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
@@ -389,10 +407,28 @@ export function ProjectPhotoReview({
   }, [filteredPhotos.length, previewPhoto, showAdjacentPreview])
 
   function markImageFailed(photoId: string): void {
-    setFailedImageIds((current) => {
-      if (current.includes(photoId)) return current
-      return [...current, photoId]
-    })
+    if (imageRetryTimersRef.current[photoId] !== undefined) return
+    const currentAttempt = imageRetryAttemptsRef.current[photoId] ?? 0
+    const nextAttempt = nextPhotoImageRetryAttempt(currentAttempt)
+    if (nextAttempt === null) {
+      setFailedImageIds((current) => {
+        if (current.includes(photoId)) return current
+        return [...current, photoId]
+      })
+      return
+    }
+
+    imageRetryAttemptsRef.current[photoId] = nextAttempt
+    imageRetryTimersRef.current[photoId] = window.setTimeout(
+      () => {
+        delete imageRetryTimersRef.current[photoId]
+        setImageRetryAttempts((current) => ({
+          ...current,
+          [photoId]: nextAttempt,
+        }))
+      },
+      250 * nextAttempt
+    )
   }
 
   function resetUploadForm(): void {
@@ -900,9 +936,11 @@ export function ProjectPhotoReview({
               ...photo,
               thumbnailUrl: internalUrl,
             })
-            const imageSrc = failedImageSet.has(photo.id)
-              ? null
-              : resolvedImage.src
+            const retryAttempt = imageRetryAttempts[photo.id] ?? 0
+            const imageSrc =
+              failedImageSet.has(photo.id) || resolvedImage.src === null
+                ? null
+                : photoImageSourceForRetry(resolvedImage.src, retryAttempt)
             const sourceName = sourceLabel(photo.sourceSystem)
 
             return (
@@ -921,6 +959,7 @@ export function ProjectPhotoReview({
                   <div className="relative aspect-[4/3] bg-muted">
                     {imageSrc ? (
                       <Image
+                        key={`${photo.id}-${retryAttempt}`}
                         src={imageSrc}
                         alt={photo.caption ?? photo.fileName}
                         fill
@@ -1060,9 +1099,15 @@ export function ProjectPhotoReview({
                     previewPhoto.id
                   ),
                 })
-                const imageSrc = failedImageSet.has(previewPhoto.id)
-                  ? null
-                  : resolvedImage.src
+                const retryAttempt = imageRetryAttempts[previewPhoto.id] ?? 0
+                const imageSrc =
+                  failedImageSet.has(previewPhoto.id) ||
+                  resolvedImage.src === null
+                    ? null
+                    : photoImageSourceForRetry(
+                        resolvedImage.src,
+                        retryAttempt
+                      )
 
                 return (
                   <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">
@@ -1079,6 +1124,7 @@ export function ProjectPhotoReview({
                       <div className="relative min-h-[55vh] flex-1">
                         {imageSrc ? (
                           <Image
+                            key={`${previewPhoto.id}-${retryAttempt}`}
                             src={imageSrc}
                             alt={previewPhoto.caption ?? previewPhoto.fileName}
                             fill
