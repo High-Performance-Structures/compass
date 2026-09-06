@@ -258,6 +258,17 @@ The reference poller is
 `~/.config/systemd/user/`, then enable it only after the filtered production
 endpoint is deployed.
 
+When an `agent.prompt` advertises an explicitly attached screenshot, the
+poller fetches it from the event-bound signed route at
+`/api/integrations/jarvis/events/<event-id>/visuals`, validates the same image
+count, media-type, and size limits enforced by Compass, and adds it only to
+the newest user message sent to Hermes. The pull payload's suggested endpoint
+is informational and is never followed, which prevents an event from turning
+the private poller into an arbitrary URL fetcher. A transient signed-fetch
+failure leaves the event pending for retry rather than producing a misleading
+text-only answer; malformed visual data fails closed. Image bytes are removed
+from the stored event after a terminal acknowledgement.
+
 Requester lifecycle delivery uses the separate deterministic notifier at
 `scripts/jarvis-feedback-notifier.py` and the
 `ops/systemd/compass-jarvis-feedback-notifier.service` template. It pulls only

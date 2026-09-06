@@ -1,5 +1,6 @@
 import importlib.util
 import hashlib
+import io
 import os
 import tempfile
 import unittest
@@ -302,6 +303,149 @@ class CompassSearchContextTests(unittest.TestCase):
         }
 
         self.assertFalse(MODULE.confirms_pending_feedback(payload))
+
+
+class CompassVisualContextTests(unittest.TestCase):
+    @staticmethod
+    def visual() -> dict[str, str]:
+        return {
+            "filename": "compass-screen.png",
+            "mediaType": "image/png",
+            "dataUrl": "data:image/png;base64,aW1hZ2U=",
+        }
+
+    def test_visuals_are_fetched_from_the_signed_event_route(self) -> None:
+        visual = self.visual()
+        payload = {
+            "visualContext": {
+                "explicitUserAttachments": True,
+                "available": True,
+                "endpoint": "https://attacker.example/ignored",
+            }
+        }
+        response = {
+            "eventId": "event/a",
+            "explicitUserAttachments": True,
+            "images": [visual],
+        }
+
+        with patch.object(
+            MODULE,
+            "compass_request",
+            return_value=response,
+        ) as request:
+            result = MODULE.compass_visuals("event/a", payload)
+
+        self.assertEqual(result, [visual])
+        request.assert_called_once_with(
+            "GET",
+            "/api/integrations/jarvis/events/event%2Fa/visuals",
+            max_response_bytes=MODULE.MAX_VISUAL_RESPONSE_BYTES,
+        )
+
+    def test_visuals_fail_closed_on_invalid_media(self) -> None:
+        response = {
+            "eventId": "event-1",
+            "explicitUserAttachments": True,
+            "images": [
+                {
+                    "filename": "screen.svg",
+                    "mediaType": "image/svg+xml",
+                    "dataUrl": "data:image/svg+xml;base64,PHN2Zz4=",
+                }
+            ],
+        }
+        payload = {
+            "visualContext": {
+                "explicitUserAttachments": True,
+                "available": True,
+            }
+        }
+
+        with patch.object(
+            MODULE,
+            "compass_request",
+            return_value=response,
+        ):
+            with self.assertRaises(RuntimeError):
+                MODULE.compass_visuals("event-1", payload)
+
+    def test_latest_user_message_receives_multimodal_content(self) -> None:
+        messages = [
+            {"role": "user", "content": "Earlier question"},
+            {"role": "assistant", "content": "Earlier response"},
+            {"role": "user", "content": "What is in this screenshot?"},
+        ]
+
+        augmented = MODULE.messages_with_visuals(
+            messages,
+            [self.visual()],
+        )
+
+        self.assertEqual(messages[-1]["content"], "What is in this screenshot?")
+        self.assertEqual(augmented[0], messages[0])
+        self.assertEqual(
+            augmented[-1]["content"],
+            [
+                {"type": "text", "text": "What is in this screenshot?"},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/png;base64,aW1hZ2U="
+                    },
+                },
+            ],
+        )
+
+    def test_handle_event_passes_visuals_and_records_usage(self) -> None:
+        visual = self.visual()
+        event = {
+            "id": "event-visual",
+            "eventType": "agent.prompt",
+            "payload": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "What is in this screenshot?",
+                    }
+                ]
+            },
+        }
+        completion = {
+            "model": "hermes-agent",
+            "choices": [
+                {
+                    "message": {
+                        "content": MODULE.json.dumps(
+                            {
+                                "response": "The screenshot shows Compass.",
+                                "feedback": None,
+                            }
+                        )
+                    }
+                }
+            ],
+        }
+
+        with (
+            patch.object(MODULE, "compass_search", return_value=None),
+            patch.object(MODULE, "compass_visuals", return_value=[visual]),
+            patch.object(
+                MODULE,
+                "hermes_request",
+                return_value=completion,
+            ) as hermes,
+            patch.object(MODULE, "acknowledge") as acknowledge,
+        ):
+            MODULE.handle_event(event)
+
+        self.assertEqual(hermes.call_args.args[2], [visual])
+        result = acknowledge.call_args.args[1]["result"]
+        self.assertTrue(result["visualContextUsed"])
+
+    def test_json_response_rejects_oversized_payload(self) -> None:
+        with self.assertRaises(RuntimeError):
+            MODULE.read_json_response(io.BytesIO(b"{\"x\":123}"), 4)
 
 
 class CompassMemoryScopeTests(unittest.TestCase):
