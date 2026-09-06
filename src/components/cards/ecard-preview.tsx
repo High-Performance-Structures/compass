@@ -1,6 +1,7 @@
 import { IconGift, IconSparkles } from "@tabler/icons-react"
 
 import type { EcardTemplate } from "@/lib/greeting-cards/templates"
+import { formatGiftbitClaimExpiry } from "@/lib/giftbit/claim-window"
 
 export function EcardPreview({
   template,
@@ -9,6 +10,7 @@ export function EcardPreview({
   wishes,
   giftAmountCents,
   giftClaimUrl,
+  giftExpiresOn,
   compact = false,
 }: {
   readonly template: EcardTemplate
@@ -17,6 +19,7 @@ export function EcardPreview({
   readonly wishes: string
   readonly giftAmountCents: number | null
   readonly giftClaimUrl?: string | null
+  readonly giftExpiresOn?: string | null
   readonly compact?: boolean
 }): React.ReactElement {
   return (
@@ -56,6 +59,12 @@ export function EcardPreview({
             <p className="mt-1 text-sm text-muted-foreground">
               Choose from eligible Giftbit rewards available in the United States.
             </p>
+            {giftExpiresOn ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Claim this reward by {formatGiftbitClaimExpiry(giftExpiresOn)}.
+                Once claimed, the selected retailer&apos;s gift-card terms apply.
+              </p>
+            ) : null}
             {giftClaimUrl ? (
               <a
                 href={giftClaimUrl}

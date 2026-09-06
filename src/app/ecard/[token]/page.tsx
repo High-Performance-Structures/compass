@@ -32,6 +32,7 @@ export default async function EcardPage({
       wishes: greetingCardRequests.wishes,
       giftAmountCents: greetingCardRequests.giftAmountCents,
       giftClaimUrl: greetingCardRequests.giftClaimUrl,
+      giftExpiresOn: greetingCardRequests.giftExpiresOn,
     })
     .from(greetingCardRequests)
     .where(
@@ -58,6 +59,7 @@ export default async function EcardPage({
           wishes={row.wishes}
           giftAmountCents={row.giftAmountCents}
           giftClaimUrl={row.giftClaimUrl}
+          giftExpiresOn={row.giftExpiresOn}
         />
         <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
           This private card was sent by High Performance Structures Inc.

@@ -183,6 +183,7 @@ export const greetingCardRequests = sqliteTable(
     giftRewardUuid: text("gift_reward_uuid"),
     giftClaimUrl: text("gift_claim_url"),
     giftStatus: text("gift_status"),
+    giftExpiresOn: text("gift_expires_on"),
     publicToken: text("public_token"),
     emailProvider: text("email_provider"),
     emailProviderMessageId: text("email_provider_message_id"),

@@ -346,7 +346,7 @@ function CardRequestRow({
                     {request.deliveryMethod === "digital_email"
                       ? `Compass will email the private HPS e-card to ${request.recipient.email}.${
                           request.gift
-                            ? ` This also purchases a $${(request.gift.amountCents / 100).toFixed(2)} Giftbit reward.`
+                            ? ` This also purchases a $${(request.gift.amountCents / 100).toFixed(2)} Giftbit reward with a 363-day claim window.`
                             : " No gift will be purchased."
                         }`
                       : `This creates a billable Handwrytten order for ${recipientName}. Handwrytten will write, stamp, and mail the physical card.`}

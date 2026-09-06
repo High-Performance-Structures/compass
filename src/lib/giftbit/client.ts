@@ -36,6 +36,7 @@ export type GiftbitClient = {
     readonly id: string
     readonly priceInCents: number
     readonly region: "USA"
+    readonly expiresOn: string
   }) => Promise<GiftbitResult<GiftbitDirectLink>>
   readonly listRewards: (
     campaignUuid: string,
@@ -107,6 +108,7 @@ export function createGiftbitClient(options: GiftbitClientOptions): GiftbitClien
     readonly id: string
     readonly priceInCents: number
     readonly region: "USA"
+    readonly expiresOn: string
   }): Promise<GiftbitResult<GiftbitDirectLink>> {
     let response: Response
     try {
@@ -119,6 +121,7 @@ export function createGiftbitClient(options: GiftbitClientOptions): GiftbitClien
           price_in_cents: input.priceInCents,
           region: input.region,
           link_count: 1,
+          expiry: input.expiresOn,
         }),
       })
     } catch (error) {

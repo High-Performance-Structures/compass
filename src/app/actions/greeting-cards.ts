@@ -2,10 +2,12 @@
 
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { refreshSession } from "@workos-inc/authkit-nextjs"
 
 import { getDb } from "@/db"
 import { greetingCardRequests, users } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
+import { isWorkOSConfigured } from "@/lib/auth-config"
 import { getCloudflareContext } from "@/lib/db"
 import {
   buildEcardEmail,
@@ -27,6 +29,7 @@ import {
 import { getEcardTemplate } from "@/lib/greeting-cards/templates"
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { createGiftbitClient } from "@/lib/giftbit/client"
+import { giftbitClaimExpiryDate } from "@/lib/giftbit/claim-window"
 import { getGiftbitConfig } from "@/lib/giftbit/config"
 import {
   createHandwryttenClient,
@@ -56,6 +59,20 @@ type ActionResult<T> =
   | { readonly success: false; readonly error: string }
 
 const MAX_NOTE_LENGTH = 500
+
+export async function refreshGreetingCardSession(): Promise<ActionResult<null>> {
+  if (!isWorkOSConfigured()) return { success: true, data: null }
+  try {
+    const session = await refreshSession()
+    return session.user
+      ? { success: true, data: null }
+      : expiredSessionResult()
+  } catch (error) {
+    return isExpiredSessionError(error)
+      ? expiredSessionResult()
+      : actionError(error, "Compass could not refresh your session. Try again.")
+  }
+}
 
 export async function getGreetingCardCatalog(): Promise<
   ActionResult<readonly GreetingCardCatalogItem[]>
@@ -139,6 +156,7 @@ export async function getGreetingCardRequests(): Promise<
         giftRegion: greetingCardRequests.giftRegion,
         giftCampaignUuid: greetingCardRequests.giftCampaignUuid,
         giftStatus: greetingCardRequests.giftStatus,
+        giftExpiresOn: greetingCardRequests.giftExpiresOn,
         approvalNote: greetingCardRequests.approvalNote,
         providerError: greetingCardRequests.providerError,
         approvedAt: greetingCardRequests.approvedAt,
@@ -174,6 +192,7 @@ export async function getGreetingCardRequests(): Promise<
                 region: "USA",
                 campaignUuid: row.giftCampaignUuid,
                 status: row.giftStatus,
+                expiresOn: row.giftExpiresOn,
               }
             : null,
         recipientType: normalizeGreetingCardRecipientType(row.recipientType),
@@ -468,12 +487,19 @@ export async function releaseGreetingCardRequest(
       }
 
       const releasedAt = new Date().toISOString()
+      // Persist the planned date before calling Giftbit so an uncertain response
+      // can be retried with the same idempotency key and the same request body.
+      const plannedGiftExpiresOn =
+        row.giftAmountCents === null
+          ? null
+          : row.giftExpiresOn ?? giftbitClaimExpiryDate(releasedAt)
       const claimed = await db
         .update(greetingCardRequests)
         .set({
           status: "submitting",
           releasedBy: user.id,
           releasedAt,
+          giftExpiresOn: plannedGiftExpiresOn,
           providerError: null,
           updatedAt: releasedAt,
         })
@@ -493,7 +519,10 @@ export async function releaseGreetingCardRequest(
       let campaignUuid = row.giftCampaignUuid
       let giftClaimUrl = row.giftClaimUrl
       let giftStatus = row.giftStatus
+      let giftExpiresOn = plannedGiftExpiresOn
       if (row.giftAmountCents !== null && giftConfig?.success) {
+        const expiresOn = plannedGiftExpiresOn ?? giftbitClaimExpiryDate(releasedAt)
+        giftExpiresOn = expiresOn
         const giftResult = await createGiftbitClient({
           apiKey: giftConfig.data.apiKey,
           baseUrl: giftConfig.data.baseUrl,
@@ -501,6 +530,7 @@ export async function releaseGreetingCardRequest(
           id: giftbitOrderId(id),
           priceInCents: row.giftAmountCents,
           region: "USA",
+          expiresOn,
         })
         if (!giftResult.success) {
           await restoreReleasedRequest({
@@ -522,6 +552,7 @@ export async function releaseGreetingCardRequest(
             giftCampaignUuid: campaignUuid,
             giftClaimUrl,
             giftStatus,
+            giftExpiresOn,
             updatedAt: new Date().toISOString(),
           })
           .where(
@@ -596,6 +627,7 @@ export async function releaseGreetingCardRequest(
           giftCampaignUuid: campaignUuid,
           giftClaimUrl,
           giftStatus,
+          giftExpiresOn,
           emailProvider: emailResult.provider,
           emailProviderMessageId: emailResult.providerMessageId,
           status: "submitted",
@@ -1063,5 +1095,31 @@ function actionError<T>(error: unknown, fallback: string): ActionResult<T> {
   return {
     success: false,
     error: error instanceof Error ? error.message : fallback,
+  }
+}
+
+function isExpiredSessionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  const name = error.name.toLowerCase()
+  const status =
+    typeof error.cause === "object" && error.cause !== null
+      ? Reflect.get(error.cause, "status")
+      : undefined
+  return (
+    message.includes("session has expired") ||
+    message.includes("unauthorized") ||
+    message.includes("invalid_grant") ||
+    message.includes("could not authorize the request") ||
+    name === "unauthorizedexception" ||
+    status === 401 ||
+    isExpiredSessionError(error.cause)
+  )
+}
+
+function expiredSessionResult<T>(): ActionResult<T> {
+  return {
+    success: false,
+    error: "Your Compass session expired. Sign in again, then return to this card and submit it.",
   }
 }
