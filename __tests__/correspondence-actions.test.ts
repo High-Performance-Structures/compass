@@ -46,9 +46,28 @@ describe("correspondence actions against SQLite", () => {
     expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_user_state WHERE user_id='staff-a'").get()).toEqual({ count: 0 })
   })
 
-  it("rejects an unauthorized selection before changing any conversation", async () => {
+  it("bulk saves and removes saved conversations without changing other flags, read state or another user", async () => {
+    insertConversation(database.sqlite, { id: "second", projectId: "project-a", subject: "Second" })
+    insertParticipant(database.sqlite, { id: "second-owner", conversationId: "second", userId: "owner-a", role: "owner" })
+    await setCorrespondenceState("project-a", "thread", { saved: false, followUp: true, archived: true })
+    mocks.context.mockImplementation(async () => context(database, "staff-a", "project-a"))
+    await setCorrespondenceState("project-a", "thread", { saved: true, followUp: false, archived: false })
+    mocks.context.mockImplementation(async () => context(database, "owner-a", "project-a"))
+    for (const action of ["save", "save", "unsave"] as const) {
+      expect((await updateCorrespondenceInbox("project-a", ["thread", "second"], action)).success).toBe(true)
+      const saved = action === "save" ? 1 : 0
+      expect(database.sqlite.prepare("SELECT conversation_id,saved,follow_up,archived FROM correspondence_user_state WHERE user_id='owner-a' ORDER BY conversation_id").all()).toEqual([
+        { conversation_id: "second", saved, follow_up: 0, archived: 0 },
+        { conversation_id: "thread", saved, follow_up: 1, archived: 1 },
+      ])
+      expect(database.sqlite.prepare("SELECT saved,follow_up,archived FROM correspondence_user_state WHERE user_id='staff-a'").get()).toEqual({ saved: 1, follow_up: 0, archived: 0 })
+      expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_recipients WHERE opened_at IS NOT NULL").get()).toEqual({ count: 0 })
+    }
+  })
+
+  it.each(["archive", "save", "unsave"] as const)("rejects an unauthorized %s selection before changing any conversation", async (action) => {
     insertConversation(database.sqlite, { id: "private-thread", projectId: "project-a", subject: "Private" })
-    expect((await updateCorrespondenceInbox("project-a", ["thread", "private-thread"], "archive")).success).toBe(false)
+    expect((await updateCorrespondenceInbox("project-a", ["thread", "private-thread"], action)).success).toBe(false)
     expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_user_state").get()).toEqual({ count: 0 })
     expect((await updateCorrespondenceInbox("project-a", [], "read")).success).toBe(false)
   })

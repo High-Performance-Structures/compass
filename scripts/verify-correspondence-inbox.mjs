@@ -25,7 +25,7 @@ export async function getCorrespondenceInbox(){return {success:true,data:fixture
 export async function getCorrespondenceDetail(project,id){document.body.dataset.detailLoaded=id;return {success:true,data:{conversation:conversations.find(c=>c.id===id),participantVersion:1,hasEarlier:false,draft:null,messages:[{id:'m'+id,sequence:1,source:'compass',authorName:'Jordan Miller',authorUserId:'staff',sentAt:'2026-09-06T12:00:00Z',body:'Please review the cabinet plan and photograph.',recipients:[{name:'Alex',kind:'to'}],attachments:[{id:'photo',name:'Kitchen.jpg',size:1000,contentType:'image/jpeg',available:true},{id:'plan',name:'Plan.pdf',size:1000,contentType:'application/pdf',available:true},{id:'html',name:'Reference.html',size:200,contentType:'text/html',available:true}],editedAt:null,retractedAt:null,delivery:'saved',canEdit:false,readReceipts:[]}]}}}
 export async function searchCorrespondence(project,query){return {success:true,data:{hits:conversations.filter(c=>c.subject.toLowerCase().includes(query.toLowerCase())).map(c=>({conversationId:c.id,messageId:'m'+c.id,subject:c.subject,excerpt:'Matching cabinet detail',sentAt:c.lastActivityAt})),hasMore:false}}}
 export async function markCorrespondenceOpened(project,id){document.body.dataset.opened=id;conversations=conversations.map(c=>c.id===id?{...c,unread:false}:c);return {success:true,data:null}}
-export async function updateCorrespondenceInbox(project,ids,action){if(new URLSearchParams(location.search).has('failBulk'))return {success:false,error:'Update failed; try again.'};document.body.dataset.bulk=JSON.stringify({ids,action});conversations=conversations.map(c=>!ids.includes(c.id)?c:{...c,...(action==='read'?{unread:false}:action==='archive'?{archived:true}:action==='restore'?{archived:false}:{followUp:action==='follow-up'})});return {success:true,data:null}}
+export async function updateCorrespondenceInbox(project,ids,action){if(new URLSearchParams(location.search).has('failBulk'))return {success:false,error:'Update failed; try again.'};document.body.dataset.bulk=JSON.stringify({ids,action});conversations=conversations.map(c=>!ids.includes(c.id)?c:{...c,...(action==='read'?{unread:false}:action==='archive'?{archived:true}:action==='restore'?{archived:false}:action==='save'||action==='unsave'?{saved:action==='save'}:{followUp:action==='follow-up'})});return {success:true,data:null}}
 export async function setCorrespondenceState(){return {success:true,data:null}}
 export async function setCorrespondenceClosed(){return {success:true,data:null}}
 export async function setCorrespondenceReceiptPreference(){return {success:true,data:null}}
@@ -227,6 +227,16 @@ try {
     await inbox
       .getByRole("checkbox", { name: "Select all visible conversations" })
       .click()
+    await inbox.getByRole("button", { name: "Save", exact: true }).click()
+    await inbox.getByRole("status").getByText("3 conversations saved.", { exact: true }).waitFor()
+    await inbox.getByRole("button", { name: "Saved", exact: true }).click()
+    assert.equal(await inbox.getByRole("checkbox", { name: /^Select conversation:/ }).count(), 3)
+    await inbox.getByRole("checkbox", { name: "Select all visible conversations" }).click()
+    await inbox.getByRole("button", { name: "Remove from Saved", exact: true }).click()
+    await inbox.getByText("No conversations match this view.").waitFor()
+    await inbox.getByRole("status").getByText("3 conversations removed from Saved.", { exact: true }).waitFor()
+    await inbox.getByRole("button", { name: "Inbox", exact: true }).click()
+    await inbox.getByRole("checkbox", { name: "Select all visible conversations" }).click()
     await inbox.getByRole("button", { name: "Archive", exact: true }).click()
     await inbox.getByText("No conversations match this view.").waitFor()
     await archive.click()
@@ -242,7 +252,7 @@ try {
     await inbox.getByRole("button", { name: "Restore", exact: true }).click()
     await inbox.getByText("No conversations match this view.").waitFor()
     console.log(
-      `PASS ${width}px unread/search, bold, selection, read, needs reply, archive/restore, uncut filters`,
+      `PASS ${width}px unread/search, bold, selection, read, needs reply, save/unsave, archive/restore, uncut filters`,
     )
   }
   await page.setViewportSize({ width: 1280, height: 900 })
