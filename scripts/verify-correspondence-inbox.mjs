@@ -20,12 +20,15 @@ await writeFile(
   `
 const people=[{userId:'staff',name:'Jordan Miller',email:'jordan@example.test',role:'staff',delivery:'compass'}];
 let conversations=['Kitchen cabinets','Roof detail','Cabinet finish','Archived cabinet'].map((subject,index)=>({id:'c'+index,projectId:'project-a',subject,excerpt:'Project correspondence',lastActivityAt:'2026-09-06T12:00:00Z',people,unread:index<2,saved:false,followUp:false,archived:index===3,closed:false,shareReadReceipts:true}));
-export function fixtureInbox(){return {compositionDraft:null,viewerId:'owner',projectName:'Cedar Ridge Residence',workspace:'owner',contacts:people,conversations}}
+export function fixtureInbox(){return {compositionDraft:null,viewerId:'owner',projectName:'Cedar Ridge Residence',workspace:new URLSearchParams(location.search).has('staff')?'staff':'owner',contacts:people,conversations}}
 export async function getCorrespondenceInbox(){return {success:true,data:fixtureInbox()}}
 export async function getCorrespondenceDetail(project,id){document.body.dataset.detailLoaded=id;return {success:true,data:{conversation:conversations.find(c=>c.id===id),participantVersion:1,hasEarlier:false,draft:null,messages:[{id:'m'+id,sequence:1,source:'compass',authorName:'Jordan Miller',authorUserId:'staff',sentAt:'2026-09-06T12:00:00Z',body:'Please review the cabinet plan and photograph.',recipients:[{name:'Alex',kind:'to'}],attachments:[{id:'photo',name:'Kitchen.jpg',size:1000,contentType:'image/jpeg',available:true},{id:'plan',name:'Plan.pdf',size:1000,contentType:'application/pdf',available:true},{id:'html',name:'Reference.html',size:200,contentType:'text/html',available:true}],editedAt:null,retractedAt:null,delivery:'saved',canEdit:false,readReceipts:[]}]}}}
 export async function searchCorrespondence(project,query){return {success:true,data:{hits:conversations.filter(c=>c.subject.toLowerCase().includes(query.toLowerCase())).map(c=>({conversationId:c.id,messageId:'m'+c.id,subject:c.subject,excerpt:'Matching cabinet detail',sentAt:c.lastActivityAt})),hasMore:false}}}
 export async function markCorrespondenceOpened(project,id){document.body.dataset.opened=id;conversations=conversations.map(c=>c.id===id?{...c,unread:false}:c);return {success:true,data:null}}
 export async function updateCorrespondenceInbox(project,ids,action){if(new URLSearchParams(location.search).has('failBulk'))return {success:false,error:'Update failed; try again.'};document.body.dataset.bulk=JSON.stringify({ids,action});conversations=conversations.map(c=>!ids.includes(c.id)?c:{...c,...(action==='read'?{unread:false}:action==='archive'?{archived:true}:action==='restore'?{archived:false}:action==='save'||action==='unsave'?{saved:action==='save'}:{followUp:action==='follow-up'})});return {success:true,data:null}}
+export function fixtureHistory(){return {projectName:'Cedar Ridge Residence',viewerId:'staff',conversations:conversations.slice(0,2).map(c=>({id:c.id,subject:c.subject,authorName:'Former employee',excerpt:c.excerpt,sentAt:c.lastActivityAt,sourceSentDisplay:null,sourceSentAt:null})),nextCursor:{sentAt:'2026-09-06',conversationId:'c1'}}}
+export async function getProjectMessageHistory(project,query,cursor){const all=conversations.map(c=>({id:c.id,subject:c.subject,authorName:'Former employee',excerpt:c.excerpt,sentAt:c.lastActivityAt,sourceSentDisplay:null,sourceSentAt:null}));return {success:true,data:{...fixtureHistory(),conversations:query?all.filter(c=>c.subject.toLowerCase().includes(query.toLowerCase())):cursor?all.slice(2):all.slice(0,2),nextCursor:query||cursor?null:fixtureHistory().nextCursor}}}
+export async function getProjectMessageHistoryDetail(project,id,before){const result=await getCorrespondenceDetail(project,id);return {success:true,data:{...result.data,hasEarlier:!before,draft:null,messages:result.data.messages.map(m=>({...m,id:before?'older-'+m.id:m.id,sequence:before?1:2,authorName:'Former employee',body:before?'Earlier project decision':m.body}))}}}
 export async function setCorrespondenceState(){return {success:true,data:null}}
 export async function setCorrespondenceClosed(){return {success:true,data:null}}
 export async function setCorrespondenceReceiptPreference(){return {success:true,data:null}}
@@ -41,10 +44,12 @@ await writeFile(
   navigationPath,
   `export function useSearchParams(){return new URLSearchParams(location.search)}`,
 )
+const linkPath = path.join(output, "link.tsx")
+await writeFile(linkPath, `import React from 'react';export default function Link(props){return <a {...props} />}`)
 const entry = path.join(output, "entry.tsx")
 await writeFile(
   entry,
-  `import React from 'react';import {createRoot} from 'react-dom/client';import {ProjectCorrespondenceWorkspace} from '@/components/correspondence/project-correspondence-workspace';import {fixtureInbox} from './actions';createRoot(document.getElementById('root')).render(<ProjectCorrespondenceWorkspace projectId="project-a" initialInbox={fixtureInbox()} />);`,
+  `import React from 'react';import {createRoot} from 'react-dom/client';import {ProjectCorrespondenceWorkspace} from '@/components/correspondence/project-correspondence-workspace';import {ProjectMessageHistory} from '@/components/correspondence/project-message-history';import {fixtureInbox,fixtureHistory} from './actions';createRoot(document.getElementById('root')).render(new URLSearchParams(location.search).has("history")?<ProjectMessageHistory projectId="project-a" initialPage={fixtureHistory()} />:<ProjectCorrespondenceWorkspace projectId="project-a" initialInbox={fixtureInbox()} />);`,
 )
 await build({
   entryPoints: [entry],
@@ -66,10 +71,11 @@ await build({
         b.onResolve(
           {
             filter:
-              /^@\/app\/actions\/(project-correspondence|correspondence-inbox)$/,
+              /^@\/app\/actions\/(project-correspondence|correspondence-inbox|project-message-history)$/,
           },
           () => ({ path: actionsPath }),
         )
+        b.onResolve({ filter: /^next\/link$/ }, () => ({ path: linkPath }))
         b.onResolve({ filter: /^next\/navigation$/ }, () => ({
           path: navigationPath,
         }))
@@ -134,7 +140,7 @@ try {
   browser = await chromium.launch({ headless: true })
   const page = await browser.newPage()
   const errors = []
-  page.on("pageerror", (e) => errors.push(e.message))
+  page.on("pageerror", (e) => { errors.push(e.message); console.error(e.message) })
   let downloads = 0
   page.on("download", () => downloads++)
   for (const width of [1440, 768, 390, 320]) {
@@ -254,6 +260,44 @@ try {
     console.log(
       `PASS ${width}px unread/search, bold, selection, read, needs reply, save/unsave, archive/restore, uncut filters`,
     )
+  }
+  for (const width of [1440, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(origin + "?staff=1")
+    await page.getByRole("link", { name: "Global", exact: true }).waitFor()
+    assert.equal(await page.getByRole("link", { name: "Global", exact: true }).getAttribute("href"), "/dashboard/projects/project-a/messages/global")
+    await page.goto(origin)
+    assert.equal(await page.getByRole("link", { name: "Global", exact: true }).count(), 0)
+    await page.goto(origin + "?history=1")
+    const history = page.getByRole("complementary", { name: "Global message history" })
+    await history.getByRole("button", { name: /Kitchen cabinets/ }).waitFor()
+    await history.getByRole("button", { name: "Load more conversations" }).click()
+    await history.getByRole("button", { name: /Archived cabinet/ }).waitFor()
+    await history.getByRole("searchbox").fill("Roof")
+    await history.getByRole("button", { name: "Search global history" }).click()
+    await history.getByRole("button", { name: /Kitchen cabinets/ }).waitFor({ state: "detached" })
+    await history.getByRole("button", { name: /Roof detail/ }).click()
+    const stream = page.getByRole("region", { name: "Project conversation history" })
+    await stream.getByRole("heading", { name: "Roof detail" }).waitFor()
+    assert.equal(await stream.getByRole("button", { name: "Reply", exact: true }).count(), 0)
+    assert.equal(await stream.getByRole("button", { name: "Edit", exact: true }).count(), 0)
+    assert.equal(await page.locator("[data-correspondence-message-id]").count(), 0)
+    assert.equal(await page.locator("body").getAttribute("data-opened"), null)
+    await stream.getByRole("button", { name: "Load earlier messages" }).click()
+    await stream.getByText("Earlier project decision", { exact: true }).waitFor()
+    await page.screenshot({ path: path.join(screenshots, `global-history-${width}.png`) })
+    const href = await stream.getByRole("link", { name: "Download Kitchen.jpg", exact: true }).first().getAttribute("href")
+    assert(href.includes("scope=project"))
+    await stream.getByRole("button", { name: "Preview Kitchen.jpg", exact: true }).first().click()
+    await page.getByRole("dialog").getByRole("img").waitFor()
+    assert((await page.getByRole("dialog").getByRole("img").getAttribute("src")).includes("scope=project"))
+    await page.getByRole("button", { name: "Close preview", exact: true }).click()
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    if (width < 768) {
+      await stream.getByRole("button", { name: "Back to history" }).click()
+      await history.getByRole("searchbox").waitFor()
+    }
+    console.log(`PASS ${width}px Global visibility, search, paging, read-only history, attachment scope and no overflow`)
   }
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto(origin)

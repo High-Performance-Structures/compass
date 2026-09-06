@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   Archive,
   ArchiveRestore,
@@ -188,6 +189,11 @@ export function CorrespondenceInboxPanel(props: {
                   ` (${props.inbox.conversations.filter((c) => c.unread && !c.archived).length})`}
               </Button>
             ),
+          )}
+          {props.inbox.workspace === "staff" && (
+            <Button asChild variant="ghost" size="sm">
+              <Link href={`/dashboard/projects/${encodeURIComponent(props.projectId)}/messages/global`}>Global</Link>
+            </Button>
           )}
         </div>
       </div>

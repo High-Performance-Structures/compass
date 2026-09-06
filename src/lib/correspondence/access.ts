@@ -79,6 +79,16 @@ export async function authorizedConversation(ctx: CorrespondenceContext, convers
   return row.conversation
 }
 
+// Project history is an explicit staff-only read scope; participant grants still govern personal inboxes and writes.
+export async function authorizedProjectConversation(ctx: CorrespondenceContext, conversationId: string): Promise<typeof correspondence.$inferSelect> {
+  if (ctx.workspace !== "staff") throw new Error("Conversation not found.")
+  const row = await ctx.db.select().from(correspondence).where(and(
+    eq(correspondence.id, conversationId), eq(correspondence.projectId, ctx.projectId), eq(correspondence.organizationId, ctx.organizationId),
+  )).get()
+  if (!row) throw new Error("Conversation not found.")
+  return row
+}
+
 export async function currentParticipants(ctx: CorrespondenceContext, conversationId: string): Promise<readonly CorrespondencePerson[]> {
   const rows = await ctx.db.select().from(correspondenceParticipants).where(and(eq(correspondenceParticipants.conversationId, conversationId), isNull(correspondenceParticipants.revokedAt)))
   if (!rows.length) return []

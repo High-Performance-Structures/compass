@@ -842,7 +842,8 @@ function ConversationDetail(props: {
           <ConversationMenu conversation={activeSummary} workspace={props.workspace} onState={props.onState} onClosed={props.onClosed} onReceiptPreference={props.onReceiptPreference} />
         </div>
         <details className="mt-3 border-t pt-3">
-          <summary className="cursor-pointer text-sm font-medium">Visible to {activeSummary.people.map((person) => person.name).join(", ")} <ChevronDown className="inline size-4" /></summary>
+          <summary className="cursor-pointer text-sm font-medium">Recipients: {activeSummary.people.map((person) => person.name).join(", ")} <ChevronDown className="inline size-4" /></summary>
+          <p className="mt-2 text-xs text-muted-foreground">Sent messages are also available to internal staff with access to this project through Global history.</p>
           <ul className="mt-2 grid gap-1 text-sm text-muted-foreground sm:grid-cols-2">
             {activeSummary.people.map((person) => <li key={person.userId}>{person.name} · {roleName(person.role)}</li>)}
           </ul>

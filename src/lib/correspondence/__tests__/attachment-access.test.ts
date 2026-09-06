@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   correspondenceContext: vi.fn(),
   authorizedConversation: vi.fn(),
+  authorizedProjectConversation: vi.fn(),
   currentParticipants: vi.fn(),
   getOrganizationDriveContext: vi.fn(),
   getFile: vi.fn(),
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/correspondence/access", () => ({
   correspondenceContext: mocks.correspondenceContext,
   authorizedConversation: mocks.authorizedConversation,
+  authorizedProjectConversation: mocks.authorizedProjectConversation,
   currentParticipants: mocks.currentParticipants,
 }))
 vi.mock("@/lib/google/organization-drive", () => ({
@@ -68,10 +70,12 @@ function dbFor(rows: readonly unknown[]) {
 
 function setup(input: {
   readonly rows: readonly unknown[]
+  readonly workspace?: "staff" | "owner" | "sub_vendor"
   readonly attachmentParticipants?: readonly { readonly userId: string }[]
 }) {
   mocks.correspondenceContext.mockResolvedValue({
     db: dbFor(input.rows),
+    workspace: input.workspace ?? "owner",
     env: {
       COMPASS_CORRESPONDENCE_STAGING_FOLDERS: JSON.stringify({ "org-1": "folder-1" }),
       COMPASS_CORRESPONDENCE_DRIVE_USER: "mailbox@example.com",
@@ -87,6 +91,7 @@ function setup(input: {
     organizationId: "org-1",
     projectId: "project-1",
   })
+  mocks.authorizedProjectConversation.mockResolvedValue({ id: "conversation-1" })
   mocks.authorizedConversation.mockResolvedValue({ id: "conversation-1" })
   mocks.currentParticipants.mockResolvedValue(
     input.attachmentParticipants ?? [{ userId: "user-1" }]
@@ -130,11 +135,34 @@ describe("correspondence attachment access", () => {
   beforeEach(() => {
     mocks.correspondenceContext.mockReset()
     mocks.authorizedConversation.mockReset()
+    mocks.authorizedProjectConversation.mockReset()
     mocks.currentParticipants.mockReset()
     mocks.getOrganizationDriveContext.mockReset()
     mocks.getFile.mockReset()
     mocks.downloadFile.mockReset()
     mocks.trashFile.mockReset()
+  })
+
+  it("allows staff history attachment reads without personal grants", async () => {
+    setup({ rows: [attachment], workspace: "staff", attachmentParticipants: [] })
+    const result = await downloadCorrespondenceAttachment({ projectId: "project-1", attachmentId: "attachment-1", projectHistory: true })
+    expect(await result.body.text()).toBe("file-bytes")
+    expect(mocks.authorizedProjectConversation).toHaveBeenCalledWith(expect.anything(), "conversation-1")
+    expect(mocks.authorizedConversation).not.toHaveBeenCalled()
+  })
+
+  it.each(["owner", "sub_vendor"] as const)("denies %s global attachment access before Drive", async (workspace) => {
+    setup({ rows: [attachment], workspace })
+    await expect(downloadCorrespondenceAttachment({ projectId: "project-1", attachmentId: "attachment-1", projectHistory: true })).rejects.toMatchObject({ status: 404 })
+    expect(mocks.getOrganizationDriveContext).not.toHaveBeenCalled()
+  })
+
+  it("never exposes staged or retracted attachments through project history", async () => {
+    for (const row of [{ ...attachment, messageId: null }, { ...attachment, retractedAt: "2026-09-05" }]) {
+      setup({ rows: [row], workspace: "staff" })
+      await expect(downloadCorrespondenceAttachment({ projectId: "project-1", attachmentId: "attachment-1", projectHistory: true })).rejects.toMatchObject({ status: 404 })
+      expect(mocks.getOrganizationDriveContext).not.toHaveBeenCalled()
+    }
   })
 
   it("requires the message recipient record and current active conversation grant", async () => {
