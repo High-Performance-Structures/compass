@@ -29,6 +29,7 @@ import {
 } from "@/db/schema-conversations"
 import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import { conversationFullViewHref } from "@/lib/conversations/notification-route"
 import {
   canUseAskCompass,
   requirePermission,
@@ -453,20 +454,6 @@ function messagePreview(content: string): string {
     : `${normalized.slice(0, 177)}...`
 }
 
-function conversationHref(channel: {
-  readonly id: string
-  readonly projectId: string | null
-  readonly audience: string
-}): string {
-  if (channel.projectId && channel.audience === "clients") {
-    return `/preview/projects/${channel.projectId}/owner/conversations/${channel.id}`
-  }
-  if (channel.projectId && channel.audience === "sub_vendors") {
-    return `/preview/projects/${channel.projectId}/sub-vendor/conversations/${channel.id}`
-  }
-  return `/dashboard/conversations/${channel.id}`
-}
-
 export async function sendMessage(data: {
   channelId: string
   content: string
@@ -709,7 +696,7 @@ export async function sendMessage(data: {
           sourceId: messageId,
           title: `${user.displayName ?? user.email} mentioned you`,
           body: messagePreview(data.content),
-          href: conversationHref(channel),
+          href: conversationFullViewHref(channel.id),
           priority: "normal",
           audience: "mention",
           createdBy: user.id,
@@ -746,7 +733,7 @@ export async function sendMessage(data: {
           sourceId: messageId,
           title: `Announcement in ${channel.name}`,
           body: messagePreview(data.content),
-          href: conversationHref(channel),
+          href: conversationFullViewHref(channel.id),
           priority: "high",
           audience: "announcement",
           createdBy: user.id,
@@ -829,7 +816,7 @@ export async function sendMessage(data: {
           projectId: channel.projectId,
           channelId: data.channelId,
           channelName: channel.name,
-          href: conversationHref(channel),
+          href: conversationFullViewHref(channel.id),
           messageId,
           threadId: data.threadId ?? null,
           content: data.content,

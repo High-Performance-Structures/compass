@@ -11,6 +11,7 @@ import {
   notificationRecipients,
 } from "@/db/schema"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
+import { recipientNotificationHref } from "@/lib/conversations/notification-route"
 import { getCloudflareContext } from "@/lib/db"
 import {
   isMissingNotificationTableError,
@@ -460,7 +461,7 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
       success: true,
       data: {
         unreadCount: rows.filter((row) => row.readAt === null).length,
-        items: rows,
+        items: rows.map((row) => ({ ...row, href: recipientNotificationHref(row.href, user.role) })),
       },
     }
   } catch (error) {
