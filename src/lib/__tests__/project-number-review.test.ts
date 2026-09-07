@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   isExactProjectNumberReviewMerge,
   isApprovedProjectNumber,
+  projectNumberDepartmentSequence,
   projectNumberReviewIssue,
 } from "@/lib/project-number-review"
 
@@ -15,6 +16,48 @@ describe("project number review", () => {
       suggestedProjectNumber: "N-956-25811",
       reason: "extra_segments",
     })
+  })
+
+  it("flags Buildertrend placeholders and extracts only explicit leading governed numbers", () => {
+    expect(
+      projectNumberReviewIssue(
+        "BT-LEAD-21843125",
+        "N-841-55-Justin Blank Fox Blocks Portion",
+      ),
+    ).toEqual({
+      currentProjectNumber: "BT-LEAD-21843125",
+      department: "N",
+      sequence: "841",
+      suggestedProjectNumber: "N-841-55",
+      reason: "buildertrend_placeholder",
+    })
+    expect(projectNumberReviewIssue("BT-100", "Mingo Residence Slabs")).toEqual({
+      currentProjectNumber: "BT-100",
+      department: null,
+      sequence: null,
+      suggestedProjectNumber: null,
+      reason: "buildertrend_placeholder",
+    })
+    expect(
+      projectNumberReviewIssue("BT-EXAMPLE-001", "D-100-SOUTH Example Design"),
+    ).toMatchObject({
+      department: "D",
+      sequence: "100",
+      suggestedProjectNumber: "D-100-SOUTH",
+      reason: "buildertrend_placeholder",
+    })
+  })
+
+  it("uses reviewed Buildertrend identity for collisions without trusting free text", () => {
+    expect(
+      projectNumberDepartmentSequence(
+        "BT-LEAD-22504838",
+        "N-821-11828 Fox Block Order Part 1",
+      ),
+    ).toBe("N-821")
+    expect(
+      projectNumberDepartmentSequence("BT-LEAD-1", "Smith project N-821-11828"),
+    ).toBeNull()
   })
 
   it.each(["H-401-5025", "N-1000-00", "O-202-WEST", "D-2-DESIGN"])(
@@ -51,5 +94,12 @@ describe("project number review", () => {
         keptProjectNumber: "N-841-55",
       }),
     ).toBe(false)
+    expect(
+      isExactProjectNumberReviewMerge({
+        reviewedProjectNumber: "BT-LEAD-21843125",
+        reviewedProjectName: "N-841-55-Justin Blank Fox Blocks Portion",
+        keptProjectNumber: "N-841-55",
+      }),
+    ).toBe(true)
   })
 })

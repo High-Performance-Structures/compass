@@ -1,4 +1,7 @@
-import { projectNumberReviewIssue } from "@/lib/project-number-review"
+import {
+  projectNumberDepartmentSequence,
+  projectNumberReviewIssue,
+} from "@/lib/project-number-review"
 
 export type ProjectDuplicateIdentity = {
   readonly id: string
@@ -43,6 +46,13 @@ export type ProjectDuplicateCandidate = ProjectDuplicateMatch & {
 }
 
 const DUPLICATE_SCORE_THRESHOLD = 60
+const TRANSITIVE_EXACT_REASON_CODES: ReadonlySet<ProjectDuplicateReasonCode> =
+  new Set([
+    "sage_job_id",
+    "sage_job_number",
+    "drive_folder",
+    "buildertrend_project",
+  ])
 
 function normalizedText(value: string | null): string {
   return (value ?? "")
@@ -56,22 +66,6 @@ function normalizedText(value: string | null): string {
 
 function normalizedIdentifier(value: string | null): string {
   return normalizedText(value).replace(/\s+/g, "")
-}
-
-function projectDepartmentSequence(value: string | null): string | null {
-  if (!value) return null
-  // Extra-segment cutover values need a human numbering decision before they
-  // can safely participate in the governed department/sequence rule.
-  if (projectNumberReviewIssue(value)) return null
-  const match = /^([OHND])\s*-\s*(\d+)(?:\s*-\s*[A-Z0-9]+)?$/i.exec(
-    value.trim(),
-  )
-  const department = match?.[1]?.toUpperCase()
-  const rawSequence = match?.[2]
-  if (!department || !rawSequence) return null
-
-  const sequence = rawSequence.replace(/^0+(?=\d)/, "")
-  return `${department}-${sequence}`
 }
 
 function tokens(value: string): ReadonlySet<string> {
@@ -120,8 +114,14 @@ export function compareProjectDuplicateIdentity(
     second.projectNumber,
     true,
   )
-  const firstDepartmentSequence = projectDepartmentSequence(first.projectNumber)
-  const secondDepartmentSequence = projectDepartmentSequence(second.projectNumber)
+  const firstDepartmentSequence = projectNumberDepartmentSequence(
+    first.projectNumber,
+    first.name,
+  )
+  const secondDepartmentSequence = projectNumberDepartmentSequence(
+    second.projectNumber,
+    second.name,
+  )
   const exactReasons = [
     exactProjectNumberReason,
     !exactProjectNumberReason &&
@@ -233,6 +233,35 @@ export function findProjectDuplicateCandidates(
   projects: readonly ProjectDuplicateIdentity[],
 ): ProjectDuplicateCandidate[] {
   const candidates: ProjectDuplicateCandidate[] = []
+  const collisionGroups = new Map<string, ProjectDuplicateIdentity[]>()
+
+  for (const project of projects) {
+    const key = projectNumberDepartmentSequence(project.projectNumber, project.name)
+    if (!key) continue
+    const group = collisionGroups.get(key) ?? []
+    group.push(project)
+    collisionGroups.set(key, group)
+  }
+
+  const collisionAnchorByKey = new Map<string, string>()
+  for (const [key, group] of collisionGroups) {
+    if (group.length < 3) continue
+    const ordered = [...group].sort((first, second) => {
+      const firstIsBuildertrendPlaceholder =
+        projectNumberReviewIssue(first.projectNumber, first.name)?.reason ===
+        "buildertrend_placeholder"
+      const secondIsBuildertrendPlaceholder =
+        projectNumberReviewIssue(second.projectNumber, second.name)?.reason ===
+        "buildertrend_placeholder"
+      if (firstIsBuildertrendPlaceholder !== secondIsBuildertrendPlaceholder) {
+        return firstIsBuildertrendPlaceholder ? 1 : -1
+      }
+      return first.createdAt.localeCompare(second.createdAt) ||
+        first.id.localeCompare(second.id)
+    })
+    const anchor = ordered[0]
+    if (anchor) collisionAnchorByKey.set(key, anchor.id)
+  }
 
   for (let firstIndex = 0; firstIndex < projects.length; firstIndex += 1) {
     const first = projects[firstIndex]
@@ -245,7 +274,28 @@ export function findProjectDuplicateCandidates(
       const second = projects[secondIndex]
       if (!second) continue
       const match = compareProjectDuplicateIdentity(first, second)
-      if (match) candidates.push({ first, second, ...match })
+      if (!match) continue
+
+      const collisionKey = projectNumberDepartmentSequence(
+        first.projectNumber,
+        first.name,
+      )
+      const anchorId = collisionKey
+        ? collisionAnchorByKey.get(collisionKey)
+        : undefined
+      const isTransitiveCollisionOnly =
+        anchorId !== undefined &&
+        first.id !== anchorId &&
+        second.id !== anchorId &&
+        match.reasons.some(
+          (reason) => reason.code === "project_department_sequence",
+        ) &&
+        !match.reasons.some((reason) =>
+          TRANSITIVE_EXACT_REASON_CODES.has(reason.code),
+        )
+      if (!isTransitiveCollisionOnly) {
+        candidates.push({ first, second, ...match })
+      }
     }
   }
 

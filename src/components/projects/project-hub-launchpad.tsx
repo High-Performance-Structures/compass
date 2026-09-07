@@ -488,7 +488,9 @@ export function ProjectHubLaunchpad({
       new Set(
         canReviewProjectNumbers
           ? projects
-              .filter((project) => projectNumberReviewIssue(project.projectNumber))
+              .filter((project) =>
+                projectNumberReviewIssue(project.projectNumber, project.name),
+              )
               .map((project) => project.id)
           : [],
       ),

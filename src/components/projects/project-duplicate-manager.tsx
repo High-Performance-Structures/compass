@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { IconAlertTriangle, IconArrowMerge, IconCopy } from "@tabler/icons-react"
+import {
+  IconAlertTriangle,
+  IconArrowMerge,
+  IconCopy,
+  IconEdit,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
@@ -10,6 +15,7 @@ import {
   getProjectMergeImpact,
   mergeDuplicateProjects,
 } from "@/app/actions/project-duplicates"
+import { correctProjectNumberForReview } from "@/app/actions/project-profile"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -20,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -33,12 +40,15 @@ import {
   type ProjectDuplicateCandidate,
 } from "@/lib/project-duplicate-detector"
 import type { ProjectMergeImpact } from "@/lib/project-merge-impact"
+import { cn } from "@/lib/utils"
 
 type MergeImpactState =
   | { readonly status: "idle" }
   | { readonly status: "loading" }
   | { readonly status: "ready"; readonly impact: ProjectMergeImpact }
   | { readonly status: "error"; readonly error: string }
+
+type CollisionResolutionMode = "merge" | "renumber"
 
 function projectLabel(candidate: ProjectDuplicateCandidate, projectId: string): string {
   const project =
@@ -94,6 +104,9 @@ export function ProjectDuplicateManager({
   const [selectedKey, setSelectedKey] = useState("")
   const [keptProjectId, setKeptProjectId] = useState("")
   const [confirmed, setConfirmed] = useState(false)
+  const [collisionResolutionMode, setCollisionResolutionMode] =
+    useState<CollisionResolutionMode>("merge")
+  const [replacementProjectNumber, setReplacementProjectNumber] = useState("")
   const [mergeImpact, setMergeImpact] = useState<MergeImpactState>({
     status: "idle",
   })
@@ -117,6 +130,10 @@ export function ProjectDuplicateManager({
   const selectedCandidateKey = selectedCandidate
     ? candidateKey(selectedCandidate)
     : ""
+  const hasNumberCollision =
+    selectedCandidate?.reasons.some(
+      (reason) => reason.code === "project_department_sequence",
+    ) ?? false
 
   useEffect(() => {
     if (!reviewProjectId) return
@@ -130,12 +147,19 @@ export function ProjectDuplicateManager({
 
     setSelectedKey(candidateKey(candidate))
     setKeptProjectId(candidate.first.id)
+    setCollisionResolutionMode("merge")
+    setReplacementProjectNumber("")
     setConfirmed(false)
     setOpen(true)
   }, [onReviewProjectHandled, reviewProjectId, visibleCandidates])
 
   useEffect(() => {
-    if (!open || !selectedCandidateKey || !removedProjectId) {
+    if (
+      !open ||
+      collisionResolutionMode !== "merge" ||
+      !selectedCandidateKey ||
+      !removedProjectId
+    ) {
       setMergeImpact({ status: "idle" })
       return
     }
@@ -159,7 +183,13 @@ export function ProjectDuplicateManager({
     return () => {
       cancelled = true
     }
-  }, [effectiveKeptProjectId, open, removedProjectId, selectedCandidateKey])
+  }, [
+    collisionResolutionMode,
+    effectiveKeptProjectId,
+    open,
+    removedProjectId,
+    selectedCandidateKey,
+  ])
 
   if (visibleCandidates.length === 0) return null
 
@@ -206,6 +236,34 @@ export function ProjectDuplicateManager({
     })
   }
 
+  function renumberSelected(): void {
+    if (
+      !selectedCandidate ||
+      !hasNumberCollision ||
+      !confirmed ||
+      !removedProjectId ||
+      !replacementProjectNumber
+    ) {
+      return
+    }
+    startTransition(async () => {
+      const result = await correctProjectNumberForReview({
+        projectId: removedProjectId,
+        approvedProjectNumber: replacementProjectNumber,
+        reason: "number_collision",
+        conflictingProjectId: effectiveKeptProjectId,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setOpen(false)
+      setConfirmed(false)
+      toast.success("Project number reassigned and the registry was updated.")
+      router.refresh()
+    })
+  }
+
   return (
     <>
       <section className="flex flex-col gap-3 border border-brand-nutech-gold/40 bg-brand-nutech-gold/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -213,11 +271,11 @@ export function ProjectDuplicateManager({
           <IconAlertTriangle className="mt-0.5 size-5 shrink-0 text-brand-nutech-gold-foreground" />
           <div>
             <h2 className="text-sm font-semibold">
-              {visibleCandidates.length} possible duplicate project
+              {visibleCandidates.length} possible duplicate or number collision
               {visibleCandidates.length === 1 ? "" : "s"}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Review the matches before relying on the project registry.
+              Review the matches and resolve reused department-sequence numbers.
             </p>
           </div>
         </div>
@@ -229,12 +287,14 @@ export function ProjectDuplicateManager({
             const first = visibleCandidates[0]
             setSelectedKey(first ? candidateKey(first) : "")
             setKeptProjectId(first?.first.id ?? "")
+            setCollisionResolutionMode("merge")
+            setReplacementProjectNumber("")
             setConfirmed(false)
             setOpen(true)
           }}
         >
           <IconArrowMerge className="size-4" />
-          Review and merge
+          Review and resolve
         </Button>
       </section>
 
@@ -243,8 +303,9 @@ export function ProjectDuplicateManager({
           <DialogHeader>
             <DialogTitle>Review possible duplicate projects</DialogTitle>
             <DialogDescription>
-              Confirm that the records are separate, or select which registry
-              record Compass should keep.
+              {hasNumberCollision
+                ? "Confirm whether the records are the same project. If they are separate, keep one number and assign a new sequence to the other project."
+                : "Confirm that the records are separate, or select which registry record Compass should keep."}
             </DialogDescription>
           </DialogHeader>
 
@@ -261,6 +322,8 @@ export function ProjectDuplicateManager({
                       )
                       setSelectedKey(value)
                       setKeptProjectId(next?.first.id ?? "")
+                      setCollisionResolutionMode("merge")
+                      setReplacementProjectNumber("")
                       setConfirmed(false)
                     }}
                   >
@@ -297,6 +360,7 @@ export function ProjectDuplicateManager({
                       type="button"
                       onClick={() => {
                         setKeptProjectId(project.id)
+                        setReplacementProjectNumber("")
                         setConfirmed(false)
                       }}
                       className={`min-w-0 overflow-hidden border p-3 text-left transition-colors ${
@@ -320,8 +384,14 @@ export function ProjectDuplicateManager({
                       </span>
                       <span className="mt-3 block text-xs font-medium text-primary">
                         {effectiveKeptProjectId === project.id
-                          ? "Keep this project"
-                          : "Select to keep"}
+                          ? hasNumberCollision &&
+                            collisionResolutionMode === "renumber"
+                            ? "Keep this number"
+                            : "Keep this project"
+                          : hasNumberCollision &&
+                              collisionResolutionMode === "renumber"
+                            ? "Assign a new number"
+                            : "Select to keep"}
                       </span>
                     </button>
                   ),
@@ -337,7 +407,55 @@ export function ProjectDuplicateManager({
                 </p>
               </div>
 
-              <div className="min-w-0 border-b pb-3 text-sm">
+              {hasNumberCollision ? (
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCollisionResolutionMode("merge")
+                      setConfirmed(false)
+                    }}
+                    className={cn(
+                      "min-w-0 border p-3 text-left transition-colors",
+                      collisionResolutionMode === "merge"
+                        ? "border-primary bg-primary/5"
+                        : "hover:bg-muted/50",
+                    )}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <IconArrowMerge className="size-4 shrink-0" />
+                      Same project
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Merge all linked records into the selected project.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCollisionResolutionMode("renumber")
+                      setConfirmed(false)
+                    }}
+                    className={cn(
+                      "min-w-0 border p-3 text-left transition-colors",
+                      collisionResolutionMode === "renumber"
+                        ? "border-primary bg-primary/5"
+                        : "hover:bg-muted/50",
+                    )}
+                  >
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <IconEdit className="size-4 shrink-0" />
+                      Separate projects
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Keep both projects and assign a new sequence to one.
+                    </span>
+                  </button>
+                </div>
+              ) : null}
+
+              {collisionResolutionMode === "merge" ? (
+                <div className="min-w-0 border-b pb-3 text-sm">
                 <p className="font-medium">Records moving to the kept project</p>
                 {mergeImpact.status === "loading" ? (
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -374,52 +492,97 @@ export function ProjectDuplicateManager({
                   The transfer and registry merge are atomic. If any linked record
                   cannot move safely, Compass keeps both projects unchanged.
                 </p>
-              </div>
+                </div>
+              ) : (
+                <div className="min-w-0 space-y-2 border-b pb-3">
+                  <Label htmlFor="replacement-project-number">
+                    New approved project number
+                  </Label>
+                  <Input
+                    id="replacement-project-number"
+                    value={replacementProjectNumber}
+                    onChange={(event) => {
+                      setReplacementProjectNumber(event.target.value.toUpperCase())
+                      setConfirmed(false)
+                    }}
+                    placeholder="H-426-515"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter a new department-sequence-suffix number for the project
+                    marked “Assign a new number.” The department stays the same,
+                    and the old number remains as a historical alias.
+                  </p>
+                </div>
+              )}
 
               <div className="flex min-w-0 items-start gap-2">
                 <Checkbox
                   id="confirm-project-merge"
                   checked={confirmed}
                   onCheckedChange={(value) => setConfirmed(value === true)}
-                  disabled={mergeImpact.status !== "ready"}
+                  disabled={
+                    collisionResolutionMode === "merge" &&
+                    mergeImpact.status !== "ready"
+                  }
                 />
                 <Label
                   htmlFor="confirm-project-merge"
                   className="min-w-0 break-words text-sm font-normal leading-5"
                 >
-                  I confirm that {projectLabel(selectedCandidate, removedProjectId)}
-                  {" "}will be removed from the active registry and its linked
-                  documents, activity, and project records will be transferred to
-                  the kept project. Its archived registry record remains available
-                  for recovery.
+                  {collisionResolutionMode === "merge"
+                    ? `I confirm that ${projectLabel(selectedCandidate, removedProjectId)} will be removed from the active registry and its linked documents, activity, and project records will be transferred to the kept project. Its archived registry record remains available for recovery.`
+                    : `I verified these are separate projects. Update ${projectLabel(selectedCandidate, removedProjectId)} to ${replacementProjectNumber || "the new approved number"} and keep the other project's number unchanged.`}
                 </Label>
               </div>
             </div>
           ) : null}
 
           <DialogFooter className="gap-2 sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={dismissSelected}
-              disabled={isPending || !selectedCandidate}
-            >
-              Not duplicates
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={mergeSelected}
-              disabled={
-                isPending ||
-                !selectedCandidate ||
-                !confirmed ||
-                mergeImpact.status !== "ready"
-              }
-            >
-              <IconArrowMerge className="size-4" />
-              {isPending ? "Saving…" : "Merge projects"}
-            </Button>
+            {!hasNumberCollision ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={dismissSelected}
+                disabled={isPending || !selectedCandidate}
+              >
+                Not duplicates
+              </Button>
+            ) : (
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            )}
+            {collisionResolutionMode === "merge" ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={mergeSelected}
+                disabled={
+                  isPending ||
+                  !selectedCandidate ||
+                  !confirmed ||
+                  mergeImpact.status !== "ready"
+                }
+              >
+                <IconArrowMerge className="size-4" />
+                {isPending ? "Saving…" : "Merge projects"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={renumberSelected}
+                disabled={
+                  isPending ||
+                  !selectedCandidate ||
+                  !confirmed ||
+                  !replacementProjectNumber
+                }
+              >
+                <IconEdit className="size-4" />
+                {isPending ? "Updating…" : "Update registry"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
