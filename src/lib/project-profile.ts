@@ -277,6 +277,12 @@ export function projectJobStatusOptions(
 
 export type ProjectJobStatusId = (typeof PROJECT_JOB_STATUS_DEFINITIONS)[number]["id"]
 
+export function isBuiltInProjectJobStatusId(jobStatusId: string): boolean {
+  return PROJECT_JOB_STATUS_DEFINITIONS.some(
+    (status) => status.id === jobStatusId,
+  )
+}
+
 export type ProjectJobStatusBucket =
   | "active"
   | "warranty"

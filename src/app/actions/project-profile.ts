@@ -25,7 +25,7 @@ import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
@@ -52,6 +52,7 @@ import {
   PROJECT_CLIENT_STATUSES,
   PROJECT_JOB_STATUS_DEFINITIONS,
   buildProjectNumberWithAddressSuffix,
+  isBuiltInProjectJobStatusId,
   isBuiltInProjectJobStatusLabel,
   isEligibleFollowUpOwner,
   isMeaningfulClientInteraction,
@@ -253,7 +254,7 @@ async function projectSyncClients(input: {
 
 async function projectProfileContext(projectId: string, action: "read" | "update") {
   const user = await requireAuth()
-  requireFeaturePermission(user, "project-hub", action)
+  await requireFeaturePermission(user, "project-hub", action)
   if (!isInternalStaffRole(user.role)) {
     throw new Error("Project information is available to internal staff only.")
   }
@@ -1119,6 +1120,69 @@ export async function updateProjectInformation(input: {
   } catch (error) {
     console.error("Unable to update project information", error)
     return { success: false, error: "Unable to update project information." }
+  }
+}
+
+export async function updateProjectJobStatus(input: {
+  readonly projectId: string
+  readonly jobStatusId: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const { db, organizationId, user } = await projectProfileContext(
+      input.projectId,
+      "update",
+    )
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
+      return { success: false, error: "Demo data cannot be changed." }
+    }
+    if (!isBuiltInProjectJobStatusId(input.jobStatusId)) {
+      return { success: false, error: "Choose a listed project status." }
+    }
+
+    const existingRows = await db
+      .select({ jobStatusId: projects.jobStatusId })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    const existing = existingRows[0]
+    if (!existing) return { success: false, error: "Project not found." }
+    if (existing.jobStatusId === input.jobStatusId) return { success: true }
+
+    const updatedAt = nowIso()
+    await db.batch([
+      db
+        .update(projects)
+        .set({ jobStatusId: input.jobStatusId, updatedAt })
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            eq(projects.organizationId, organizationId),
+          ),
+        ),
+      db.insert(projectProfileAuditEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        projectId: input.projectId,
+        actorUserId: user.id,
+        eventType: "project_job_status_updated",
+        entityType: "project",
+        entityId: input.projectId,
+        beforeJson: JSON.stringify({ jobStatusId: existing.jobStatusId }),
+        afterJson: JSON.stringify({ jobStatusId: input.jobStatusId }),
+        createdAt: updatedAt,
+      }),
+    ])
+
+    revalidateProjectProfile(input.projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to update project job status", error)
+    return { success: false, error: "Unable to update project status." }
   }
 }
 

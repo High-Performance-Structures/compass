@@ -10,6 +10,7 @@ import {
   isFollowUpEligibleJobStatus,
   isEligibleFollowUpOwner,
   isMeaningfulClientInteraction,
+  isBuiltInProjectJobStatusId,
   isBuiltInProjectJobStatusLabel,
   isSupportedProjectJobStatusLabel,
   legacyProjectStatusAfterClientUpdate,
@@ -77,6 +78,12 @@ describe("project profile rules", () => {
     expect(
       projectJobStatusLabel({ jobStatusId: "missing", customLabel: null }),
     ).toBe("Unknown job status")
+  })
+
+  it("recognizes only status IDs from the approved built-in list", () => {
+    expect(isBuiltInProjectJobStatusId("under_warranty")).toBe(true)
+    expect(isBuiltInProjectJobStatusId("organization-warranty")).toBe(false)
+    expect(isBuiltInProjectJobStatusId("OPEN")).toBe(false)
   })
 
   it("keeps client classification separate from job status", () => {
