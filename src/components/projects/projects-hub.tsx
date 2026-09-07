@@ -1033,6 +1033,11 @@ export function ProjectsHub({
     React.useState<string | null>(null)
   const [createProjectMessage, setCreateProjectMessage] =
     React.useState<string | null>(null)
+  const [shellDuplicateConfirmation, setShellDuplicateConfirmation] =
+    React.useState<{
+      readonly draftKey: string
+      readonly projectIds: readonly string[]
+    } | null>(null)
   const [registryMessage, setRegistryMessage] = React.useState<string | null>(
     null
   )
@@ -1129,6 +1134,16 @@ export function ProjectsHub({
       return
     }
 
+    const draftKey = JSON.stringify({
+      name,
+      clientName,
+      address,
+      department: newProjectDepartment,
+      sageClientStatusId: sageClientStatus.id,
+      sageJobStatusId,
+      sageJobType: sageJobType.id,
+    })
+
     setCreateProjectMessage(null)
     startCreateProjectTransition(async () => {
       const result = await createProjectShell({
@@ -1141,14 +1156,34 @@ export function ProjectsHub({
         sageClientStatusId: sageClientStatus.id,
         sageJobStatusId,
         sageJobType: sageJobType.id,
+        confirmedDistinctProjectIds:
+          shellDuplicateConfirmation?.draftKey === draftKey
+            ? shellDuplicateConfirmation.projectIds
+            : [],
       })
 
       if (!result.success) {
+        if ("duplicateWarning" in result) {
+          const projectIds = result.candidates.map((candidate) =>
+            candidate.second.id,
+          )
+          setShellDuplicateConfirmation({ draftKey, projectIds })
+          setCreateProjectMessage(
+            `Possible duplicate found: ${result.candidates
+              .map((candidate) => {
+                const project = candidate.second
+                return project.projectNumber ?? project.name
+              })
+              .join(", ")}. Submit Create Shell again to confirm this is a separate project.`,
+          )
+          return
+        }
         setCreateProjectMessage(result.error)
         return
       }
 
       form.reset()
+      setShellDuplicateConfirmation(null)
       setCreateProjectMessage("Project shell created; Sage write queued.")
       router.push(`/dashboard/projects/${result.id}`)
       router.refresh()

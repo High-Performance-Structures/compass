@@ -12,6 +12,7 @@ import { toast } from "sonner"
 
 import {
   createProjectIntake,
+  type CreateProjectIntakeInput,
   type ProjectIntakeAssignee,
 } from "@/app/actions/projects"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
@@ -28,6 +29,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -38,6 +47,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import type { ProjectIntakeDepartment } from "@/lib/google/project-intake-tracker"
+import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import {
   SAGE_CLIENT_STATUS_OPTIONS,
@@ -65,6 +75,10 @@ function fieldValue(formData: FormData, name: string): string | null {
 
 function isDepartment(value: string): value is ProjectIntakeDepartment {
   return DEPARTMENTS.some((department) => department.value === value)
+}
+
+function existingDuplicateProject(candidate: ProjectDuplicateCandidate) {
+  return candidate.second
 }
 
 function Field({
@@ -100,7 +114,46 @@ export function ProjectIntakeDrawer({
     useState<SageClientStatusId | null>(null)
   const [sageJobStatusId, setSageJobStatusId] = useState("")
   const [sageJobType, setSageJobType] = useState<SageJobTypeId | null>(null)
+  const [duplicateReview, setDuplicateReview] = useState<{
+    readonly input: CreateProjectIntakeInput
+    readonly candidates: readonly ProjectDuplicateCandidate[]
+  } | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  async function createProject(input: CreateProjectIntakeInput): Promise<void> {
+    try {
+      const result = await createProjectIntake(input)
+      if (!result.success) {
+        if ("duplicateWarning" in result) {
+          setDuplicateReview({ input, candidates: result.candidates })
+          return
+        }
+        toast.error(result.error)
+        return
+      }
+      setDuplicateReview(null)
+      if (result.warning) toast.warning(result.warning)
+      else {
+        toast.success(
+          developerModeEnabled
+            ? `${result.projectNumber} created; the Sage client/job write is queued.`
+            : `${result.projectNumber} created.`,
+        )
+      }
+      formRef.current?.reset()
+      setSageClientStatusId(null)
+      setSageJobStatusId("")
+      setSageJobType(null)
+      setOpen(false)
+      router.push(`/dashboard/projects/${result.id}`)
+      router.refresh()
+    } catch (error) {
+      console.error("Project intake request failed", error)
+      toast.error(
+        "Compass could not submit this project. Your entries are still here; refresh Compass before trying again.",
+      )
+    }
+  }
 
   function submitProject(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -109,9 +162,7 @@ export function ProjectIntakeDrawer({
       return
     }
     const formData = new FormData(event.currentTarget)
-    startTransition(async () => {
-      try {
-        const result = await createProjectIntake({
+    const input: CreateProjectIntakeInput = {
           department,
           projectName: fieldValue(formData, "projectName") ?? "",
           clientName: fieldValue(formData, "clientName"),
@@ -130,36 +181,12 @@ export function ProjectIntakeDrawer({
           sageClientStatusId,
           sageJobStatusId,
           sageJobType,
-        })
-        if (!result.success) {
-          toast.error(result.error)
-          return
         }
-        if (result.warning) toast.warning(result.warning)
-        else {
-          toast.success(
-            developerModeEnabled
-              ? `${result.projectNumber} created; the Sage client/job write is queued.`
-              : `${result.projectNumber} created.`
-          )
-        }
-        formRef.current?.reset()
-        setSageClientStatusId(null)
-        setSageJobStatusId("")
-        setSageJobType(null)
-        setOpen(false)
-        router.push(`/dashboard/projects/${result.id}`)
-        router.refresh()
-      } catch (error) {
-        console.error("Project intake request failed", error)
-        toast.error(
-          "Compass could not submit this project. Your entries are still here; refresh Compass before trying again."
-        )
-      }
-    })
+    startTransition(() => createProject(input))
   }
 
   return (
+    <>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button type="button" size="sm">
@@ -386,5 +413,82 @@ export function ProjectIntakeDrawer({
         </form>
       </SheetContent>
     </Sheet>
+    <Dialog
+      open={duplicateReview !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setDuplicateReview(null)
+      }}
+    >
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>This project may already exist</DialogTitle>
+          <DialogDescription>
+            Compass found matching project details. Open the existing project,
+            or confirm that this is a separate project before creating it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="divide-y border-y">
+          {duplicateReview?.candidates.map((candidate) => {
+            const project = existingDuplicateProject(candidate)
+            return (
+              <div key={project.id} className="flex items-start justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">
+                    {project.projectNumber ?? project.name}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {project.projectNumber ? project.name : project.clientName ?? "Project"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {candidate.reasons.map((reason) => reason.label).join(" · ")}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setDuplicateReview(null)
+                    setOpen(false)
+                    router.push(`/dashboard/projects/${project.id}`)
+                  }}
+                >
+                  Open existing
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setDuplicateReview(null)}
+            disabled={isPending}
+          >
+            Go back
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              if (!duplicateReview) return
+              const confirmedDistinctProjectIds = duplicateReview.candidates.map(
+                (candidate) => existingDuplicateProject(candidate).id,
+              )
+              startTransition(() =>
+                createProject({
+                  ...duplicateReview.input,
+                  confirmedDistinctProjectIds,
+                }),
+              )
+            }}
+            disabled={isPending || !duplicateReview}
+          >
+            {isPending ? "Creating…" : "Not a duplicate — create project"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }

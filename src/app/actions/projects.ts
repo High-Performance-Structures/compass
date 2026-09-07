@@ -6,6 +6,7 @@ import {
   customers,
   organizationMembers,
   projectContacts,
+  projectDuplicateDecisions,
   projectExternalLinks,
   projectJobStatuses,
   projectMembers,
@@ -57,6 +58,8 @@ import {
   requirePermission,
 } from "@/lib/permissions"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
+import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
+import { findProspectiveProjectDuplicates } from "@/lib/project-duplicate-store"
 import {
   PROJECT_JOB_STATUS_DEFINITIONS,
   projectJobStatusLabel,
@@ -126,6 +129,7 @@ export type CreateProjectShellInput = {
   readonly sageClientStatusId: SageClientStatusId
   readonly sageJobStatusId: string
   readonly sageJobType: SageJobTypeId
+  readonly confirmedDistinctProjectIds?: readonly string[]
 }
 
 type CreateProjectShellResult =
@@ -133,6 +137,11 @@ type CreateProjectShellResult =
       readonly success: true
       readonly id: string
       readonly sageStatus: "queued"
+    }
+  | {
+      readonly success: false
+      readonly duplicateWarning: true
+      readonly candidates: readonly ProjectDuplicateCandidate[]
     }
   | { readonly success: false; readonly error: string }
 
@@ -153,6 +162,7 @@ export type CreateProjectIntakeInput = Omit<
   readonly sageClientStatusId: SageClientStatusId
   readonly sageJobStatusId: string
   readonly sageJobType: SageJobTypeId
+  readonly confirmedDistinctProjectIds?: readonly string[]
 }
 
 export type CreateProjectIntakeResult =
@@ -165,7 +175,27 @@ export type CreateProjectIntakeResult =
       readonly sageStatus: "queued"
       readonly warning: string | null
     }
+  | {
+      readonly success: false
+      readonly duplicateWarning: true
+      readonly candidates: readonly ProjectDuplicateCandidate[]
+    }
   | { readonly success: false; readonly error: string }
+
+function candidateExistingProjectId(
+  candidate: ProjectDuplicateCandidate,
+): string {
+  return candidate.second.id
+}
+
+function orderedProjectPair(
+  firstProjectId: string,
+  secondProjectId: string,
+): readonly [string, string] {
+  return firstProjectId < secondProjectId
+    ? [firstProjectId, secondProjectId]
+    : [secondProjectId, firstProjectId]
+}
 
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
@@ -449,6 +479,34 @@ export async function createProjectIntake(
     const department = normalizedIntakeDepartment(input.department)
     if (!department) {
       return { success: false, error: "Choose ORC, HPS, Nu-Tech, or Design." }
+    }
+    const duplicateCandidates = await findProspectiveProjectDuplicates(
+      db,
+      organizationId,
+      {
+        projectNumber: null,
+        name: projectName,
+        clientName,
+        address: joinedAddress(input),
+        sageJobId: null,
+        sageJobNumber: null,
+        googleDriveFolderId: null,
+        buildertrendProjectId: null,
+      },
+    )
+    const confirmedDistinctProjectIds = new Set(
+      input.confirmedDistinctProjectIds ?? [],
+    )
+    const unconfirmedDuplicateCandidates = duplicateCandidates.filter(
+      (candidate) =>
+        !confirmedDistinctProjectIds.has(candidateExistingProjectId(candidate)),
+    )
+    if (unconfirmedDuplicateCandidates.length > 0) {
+      return {
+        success: false,
+        duplicateWarning: true,
+        candidates: unconfirmedDuplicateCandidates,
+      }
     }
     const intakeDate = new Date().toISOString().slice(0, 10)
     const googleClients = await projectWorkspaceClients({
@@ -921,6 +979,29 @@ export async function createProjectIntake(
           requestedAt: now,
           updatedAt: now,
         }),
+        ...duplicateCandidates.map((candidate) => {
+          const existingProjectId = candidateExistingProjectId(candidate)
+          const [projectAId, projectBId] = orderedProjectPair(
+            projectId,
+            existingProjectId,
+          )
+          return db.insert(projectDuplicateDecisions).values({
+            id: crypto.randomUUID(),
+            organizationId,
+            projectAId,
+            projectBId,
+            status: "not_duplicate",
+            keptProjectId: null,
+            removedProjectId: null,
+            score: candidate.score,
+            reasonsJson: JSON.stringify(candidate.reasons),
+            removedProjectSnapshotJson: null,
+            resolvedByUserId: user.id,
+            resolvedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }),
       ])
     } catch (error) {
       if (isProjectSequenceConflict(error)) {
@@ -1361,6 +1442,20 @@ export async function getProjects(): Promise<ProjectListItem[]> {
                 .from(projectRouteAliases)
                 .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
             ),
+            notExists(
+              db
+                .select({
+                  removedProjectId:
+                    projectDuplicateDecisions.removedProjectId,
+                })
+                .from(projectDuplicateDecisions)
+                .where(
+                  and(
+                    eq(projectDuplicateDecisions.status, "merged"),
+                    eq(projectDuplicateDecisions.removedProjectId, projects.id),
+                  ),
+                ),
+            ),
           ),
         )
         .orderBy(asc(projects.projectNumber), asc(projects.name))
@@ -1397,6 +1492,19 @@ export async function getProjects(): Promise<ProjectListItem[]> {
               .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
               .from(projectRouteAliases)
               .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+          ),
+          notExists(
+            db
+              .select({
+                removedProjectId: projectDuplicateDecisions.removedProjectId,
+              })
+              .from(projectDuplicateDecisions)
+              .where(
+                and(
+                  eq(projectDuplicateDecisions.status, "merged"),
+                  eq(projectDuplicateDecisions.removedProjectId, projects.id),
+                ),
+              ),
           ),
         ),
       )
@@ -1435,6 +1543,34 @@ export async function createProjectShell(
     const sageJobType = parseSageJobTypeId(input.sageJobType)
     if (!sageJobType) {
       return { success: false, error: "Choose a Sage job type." }
+    }
+    const duplicateCandidates = await findProspectiveProjectDuplicates(
+      db,
+      orgId,
+      {
+        projectNumber,
+        name,
+        clientName,
+        address: cleanText(input.address),
+        sageJobId: null,
+        sageJobNumber: null,
+        googleDriveFolderId: null,
+        buildertrendProjectId: null,
+      },
+    )
+    const confirmedDistinctProjectIds = new Set(
+      input.confirmedDistinctProjectIds ?? [],
+    )
+    const unconfirmedDuplicateCandidates = duplicateCandidates.filter(
+      (candidate) =>
+        !confirmedDistinctProjectIds.has(candidateExistingProjectId(candidate)),
+    )
+    if (unconfirmedDuplicateCandidates.length > 0) {
+      return {
+        success: false,
+        duplicateWarning: true,
+        candidates: unconfirmedDuplicateCandidates,
+      }
     }
     if (projectNumber) {
       const duplicate = await db
@@ -1592,6 +1728,29 @@ export async function createProjectShell(
         status: "queued",
         requestedAt: now,
         updatedAt: now,
+      }),
+      ...duplicateCandidates.map((candidate) => {
+        const existingProjectId = candidateExistingProjectId(candidate)
+        const [projectAId, projectBId] = orderedProjectPair(
+          id,
+          existingProjectId,
+        )
+        return db.insert(projectDuplicateDecisions).values({
+          id: crypto.randomUUID(),
+          organizationId: orgId,
+          projectAId,
+          projectBId,
+          status: "not_duplicate",
+          keptProjectId: null,
+          removedProjectId: null,
+          score: candidate.score,
+          reasonsJson: JSON.stringify(candidate.reasons),
+          removedProjectSnapshotJson: null,
+          resolvedByUserId: user.id,
+          resolvedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
       }),
     ])
 

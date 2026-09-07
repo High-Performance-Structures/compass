@@ -75,6 +75,19 @@ export function projectRouteAliasDestination(
       : "/information"
   const search = new URLSearchParams(originalSearch ?? "")
   search.delete("legacyResolved")
+  search.delete("mergedSource")
   const renderedSearch = search.toString()
   return `/dashboard/projects/${encodeURIComponent(targetProjectId)}${safeSuffix}${renderedSearch ? `?${renderedSearch}` : ""}`
+}
+
+export function isProjectRouteAliasRecoveryRequest(
+  requestUrl: string | null,
+): boolean {
+  if (!requestUrl) return false
+
+  try {
+    return new URL(requestUrl).searchParams.get("mergedSource") === "1"
+  } catch {
+    return false
+  }
 }

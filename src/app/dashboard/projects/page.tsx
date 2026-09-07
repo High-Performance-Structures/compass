@@ -1,14 +1,21 @@
 export const dynamic = "force-dynamic"
 
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, eq, inArray, notExists } from "drizzle-orm"
 
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
 import {
   getProjectIntakeAssignees,
   getProjects,
 } from "@/app/actions/projects"
+import { getProjectDuplicateCandidates } from "@/app/actions/project-duplicates"
 import { getDb } from "@/db"
-import { projectExternalLinks, projectJobStatuses, projects } from "@/db/schema"
+import {
+  projectExternalLinks,
+  projectDuplicateDecisions,
+  projectJobStatuses,
+  projectRouteAliases,
+  projects,
+} from "@/db/schema"
 import { ProjectsHub } from "@/components/projects/projects-hub"
 import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
 import { getCurrentUser } from "@/lib/auth"
@@ -73,10 +80,11 @@ export default async function ProjectsPage({
       params.status !== undefined)
 
   if (!showRegistry) {
-    const [projectList, overview, intakeAssignees] = await Promise.all([
+    const [projectList, overview, intakeAssignees, duplicateCandidates] = await Promise.all([
       getProjects(),
       getDashboardOverview(),
       getProjectIntakeAssignees(),
+      canCreateOrUpdateProjects ? getProjectDuplicateCandidates() : Promise.resolve([]),
     ])
 
     return (
@@ -85,6 +93,7 @@ export default async function ProjectsPage({
         overview={overview}
         canManageProjects={canCreateProject(currentUser)}
         canUpdateProjectStatus={canUpdateProjectStatus}
+        duplicateCandidates={duplicateCandidates}
         intakeAssignees={intakeAssignees}
       />
     )
@@ -133,9 +142,35 @@ export default async function ProjectsPage({
       )
       .orderBy(asc(projects.projectNumber), asc(projects.name))
 
+    const isActiveRegistryProject = and(
+      notExists(
+        db
+          .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
+          .from(projectRouteAliases)
+          .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+      ),
+      notExists(
+        db
+          .select({
+            removedProjectId: projectDuplicateDecisions.removedProjectId,
+          })
+          .from(projectDuplicateDecisions)
+          .where(
+            and(
+              eq(projectDuplicateDecisions.status, "merged"),
+              eq(projectDuplicateDecisions.removedProjectId, projects.id),
+            ),
+          ),
+      ),
+    )
     const loadedProjects = organizationId
-      ? await query.where(eq(projects.organizationId, organizationId))
-      : await query
+      ? await query.where(
+          and(
+            eq(projects.organizationId, organizationId),
+            isActiveRegistryProject,
+          ),
+        )
+      : await query.where(isActiveRegistryProject)
     hubProjects = loadedProjects.map(({ customJobStatusLabel, ...project }) => ({
       ...project,
       jobStatusLabel: projectJobStatusLabel({
