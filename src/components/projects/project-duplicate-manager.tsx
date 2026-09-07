@@ -239,7 +239,7 @@ export function ProjectDuplicateManager({
       </section>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] min-w-0 overflow-x-hidden overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[calc(100vh-2rem)] min-w-0 grid-cols-[minmax(0,1fr)] overflow-x-hidden overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Review possible duplicate projects</DialogTitle>
             <DialogDescription>
