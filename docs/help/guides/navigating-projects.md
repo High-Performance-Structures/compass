@@ -18,7 +18,7 @@
 
 ## Open a Project {#open-project}
 
-Select **Projects**, choose the appropriate department and status, then search by project number, client, name, or address. The project overview and navigation show only the tools allowed by your role and assignment.
+Select **Projects**, choose the appropriate department and status view, then search by project number, client, name, or address. The project overview and navigation show only the tools allowed by your role and assignment.
 
 ## Keep Project Context {#keep-context}
 
@@ -34,7 +34,9 @@ The Help icon in the main header opens the searchable guide drawer without leavi
 
 ## Project Status {#project-status}
 
-Status controls how a job appears in the Project Hub. Typical states distinguish active work, leads, warranty work, completed jobs, inactive work, and archived records. Only authorized users should change status, and historical projects should be retained rather than recreated.
+Status controls how a job appears in the Project Hub. Open the status selector and choose either a lifecycle view—**All**, **Active**, **Warranty**, **Complete**, **Inactive**, **Archive**, or **Other**—or an exact job status. Search the selector when the status list is long. Counts show how many projects match each choice, and approved job statuses remain listed even when their current count is zero.
+
+Lifecycle views group related job statuses for browsing; an exact job status narrows the list to that one value. The Project Hub opens on **Active**. Use **All** when a project may have moved to another lifecycle, and use **Clear filters** to reset both department and status. Only authorized users should change a project's underlying status, and historical projects should be retained rather than recreated.
 
 ## Wrong Project Active {#wrong-project}
 

@@ -9,6 +9,7 @@ export const HELP_REVIEW_MAX_AGE_DAYS = 180
  * here in the same change.
  */
 export const MONITORED_HELP_WORKFLOW_ROUTES: readonly string[] = [
+  "/dashboard/cards",
   "/dashboard/projects",
   "/dashboard/projects/[id]/contacts",
   "/dashboard/projects/[id]/daily-logs",

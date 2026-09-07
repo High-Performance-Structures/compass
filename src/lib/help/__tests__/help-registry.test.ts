@@ -23,11 +23,15 @@ describe("help registry", () => {
   })
 
   it("provides the initial canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(14)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(14)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(14)
+    expect(HELP_GUIDES).toHaveLength(15)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(15)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(15)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
-      expect.arrayContaining(["audience.owner", "audience.trade"])
+      expect.arrayContaining([
+        "audience.owner",
+        "audience.trade",
+        "greeting.cards",
+      ])
     )
 
     const topicIds = HELP_GUIDES.flatMap((guide) =>
@@ -60,9 +64,15 @@ describe("help registry", () => {
     expect(bodyResults.some((result) => result.guide.id === "financials")).toBe(
       true
     )
+
+    const greetingCardResults = searchHelpGuides("363 day gift claim window")
+    expect(greetingCardResults[0]?.guide.id).toBe("greeting.cards")
   })
 
   it("matches concrete paths against dynamic registered routes", () => {
+    expect(
+      getHelpGuidesForRoute("/dashboard/cards").map((guide) => guide.id)
+    ).toContain("greeting.cards")
     expect(
       getHelpGuidesForRoute("/dashboard/projects/project-123/schedule").map(
         (guide) => guide.id
@@ -138,6 +148,16 @@ describe("help registry", () => {
     expect(navigationGuide?.content).toContain(
       "compass-and-question-mark beacons"
     )
+  })
+
+  it("documents the Project Hub lifecycle and exact-status filters", () => {
+    const navigationGuide = getHelpGuide("navigating-projects")
+
+    expect(navigationGuide?.content).toContain(
+      "All**, **Active**, **Warranty**, **Complete**, **Inactive**, **Archive**, or **Other"
+    )
+    expect(navigationGuide?.content).toContain("an exact job status")
+    expect(navigationGuide?.content).toContain("current count is zero")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {
