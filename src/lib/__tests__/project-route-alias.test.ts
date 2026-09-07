@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  isProjectRouteAliasRecoveryRequest,
   projectRouteAliasDestination,
   resolveProjectRouteAliasChain,
 } from "@/lib/project-route-alias"
@@ -28,6 +29,16 @@ describe("projectRouteAliasDestination", () => {
     ).toBe(
       "/dashboard/projects/proj-bt-lead-n-713-00/estimate/compare?estimateId=estimate-7",
     )
+  })
+
+  it("does not carry an archived-source recovery marker to the target", () => {
+    expect(
+      projectRouteAliasDestination(
+        "canonical-project",
+        "/information",
+        "mergedSource=1&tab=overview",
+      ),
+    ).toBe("/dashboard/projects/canonical-project/information?tab=overview")
   })
 
   it("falls back to information for an unsafe suffix", () => {
@@ -60,6 +71,22 @@ describe("projectRouteAliasDestination", () => {
     ).toBe(
       "/dashboard/projects/proj-bt-lead-n-713-00/financials/pay-applications/sage-pay-app%3Aproj-1%3Asource-hash",
     )
+  })
+})
+
+describe("isProjectRouteAliasRecoveryRequest", () => {
+  it("requires the explicit recovery marker on a valid request URL", () => {
+    expect(
+      isProjectRouteAliasRecoveryRequest(
+        "https://compass.example/dashboard/projects/archived?mergedSource=1",
+      ),
+    ).toBe(true)
+    expect(
+      isProjectRouteAliasRecoveryRequest(
+        "https://compass.example/dashboard/projects/archived?mergedSource=0",
+      ),
+    ).toBe(false)
+    expect(isProjectRouteAliasRecoveryRequest("not a URL")).toBe(false)
   })
 })
 

@@ -766,6 +766,50 @@ export const projectRouteAliases = sqliteTable(
   ],
 )
 
+export const projectDuplicateDecisions = sqliteTable(
+  "project_duplicate_decisions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectAId: text("project_a_id").notNull(),
+    projectBId: text("project_b_id").notNull(),
+    status: text("status", { enum: ["not_duplicate", "merged"] }).notNull(),
+    keptProjectId: text("kept_project_id"),
+    removedProjectId: text("removed_project_id"),
+    score: integer("score").notNull(),
+    reasonsJson: text("reasons_json").notNull(),
+    removedProjectSnapshotJson: text("removed_project_snapshot_json"),
+    resolvedByUserId: text("resolved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    resolvedAt: text("resolved_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    check(
+      "project_duplicate_decisions_distinct_projects_check",
+      sql`${table.projectAId} < ${table.projectBId}`,
+    ),
+    check(
+      "project_duplicate_decisions_merge_selection_check",
+      sql`(${table.status} = 'not_duplicate' AND ${table.keptProjectId} IS NULL AND ${table.removedProjectId} IS NULL) OR (${table.status} = 'merged' AND ${table.keptProjectId} IS NOT NULL AND ${table.removedProjectId} IS NOT NULL AND ${table.keptProjectId} <> ${table.removedProjectId})`,
+    ),
+    uniqueIndex("project_duplicate_decisions_org_pair_unique").on(
+      table.organizationId,
+      table.projectAId,
+      table.projectBId,
+    ),
+    index("project_duplicate_decisions_org_status_idx").on(
+      table.organizationId,
+      table.status,
+      table.updatedAt,
+    ),
+  ],
+)
+
 export const projectJobStatuses = sqliteTable(
   "project_job_statuses",
   {
@@ -2675,6 +2719,10 @@ export const sageCostCodes = sqliteTable("sage_cost_codes", {
 export type Project = typeof projects.$inferSelect
 export type ProjectRouteAlias = typeof projectRouteAliases.$inferSelect
 export type NewProjectRouteAlias = typeof projectRouteAliases.$inferInsert
+export type ProjectDuplicateDecision =
+  typeof projectDuplicateDecisions.$inferSelect
+export type NewProjectDuplicateDecision =
+  typeof projectDuplicateDecisions.$inferInsert
 export type ProjectExternalLink = typeof projectExternalLinks.$inferSelect
 export type NewProjectExternalLink = typeof projectExternalLinks.$inferInsert
 export type DailyLog = typeof dailyLogs.$inferSelect

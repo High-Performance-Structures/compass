@@ -16,6 +16,7 @@ import {
   IconChevronsRight,
   IconLayoutCards,
   IconList,
+  IconCopy,
   IconPaint,
   IconSelector,
   IconSettings,
@@ -30,6 +31,7 @@ import type {
 } from "@/app/actions/projects"
 import { useActiveProject } from "@/components/project-list-provider"
 import { ProjectIntakeDrawer } from "@/components/projects/project-intake-drawer"
+import { ProjectDuplicateManager } from "@/components/projects/project-duplicate-manager"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -59,6 +61,7 @@ import {
   PROJECT_JOB_STATUS_DEFINITIONS,
   projectClientStatusLabel,
 } from "@/lib/project-profile"
+import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
 import {
   ALL_PROJECT_HUB_STATUSES_FILTER,
   DEFAULT_PROJECT_HUB_STATUS_FILTER,
@@ -172,11 +175,13 @@ function ProjectCard({
   overview,
   layout,
   canUpdateProjectStatus,
+  isPossibleDuplicate,
 }: {
   readonly project: ProjectListItem
   readonly overview: DashboardOverview
   readonly layout: ProjectLayout
   readonly canUpdateProjectStatus: boolean
+  readonly isPossibleDuplicate: boolean
 }): React.ReactElement {
   const department = departmentForProject(project)
   const health = overview.projects.find((item) => item.id === project.id)
@@ -210,6 +215,12 @@ function ProjectCard({
           </div>
           <ProjectHealth projectId={project.id} overview={overview} />
         </div>
+        {isPossibleDuplicate ? (
+          <span className="flex items-center gap-1 text-xs font-medium text-brand-nutech-gold-foreground">
+            <IconCopy className="size-3.5" />
+            Possible duplicate
+          </span>
+        ) : null}
       </Link>
     )
   }
@@ -251,12 +262,23 @@ function ProjectCard({
               {project.name}
             </h2>
           </div>
-          <Badge
-            variant="outline"
-            className="shrink-0 px-1.5 py-0 text-[10px]"
-          >
-            {department === "OTHER" ? "Other" : department}
-          </Badge>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isPossibleDuplicate ? (
+              <span
+                title="Possible duplicate project"
+                aria-label="Possible duplicate project"
+                className="text-brand-nutech-gold-foreground"
+              >
+                <IconCopy className="size-4" />
+              </span>
+            ) : null}
+            <Badge
+              variant="outline"
+              className="px-1.5 py-0 text-[10px]"
+            >
+              {department === "OTHER" ? "Other" : department}
+            </Badge>
+          </div>
         </div>
 
         <p className="mt-2 truncate text-xs text-muted-foreground">
@@ -394,15 +416,27 @@ export function ProjectHubLaunchpad({
   overview,
   canManageProjects,
   canUpdateProjectStatus,
+  duplicateCandidates,
   intakeAssignees,
 }: {
   readonly projects: readonly ProjectListItem[]
   readonly overview: DashboardOverview
   readonly canManageProjects: boolean
   readonly canUpdateProjectStatus: boolean
+  readonly duplicateCandidates: readonly ProjectDuplicateCandidate[]
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
+  const duplicateProjectIds = useMemo(
+    () =>
+      new Set(
+        duplicateCandidates.flatMap((candidate) => [
+          candidate.first.id,
+          candidate.second.id,
+        ]),
+      ),
+    [duplicateCandidates],
+  )
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
   const [status, setStatus] = useState<ProjectHubStatusFilter>(
     DEFAULT_PROJECT_HUB_STATUS_FILTER,
@@ -494,6 +528,8 @@ export function ProjectHubLaunchpad({
           ) : null}
         </div>
       </header>
+
+      <ProjectDuplicateManager candidates={duplicateCandidates} />
 
       <section className="space-y-3 border-b pb-4">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -654,6 +690,7 @@ export function ProjectHubLaunchpad({
               overview={overview}
               layout={layout}
               canUpdateProjectStatus={canUpdateProjectStatus}
+              isPossibleDuplicate={duplicateProjectIds.has(project.id)}
             />
           ))}
         </div>
