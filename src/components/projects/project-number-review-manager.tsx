@@ -57,7 +57,7 @@ type MergeImpactState =
 
 function reviewProjects(projects: readonly ProjectListItem[]): readonly ReviewProject[] {
   return projects.flatMap((project) => {
-    const issue = projectNumberReviewIssue(project.projectNumber)
+    const issue = projectNumberReviewIssue(project.projectNumber, project.name)
     return issue ? [{ project, issue }] : []
   })
 }
@@ -147,6 +147,7 @@ export function ProjectNumberReviewManager({
     ? projects.filter(
         (project) =>
           project.id !== selected.project.id &&
+          selected.issue.suggestedProjectNumber !== null &&
           project.projectNumber?.trim().toUpperCase() ===
             selected.issue.suggestedProjectNumber,
       )
@@ -160,10 +161,11 @@ export function ProjectNumberReviewManager({
   const selectIssue = useCallback(
     (next: ReviewProject): void => {
       setSelectedProjectId(next.project.id)
-      setApprovedProjectNumber(next.issue.suggestedProjectNumber)
+      setApprovedProjectNumber(next.issue.suggestedProjectNumber ?? "")
       const target = projects.find(
         (project) =>
           project.id !== next.project.id &&
+          next.issue.suggestedProjectNumber !== null &&
           project.projectNumber?.trim().toUpperCase() ===
             next.issue.suggestedProjectNumber,
       )
@@ -224,6 +226,7 @@ export function ProjectNumberReviewManager({
       const result = await correctProjectNumberForReview({
         projectId: selected.project.id,
         approvedProjectNumber,
+        reason: "number_review",
       })
       if (!result.success) {
         toast.error(result.error)
@@ -266,7 +269,8 @@ export function ProjectNumberReviewManager({
               {issues.length} project number{issues.length === 1 ? "" : "s"} need review
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Extra cutover segments do not match the approved registry format.
+              Buildertrend placeholders and extra cutover segments do not match
+              the approved registry format.
             </p>
           </div>
         </div>
@@ -320,8 +324,9 @@ export function ProjectNumberReviewManager({
                 </p>
                 <p className="mt-1 break-words text-sm">{selected.project.name}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Compass found one or more extra segments after the approved
-                  department, sequence, and suffix format.
+                  {selected.issue.reason === "buildertrend_placeholder"
+                    ? "This Buildertrend placeholder must be replaced with an approved Compass project number."
+                    : "Compass found one or more extra segments after the approved department, sequence, and suffix format."}
                 </p>
               </div>
 
@@ -389,8 +394,9 @@ export function ProjectNumberReviewManager({
                     autoComplete="off"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Suggested from the current number only. Verify it before
-                    confirming; Compass will not apply it automatically.
+                    {selected.issue.suggestedProjectNumber
+                      ? "Suggested from the governed number at the start of the imported project name. Verify it before confirming; Compass will not apply it automatically."
+                      : "No governed number could be recovered from this import. Enter and verify the approved number; Compass will not invent one automatically."}
                   </p>
                 </div>
               ) : (

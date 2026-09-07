@@ -67,7 +67,10 @@ import {
   type ProjectInteractionTypeOption,
   type ProjectJobStatusOption,
 } from "@/lib/project-profile"
-import { projectNumberReviewIssue } from "@/lib/project-number-review"
+import {
+  projectNumberDepartmentSequence,
+  projectNumberReviewIssue,
+} from "@/lib/project-number-review"
 import { clientFollowUpState } from "@/lib/project-follow-up"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import {
@@ -1124,10 +1127,20 @@ export async function updateProjectInformation(input: {
   }
 }
 
-export async function correctProjectNumberForReview(input: {
-  readonly projectId: string
-  readonly approvedProjectNumber: string
-}): Promise<ProjectProfileResult> {
+export async function correctProjectNumberForReview(
+  input:
+    | {
+        readonly projectId: string
+        readonly approvedProjectNumber: string
+        readonly reason: "number_review"
+      }
+    | {
+        readonly projectId: string
+        readonly approvedProjectNumber: string
+        readonly reason: "number_collision"
+        readonly conflictingProjectId: string
+      },
+): Promise<ProjectProfileResult> {
   try {
     const { db, organizationId, user } = await projectProfileContext(
       input.projectId,
@@ -1161,12 +1174,68 @@ export async function correctProjectNumberForReview(input: {
     const existing = existingRows[0]
     if (!existing) return { success: false, error: "Project not found." }
 
-    const reviewIssue = projectNumberReviewIssue(existing.projectNumber)
-    if (!reviewIssue || !existing.projectNumber) {
+    const reviewIssue = projectNumberReviewIssue(
+      existing.projectNumber,
+      existing.name,
+    )
+    if (!existing.projectNumber) {
       return {
         success: false,
-        error: "This project number no longer requires cutover review.",
+        error: "This project number is unavailable.",
       }
+    }
+
+    let requiredDepartment = reviewIssue?.department ?? existing.department
+    let collisionDepartmentSequence: string | null = null
+    if (input.reason === "number_review") {
+      if (!reviewIssue) {
+        return {
+          success: false,
+          error: "This project number no longer requires cutover review.",
+        }
+      }
+    } else {
+      if (input.conflictingProjectId === existing.id) {
+        return { success: false, error: "Choose two different projects." }
+      }
+      const conflictingRows = await db
+        .select({
+          projectNumber: projects.projectNumber,
+          name: projects.name,
+        })
+        .from(projects)
+        .where(
+          and(
+            eq(projects.id, input.conflictingProjectId),
+            eq(projects.organizationId, organizationId),
+          ),
+        )
+        .limit(1)
+      const conflicting = conflictingRows[0]
+      const existingDepartmentSequence = projectNumberDepartmentSequence(
+        existing.projectNumber,
+        existing.name,
+      )
+      const conflictingDepartmentSequence = projectNumberDepartmentSequence(
+        conflicting?.projectNumber ?? null,
+        conflicting?.name ?? null,
+      )
+      if (
+        !conflicting ||
+        !existingDepartmentSequence ||
+        existingDepartmentSequence !== conflictingDepartmentSequence
+      ) {
+        return {
+          success: false,
+          error: "These projects no longer share a department and sequence.",
+        }
+      }
+      collisionDepartmentSequence = existingDepartmentSequence
+      const collisionDepartment = existingDepartmentSequence.slice(0, 1)
+      requiredDepartment =
+        requiredDepartment ??
+        reviewIssue?.department ??
+        (isProjectDepartment(collisionDepartment) ? collisionDepartment : null)
     }
 
     const approvedProjectNumber = input.approvedProjectNumber.trim().toUpperCase()
@@ -1178,7 +1247,7 @@ export async function correctProjectNumberForReview(input: {
       }
     }
     if (
-      parts.department !== reviewIssue.department ||
+      (requiredDepartment !== null && parts.department !== requiredDepartment) ||
       (existing.department !== null && parts.department !== existing.department)
     ) {
       return {
@@ -1188,6 +1257,18 @@ export async function correctProjectNumberForReview(input: {
     }
     if (approvedProjectNumber === existing.projectNumber.toUpperCase()) {
       return { success: false, error: "Enter a corrected project number." }
+    }
+    const approvedDepartmentSequence = projectNumberDepartmentSequence(
+      approvedProjectNumber,
+    )
+    if (
+      collisionDepartmentSequence !== null &&
+      approvedDepartmentSequence === collisionDepartmentSequence
+    ) {
+      return {
+        success: false,
+        error: "Assign a new sequential number to resolve this collision.",
+      }
     }
 
     const sequence = Number(parts.sequence)
@@ -1363,7 +1444,10 @@ export async function correctProjectNumberForReview(input: {
         organizationId,
         projectId: existing.id,
         actorUserId: user.id,
-        eventType: "project_number_corrected",
+        eventType:
+          input.reason === "number_collision"
+            ? "project_number_collision_resolved"
+            : "project_number_corrected",
         entityType: "project",
         entityId: existing.id,
         beforeJson: JSON.stringify({

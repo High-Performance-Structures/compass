@@ -352,6 +352,7 @@ export async function mergeDuplicateProjects(input: {
     const detectedMatch = compareProjectDuplicateIdentity(kept, removed)
     const approvedNumberReviewMerge = isExactProjectNumberReviewMerge({
       reviewedProjectNumber: removed.projectNumber,
+      reviewedProjectName: removed.name,
       keptProjectNumber: kept.projectNumber,
     })
     const match =
