@@ -92,6 +92,7 @@ export default async function ProjectsPage({
         projects={projectList}
         overview={overview}
         canManageProjects={canCreateProject(currentUser)}
+        canReviewProjectNumbers={canCreateOrUpdateProjects}
         canUpdateProjectStatus={canUpdateProjectStatus}
         duplicateCandidates={duplicateCandidates}
         intakeAssignees={intakeAssignees}

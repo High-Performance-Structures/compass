@@ -67,6 +67,7 @@ import {
   type ProjectInteractionTypeOption,
   type ProjectJobStatusOption,
 } from "@/lib/project-profile"
+import { projectNumberReviewIssue } from "@/lib/project-number-review"
 import { clientFollowUpState } from "@/lib/project-follow-up"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import {
@@ -1120,6 +1121,283 @@ export async function updateProjectInformation(input: {
   } catch (error) {
     console.error("Unable to update project information", error)
     return { success: false, error: "Unable to update project information." }
+  }
+}
+
+export async function correctProjectNumberForReview(input: {
+  readonly projectId: string
+  readonly approvedProjectNumber: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const { db, organizationId, user } = await projectProfileContext(
+      input.projectId,
+      "update",
+    )
+    if (!canManageProjectRegistry(user)) {
+      return {
+        success: false,
+        error: "Project-number corrections are limited to registry administrators.",
+      }
+    }
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
+      return { success: false, error: "Demo data cannot be changed." }
+    }
+
+    const existingRows = await db
+      .select({
+        id: projects.id,
+        projectNumber: projects.projectNumber,
+        department: projects.department,
+        name: projects.name,
+      })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    const existing = existingRows[0]
+    if (!existing) return { success: false, error: "Project not found." }
+
+    const reviewIssue = projectNumberReviewIssue(existing.projectNumber)
+    if (!reviewIssue || !existing.projectNumber) {
+      return {
+        success: false,
+        error: "This project number no longer requires cutover review.",
+      }
+    }
+
+    const approvedProjectNumber = input.approvedProjectNumber.trim().toUpperCase()
+    const parts = projectNumberParts(approvedProjectNumber)
+    if (!parts) {
+      return {
+        success: false,
+        error: "Enter an approved number in DEPARTMENT-SEQUENCE-SUFFIX format.",
+      }
+    }
+    if (
+      parts.department !== reviewIssue.department ||
+      (existing.department !== null && parts.department !== existing.department)
+    ) {
+      return {
+        success: false,
+        error: "The approved number must stay in the project's current department.",
+      }
+    }
+    if (approvedProjectNumber === existing.projectNumber.toUpperCase()) {
+      return { success: false, error: "Enter a corrected project number." }
+    }
+
+    const sequence = Number(parts.sequence)
+    const [projectConflicts, aliasConflicts, reservationNumberConflicts, reservationSequenceConflicts, projectReservations] =
+      await Promise.all([
+        db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.organizationId, organizationId),
+              eq(projects.projectNumber, approvedProjectNumber),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ projectId: projectNumberAliases.projectId })
+          .from(projectNumberAliases)
+          .where(
+            and(
+              eq(projectNumberAliases.organizationId, organizationId),
+              eq(projectNumberAliases.projectNumber, approvedProjectNumber),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ projectId: projectNumberReservations.projectId })
+          .from(projectNumberReservations)
+          .where(
+            and(
+              eq(projectNumberReservations.organizationId, organizationId),
+              eq(projectNumberReservations.projectNumber, approvedProjectNumber),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ projectId: projectNumberReservations.projectId })
+          .from(projectNumberReservations)
+          .where(
+            and(
+              eq(projectNumberReservations.organizationId, organizationId),
+              eq(projectNumberReservations.department, parts.department),
+              eq(projectNumberReservations.sequence, sequence),
+            ),
+          )
+          .limit(1),
+        db
+          .select({ id: projectNumberReservations.id })
+          .from(projectNumberReservations)
+          .where(
+            and(
+              eq(projectNumberReservations.organizationId, organizationId),
+              eq(projectNumberReservations.projectId, existing.id),
+            ),
+          )
+          .limit(1),
+      ])
+
+    if (projectConflicts[0] && projectConflicts[0].id !== existing.id) {
+      return {
+        success: false,
+        error: "That approved number already belongs to another project. Use Merge into existing project instead.",
+      }
+    }
+    if (aliasConflicts[0] && aliasConflicts[0].projectId !== existing.id) {
+      return {
+        success: false,
+        error: "That approved number is a historical alias for another project. Review that project before continuing.",
+      }
+    }
+    const reservationConflict =
+      reservationNumberConflicts[0] ?? reservationSequenceConflicts[0]
+    if (reservationConflict && reservationConflict.projectId !== existing.id) {
+      return {
+        success: false,
+        error: "That department and sequence are reserved by another project. Use Merge into existing project instead.",
+      }
+    }
+
+    const updatedAt = nowIso()
+    const driveOperationId = crypto.randomUUID()
+    const trackerOperationId = crypto.randomUUID()
+    const syncPayload = JSON.stringify({
+      previousProjectNumber: existing.projectNumber,
+      projectNumber: approvedProjectNumber,
+    })
+    const reservation = projectReservations[0]
+      ? db
+          .update(projectNumberReservations)
+          .set({
+            department: parts.department,
+            sequence,
+            projectNumber: approvedProjectNumber,
+          })
+          .where(eq(projectNumberReservations.id, projectReservations[0].id))
+      : db.insert(projectNumberReservations).values({
+          id: crypto.randomUUID(),
+          organizationId,
+          projectId: existing.id,
+          department: parts.department,
+          sequence,
+          projectNumber: approvedProjectNumber,
+          createdAt: updatedAt,
+        })
+
+    await db.batch([
+      db
+        .update(projects)
+        .set({
+          projectNumber: approvedProjectNumber,
+          department: parts.department,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(projects.id, existing.id),
+            eq(projects.organizationId, organizationId),
+          ),
+        ),
+      reservation,
+      db
+        .insert(projectNumberAliases)
+        .values({
+          id: crypto.randomUUID(),
+          organizationId,
+          projectId: existing.id,
+          projectNumber: existing.projectNumber,
+          createdBy: user.id,
+          createdAt: updatedAt,
+        })
+        .onConflictDoNothing(),
+      db
+        .update(projectExternalLinks)
+        .set({ externalNumber: approvedProjectNumber, updatedAt })
+        .where(
+          and(
+            eq(projectExternalLinks.projectId, existing.id),
+            eq(projectExternalLinks.externalNumber, existing.projectNumber),
+          ),
+        ),
+      db.insert(projectProfileSyncOperations).values([
+        {
+          id: driveOperationId,
+          organizationId,
+          projectId: existing.id,
+          operation: "drive_folder_rename",
+          status: "pending",
+          payloadJson: syncPayload,
+          error: null,
+          attempts: 0,
+          attemptedAt: null,
+          completedAt: null,
+          createdAt: updatedAt,
+          updatedAt,
+        },
+        {
+          id: trackerOperationId,
+          organizationId,
+          projectId: existing.id,
+          operation: "tracker_row_update",
+          status: "pending",
+          payloadJson: syncPayload,
+          error: null,
+          attempts: 0,
+          attemptedAt: null,
+          completedAt: null,
+          createdAt: updatedAt,
+          updatedAt,
+        },
+      ]),
+      db.insert(projectProfileAuditEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        projectId: existing.id,
+        actorUserId: user.id,
+        eventType: "project_number_corrected",
+        entityType: "project",
+        entityId: existing.id,
+        beforeJson: JSON.stringify({
+          projectNumber: existing.projectNumber,
+          department: existing.department,
+        }),
+        afterJson: JSON.stringify({
+          projectNumber: approvedProjectNumber,
+          department: parts.department,
+          retainedAlias: existing.projectNumber,
+        }),
+        createdAt: updatedAt,
+      }),
+    ])
+
+    await Promise.all(
+      [driveOperationId, trackerOperationId].map((operationId) =>
+        retryProjectProfileSyncOperation({
+          projectId: existing.id,
+          operationId,
+        }),
+      ),
+    )
+    revalidateProjectProfile(existing.id)
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to correct project number", error)
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to correct the project number.",
+    }
   }
 }
 

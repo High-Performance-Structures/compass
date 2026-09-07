@@ -1,3 +1,5 @@
+import { projectNumberReviewIssue } from "@/lib/project-number-review"
+
 export type ProjectDuplicateIdentity = {
   readonly id: string
   readonly projectNumber: string | null
@@ -58,7 +60,10 @@ function normalizedIdentifier(value: string | null): string {
 
 function projectDepartmentSequence(value: string | null): string | null {
   if (!value) return null
-  const match = /^([OHND])\s*-\s*(\d+)(?:\s*-\s*[A-Z0-9]+(?:\s*-\s*[A-Z0-9]+)*)?$/i.exec(
+  // Extra-segment cutover values need a human numbering decision before they
+  // can safely participate in the governed department/sequence rule.
+  if (projectNumberReviewIssue(value)) return null
+  const match = /^([OHND])\s*-\s*(\d+)(?:\s*-\s*[A-Z0-9]+)?$/i.exec(
     value.trim(),
   )
   const department = match?.[1]?.toUpperCase()

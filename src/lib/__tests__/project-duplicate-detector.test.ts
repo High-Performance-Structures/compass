@@ -96,6 +96,15 @@ describe("project duplicate detector", () => {
     ).toBeNull()
   })
 
+  it("does not use an extra-segment cutover number as a governed sequence match", () => {
+    expect(
+      compareProjectDuplicateIdentity(
+        project("cutover", { projectNumber: "N-841-6385-00" }),
+        project("approved", { projectNumber: "N-841-55" }),
+      ),
+    ).toBeNull()
+  })
+
   it("ranks the strongest pair first and creates stable pair keys", () => {
     const candidates = findProjectDuplicateCandidates([
       project("z", { name: "North Main Remodel", clientName: "Acme" }),
