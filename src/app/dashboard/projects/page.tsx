@@ -13,6 +13,8 @@ import { ProjectsHub } from "@/components/projects/projects-hub"
 import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { canFeature } from "@/lib/permission-enforcement"
 import {
   canCreateProject,
   canManageProjectRegistry,
@@ -54,6 +56,12 @@ export default async function ProjectsPage({
 }): Promise<React.ReactElement> {
   const params = await searchParams
   const currentUser = await getCurrentUser()
+  const canUpdateProjectStatus =
+    currentUser !== null &&
+    currentUser.organizationId !== null &&
+    !isDemoUser(currentUser.id) &&
+    !isDemoOrg(currentUser.organizationId) &&
+    (await canFeature(currentUser, "project-hub", "update"))
   const canCreateOrUpdateProjects = canManageProjectRegistry(currentUser)
   const developerModeEnabled = await isDeveloperModeEnabled(
     canCreateOrUpdateProjects,
@@ -76,6 +84,7 @@ export default async function ProjectsPage({
         projects={projectList}
         overview={overview}
         canManageProjects={canCreateProject(currentUser)}
+        canUpdateProjectStatus={canUpdateProjectStatus}
         intakeAssignees={intakeAssignees}
       />
     )

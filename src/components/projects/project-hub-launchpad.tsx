@@ -1,8 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -21,6 +23,7 @@ import {
 } from "@tabler/icons-react"
 
 import type { DashboardOverview } from "@/app/actions/dashboard-overview"
+import { updateProjectJobStatus } from "@/app/actions/project-profile"
 import type {
   ProjectIntakeAssignee,
   ProjectListItem,
@@ -52,7 +55,10 @@ import {
 } from "@/components/ui/select"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import { cn } from "@/lib/utils"
-import { projectClientStatusLabel } from "@/lib/project-profile"
+import {
+  PROJECT_JOB_STATUS_DEFINITIONS,
+  projectClientStatusLabel,
+} from "@/lib/project-profile"
 import {
   ALL_PROJECT_HUB_STATUSES_FILTER,
   DEFAULT_PROJECT_HUB_STATUS_FILTER,
@@ -165,10 +171,12 @@ function ProjectCard({
   project,
   overview,
   layout,
+  canUpdateProjectStatus,
 }: {
   readonly project: ProjectListItem
   readonly overview: DashboardOverview
   readonly layout: ProjectLayout
+  readonly canUpdateProjectStatus: boolean
 }): React.ReactElement {
   const department = departmentForProject(project)
   const health = overview.projects.find((item) => item.id === project.id)
@@ -256,7 +264,10 @@ function ProjectCard({
         </p>
         <div className="mt-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="secondary">{project.jobStatusLabel}</Badge>
+            <ProjectJobStatusSelect
+              project={project}
+              canUpdate={canUpdateProjectStatus}
+            />
             <Badge variant="outline">{projectClientStatusLabel(project.clientStatus)}</Badge>
           </div>
           <div className="mt-2">
@@ -277,6 +288,78 @@ function ProjectCard({
         </Button>
       </div>
     </article>
+  )
+}
+
+function ProjectJobStatusSelect({
+  project,
+  canUpdate,
+}: {
+  readonly project: ProjectListItem
+  readonly canUpdate: boolean
+}): React.ReactElement {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const [selectedStatusId, setSelectedStatusId] = useState(project.jobStatusId)
+
+  useEffect(() => {
+    setSelectedStatusId(project.jobStatusId)
+  }, [project.jobStatusId])
+
+  if (!canUpdate) {
+    return <Badge variant="secondary">{project.jobStatusLabel}</Badge>
+  }
+
+  const selectedStatusLabel =
+    PROJECT_JOB_STATUS_DEFINITIONS.find(
+      (status) => status.id === selectedStatusId,
+    )?.label ?? project.jobStatusLabel
+
+  function changeStatus(jobStatusId: string): void {
+    if (jobStatusId === selectedStatusId) return
+    const previousStatusId = selectedStatusId
+    setSelectedStatusId(jobStatusId)
+    startTransition(async () => {
+      const result = await updateProjectJobStatus({
+        projectId: project.id,
+        jobStatusId,
+      })
+      if (!result.success) {
+        setSelectedStatusId(previousStatusId)
+        toast.error(result.error ?? "Unable to update project status.")
+        return
+      }
+
+      const nextStatusLabel =
+        PROJECT_JOB_STATUS_DEFINITIONS.find(
+          (status) => status.id === jobStatusId,
+        )?.label ?? "selected status"
+      toast.success(`${project.name} moved to ${nextStatusLabel}.`)
+      router.refresh()
+    })
+  }
+
+  return (
+    <Select
+      value={selectedStatusId}
+      onValueChange={changeStatus}
+      disabled={pending}
+    >
+      <SelectTrigger
+        size="sm"
+        className="h-6 max-w-full border-0 bg-secondary px-2 text-xs font-medium shadow-none"
+        aria-label={`Update status for ${project.name}`}
+      >
+        <SelectValue>{pending ? "Saving…" : selectedStatusLabel}</SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" align="start">
+        {PROJECT_JOB_STATUS_DEFINITIONS.map((status) => (
+          <SelectItem key={status.id} value={status.id}>
+            {status.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -310,11 +393,13 @@ export function ProjectHubLaunchpad({
   projects,
   overview,
   canManageProjects,
+  canUpdateProjectStatus,
   intakeAssignees,
 }: {
   readonly projects: readonly ProjectListItem[]
   readonly overview: DashboardOverview
   readonly canManageProjects: boolean
+  readonly canUpdateProjectStatus: boolean
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
@@ -568,6 +653,7 @@ export function ProjectHubLaunchpad({
               project={project}
               overview={overview}
               layout={layout}
+              canUpdateProjectStatus={canUpdateProjectStatus}
             />
           ))}
         </div>
