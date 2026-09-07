@@ -17,6 +17,7 @@ import {
   IconLayoutCards,
   IconList,
   IconCopy,
+  IconHash,
   IconPaint,
   IconSelector,
   IconSettings,
@@ -32,6 +33,7 @@ import type {
 import { useActiveProject } from "@/components/project-list-provider"
 import { ProjectIntakeDrawer } from "@/components/projects/project-intake-drawer"
 import { ProjectDuplicateManager } from "@/components/projects/project-duplicate-manager"
+import { ProjectNumberReviewManager } from "@/components/projects/project-number-review-manager"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -62,6 +64,7 @@ import {
   projectClientStatusLabel,
 } from "@/lib/project-profile"
 import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
+import { projectNumberReviewIssue } from "@/lib/project-number-review"
 import {
   ALL_PROJECT_HUB_STATUSES_FILTER,
   DEFAULT_PROJECT_HUB_STATUS_FILTER,
@@ -176,14 +179,18 @@ function ProjectCard({
   layout,
   canUpdateProjectStatus,
   isPossibleDuplicate,
+  needsNumberReview,
   onReviewDuplicate,
+  onReviewProjectNumber,
 }: {
   readonly project: ProjectListItem
   readonly overview: DashboardOverview
   readonly layout: ProjectLayout
   readonly canUpdateProjectStatus: boolean
   readonly isPossibleDuplicate: boolean
+  readonly needsNumberReview: boolean
   readonly onReviewDuplicate: (projectId: string) => void
+  readonly onReviewProjectNumber: (projectId: string) => void
 }): React.ReactElement {
   const department = departmentForProject(project)
   const health = overview.projects.find((item) => item.id === project.id)
@@ -231,6 +238,18 @@ function ProjectCard({
           >
             <IconCopy className="size-3.5" />
             Possible duplicate
+          </button>
+        ) : null}
+        {needsNumberReview ? (
+          <button
+            type="button"
+            onClick={() => onReviewProjectNumber(project.id)}
+            title={`Review project number for ${project.name}`}
+            aria-label={`Review project number for ${project.name}`}
+            className="relative z-10 flex items-center gap-1 text-xs font-medium text-destructive hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconHash className="size-3.5" />
+            Number needs review
           </button>
         ) : null}
       </div>
@@ -284,6 +303,17 @@ function ProjectCard({
                 className="inline-flex size-7 items-center justify-center rounded-full text-brand-nutech-gold-foreground transition-colors hover:bg-brand-nutech-gold/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <IconCopy className="size-4" />
+              </button>
+            ) : null}
+            {needsNumberReview ? (
+              <button
+                type="button"
+                onClick={() => onReviewProjectNumber(project.id)}
+                title={`Review project number for ${project.name}`}
+                aria-label={`Review project number for ${project.name}`}
+                className="inline-flex size-7 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <IconHash className="size-4" />
               </button>
             ) : null}
             <Badge
@@ -429,6 +459,7 @@ export function ProjectHubLaunchpad({
   projects,
   overview,
   canManageProjects,
+  canReviewProjectNumbers,
   canUpdateProjectStatus,
   duplicateCandidates,
   intakeAssignees,
@@ -436,6 +467,7 @@ export function ProjectHubLaunchpad({
   readonly projects: readonly ProjectListItem[]
   readonly overview: DashboardOverview
   readonly canManageProjects: boolean
+  readonly canReviewProjectNumbers: boolean
   readonly canUpdateProjectStatus: boolean
   readonly duplicateCandidates: readonly ProjectDuplicateCandidate[]
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
@@ -451,6 +483,17 @@ export function ProjectHubLaunchpad({
       ),
     [duplicateCandidates],
   )
+  const numberReviewProjectIds = useMemo(
+    () =>
+      new Set(
+        canReviewProjectNumbers
+          ? projects
+              .filter((project) => projectNumberReviewIssue(project.projectNumber))
+              .map((project) => project.id)
+          : [],
+      ),
+    [canReviewProjectNumbers, projects],
+  )
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
   const [status, setStatus] = useState<ProjectHubStatusFilter>(
     DEFAULT_PROJECT_HUB_STATUS_FILTER,
@@ -462,8 +505,14 @@ export function ProjectHubLaunchpad({
   const [duplicateReviewProjectId, setDuplicateReviewProjectId] = useState<
     string | null
   >(null)
+  const [numberReviewProjectId, setNumberReviewProjectId] = useState<
+    string | null
+  >(null)
   const handleDuplicateReviewHandled = useCallback(() => {
     setDuplicateReviewProjectId(null)
+  }, [])
+  const handleNumberReviewHandled = useCallback(() => {
+    setNumberReviewProjectId(null)
   }, [])
 
   const statusOptions = useMemo(
@@ -554,6 +603,14 @@ export function ProjectHubLaunchpad({
         reviewProjectId={duplicateReviewProjectId}
         onReviewProjectHandled={handleDuplicateReviewHandled}
       />
+
+      {canReviewProjectNumbers ? (
+        <ProjectNumberReviewManager
+          projects={projects}
+          reviewProjectId={numberReviewProjectId}
+          onReviewProjectHandled={handleNumberReviewHandled}
+        />
+      ) : null}
 
       <section className="space-y-3 border-b pb-4">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -715,7 +772,9 @@ export function ProjectHubLaunchpad({
               layout={layout}
               canUpdateProjectStatus={canUpdateProjectStatus}
               isPossibleDuplicate={duplicateProjectIds.has(project.id)}
+              needsNumberReview={numberReviewProjectIds.has(project.id)}
               onReviewDuplicate={setDuplicateReviewProjectId}
+              onReviewProjectNumber={setNumberReviewProjectId}
             />
           ))}
         </div>

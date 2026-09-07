@@ -23,7 +23,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { customProjectInteractionType } from "@/lib/project-profile"
+import {
+  customProjectInteractionType,
+  projectNumberParts,
+} from "@/lib/project-profile"
 import { type ProjectDepartment } from "@/lib/project-branding"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 
@@ -31,8 +34,7 @@ const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
 
 function suffixFromProjectNumber(projectNumber: string | null): string {
   if (!projectNumber) return ""
-  const parts = projectNumber.split("-")
-  return parts[2] ?? ""
+  return projectNumberParts(projectNumber)?.addressSuffix ?? ""
 }
 
 function dateTimeLocalValue(value: string): string {
@@ -133,7 +135,11 @@ export function ProjectInformationWorkspace({
         publicLocationCity,
         clientStatus,
         jobStatusId,
-        addressSuffix: information.project.projectNumber ? addressSuffix : null,
+        addressSuffix:
+          information.project.projectNumber &&
+          projectNumberParts(information.project.projectNumber)
+            ? addressSuffix
+            : null,
         updateClientDefaultMailingAddress: propagateMailingAddress,
       })
       setProfileMessage(resultMessage(result))

@@ -29,6 +29,7 @@ import {
   type ProjectMergeSchemaRow,
   type ProjectMergeTableCount,
 } from "@/lib/project-merge-impact"
+import { isExactProjectNumberReviewMerge } from "@/lib/project-number-review"
 import { requireOrg } from "@/lib/org-scope"
 import {
   canManageProjectRegistry,
@@ -348,11 +349,31 @@ export async function mergeDuplicateProjects(input: {
     if (!kept || !removed) {
       return { success: false, error: "One or both projects were not found." }
     }
-    const match = compareProjectDuplicateIdentity(kept, removed)
+    const detectedMatch = compareProjectDuplicateIdentity(kept, removed)
+    const approvedNumberReviewMerge = isExactProjectNumberReviewMerge({
+      reviewedProjectNumber: removed.projectNumber,
+      keptProjectNumber: kept.projectNumber,
+    })
+    const match =
+      detectedMatch ??
+      (approvedNumberReviewMerge
+        ? {
+            score: 100,
+            confidence: "high" as const,
+            reasons: [
+              {
+                code: "project_number" as const,
+                label: "Approved project number matches the reviewed cutover number",
+                weight: 100,
+              },
+            ],
+          }
+        : null)
     if (!match) {
       return {
         success: false,
-        error: "These projects no longer meet the duplicate warning threshold.",
+        error:
+          "These projects no longer meet the duplicate warning threshold, and the approved number does not exactly match the reviewed cutover number.",
       }
     }
 
