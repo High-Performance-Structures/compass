@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -176,12 +176,14 @@ function ProjectCard({
   layout,
   canUpdateProjectStatus,
   isPossibleDuplicate,
+  onReviewDuplicate,
 }: {
   readonly project: ProjectListItem
   readonly overview: DashboardOverview
   readonly layout: ProjectLayout
   readonly canUpdateProjectStatus: boolean
   readonly isPossibleDuplicate: boolean
+  readonly onReviewDuplicate: (projectId: string) => void
 }): React.ReactElement {
   const department = departmentForProject(project)
   const health = overview.projects.find((item) => item.id === project.id)
@@ -189,18 +191,22 @@ function ProjectCard({
 
   if (layout === "list") {
     return (
-      <Link
-        href={`/dashboard/projects/${project.id}`}
+      <div
         className={cn(
-          "grid min-w-0 gap-3 border-l-4 bg-background px-4 py-3 transition-colors hover:bg-muted/50 lg:grid-cols-[minmax(13rem,0.8fr)_minmax(14rem,1fr)_auto]",
+          "group relative grid min-w-0 gap-3 border-l-4 bg-background px-4 py-3 transition-colors hover:bg-muted/50 lg:grid-cols-[minmax(13rem,0.8fr)_minmax(14rem,1fr)_auto]",
           departmentAccent(department)
         )}
       >
-        <div className="min-w-0">
+        <Link
+          href={`/dashboard/projects/${project.id}`}
+          aria-label={`Open ${project.name}`}
+          className="absolute inset-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        />
+        <div className="pointer-events-none min-w-0">
           <p className="truncate text-sm font-semibold">{projectDisplayName(project)}</p>
           <p className="truncate text-xs text-muted-foreground">{projectSubtitle(project)}</p>
         </div>
-        <div className="min-w-0">
+        <div className="pointer-events-none min-w-0">
           <p className="truncate text-sm">
             {health?.nextTask?.title ?? project.clientName ?? "No next schedule item"}
           </p>
@@ -208,7 +214,7 @@ function ProjectCard({
             {department === "OTHER" ? "Unassigned department" : department}
           </p>
         </div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="pointer-events-none flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap gap-1.5">
             <Badge variant="secondary">{project.jobStatusLabel}</Badge>
             <Badge variant="outline">{projectClientStatusLabel(project.clientStatus)}</Badge>
@@ -216,12 +222,18 @@ function ProjectCard({
           <ProjectHealth projectId={project.id} overview={overview} />
         </div>
         {isPossibleDuplicate ? (
-          <span className="flex items-center gap-1 text-xs font-medium text-brand-nutech-gold-foreground">
+          <button
+            type="button"
+            onClick={() => onReviewDuplicate(project.id)}
+            title={`Review duplicate matches for ${project.name}`}
+            aria-label={`Review duplicate matches for ${project.name}`}
+            className="relative z-10 flex items-center gap-1 text-xs font-medium text-brand-nutech-gold-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <IconCopy className="size-3.5" />
             Possible duplicate
-          </span>
+          </button>
         ) : null}
-      </Link>
+      </div>
     )
   }
 
@@ -264,13 +276,15 @@ function ProjectCard({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {isPossibleDuplicate ? (
-              <span
-                title="Possible duplicate project"
-                aria-label="Possible duplicate project"
-                className="text-brand-nutech-gold-foreground"
+              <button
+                type="button"
+                onClick={() => onReviewDuplicate(project.id)}
+                title={`Review duplicate matches for ${project.name}`}
+                aria-label={`Review duplicate matches for ${project.name}`}
+                className="inline-flex size-7 items-center justify-center rounded-full text-brand-nutech-gold-foreground transition-colors hover:bg-brand-nutech-gold/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <IconCopy className="size-4" />
-              </span>
+              </button>
             ) : null}
             <Badge
               variant="outline"
@@ -445,6 +459,12 @@ export function ProjectHubLaunchpad({
   const [layout, setLayout] = useState<ProjectLayout>("cards")
   const [pageSize, setPageSize] = useState<ProjectPageSize>(10)
   const [pageIndex, setPageIndex] = useState(0)
+  const [duplicateReviewProjectId, setDuplicateReviewProjectId] = useState<
+    string | null
+  >(null)
+  const handleDuplicateReviewHandled = useCallback(() => {
+    setDuplicateReviewProjectId(null)
+  }, [])
 
   const statusOptions = useMemo(
     () => projectHubStatusFilterOptions(projects),
@@ -529,7 +549,11 @@ export function ProjectHubLaunchpad({
         </div>
       </header>
 
-      <ProjectDuplicateManager candidates={duplicateCandidates} />
+      <ProjectDuplicateManager
+        candidates={duplicateCandidates}
+        reviewProjectId={duplicateReviewProjectId}
+        onReviewProjectHandled={handleDuplicateReviewHandled}
+      />
 
       <section className="space-y-3 border-b pb-4">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -691,6 +715,7 @@ export function ProjectHubLaunchpad({
               layout={layout}
               canUpdateProjectStatus={canUpdateProjectStatus}
               isPossibleDuplicate={duplicateProjectIds.has(project.id)}
+              onReviewDuplicate={setDuplicateReviewProjectId}
             />
           ))}
         </div>
