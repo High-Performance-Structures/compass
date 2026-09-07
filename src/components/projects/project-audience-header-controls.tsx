@@ -29,6 +29,7 @@ import { ProjectAudienceDirectMessageDialog } from "@/components/projects/projec
 import { useTheme } from "@/components/theme-provider"
 import { getInitials } from "@/lib/utils"
 import type { ProjectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
+import type { ProjectAudience } from "@/lib/project-audience-access"
 
 type AudienceViewer = {
   readonly name: string
@@ -39,9 +40,13 @@ type AudienceViewer = {
 export function ProjectAudienceHeaderControls({
   viewer,
   messageShortcut,
+  projectId,
+  audience,
 }: {
   readonly viewer: AudienceViewer
   readonly messageShortcut: ProjectAudienceMessageShortcut | null
+  readonly projectId: string
+  readonly audience: ProjectAudience
 }): React.ReactElement {
   const { theme, setTheme } = useTheme()
   const canViewHelp = useCanViewHelp()
@@ -81,7 +86,7 @@ export function ProjectAudienceHeaderControls({
           triggerClassName="size-7 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         />
       ) : null}
-      <NotificationsPopover />
+      <NotificationsPopover scope={{ projectId, audience }} />
       <ProjectAudienceNotificationSettings
         compact
         triggerIcon="settings"

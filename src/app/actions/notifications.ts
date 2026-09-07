@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -9,8 +9,9 @@ import {
   notificationEvents,
   notificationPreferences,
   notificationRecipients,
+  projectMembers,
 } from "@/db/schema"
-import { getCurrentUser, requireAuth } from "@/lib/auth"
+import { getCurrentUser, requireAuth, type AuthUser } from "@/lib/auth"
 import { recipientNotificationHref } from "@/lib/conversations/notification-route"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -24,6 +25,12 @@ import {
 } from "@/lib/notifications/sms-consent"
 import { isValidSmsQuietHoursTime } from "@/lib/notifications/sms-policy"
 import { requireOrg } from "@/lib/org-scope"
+import { assertProjectAccess } from "@/lib/project-access"
+import {
+  canUseProjectAudience,
+  type ProjectAudience,
+} from "@/lib/project-audience-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { isValidTimeZone } from "@/lib/work-calendar"
 
 export type NotificationPreferenceState = {
@@ -94,6 +101,16 @@ type NotificationCenterResult =
       }
     }
   | { readonly success: false; readonly error: string }
+
+export type NotificationCenterScope = {
+  readonly projectId: string
+  readonly audience: ProjectAudience
+}
+
+type ResolvedNotificationCenterScope = {
+  readonly organizationId: string
+  readonly projectId: string | null
+}
 
 const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   inAppEnabled: true,
@@ -178,6 +195,50 @@ async function getPreferenceForUser(
     .then((rows) => rows[0] ?? null)
 
   return preferenceFromRow(row)
+}
+
+async function resolveNotificationCenterScope(
+  db: ReturnType<typeof getDb>,
+  user: AuthUser,
+  scope?: NotificationCenterScope
+): Promise<ResolvedNotificationCenterScope> {
+  const organizationId = requireOrg(user)
+  if (!scope) return { organizationId, projectId: null }
+
+  const project = await assertProjectAccess(db, user, scope.projectId)
+  if (project.organizationId !== organizationId) {
+    throw new Error("Project not found")
+  }
+
+  if (!isInternalStaffRole(user.role)) {
+    const membership = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, scope.projectId),
+          eq(projectMembers.userId, user.id)
+        )
+      )
+      .limit(1)
+      .get()
+    if (!canUseProjectAudience(membership?.role ?? null, scope.audience)) {
+      throw new Error("Project not found")
+    }
+  }
+
+  return { organizationId, projectId: scope.projectId }
+}
+
+function notificationEventScopeCondition(
+  scope: ResolvedNotificationCenterScope
+) {
+  return scope.projectId === null
+    ? eq(notificationEvents.organizationId, scope.organizationId)
+    : and(
+        eq(notificationEvents.organizationId, scope.organizationId),
+        eq(notificationEvents.projectId, scope.projectId)
+      )
 }
 
 export async function getNotificationPreferences(): Promise<NotificationPreferencesResult> {
@@ -423,11 +484,14 @@ export async function sendTestSmsNotification(): Promise<NotificationSmsTestResu
   }
 }
 
-export async function getNotificationCenter(): Promise<NotificationCenterResult> {
+export async function getNotificationCenter(
+  requestedScope?: NotificationCenterScope
+): Promise<NotificationCenterResult> {
   try {
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const scope = await resolveNotificationCenterScope(db, user, requestedScope)
 
     const rows = await db
       .select({
@@ -451,7 +515,8 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
         and(
           eq(notificationRecipients.userId, user.id),
           eq(notificationRecipients.inApp, true),
-          isNull(notificationRecipients.dismissedAt)
+          isNull(notificationRecipients.dismissedAt),
+          notificationEventScopeCondition(scope)
         )
       )
       .orderBy(desc(notificationRecipients.createdAt))
@@ -461,7 +526,10 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
       success: true,
       data: {
         unreadCount: rows.filter((row) => row.readAt === null).length,
-        items: rows.map((row) => ({ ...row, href: recipientNotificationHref(row.href, user.role) })),
+        items: rows.map((row) => ({
+          ...row,
+          href: recipientNotificationHref(row.href, user.role),
+        })),
       },
     }
   } catch (error) {
@@ -479,13 +547,19 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
 }
 
 export async function markNotificationRead(
-  recipientId: string
+  recipientId: string,
+  requestedScope?: NotificationCenterScope
 ): Promise<NotificationActionResult> {
   try {
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
+    const scopedEventIds = db
+      .select({ id: notificationEvents.id })
+      .from(notificationEvents)
+      .where(notificationEventScopeCondition(scope))
 
     await db
       .update(notificationRecipients)
@@ -493,7 +567,8 @@ export async function markNotificationRead(
       .where(
         and(
           eq(notificationRecipients.id, recipientId),
-          eq(notificationRecipients.userId, user.id)
+          eq(notificationRecipients.userId, user.id),
+          inArray(notificationRecipients.eventId, scopedEventIds)
         )
       )
 
@@ -510,12 +585,19 @@ export async function markNotificationRead(
   }
 }
 
-export async function markAllNotificationsRead(): Promise<NotificationActionResult> {
+export async function markAllNotificationsRead(
+  requestedScope?: NotificationCenterScope
+): Promise<NotificationActionResult> {
   try {
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const scope = await resolveNotificationCenterScope(db, user, requestedScope)
     const now = new Date().toISOString()
+    const scopedEventIds = db
+      .select({ id: notificationEvents.id })
+      .from(notificationEvents)
+      .where(notificationEventScopeCondition(scope))
 
     await db
       .update(notificationRecipients)
@@ -523,7 +605,8 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
       .where(
         and(
           eq(notificationRecipients.userId, user.id),
-          isNull(notificationRecipients.readAt)
+          isNull(notificationRecipients.readAt),
+          inArray(notificationRecipients.eventId, scopedEventIds)
         )
       )
 

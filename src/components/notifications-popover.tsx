@@ -22,6 +22,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   type NotificationCenterItem,
+  type NotificationCenterScope,
 } from "@/app/actions/notifications"
 import { Button } from "@/components/ui/button"
 import { BadgeIndicator } from "@/components/ui/badge-indicator"
@@ -142,14 +143,29 @@ function NotificationsList({
   )
 }
 
-export function NotificationsPopover() {
+export function NotificationsPopover({
+  scope,
+}: {
+  readonly scope?: NotificationCenterScope
+}) {
   const isMobile = useIsMobile()
   const conversationPanel = useConversationPanelOptional()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [notifications, setNotifications] =
-    useState<readonly NotificationCenterItem[]>([])
+  const [notifications, setNotifications] = useState<
+    readonly NotificationCenterItem[]
+  >([])
   const mountedRef = useRef(true)
+  const requestSequenceRef = useRef(0)
+  const scopedProjectId = scope?.projectId
+  const scopedAudience = scope?.audience
+  const notificationScope = useMemo(
+    () =>
+      scopedProjectId && scopedAudience
+        ? { projectId: scopedProjectId, audience: scopedAudience }
+        : undefined,
+    [scopedAudience, scopedProjectId]
+  )
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.readAt === null).length,
     [notifications]
@@ -158,20 +174,40 @@ export function NotificationsPopover() {
 
   const loadNotifications = useCallback(
     async (showLoading: boolean): Promise<void> => {
+      const requestSequence = ++requestSequenceRef.current
       if (showLoading) setLoading(true)
       try {
-        const result = await getNotificationCenter()
-        if (!mountedRef.current) return
+        const result = await getNotificationCenter(notificationScope)
+        if (
+          !mountedRef.current ||
+          requestSequence !== requestSequenceRef.current
+        ) {
+          return
+        }
         if (result.success) {
           setNotifications(result.data.items)
+        } else if (notificationScope) {
+          setNotifications([])
         }
       } catch {
-        // Keep the last known notifications during a transient refresh error.
+        if (
+          mountedRef.current &&
+          requestSequence === requestSequenceRef.current &&
+          notificationScope
+        ) {
+          // External workspaces fail closed so stale items cannot cross scopes.
+          setNotifications([])
+        }
       } finally {
-        if (mountedRef.current) setLoading(false)
+        if (
+          mountedRef.current &&
+          requestSequence === requestSequenceRef.current
+        ) {
+          setLoading(false)
+        }
       }
     },
-    []
+    [notificationScope]
   )
 
   useEffect(() => {
@@ -192,6 +228,7 @@ export function NotificationsPopover() {
     )
     return () => {
       mountedRef.current = false
+      requestSequenceRef.current += 1
       window.clearInterval(intervalId)
       window.removeEventListener("focus", refreshWhenVisible)
       document.removeEventListener(
@@ -209,7 +246,7 @@ export function NotificationsPopover() {
   }
 
   async function clearAll(): Promise<void> {
-    const result = await markAllNotificationsRead()
+    const result = await markAllNotificationsRead(notificationScope)
     if (result.success) {
       setNotifications((items) =>
         items.map((item) => ({
@@ -250,7 +287,7 @@ export function NotificationsPopover() {
           : candidate
       )
     )
-    await markNotificationRead(item.id)
+    await markNotificationRead(item.id, notificationScope)
   }
 
   const trigger = (

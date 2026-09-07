@@ -308,6 +308,8 @@ export function ProjectAudiencePreviewShell({
           <ProjectAudienceHeaderControls
             viewer={viewer}
             messageShortcut={messageShortcut}
+            projectId={projectId}
+            audience={audience}
           />
         </header>
 
@@ -360,6 +362,8 @@ export function ProjectAudiencePreviewShell({
             <ProjectAudienceHeaderControls
               viewer={viewer}
               messageShortcut={messageShortcut}
+              projectId={projectId}
+              audience={audience}
             />
           </div>
           {projectOptions.length > 1 && (
