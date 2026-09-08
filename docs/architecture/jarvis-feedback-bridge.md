@@ -87,6 +87,22 @@ The Compass-facing Hermes API binds to loopback only. Its
 `platform_toolsets.api_server` configuration must be an explicit empty list
 for the basic-assistance rollout. Staff prompts therefore cannot invoke
 terminal, filesystem, messaging, or other action tools through this path.
+For Compass questions, the poller may call the event-scoped signed search
+endpoint before inference. Compass derives the user, organization, and
+read-capability snapshot from the authenticated request that created the
+event; the private poller cannot supply or widen that scope. Current read-only
+adapters cover project lists and status, daily logs, owner updates, RFIs,
+project estimates, and the requester's visible Compass and personal Google
+calendar events. Project aliases, removed records, and merged duplicates are
+excluded. Calendar detail follows the same owner, participant, visibility, and
+project-access policy as the Work Calendar, including `Busy` redaction.
+
+Search results contain canonical Compass links and a `complete` indicator.
+Hermes should answer directly when a complete result set is supplied instead
+of asking the user to repeat the search in another Compass view. The channel
+remains read-only: this context does not authorize data mutations or external
+actions.
+
 The poller loads the Compass Feedback Desk skill as response and
 classification guidance. When Jarvis recognizes an explicit report, the
 poller submits it through the same signed intake endpoint used by the

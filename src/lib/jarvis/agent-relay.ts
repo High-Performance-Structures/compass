@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { jarvisBridgeEvents } from "@/db/schema-jarvis"
 import type { JarvisVisualAttachment } from "@/lib/agent/visual-context"
+import type { JarvisReadCapability } from "@/lib/jarvis/read-capabilities"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -24,6 +25,7 @@ type RelayRequestInput = {
     readonly displayName: string | null
     readonly email: string
     readonly role: string
+    readonly readCapabilities: readonly JarvisReadCapability[]
   }
   readonly sessionId: string
   readonly currentPage: string
@@ -91,14 +93,21 @@ export function relayMessages(
   return selected
 }
 
-async function requestDigest(
+export async function agentRelayRequestDigest(
   userId: string,
   sessionId: string,
   messages: ReadonlyArray<AgentRelayMessage>,
   visuals: readonly JarvisVisualAttachment[],
+  readCapabilities: readonly JarvisReadCapability[],
 ): Promise<string> {
   const encoded = new TextEncoder().encode(
-    JSON.stringify({ userId, sessionId, messages, visuals }),
+    JSON.stringify({
+      userId,
+      sessionId,
+      messages,
+      visuals,
+      readCapabilities,
+    }),
   )
   const digest = await crypto.subtle.digest("SHA-256", encoded)
   return Array.from(new Uint8Array(digest))
@@ -158,11 +167,12 @@ export async function relayAgentRequest(
   const sessionId = normalizedSessionId(input.sessionId)
   const messages = relayMessages(input.messages)
   const visuals = input.visuals ?? []
-  const digest = await requestDigest(
+  const digest = await agentRelayRequestDigest(
     input.user.id,
     sessionId,
     messages,
     visuals,
+    input.user.readCapabilities,
   )
   const idempotencyKey = `agent:${input.user.id}:${digest}`
   const now = new Date().toISOString()
@@ -180,6 +190,9 @@ export async function relayAgentRequest(
         schemaVersion: 1,
         sessionId,
         user: input.user,
+        access: {
+          readCapabilities: input.user.readCapabilities,
+        },
         context: {
           organizationId: input.organizationId,
           currentPage: input.currentPage,
@@ -202,6 +215,9 @@ export async function relayAgentRequest(
             "compass.search",
             "compass.feedback_status",
             "compass.visual_context",
+            ...input.user.readCapabilities.map(
+              (capability) => `compass.read.${capability}`,
+            ),
           ],
         },
         createdAt: now,
