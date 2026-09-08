@@ -61,6 +61,93 @@ describe("project duplicate detector", () => {
     ).toBeNull()
   })
 
+  it("compares project names without their governed number prefixes", () => {
+    const match = compareProjectDuplicateIdentity(
+      project("first", {
+        projectNumber: "H-331-461",
+        name: "H-331-461 Ziehler",
+        clientName: "Mike Ziehler",
+      }),
+      project("second", {
+        projectNumber: "H-340-461",
+        name: "H-340-461 Ziehler",
+        clientName: "Mike Ziehler",
+      }),
+    )
+
+    expect(match).toMatchObject({ score: 100, confidence: "high" })
+    expect(match?.reasons.map((reason) => reason.code)).toEqual([
+      "project_name",
+      "client_name",
+      "project_location_suffix",
+    ])
+  })
+
+  it("uses a shared nonzero location suffix only with another identity signal", () => {
+    const first = project("first", {
+      projectNumber: "H-416-6385",
+      name: "Peterson Truss",
+      clientName: "Jake Peterson",
+    })
+
+    expect(
+      compareProjectDuplicateIdentity(
+        first,
+        project("second", {
+          projectNumber: "N-814-6385",
+          name: "Waterbarrel Pour Help",
+          clientName: "Jake Peterson",
+        }),
+      ),
+    ).toMatchObject({ score: 60, confidence: "medium" })
+
+    expect(
+      compareProjectDuplicateIdentity(
+        first,
+        project("third", {
+          projectNumber: "N-900-6385",
+          name: "Unrelated project",
+        }),
+      ),
+    ).toBeNull()
+    expect(
+      compareProjectDuplicateIdentity(
+        project("zero-a", {
+          projectNumber: "H-420-00",
+          name: "First scope",
+          clientName: "Repeat client",
+        }),
+        project("zero-b", {
+          projectNumber: "N-920-0",
+          name: "Different work",
+          clientName: "Repeat client",
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it("does not double-count a location suffix when the full address matches", () => {
+    const match = compareProjectDuplicateIdentity(
+      project("first", {
+        projectNumber: "D-26-33",
+        name: "Grandview Design",
+        clientName: "Mitchell",
+        address: "33 Grand View Circle",
+      }),
+      project("second", {
+        projectNumber: "O-210-33",
+        name: "Grandview Construction",
+        clientName: "Mitchell",
+        address: "33 Grand View Circle",
+      }),
+    )
+
+    expect(match).toMatchObject({ score: 80 })
+    expect(match?.reasons.map((reason) => reason.code)).not.toContain(
+      "project_location_suffix",
+    )
+  })
+
   it.each([
     ["H-167-NORTH", "h - 0167 - SOUTH"],
     ["O-202", "o-202-WEST"],
