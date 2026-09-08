@@ -17,6 +17,7 @@ export type ProjectDuplicateIdentity = {
 }
 
 export type ProjectDuplicateReasonCode =
+  | "manual_registry_selection"
   | "project_number"
   | "project_department_sequence"
   | "sage_job_id"

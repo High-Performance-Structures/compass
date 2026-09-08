@@ -12,6 +12,8 @@ import {
   projectMembers,
   projectNumberReservations,
   projectOperations,
+  projectRegistryRemovals,
+  projectNumberRetirements,
   projectRouteAliases,
   projects,
   users,
@@ -535,15 +537,10 @@ export async function createProjectIntake(
           "The Developer Project Registry or department Tracker headers could not be identified. No project was created.",
       }
     }
-    const reservations = await db
-      .select({ projectNumber: projectNumberReservations.projectNumber })
-      .from(projectNumberReservations)
-      .where(
-        and(
-          eq(projectNumberReservations.organizationId, organizationId),
-          eq(projectNumberReservations.department, department)
-        )
-      )
+    const [reservations, retirements] = await Promise.all([
+      db.select({ projectNumber: projectNumberReservations.projectNumber }).from(projectNumberReservations).where(and(eq(projectNumberReservations.organizationId, organizationId), eq(projectNumberReservations.department, department))),
+      db.select({ projectNumber: projectNumberRetirements.projectNumber }).from(projectNumberRetirements).where(and(eq(projectNumberRetirements.organizationId, organizationId), eq(projectNumberRetirements.department, department))),
+    ])
     const compassProjectNumbers = await db
       .select({ projectNumber: projects.projectNumber })
       .from(projects)
@@ -556,6 +553,7 @@ export async function createProjectIntake(
       reservedProjectNumbers: reservations.map(
         (reservation) => reservation.projectNumber
       ).concat(
+        retirements.map((retirement) => retirement.projectNumber),
         departmentRows.slice(departmentLayout.headerRowNumber).flatMap((row) => {
           const value = row[departmentLayout.projectNumberColumn]
           return typeof value === "string" && value.trim() ? [value] : []
@@ -1442,6 +1440,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
                 .from(projectRouteAliases)
                 .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
             ),
+            notExists(db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id))),
             notExists(
               db
                 .select({
@@ -1493,6 +1492,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
               .from(projectRouteAliases)
               .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
           ),
+          notExists(db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id))),
           notExists(
             db
               .select({

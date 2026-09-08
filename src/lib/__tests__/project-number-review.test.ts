@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  projectNumberReviewDecisionKey,
   isExactProjectNumberReviewMerge,
   isApprovedProjectNumber,
   projectNumberDepartmentSequence,
@@ -8,6 +9,9 @@ import {
 } from "@/lib/project-number-review"
 
 describe("project number review", () => {
+  it("keys durable approvals to the exact normalized number and project", () => {
+    expect(projectNumberReviewDecisionKey("p1", " bt-lead-1 ")).toBe("p1:BT-LEAD-1")
+  })
   it("flags extra-segment cutover numbers and offers a non-automatic suggestion", () => {
     expect(projectNumberReviewIssue("n-956-25811-00")).toEqual({
       currentProjectNumber: "n-956-25811-00",

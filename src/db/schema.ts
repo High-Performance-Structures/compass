@@ -810,6 +810,64 @@ export const projectDuplicateDecisions = sqliteTable(
   ],
 )
 
+export const projectNumberReviewDecisions = sqliteTable(
+  "project_number_review_decisions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    projectNumber: text("project_number").notNull(),
+    status: text("status", { enum: ["approved_exception"] }).notNull(),
+    resolvedByUserId: text("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    resolvedAt: text("resolved_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    check("project_number_review_decisions_status_check", sql`${table.status} = 'approved_exception'`),
+    uniqueIndex("project_number_review_decisions_org_project_number_unique").on(table.organizationId, table.projectId, table.projectNumber),
+    index("project_number_review_decisions_org_status_idx").on(table.organizationId, table.status, table.updatedAt),
+  ],
+)
+
+export const projectRegistryRemovals = sqliteTable(
+  "project_registry_removals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    originalProjectNumber: text("original_project_number"),
+    originalStatus: text("original_status").notNull(),
+    projectSnapshotJson: text("project_snapshot_json").notNull(),
+    removedByUserId: text("removed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    removedAt: text("removed_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_registry_removals_org_project_unique").on(table.organizationId, table.projectId),
+    index("project_registry_removals_org_removed_idx").on(table.organizationId, table.removedAt),
+  ],
+)
+
+export const projectNumberRetirements = sqliteTable(
+  "project_number_retirements",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    formerProjectId: text("former_project_id").notNull(),
+    projectNumber: text("project_number").notNull(),
+    department: text("department"),
+    sequence: integer("sequence"),
+    retiredByUserId: text("retired_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    retiredAt: text("retired_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_number_retirements_org_number_unique").on(table.organizationId, table.projectNumber),
+    uniqueIndex("project_number_retirements_org_department_sequence_unique").on(table.organizationId, table.department, table.sequence),
+  ],
+)
+
 export const projectJobStatuses = sqliteTable(
   "project_job_statuses",
   {

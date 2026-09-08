@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   IconAddressBook,
+  IconArchive,
   IconActivity,
   IconCalculator,
   IconCalendarStats,
@@ -406,6 +407,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
             title: "CHERISH Review",
             url: "/dashboard/executive-admin/cherish",
             icon: IconHeartHandshake,
+            executiveAdminOnly: true,
+          },
+          {
+            kind: "link",
+            title: "Project Archive",
+            url: "/dashboard/executive-admin/project-archive",
+            icon: IconArchive,
             executiveAdminOnly: true,
           },
         ],

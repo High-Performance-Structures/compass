@@ -147,6 +147,10 @@ export function projectMergeDependencyTableNames(
     .sort((first, second) => first.localeCompare(second))
 }
 
+export function projectDeletionDependencyTableNames(schemaRows: readonly ProjectMergeSchemaRow[]): readonly string[] {
+  return schemaRows.filter((row) => SAFE_SQLITE_TABLE_NAME.test(row.name) && row.name !== "projects" && row.sql !== null && EXACT_PROJECT_ID_COLUMN.test(row.sql)).map((row) => row.name).sort((first, second) => first.localeCompare(second))
+}
+
 export function summarizeProjectMergeImpact(
   tableCounts: readonly ProjectMergeTableCount[],
 ): ProjectMergeImpact {

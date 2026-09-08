@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { and, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, eq, inArray, ne, notExists } from "drizzle-orm"
 import { sqliteTable, text } from "drizzle-orm/sqlite-core"
 
 import { getDb } from "@/db"
@@ -10,6 +10,10 @@ import {
   projectExternalLinks,
   projectMembers,
   projectNumberAliases,
+  projectNumberReservations,
+  projectNumberRetirements,
+  projectProfileAuditEvents,
+  projectRegistryRemovals,
   projectRouteAliases,
   projects,
 } from "@/db/schema"
@@ -33,6 +37,7 @@ import {
   type ProjectMergeTableCount,
 } from "@/lib/project-merge-impact"
 import { isExactProjectNumberReviewMerge } from "@/lib/project-number-review"
+import { projectNumberParts } from "@/lib/project-profile"
 import { requireOrg } from "@/lib/org-scope"
 import {
   canManageProjectRegistry,
@@ -45,6 +50,18 @@ type ProjectDuplicateActionResult =
 
 type MergeProjectDuplicateResult =
   | { readonly success: true; readonly keptProjectId: string }
+  | { readonly success: false; readonly error: string }
+
+export type ProjectMergeChoice = {
+  readonly id: string
+  readonly projectNumber: string | null
+  readonly name: string
+  readonly status: string
+  readonly mergedIntoProjectId: string | null
+}
+
+type ProjectMergeChoicesResult =
+  | { readonly success: true; readonly sources: readonly ProjectMergeChoice[]; readonly destinations: readonly ProjectMergeChoice[] }
   | { readonly success: false; readonly error: string }
 
 type ProjectMergeImpactResult =
@@ -234,6 +251,67 @@ export async function getProjectMergeImpact(input: {
   }
 }
 
+export async function getProjectMergeChoices(): Promise<ProjectMergeChoicesResult> {
+  try {
+    const { db, organizationId } = await duplicateActionContext("read")
+    const [projectRows, aliasRows, mergedRows] = await Promise.all([
+      db.select({ id: projects.id, projectNumber: projects.projectNumber, name: projects.name, status: projects.status })
+        .from(projects)
+        .where(and(
+          eq(projects.organizationId, organizationId),
+          notExists(db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id))),
+        ))
+        .orderBy(asc(projects.projectNumber), asc(projects.name)),
+      db.select({ sourceProjectId: projectRouteAliases.sourceProjectId, targetProjectId: projectRouteAliases.targetProjectId })
+        .from(projectRouteAliases).where(eq(projectRouteAliases.organizationId, organizationId)),
+      db.select({ removedProjectId: projectDuplicateDecisions.removedProjectId }).from(projectDuplicateDecisions)
+        .where(and(eq(projectDuplicateDecisions.organizationId, organizationId), eq(projectDuplicateDecisions.status, "merged"))),
+    ])
+    const aliases = new Map(aliasRows.map((row) => [row.sourceProjectId, row.targetProjectId]))
+    const merged = new Set(mergedRows.flatMap((row) => row.removedProjectId ? [row.removedProjectId] : []))
+    const choices = projectRows.map((project) => ({ ...project, mergedIntoProjectId: aliases.get(project.id) ?? null }))
+    return {
+      success: true,
+      sources: choices.filter((choice) => !merged.has(choice.id)),
+      destinations: choices.filter((choice) => !choice.mergedIntoProjectId && !merged.has(choice.id) && choice.status !== "ARCHIVE" && choice.status !== "INACTIVE"),
+    }
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Could not load projects for merging." } }
+}
+
+export async function archiveProjectFromRegistry(input: { readonly projectId: string; readonly confirmationProjectId: string }): Promise<ProjectDuplicateActionResult> {
+  try {
+    if (input.projectId !== input.confirmationProjectId) return { success: false, error: "Confirm the exact project to remove." }
+    const { db, organizationId, user } = await duplicateActionContext("delete")
+    const [projectRows, inboundAliases, removals] = await Promise.all([
+      db.select({ id: projects.id, projectNumber: projects.projectNumber, name: projects.name, status: projects.status }).from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.organizationId, organizationId))).limit(1),
+      db.select({ sourceProjectId: projectRouteAliases.sourceProjectId }).from(projectRouteAliases)
+        .where(and(eq(projectRouteAliases.organizationId, organizationId), eq(projectRouteAliases.targetProjectId, input.projectId))).limit(1),
+      db.select({ id: projectRegistryRemovals.id }).from(projectRegistryRemovals)
+        .where(and(eq(projectRegistryRemovals.organizationId, organizationId), eq(projectRegistryRemovals.projectId, input.projectId))).limit(1),
+    ])
+    const project = projectRows[0]
+    if (!project) return { success: false, error: "Project not found." }
+    if (removals[0]) return { success: false, error: "This project is already removed." }
+    if (inboundAliases[0]) return { success: false, error: "Another project routes into this project. Merge or reassign that source first." }
+    const now = new Date().toISOString()
+    const parts = project.projectNumber ? projectNumberParts(project.projectNumber) : null
+    await db.batch([
+      db.update(projects).set({ projectNumber: null, status: "ARCHIVE", updatedAt: now }).where(eq(projects.id, project.id)),
+      db.delete(projectNumberReservations).where(and(eq(projectNumberReservations.organizationId, organizationId), eq(projectNumberReservations.projectId, project.id))),
+      ...(project.projectNumber ? [db.insert(projectNumberRetirements).values({
+        id: crypto.randomUUID(), organizationId, formerProjectId: project.id, projectNumber: project.projectNumber,
+        department: parts?.department ?? null, sequence: parts ? Number(parts.sequence) : null, retiredByUserId: user.id, retiredAt: now,
+      }).onConflictDoNothing()] : []),
+      db.insert(projectProfileAuditEvents).values({ id: crypto.randomUUID(), organizationId, projectId: project.id, actorUserId: user.id, eventType: "project.registry_removed", entityType: "project", entityId: project.id, beforeJson: JSON.stringify(project), afterJson: JSON.stringify({ status: "ARCHIVE", projectNumber: null }), createdAt: now }),
+      db.insert(projectRegistryRemovals).values({ id: crypto.randomUUID(), organizationId, projectId: project.id, originalProjectNumber: project.projectNumber, originalStatus: project.status, projectSnapshotJson: JSON.stringify(project), removedByUserId: user.id, removedAt: now, createdAt: now, updatedAt: now }),
+    ])
+    revalidatePath("/dashboard/projects")
+    revalidatePath("/dashboard/executive-admin/project-archive")
+    return { success: true }
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : "Could not remove project." } }
+}
+
 export async function confirmProjectsAreDistinct(input: {
   readonly firstProjectId: string
   readonly secondProjectId: string
@@ -344,6 +422,7 @@ export async function mergeDuplicateProjects(input: {
   readonly keptProjectId: string
   readonly removedProjectId: string
   readonly confirmationProjectId: string
+  readonly selectionReason?: "manual_registry_selection"
 }): Promise<MergeProjectDuplicateResult> {
   try {
     if (
@@ -404,7 +483,13 @@ export async function mergeDuplicateProjects(input: {
               },
             ],
           }
-        : null)
+        : input.selectionReason === "manual_registry_selection"
+          ? {
+              score: 0,
+              confidence: "low" as const,
+              reasons: [{ code: "manual_registry_selection" as const, label: "Registry administrator selected this destination", weight: 0 }],
+            }
+          : null)
     if (!match) {
       return {
         success: false,
@@ -414,7 +499,7 @@ export async function mergeDuplicateProjects(input: {
     }
 
     const existingAliases = await db
-      .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
+      .select({ sourceProjectId: projectRouteAliases.sourceProjectId, targetProjectId: projectRouteAliases.targetProjectId })
       .from(projectRouteAliases)
       .where(
         inArray(projectRouteAliases.sourceProjectId, [
@@ -428,7 +513,8 @@ export async function mergeDuplicateProjects(input: {
         error: "The selected project to keep has already been merged into another project.",
       }
     }
-    if (existingAliases.some((alias) => alias.sourceProjectId === removed.id)) {
+    const removedAlias = existingAliases.find((alias) => alias.sourceProjectId === removed.id)
+    if (removedAlias && removedAlias.targetProjectId !== kept.id) {
       return {
         success: false,
         error: "The selected project to remove has already been merged.",
@@ -523,15 +609,17 @@ export async function mergeDuplicateProjects(input: {
           updatedAt: now,
         })
         .where(eq(projects.id, kept.id)),
-      db.insert(projectRouteAliases).values({
-        sourceProjectId: removed.id,
-        targetProjectId: kept.id,
-        organizationId,
-        sourceSystem: "compass",
-        sourceExternalId: removed.id,
-        reason: "duplicate_registry_merge",
-        createdAt: now,
-      }),
+      ...(removedAlias
+        ? [db.update(projectRouteAliases).set({ reason: input.selectionReason ?? "duplicate_registry_merge" }).where(eq(projectRouteAliases.sourceProjectId, removed.id))]
+        : [db.insert(projectRouteAliases).values({
+            sourceProjectId: removed.id,
+            targetProjectId: kept.id,
+            organizationId,
+            sourceSystem: "compass",
+            sourceExternalId: removed.id,
+            reason: input.selectionReason ?? "duplicate_registry_merge",
+            createdAt: now,
+          })]),
       ...externalLinkCopyStatements,
       ...(removed.projectNumber && kept.projectNumber
         ? [

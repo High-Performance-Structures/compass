@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -15,6 +15,7 @@ import {
   projectJobStatuses,
   projectNotes,
   projectNumberAliases,
+  projectNumberRetirements,
   projectNumberReservations,
   projectProfileAuditEvents,
   projectProfileSyncOperations,
@@ -909,7 +910,8 @@ export async function updateProjectInformation(input: {
     if (numberChanged) {
       const requestedProjectNumber = projectNumber
       if (!requestedProjectNumber) return { success: false, error: "Project number is unavailable." }
-      const [projectConflict, aliasConflict] = await Promise.all([
+      const requestedParts = projectNumberParts(requestedProjectNumber)
+      const [projectConflict, aliasConflict, retirementConflict] = await Promise.all([
         db
           .select({ id: projects.id })
           .from(projects)
@@ -930,6 +932,10 @@ export async function updateProjectInformation(input: {
             ),
           )
           .limit(1),
+        db.select({ formerProjectId: projectNumberRetirements.formerProjectId }).from(projectNumberRetirements).where(and(
+          eq(projectNumberRetirements.organizationId, organizationId),
+          requestedParts ? or(eq(projectNumberRetirements.projectNumber, requestedProjectNumber), and(eq(projectNumberRetirements.department, requestedParts.department), eq(projectNumberRetirements.sequence, Number(requestedParts.sequence)))) : eq(projectNumberRetirements.projectNumber, requestedProjectNumber),
+        )).limit(1),
       ])
       if (projectConflict[0] && projectConflict[0].id !== existing.id) {
         return { success: false, error: "That project number already exists." }
@@ -937,6 +943,7 @@ export async function updateProjectInformation(input: {
       if (aliasConflict[0] && aliasConflict[0].projectId !== existing.id) {
         return { success: false, error: "That project number is reserved by a historical project record." }
       }
+      if (retirementConflict[0] && retirementConflict[0].formerProjectId !== existing.id) return { success: false, error: "That department and sequence were retired with a removed project." }
     }
 
     const linkedCustomers = input.updateClientDefaultMailingAddress
@@ -1272,7 +1279,7 @@ export async function correctProjectNumberForReview(
     }
 
     const sequence = Number(parts.sequence)
-    const [projectConflicts, aliasConflicts, reservationNumberConflicts, reservationSequenceConflicts, projectReservations] =
+    const [projectConflicts, aliasConflicts, reservationNumberConflicts, retirementConflicts, reservationSequenceConflicts, projectReservations] =
       await Promise.all([
         db
           .select({ id: projects.id })
@@ -1304,6 +1311,10 @@ export async function correctProjectNumberForReview(
             ),
           )
           .limit(1),
+        db.select({ formerProjectId: projectNumberRetirements.formerProjectId }).from(projectNumberRetirements).where(and(
+          eq(projectNumberRetirements.organizationId, organizationId),
+          or(eq(projectNumberRetirements.projectNumber, approvedProjectNumber), and(eq(projectNumberRetirements.department, parts.department), eq(projectNumberRetirements.sequence, sequence))),
+        )).limit(1),
         db
           .select({ projectId: projectNumberReservations.projectId })
           .from(projectNumberReservations)
@@ -1347,6 +1358,7 @@ export async function correctProjectNumberForReview(
         error: "That department and sequence are reserved by another project. Use Merge into existing project instead.",
       }
     }
+    if (retirementConflicts[0] && retirementConflicts[0].formerProjectId !== existing.id) return { success: false, error: "That department and sequence were retired with a removed project." }
 
     const updatedAt = nowIso()
     const driveOperationId = crypto.randomUUID()

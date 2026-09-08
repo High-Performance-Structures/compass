@@ -15,6 +15,7 @@ import {
   mergeDuplicateProjects,
 } from "@/app/actions/project-duplicates"
 import { correctProjectNumberForReview } from "@/app/actions/project-profile"
+import { approveProjectNumberException } from "@/app/actions/project-number-reviews"
 import type { ProjectListItem } from "@/app/actions/projects"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -38,6 +39,7 @@ import {
 import type { ProjectMergeImpact } from "@/lib/project-merge-impact"
 import {
   projectNumberReviewIssue,
+  projectNumberReviewDecisionKey,
   type ProjectNumberReviewIssue,
 } from "@/lib/project-number-review"
 import { cn } from "@/lib/utils"
@@ -47,7 +49,7 @@ type ReviewProject = {
   readonly issue: ProjectNumberReviewIssue
 }
 
-type ReviewMode = "correct" | "merge"
+type ReviewMode = "correct" | "merge" | "approve"
 
 type MergeImpactState =
   | { readonly status: "idle" }
@@ -55,10 +57,10 @@ type MergeImpactState =
   | { readonly status: "ready"; readonly impact: ProjectMergeImpact }
   | { readonly status: "error"; readonly error: string }
 
-function reviewProjects(projects: readonly ProjectListItem[]): readonly ReviewProject[] {
+function reviewProjects(projects: readonly ProjectListItem[], approved: ReadonlySet<string>): readonly ReviewProject[] {
   return projects.flatMap((project) => {
     const issue = projectNumberReviewIssue(project.projectNumber, project.name)
-    return issue ? [{ project, issue }] : []
+    return issue && project.projectNumber && !approved.has(projectNumberReviewDecisionKey(project.id, project.projectNumber)) ? [{ project, issue }] : []
   })
 }
 
@@ -119,15 +121,19 @@ function MergeImpact({ state }: { readonly state: MergeImpactState }): React.Rea
 
 export function ProjectNumberReviewManager({
   projects,
+  approvedDecisionKeys,
+  onProjectNumberApproved,
   reviewProjectId,
   onReviewProjectHandled,
 }: {
   readonly projects: readonly ProjectListItem[]
+  readonly approvedDecisionKeys: ReadonlySet<string>
+  readonly onProjectNumberApproved: (decisionKey: string) => void
   readonly reviewProjectId: string | null
   readonly onReviewProjectHandled: () => void
 }): React.ReactElement | null {
   const router = useRouter()
-  const issues = useMemo(() => reviewProjects(projects), [projects])
+  const issues = useMemo(() => reviewProjects(projects, approvedDecisionKeys), [approvedDecisionKeys, projects])
   const [open, setOpen] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState("")
   const [mode, setMode] = useState<ReviewMode>("correct")
@@ -259,6 +265,19 @@ export function ProjectNumberReviewManager({
     })
   }
 
+  function approveAsEntered(): void {
+    if (!selected || !confirmed || !selected.project.projectNumber) return
+    startTransition(async () => {
+      const result = await approveProjectNumberException({ projectId: selected.project.id, projectNumber: selected.project.projectNumber ?? "" })
+      if (!result.success) { toast.error(result.error); return }
+      onProjectNumberApproved(result.decisionKey)
+      setOpen(false)
+      setConfirmed(false)
+      toast.success("Project number approved as entered.")
+      router.refresh()
+    })
+  }
+
   return (
     <>
       <section className="flex flex-col gap-3 border border-destructive/30 bg-destructive/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -330,7 +349,7 @@ export function ProjectNumberReviewManager({
                 </p>
               </div>
 
-              <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -376,6 +395,14 @@ export function ProjectNumberReviewManager({
                       : "No project uses the suggested approved base number."}
                   </span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => { setMode("approve"); setConfirmed(false) }}
+                  className={cn("min-w-0 border p-3 text-left transition-colors", mode === "approve" ? "border-primary bg-primary/5" : "hover:bg-muted/50")}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold"><IconHash className="size-4 shrink-0" />Approve as entered</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Keep this exact number and suppress future format warnings.</span>
+                </button>
               </div>
 
               {mode === "correct" ? (
@@ -399,7 +426,7 @@ export function ProjectNumberReviewManager({
                       : "No governed number could be recovered from this import. Enter and verify the approved number; Compass will not invent one automatically."}
                   </p>
                 </div>
-              ) : (
+              ) : mode === "merge" ? (
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="approved-merge-project">
@@ -426,7 +453,7 @@ export function ProjectNumberReviewManager({
                   </div>
                   <MergeImpact state={mergeImpact} />
                 </div>
-              )}
+              ) : <p className="text-sm text-muted-foreground">This approval is durable for the exact project and number. If its number changes, Compass will review it again.</p>}
 
               <label className="flex min-w-0 items-start gap-3 border-t pt-4 text-sm">
                 <Checkbox
@@ -437,7 +464,8 @@ export function ProjectNumberReviewManager({
                 <span className="min-w-0 break-words">
                   {mode === "correct"
                     ? `I verified ${approvedProjectNumber || "the approved number"}. Update the registry and retain ${selected.issue.currentProjectNumber} as a historical alias.`
-                    : `I verified this is the same project. Transfer all linked records and remove ${selected.issue.currentProjectNumber} from the active registry.`}
+                    : mode === "merge" ? `I verified this is the same project. Transfer all linked records and remove ${selected.issue.currentProjectNumber} from the active registry.`
+                    : `I approve ${selected.issue.currentProjectNumber} as the confirmed project number even though it does not follow the intended format.`}
                 </span>
               </label>
             </div>
@@ -461,7 +489,7 @@ export function ProjectNumberReviewManager({
                 <IconEdit className="size-4" />
                 {isPending ? "Updating…" : "Update registry"}
               </Button>
-            ) : (
+            ) : mode === "merge" ? (
               <Button
                 type="button"
                 variant="destructive"
@@ -477,6 +505,8 @@ export function ProjectNumberReviewManager({
                 <IconArrowMerge className="size-4" />
                 {isPending ? "Merging…" : "Merge projects"}
               </Button>
+            ) : (
+              <Button type="button" onClick={approveAsEntered} disabled={isPending || !selected || !confirmed}><IconHash className="size-4" />{isPending ? "Saving…" : "Approve as entered"}</Button>
             )}
           </DialogFooter>
         </DialogContent>
