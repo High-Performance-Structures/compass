@@ -1,5 +1,12 @@
 import { projectNumberParts } from "@/lib/project-profile"
 
+export function projectNumberReviewDecisionKey(
+  projectId: string,
+  projectNumber: string,
+): string {
+  return `${projectId}:${projectNumber.trim().toUpperCase()}`
+}
+
 export type ProjectNumberReviewIssue = {
   readonly currentProjectNumber: string
   readonly department: "O" | "H" | "N" | "D" | null

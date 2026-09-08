@@ -96,7 +96,7 @@ describe("Projects sidebar navigation", () => {
 })
 
 describe("Executive Admin sidebar navigation", () => {
-  it("shows the nested CHERISH review link to Executive Admin users", () => {
+  it("shows Executive Admin review and archive links to approved users", () => {
     const office = officeNavigation(true)
     const executiveAdmin = office?.items.find(
       (item) => item.kind === "subgroup" && item.title === "Executive Admin",
@@ -110,6 +110,11 @@ describe("Executive Admin sidebar navigation", () => {
           kind: "link",
           title: "CHERISH Review",
           url: "/dashboard/executive-admin/cherish",
+        },
+        {
+          kind: "link",
+          title: "Project Archive",
+          url: "/dashboard/executive-admin/project-archive",
         },
       ],
     })

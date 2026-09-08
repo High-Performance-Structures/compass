@@ -1,8 +1,9 @@
-import { and, eq, notExists } from "drizzle-orm"
+import { and, eq, ne, notExists } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
   projectDuplicateDecisions,
+  projectRegistryRemovals,
   projectRouteAliases,
   projects,
 } from "@/db/schema"
@@ -11,7 +12,6 @@ import {
   projectDuplicatePairKey,
   type ProjectDuplicateCandidate,
   type ProjectDuplicateIdentity,
-  type ProjectDuplicateReasonCode,
 } from "@/lib/project-duplicate-detector"
 
 type Db = ReturnType<typeof getDb>
@@ -20,38 +20,6 @@ export type ProjectDuplicateScan = {
   readonly candidates: readonly ProjectDuplicateCandidate[]
   readonly scannedProjectCount: number
   readonly previouslyReviewedCount: number
-}
-
-const EXACT_IDENTIFIER_REASONS: ReadonlySet<ProjectDuplicateReasonCode> =
-  new Set([
-    "project_number",
-    "project_department_sequence",
-    "sage_job_id",
-    "sage_job_number",
-    "drive_folder",
-    "buildertrend_project",
-  ])
-
-function savedReasonCodes(reasonsJson: string): ReadonlySet<string> {
-  try {
-    const parsed: unknown = JSON.parse(reasonsJson)
-    if (!Array.isArray(parsed)) return new Set()
-    return new Set(
-      parsed.flatMap((reason) => {
-        if (
-          reason !== null &&
-          typeof reason === "object" &&
-          "code" in reason &&
-          typeof reason.code === "string"
-        ) {
-          return [reason.code]
-        }
-        return []
-      }),
-    )
-  } catch {
-    return new Set()
-  }
 }
 
 export async function loadActiveProjectDuplicateIdentities(
@@ -75,11 +43,18 @@ export async function loadActiveProjectDuplicateIdentities(
     .where(
       and(
         eq(projects.organizationId, organizationId),
+        ne(projects.status, "ARCHIVE"),
         notExists(
           db
             .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
             .from(projectRouteAliases)
             .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+        ),
+        notExists(
+          db
+            .select({ projectId: projectRegistryRemovals.projectId })
+            .from(projectRegistryRemovals)
+            .where(eq(projectRegistryRemovals.projectId, projects.id)),
         ),
         notExists(
           db
@@ -131,16 +106,8 @@ export async function scanOpenProjectDuplicateCandidates(
       if (!decision) return true
       if (decision.status === "merged") return false
 
-      const previousReasonCodes = savedReasonCodes(decision.reasonsJson)
-      const hasNewExactIdentifier = candidate.reasons.some(
-        (reason) =>
-          EXACT_IDENTIFIER_REASONS.has(reason.code) &&
-          !previousReasonCodes.has(reason.code),
-      )
-      const shouldReopen =
-        hasNewExactIdentifier || candidate.score >= decision.score + 15
-      if (!shouldReopen) previouslyReviewedCount += 1
-      return shouldReopen
+      previouslyReviewedCount += 1
+      return false
     },
   )
 

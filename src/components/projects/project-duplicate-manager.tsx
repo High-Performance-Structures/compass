@@ -43,6 +43,7 @@ import {
 } from "@/lib/project-duplicate-detector"
 import type { ProjectMergeImpact } from "@/lib/project-merge-impact"
 import { cn } from "@/lib/utils"
+import { ProjectRegistryCleanupDialog } from "@/components/projects/project-registry-cleanup-dialog"
 
 type MergeImpactState =
   | { readonly status: "idle" }
@@ -86,11 +87,13 @@ function strongestCandidateForProject(
 
 export function ProjectDuplicateManager({
   candidates,
+  canManageRegistry,
   reviewProjectId,
   onReviewProjectHandled,
   onCandidatesScanned,
 }: {
   readonly candidates: readonly ProjectDuplicateCandidate[]
+  readonly canManageRegistry: boolean
   readonly reviewProjectId: string | null
   readonly onReviewProjectHandled: () => void
   readonly onCandidatesScanned: (
@@ -295,6 +298,8 @@ export function ProjectDuplicateManager({
     })
   }
 
+  if (!canManageRegistry) return null
+
   return (
     <>
       <section
@@ -330,6 +335,7 @@ export function ProjectDuplicateManager({
           </div>
         </div>
         <div className="flex flex-wrap gap-2 sm:justify-end">
+          <ProjectRegistryCleanupDialog />
           <Button
             type="button"
             size="sm"

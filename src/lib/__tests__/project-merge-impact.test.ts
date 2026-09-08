@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  projectDeletionDependencyTableNames,
   projectMergeCategoryForTable,
   projectMergeDependencyTableNames,
   summarizeProjectMergeImpact,
 } from "@/lib/project-merge-impact"
 
 describe("project merge impact", () => {
+  it("includes custom project links when checking permanent deletion", () => {
+    expect(projectDeletionDependencyTableNames([{ name: "project_external_links", sql: "CREATE TABLE project_external_links(project_id text)" }, { name: "project_members", sql: "CREATE TABLE project_members(project_id text)" }])).toEqual(["project_external_links", "project_members"])
+  })
   it("discovers safe tables with an exact project_id column", () => {
     expect(
       projectMergeDependencyTableNames([

@@ -64,7 +64,7 @@ import {
   projectClientStatusLabel,
 } from "@/lib/project-profile"
 import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
-import { projectNumberReviewIssue } from "@/lib/project-number-review"
+import { projectNumberReviewDecisionKey, projectNumberReviewIssue } from "@/lib/project-number-review"
 import {
   ALL_PROJECT_HUB_STATUSES_FILTER,
   DEFAULT_PROJECT_HUB_STATUS_FILTER,
@@ -462,6 +462,7 @@ export function ProjectHubLaunchpad({
   canReviewProjectNumbers,
   canUpdateProjectStatus,
   duplicateCandidates,
+  approvedProjectNumberReviewKeys,
   intakeAssignees,
 }: {
   readonly projects: readonly ProjectListItem[]
@@ -470,12 +471,14 @@ export function ProjectHubLaunchpad({
   readonly canReviewProjectNumbers: boolean
   readonly canUpdateProjectStatus: boolean
   readonly duplicateCandidates: readonly ProjectDuplicateCandidate[]
+  readonly approvedProjectNumberReviewKeys: readonly string[]
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
   const [currentDuplicateCandidates, setCurrentDuplicateCandidates] = useState(
     duplicateCandidates,
   )
+  const [approvedNumberReviewKeys, setApprovedNumberReviewKeys] = useState<ReadonlySet<string>>(new Set(approvedProjectNumberReviewKeys))
   useEffect(() => {
     setCurrentDuplicateCandidates(duplicateCandidates)
   }, [duplicateCandidates])
@@ -494,13 +497,11 @@ export function ProjectHubLaunchpad({
       new Set(
         canReviewProjectNumbers
           ? projects
-              .filter((project) =>
-                projectNumberReviewIssue(project.projectNumber, project.name),
-              )
+              .filter((project) => projectNumberReviewIssue(project.projectNumber, project.name) && project.projectNumber && !approvedNumberReviewKeys.has(projectNumberReviewDecisionKey(project.id, project.projectNumber)))
               .map((project) => project.id)
           : [],
       ),
-    [canReviewProjectNumbers, projects],
+    [approvedNumberReviewKeys, canReviewProjectNumbers, projects],
   )
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
   const [status, setStatus] = useState<ProjectHubStatusFilter>(
@@ -608,6 +609,7 @@ export function ProjectHubLaunchpad({
 
       <ProjectDuplicateManager
         candidates={currentDuplicateCandidates}
+        canManageRegistry={canReviewProjectNumbers}
         reviewProjectId={duplicateReviewProjectId}
         onReviewProjectHandled={handleDuplicateReviewHandled}
         onCandidatesScanned={setCurrentDuplicateCandidates}
@@ -616,6 +618,8 @@ export function ProjectHubLaunchpad({
       {canReviewProjectNumbers ? (
         <ProjectNumberReviewManager
           projects={projects}
+          approvedDecisionKeys={approvedNumberReviewKeys}
+          onProjectNumberApproved={(decisionKey) => setApprovedNumberReviewKeys((current) => new Set([...current, decisionKey]))}
           reviewProjectId={numberReviewProjectId}
           onReviewProjectHandled={handleNumberReviewHandled}
         />

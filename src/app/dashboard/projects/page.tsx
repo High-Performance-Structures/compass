@@ -8,11 +8,13 @@ import {
   getProjects,
 } from "@/app/actions/projects"
 import { getProjectDuplicateCandidates } from "@/app/actions/project-duplicates"
+import { getApprovedProjectNumberReviewKeys } from "@/app/actions/project-number-reviews"
 import { getDb } from "@/db"
 import {
   projectExternalLinks,
   projectDuplicateDecisions,
   projectJobStatuses,
+  projectRegistryRemovals,
   projectRouteAliases,
   projects,
 } from "@/db/schema"
@@ -80,11 +82,12 @@ export default async function ProjectsPage({
       params.status !== undefined)
 
   if (!showRegistry) {
-    const [projectList, overview, intakeAssignees, duplicateCandidates] = await Promise.all([
+    const [projectList, overview, intakeAssignees, duplicateCandidates, approvedProjectNumberReviewKeys] = await Promise.all([
       getProjects(),
       getDashboardOverview(),
       getProjectIntakeAssignees(),
       canCreateOrUpdateProjects ? getProjectDuplicateCandidates() : Promise.resolve([]),
+      canCreateOrUpdateProjects ? getApprovedProjectNumberReviewKeys() : Promise.resolve([]),
     ])
 
     return (
@@ -95,6 +98,7 @@ export default async function ProjectsPage({
         canReviewProjectNumbers={canCreateOrUpdateProjects}
         canUpdateProjectStatus={canUpdateProjectStatus}
         duplicateCandidates={duplicateCandidates}
+        approvedProjectNumberReviewKeys={approvedProjectNumberReviewKeys}
         intakeAssignees={intakeAssignees}
       />
     )
@@ -149,6 +153,9 @@ export default async function ProjectsPage({
           .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
           .from(projectRouteAliases)
           .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+      ),
+      notExists(
+        db.select({ projectId: projectRegistryRemovals.projectId }).from(projectRegistryRemovals).where(eq(projectRegistryRemovals.projectId, projects.id)),
       ),
       notExists(
         db
