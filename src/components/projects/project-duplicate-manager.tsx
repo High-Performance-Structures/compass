@@ -7,6 +7,7 @@ import {
   IconArrowMerge,
   IconCopy,
   IconEdit,
+  IconRefresh,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -14,6 +15,7 @@ import {
   confirmProjectsAreDistinct,
   getProjectMergeImpact,
   mergeDuplicateProjects,
+  scanProjectDuplicates,
 } from "@/app/actions/project-duplicates"
 import { correctProjectNumberForReview } from "@/app/actions/project-profile"
 import { Button } from "@/components/ui/button"
@@ -86,10 +88,14 @@ export function ProjectDuplicateManager({
   candidates,
   reviewProjectId,
   onReviewProjectHandled,
+  onCandidatesScanned,
 }: {
   readonly candidates: readonly ProjectDuplicateCandidate[]
   readonly reviewProjectId: string | null
   readonly onReviewProjectHandled: () => void
+  readonly onCandidatesScanned: (
+    candidates: readonly ProjectDuplicateCandidate[],
+  ) => void
 }): React.ReactElement | null {
   const router = useRouter()
   const [dismissedKeys, setDismissedKeys] = useState<ReadonlySet<string>>(
@@ -111,6 +117,8 @@ export function ProjectDuplicateManager({
     status: "idle",
   })
   const [isPending, startTransition] = useTransition()
+  const [isScanning, startScanTransition] = useTransition()
+  const [lastScanSummary, setLastScanSummary] = useState<string | null>(null)
 
   const selectedCandidate =
     visibleCandidates.find((candidate) => candidateKey(candidate) === selectedKey) ??
@@ -191,8 +199,6 @@ export function ProjectDuplicateManager({
     selectedCandidateKey,
   ])
 
-  if (visibleCandidates.length === 0) return null
-
   function dismissSelected(): void {
     if (!selectedCandidate) return
     startTransition(async () => {
@@ -264,38 +270,96 @@ export function ProjectDuplicateManager({
     })
   }
 
+  function scanForDuplicates(): void {
+    startScanTransition(async () => {
+      const result = await scanProjectDuplicates()
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+
+      setDismissedKeys(new Set())
+      onCandidatesScanned(result.candidates)
+      const reviewedSummary =
+        result.previouslyReviewedCount > 0
+          ? ` ${result.previouslyReviewedCount} previously reviewed ${result.previouslyReviewedCount === 1 ? "pair remains" : "pairs remain"} hidden.`
+          : ""
+      const limitedSummary =
+        result.matchCount > result.candidates.length
+          ? ` Showing the first ${result.candidates.length}.`
+          : ""
+      setLastScanSummary(
+        `Scanned ${result.scannedProjectCount} registry projects and found ${result.matchCount} unresolved ${result.matchCount === 1 ? "match" : "matches"}.${reviewedSummary}${limitedSummary}`,
+      )
+      toast.success("Duplicate scan complete.")
+    })
+  }
+
   return (
     <>
-      <section className="flex flex-col gap-3 border border-brand-nutech-gold/40 bg-brand-nutech-gold/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <section
+        className={cn(
+          "flex flex-col gap-3 border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+          visibleCandidates.length > 0
+            ? "border-brand-nutech-gold/40 bg-brand-nutech-gold/5"
+            : "border-border bg-muted/20",
+        )}
+      >
         <div className="flex items-start gap-3">
-          <IconAlertTriangle className="mt-0.5 size-5 shrink-0 text-brand-nutech-gold-foreground" />
+          {visibleCandidates.length > 0 ? (
+            <IconAlertTriangle className="mt-0.5 size-5 shrink-0 text-brand-nutech-gold-foreground" />
+          ) : (
+            <IconRefresh className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          )}
           <div>
             <h2 className="text-sm font-semibold">
-              {visibleCandidates.length} possible duplicate or number collision
-              {visibleCandidates.length === 1 ? "" : "s"}
+              {visibleCandidates.length > 0
+                ? `${visibleCandidates.length} possible duplicate or number collision${visibleCandidates.length === 1 ? "" : "s"}`
+                : "No possible duplicates found"}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Review the matches and resolve reused department-sequence numbers.
+              {visibleCandidates.length > 0
+                ? "Review the matches and resolve reused department-sequence numbers."
+                : "Scan the current registry whenever new projects have been added or updated."}
             </p>
+            {lastScanSummary ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {lastScanSummary}
+              </p>
+            ) : null}
           </div>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            const first = visibleCandidates[0]
-            setSelectedKey(first ? candidateKey(first) : "")
-            setKeptProjectId(first?.first.id ?? "")
-            setCollisionResolutionMode("merge")
-            setReplacementProjectNumber("")
-            setConfirmed(false)
-            setOpen(true)
-          }}
-        >
-          <IconArrowMerge className="size-4" />
-          Review and resolve
-        </Button>
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={scanForDuplicates}
+            disabled={isScanning || isPending}
+          >
+            <IconRefresh className={cn("size-4", isScanning && "animate-spin")} />
+            {isScanning ? "Scanning…" : "Scan for duplicates"}
+          </Button>
+          {visibleCandidates.length > 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const first = visibleCandidates[0]
+                setSelectedKey(first ? candidateKey(first) : "")
+                setKeptProjectId(first?.first.id ?? "")
+                setCollisionResolutionMode("merge")
+                setReplacementProjectNumber("")
+                setConfirmed(false)
+                setOpen(true)
+              }}
+            >
+              <IconArrowMerge className="size-4" />
+              Review and resolve
+            </Button>
+          ) : null}
+        </div>
       </section>
 
       <Dialog open={open} onOpenChange={setOpen}>

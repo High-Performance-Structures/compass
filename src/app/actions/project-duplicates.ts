@@ -21,7 +21,10 @@ import {
   type ProjectDuplicateCandidate,
   type ProjectDuplicateIdentity,
 } from "@/lib/project-duplicate-detector"
-import { loadOpenProjectDuplicateCandidates } from "@/lib/project-duplicate-store"
+import {
+  loadOpenProjectDuplicateCandidates,
+  scanOpenProjectDuplicateCandidates,
+} from "@/lib/project-duplicate-store"
 import {
   projectMergeDependencyTableNames,
   summarizeProjectMergeImpact,
@@ -46,6 +49,16 @@ type MergeProjectDuplicateResult =
 
 type ProjectMergeImpactResult =
   | { readonly success: true; readonly impact: ProjectMergeImpact }
+  | { readonly success: false; readonly error: string }
+
+export type ProjectDuplicateScanResult =
+  | {
+      readonly success: true
+      readonly candidates: readonly ProjectDuplicateCandidate[]
+      readonly matchCount: number
+      readonly scannedProjectCount: number
+      readonly previouslyReviewedCount: number
+    }
   | { readonly success: false; readonly error: string }
 
 function orderedPair(
@@ -161,6 +174,28 @@ export async function getProjectDuplicateCandidates(): Promise<
     return candidates.slice(0, 50)
   } catch {
     return []
+  }
+}
+
+export async function scanProjectDuplicates(): Promise<ProjectDuplicateScanResult> {
+  try {
+    const { db, organizationId } = await duplicateActionContext("read")
+    const scan = await scanOpenProjectDuplicateCandidates(db, organizationId)
+    return {
+      success: true,
+      candidates: scan.candidates.slice(0, 50),
+      matchCount: scan.candidates.length,
+      scannedProjectCount: scan.scannedProjectCount,
+      previouslyReviewedCount: scan.previouslyReviewedCount,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not scan the project registry.",
+    }
   }
 }
 

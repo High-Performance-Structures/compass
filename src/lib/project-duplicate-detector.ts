@@ -27,6 +27,7 @@ export type ProjectDuplicateReasonCode =
   | "similar_project_name"
   | "client_name"
   | "project_address"
+  | "project_location_suffix"
 
 export type ProjectDuplicateReason = {
   readonly code: ProjectDuplicateReasonCode
@@ -66,6 +67,29 @@ function normalizedText(value: string | null): string {
 
 function normalizedIdentifier(value: string | null): string {
   return normalizedText(value).replace(/\s+/g, "")
+}
+
+function normalizedProjectName(value: string): string {
+  const withoutLeadingProjectNumber = value.replace(
+    /^\s*[OHND]\s*-\s*\d+\s*-\s*[A-Z0-9]+(?:\s*-\s*\d+)?(?:\s*[-—:]\s*|\s+)/i,
+    "",
+  )
+  return normalizedText(withoutLeadingProjectNumber || value)
+}
+
+function projectLocationSuffix(
+  value: string | null,
+  projectName: string,
+): string | null {
+  if (!value) return null
+  const issue = projectNumberReviewIssue(value, projectName)
+  const candidate = issue?.suggestedProjectNumber ?? value
+  const match = /^[OHND]\s*-\s*\d+\s*-\s*(\d+)$/i.exec(candidate.trim())
+  const rawSuffix = match?.[1]
+  if (!rawSuffix) return null
+
+  const suffix = rawSuffix.replace(/^0+(?=\d)/, "")
+  return suffix === "0" ? null : suffix
 }
 
 function tokens(value: string): ReadonlySet<string> {
@@ -169,8 +193,8 @@ export function compareProjectDuplicateIdentity(
       "project_name",
       "Same project name",
       45,
-      first.name,
-      second.name,
+      normalizedProjectName(first.name),
+      normalizedProjectName(second.name),
     ),
     exactReason(
       "client_name",
@@ -193,9 +217,32 @@ export function compareProjectDuplicateIdentity(
     ),
   )
 
+  const hasExactAddress = reasons.some(
+    (reason) => reason.code === "project_address",
+  )
+  const firstLocationSuffix = projectLocationSuffix(
+    first.projectNumber,
+    first.name,
+  )
+  const secondLocationSuffix = projectLocationSuffix(
+    second.projectNumber,
+    second.name,
+  )
+  if (
+    !hasExactAddress &&
+    firstLocationSuffix &&
+    firstLocationSuffix === secondLocationSuffix
+  ) {
+    reasons.push({
+      code: "project_location_suffix",
+      label: "Same project location suffix",
+      weight: 35,
+    })
+  }
+
   const hasExactName = reasons.some((reason) => reason.code === "project_name")
-  const firstName = normalizedText(first.name)
-  const secondName = normalizedText(second.name)
+  const firstName = normalizedProjectName(first.name)
+  const secondName = normalizedProjectName(second.name)
   if (
     !hasExactName &&
     firstName.length >= 5 &&

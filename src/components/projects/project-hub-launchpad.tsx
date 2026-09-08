@@ -473,15 +473,21 @@ export function ProjectHubLaunchpad({
   readonly intakeAssignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
+  const [currentDuplicateCandidates, setCurrentDuplicateCandidates] = useState(
+    duplicateCandidates,
+  )
+  useEffect(() => {
+    setCurrentDuplicateCandidates(duplicateCandidates)
+  }, [duplicateCandidates])
   const duplicateProjectIds = useMemo(
     () =>
       new Set(
-        duplicateCandidates.flatMap((candidate) => [
+        currentDuplicateCandidates.flatMap((candidate) => [
           candidate.first.id,
           candidate.second.id,
         ]),
       ),
-    [duplicateCandidates],
+    [currentDuplicateCandidates],
   )
   const numberReviewProjectIds = useMemo(
     () =>
@@ -601,9 +607,10 @@ export function ProjectHubLaunchpad({
       </header>
 
       <ProjectDuplicateManager
-        candidates={duplicateCandidates}
+        candidates={currentDuplicateCandidates}
         reviewProjectId={duplicateReviewProjectId}
         onReviewProjectHandled={handleDuplicateReviewHandled}
+        onCandidatesScanned={setCurrentDuplicateCandidates}
       />
 
       {canReviewProjectNumbers ? (

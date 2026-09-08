@@ -16,6 +16,12 @@ import {
 
 type Db = ReturnType<typeof getDb>
 
+export type ProjectDuplicateScan = {
+  readonly candidates: readonly ProjectDuplicateCandidate[]
+  readonly scannedProjectCount: number
+  readonly previouslyReviewedCount: number
+}
+
 const EXACT_IDENTIFIER_REASONS: ReadonlySet<ProjectDuplicateReasonCode> =
   new Set([
     "project_number",
@@ -92,10 +98,10 @@ export async function loadActiveProjectDuplicateIdentities(
     )
 }
 
-export async function loadOpenProjectDuplicateCandidates(
+export async function scanOpenProjectDuplicateCandidates(
   db: Db,
   organizationId: string,
-): Promise<readonly ProjectDuplicateCandidate[]> {
+): Promise<ProjectDuplicateScan> {
   const [identities, decisions] = await Promise.all([
     loadActiveProjectDuplicateIdentities(db, organizationId),
     db
@@ -116,21 +122,41 @@ export async function loadOpenProjectDuplicateCandidates(
     ]),
   )
 
-  return findProjectDuplicateCandidates(identities).filter((candidate) => {
-    const decision = decisionsByPair.get(
-      projectDuplicatePairKey(candidate.first.id, candidate.second.id),
-    )
-    if (!decision) return true
-    if (decision.status === "merged") return false
+  let previouslyReviewedCount = 0
+  const candidates = findProjectDuplicateCandidates(identities).filter(
+    (candidate) => {
+      const decision = decisionsByPair.get(
+        projectDuplicatePairKey(candidate.first.id, candidate.second.id),
+      )
+      if (!decision) return true
+      if (decision.status === "merged") return false
 
-    const previousReasonCodes = savedReasonCodes(decision.reasonsJson)
-    const hasNewExactIdentifier = candidate.reasons.some(
-      (reason) =>
-        EXACT_IDENTIFIER_REASONS.has(reason.code) &&
-        !previousReasonCodes.has(reason.code),
-    )
-    return hasNewExactIdentifier || candidate.score >= decision.score + 15
-  })
+      const previousReasonCodes = savedReasonCodes(decision.reasonsJson)
+      const hasNewExactIdentifier = candidate.reasons.some(
+        (reason) =>
+          EXACT_IDENTIFIER_REASONS.has(reason.code) &&
+          !previousReasonCodes.has(reason.code),
+      )
+      const shouldReopen =
+        hasNewExactIdentifier || candidate.score >= decision.score + 15
+      if (!shouldReopen) previouslyReviewedCount += 1
+      return shouldReopen
+    },
+  )
+
+  return {
+    candidates,
+    scannedProjectCount: identities.length,
+    previouslyReviewedCount,
+  }
+}
+
+export async function loadOpenProjectDuplicateCandidates(
+  db: Db,
+  organizationId: string,
+): Promise<readonly ProjectDuplicateCandidate[]> {
+  const scan = await scanOpenProjectDuplicateCandidates(db, organizationId)
+  return scan.candidates
 }
 
 export async function findProspectiveProjectDuplicates(
