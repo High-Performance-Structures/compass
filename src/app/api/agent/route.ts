@@ -43,6 +43,10 @@ import {
   MAX_JARVIS_VISUAL_DATA_URL_CHARACTERS,
 } from "@/lib/agent/visual-context"
 import {
+  AGENT_REQUEST_MAX_CONTENT_CHARACTERS,
+  AGENT_REQUEST_MAX_MESSAGES,
+} from "@/lib/agent/request-messages"
+import {
   addHelpContextToRelayMessages,
   resolveJarvisHelpContext,
 } from "@/lib/help/jarvis-context"
@@ -77,11 +81,11 @@ const chatRequestSchema = z.object({
     .array(
       z.object({
         role: z.enum(["user", "assistant"]),
-        content: z.string().max(20_000),
+        content: z.string().max(AGENT_REQUEST_MAX_CONTENT_CHARACTERS),
       }),
     )
     .min(1)
-    .max(100),
+    .max(AGENT_REQUEST_MAX_MESSAGES),
   visuals: z
     .array(visualAttachmentSchema)
     .max(MAX_JARVIS_VISUALS)
