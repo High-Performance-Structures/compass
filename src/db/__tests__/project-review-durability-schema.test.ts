@@ -4,11 +4,20 @@ import { describe, expect, it } from "vitest"
 
 type Statement = { readonly get: () => unknown; readonly run: () => unknown }
 type Database = { readonly exec: (sql: string) => void; readonly prepare: (sql: string) => Statement; readonly close: () => void }
-type Module = { readonly Database: new (filename: string) => Database }
-function isModule(value: unknown): value is Module { return value !== null && typeof value === "object" && "Database" in value && typeof value.Database === "function" }
+type BunSqliteModule = { readonly Database: new (filename: string) => Database }
+type NodeSqliteModule = { readonly DatabaseSync: new (filename: string) => Database }
+function isBunSqliteModule(value: unknown): value is BunSqliteModule { return value !== null && typeof value === "object" && "Database" in value && typeof value.Database === "function" }
+function isNodeSqliteModule(value: unknown): value is NodeSqliteModule { return value !== null && typeof value === "object" && "DatabaseSync" in value && typeof value.DatabaseSync === "function" }
 async function database(): Promise<Database> {
-  const specifier = "bun:sqlite"; const loaded: unknown = await import(specifier); if (!isModule(loaded)) throw new Error("sqlite unavailable")
-  const db = new loaded.Database(":memory:"); db.exec("PRAGMA foreign_keys=ON; CREATE TABLE organizations(id TEXT PRIMARY KEY); CREATE TABLE users(id TEXT PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY); INSERT INTO organizations VALUES('org'); INSERT INTO users VALUES('user'); INSERT INTO projects VALUES('project');")
+  let db: Database
+  if ("Bun" in globalThis) {
+    const specifier = "bun:sqlite"; const loaded: unknown = await import(specifier); if (!isBunSqliteModule(loaded)) throw new Error("bun:sqlite unavailable")
+    db = new loaded.Database(":memory:")
+  } else {
+    const specifier = "node:sqlite"; const loaded: unknown = await import(specifier); if (!isNodeSqliteModule(loaded)) throw new Error("node:sqlite unavailable")
+    db = new loaded.DatabaseSync(":memory:")
+  }
+  db.exec("PRAGMA foreign_keys=ON; CREATE TABLE organizations(id TEXT PRIMARY KEY); CREATE TABLE users(id TEXT PRIMARY KEY); CREATE TABLE projects(id TEXT PRIMARY KEY); INSERT INTO organizations VALUES('org'); INSERT INTO users VALUES('user'); INSERT INTO projects VALUES('project');")
   db.exec(readFileSync(resolve(process.cwd(), "drizzle/0158_project_review_durability.sql"), "utf8").replaceAll("--> statement-breakpoint", "")); return db
 }
 describe("project review durability migration", () => {
