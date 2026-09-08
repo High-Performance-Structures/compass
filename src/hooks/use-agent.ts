@@ -8,6 +8,7 @@ import {
   isJarvisVisualMediaType,
   type JarvisVisualAttachment,
 } from "@/lib/agent/visual-context"
+import { buildAgentRequestMessages } from "@/lib/agent/request-messages"
 
 export interface UseAgentOptions {
   readonly agentServerUrl?: string
@@ -130,13 +131,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
           method: "POST",
           headers,
           body: JSON.stringify({
-            messages: allMessages.map((m) => ({
-              role: m.role,
-              content: m.parts
-                .filter((p) => p.type === "text")
-                .map((p) => (p as { text: string }).text)
-                .join(""),
-            })),
+            messages: buildAgentRequestMessages(allMessages),
             visuals,
           }),
           signal: controller.signal,
