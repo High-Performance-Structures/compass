@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  getPublicationChangeReasonError,
   isDraftScheduleAction,
   parsePublishedScheduleSnapshot,
 } from "@/lib/schedule/publications"
@@ -94,5 +95,29 @@ describe("schedule publications", () => {
     expect(isDraftScheduleAction("schedule.dependency_updated")).toBe(true)
     expect(isDraftScheduleAction("schedule.baseline_created")).toBe(false)
     expect(isDraftScheduleAction("schedule.published")).toBe(false)
+  })
+
+  it("allows the first publication without a change reason", () => {
+    expect(getPublicationChangeReasonError("", false)).toBeNull()
+    expect(getPublicationChangeReasonError("  ", false)).toBeNull()
+  })
+
+  it("requires a change reason after the schedule has been published", () => {
+    expect(getPublicationChangeReasonError("", true)).toBe(
+      "Enter a publish reason between 3 and 500 characters."
+    )
+    expect(
+      getPublicationChangeReasonError("Updated framing dates", true)
+    ).toBeNull()
+  })
+
+  it("limits optional and required publication reasons to 500 characters", () => {
+    const reason = "a".repeat(501)
+    expect(getPublicationChangeReasonError(reason, false)).toBe(
+      "Enter a publish reason of 500 characters or less."
+    )
+    expect(getPublicationChangeReasonError(reason, true)).toBe(
+      "Enter a publish reason of 500 characters or less."
+    )
   })
 })
