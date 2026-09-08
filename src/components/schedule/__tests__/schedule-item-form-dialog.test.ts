@@ -23,7 +23,9 @@ vi.mock("next/link", () => ({
 }))
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard/projects/project-1/schedule",
   useRouter: () => ({ refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock("sonner", () => ({
