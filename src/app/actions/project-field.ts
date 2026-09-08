@@ -58,6 +58,7 @@ import {
   isJarvisAgentBridgeEnabled,
   relayAgentRequest,
 } from "@/lib/jarvis/agent-relay"
+import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
@@ -3093,6 +3094,7 @@ export async function draftOwnerProjectUpdateWithJarvis(
         displayName: user.displayName,
         email: user.email,
         role: user.role,
+          readCapabilities: await jarvisReadCapabilitiesForUser(user),
       },
       sessionId: `owner-update:${updateId}:${Date.now()}`,
       currentPage:

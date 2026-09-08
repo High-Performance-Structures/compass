@@ -51,6 +51,7 @@ import {
   resolveJarvisHelpContext,
 } from "@/lib/help/jarvis-context"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 
 const visualAttachmentSchema = z
   .object({
@@ -181,6 +182,7 @@ export async function POST(
         displayName: user.displayName,
         email: user.email,
         role: user.role,
+          readCapabilities: await jarvisReadCapabilitiesForUser(user),
       },
       sessionId:
         request.headers.get("x-session-id") ?? crypto.randomUUID(),

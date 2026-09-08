@@ -1,12 +1,17 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, notExists, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
   dailyLogs,
   ownerProjectUpdates,
+  projectDuplicateDecisions,
+  projectJobStatuses,
+  projectRegistryRemovals,
   projectRfis,
+  projectRouteAliases,
   projects,
 } from "@/db/schema"
+import { projectEstimates } from "@/db/schema-estimates"
 import {
   feedbackDeskItems,
   jarvisBridgeEvents,
@@ -20,33 +25,36 @@ import {
   canSearchCompassRole,
   currentProjectIdFromPath,
   dailyLogHref,
+  estimateHref,
   feedbackRequestHref,
+  isProjectScopedJarvisCalendarSearch,
   jarvisSearchQueryForConversation,
   jarvisSearchTerms,
   ownerUpdateHref,
   projectHref,
+  projectIdsForJarvisCalendarSearch,
+  projectIdsForJarvisProjectSearch,
   projectIdsForJarvisSearch,
+  requestedCalendarDate,
+  requestedProjectStatus,
   rfiHref,
   requestedJarvisSearchKinds,
   type JarvisCompassSearchKind,
+  type JarvisCompassSearchResult,
 } from "@/lib/jarvis/search"
+import {
+  parseJarvisReadCapabilities,
+  type JarvisReadCapability,
+} from "@/lib/jarvis/read-capabilities"
+import { searchJarvisCalendar } from "@/lib/jarvis/calendar-search"
+import {
+  projectJobStatusBucket,
+  projectJobStatusLabel,
+} from "@/lib/project-profile"
 import {
   feedbackStaffStage,
   feedbackStatusLabel,
 } from "@/lib/jarvis/feedback-lifecycle"
-
-type SearchResult = {
-  readonly kind: JarvisCompassSearchKind
-  readonly title: string
-  readonly summary: string
-  readonly projectName: string
-  readonly projectNumber: string | null
-  readonly date: string
-  readonly status: string | null
-  readonly href: string
-  readonly verified: boolean
-  readonly lifecycleStage: string | null
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -105,6 +113,41 @@ function payloadUserEmail(payload: Record<string, unknown>): string | null {
   return email.length > 0 ? email : null
 }
 
+function payloadUserId(payload: Record<string, unknown>): string | null {
+  const user = payload.user
+  return isRecord(user) ? recordString(user, "id") : null
+}
+
+function payloadReadCapabilities(
+  payload: Record<string, unknown>,
+): ReadonlySet<JarvisReadCapability> {
+  const access = payload.access
+  return isRecord(access)
+    ? parseJarvisReadCapabilities(access.readCapabilities)
+    : new Set()
+}
+
+function capabilitiesForKind(
+  kind: JarvisCompassSearchKind,
+): readonly JarvisReadCapability[] {
+  switch (kind) {
+    case "project":
+      return ["project-hub"]
+    case "daily_log":
+      return ["project-hub", "daily-logs"]
+    case "rfi":
+      return ["project-hub", "rfis"]
+    case "owner_update":
+      return ["project-hub", "owner-updates"]
+    case "estimate":
+      return ["project-hub", "budget"]
+    case "calendar_event":
+      return ["work-calendar"]
+    case "feedback_request":
+      return []
+  }
+}
+
 function cleanSummary(...values: readonly (string | null)[]): string {
   const summary = values
     .map((value) => value?.trim() ?? "")
@@ -116,8 +159,8 @@ function cleanSummary(...values: readonly (string | null)[]): string {
 
 function absoluteResult(
   origin: string,
-  result: SearchResult
-): SearchResult & { readonly url: string } {
+  result: JarvisCompassSearchResult
+): JarvisCompassSearchResult & { readonly url: string } {
   return {
     ...result,
     url: new URL(result.href, origin).toString(),
@@ -185,9 +228,43 @@ export async function GET(
     return Response.json({ query: "", results: [], count: 0 })
   }
 
-  const kinds = requestedJarvisSearchKinds(query)
+  const requestedKinds = requestedJarvisSearchKinds(query)
+  const readCapabilities = payloadReadCapabilities(payload)
+  const kinds = requestedKinds.filter((kind) =>
+    capabilitiesForKind(kind).every((capability) =>
+      readCapabilities.has(capability),
+    ),
+  )
   const kindsSet = new Set(kinds)
-  const results: SearchResult[] = []
+  const deniedKinds = requestedKinds.filter((kind) => !kindsSet.has(kind))
+  const results: JarvisCompassSearchResult[] = []
+  let sourceComplete = true
+
+  const visibleProjectCondition = and(
+    notExists(
+      db
+        .select({ sourceProjectId: projectRouteAliases.sourceProjectId })
+        .from(projectRouteAliases)
+        .where(eq(projectRouteAliases.sourceProjectId, projects.id)),
+    ),
+    notExists(
+      db
+        .select({ projectId: projectRegistryRemovals.projectId })
+        .from(projectRegistryRemovals)
+        .where(eq(projectRegistryRemovals.projectId, projects.id)),
+    ),
+    notExists(
+      db
+        .select({ removedProjectId: projectDuplicateDecisions.removedProjectId })
+        .from(projectDuplicateDecisions)
+        .where(
+          and(
+            eq(projectDuplicateDecisions.status, "merged"),
+            eq(projectDuplicateDecisions.removedProjectId, projects.id),
+          ),
+        ),
+    ),
+  )
 
   if (kindsSet.has("feedback_request")) {
     const email = payloadUserEmail(payload)
@@ -254,6 +331,7 @@ export async function GET(
       },
       results: results.map((result) => absoluteResult(origin, result)),
       count: results.length,
+      complete: matchingRows.length <= 15,
       readOnly: true,
       verifiedAt,
       verificationSource: "feedback_desk_items",
@@ -266,41 +344,101 @@ export async function GET(
       name: projects.name,
       projectNumber: projects.projectNumber,
       clientName: projects.clientName,
+      status: projects.status,
+      jobStatusId: projects.jobStatusId,
+      customJobStatusLabel: projectJobStatuses.label,
+      createdAt: projects.createdAt,
+      updatedAt: projects.updatedAt,
     })
     .from(projects)
-    .where(eq(projects.organizationId, event.organizationId))
+    .leftJoin(
+      projectJobStatuses,
+      and(
+        eq(projectJobStatuses.id, projects.jobStatusId),
+        eq(projectJobStatuses.organizationId, projects.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(projects.organizationId, event.organizationId),
+        visibleProjectCondition,
+      ),
+    )
     .orderBy(projects.projectNumber, projects.name)
+
+  const scopedProjects = projectRows.map((project) => {
+    const jobStatusLabel = projectJobStatusLabel({
+      jobStatusId: project.jobStatusId,
+      customLabel: project.customJobStatusLabel,
+    })
+    return {
+      ...project,
+      jobStatusLabel,
+      statusBucket: projectJobStatusBucket({
+        jobStatusId: project.jobStatusId,
+        jobStatusLabel,
+      }),
+    }
+  })
 
   const currentPage = payloadContextValue(payload, "currentPage") ?? ""
   const projectIds = projectIdsForJarvisSearch(
-    projectRows,
+    scopedProjects,
     query,
     currentProjectIdFromPath(currentPage)
   )
-  if (projectIds.length === 0) {
-    return Response.json({ query, results: [], count: 0 })
+  const calendarProjectIds = projectIdsForJarvisCalendarSearch(
+    scopedProjects,
+    query,
+    currentProjectIdFromPath(currentPage),
+  )
+  const calendarIsProjectScoped = isProjectScopedJarvisCalendarSearch(
+    scopedProjects,
+    query,
+    currentProjectIdFromPath(currentPage),
+  )
+  const projectSearchIds = projectIdsForJarvisProjectSearch(
+    scopedProjects,
+    query,
+    currentProjectIdFromPath(currentPage),
+  )
+  const projectById = new Map(
+    scopedProjects.map((project) => [project.id, project]),
+  )
+  const narrowedProjectScope =
+    projectIds.length < scopedProjects.length
+      ? inArray(projects.id, projectIds)
+      : undefined
+
+  if (kindsSet.has("project")) {
+    const status = requestedProjectStatus(query)
+    const resolvedProjectIds = new Set(projectSearchIds)
+    const matchingProjects = scopedProjects.filter(
+      (project) =>
+        resolvedProjectIds.has(project.id) &&
+        (status === null || project.statusBucket === status),
+    )
+    for (const project of matchingProjects) {
+      results.push({
+        kind: "project",
+        title: project.name,
+        summary: cleanSummary(
+          project.projectNumber,
+          project.clientName,
+          project.jobStatusLabel,
+        ),
+        projectName: project.name,
+        projectNumber: project.projectNumber,
+        date: project.updatedAt ?? project.createdAt,
+        status: project.jobStatusLabel,
+        href: projectHref(project.id),
+        verified: true,
+        lifecycleStage: null,
+      })
+    }
   }
 
-  const projectById = new Map(projectRows.map((project) => [project.id, project]))
-
-  for (const projectId of projectIds.slice(0, 3)) {
-    const project = projectById.get(projectId)
-    if (!project) continue
-    results.push({
-      kind: "project",
-      title: project.name,
-      summary: project.projectNumber ?? "Compass project",
-      projectName: project.name,
-      projectNumber: project.projectNumber,
-      date: "",
-      status: null,
-      href: projectHref(project.id),
-      verified: false,
-      lifecycleStage: null,
-    })
-  }
-
-  if (kindsSet.has("daily_log")) {
+  if (kindsSet.has("daily_log") && projectIds.length > 0) {
     const rows = await db
       .select({
         id: dailyLogs.id,
@@ -318,13 +456,15 @@ export async function GET(
       .where(
         and(
           eq(projects.organizationId, event.organizationId),
-          inArray(dailyLogs.projectId, projectIds)
+          visibleProjectCondition,
+          narrowedProjectScope,
         )
       )
       .orderBy(desc(dailyLogs.logDate), desc(dailyLogs.updatedAt))
-      .limit(6)
+      .limit(7)
 
-    for (const row of rows) {
+    sourceComplete = sourceComplete && rows.length <= 6
+    for (const row of rows.slice(0, 6)) {
       results.push({
         kind: "daily_log",
         title: `Daily Log · ${row.logDate}`,
@@ -340,7 +480,7 @@ export async function GET(
     }
   }
 
-  if (kindsSet.has("owner_update")) {
+  if (kindsSet.has("owner_update") && projectIds.length > 0) {
     const rows = await db
       .select({
         id: ownerProjectUpdates.id,
@@ -357,16 +497,18 @@ export async function GET(
       .where(
         and(
           eq(projects.organizationId, event.organizationId),
-          inArray(ownerProjectUpdates.projectId, projectIds)
+          visibleProjectCondition,
+          narrowedProjectScope,
         )
       )
       .orderBy(
         desc(ownerProjectUpdates.updateDate),
         desc(ownerProjectUpdates.updatedAt)
       )
-      .limit(6)
+      .limit(7)
 
-    for (const row of rows) {
+    sourceComplete = sourceComplete && rows.length <= 6
+    for (const row of rows.slice(0, 6)) {
       results.push({
         kind: "owner_update",
         title: row.title,
@@ -382,7 +524,7 @@ export async function GET(
     }
   }
 
-  if (kindsSet.has("rfi")) {
+  if (kindsSet.has("rfi") && projectIds.length > 0) {
     const rows = await db
       .select({
         id: projectRfis.id,
@@ -401,13 +543,15 @@ export async function GET(
       .where(
         and(
           eq(projects.organizationId, event.organizationId),
-          inArray(projectRfis.projectId, projectIds)
+          visibleProjectCondition,
+          narrowedProjectScope,
         )
       )
       .orderBy(desc(projectRfis.submittedAt), desc(projectRfis.updatedAt))
-      .limit(6)
+      .limit(7)
 
-    for (const row of rows) {
+    sourceComplete = sourceComplete && rows.length <= 6
+    for (const row of rows.slice(0, 6)) {
       results.push({
         kind: "rfi",
         title: `${row.rfiNumber} · ${row.subject}`,
@@ -423,20 +567,137 @@ export async function GET(
     }
   }
 
+  if (kindsSet.has("estimate")) {
+    const terms = jarvisSearchTerms(query)
+    const searchableEstimate = sql`lower(
+      coalesce(${projectEstimates.estimateNumber}, '') || ' ' ||
+      coalesce(${projectEstimates.title}, '') || ' ' ||
+      coalesce(${projectEstimates.clientName}, '') || ' ' ||
+      coalesce(${projects.clientName}, '') || ' ' ||
+      coalesce(${projects.name}, '') || ' ' ||
+      coalesce(${projects.projectNumber}, '')
+    )`
+    const matchingRows =
+      projectIds.length === 0
+        ? []
+        : await db
+            .select({
+              id: projectEstimates.id,
+              projectId: projectEstimates.projectId,
+              estimateNumber: projectEstimates.estimateNumber,
+              versionNumber: projectEstimates.versionNumber,
+              title: projectEstimates.title,
+              status: projectEstimates.status,
+              estimateDate: projectEstimates.estimateDate,
+              clientName: projectEstimates.clientName,
+              totalCents: projectEstimates.estimateTotalCents,
+              updatedAt: projectEstimates.updatedAt,
+              projectName: projects.name,
+              projectNumber: projects.projectNumber,
+              projectClientName: projects.clientName,
+            })
+            .from(projectEstimates)
+            .innerJoin(projects, eq(projectEstimates.projectId, projects.id))
+            .where(
+              and(
+                eq(projects.organizationId, event.organizationId),
+                visibleProjectCondition,
+                narrowedProjectScope,
+                ...terms.map(
+                  (term) => sql`${searchableEstimate} like ${`%${term}%`}`,
+                ),
+              ),
+            )
+            .orderBy(desc(projectEstimates.updatedAt))
+            .limit(21)
+
+    sourceComplete = sourceComplete && matchingRows.length <= 20
+    for (const row of matchingRows.slice(0, 20)) {
+      results.push({
+        kind: "estimate",
+        title: `${row.estimateNumber} · ${row.title}`,
+        summary: cleanSummary(
+          `Version ${row.versionNumber}`,
+          row.status,
+          row.clientName ?? row.projectClientName,
+          `$${(row.totalCents / 100).toLocaleString("en-US", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`,
+        ),
+        projectName: row.projectName,
+        projectNumber: row.projectNumber,
+        date: row.estimateDate ?? row.updatedAt,
+        status: row.status,
+        href: estimateHref(row.projectId, row.id),
+        verified: true,
+        lifecycleStage: null,
+      })
+    }
+  }
+
+  if (kindsSet.has("calendar_event")) {
+    const userId = payloadUserId(payload)
+    const timeZone = payloadContextValue(payload, "timezone") ?? "UTC"
+    const targetDate = requestedCalendarDate(query, timeZone)
+    if (userId && targetDate) {
+      const calendarSearch = await searchJarvisCalendar({
+        db,
+        organizationId: event.organizationId,
+        userId,
+        timeZone,
+        targetDate,
+        projectById,
+        requestedProjectIds: new Set(calendarProjectIds),
+        includeUnscopedEvents: !calendarIsProjectScoped,
+      })
+      results.push(...calendarSearch.results)
+      sourceComplete = sourceComplete && calendarSearch.complete
+    } else if (!targetDate) {
+      sourceComplete = false
+    }
+  }
+
   const origin = new URL(request.url).origin
-  const sorted = results
-    .sort((left, right) => right.date.localeCompare(left.date))
-    .slice(0, 15)
+  const projectListOnly = kinds.length === 1 && kinds[0] === "project"
+  const calendarOnly = kinds.length === 1 && kinds[0] === "calendar_event"
+  const resultLimit = projectListOnly ? 50 : calendarOnly ? 30 : 20
+  const ordered = projectListOnly
+    ? results
+    : results.sort((left, right) =>
+        calendarOnly
+          ? left.date.localeCompare(right.date)
+          : right.date.localeCompare(left.date),
+      )
+  const sorted = ordered
+    .slice(0, resultLimit)
     .map((result) => absoluteResult(origin, result))
 
   return Response.json({
     query,
     scope: {
-      projectIds,
+      projectIds:
+        projectIds.length === scopedProjects.length
+          ? "all_visible"
+          : projectIds,
+      projectSearchIds:
+        projectSearchIds.length === scopedProjects.length
+          ? "all_visible"
+          : projectSearchIds,
+      calendarProjectIds:
+        calendarProjectIds.length === scopedProjects.length
+          ? "all_visible"
+          : calendarProjectIds,
+      calendarIsProjectScoped,
       kinds,
+      deniedKinds,
     },
     results: sorted,
     count: sorted.length,
+    complete:
+      deniedKinds.length === 0 &&
+      sourceComplete &&
+      results.length <= resultLimit,
     readOnly: true,
   })
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  agentRelayRequestDigest,
   createAgentRelayResponse,
   isJarvisAgentBridgeEnabled,
   parseAgentRelayResult,
@@ -46,6 +47,31 @@ describe("Jarvis agent relay", () => {
 
     expect(characters).toBe(32_000)
     expect(relayed.at(-1)?.content.startsWith("9:")).toBe(true)
+  })
+
+  it("changes idempotency when effective read access changes", async () => {
+    const input = {
+      userId: "user-1",
+      sessionId: "session-1",
+      messages: [{ role: "user" as const, content: "Show the estimate" }],
+      visuals: [],
+    }
+    const withBudget = await agentRelayRequestDigest(
+      input.userId,
+      input.sessionId,
+      input.messages,
+      input.visuals,
+      ["project-hub", "budget"],
+    )
+    const withoutBudget = await agentRelayRequestDigest(
+      input.userId,
+      input.sessionId,
+      input.messages,
+      input.visuals,
+      ["project-hub"],
+    )
+
+    expect(withBudget).not.toBe(withoutBudget)
   })
 
   it("extracts only a non-empty response", () => {

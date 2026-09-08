@@ -29,6 +29,9 @@ class CompassSearchContextTests(unittest.TestCase):
         prompt = MODULE.compass_context_prompt(
             {
                 "query": "latest Loomis update",
+                "scope": {"kinds": ["owner_update"]},
+                "count": 1,
+                "complete": True,
                 "results": [
                     {
                         "kind": "owner_update",
@@ -44,6 +47,8 @@ class CompassSearchContextTests(unittest.TestCase):
 
         self.assertIn("untrusted JSON data", prompt)
         self.assertIn('"kind":"owner_update"', prompt)
+        self.assertIn('"complete":true', prompt)
+        self.assertIn('"count":1', prompt)
         self.assertIn(
             "https://compass.example.com/dashboard/projects/"
             "loomis/owner-updates/update-1",
@@ -53,6 +58,7 @@ class CompassSearchContextTests(unittest.TestCase):
     def test_context_is_bounded(self) -> None:
         prompt = MODULE.compass_context_prompt(
             {
+                "complete": True,
                 "results": [
                     {
                         "title": "Newest valid result",
@@ -73,6 +79,7 @@ class CompassSearchContextTests(unittest.TestCase):
         payload_text = prompt.rsplit("\n", 1)[-1]
         parsed = MODULE.json.loads(payload_text)
         self.assertTrue(parsed["readOnly"])
+        self.assertFalse(parsed["complete"])
         self.assertEqual(len(parsed["results"]), 1)
         self.assertEqual(
             parsed["results"][0]["url"],
