@@ -269,8 +269,11 @@ export function ScheduleView({
 
   function handlePublish(): void {
     if (!projectId) return
+    const wasPreviouslyPublished =
+      publicationStatus?.hasPublishedSchedule === true
+    const changeReason = wasPreviouslyPublished ? publishReason : ""
     startPublishTransition(async () => {
-      const result = await publishSchedule(projectId, publishReason)
+      const result = await publishSchedule(projectId, changeReason)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -280,7 +283,7 @@ export function ScheduleView({
         hasUnpublishedChanges: false,
         publishedAt: result.publishedAt,
         publishedBy: null,
-        changeReason: publishReason.trim(),
+        changeReason: wasPreviouslyPublished ? changeReason.trim() : null,
       })
       setPublishReason("")
       setPublishOpen(false)
@@ -1366,20 +1369,22 @@ export function ScheduleView({
               the next release.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="schedule-publish-reason">Change reason</Label>
-            <Textarea
-              id="schedule-publish-reason"
-              value={publishReason}
-              onChange={(event) => setPublishReason(event.currentTarget.value)}
-              placeholder="Summarize what changed and why..."
-              rows={4}
-              maxLength={500}
-            />
-            <p className="text-xs text-muted-foreground">
-              This reason appears in the internal activity history.
-            </p>
-          </div>
+          {publicationStatus?.hasPublishedSchedule && (
+            <div className="space-y-2">
+              <Label htmlFor="schedule-publish-reason">Change reason</Label>
+              <Textarea
+                id="schedule-publish-reason"
+                value={publishReason}
+                onChange={(event) => setPublishReason(event.currentTarget.value)}
+                placeholder="Summarize what changed and why..."
+                rows={4}
+                maxLength={500}
+              />
+              <p className="text-xs text-muted-foreground">
+                This reason appears in the internal activity history.
+              </p>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
@@ -1390,7 +1395,11 @@ export function ScheduleView({
             </Button>
             <Button
               onClick={handlePublish}
-              disabled={isPublishing || publishReason.trim().length < 3}
+              disabled={
+                isPublishing ||
+                (publicationStatus?.hasPublishedSchedule === true &&
+                  publishReason.trim().length < 3)
+              }
             >
               {isPublishing && (
                 <IconLoader2 className="mr-1.5 size-4 animate-spin" />

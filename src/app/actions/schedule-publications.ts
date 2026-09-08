@@ -25,6 +25,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import {
   DRAFT_SCHEDULE_ACTIONS,
+  getPublicationChangeReasonError,
   parsePublishedScheduleSnapshot,
   publishedScheduleSnapshotSchema,
 } from "@/lib/schedule/publications"
@@ -135,12 +136,6 @@ export async function publishSchedule(
     requirePermission(user, "schedule", "update")
     const organizationId = requireOrg(user)
     const changeReason = rawReason.trim()
-    if (changeReason.length < 3 || changeReason.length > 500) {
-      return {
-        success: false,
-        error: "Enter a publish reason between 3 and 500 characters.",
-      }
-    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -153,6 +148,13 @@ export async function publishSchedule(
       .orderBy(desc(schedulePublications.publishedAt))
       .limit(1)
       .then((rows) => rows[0] ?? null)
+    const changeReasonError = getPublicationChangeReasonError(
+      changeReason,
+      previousPublication !== null
+    )
+    if (changeReasonError) {
+      return { success: false, error: changeReasonError }
+    }
     const previousSnapshot = previousPublication
       ? parsePublishedScheduleSnapshot(previousPublication.snapshotData)
       : null
@@ -220,7 +222,9 @@ export async function publishSchedule(
       action: "schedule.published",
       entityType: "project_schedule",
       entityId: projectId,
-      summary: `Published the project schedule: ${changeReason}`,
+      summary: changeReason
+        ? `Published the project schedule: ${changeReason}`
+        : "Published the project schedule",
       metadata: {
         itemCount: tasks.length,
         dependencyCount: dependencies.length,

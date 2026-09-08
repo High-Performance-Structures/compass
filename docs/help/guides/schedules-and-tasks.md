@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-09-08"
 }
 ---
 
@@ -40,6 +40,10 @@ A predecessor describes how one activity controls another. Choose the correct so
 
 Do not force a dependent item to an incompatible date until you know whether its relationship, lag, constraint, or work calendar is wrong. Preserve actual completion information for finished work.
 
+## Publish a Schedule {#publish-schedule}
+
+The first publication makes the working schedule active for owner and trade-partner workspaces and does not require a change reason. After a schedule has been published, enter a concise reason when publishing another revision so the internal activity history explains what changed.
+
 ## Workday Exceptions {#workday-exceptions}
 
 Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
@@ -57,5 +61,6 @@ A useful task has a clear action, project context, assignee, due date, source-re
 - [ ] The project, title, phase, assignee, dates, and duration are correct.
 - [ ] Dependencies and lag represent the real sequence.
 - [ ] I reviewed downstream dates after changes.
+- [ ] Published schedule revisions include a change reason.
 - [ ] Workday exceptions have a reason.
 - [ ] Completed work retains accurate history.

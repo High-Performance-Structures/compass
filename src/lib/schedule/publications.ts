@@ -115,3 +115,17 @@ export const DRAFT_SCHEDULE_ACTIONS = [
 export function isDraftScheduleAction(action: string): boolean {
   return DRAFT_SCHEDULE_ACTIONS.some((draftAction) => draftAction === action)
 }
+
+export function getPublicationChangeReasonError(
+  rawReason: string,
+  hasPublishedSchedule: boolean
+): string | null {
+  const changeReason = rawReason.trim()
+  if (changeReason.length > 500) {
+    return "Enter a publish reason of 500 characters or less."
+  }
+  if (hasPublishedSchedule && changeReason.length < 3) {
+    return "Enter a publish reason between 3 and 500 characters."
+  }
+  return null
+}
