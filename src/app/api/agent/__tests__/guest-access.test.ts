@@ -23,6 +23,9 @@ vi.mock("@/app/actions/anthropic-oauth", () => ({
 vi.mock("@/lib/help/server-access", () => ({
   getEffectiveHelpGuideAccess: vi.fn(),
 }))
+vi.mock("@/lib/jarvis/read-capabilities", () => ({
+  jarvisReadCapabilitiesForUser: vi.fn(),
+}))
 vi.mock("@/lib/agent/render/action-registry", () => ({
   actionRegistry: {},
   checkActionPermission: vi.fn(),
