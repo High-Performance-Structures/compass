@@ -5,6 +5,7 @@ import Link from "next/link"
 import { IconArrowRight, IconBook2, IconSearch } from "@tabler/icons-react"
 
 import {
+  helpHrefWithReturnTo,
   searchAllowedHelpGuides,
   type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
@@ -34,8 +35,10 @@ function groupedGuides(
 
 export function HelpResourcesLibrary({
   guides,
+  returnTo,
 }: {
   readonly guides: readonly HelpGuideSummary[]
+  readonly returnTo: string | null
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const shownGuides = React.useMemo(
@@ -62,7 +65,7 @@ export function HelpResourcesLibrary({
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-5 sm:px-6 sm:py-7">
       <header className="border-b border-border pb-6">
         <div className="mb-4 flex justify-end">
-          <CloseHelpButton />
+          <CloseHelpButton returnTo={returnTo ?? undefined} />
         </div>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
@@ -131,7 +134,11 @@ export function HelpResourcesLibrary({
               {group.guides.map((guide) => (
                 <Link
                   key={guide.slug}
-                  href={guide.href}
+                  href={
+                    returnTo
+                      ? helpHrefWithReturnTo(guide.href, returnTo)
+                      : guide.href
+                  }
                   className="group grid gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6"
                 >
                   <div className="min-w-0">

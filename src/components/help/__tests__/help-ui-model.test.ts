@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest"
 import {
   buildHelpTopicPrompt,
   helpGuidesForPathname,
+  helpHrefWithReturnTo,
+  helpReturnToForLocation,
+  safeHelpReturnTo,
   searchAllowedHelpGuides,
   type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
@@ -86,6 +89,34 @@ describe("Compass Help UI model", () => {
     ).toEqual([allowed])
   })
 
+  it("keeps full-guide navigation reversible without relying on a new tab", () => {
+    expect(
+      helpHrefWithReturnTo(
+        "/dashboard/help/schedule#details",
+        "/preview/projects/project-42/sub-vendor",
+      ),
+    ).toBe(
+      "/dashboard/help/schedule?returnTo=%2Fpreview%2Fprojects%2Fproject-42%2Fsub-vendor#details",
+    )
+    expect(safeHelpReturnTo("/dashboard/projects/project-42/schedule")).toBe(
+      "/dashboard/projects/project-42/schedule",
+    )
+    expect(safeHelpReturnTo("//outside.example")).toBeNull()
+    expect(safeHelpReturnTo("/dashboard/help/requesting-help")).toBeNull()
+    expect(
+      helpReturnToForLocation(
+        "/dashboard/projects/project-42",
+        "tab=rfis&status=open",
+      ),
+    ).toBe("/dashboard/projects/project-42?tab=rfis&status=open")
+    expect(
+      helpReturnToForLocation(
+        "/dashboard/help/schedule",
+        "returnTo=%2Fdashboard%2Fprojects%2Fproject-42%3Ftab%3Drfis",
+      ),
+    ).toBe("/dashboard/projects/project-42?tab=rfis")
+  })
+
   it("keeps generated help registries out of client help components", () => {
     for (const filename of [
       "help-drawer.tsx",
@@ -129,7 +160,7 @@ describe("Compass Help UI model", () => {
     expect(drawerSource).toContain("tel:+17198966149")
   })
 
-  it("keeps full-guide launches separate from the active workspace", () => {
+  it("keeps full-guide navigation reversible from the active workspace", () => {
     const drawerSource = readFileSync(
       join(process.cwd(), "src/components/help/help-drawer.tsx"),
       "utf8",
@@ -147,14 +178,17 @@ describe("Compass Help UI model", () => {
       "utf8",
     )
 
-    expect(drawerSource).toContain('target="_blank"')
+    expect(drawerSource).toContain("helpHrefWithReturnTo")
+    expect(drawerSource).toContain("onClick={() => handleOpenChange(false)}")
     expect(drawerSource).toContain("setSelectedGuide")
     expect(drawerSource).toContain("<DrawerGuideArticle")
-    expect(drawerSource).toContain("<MarkdownRenderer openLinksInNewTab>")
-    expect(drawerSource).toContain("{guide.content}</MarkdownRenderer>")
+    expect(drawerSource).toContain("linkHrefTransform=")
+    expect(drawerSource).toContain("{guide.content}")
     expect(drawerSource).toContain("Back to Help topics")
-    expect(beaconSource).toContain('target="_blank"')
+    expect(beaconSource).toContain("helpHrefWithReturnTo")
+    expect(beaconSource).toContain("window.location.assign")
     expect(closeSource).toContain("window.close()")
+    expect(closeSource).toContain("router.push(returnTo)")
     expect(closeSource).toContain("Close help")
     expect(messageSource).toContain('href?.startsWith("/dashboard/help")')
   })

@@ -5,7 +5,10 @@ import Link from "next/link"
 import { IconSparkles } from "@tabler/icons-react"
 
 import { useAgentOptional, useChatStateOptional } from "@/components/agent/chat-provider"
-import { buildHelpTopicPrompt } from "@/components/help/help-ui-model"
+import {
+  buildHelpTopicPrompt,
+  helpHrefWithReturnTo,
+} from "@/components/help/help-ui-model"
 import { useCanUseHelpJarvis } from "@/components/help/help-ui-provider"
 import { Button } from "@/components/ui/button"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
@@ -16,11 +19,13 @@ export function HelpArticle({
   title,
   content,
   sections,
+  returnTo,
 }: {
   readonly guideId: string
   readonly title: string
   readonly content: string
   readonly sections: readonly HelpGuideSection[]
+  readonly returnTo: string | null
 }): React.ReactElement {
   const articleRef = React.useRef<HTMLElement>(null)
   const agent = useAgentOptional()
@@ -86,7 +91,15 @@ export function HelpArticle({
         className="min-w-0 scroll-mt-20 border-l-2 border-primary/50 pl-5 sm:pl-7 [&_h2]:scroll-mt-20 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2 [&_h3]:scroll-mt-20"
       >
         <div className="space-y-4 text-[15px] leading-7 text-foreground [&_h2]:mt-9 [&_h3]:mt-6 [&_li]:leading-6 [&_p]:leading-7">
-          <MarkdownRenderer>{content}</MarkdownRenderer>
+          <MarkdownRenderer
+            linkHrefTransform={
+              returnTo
+                ? (href) => helpHrefWithReturnTo(href, returnTo)
+                : undefined
+            }
+          >
+            {content}
+          </MarkdownRenderer>
         </div>
       </article>
     </div>

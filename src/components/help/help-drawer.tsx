@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import {
   IconArrowLeft,
   IconArrowRight,
@@ -18,6 +18,8 @@ import { HelpCompassIcon } from "@/components/help/help-compass-icon"
 import {
   buildHelpTopicPrompt,
   helpGuidesForPathname,
+  helpHrefWithReturnTo,
+  helpReturnToForLocation,
   searchAllowedHelpGuides,
   type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
@@ -50,6 +52,8 @@ export function HelpDrawer({
   readonly triggerClassName?: string
 }): React.ReactElement {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const returnTo = helpReturnToForLocation(pathname, searchParams.toString())
   const agent = useAgentOptional()
   const chat = useChatStateOptional()
   const canUseJarvis = useCanUseHelpJarvis()
@@ -186,6 +190,7 @@ export function HelpDrawer({
             <DrawerGuideArticle
               guide={selectedGuide.guide}
               sectionId={selectedGuide.sectionId}
+              returnTo={returnTo}
             />
           ) : (
             <div className="px-5 py-4">
@@ -250,15 +255,15 @@ export function HelpDrawer({
         <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
           <Button variant="ghost" size="sm" asChild>
             <Link
-              href={
+              href={helpHrefWithReturnTo(
                 selectedGuide
                   ? `/dashboard/help/${selectedGuide.guide.slug}${
                       selectedGuide.sectionId ? `#${selectedGuide.sectionId}` : ""
                     }`
-                  : "/dashboard/help"
-              }
-              target="_blank"
-              rel="noopener noreferrer"
+                  : "/dashboard/help",
+                returnTo,
+              )}
+              onClick={() => handleOpenChange(false)}
             >
               <IconBook2 className="size-4" />
               Open full guide
@@ -301,9 +306,11 @@ export function HelpDrawer({
 function DrawerGuideArticle({
   guide,
   sectionId,
+  returnTo,
 }: {
   readonly guide: HelpGuidePreview
   readonly sectionId: string | null
+  readonly returnTo: string
 }): React.ReactElement {
   const articleRef = React.useRef<HTMLElement>(null)
 
@@ -332,7 +339,11 @@ function DrawerGuideArticle({
       className="px-5 py-5 [&_h2]:scroll-mt-4 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2"
     >
       <div className="space-y-4 text-sm leading-6 text-foreground [&_h2]:mt-8 [&_h2:first-child]:mt-0 [&_h3]:mt-6 [&_li]:leading-6 [&_p]:leading-6">
-        <MarkdownRenderer openLinksInNewTab>{guide.content}</MarkdownRenderer>
+        <MarkdownRenderer
+          linkHrefTransform={(href) => helpHrefWithReturnTo(href, returnTo)}
+        >
+          {guide.content}
+        </MarkdownRenderer>
       </div>
     </article>
   )

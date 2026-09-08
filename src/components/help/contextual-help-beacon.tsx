@@ -2,11 +2,16 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { usePathname, useSearchParams } from "next/navigation"
 import { IconBook2, IconSparkles } from "@tabler/icons-react"
 
 import { useAgentOptional, useChatStateOptional } from "@/components/agent/chat-provider"
 import { HelpCompassIcon } from "@/components/help/help-compass-icon"
-import { buildHelpTopicPrompt } from "@/components/help/help-ui-model"
+import {
+  buildHelpTopicPrompt,
+  helpHrefWithReturnTo,
+  helpReturnToForLocation,
+} from "@/components/help/help-ui-model"
 import {
   useAuthorizedHelpTopic,
   useCanUseHelpJarvis,
@@ -36,6 +41,9 @@ export function ContextualHelpBeacon({
   readonly className?: string
 }): React.ReactElement | null {
   const topic = useAuthorizedHelpTopic(topicId)
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const returnTo = helpReturnToForLocation(pathname, searchParams.toString())
   const agent = useAgentOptional()
   const chat = useChatStateOptional()
   const canUseJarvis = useCanUseHelpJarvis()
@@ -68,7 +76,7 @@ export function ContextualHelpBeacon({
                 )}
                 aria-label={`Help: ${title}`}
                 onDoubleClick={() => {
-                  window.open(topic.href, "_blank", "noopener,noreferrer")
+                  window.location.assign(helpHrefWithReturnTo(topic.href, returnTo))
                 }}
               >
                 <HelpCompassIcon className="size-3.5" />
@@ -89,10 +97,8 @@ export function ContextualHelpBeacon({
         <div className="mt-4 flex flex-col gap-2">
           <Button variant="outline" size="sm" asChild className="justify-start">
             <Link
-              href={topic.href}
+              href={helpHrefWithReturnTo(topic.href, returnTo)}
               onClick={() => setOpen(false)}
-              target="_blank"
-              rel="noopener noreferrer"
             >
               <IconBook2 className="size-4" />
               Read full guide

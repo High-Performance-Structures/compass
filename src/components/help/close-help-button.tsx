@@ -6,10 +6,18 @@ import { IconX } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 
-export function CloseHelpButton(): React.ReactElement {
+export function CloseHelpButton({
+  returnTo,
+}: {
+  readonly returnTo?: string
+}): React.ReactElement {
   const router = useRouter()
 
   function closeHelp(): void {
+    if (returnTo) {
+      router.push(returnTo)
+      return
+    }
     window.close()
     window.setTimeout(() => {
       if (!window.closed) router.back()

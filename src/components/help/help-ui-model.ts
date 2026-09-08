@@ -165,6 +165,33 @@ export function helpGuidesForPathname(
   )
 }
 
+export function helpHrefWithReturnTo(href: string, returnTo: string): string {
+  if (!href.startsWith("/dashboard/help")) return href
+  const hashIndex = href.indexOf("#")
+  const baseHref = hashIndex === -1 ? href : href.slice(0, hashIndex)
+  const hash = hashIndex === -1 ? "" : href.slice(hashIndex)
+  const separator = baseHref.includes("?") ? "&" : "?"
+  return `${baseHref}${separator}returnTo=${encodeURIComponent(returnTo)}${hash}`
+}
+
+export function helpReturnToForLocation(
+  pathname: string,
+  searchParams: string,
+): string {
+  if (pathname.startsWith("/dashboard/help")) {
+    const existingReturnTo = new URLSearchParams(searchParams).get("returnTo")
+    const safeExistingReturnTo = safeHelpReturnTo(existingReturnTo ?? undefined)
+    if (safeExistingReturnTo) return safeExistingReturnTo
+  }
+  return searchParams.length > 0 ? `${pathname}?${searchParams}` : pathname
+}
+
+export function safeHelpReturnTo(value: string | undefined): string | null {
+  if (!value?.startsWith("/") || value.startsWith("//")) return null
+  if (value.startsWith("/dashboard/help")) return null
+  return value
+}
+
 export function buildHelpTopicPrompt(input: {
   readonly topicId: string
   readonly title: string

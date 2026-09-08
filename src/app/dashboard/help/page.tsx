@@ -4,14 +4,21 @@ import {
   HelpResourcesLibrary,
   type HelpGuideSummary,
 } from "@/components/help/help-resources-library"
-import { toHelpGuidePreview } from "@/components/help/help-ui-model"
+import {
+  safeHelpReturnTo,
+  toHelpGuidePreview,
+} from "@/components/help/help-ui-model"
 import { getCurrentUser } from "@/lib/auth"
 import { getHelpGuides } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 
 export const dynamic = "force-dynamic"
 
-export default async function HelpResourcesPage(): Promise<React.ReactElement> {
+export default async function HelpResourcesPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly returnTo?: string | readonly string[] }>
+}): Promise<React.ReactElement> {
   const user = await getCurrentUser()
   const helpAccess = await getEffectiveHelpGuideAccess(user)
 
@@ -24,6 +31,10 @@ export default async function HelpResourcesPage(): Promise<React.ReactElement> {
     allowedGuideIds.has(guide.id)
   )
   const guides: readonly HelpGuideSummary[] = accessibleGuides.map(toHelpGuidePreview)
+  const { returnTo: rawReturnTo } = await searchParams
+  const returnTo = safeHelpReturnTo(
+    typeof rawReturnTo === "string" ? rawReturnTo : undefined,
+  )
 
-  return <HelpResourcesLibrary guides={guides} />
+  return <HelpResourcesLibrary guides={guides} returnTo={returnTo} />
 }
