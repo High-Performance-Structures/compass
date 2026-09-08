@@ -22,6 +22,7 @@ function guide(input: {
     title: input.title,
     summary: `${input.title} summary`,
     contextSummary: `${input.title} context`,
+    content: `## Details\n\n${input.sectionText}`,
     category: "Project Operations",
     tags: [],
     routes: [input.route],
@@ -147,6 +148,11 @@ describe("Compass Help UI model", () => {
     )
 
     expect(drawerSource).toContain('target="_blank"')
+    expect(drawerSource).toContain("setSelectedGuide")
+    expect(drawerSource).toContain("<DrawerGuideArticle")
+    expect(drawerSource).toContain("<MarkdownRenderer openLinksInNewTab>")
+    expect(drawerSource).toContain("{guide.content}</MarkdownRenderer>")
+    expect(drawerSource).toContain("Back to Help topics")
     expect(beaconSource).toContain('target="_blank"')
     expect(closeSource).toContain("window.close()")
     expect(closeSource).toContain("Close help")

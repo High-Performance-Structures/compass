@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  IconArrowLeft,
   IconArrowRight,
   IconBook2,
   IconMail,
@@ -15,8 +16,10 @@ import {
 import { useAgentOptional, useChatStateOptional } from "@/components/agent/chat-provider"
 import { HelpCompassIcon } from "@/components/help/help-compass-icon"
 import {
+  buildHelpTopicPrompt,
   helpGuidesForPathname,
   searchAllowedHelpGuides,
+  type HelpGuidePreview,
 } from "@/components/help/help-ui-model"
 import {
   useAllowedHelpGuides,
@@ -24,6 +27,7 @@ import {
 } from "@/components/help/help-ui-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Sheet,
@@ -51,6 +55,10 @@ export function HelpDrawer({
   const canUseJarvis = useCanUseHelpJarvis()
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
+  const [selectedGuide, setSelectedGuide] = React.useState<Readonly<{
+    guide: HelpGuidePreview
+    sectionId: string | null
+  }> | null>(null)
   const accessibleGuides = useAllowedHelpGuides()
   const suggestedGuides = React.useMemo(
     () => helpGuidesForPathname(accessibleGuides, pathname),
@@ -71,18 +79,41 @@ export function HelpDrawer({
         )
   const showingSuggestions = query.trim().length === 0 && suggestedGuides.length > 0
 
-  async function askJarvis(): Promise<void> {
-    const question = query.trim()
-    if (!question || !canUseJarvis || !agent || !chat) return
-    setOpen(false)
-    agent.open()
-    await chat.sendMessage({
-      text: `Using the official Compass Help guide, help me with this question about the page I am viewing: ${question}`,
+  function handleOpenChange(nextOpen: boolean): void {
+    setOpen(nextOpen)
+    if (!nextOpen) setSelectedGuide(null)
+  }
+
+  function selectGuide(guide: HelpGuidePreview, href: string): void {
+    const hashIndex = href.indexOf("#")
+    setSelectedGuide({
+      guide,
+      sectionId: hashIndex === -1 ? null : href.slice(hashIndex + 1),
     })
   }
 
+  async function askJarvis(): Promise<void> {
+    if (!canUseJarvis || !agent || !chat) return
+    const selectedSection = selectedGuide?.guide.sections.find(
+      (section) => section.id === selectedGuide.sectionId,
+    )
+    const question = query.trim()
+    const prompt = selectedGuide
+      ? buildHelpTopicPrompt({
+          topicId: selectedSection?.topicId ?? selectedGuide.guide.id,
+          title: selectedSection?.title ?? selectedGuide.guide.title,
+        })
+      : question.length > 0
+        ? `Using the official Compass Help guide, help me with this question about the page I am viewing: ${question}`
+        : null
+    if (!prompt) return
+    handleOpenChange(false)
+    agent.open()
+    await chat.sendMessage({ text: prompt })
+  }
+
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -103,96 +134,129 @@ export function HelpDrawer({
 
       <SheetContent className="w-full gap-0 sm:max-w-lg" aria-label="Compass Help">
         <SheetHeader className="border-b border-border px-5 pb-4 pt-5">
-          <div className="flex items-center gap-2 text-primary">
-            <HelpCompassIcon className="size-5" />
-            <SheetTitle>Compass Help</SheetTitle>
-          </div>
-          <SheetDescription>
-            Search the official user guide without leaving your work.
-          </SheetDescription>
-          <div className="relative pt-2">
-            <IconSearch className="pointer-events-none absolute left-3 top-1/2 mt-1 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && shownResults.length === 0) {
-                  void askJarvis()
-                }
-              }}
-              placeholder="What are you trying to do?"
-              aria-label="Search Compass Help"
-              className="pl-9"
-              autoComplete="off"
-              autoFocus
-            />
-          </div>
+          {selectedGuide ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSelectedGuide(null)}
+                className="inline-flex w-fit items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                <IconArrowLeft className="size-4" />
+                Back to Help topics
+              </button>
+              <div className="flex items-center gap-2 text-primary">
+                <HelpCompassIcon className="size-5" />
+                <SheetTitle>{selectedGuide.guide.title}</SheetTitle>
+              </div>
+              <SheetDescription>{selectedGuide.guide.summary}</SheetDescription>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-primary">
+                <HelpCompassIcon className="size-5" />
+                <SheetTitle>Compass Help</SheetTitle>
+              </div>
+              <SheetDescription>
+                Search the official user guide without leaving your work.
+              </SheetDescription>
+              <div className="relative pt-2">
+                <IconSearch className="pointer-events-none absolute left-3 top-1/2 mt-1 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && shownResults.length === 0) {
+                      void askJarvis()
+                    }
+                  }}
+                  placeholder="What are you trying to do?"
+                  aria-label="Search Compass Help"
+                  className="pl-9"
+                  autoComplete="off"
+                  autoFocus
+                />
+              </div>
+            </>
+          )}
         </SheetHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="px-5 py-4">
-            <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground" aria-live="polite">
-              {showingSuggestions
-                ? "Help for this page"
-                : query.trim().length > 0
-                  ? `${shownResults.length} ${shownResults.length === 1 ? "result" : "results"}`
-                  : "Browse the guide"}
-            </p>
+          {selectedGuide ? (
+            <DrawerGuideArticle
+              guide={selectedGuide.guide}
+              sectionId={selectedGuide.sectionId}
+            />
+          ) : (
+            <div className="px-5 py-4">
+              <p
+                className="mb-2 text-xs font-semibold uppercase text-muted-foreground"
+                aria-live="polite"
+              >
+                {showingSuggestions
+                  ? "Help for this page"
+                  : query.trim().length > 0
+                    ? `${shownResults.length} ${shownResults.length === 1 ? "result" : "results"}`
+                    : "Browse the guide"}
+              </p>
 
-            {shownResults.length > 0 ? (
-              <div className="divide-y divide-border">
-                {shownResults.map((result) => (
-                  <Link
-                    key={result.guide.slug}
-                    href={result.href}
-                    onClick={() => setOpen(false)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group block py-4 first:pt-2"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground group-hover:text-primary">
-                          {result.guide.title}
-                        </p>
-                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                          {result.guide.summary}
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {result.guide.category} · {result.guide.readingMinutes} min
-                        </p>
+              {shownResults.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {shownResults.map((result) => (
+                    <button
+                      type="button"
+                      key={result.guide.slug}
+                      onClick={() => selectGuide(result.guide, result.href)}
+                      className="group block w-full py-4 text-left first:pt-2"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground group-hover:text-primary">
+                            {result.guide.title}
+                          </p>
+                          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                            {result.guide.summary}
+                          </p>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {result.guide.category} · {result.guide.readingMinutes} min
+                          </p>
+                        </div>
+                        <IconArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
                       </div>
-                      <IconArrowRight className="mt-1 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <div className="py-10 text-center">
-                <IconSearch className="mx-auto size-6 text-muted-foreground" />
-                <p className="mt-3 font-medium">No matching guide yet</p>
-                <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                  {canUseJarvis && agent && chat
-                    ? "Try another term, or let Jarvis use the official guide and this page as context."
-                    : "Try another term, browse the full guide, or email Compass Help."}
-                </p>
-                {canUseJarvis && agent && chat && query.trim().length > 0 ? (
-                  <Button className="mt-4" onClick={() => void askJarvis()}>
-                    <IconSparkles className="size-4" />
-                    Ask Jarvis about this
-                  </Button>
-                ) : null}
-              </div>
-            )}
-          </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-10 text-center">
+                  <IconSearch className="mx-auto size-6 text-muted-foreground" />
+                  <p className="mt-3 font-medium">No matching guide yet</p>
+                  <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                    {canUseJarvis && agent && chat
+                      ? "Try another term, or let Jarvis use the official guide and this page as context."
+                      : "Try another term, browse the full guide, or email Compass Help."}
+                  </p>
+                  {canUseJarvis && agent && chat && query.trim().length > 0 ? (
+                    <Button className="mt-4" onClick={() => void askJarvis()}>
+                      <IconSparkles className="size-4" />
+                      Ask Jarvis about this
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
         </ScrollArea>
 
         <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-3">
           <Button variant="ghost" size="sm" asChild>
             <Link
-              href="/dashboard/help"
-              onClick={() => setOpen(false)}
+              href={
+                selectedGuide
+                  ? `/dashboard/help/${selectedGuide.guide.slug}${
+                      selectedGuide.sectionId ? `#${selectedGuide.sectionId}` : ""
+                    }`
+                  : "/dashboard/help"
+              }
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -200,7 +264,7 @@ export function HelpDrawer({
               Open full guide
             </Link>
           </Button>
-          {query.trim().length > 0 && canUseJarvis && agent && chat ? (
+          {(selectedGuide || query.trim().length > 0) && canUseJarvis && agent && chat ? (
             <Button variant="ghost" size="sm" onClick={() => void askJarvis()}>
               <IconSparkles className="size-4" />
               Ask Jarvis
@@ -210,7 +274,7 @@ export function HelpDrawer({
               <Button variant="ghost" size="sm" asChild>
                 <a
                   href="mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request"
-                  onClick={() => setOpen(false)}
+                  onClick={() => handleOpenChange(false)}
                 >
                   <IconMail className="size-4" />
                   Email
@@ -220,7 +284,7 @@ export function HelpDrawer({
                 <a
                   href="tel:+17198966149"
                   aria-label="Call Compass Help at 719-896-6149"
-                  onClick={() => setOpen(false)}
+                  onClick={() => handleOpenChange(false)}
                 >
                   <IconPhone className="size-4" />
                   Call
@@ -231,5 +295,45 @@ export function HelpDrawer({
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+function DrawerGuideArticle({
+  guide,
+  sectionId,
+}: {
+  readonly guide: HelpGuidePreview
+  readonly sectionId: string | null
+}): React.ReactElement {
+  const articleRef = React.useRef<HTMLElement>(null)
+
+  React.useEffect(() => {
+    const article = articleRef.current
+    if (!article) return
+
+    const headings = Array.from(article.querySelectorAll("h2, h3"))
+    for (const section of guide.sections) {
+      const heading = headings.find(
+        (candidate) => candidate.textContent?.trim() === section.title,
+      )
+      if (heading) heading.id = `help-drawer-${section.id}`
+    }
+
+    if (!sectionId) return
+    const target = headings.find(
+      (heading) => heading.id === `help-drawer-${sectionId}`,
+    )
+    target?.scrollIntoView({ block: "start" })
+  }, [guide, sectionId])
+
+  return (
+    <article
+      ref={articleRef}
+      className="px-5 py-5 [&_h2]:scroll-mt-4 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2"
+    >
+      <div className="space-y-4 text-sm leading-6 text-foreground [&_h2]:mt-8 [&_h2:first-child]:mt-0 [&_h3]:mt-6 [&_li]:leading-6 [&_p]:leading-6">
+        <MarkdownRenderer openLinksInNewTab>{guide.content}</MarkdownRenderer>
+      </div>
+    </article>
   )
 }

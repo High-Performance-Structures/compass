@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-06"
+  "lastReviewed": "2026-09-07"
 }
 ---
 
@@ -23,6 +23,8 @@ Stop repeating an action that could duplicate a message, invoice, P.O., RFI, upl
 Never put passwords, API keys, authentication codes, reset tokens, Sage credentials, or private keys into a report or support message.
 
 ## Use Contextual Help {#contextual-help}
+
+Open the Compass Help drawer and select a topic or search result to read the guide without leaving the page you are working on. Use **Back to Help topics** to choose another article, or close the drawer to return to the page exactly where you left it. **Open full guide** launches the same article in a separate guide view when you want more room to read.
 
 Look for the small Compass Help beacon—a compass ring with a question mark—beside selected labels and controls. The beacons are intentionally discreet and appear where a workflow benefits from extra explanation rather than beside every tool.
 

@@ -46,13 +46,17 @@ function isSupportedLang(lang: string): lang is SupportedLang {
 
 interface MarkdownRendererProps {
   children: string
+  openLinksInNewTab?: boolean
 }
 
-export function MarkdownRenderer({ children }: MarkdownRendererProps) {
+export function MarkdownRenderer({
+  children,
+  openLinksInNewTab = false,
+}: MarkdownRendererProps) {
   return (
     <div className="space-y-3">
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS as any}>
+      <Markdown remarkPlugins={[remarkGfm]} components={(openLinksInNewTab ? COMPONENTS_WITH_NEW_TAB_LINKS : COMPONENTS) as any}>
         {children}
       </Markdown>
     </div>
@@ -223,6 +227,24 @@ const COMPONENTS = {
   tr: withClass("tr", "m-0 border-t p-0 even:bg-muted"),
   p: withClass("p", "whitespace-pre-wrap"),
   hr: withClass("hr", "border-foreground/20"),
+}
+
+const COMPONENTS_WITH_NEW_TAB_LINKS = {
+  ...COMPONENTS,
+  a: ({
+    node: _node,
+    ...props
+  }: { node?: unknown } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    void _node
+    return (
+      <a
+        {...props}
+        className={cn("text-primary underline underline-offset-2", props.className)}
+        target="_blank"
+        rel="noopener noreferrer"
+      />
+    )
+  },
 }
 
 function withClass(Tag: keyof React.JSX.IntrinsicElements, classes: string) {

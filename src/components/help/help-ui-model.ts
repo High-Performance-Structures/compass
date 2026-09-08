@@ -14,6 +14,7 @@ export type HelpGuidePreview = Readonly<{
   title: string
   summary: string
   contextSummary: string
+  content: string
   category: string
   tags: readonly string[]
   routes: readonly string[]
@@ -76,6 +77,7 @@ export function toHelpGuidePreview(guide: HelpGuide): HelpGuidePreview {
     title: guide.title,
     summary: guide.summary,
     contextSummary: guide.contextSummary,
+    content: guide.content,
     category: guide.category,
     tags: guide.tags,
     routes: guide.routes,
