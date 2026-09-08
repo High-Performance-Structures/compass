@@ -81,6 +81,11 @@ export type ClientEstimateTaxSummary = {
   readonly groups: readonly ClientEstimateTaxGroup[]
 }
 
+export type ClientEstimateBuilderFeeExclusionSummary = {
+  readonly lines: readonly ClientEstimateLine[]
+  readonly totalCents: number
+}
+
 const DEFAULT_INTRODUCTION = `Thank you for the opportunity to provide you with an estimate for your project. Please direct any questions to ___________________ at _______________________.`
 
 const HPS_DEFAULT_CLOSING = `General Exclusions: Estimate excludes a construction dumpster and offsite hauling of debris. Should a construction dumpster not be provided by the Owner/Builder, debris shall be consolidated into an area on-site as designated by Owner/Builder but will not be taken offsite.
@@ -316,6 +321,19 @@ export function clientEstimatePhases(input: {
         lines,
       }
     })
+}
+
+export function clientEstimateBuilderFeeExclusionSummary(
+  lines: readonly ClientEstimateLine[]
+): ClientEstimateBuilderFeeExclusionSummary {
+  const excludedLines = lines.filter((line) => !line.includeInBuilderFee)
+  return {
+    lines: excludedLines,
+    totalCents: excludedLines.reduce(
+      (total, line) => total + line.lineTotalCents,
+      0
+    ),
+  }
 }
 
 type MutableClientEstimateTaxGroup = {

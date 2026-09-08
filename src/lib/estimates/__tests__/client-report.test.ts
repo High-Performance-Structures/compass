@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   builtInEstimateTextTemplates,
+  clientEstimateBuilderFeeExclusionSummary,
   clientEstimatePhases,
   clientEstimateTaxSummary,
   defaultEstimateTitle,
@@ -39,6 +40,32 @@ function line(
 }
 
 describe("estimate client report profiles", () => {
+  it("totals the visible line amounts excluded from builder fees", () => {
+    const summary = clientEstimateBuilderFeeExclusionSummary([
+      line({
+        id: "excluded-1",
+        includeInBuilderFee: false,
+        lineTotalCents: 12_345,
+      }),
+      line({
+        id: "included",
+        includeInBuilderFee: true,
+        lineTotalCents: 99_999,
+      }),
+      line({
+        id: "excluded-2",
+        includeInBuilderFee: false,
+        lineTotalCents: 7_655,
+      }),
+    ])
+
+    expect(summary.lines.map((item) => item.id)).toEqual([
+      "excluded-1",
+      "excluded-2",
+    ])
+    expect(summary.totalCents).toBe(20_000)
+  })
+
   it("selects the department-specific client detail level", () => {
     expect(estimateClientReportMode("H")).toBe("phase_summary")
     expect(estimateClientReportMode("O")).toBe("line_items")
