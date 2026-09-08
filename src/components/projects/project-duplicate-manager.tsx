@@ -352,6 +352,44 @@ export function ProjectDuplicateManager({
                 </div>
               ) : null}
 
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="kept-project">
+                  {collisionResolutionMode === "merge"
+                    ? "Merge into project"
+                    : "Project keeping the current number"}
+                </Label>
+                <Select
+                  value={effectiveKeptProjectId}
+                  onValueChange={(value) => {
+                    setKeptProjectId(value)
+                    setReplacementProjectNumber("")
+                    setConfirmed(false)
+                  }}
+                >
+                  <SelectTrigger id="kept-project" className="w-full min-w-0">
+                    <SelectValue className="min-w-0 truncate" />
+                  </SelectTrigger>
+                  <SelectContent
+                    position="popper"
+                    align="start"
+                    className="max-w-[calc(100vw-2rem)]"
+                  >
+                    {[selectedCandidate.first, selectedCandidate.second].map(
+                      (project) => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {projectLabel(selectedCandidate, project.id)}
+                        </SelectItem>
+                      ),
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {collisionResolutionMode === "merge"
+                    ? "All linked records will move into this project. The other registry record will be archived for recovery."
+                    : "The other project will receive the new approved project number entered below."}
+                </p>
+              </div>
+
               <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 {[selectedCandidate.first, selectedCandidate.second].map(
                   (project) => (
