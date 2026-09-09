@@ -1185,11 +1185,11 @@ export async function reconcileSageSquareAttentionEvents(
        AND square_object_id IS NOT NULL
        AND updated_at <= ?
        AND (
-         error_message LIKE '%does not map to exactly one active Compass project%'
-         OR error_message LIKE '%does not map to exactly one Compass project%'
-         OR error_message LIKE '%does not map to exactly one Compass owner%'
-         OR error_message LIKE '%maps to multiple Compass owners%'
-         OR error_message LIKE '%maps to multiple prior invoice owners%'
+         instr(error_message, 'does not map to exactly one active Compass project') > 0
+         OR instr(error_message, 'does not map to exactly one Compass project') > 0
+         OR instr(error_message, 'does not map to exactly one Compass owner') > 0
+         OR instr(error_message, 'maps to multiple Compass owners') > 0
+         OR instr(error_message, 'maps to multiple prior invoice owners') > 0
        )
      ORDER BY updated_at ASC
      LIMIT ?`
