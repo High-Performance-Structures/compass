@@ -473,14 +473,14 @@ export function squareProcessingFeeExpenseCents(
     }
     return total + fee.amount_money.amount
   }, 0)
-  if (signedTotal > 0) {
+  if (signedTotal < 0) {
     throw new SageSquarePaymentAttentionError(
-      "Square processing fee adjustments exceed assessed fees"
+      "Square processing fee returns exceed assessed fees"
     )
   }
-  // Square reports assessed processing fees as negative deductions. Sage needs
-  // the corresponding merchant-service expense as a positive cent amount.
-  return signedTotal === 0 ? 0 : -signedTotal
+  // Square reports assessed fees as positive amounts and returned fees as
+  // negative adjustments. The net amount is the Sage merchant-service expense.
+  return signedTotal
 }
 
 function validatePayment(
@@ -1192,6 +1192,7 @@ export async function reconcileSageSquareAttentionEvents(
              OR instr(error_message, 'does not map to exactly one Compass owner') > 0
              OR instr(error_message, 'maps to multiple Compass owners') > 0
              OR instr(error_message, 'maps to multiple prior invoice owners') > 0
+             OR instr(error_message, 'Square processing fee adjustments exceed assessed fees') > 0
            )
          )
          OR (

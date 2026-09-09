@@ -89,6 +89,9 @@ describe("Sage Square payment writer boundary", () => {
     expect(squarePaymentSource).toContain(
       "status IN ('attention', 'failed')"
     )
+    expect(squarePaymentSource).toContain(
+      "instr(error_message, 'Square processing fee adjustments exceed assessed fees') > 0"
+    )
     expect(maintenanceRoute).toContain("reconcileSageSquareAttentionEvents")
   })
 

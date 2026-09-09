@@ -123,13 +123,19 @@ describe("Square payment webhook", () => {
     )
   })
 
-  it("normalizes Square fee deductions to a positive Sage expense", () => {
+  it("nets Square fee assessments and returns into a Sage expense", () => {
     expect(
       squareProcessingFeeExpenseCents([
-        { amount_money: { amount: -300, currency: "USD" } },
-        { amount_money: { amount: -15, currency: "USD" } },
+        { amount_money: { amount: 300, currency: "USD" } },
+        { amount_money: { amount: 15, currency: "USD" } },
       ])
     ).toBe(315)
+    expect(
+      squareProcessingFeeExpenseCents([
+        { amount_money: { amount: 300, currency: "USD" } },
+        { amount_money: { amount: -15, currency: "USD" } },
+      ])
+    ).toBe(285)
     expect(squareProcessingFeeExpenseCents([])).toBe(0)
   })
 
@@ -146,9 +152,9 @@ describe("Square payment webhook", () => {
   it("stops when Square fee returns exceed assessed fees", () => {
     expect(() =>
       squareProcessingFeeExpenseCents([
-        { amount_money: { amount: 25, currency: "USD" } },
+        { amount_money: { amount: -25, currency: "USD" } },
       ])
-    ).toThrow("adjustments exceed assessed fees")
+    ).toThrow("returns exceed assessed fees")
   })
 
   it("gives admins the supported Sage external-receipt posting instructions", () => {
