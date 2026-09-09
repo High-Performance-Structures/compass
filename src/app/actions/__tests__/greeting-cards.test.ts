@@ -292,7 +292,7 @@ describe("greeting-card approval workflow", () => {
 
     const result = await submitGreetingCardRequest({
       deliveryMethod: "digital_email",
-      templateId: "appreciation",
+      templateId: "a",
       giftAmountCents: null,
       recipientType: "client",
       occasion: "Project completion",
@@ -313,6 +313,8 @@ describe("greeting-card approval workflow", () => {
         deliveryMethod: "digital_email",
         giftAmountCents: null,
         provider: "compass",
+        providerCardId: "a",
+        cardName: "Thank You",
       }),
     )
   })

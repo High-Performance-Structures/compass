@@ -17,6 +17,7 @@ import {
 } from "@/app/actions/greeting-card-recipients"
 import { Button } from "@/components/ui/button"
 import { EcardPreview } from "@/components/cards/ecard-preview"
+import { EcardTemplateCombobox } from "@/components/cards/ecard-template-combobox"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Dialog,
@@ -37,10 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  ECARD_TEMPLATES,
-  getEcardTemplate,
-} from "@/lib/greeting-cards/templates"
+import { getEcardTemplate } from "@/lib/greeting-cards/templates"
 import { greetingCardActionFailure } from "@/lib/greeting-cards/session-error"
 
 type RecipientForm = {
@@ -99,7 +97,7 @@ export function GreetingCardRequestDialog({
   const [cardId, setCardId] = useState<number | null>(null)
   const [deliveryMethod, setDeliveryMethod] =
     useState<GreetingCardDeliveryMethod>("physical_mail")
-  const [templateId, setTemplateId] = useState("appreciation")
+  const [templateId, setTemplateId] = useState("a")
   const [giftAmount, setGiftAmount] = useState("")
   const [recipientType, setRecipientType] =
     useState<GreetingCardRecipientType>("client")
@@ -180,7 +178,7 @@ export function GreetingCardRequestDialog({
 
   function resetForm(): void {
     setDeliveryMethod("physical_mail")
-    setTemplateId("appreciation")
+    setTemplateId("a")
     setGiftAmount("")
     setRecipientType("client")
     setOccasion("")
@@ -371,18 +369,13 @@ export function GreetingCardRequestDialog({
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="greeting-ecard-design">E-card design</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger id="greeting-ecard-design" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ECARD_TEMPLATES.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name} · {template.description}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <EcardTemplateCombobox
+                  value={templateId}
+                  onValueChange={setTemplateId}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Search by department, occasion, design name, or review code.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="ecard-gift-amount">

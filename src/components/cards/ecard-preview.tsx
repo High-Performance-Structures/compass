@@ -1,4 +1,5 @@
 import { IconGift, IconSparkles } from "@tabler/icons-react"
+import Image from "next/image"
 
 import type { EcardTemplate } from "@/lib/greeting-cards/templates"
 import { formatGiftbitClaimExpiry } from "@/lib/giftbit/claim-window"
@@ -29,18 +30,34 @@ export function EcardPreview({
       }`}
       aria-label={`${template.name} e-card preview`}
     >
-      <div className="border-b bg-linear-to-br from-primary/10 via-background to-accent/20 pb-6 text-center">
-        <IconSparkles className="mx-auto size-7 text-primary" aria-hidden="true" />
-        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          High Performance Structures Inc.
-        </p>
-        <h1 className={`${compact ? "mt-3 text-2xl" : "mt-4 text-4xl sm:text-5xl"} font-semibold tracking-tight`}>
-          {template.headline}
-        </h1>
-        {recipientName ? (
-          <p className="mt-3 text-lg text-muted-foreground">{recipientName},</p>
-        ) : null}
-      </div>
+      {template.imagePath ? (
+        <div className="border-b pb-5">
+          <Image
+            src={template.imagePath}
+            alt={`${template.name} e-card design`}
+            width={1200}
+            height={800}
+            className="aspect-3/2 w-full rounded-md border object-cover"
+            unoptimized
+          />
+          {recipientName ? (
+            <p className="mt-5 text-lg text-muted-foreground">{recipientName},</p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="border-b bg-linear-to-br from-primary/10 via-background to-accent/20 pb-6 text-center">
+          <IconSparkles className="mx-auto size-7 text-primary" aria-hidden="true" />
+          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            High Performance Structures Inc.
+          </p>
+          <h1 className={`${compact ? "mt-3 text-2xl" : "mt-4 text-4xl sm:text-5xl"} font-semibold tracking-tight`}>
+            {template.headline}
+          </h1>
+          {recipientName ? (
+            <p className="mt-3 text-lg text-muted-foreground">{recipientName},</p>
+          ) : null}
+        </div>
+      )}
 
       <div className={`mx-auto max-w-2xl ${compact ? "pt-5" : "pt-8"}`}>
         <p className="whitespace-pre-wrap text-base leading-7">

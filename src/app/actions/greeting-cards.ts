@@ -24,7 +24,10 @@ import {
   type GreetingCardRequestStatus,
   type SubmitGreetingCardRequestInput,
 } from "@/lib/greeting-cards/workflow"
-import { getEcardTemplate } from "@/lib/greeting-cards/templates"
+import {
+  getActiveEcardTemplate,
+  getEcardTemplate,
+} from "@/lib/greeting-cards/templates"
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { createGiftbitClient } from "@/lib/giftbit/client"
 import { giftbitClaimExpiryDate } from "@/lib/giftbit/claim-window"
@@ -262,7 +265,7 @@ export async function submitGreetingCardRequest(
       cardPriceCents = card.price === null ? null : Math.round(card.price * 100)
       providerCardId = String(card.id)
     } else {
-      const template = getEcardTemplate(validated.data.templateId)
+      const template = getActiveEcardTemplate(validated.data.templateId)
       if (!template) return { success: false, error: "Choose an available e-card design." }
       cardName = template.name
       cardPriceCents = null
