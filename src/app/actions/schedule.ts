@@ -984,6 +984,7 @@ export async function createTask(
     ownerVisible?: boolean
     subVendorVisible?: boolean
     confirmationRequired?: boolean
+    notes?: string | null
     templateScheduleItemId?: string | null
     templateTodoIds?: readonly string[]
   }
@@ -1068,6 +1069,7 @@ export async function createTask(
       id,
       projectId,
       title: data.title,
+      notes: data.notes?.trim() || null,
       startDate: data.startDate,
       workdays: data.workdays,
       endDateCalculated: endDate,
@@ -1187,6 +1189,7 @@ export async function updateTask(
     confirmationRequired?: boolean
     acceptChangeProposal?: boolean
     shiftReason?: string
+    notes?: string | null
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1300,6 +1303,9 @@ export async function updateTask(
       .update(scheduleTasks)
       .set({
         ...(data.title && { title: data.title }),
+        ...(data.notes !== undefined && {
+          notes: data.notes?.trim() || null
+        }),
         workdays,
         ...(data.phase && { phase: data.phase }),
         ...(data.displayColor && { displayColor: data.displayColor }),

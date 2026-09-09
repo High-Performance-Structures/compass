@@ -287,7 +287,7 @@ export function ScheduleItemFormDialog({
         ownerVisible: editingTask.ownerVisible ?? true,
         subVendorVisible: editingTask.subVendorVisible ?? false,
         confirmationRequired: editingTask.confirmationRequired ?? false,
-        notes: "",
+        notes: editingTask.notes ?? "",
         shiftReason: ""
       })
       setAssignedOptionId(
@@ -522,9 +522,12 @@ export function ScheduleItemFormDialog({
         return [...withoutDuplicate, phaseResult.option]
       })
     }
-    const { notes, shiftReason, ...valuesWithoutNotes } = values
-    const taskValues = { ...valuesWithoutNotes, phase: submittedPhase }
-    void notes
+    const { shiftReason, ...valuesWithoutShiftReason } = values
+    const taskValues = {
+      ...valuesWithoutShiftReason,
+      phase: submittedPhase,
+      notes: values.notes.trim() || null
+    }
     void shiftReason
     let savedTaskId: string
     let linkedTodoCount = 0

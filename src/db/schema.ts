@@ -2530,6 +2530,7 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  notes: text("notes"),
   startDate: text("start_date").notNull(),
   workdays: integer("workdays").notNull(),
   endDateCalculated: text("end_date_calculated").notNull(),

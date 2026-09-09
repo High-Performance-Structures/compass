@@ -10,6 +10,12 @@ export interface GanttWheelIntent {
   readonly delta: number
 }
 
+interface MutableGanttScrollTarget {
+  scrollLeft: number
+  scrollTop: number
+  dispatchEvent(event: Event): boolean
+}
+
 interface ScheduleRowDateRange {
   readonly startDate: string
   readonly endDate: string
@@ -64,6 +70,19 @@ export function normalizeWheelDelta(
   if (deltaMode === 1) return delta * 16
   if (deltaMode === 2) return delta * pageSize
   return delta
+}
+
+export function applyGanttScrollDelta(
+  target: MutableGanttScrollTarget,
+  axis: GanttScrollAxis,
+  delta: number
+): void {
+  if (axis === "vertical") target.scrollTop += delta
+  else target.scrollLeft += delta
+
+  // Programmatic scrolling can report asynchronously in Chrome on Windows.
+  // Notify synchronized panes in the same wheel gesture.
+  target.dispatchEvent(new Event("scroll"))
 }
 
 export function canScrollGanttAxis(

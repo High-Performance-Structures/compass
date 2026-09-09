@@ -7,6 +7,7 @@ import { getScheduleItemClasses } from "@/lib/schedule/appearance"
 import { isNonWorkday } from "@/lib/schedule/business-days"
 import type { WorkdayExceptionData } from "@/lib/schedule/types"
 import {
+  applyGanttScrollDelta,
   dominantScrollAxis,
   clampGanttScrollOffset,
   canScrollGanttAxis,
@@ -352,8 +353,7 @@ export function GanttChart({
       }
 
       e.preventDefault()
-      if (intent.axis === "vertical") container.scrollTop += delta
-      else container.scrollLeft += delta
+      applyGanttScrollDelta(container, intent.axis, delta)
     }
 
     wrapper.addEventListener("wheel", handleWheel, { passive: false })
