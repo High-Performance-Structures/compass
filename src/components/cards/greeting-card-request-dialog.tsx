@@ -1,11 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { IconExternalLink, IconMailPlus } from "@tabler/icons-react"
+import { IconExternalLink, IconMailPlus, IconRefresh } from "@tabler/icons-react"
 
 import {
   getGreetingCardCatalog,
-  refreshGreetingCardSession,
   submitGreetingCardRequest,
   type GreetingCardCatalogItem,
   type GreetingCardDeliveryMethod,
@@ -42,6 +41,7 @@ import {
   ECARD_TEMPLATES,
   getEcardTemplate,
 } from "@/lib/greeting-cards/templates"
+import { greetingCardActionFailure } from "@/lib/greeting-cards/session-error"
 
 type RecipientForm = {
   readonly firstName: string
@@ -86,6 +86,8 @@ export function GreetingCardRequestDialog({
   const [open, setOpen] = useState(false)
   const [catalog, setCatalog] = useState<readonly GreetingCardCatalogItem[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [catalogLoadAttempt, setCatalogLoadAttempt] = useState(0)
   const [recipientOptions, setRecipientOptions] = useState<
     readonly GreetingCardRecipientOption[]
   >([])
@@ -115,22 +117,29 @@ export function GreetingCardRequestDialog({
     if (!open || deliveryMethod !== "physical_mail" || catalog.length > 0) return
     let mounted = true
     setCatalogLoading(true)
-    setError(null)
-    setSessionExpired(false)
-    void getGreetingCardCatalog().then((result) => {
-      if (!mounted) return
-      if (result.success) {
-        setCatalog(result.data)
-        setCardId(result.data[0]?.id ?? null)
-      } else {
-        setError(result.error)
+    setCatalogError(null)
+    void (async () => {
+      try {
+        const result = await getGreetingCardCatalog()
+        if (!mounted) return
+        if (result.success) {
+          setCatalog(result.data)
+          setCardId(result.data[0]?.id ?? null)
+        } else {
+          setCatalogError(result.error)
+        }
+      } catch {
+        if (mounted) {
+          setCatalogError("Compass could not contact Handwrytten. Try again.")
+        }
+      } finally {
+        if (mounted) setCatalogLoading(false)
       }
-      setCatalogLoading(false)
-    })
+    })()
     return () => {
       mounted = false
     }
-  }, [catalog.length, deliveryMethod, open])
+  }, [catalog.length, catalogLoadAttempt, deliveryMethod, open])
 
   useEffect(() => {
     if (!open || recipientOptions.length > 0) return
@@ -188,36 +197,37 @@ export function GreetingCardRequestDialog({
     setSubmitting(true)
     setError(null)
     setSessionExpired(false)
-    const session = await refreshGreetingCardSession()
-    if (!session.success) {
+    try {
+      const common = { recipientType, occasion, message, wishes, recipient }
+      const result =
+        deliveryMethod === "physical_mail"
+          ? await submitGreetingCardRequest({
+              ...common,
+              deliveryMethod: "physical_mail",
+              cardId: cardId ?? 0,
+            })
+          : await submitGreetingCardRequest({
+              ...common,
+              deliveryMethod: "digital_email",
+              templateId,
+              giftAmountCents: giftAmountCents(giftAmount),
+            })
+      if (!result.success) {
+        const failure = greetingCardActionFailure(result.error)
+        setSessionExpired(failure.sessionExpired)
+        setError(failure.message)
+        return
+      }
+      onCreated(result.data)
+      resetForm()
+      setOpen(false)
+    } catch (actionError) {
+      const failure = greetingCardActionFailure(actionError)
+      setSessionExpired(failure.sessionExpired)
+      setError(failure.message)
+    } finally {
       setSubmitting(false)
-      setSessionExpired(isExpiredSessionMessage(session.error))
-      setError(session.error)
-      return
     }
-    const common = { recipientType, occasion, message, wishes, recipient }
-    const result =
-      deliveryMethod === "physical_mail"
-        ? await submitGreetingCardRequest({
-            ...common,
-            deliveryMethod: "physical_mail",
-            cardId: cardId ?? 0,
-          })
-        : await submitGreetingCardRequest({
-            ...common,
-            deliveryMethod: "digital_email",
-            templateId,
-            giftAmountCents: giftAmountCents(giftAmount),
-          })
-    setSubmitting(false)
-    if (!result.success) {
-      setSessionExpired(isExpiredSessionMessage(result.error))
-      setError(result.error)
-      return
-    }
-    onCreated(result.data)
-    resetForm()
-    setOpen(false)
   }
 
   return (
@@ -320,6 +330,21 @@ export function GreetingCardRequestDialog({
                 ))}
               </SelectContent>
             </Select>
+            {catalogError ? (
+              <div className="space-y-2" role="status">
+                <p className="text-sm text-destructive">{catalogError}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCatalogLoadAttempt((attempt) => attempt + 1)}
+                  disabled={catalogLoading}
+                >
+                  <IconRefresh className="size-4" />
+                  Retry Handwrytten
+                </Button>
+              </div>
+            ) : null}
             {selectedCard ? (
               <div className="flex gap-3 border-y py-3">
                 {selectedCard.coverUrl ? (
@@ -602,12 +627,6 @@ function isGiftAmountInputValid(value: string): boolean {
 
 function giftAmountCentsForPreview(value: string): number | null {
   return isGiftAmountInputValid(value) ? giftAmountCents(value) : null
-}
-
-function isExpiredSessionMessage(message: string): boolean {
-  const normalized = message.toLowerCase()
-  return normalized.includes("session") &&
-    (normalized.includes("expired") || normalized.includes("sign in again"))
 }
 
 function recipientComboboxOption(option: GreetingCardRecipientOption): {

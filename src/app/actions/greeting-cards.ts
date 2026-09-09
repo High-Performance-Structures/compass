@@ -2,12 +2,10 @@
 
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { refreshSession } from "@workos-inc/authkit-nextjs"
 
 import { getDb } from "@/db"
 import { greetingCardRequests, users } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
-import { isWorkOSConfigured } from "@/lib/auth-config"
 import { getCloudflareContext } from "@/lib/db"
 import {
   buildEcardEmail,
@@ -60,20 +58,6 @@ type ActionResult<T> =
 
 const MAX_NOTE_LENGTH = 500
 
-export async function refreshGreetingCardSession(): Promise<ActionResult<null>> {
-  if (!isWorkOSConfigured()) return { success: true, data: null }
-  try {
-    const session = await refreshSession()
-    return session.user
-      ? { success: true, data: null }
-      : expiredSessionResult()
-  } catch (error) {
-    return isExpiredSessionError(error)
-      ? expiredSessionResult()
-      : actionError(error, "Compass could not refresh your session. Try again.")
-  }
-}
-
 export async function getGreetingCardCatalog(): Promise<
   ActionResult<readonly GreetingCardCatalogItem[]>
 > {
@@ -89,7 +73,7 @@ export async function getGreetingCardCatalog(): Promise<
     const result = await createHandwryttenClient({
       apiKey: keyResult.apiKey,
     }).listCards()
-    if (!result.success) return { success: false, error: result.error }
+    if (!result.success) return handwryttenActionError(result.error)
 
     return {
       success: true,
@@ -256,7 +240,7 @@ export async function submitGreetingCardRequest(
         apiKey: keyResult.apiKey,
       }).listCards()
       if (!catalogResult.success) {
-        return { success: false, error: catalogResult.error }
+        return handwryttenActionError(catalogResult.error)
       }
       const card = catalogResult.data.find(
         (item) => item.id === selectedCardId,
@@ -655,7 +639,7 @@ export async function releaseGreetingCardRequest(
     }
     const handwrytten = createHandwryttenClient({ apiKey: config.data.apiKey })
     const catalogResult = await handwrytten.listCards()
-    if (!catalogResult.success) return { success: false, error: catalogResult.error }
+    if (!catalogResult.success) return handwryttenActionError(catalogResult.error)
     const card = catalogResult.data.find((item) => item.id === cardId)
     if (!card) return { success: false, error: "This card is no longer available in Handwrytten." }
     if (
@@ -719,8 +703,8 @@ export async function releaseGreetingCardRequest(
         success: false,
         error:
           status === "approved"
-            ? `${result.error} No order was accepted; the approved request can be released again.`
-            : `${result.error} The outcome is uncertain. Check Handwrytten before taking another action.`,
+            ? `${handwryttenErrorMessage(result.error)} No order was accepted; the approved request can be released again.`
+            : `${handwryttenErrorMessage(result.error)} The outcome is uncertain. Check Handwrytten before taking another action.`,
       }
     }
 
@@ -943,7 +927,7 @@ export async function cancelGreetingCardRequest(
         )
         .run()
       revalidateCards()
-      return { success: false, error: result.error }
+      return handwryttenActionError(result.error)
     }
 
     const cancelledAt = new Date().toISOString()
@@ -1091,35 +1075,26 @@ function configurationError<T>(missingKeys: readonly string[]): ActionResult<T> 
   }
 }
 
+function handwryttenActionError<T>(message: string): ActionResult<T> {
+  return { success: false, error: handwryttenErrorMessage(message) }
+}
+
+function handwryttenErrorMessage(message: string): string {
+  const normalized = message.toLowerCase()
+  if (
+    normalized.includes("session has expired") ||
+    normalized.includes("session expired") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("invalid api key")
+  ) {
+    return "Handwrytten connection expired. An administrator needs to update the Handwrytten API key before mailed cards can be prepared."
+  }
+  return `Handwrytten error: ${message}`
+}
+
 function actionError<T>(error: unknown, fallback: string): ActionResult<T> {
   return {
     success: false,
     error: error instanceof Error ? error.message : fallback,
-  }
-}
-
-function isExpiredSessionError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
-  const name = error.name.toLowerCase()
-  const status =
-    typeof error.cause === "object" && error.cause !== null
-      ? Reflect.get(error.cause, "status")
-      : undefined
-  return (
-    message.includes("session has expired") ||
-    message.includes("unauthorized") ||
-    message.includes("invalid_grant") ||
-    message.includes("could not authorize the request") ||
-    name === "unauthorizedexception" ||
-    status === 401 ||
-    isExpiredSessionError(error.cause)
-  )
-}
-
-function expiredSessionResult<T>(): ActionResult<T> {
-  return {
-    success: false,
-    error: "Your Compass session expired. Sign in again, then return to this card and submit it.",
   }
 }
