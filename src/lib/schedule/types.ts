@@ -33,6 +33,7 @@ export interface ScheduleTaskData {
   id: string
   projectId: string
   title: string
+  notes?: string | null
   startDate: string
   workdays: number
   endDateCalculated: string

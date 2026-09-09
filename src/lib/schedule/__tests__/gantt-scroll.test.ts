@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  applyGanttScrollDelta,
   canScrollGanttAxis,
   clampGanttScrollOffset,
   centeredGanttRowScrollTop,
@@ -60,6 +61,24 @@ describe("Gantt dominant-axis scrolling", () => {
     expect(normalizeWheelDelta(2, 1, 500)).toBe(32)
     expect(normalizeWheelDelta(-1, 2, 500)).toBe(-500)
     expect(normalizeWheelDelta(24, 0, 500)).toBe(24)
+  })
+
+  it("notifies synchronized panes immediately after programmatic wheel scrolling", () => {
+    const eventTypes: string[] = []
+    const target = {
+      scrollLeft: 20,
+      scrollTop: 40,
+      dispatchEvent(event: Event): boolean {
+        eventTypes.push(event.type)
+        return true
+      }
+    }
+
+    applyGanttScrollDelta(target, "vertical", 32)
+    applyGanttScrollDelta(target, "horizontal", -5)
+
+    expect(target).toMatchObject({ scrollLeft: 15, scrollTop: 72 })
+    expect(eventTypes).toEqual(["scroll", "scroll"])
   })
 
   it("keeps the Gantt scroll position within the resized viewport", () => {
