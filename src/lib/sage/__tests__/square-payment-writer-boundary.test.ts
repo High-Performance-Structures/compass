@@ -73,7 +73,7 @@ describe("Sage Square payment writer boundary", () => {
     )
   })
 
-  it("retries eligible mapping exceptions through the authenticated maintenance route", () => {
+  it("retries eligible mapping and repaired-credential exceptions through the authenticated maintenance route", () => {
     expect(squarePaymentSource).toContain("reconcileSageSquareAttentionEvents")
     expect(squarePaymentSource).toContain("retrieveInvoice(")
     expect(squarePaymentSource).toContain("dismissSageSquareException")
@@ -82,6 +82,12 @@ describe("Sage Square payment writer boundary", () => {
     )
     expect(squarePaymentSource).not.toContain(
       "error_message LIKE '%does not map to exactly one active Compass project%'"
+    )
+    expect(squarePaymentSource).toContain(
+      "status = 'failed'\n           AND instr(error_message, 'Square lookup failed with status 401') > 0"
+    )
+    expect(squarePaymentSource).toContain(
+      "status IN ('attention', 'failed')"
     )
     expect(maintenanceRoute).toContain("reconcileSageSquareAttentionEvents")
   })
