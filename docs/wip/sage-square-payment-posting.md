@@ -25,10 +25,12 @@ different bank or expense account.
 ## Eligibility and cutoff
 
 Only signed `invoice.payment_made` events are allowed to create Sage payment
-operations. The invoice must contain both bridge markers:
+operations. The invoice must contain all bridge markers:
 
 - `Sage Record` custom field with the numeric Sage invoice record ID.
-- `Sage Job` custom field matching exactly one open Compass project number.
+- `Sage Job` custom field matching exactly one Compass project number. Closed
+  and inactive projects remain eligible because an owner can pay a valid Sage
+  receivable after the project is operationally complete.
 - `Source record RECORD_ID.` in the Square invoice description.
 
 Compass retrieves the Square order and payment before enqueueing anything. It
@@ -99,26 +101,30 @@ would leave the A/R invoice and subledger inconsistent.
 
 For every eligible Square payment, Compass therefore:
 
-1. stores the full owner payment as `manual_action_required` against the exact
-   Sage invoice and active Compass project, then sends one deduplicated in-app
+1. upserts the exact Sage A/R invoice into Compass from its immutable Sage
+   record ID, creates the Square payment and invoice allocation, and exposes
+   both as read-only records on the matched project's Financials tab;
+2. stores the full owner payment as `manual_action_required` against that exact
+   Sage invoice and Compass project, then sends one deduplicated in-app
    notification to active administrators in that project organization;
-2. tells the administrator to use Sage **3-3-2 Electronic Receipts**, choose
+3. tells the administrator to use Sage **3-3-2 Electronic Receipts**, choose
    **Post** rather than **Process and Post**, apply the full amount to the
    invoice, and use account **10000 — FSB Project Checking**; and
-3. keeps the Square processing-fee operation separate for account **62020 —
+4. keeps the Square processing-fee operation separate for account **62020 —
    Merchant Service Fees** and the supported general-ledger writer path.
 
-The ten-minute Compass maintenance cycle also converts any receipt left in the
-legacy `queued` state, or a legacy claim that has been stale for more than ten
-minutes, and creates its notification. Both the state transition and
-notification delivery are idempotent, so a retry cannot create a second
-posting task.
+The ten-minute Compass maintenance cycle also retries mapping exceptions after
+project or owner data is corrected, converts any receipt left in the legacy
+`queued` state (or a legacy claim stale for more than ten minutes), and creates
+its notification. Invoice, payment, allocation, state transition, and
+notification writes use stable source identities, so a retry cannot create a
+duplicate receivable, payment, allocation, or posting task.
 
 This is a Sage posting and reconciliation step, not a second approval of the
 Square payment. Receipt operations are never exposed through the bridge writer
 endpoint. Direct SQL writes remain prohibited.
 
-The existing company **Financials → Payments** tab and each active project's
+The existing company **Financials → Payments** tab and each project's
 **Financials** page show a dedicated Square receipt queue. It includes the
 linked project and client, Sage invoice and record, Square payment ID, gross
 receipt, Square fee, deposit/fee accounts, timestamps, and independent

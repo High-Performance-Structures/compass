@@ -60,7 +60,7 @@ export function SquareReceiptsTable({
       <div className="space-y-1 border-b px-4 py-3">
         <h3 className="font-medium">Square receipts</h3>
         <p className="text-sm text-muted-foreground">
-          Payments received in Square, matched to an active Compass project,
+          Payments received in Square, matched to an exact Compass project,
           and tracked through Sage posting. These do not require a second
           business approval.
         </p>
