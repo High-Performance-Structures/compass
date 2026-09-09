@@ -77,6 +77,12 @@ describe("Sage Square payment writer boundary", () => {
     expect(squarePaymentSource).toContain("reconcileSageSquareAttentionEvents")
     expect(squarePaymentSource).toContain("retrieveInvoice(")
     expect(squarePaymentSource).toContain("dismissSageSquareException")
+    expect(squarePaymentSource).toContain(
+      "instr(error_message, 'does not map to exactly one active Compass project') > 0"
+    )
+    expect(squarePaymentSource).not.toContain(
+      "error_message LIKE '%does not map to exactly one active Compass project%'"
+    )
     expect(maintenanceRoute).toContain("reconcileSageSquareAttentionEvents")
   })
 
