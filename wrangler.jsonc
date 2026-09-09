@@ -20,7 +20,7 @@
 		}
 	],
 	"triggers": {
-		"crons": ["*/10 * * * *"]
+		"crons": ["* * * * *", "*/10 * * * *"]
 	},
 	"assets": {
 		"binding": "ASSETS",
