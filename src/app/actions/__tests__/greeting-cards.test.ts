@@ -12,12 +12,10 @@ const mocks = vi.hoisted(() => ({
   getHandwryttenApiKey: vi.fn(),
   getHandwryttenConfig: vi.fn(),
   getGiftbitConfig: vi.fn(),
-  isWorkOSConfigured: vi.fn(),
   listCards: vi.fn(),
   listRewards: vi.fn(),
   cancelReward: vi.fn(),
   revalidatePath: vi.fn(),
-  refreshSession: vi.fn(),
   requireAuth: vi.fn(),
   sendCompassEmail: vi.fn(),
   submitOrder: vi.fn(),
@@ -25,13 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
-vi.mock("@workos-inc/authkit-nextjs", () => ({
-  refreshSession: mocks.refreshSession,
-}))
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
-vi.mock("@/lib/auth-config", () => ({
-  isWorkOSConfigured: mocks.isWorkOSConfigured,
-}))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({
@@ -58,7 +50,7 @@ vi.mock("@/lib/email/compass-email", () => ({
 import {
   approveGreetingCardRequest,
   cancelGreetingCardRequest,
-  refreshGreetingCardSession,
+  getGreetingCardCatalog,
   releaseGreetingCardRequest,
   submitGreetingCardRequest,
   type SubmitGreetingCardRequestInput,
@@ -171,8 +163,6 @@ describe("greeting-card approval workflow", () => {
     })
     mocks.canPrepareGreetingCards.mockReturnValue(true)
     mocks.canApproveGreetingCards.mockReturnValue(false)
-    mocks.isWorkOSConfigured.mockReturnValue(false)
-    mocks.refreshSession.mockResolvedValue({ user: { id: "staff-1" } })
     mocks.getCloudflareContext.mockResolvedValue({
       env: {
         DB: {},
@@ -257,21 +247,17 @@ describe("greeting-card approval workflow", () => {
     mocks.revalidatePath.mockReset()
   })
 
-  it("offers reauthentication for a wrapped unauthorized refresh failure", async () => {
-    mocks.isWorkOSConfigured.mockReturnValue(true)
-    const unauthorized = new Error("Could not authorize the request.")
-    unauthorized.name = "UnauthorizedException"
-    Reflect.set(unauthorized, "status", 401)
-    mocks.refreshSession.mockRejectedValue(
-      new Error("Failed to refresh session: Could not authorize the request.", {
-        cause: unauthorized,
-      }),
-    )
+  it("identifies an expired Handwrytten connection without blaming Compass", async () => {
+    mocks.listCards.mockResolvedValue({
+      success: false,
+      error: "Session has expired.",
+      retrySafety: "safe",
+    })
 
-    await expect(refreshGreetingCardSession()).resolves.toEqual({
+    await expect(getGreetingCardCatalog()).resolves.toEqual({
       success: false,
       error:
-        "Your Compass session expired. Sign in again, then return to this card and submit it.",
+        "Handwrytten connection expired. An administrator needs to update the Handwrytten API key before mailed cards can be prepared.",
     })
   })
 
@@ -294,6 +280,41 @@ describe("greeting-card approval workflow", () => {
       }),
     )
     expect(mocks.submitOrder).not.toHaveBeenCalled()
+  })
+
+  it("submits a digital e-card without contacting Handwrytten", async () => {
+    const insertChain = { values: vi.fn(), run: vi.fn() }
+    insertChain.values.mockReturnValue(insertChain)
+    insertChain.run.mockResolvedValue(undefined)
+    mocks.getDb.mockReturnValue({
+      insert: vi.fn().mockReturnValue(insertChain),
+    })
+
+    const result = await submitGreetingCardRequest({
+      deliveryMethod: "digital_email",
+      templateId: "appreciation",
+      giftAmountCents: null,
+      recipientType: "client",
+      occasion: "Project completion",
+      message: "Thank you for trusting our team.",
+      wishes: "With appreciation,\nHPS",
+      recipient: {
+        firstName: "Jamie",
+        lastName: "Client",
+        email: "jamie@example.com",
+      },
+    })
+
+    expect(result.success).toBe(true)
+    expect(mocks.createHandwryttenClient).not.toHaveBeenCalled()
+    expect(mocks.listCards).not.toHaveBeenCalled()
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliveryMethod: "digital_email",
+        giftAmountCents: null,
+        provider: "compass",
+      }),
+    )
   })
 
   it("records approval without releasing a provider order", async () => {
