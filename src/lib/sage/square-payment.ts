@@ -1180,16 +1180,24 @@ export async function reconcileSageSquareAttentionEvents(
   const candidates = await env.DB.prepare(
     `SELECT event_id, square_object_id
      FROM sage_square_webhook_events
-     WHERE status = 'attention'
-       AND event_type = 'invoice.payment_made'
+     WHERE event_type = 'invoice.payment_made'
        AND square_object_id IS NOT NULL
        AND updated_at <= ?
        AND (
-         instr(error_message, 'does not map to exactly one active Compass project') > 0
-         OR instr(error_message, 'does not map to exactly one Compass project') > 0
-         OR instr(error_message, 'does not map to exactly one Compass owner') > 0
-         OR instr(error_message, 'maps to multiple Compass owners') > 0
-         OR instr(error_message, 'maps to multiple prior invoice owners') > 0
+         (
+           status = 'attention'
+           AND (
+             instr(error_message, 'does not map to exactly one active Compass project') > 0
+             OR instr(error_message, 'does not map to exactly one Compass project') > 0
+             OR instr(error_message, 'does not map to exactly one Compass owner') > 0
+             OR instr(error_message, 'maps to multiple Compass owners') > 0
+             OR instr(error_message, 'maps to multiple prior invoice owners') > 0
+           )
+         )
+         OR (
+           status = 'failed'
+           AND instr(error_message, 'Square lookup failed with status 401') > 0
+         )
        )
      ORDER BY updated_at ASC
      LIMIT ?`
@@ -1204,7 +1212,8 @@ export async function reconcileSageSquareAttentionEvents(
       `UPDATE sage_square_webhook_events
        SET status = 'processing', attempt_count = attempt_count + 1,
            error_message = NULL, updated_at = ?
-       WHERE event_id = ? AND status = 'attention' AND updated_at <= ?`
+       WHERE event_id = ? AND status IN ('attention', 'failed')
+         AND updated_at <= ?`
     )
       .bind(nowIso, candidate.event_id, retryBefore)
       .run()
