@@ -295,7 +295,7 @@ export async function getProjectFinancialWorkflowItems(
             // Verified cutover rows are promoted here for operational use;
             // staging remains the immutable source-evidence layer.
             and(
-              eq(projectOperations.sourceSystem, "buildertrend"),
+              inArray(projectOperations.sourceSystem, ["buildertrend", "sage"]),
               inArray(projectOperations.sourceRecordType, [
                 "owner_invoice",
                 "payment",
@@ -335,8 +335,8 @@ export async function getProjectFinancialWorkflowItems(
   )
 
   return rows.map((row) => {
-    const isBuildertrendHistory =
-      row.sourceSystem === "buildertrend" &&
+    const isReadOnlyImportedFinancial =
+      ["buildertrend", "sage"].includes(row.sourceSystem) &&
       ["owner_invoice", "payment", "deposit", "credit_memo"].includes(
         row.sourceRecordType
       )
@@ -360,7 +360,7 @@ export async function getProjectFinancialWorkflowItems(
       paymentBreakdown,
       dueDate:
         row.dueDate ??
-        (isBuildertrendHistory
+        (isReadOnlyImportedFinancial
           ? row.startDate ?? row.createdAt.slice(0, 10)
           : null),
       syncStatus: row.syncStatus,
@@ -368,8 +368,13 @@ export async function getProjectFinancialWorkflowItems(
       supportingPackageUrl:
         safeHttpUrl(row.externalUrl) ??
         safeHttpUrl(application?.sourceUrl ?? null),
-      readOnly: isBuildertrendHistory,
-      sourceLabel: isBuildertrendHistory ? "Buildertrend history" : null,
+      readOnly: isReadOnlyImportedFinancial,
+      sourceLabel:
+        row.sourceSystem === "buildertrend"
+          ? "Buildertrend history"
+          : row.sourceSystem === "sage"
+            ? "Sage / Square"
+            : null,
       updatedAt: row.updatedAt,
     }
   })

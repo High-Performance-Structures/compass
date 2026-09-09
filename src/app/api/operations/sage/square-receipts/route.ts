@@ -4,7 +4,10 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
-import { reconcileSageSquareManualReceipts } from "@/lib/sage/square-payment"
+import {
+  reconcileSageSquareAttentionEvents,
+  reconcileSageSquareManualReceipts,
+} from "@/lib/sage/square-payment"
 
 export async function POST(request: Request): Promise<Response> {
   const body = await readBoundedBody(request)
@@ -29,8 +32,9 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await reconcileSageSquareManualReceipts(env)
-    return Response.json({ success: true, ...result })
+    const attentionEvents = await reconcileSageSquareAttentionEvents(env)
+    const receipts = await reconcileSageSquareManualReceipts(env)
+    return Response.json({ success: true, attentionEvents, receipts })
   } catch (error) {
     return Response.json(
       {

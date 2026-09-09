@@ -126,6 +126,25 @@ export async function notifySageSquareException(
   })
 }
 
+export async function dismissSageSquareException(
+  env: CloudflareEnv,
+  sourceId: string,
+  now: string
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE notification_recipients
+     SET read_at = COALESCE(read_at, ?),
+         dismissed_at = COALESCE(dismissed_at, ?)
+     WHERE event_id IN (
+       SELECT id
+       FROM notification_events
+       WHERE event_type = ? AND source_type = ? AND source_id = ?
+     )`
+  )
+    .bind(now, now, EXCEPTION_EVENT_TYPE, EXCEPTION_SOURCE_TYPE, sourceId)
+    .run()
+}
+
 export async function notifySageSquareManualReceipt(
   env: CloudflareEnv,
   input: SageSquareManualReceiptNotificationInput

@@ -14,6 +14,7 @@ import {
   verifySquareWebhookSignature,
 } from "@/lib/sage/square-webhook-auth"
 import { manualReceiptNotificationBody } from "@/lib/sage/square-payment-notifications"
+import { squareOwnerReceivableIds } from "@/lib/sage/square-receivable"
 
 function base64(bytes: ArrayBuffer): string {
   const values = new Uint8Array(bytes)
@@ -130,6 +131,16 @@ describe("Square payment webhook", () => {
       ])
     ).toBe(315)
     expect(squareProcessingFeeExpenseCents([])).toBe(0)
+  })
+
+  it("uses stable Sage invoice and Square payment identities in Compass", () => {
+    expect(squareOwnerReceivableIds("401", "payment-1")).toEqual({
+      invoiceId: "sage-square-invoice-401",
+      paymentId: "sage-square-payment-payment-1",
+      allocationId: "sage-square-allocation-401-payment-1",
+      invoiceOperationId: "sage-square-owner-invoice-401",
+      paymentOperationId: "sage-square-owner-payment-payment-1",
+    })
   })
 
   it("stops when Square fee returns exceed assessed fees", () => {

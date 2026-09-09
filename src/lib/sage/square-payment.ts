@@ -4,7 +4,11 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { sageSquarePaymentOperations } from "@/db/schema-sage"
-import { notifySageSquareManualReceipt } from "@/lib/sage/square-payment-notifications"
+import {
+  dismissSageSquareException,
+  notifySageSquareManualReceipt,
+} from "@/lib/sage/square-payment-notifications"
+import { upsertSquareOwnerReceivable } from "@/lib/sage/square-receivable"
 
 export const SQUARE_API_VERSION = "2026-08-19"
 export const SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER = 10000
@@ -20,6 +24,7 @@ const SQUARE_WEBHOOK_PROCESSING_LEASE_MS = 10 * 60 * 1000
 const SQUARE_PAYMENT_OPERATION_CLAIM_LEASE_MS = 10 * 60 * 1000
 const MANUAL_RECEIPT_RECONCILIATION_BATCH = 100
 const LEGACY_SCOPE_HYDRATION_BATCH = 100
+const ATTENTION_EVENT_RECOVERY_BATCH = 25
 
 const moneySchema = z.object({
   amount: z.number().int(),
@@ -55,6 +60,8 @@ const orderSchema = z.object({
   id: z.string().min(1),
   location_id: z.string().min(1),
   reference_id: z.string().min(1),
+  total_money: moneySchema,
+  total_tax_money: moneySchema.optional(),
   tenders: z.array(tenderSchema).optional(),
 })
 
@@ -67,6 +74,10 @@ const invoiceSchema = z.object({
   description: z.string().optional(),
   status: z.string(),
   created_at: z.string(),
+  sale_or_service_date: z.string().optional(),
+  payment_requests: z
+    .array(z.object({ due_date: z.string().optional() }))
+    .optional(),
   custom_fields: z
     .array(
       z.object({
@@ -183,9 +194,11 @@ type BridgeInvoice = {
   readonly department: "HPS" | "ORC" | "Nu-Tech"
 }
 
-type ActiveCompassProject = {
+type CompassProject = {
   readonly id: string
   readonly organizationId: string
+  readonly customerId: string
+  readonly customerName: string
 }
 
 type CompassNotificationScope = {
@@ -366,10 +379,10 @@ function bridgeInvoiceFromEvent(
     : null
 }
 
-async function resolveActiveCompassProject(
+async function resolveCompassProject(
   env: CloudflareEnv,
   sageJobShortName: string
-): Promise<ActiveCompassProject> {
+): Promise<CompassProject> {
   const organizationId = sageSquareOrganizationId(env)
   if (!organizationId) {
     throw new SageSquarePaymentAttentionError(
@@ -386,18 +399,67 @@ async function resolveActiveCompassProject(
     .where(
       and(
         eq(projects.organizationId, organizationId),
-        sql`upper(trim(${projects.projectNumber})) = upper(trim(${sageJobShortName}))`,
-        eq(projects.status, "OPEN")
+        sql`upper(trim(${projects.projectNumber})) = upper(trim(${sageJobShortName}))`
       )
     )
     .limit(2)
   if (matches.length !== 1 || matches[0]?.organizationId !== organizationId) {
     throw new SageSquarePaymentAttentionError(
-      `Sage job ${sageJobShortName} does not map to exactly one active Compass project`,
+      `Sage job ${sageJobShortName} does not map to exactly one Compass project`,
       { organizationId, projectId: null }
     )
   }
-  return { id: matches[0].id, organizationId: matches[0].organizationId }
+  const project = matches[0]
+  const ownerCustomers = await env.DB.prepare(
+    `SELECT DISTINCT c.id, c.name
+     FROM project_contacts pc
+     INNER JOIN customers c ON c.id = pc.source_entity_id
+     WHERE pc.project_id = ?
+       AND pc.contact_type = 'owner'
+       AND pc.source_entity_type = 'customer'
+       AND pc.active = 1
+       AND c.organization_id = ?
+     LIMIT 2`
+  )
+    .bind(project.id, organizationId)
+    .all<{ id: string; name: string }>()
+  if (ownerCustomers.results.length > 1) {
+    throw new SageSquarePaymentAttentionError(
+      `Sage job ${sageJobShortName} maps to multiple Compass owners`,
+      { organizationId, projectId: project.id }
+    )
+  }
+  let customer = ownerCustomers.results[0] ?? null
+  if (!customer) {
+    const priorCustomers = await env.DB.prepare(
+      `SELECT DISTINCT c.id, c.name
+       FROM invoices i
+       INNER JOIN customers c ON c.id = i.customer_id
+       WHERE i.project_id = ? AND i.organization_id = ?
+       LIMIT 2`
+    )
+      .bind(project.id, organizationId)
+      .all<{ id: string; name: string }>()
+    if (priorCustomers.results.length > 1) {
+      throw new SageSquarePaymentAttentionError(
+        `Sage job ${sageJobShortName} maps to multiple prior invoice owners`,
+        { organizationId, projectId: project.id }
+      )
+    }
+    customer = priorCustomers.results[0] ?? null
+  }
+  if (!customer) {
+    throw new SageSquarePaymentAttentionError(
+      `Sage job ${sageJobShortName} does not map to exactly one Compass owner`,
+      { organizationId, projectId: project.id }
+    )
+  }
+  return {
+    id: project.id,
+    organizationId,
+    customerId: customer.id,
+    customerName: customer.name,
+  }
 }
 
 export function squareProcessingFeeExpenseCents(
@@ -522,7 +584,7 @@ async function queueReceipt(
   env: CloudflareEnv,
   payment: z.infer<typeof paymentSchema>,
   invoice: BridgeInvoice,
-  project: ActiveCompassProject,
+  project: CompassProject,
   now: string
 ): Promise<{ readonly context: OperationContext; readonly operationId: string }> {
   const context: OperationContext = {
@@ -603,15 +665,26 @@ async function queueFeeDelta(
   )
 }
 
-async function processInvoicePayment(
+async function processBridgeInvoicePayment(
   env: CloudflareEnv,
-  event: SquareWebhookEvent,
+  squareInvoice: z.infer<typeof invoiceSchema>,
   cutoff: number,
   now: string
 ): Promise<void> {
-  const invoice = bridgeInvoiceFromEvent(event)
+  const invoice = bridgeInvoiceFromSquareInvoice(squareInvoice)
   if (!invoice) return
-  const project = await resolveActiveCompassProject(env, invoice.sageJobShortName)
+  if (!squareInvoice.sale_or_service_date) {
+    throw new SageSquarePaymentAttentionError(
+      "Square bridge invoice is missing its Sage invoice date"
+    )
+  }
+  const paymentRequests = squareInvoice.payment_requests ?? []
+  if (paymentRequests.length !== 1) {
+    throw new SageSquarePaymentAttentionError(
+      "Square bridge invoice does not contain exactly one Sage payment request"
+    )
+  }
+  const project = await resolveCompassProject(env, invoice.sageJobShortName)
   const scope = {
     organizationId: project.organizationId,
     projectId: project.id,
@@ -626,6 +699,19 @@ async function processInvoicePayment(
         "Square order is not an exact Sage bridge match"
       )
     }
+    if (
+      order.total_money.currency !== "USD" ||
+      (order.total_tax_money?.currency ?? "USD") !== "USD"
+    ) {
+      throw new SageSquarePaymentAttentionError(
+        "Square invoice total currency is not USD"
+      )
+    }
+    if (order.total_money.amount <= 0) {
+      throw new SageSquarePaymentAttentionError(
+        "Square invoice total must be positive"
+      )
+    }
     const locationName = await retrieveLocationName(env, invoice.locationId)
     if (locationName !== invoice.department) {
       throw new SageSquarePaymentAttentionError(
@@ -636,27 +722,76 @@ async function processInvoicePayment(
     if (tenders.length === 0) {
       throw new Error("Paid Square invoice has no payment tender")
     }
-    for (const tender of tenders) {
-      const paymentId = tender.payment_id ?? tender.id
-      const payment = await retrievePayment(env, paymentId)
+    const payments = await Promise.all(
+      tenders.map(async (tender) => ({
+        tender,
+        payment: await retrievePayment(env, tender.payment_id ?? tender.id),
+      }))
+    )
+    for (const { tender, payment } of payments) {
       validatePayment(payment, invoice, order, cutoff)
+      if (
+        tender.location_id !== invoice.locationId ||
+        tender.amount_money.currency !== "USD" ||
+        tender.amount_money.amount !== payment.amount_money.amount
+      ) {
+        throw new SageSquarePaymentAttentionError(
+          "Square tender does not match its completed payment"
+        )
+      }
+    }
+    const totalPaidCents = payments.reduce(
+      (total, entry) => total + entry.payment.amount_money.amount,
+      0
+    )
+    if (totalPaidCents > order.total_money.amount) {
+      throw new SageSquarePaymentAttentionError(
+        "Square payments exceed the matching Sage invoice total"
+      )
+    }
+    for (const { payment } of payments) {
       const receipt = await queueReceipt(env, payment, invoice, project, now)
-      await notifySageSquareManualReceipt(env, {
-        organizationId: project.organizationId,
-        projectId: project.id,
-        operationId: receipt.operationId,
-        squarePaymentId: payment.id,
-        sageInvoiceNumber: invoice.invoiceNumber,
-        department: invoice.department,
-        ownerPaymentCents: payment.amount_money.amount,
-        depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
-        merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
-      })
       try {
+        const processingFeeCents = squareProcessingFeeExpenseCents(
+          payment.processing_fee ?? []
+        )
+        await upsertSquareOwnerReceivable(
+          env,
+          {
+            organizationId: project.organizationId,
+            projectId: project.id,
+            customerId: project.customerId,
+            customerName: project.customerName,
+            sageJobShortName: invoice.sageJobShortName,
+            sageInvoiceId: invoice.sageInvoiceId,
+            sageInvoiceNumber: invoice.invoiceNumber,
+            squareInvoiceId: invoice.id,
+            squarePaymentId: payment.id,
+            invoiceIssueDate: squareInvoice.sale_or_service_date,
+            invoiceDueDate: paymentRequests[0]?.due_date ?? null,
+            invoiceTotalCents: order.total_money.amount,
+            invoiceTaxCents: order.total_tax_money?.amount ?? 0,
+            paymentCompletedAt: payment.updated_at,
+            paymentAmountCents: payment.amount_money.amount,
+            processingFeeCents,
+          },
+          now
+        )
+        await notifySageSquareManualReceipt(env, {
+          organizationId: project.organizationId,
+          projectId: project.id,
+          operationId: receipt.operationId,
+          squarePaymentId: payment.id,
+          sageInvoiceNumber: invoice.invoiceNumber,
+          department: invoice.department,
+          ownerPaymentCents: payment.amount_money.amount,
+          depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
+          merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
+        })
         await queueFeeDelta(
           env,
           receipt.context,
-          squareProcessingFeeExpenseCents(payment.processing_fee ?? []),
+          processingFeeCents,
           now
         )
       } catch (error) {
@@ -680,6 +815,17 @@ async function processInvoicePayment(
     }
     throw error
   }
+}
+
+async function processInvoicePayment(
+  env: CloudflareEnv,
+  event: SquareWebhookEvent,
+  cutoff: number,
+  now: string
+): Promise<void> {
+  const parsed = z.object({ invoice: invoiceSchema }).safeParse(event.data.object)
+  if (!parsed.success) return
+  await processBridgeInvoicePayment(env, parsed.data.invoice, cutoff, now)
 }
 
 function contextFromReceipt(
@@ -742,7 +888,7 @@ async function contextFromReceiptWithLegacyHydration(
       "Legacy Square receipt could not be linked to its bridge invoice"
     )
   }
-  const project = await resolveActiveCompassProject(env, invoice.sageJobShortName)
+  const project = await resolveCompassProject(env, invoice.sageJobShortName)
   const db = getDb(env.DB)
   await db
     .update(sageSquarePaymentOperations)
@@ -1014,6 +1160,91 @@ export async function flagSquareWebhookEventForAttention(
   )
     .bind(error.slice(0, 1000), now, now, eventId)
     .run()
+}
+
+export type SageSquareAttentionRecoveryResult = {
+  readonly scanned: number
+  readonly recovered: number
+  readonly attention: number
+  readonly failed: number
+}
+
+export async function reconcileSageSquareAttentionEvents(
+  env: CloudflareEnv,
+  now = new Date()
+): Promise<SageSquareAttentionRecoveryResult> {
+  const nowIso = now.toISOString()
+  const retryBefore = new Date(
+    now.getTime() - SQUARE_WEBHOOK_PROCESSING_LEASE_MS
+  ).toISOString()
+  const candidates = await env.DB.prepare(
+    `SELECT event_id, square_object_id
+     FROM sage_square_webhook_events
+     WHERE status = 'attention'
+       AND event_type = 'invoice.payment_made'
+       AND square_object_id IS NOT NULL
+       AND updated_at <= ?
+       AND (
+         error_message LIKE '%does not map to exactly one active Compass project%'
+         OR error_message LIKE '%does not map to exactly one Compass project%'
+         OR error_message LIKE '%does not map to exactly one Compass owner%'
+         OR error_message LIKE '%maps to multiple Compass owners%'
+         OR error_message LIKE '%maps to multiple prior invoice owners%'
+       )
+     ORDER BY updated_at ASC
+     LIMIT ?`
+  )
+    .bind(retryBefore, ATTENTION_EVENT_RECOVERY_BATCH)
+    .all<{ event_id: string; square_object_id: string }>()
+  let recovered = 0
+  let attention = 0
+  let failed = 0
+  for (const candidate of candidates.results) {
+    const claimed = await env.DB.prepare(
+      `UPDATE sage_square_webhook_events
+       SET status = 'processing', attempt_count = attempt_count + 1,
+           error_message = NULL, updated_at = ?
+       WHERE event_id = ? AND status = 'attention' AND updated_at <= ?`
+    )
+      .bind(nowIso, candidate.event_id, retryBefore)
+      .run()
+    if (claimed.meta.changes !== 1) continue
+    try {
+      const squareInvoice = await retrieveInvoice(
+        env,
+        candidate.square_object_id
+      )
+      await processBridgeInvoicePayment(
+        env,
+        squareInvoice,
+        squareCutoff(env),
+        nowIso
+      )
+      await completeSquareWebhookEvent(env, candidate.event_id, nowIso)
+      await dismissSageSquareException(env, candidate.event_id, nowIso)
+      recovered += 1
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      if (error instanceof SageSquarePaymentAttentionError) {
+        await flagSquareWebhookEventForAttention(
+          env,
+          candidate.event_id,
+          message,
+          nowIso
+        )
+        attention += 1
+      } else {
+        await failSquareWebhookEvent(env, candidate.event_id, message, nowIso)
+        failed += 1
+      }
+    }
+  }
+  return {
+    scanned: candidates.results.length,
+    recovered,
+    attention,
+    failed,
+  }
 }
 
 export async function processSquareWebhookEvent(
