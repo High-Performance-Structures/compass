@@ -15,6 +15,7 @@ const GOTO_MESSAGE_RECOVERY_TARGET =
 const SAGE_BRIDGE_HEALTH_TARGET = "/api/operations/sage/health"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
   "/api/operations/sage/square-receipts"
+const SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"
 const LISTENING_ROOM_SOCKET_TARGET = "/api/listening-room-sync"
 const LISTENING_ROOM_AUTH_TARGET = "/api/listening-room/sync-authorize"
 
@@ -269,7 +270,15 @@ export default {
     }
     return worker.fetch(request, env, ctx)
   },
-  async scheduled(_controller, env, ctx): Promise<void> {
+  async scheduled(controller, env, ctx): Promise<void> {
+    if (controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON) {
+      ctx.waitUntil(
+        runMaintenanceJob("Sage Square manual receipts", () =>
+          reconcileSageSquareReceipts(env)
+        )
+      )
+      return
+    }
     ctx.waitUntil(
       Promise.all([
         runMaintenanceJob("feedback reconciliation", () => reconcile(env)),
@@ -279,9 +288,6 @@ export default {
         ),
         runMaintenanceJob("Sage bridge health", () =>
           checkSageBridgeHealth(env)
-        ),
-        runMaintenanceJob("Sage Square manual receipts", () =>
-          reconcileSageSquareReceipts(env)
         ),
       ]).then(() => undefined)
     )

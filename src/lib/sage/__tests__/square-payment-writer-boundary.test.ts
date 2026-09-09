@@ -25,6 +25,8 @@ const maintenanceRoute = source(
 const financialWorkflowSource = source(
   "../../../app/actions/project-financial-workflows.ts"
 )
+const customWorkerSource = source("../../../../custom-worker.ts")
+const wranglerSource = source("../../../../wrangler.jsonc")
 
 describe("Sage Square payment writer boundary", () => {
   it("filters fee operations during both discovery and atomic claim", () => {
@@ -93,6 +95,21 @@ describe("Sage Square payment writer boundary", () => {
       "instr(error_message, 'Square processing fee adjustments exceed assessed fees') > 0"
     )
     expect(maintenanceRoute).toContain("reconcileSageSquareAttentionEvents")
+  })
+
+  it("runs Square recovery every minute without multiplying unrelated maintenance", () => {
+    expect(wranglerSource).toContain(
+      '"crons": ["* * * * *", "*/10 * * * *"]'
+    )
+    expect(customWorkerSource).toContain(
+      'SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"'
+    )
+    expect(customWorkerSource).toContain(
+      "controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON"
+    )
+    expect(customWorkerSource.indexOf("if (controller.cron")).toBeLessThan(
+      customWorkerSource.indexOf('runMaintenanceJob("feedback reconciliation"')
+    )
   })
 
   it("scopes receipt notifications to the matched organization and project", () => {
