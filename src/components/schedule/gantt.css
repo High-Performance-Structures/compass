@@ -10,6 +10,11 @@
   height: 100% !important;
   max-height: 100%;
   min-height: 0;
+  --schedule-non-workday-highlight: color-mix(
+    in oklch,
+    var(--primary) 12%,
+    var(--background)
+  );
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: oklch(0.72 0.02 95 / 0.7) transparent;
@@ -135,6 +140,7 @@
 .gantt .bar-wrapper.display-color-yellow .bar { fill: var(--schedule-display-yellow, #eab308); stroke: color-mix(in srgb, var(--schedule-display-yellow, #eab308) 78%, black); }
 .gantt .bar-wrapper.display-color-teal .bar { fill: var(--schedule-display-teal, #14b8a6); stroke: color-mix(in srgb, var(--schedule-display-teal, #14b8a6) 78%, black); }
 .gantt .bar-wrapper.display-color-gray .bar { fill: var(--schedule-display-gray, #6b7280); stroke: color-mix(in srgb, var(--schedule-display-gray, #6b7280) 78%, black); }
+.gantt .bar-wrapper.display-color-custom .bar { fill: var(--schedule-item-color); stroke: color-mix(in srgb, var(--schedule-item-color) 78%, black); }
 
 .gantt .bar-wrapper.display-color-blue .bar-progress { fill: color-mix(in srgb, var(--schedule-display-blue, #3b82f6) 68%, black); }
 .gantt .bar-wrapper.display-color-green .bar-progress { fill: color-mix(in srgb, var(--schedule-display-green, #22c55e) 68%, black); }
@@ -144,6 +150,11 @@
 .gantt .bar-wrapper.display-color-yellow .bar-progress { fill: color-mix(in srgb, var(--schedule-display-yellow, #eab308) 68%, black); }
 .gantt .bar-wrapper.display-color-teal .bar-progress { fill: color-mix(in srgb, var(--schedule-display-teal, #14b8a6) 68%, black); }
 .gantt .bar-wrapper.display-color-gray .bar-progress { fill: color-mix(in srgb, var(--schedule-display-gray, #6b7280) 68%, black); }
+.gantt .bar-wrapper.display-color-custom .bar-progress { fill: color-mix(in srgb, var(--schedule-item-color) 68%, black); }
+
+.gantt .holiday-highlight {
+  fill: var(--schedule-non-workday-highlight) !important;
+}
 
 /* Multi-project schedules use a stable project color across every view. */
 .gantt .bar-wrapper.project-color .bar {

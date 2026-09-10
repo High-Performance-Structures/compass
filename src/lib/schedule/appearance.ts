@@ -25,6 +25,12 @@ export const DEFAULT_DISPLAY_COLOR_PALETTE: DisplayColorPalette = {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i
 
+export function isCustomDisplayColor(
+  value: string | null | undefined
+): value is string {
+  return typeof value === "string" && HEX_COLOR.test(value)
+}
+
 export function normalizeDisplayColorPalette(
   palette: Partial<Record<DisplayColor, string>> | null | undefined
 ): DisplayColorPalette {
@@ -62,16 +68,15 @@ export const DEFAULT_DISPLAY_COLOR: DisplayColor = "blue"
 export const DISPLAY_COLOR_OPTIONS: readonly {
   readonly value: DisplayColor
   readonly label: string
-  readonly buttonClassName: string
 }[] = [
-  { value: "blue", label: "Blue", buttonClassName: "bg-blue-500" },
-  { value: "green", label: "Green", buttonClassName: "bg-green-500" },
-  { value: "orange", label: "Orange", buttonClassName: "bg-orange-500" },
-  { value: "purple", label: "Purple", buttonClassName: "bg-purple-500" },
-  { value: "red", label: "Red", buttonClassName: "bg-red-500" },
-  { value: "yellow", label: "Yellow", buttonClassName: "bg-yellow-500" },
-  { value: "teal", label: "Teal", buttonClassName: "bg-teal-500" },
-  { value: "gray", label: "Gray", buttonClassName: "bg-gray-500" },
+  { value: "blue", label: "Blue" },
+  { value: "green", label: "Green" },
+  { value: "orange", label: "Orange" },
+  { value: "purple", label: "Purple" },
+  { value: "red", label: "Red" },
+  { value: "yellow", label: "Yellow" },
+  { value: "teal", label: "Teal" },
+  { value: "gray", label: "Gray" },
 ] as const
 
 function isDisplayColor(value: string | null | undefined): value is DisplayColor {
@@ -88,6 +93,9 @@ export function getScheduleItemDisplayColor(
   item: { readonly displayColor: string | null | undefined },
   palette: DisplayColorPalette = DEFAULT_DISPLAY_COLOR_PALETTE
 ): string {
+  if (isCustomDisplayColor(item.displayColor)) {
+    return item.displayColor.toLowerCase()
+  }
   return palette[normalizeDisplayColor(item.displayColor)]
 }
 
@@ -96,7 +104,11 @@ export function getScheduleItemClasses(item: {
   readonly isCriticalPath: boolean
   readonly isMilestone: boolean
 }): string[] {
-  const classes = [`display-color-${normalizeDisplayColor(item.displayColor)}`]
+  const classes = [
+    isCustomDisplayColor(item.displayColor)
+      ? "display-color-custom"
+      : `display-color-${normalizeDisplayColor(item.displayColor)}`
+  ]
 
   if (item.isCriticalPath) classes.push("critical-path")
   if (item.isMilestone) classes.push("milestone")

@@ -3,8 +3,12 @@
 import { useRef, useEffect, useState, useCallback, type CSSProperties } from "react"
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
 import type { DisplayColorPalette } from "@/lib/schedule/appearance"
-import { getScheduleItemClasses } from "@/lib/schedule/appearance"
+import {
+  getScheduleItemClasses,
+  getScheduleItemDisplayColor,
+} from "@/lib/schedule/appearance"
 import { isNonWorkday } from "@/lib/schedule/business-days"
+import { bindGanttTodayButton } from "@/lib/schedule/gantt-dom"
 import type { WorkdayExceptionData } from "@/lib/schedule/types"
 import {
   applyGanttScrollDelta,
@@ -173,6 +177,7 @@ interface GanttChartProps {
   onTaskDoubleClick?: (task: FrappeTask) => void
   onContainerReady?: (container: HTMLElement | null) => void
   onScrollPositionChange?: (position: GanttScrollPosition) => void
+  onTodayClick?: () => void
   onTodayScrollReady?: (handler: (() => void) | null) => void
   onDateScrollReady?: (handler: ((date: string) => void) | null) => void
   onTaskVisibilityReady?: (
@@ -196,6 +201,7 @@ export function GanttChart({
   onTaskDoubleClick,
   onContainerReady,
   onScrollPositionChange,
+  onTodayClick,
   onTodayScrollReady,
   onDateScrollReady,
   onTaskVisibilityReady,
@@ -212,6 +218,7 @@ export function GanttChart({
     onTaskDoubleClick,
     onContainerReady,
     onScrollPositionChange,
+    onTodayClick,
     onTodayScrollReady,
     onDateScrollReady,
     onTaskVisibilityReady,
@@ -221,6 +228,7 @@ export function GanttChart({
     onTaskDoubleClick,
     onContainerReady,
     onScrollPositionChange,
+    onTodayClick,
     onTodayScrollReady,
     onDateScrollReady,
     onTaskVisibilityReady,
@@ -440,7 +448,7 @@ export function GanttChart({
         today_button: !readOnly,
         ...popupOptions,
         holidays: {
-          "var(--background)": "weekend",
+          "var(--schedule-non-workday-highlight)": "weekend",
         },
         is_weekend: (date: Date) => isNonWorkday(date, exceptions),
         ...(columnWidth ? { column_width: columnWidth } : {}),
@@ -461,6 +469,11 @@ export function GanttChart({
       // construction, so explicitly restore the React-selected mode.
       ganttRef.current.change_view_mode(viewMode)
       const gantt = ganttRef.current
+      if (interactionCallbacksRef.current.onTodayClick) {
+        bindGanttTodayButton(containerRef.current, () => {
+          interactionCallbacksRef.current.onTodayClick?.()
+        })
+      }
       interactionCallbacksRef.current.onTodayScrollReady?.(() => {
         const container = ganttContainerRef.current
         if (!container) return
@@ -507,6 +520,10 @@ export function GanttChart({
         const task = tasksById.get(wrapper.dataset.id ?? "")
         if (!task || task.id.startsWith("phase-")) continue
         wrapper.classList.add(...getScheduleItemClasses(task))
+        wrapper.style.setProperty(
+          "--schedule-item-color",
+          getScheduleItemDisplayColor(task, displayColorPalette)
+        )
         if (task.projectColor) {
           wrapper.classList.add("project-color")
           wrapper.style.setProperty(
@@ -575,7 +592,16 @@ export function GanttChart({
       interactionCallbacksRef.current.onDateScrollReady?.(null)
       interactionCallbacksRef.current.onTaskVisibilityReady?.(null)
     }
-  }, [tasks, exceptions, viewMode, columnWidth, readOnly, onDateChange, onProgressChange])
+  }, [
+    tasks,
+    exceptions,
+    viewMode,
+    columnWidth,
+    readOnly,
+    displayColorPalette,
+    onDateChange,
+    onProgressChange,
+  ])
 
   useEffect(() => {
     const wrapper = wrapperRef.current
