@@ -386,6 +386,7 @@ function PurchaseOrderCard({
           {order.lines.map((line) => (
             <div
               key={line.id}
+              data-purchase-order-line="true"
               className="grid min-h-9 grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem_5.5rem_6rem] border-t border-black px-2 py-1"
             >
               <span>{line.lineNumber}</span>
@@ -416,7 +417,10 @@ function PurchaseOrderCard({
           </div>
         </div>
 
-        <div className="mt-10 grid grid-cols-3 gap-8 text-xs">
+        <div
+          data-purchase-order-signatures="true"
+          className="mt-10 grid grid-cols-3 gap-8 text-xs"
+        >
           <div className="border-t border-black pt-2">Authorized By</div>
           <div className="border-t border-black pt-2">Picked Up By</div>
           <div className="border-t border-black pt-2">Date</div>
