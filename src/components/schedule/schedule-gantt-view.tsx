@@ -1097,6 +1097,7 @@ export function ScheduleGanttView({
                 onTaskDoubleClick={openTaskEditor}
                 onContainerReady={handleGanttContainerReady}
                 onScrollPositionChange={handleGanttScroll}
+                onTodayClick={scrollToToday}
                 onTodayScrollReady={handleTodayScrollReady}
                 onDateScrollReady={handleDateScrollReady}
               />
@@ -1137,6 +1138,7 @@ export function ScheduleGanttView({
                 onTaskDoubleClick={openTaskEditor}
                 onContainerReady={handleGanttContainerReady}
                 onScrollPositionChange={handleGanttScroll}
+                onTodayClick={scrollToToday}
                 onTodayScrollReady={handleTodayScrollReady}
                 onDateScrollReady={handleDateScrollReady}
               />

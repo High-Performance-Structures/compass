@@ -305,6 +305,16 @@ function getTemplateSelect(container: HTMLDivElement): HTMLSelectElement {
   return element
 }
 
+function getCustomColorInput(container: HTMLDivElement): HTMLInputElement {
+  const element = container.querySelector(
+    'input[aria-label="Custom schedule item color"]'
+  )
+  if (!(element instanceof window.HTMLInputElement)) {
+    throw new Error("Custom color picker is not rendered")
+  }
+  return element
+}
+
 function renderDialog(container: HTMLDivElement) {
   const root = createRoot(container)
   return {
@@ -391,6 +401,35 @@ describe("ScheduleItemFormDialog", () => {
     })
 
     expect(getDurationInput(dom.container).value).toBe("1")
+
+    await act(async () => {
+      dialog.root.unmount()
+    })
+    dom.cleanup()
+  })
+
+  it("accepts a custom color beyond the preset schedule swatches", async () => {
+    const dom = createTestDom()
+    const dialog = renderDialog(dom.container)
+    await dialog.render(true)
+
+    const customColor = getCustomColorInput(dom.container)
+    const descriptor = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    )
+    const setValue = descriptor?.set
+    if (!setValue) throw new Error("Input value setter is unavailable")
+    await act(async () => {
+      setValue.call(customColor, "#12abef")
+      customColor.dispatchEvent(new Event("input", { bubbles: true }))
+      await Promise.resolve()
+    })
+
+    expect(getCustomColorInput(dom.container).value).toBe("#12abef")
+    expect(
+      [...dom.container.querySelectorAll('[aria-pressed="true"]')]
+    ).toHaveLength(0)
 
     await act(async () => {
       dialog.root.unmount()

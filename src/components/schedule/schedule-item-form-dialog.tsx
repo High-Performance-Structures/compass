@@ -69,7 +69,12 @@ import type {
   WorkdayExceptionData
 } from "@/lib/schedule/types"
 import { PHASE_ORDER, PHASE_LABELS } from "@/lib/schedule/phase-colors"
-import { DEFAULT_DISPLAY_COLOR, DISPLAY_COLOR_OPTIONS } from "@/lib/schedule/appearance"
+import {
+  DEFAULT_DISPLAY_COLOR,
+  DISPLAY_COLOR_OPTIONS,
+  getScheduleItemDisplayColor,
+} from "@/lib/schedule/appearance"
+import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -158,6 +163,7 @@ export function ScheduleItemFormDialog({
 }: ScheduleItemFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
+  const displayColorPalette = useScheduleDisplayPalette(projectId)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [pendingPredecessors, setPendingPredecessors] = useState<PendingPredecessor[]>([])
   const [existingPredecessorEdits, setExistingPredecessorEdits] = useState<
@@ -1048,16 +1054,33 @@ export function ScheduleItemFormDialog({
                         aria-pressed={selected}
                         className={cn(
                           "size-5 rounded-full border-2 transition-transform",
-                          color.buttonClassName,
                           selected
                             ? "border-foreground scale-110"
                             : "border-transparent hover:scale-110"
                         )}
+                        style={{ backgroundColor: displayColorPalette[color.value] }}
                         onClick={() => form.setValue("displayColor", color.value)}
                       />
                     )
                   })}
                 </div>
+                <label className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground">
+                  <Input
+                    type="color"
+                    aria-label="Custom schedule item color"
+                    className="h-6 w-8 cursor-pointer border-0 bg-transparent p-0"
+                    value={getScheduleItemDisplayColor(
+                      { displayColor: watchedDisplayColor },
+                      displayColorPalette
+                    )}
+                    onChange={(event) =>
+                      form.setValue("displayColor", event.currentTarget.value, {
+                        shouldDirty: true
+                      })
+                    }
+                  />
+                  Custom
+                </label>
               </div>
 
               {/* Date row: Start | Duration | End */}

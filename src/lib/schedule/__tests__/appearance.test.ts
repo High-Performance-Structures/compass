@@ -42,6 +42,12 @@ describe("display-color palette", () => {
       )
     ).toBe("#123456")
   })
+
+  it("preserves a custom per-item hex color instead of mapping it to a preset", () => {
+    expect(
+      getScheduleItemDisplayColor({ displayColor: "#12ABEF" })
+    ).toBe("#12abef")
+  })
 })
 
 describe("display-color key", () => {
@@ -73,6 +79,16 @@ describe("getScheduleItemClasses", () => {
       "critical-path",
       "milestone",
     ])
+  })
+
+  it("marks custom colors for the per-item Gantt color variable", () => {
+    expect(
+      getScheduleItemClasses({
+        displayColor: "#12abef",
+        isCriticalPath: false,
+        isMilestone: false,
+      })
+    ).toEqual(["display-color-custom"])
   })
 })
 
