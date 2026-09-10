@@ -97,11 +97,15 @@ export function MessageList({
   React.useEffect(() => {
     setMessages([...initialMessages].reverse())
   }, [initialMessages])
-  const scrollRef = React.useRef<HTMLDivElement>(null)
-  const bottomRef = React.useRef<HTMLDivElement>(null)
+  const scrollViewportRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    const viewport = scrollViewportRef.current
+    if (!viewport) return
+
+    // Keep auto-scroll inside the message viewport. scrollIntoView() also
+    // scrolls ancestor workspaces, which made long pages appear to go blank.
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
   }, [messages.length])
 
   const loadMoreMessages = React.useCallback(async () => {
@@ -110,7 +114,7 @@ export function MessageList({
     setLoading(true)
 
     // store scroll height before loading
-    const scrollEl = scrollRef.current
+    const scrollEl = scrollViewportRef.current
     if (scrollEl) {
       scrollHeightBeforeLoadRef.current = scrollEl.scrollHeight
     }
@@ -140,7 +144,7 @@ export function MessageList({
 
       // restore scroll position after update
       requestAnimationFrame(() => {
-        const newScrollEl = scrollRef.current
+        const newScrollEl = scrollViewportRef.current
         if (newScrollEl && scrollHeightBeforeLoadRef.current > 0) {
           const newScrollHeight = newScrollEl.scrollHeight
           const scrollDiff = newScrollHeight - scrollHeightBeforeLoadRef.current
@@ -190,7 +194,10 @@ export function MessageList({
   }
 
   return (
-    <ScrollArea className="h-full min-h-0 flex-1" ref={scrollRef}>
+    <ScrollArea
+      className="h-full min-h-0 flex-1"
+      viewportRef={scrollViewportRef}
+    >
       <div className="flex flex-col gap-4 p-4">
         {hasMore && (
           <div className="flex justify-center">
@@ -226,8 +233,6 @@ export function MessageList({
         {typingUsers.length > 0 && (
           <TypingIndicator users={typingUsers} />
         )}
-
-        <div ref={bottomRef} />
       </div>
     </ScrollArea>
   )
