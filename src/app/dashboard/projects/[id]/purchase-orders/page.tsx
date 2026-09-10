@@ -373,38 +373,60 @@ function PurchaseOrderCard({
         </div>
 
         <div className="mt-4 border border-black">
-          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem_5.5rem_6rem] border-b border-black px-2 py-1 text-xs font-bold uppercase">
-            <span>Line</span>
-            <span>Description</span>
-            <span>Phase</span>
-            <span>Cost Code</span>
-            <span className="text-right">Qty</span>
-            <span>Unit</span>
-            <span className="text-right">Unit Cost</span>
-            <span className="text-right">Amount</span>
-          </div>
-          {order.lines.map((line) => (
-            <div
-              key={line.id}
-              data-purchase-order-line="true"
-              className="grid min-h-9 grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem_5.5rem_6rem] border-t border-black px-2 py-1"
-            >
-              <span>{line.lineNumber}</span>
-              <span>{line.description}</span>
-              <span>{line.phaseCode ?? "-"}</span>
-              <span>{line.costCode ?? "-"}</span>
-              <span className="text-right">{line.quantity}</span>
-              <span>{line.unit ?? "-"}</span>
-              <span className="text-right">{money(line.unitCost)}</span>
-              <span className="text-right font-semibold">
-                {money(line.amount)}
-              </span>
-            </div>
-          ))}
-          <div className="grid grid-cols-[1fr_6rem] border-t-2 border-black px-2 py-2 text-sm font-bold">
-            <span className="text-right">Total</span>
-            <span className="text-right">{money(order.amount)}</span>
-          </div>
+          <table className="purchase-order-items w-full table-fixed border-collapse">
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="w-[4.5rem]" />
+              <col className="w-20" />
+              <col className="w-16" />
+              <col className="w-16" />
+              <col className="w-[5.5rem]" />
+              <col className="w-24" />
+            </colgroup>
+            <thead data-purchase-order-items-header="true">
+              <tr className="border-b border-black text-xs font-bold uppercase">
+                <th className="px-2 py-1 text-left">Line</th>
+                <th className="px-2 py-1 text-left">Description</th>
+                <th className="px-2 py-1 text-left">Phase</th>
+                <th className="px-2 py-1 text-left">Cost Code</th>
+                <th className="px-2 py-1 text-right">Qty</th>
+                <th className="px-2 py-1 text-left">Unit</th>
+                <th className="px-2 py-1 text-right">Unit Cost</th>
+                <th className="px-2 py-1 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.lines.map((line) => (
+                <tr
+                  key={line.id}
+                  data-purchase-order-line="true"
+                  className="h-9 border-t border-black align-top"
+                >
+                  <td className="px-2 py-1">{line.lineNumber}</td>
+                  <td className="px-2 py-1">{line.description}</td>
+                  <td className="px-2 py-1">{line.phaseCode ?? "-"}</td>
+                  <td className="px-2 py-1">{line.costCode ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">{line.quantity}</td>
+                  <td className="px-2 py-1">{line.unit ?? "-"}</td>
+                  <td className="px-2 py-1 text-right">
+                    {money(line.unitCost)}
+                  </td>
+                  <td className="px-2 py-1 text-right font-semibold">
+                    {money(line.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-black text-sm font-bold">
+                <td colSpan={7} className="px-2 py-2 text-right">
+                  Total
+                </td>
+                <td className="px-2 py-2 text-right">{money(order.amount)}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
 
         <div className="mt-4 border border-black">
@@ -419,9 +441,10 @@ function PurchaseOrderCard({
 
         <div
           data-purchase-order-signatures="true"
-          className="mt-10 grid grid-cols-3 gap-8 text-xs"
+          className="mt-10 grid grid-cols-4 gap-6 text-xs"
         >
           <div className="border-t border-black pt-2">Authorized By</div>
+          <div className="border-t border-black pt-2">Vendor Signature</div>
           <div className="border-t border-black pt-2">Picked Up By</div>
           <div className="border-t border-black pt-2">Date</div>
         </div>
