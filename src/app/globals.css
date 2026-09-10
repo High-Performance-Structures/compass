@@ -816,7 +816,15 @@ em-emoji-picker {
     display: none !important;
   }
 
-  .purchase-order-print-root [data-purchase-order-line="true"],
+  .purchase-order-print-root .purchase-order-items thead {
+    display: table-header-group;
+  }
+
+  .purchase-order-print-root .purchase-order-items tfoot {
+    display: table-row-group;
+  }
+
+  .purchase-order-print-root .purchase-order-items tr,
   .purchase-order-print-root [data-purchase-order-signatures="true"] {
     break-inside: avoid;
     page-break-inside: avoid;
