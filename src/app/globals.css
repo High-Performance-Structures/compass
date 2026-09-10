@@ -442,6 +442,10 @@ em-emoji-picker {
   display: none;
 }
 
+.purchase-order-print-root {
+  display: none;
+}
+
 @media print {
   @page {
     margin: 0.5in;
@@ -785,23 +789,37 @@ em-emoji-picker {
     outline: 1px solid #b91c1c;
   }
 
-  body.po-printing-selected > * {
-    visibility: hidden;
+  body.po-printing-selected > :not([data-purchase-order-print-root="true"]) {
+    display: none !important;
   }
 
-  body.po-printing-selected [data-print-selected="true"],
-  body.po-printing-selected [data-print-selected="true"] * {
-    visibility: visible;
-  }
-
-  body.po-printing-selected [data-print-selected="true"] {
-    position: absolute;
-    inset: 0 auto auto 0;
+  body.po-printing-selected [data-purchase-order-print-root="true"] {
+    display: block !important;
+    position: static !important;
     width: 100%;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
-  body.po-printing-selected [data-print-selected="true"] .print\:hidden {
-    display: none;
+  body.po-printing-selected,
+  body.po-printing-selected .purchase-order-print-root {
+    background: #ffffff !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .purchase-order-print-root .print\:hidden {
+    display: none !important;
+  }
+
+  .purchase-order-print-root [data-purchase-order-line="true"],
+  .purchase-order-print-root [data-purchase-order-signatures="true"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   body.owner-update-printing-selected > :not([data-owner-update-print-root="true"]) {
