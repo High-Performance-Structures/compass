@@ -1165,6 +1165,12 @@ async function sendResendPurchaseOrderEmail(
 
 const PURCHASE_ORDER_EMAIL_CLAIM_LEASE_MS = 5 * 60 * 1000
 const PURCHASE_ORDER_EMAIL_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000
+const PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS =
+  "reconciliation_required"
+const PURCHASE_ORDER_EMAIL_EXPIRY_ERROR =
+  "This email can no longer be retried safely because the provider idempotency window expired. Reconcile delivery before trying again."
+const PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_ERROR =
+  "Email delivery requires authorized reconciliation before another send can be attempted."
 
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -3400,21 +3406,17 @@ export async function sendPurchaseOrderEmail(
     const existingClaimIsExpired =
       existingClaimIsAmbiguous && !existingRetryWindowIsOpen
     if (existingClaimToken && existingClaimIsExpired) {
-      const expiredError =
-        "This email can no longer be retried safely because the provider idempotency window expired. Reconcile delivery before trying again."
       const expiredResult = await db
         .update(projectOperations)
         .set({
-          purchaseOrderEmailClaimToken: null,
-          purchaseOrderEmailClaimRevision: null,
-          purchaseOrderEmailClaimFingerprint: null,
-          purchaseOrderEmailClaimStatus: "failed",
-          purchaseOrderEmailProviderMessageId: null,
-          purchaseOrderEmailClaimError: expiredError,
+          // An ambiguous provider attempt is never an ordinary failure after
+          // the provider's idempotency horizon. Keep the claim and canonical
+          // replay evidence as a durable fence until an authorized
+          // reconciliation decision is made.
+          purchaseOrderEmailClaimStatus:
+            PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS,
+          purchaseOrderEmailClaimError: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR,
           purchaseOrderEmailClaimReclaimAfter: null,
-          purchaseOrderEmailClaimRetryUntil: null,
-          purchaseOrderEmailClaimProviderPayload: null,
-          purchaseOrderEmailClaimProviderCredentialFingerprint: null,
           revision: operation.revision + 1,
           updatedAt: requestNow,
         })
@@ -3438,9 +3440,18 @@ export async function sendPurchaseOrderEmail(
             "This purchase order changed while the email was being reconciled. Refresh and try again.",
         }
       }
-      return { success: false, error: expiredError }
+      return { success: false, error: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR }
     }
     if (existingClaimToken) {
+      if (
+        existingClaimStatus ===
+        PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS
+      ) {
+        return {
+          success: false,
+          error: PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_ERROR,
+        }
+      }
       if (
         operation.purchaseOrderEmailClaimFingerprint !== requestFingerprint
       ) {
@@ -3628,22 +3639,16 @@ export async function sendPurchaseOrderEmail(
 
     const dispatchNow = new Date().toISOString()
     if (claimRetryUntil === null || dispatchNow >= claimRetryUntil) {
-      const expiredError =
-        "This email can no longer be retried safely because the provider idempotency window expired. Reconcile delivery before trying again."
-      const expiredStatus = "failed"
       const expiredResult = await db
         .update(projectOperations)
         .set({
-          purchaseOrderEmailClaimToken: null,
-          purchaseOrderEmailClaimRevision: null,
-          purchaseOrderEmailClaimFingerprint: null,
-          purchaseOrderEmailClaimStatus: expiredStatus,
-          purchaseOrderEmailProviderMessageId: null,
-          purchaseOrderEmailClaimError: expiredError,
+          // The claim was acquired, but dispatch can no longer be retried
+          // safely. Retain the exact provider payload, account fingerprint,
+          // token, and retry horizon for authorized reconciliation.
+          purchaseOrderEmailClaimStatus:
+            PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS,
+          purchaseOrderEmailClaimError: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR,
           purchaseOrderEmailClaimReclaimAfter: null,
-          purchaseOrderEmailClaimRetryUntil: null,
-          purchaseOrderEmailClaimProviderPayload: null,
-          purchaseOrderEmailClaimProviderCredentialFingerprint: null,
           revision: claimRevision + 2,
           updatedAt: dispatchNow,
         })
@@ -3666,7 +3671,7 @@ export async function sendPurchaseOrderEmail(
             "This purchase order changed while the email was being sent. Refresh and try again.",
         }
       }
-      return { success: false, error: expiredError }
+      return { success: false, error: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR }
     }
 
     const delivery = await sendResendPurchaseOrderEmail({

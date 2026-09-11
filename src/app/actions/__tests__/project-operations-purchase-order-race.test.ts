@@ -1445,7 +1445,7 @@ describe("purchase-order supplier email claim fence", () => {
     sqlite.close()
   })
 
-  it("clears an expired uncertain claim so a later send can start a new reservation", async () => {
+  it("keeps an expired uncertain claim fenced so a later send cannot dispatch", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
     seedDraft(sqlite, FIXED_NOW)
@@ -1482,19 +1482,25 @@ describe("purchase-order supplier email claim fence", () => {
       .from(projectOperations)
       .where(eq(projectOperations.id, "po-1"))
       .get()
-    expect(expiredClaim?.purchaseOrderEmailClaimStatus).toBe("failed")
-    expect(expiredClaim?.purchaseOrderEmailClaimToken).toBeNull()
-    expect(expiredClaim?.purchaseOrderEmailClaimReclaimAfter).toBeNull()
-
-    mocks.fetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ id: "resend-after-expiry" }), { status: 200 })
+    expect(expiredClaim?.purchaseOrderEmailClaimStatus).toBe(
+      "reconciliation_required"
     )
+    expect(expiredClaim?.purchaseOrderEmailClaimToken).toBeTruthy()
+    expect(expiredClaim?.purchaseOrderEmailClaimReclaimAfter).toBeNull()
+    expect(expiredClaim?.purchaseOrderEmailClaimRetryUntil).toBe(
+      "2026-08-26T04:00:00.000Z"
+    )
+    expect(expiredClaim?.purchaseOrderEmailClaimProviderPayload).toBeTruthy()
+    expect(
+      expiredClaim?.purchaseOrderEmailClaimProviderCredentialFingerprint
+    ).toBeTruthy()
+
     expect(await sendPurchaseOrderEmail("project-1", "po-1", input)).toEqual({
-      success: true,
-      status: "sent",
-      providerMessageId: "resend-after-expiry",
+      success: false,
+      error:
+        "Email delivery requires authorized reconciliation before another send can be attempted.",
     })
-    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
     sqlite.close()
   })
 
@@ -1721,9 +1727,14 @@ describe("purchase-order supplier email claim fence", () => {
       .from(projectOperations)
       .where(eq(projectOperations.id, "po-1"))
       .get()
-    expect(finalOrder?.purchaseOrderEmailClaimStatus).toBe("failed")
-    expect(finalOrder?.purchaseOrderEmailClaimToken).toBeNull()
-    expect(finalOrder?.purchaseOrderEmailClaimRetryUntil).toBeNull()
+    expect(finalOrder?.purchaseOrderEmailClaimStatus).toBe(
+      "reconciliation_required"
+    )
+    expect(finalOrder?.purchaseOrderEmailClaimToken).toBeTruthy()
+    expect(finalOrder?.purchaseOrderEmailClaimRetryUntil).toBe(
+      "2026-08-26T04:00:00.000Z"
+    )
+    expect(finalOrder?.purchaseOrderEmailClaimProviderPayload).toBeTruthy()
     sqlite.close()
   })
 
@@ -1767,11 +1778,22 @@ describe("purchase-order supplier email claim fence", () => {
       .from(projectOperations)
       .where(eq(projectOperations.id, "po-1"))
       .get()
-    expect(finalOrder?.purchaseOrderEmailClaimStatus).toBe("failed")
-    expect(finalOrder?.purchaseOrderEmailClaimToken).toBeNull()
+    expect(finalOrder?.purchaseOrderEmailClaimStatus).toBe(
+      "reconciliation_required"
+    )
+    expect(finalOrder?.purchaseOrderEmailClaimToken).toBeTruthy()
     expect(finalOrder?.purchaseOrderEmailClaimAttempt).toBe(1)
-    expect(finalOrder?.purchaseOrderEmailClaimRetryUntil).toBeNull()
+    expect(finalOrder?.purchaseOrderEmailClaimRetryUntil).toBe(
+      "2026-08-26T04:00:00.000Z"
+    )
+    expect(finalOrder?.purchaseOrderEmailClaimProviderPayload).toBeTruthy()
     expect(finalOrder?.sagePayloadJson).not.toContain("resend-too-late")
+    expect(await sendPurchaseOrderEmail("project-1", "po-1", input)).toEqual({
+      success: false,
+      error:
+        "Email delivery requires authorized reconciliation before another send can be attempted.",
+    })
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
     sqlite.close()
   })
 
