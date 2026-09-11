@@ -206,6 +206,10 @@ function PurchaseOrderCard({
             <ProjectPurchaseOrderEmailButton
               projectId={projectId}
               purchaseOrderId={order.id}
+              expectedRevision={order.revision}
+              emailDeliveryRequiresReconciliation={
+                order.emailDeliveryRequiresReconciliation
+              }
               poNumber={order.sourceRecordNumber}
               projectLabel={projectLabel}
               supplierName={order.companyName}

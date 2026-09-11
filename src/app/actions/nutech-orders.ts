@@ -952,7 +952,8 @@ export async function releaseNuTechAirlitePurchaseOrder(
                     eq(projectOperations.projectId, projectId),
                     eq(projectOperations.sourceRecordType, "purchase_order"),
                     eq(projectOperations.revision, purchaseOrder.revision + 1),
-                    eq(projectOperations.status, purchaseOrderStatus)
+                    eq(projectOperations.status, purchaseOrderStatus),
+                    isNull(projectOperations.purchaseOrderEmailClaimToken)
                   )
                 )
             )
