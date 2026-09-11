@@ -119,6 +119,7 @@ export type ProjectPurchaseOrderItem = ProjectOperationItem & {
   readonly vendorAddress: string | null
   readonly vendorEmail: string | null
   readonly vendorAcknowledgement: PortalPurchaseOrderAcknowledgement | null
+  readonly emailDeliveryRequiresReconciliation: boolean
 }
 
 export type ProjectPurchaseOrderPhaseOption = {
@@ -304,6 +305,17 @@ export type SendPurchaseOrderEmailInput = {
   readonly message: string
 }
 
+export type ReconcilePurchaseOrderEmailDeliveryInput =
+  | {
+      readonly expectedRevision: number
+      readonly outcome: "delivered"
+      readonly providerMessageId: string | null
+    }
+  | {
+      readonly expectedRevision: number
+      readonly outcome: "not_delivered"
+    }
+
 export type ProjectTaskRecordType =
   | "staff_task"
   | "subcontractor_task"
@@ -458,11 +470,16 @@ async function verifyProjectAccess(
   return db
 }
 
-async function verifyProjectUpdateAccess(
+type ProjectUpdateAccess = {
+  readonly db: ReturnType<typeof getDb>
+  readonly user: AuthUser
+}
+
+async function verifyProjectUpdateAccessWithActor(
   projectId: string,
   featureId: string = "project-hub",
   internalStaffOnly = false
-): Promise<ReturnType<typeof getDb>> {
+): Promise<ProjectUpdateAccess> {
   const user = await requireAuth()
   if (internalStaffOnly || featureId === "purchase-orders") {
     ensureActiveInternalPurchaseOrderStaff(user)
@@ -490,7 +507,20 @@ async function verifyProjectUpdateAccess(
     throw new Error("Project not found")
   }
 
-  return db
+  return { db, user }
+}
+
+async function verifyProjectUpdateAccess(
+  projectId: string,
+  featureId: string = "project-hub",
+  internalStaffOnly = false
+): Promise<ReturnType<typeof getDb>> {
+  const access = await verifyProjectUpdateAccessWithActor(
+    projectId,
+    featureId,
+    internalStaffOnly
+  )
+  return access.db
 }
 
 function cleanText(value: string | null): string | null {
@@ -1750,6 +1780,9 @@ export async function getProjectPurchaseOrders(
       vendorEmail: vendorDetails.email,
       vendorAcknowledgement: parsePortalPurchaseOrderPayload(row.sagePayloadJson)
         .acknowledgement,
+      emailDeliveryRequiresReconciliation:
+        row.purchaseOrderEmailClaimStatus ===
+        PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS,
     }
   })
 }
@@ -3324,6 +3357,140 @@ export async function deleteProjectTodo(
   }
 }
 
+export async function reconcilePurchaseOrderEmailDelivery(
+  projectId: string,
+  purchaseOrderId: string,
+  input: ReconcilePurchaseOrderEmailDeliveryInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const { db, user } = await verifyProjectUpdateAccessWithActor(
+      projectId,
+      "purchase-orders",
+      true
+    )
+    const [operation] = await db
+      .select()
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+      .limit(1)
+
+    if (!operation) {
+      return { success: false, error: "Purchase order not found." }
+    }
+    if (
+      operation.revision !== input.expectedRevision ||
+      operation.purchaseOrderEmailClaimStatus !==
+        PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS ||
+      operation.purchaseOrderEmailClaimToken === null
+    ) {
+      return {
+        success: false,
+        error:
+          "This email reconciliation changed after you opened it. Refresh and review the latest delivery state.",
+      }
+    }
+
+    const providerPayload = parsePurchaseOrderEmailProviderPayload(
+      operation.purchaseOrderEmailClaimProviderPayload
+    )
+    if (input.outcome === "delivered" && providerPayload === null) {
+      return {
+        success: false,
+        error:
+          "The retained provider payload is unavailable. Do not mark this email delivered until its recipients are verified.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    const providerMessageId =
+      input.outcome === "delivered" ? cleanText(input.providerMessageId) : null
+    const reconciliationEvidence = JSON.stringify({
+      version: 1,
+      outcome: input.outcome,
+      reconciledAt: now,
+      reconciledByUserId: user.id,
+      providerMessageId,
+      claimFingerprint: operation.purchaseOrderEmailClaimFingerprint,
+      providerCredentialFingerprint:
+        operation.purchaseOrderEmailClaimProviderCredentialFingerprint,
+    })
+    const reconciled = await db
+      .update(projectOperations)
+      .set({
+        status:
+          input.outcome === "delivered"
+            ? purchaseOrderStatusAfterEmail(operation.status)
+            : operation.status,
+        sagePayloadJson:
+          input.outcome === "delivered" && providerPayload !== null
+            ? withPortalPurchaseOrderRecipients(operation.sagePayloadJson, [
+                ...providerPayload.to,
+                ...providerPayload.cc,
+              ])
+            : operation.sagePayloadJson,
+        purchaseOrderEmailClaimStatus:
+          input.outcome === "delivered" ? "sent" : "failed",
+        purchaseOrderEmailClaimToken: null,
+        purchaseOrderEmailProviderMessageId: providerMessageId,
+        purchaseOrderEmailClaimError:
+          input.outcome === "delivered"
+            ? null
+            : "Authorized reconciliation confirmed that the email was not delivered.",
+        purchaseOrderEmailClaimReclaimAfter: null,
+        purchaseOrderEmailClaimRetryUntil: null,
+        purchaseOrderEmailClaimProviderPayload: null,
+        purchaseOrderEmailClaimProviderCredentialFingerprint: null,
+        purchaseOrderEmailReconciliationOutcome: input.outcome,
+        purchaseOrderEmailReconciledAt: now,
+        purchaseOrderEmailReconciledByUserId: user.id,
+        purchaseOrderEmailReconciliationEvidence: reconciliationEvidence,
+        revision: operation.revision + 1,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order"),
+          eq(projectOperations.revision, input.expectedRevision),
+          eq(
+            projectOperations.purchaseOrderEmailClaimStatus,
+            PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS
+          ),
+          eq(
+            projectOperations.purchaseOrderEmailClaimToken,
+            operation.purchaseOrderEmailClaimToken
+          )
+        )
+      )
+
+    if (reconciled.meta.changes !== 1) {
+      return {
+        success: false,
+        error:
+          "This email reconciliation changed while it was being saved. Refresh and review the latest delivery state.",
+      }
+    }
+
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    return { success: true, id: purchaseOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to reconcile purchase order email delivery.",
+    }
+  }
+}
+
 export async function sendPurchaseOrderEmail(
   projectId: string,
   purchaseOrderId: string,
@@ -3532,6 +3699,7 @@ export async function sendPurchaseOrderEmail(
       vendorAcknowledgement: parsePortalPurchaseOrderPayload(
         operation.sagePayloadJson
       ).acknowledgement,
+      emailDeliveryRequiresReconciliation: false,
     }
     const senderName = user.displayName ?? user.email
     const emailInput = {

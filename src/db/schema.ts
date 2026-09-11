@@ -1567,6 +1567,16 @@ export const projectOperations = sqliteTable("project_operations", {
   purchaseOrderEmailClaimProviderCredentialFingerprint: text(
     "purchase_order_email_claim_provider_credential_fingerprint"
   ),
+  purchaseOrderEmailReconciliationOutcome: text(
+    "purchase_order_email_reconciliation_outcome"
+  ),
+  purchaseOrderEmailReconciledAt: text("purchase_order_email_reconciled_at"),
+  purchaseOrderEmailReconciledByUserId: text(
+    "purchase_order_email_reconciled_by_user_id"
+  ),
+  purchaseOrderEmailReconciliationEvidence: text(
+    "purchase_order_email_reconciliation_evidence"
+  ),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })

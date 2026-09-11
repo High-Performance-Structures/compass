@@ -52,6 +52,7 @@ import {
   getProjectSageSyncQueue,
   queueProjectOperationForSageSync,
   queueProjectOperationsForSageSync,
+  reconcilePurchaseOrderEmailDelivery,
   sendPurchaseOrderEmail,
   updatePurchaseOrderRequest,
 } from "@/app/actions/project-operations"
@@ -230,6 +231,10 @@ function createSchema(sqlite: Sqlite): void {
       purchase_order_email_claim_retry_until TEXT,
       purchase_order_email_claim_provider_payload TEXT,
       purchase_order_email_claim_provider_credential_fingerprint TEXT,
+      purchase_order_email_reconciliation_outcome TEXT,
+      purchase_order_email_reconciled_at TEXT,
+      purchase_order_email_reconciled_by_user_id TEXT,
+      purchase_order_email_reconciliation_evidence TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -596,6 +601,14 @@ describe("purchase-order action authorization boundary", () => {
           cc: null,
           subject: "Purchase order",
           message: "Please review.",
+        }),
+    ],
+    [
+      "supplier email reconciliation",
+      () =>
+        reconcilePurchaseOrderEmailDelivery("project-1", "po-1", {
+          expectedRevision: 1,
+          outcome: "not_delivered",
         }),
     ],
   ])("denies an active external caller from the %s before database work", async (_name, invoke) => {
@@ -1504,6 +1517,149 @@ describe("purchase-order supplier email claim fence", () => {
     sqlite.close()
   })
 
+  it("lets authorized staff terminalize an expired ambiguous claim as not delivered and send again", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    const emailActor = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const emailDb = drizzle(emailActor, {
+      schema: { organizations, projectOperations, projectPurchaseOrderLines, projects },
+    })
+    mocks.getDb.mockReturnValue(emailDb)
+    mocks.fetch.mockRejectedValueOnce(new TypeError("network connection reset"))
+
+    const input = {
+      to: "vendor@example.com",
+      cc: null,
+      subject: "Purchase order",
+      message: "Please review.",
+    } as const
+    await sendPurchaseOrderEmail("project-1", "po-1", input)
+    vi.setSystemTime(new Date("2026-08-27T04:00:00.000Z"))
+    await sendPurchaseOrderEmail("project-1", "po-1", input)
+
+    const expiredClaim = await emailDb
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.id, "po-1"))
+      .get()
+    expect(expiredClaim?.purchaseOrderEmailClaimStatus).toBe(
+      "reconciliation_required"
+    )
+    if (!expiredClaim) throw new Error("expired claim missing")
+
+    await expect(
+      reconcilePurchaseOrderEmailDelivery("project-1", "po-1", {
+        expectedRevision: expiredClaim.revision,
+        outcome: "not_delivered",
+      })
+    ).resolves.toEqual({ success: true, id: "po-1" })
+
+    const reconciledOrder = await emailDb
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.id, "po-1"))
+      .get()
+    expect(reconciledOrder?.status).toBe("draft")
+    expect(reconciledOrder?.purchaseOrderEmailClaimStatus).toBe("failed")
+    expect(reconciledOrder?.purchaseOrderEmailClaimToken).toBeNull()
+    expect(reconciledOrder?.purchaseOrderEmailClaimRetryUntil).toBeNull()
+    expect(reconciledOrder?.purchaseOrderEmailClaimProviderPayload).toBeNull()
+    expect(
+      reconciledOrder?.purchaseOrderEmailClaimProviderCredentialFingerprint
+    ).toBeNull()
+    expect(reconciledOrder?.purchaseOrderEmailReconciliationOutcome).toBe(
+      "not_delivered"
+    )
+    expect(reconciledOrder?.purchaseOrderEmailReconciledByUserId).toBe("staff-1")
+    expect(reconciledOrder?.purchaseOrderEmailReconciledAt).toBe(
+      "2026-08-27T04:00:00.000Z"
+    )
+    expect(reconciledOrder?.purchaseOrderEmailReconciliationEvidence).toContain(
+      "claimFingerprint"
+    )
+
+    mocks.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "resend-after-reconciliation" }), {
+        status: 200,
+      })
+    )
+    await expect(sendPurchaseOrderEmail("project-1", "po-1", input)).resolves.toEqual({
+      success: true,
+      status: "sent",
+      providerMessageId: "resend-after-reconciliation",
+    })
+    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    sqlite.close()
+  })
+
+  it("lets authorized staff confirm delivery without another provider call", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    const emailActor = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const emailDb = drizzle(emailActor, {
+      schema: { organizations, projectOperations, projectPurchaseOrderLines, projects },
+    })
+    mocks.getDb.mockReturnValue(emailDb)
+    mocks.fetch.mockRejectedValueOnce(new TypeError("network connection reset"))
+
+    const input = {
+      to: "vendor@example.com",
+      cc: "project-manager@example.com",
+      subject: "Purchase order",
+      message: "Please review.",
+    } as const
+    await sendPurchaseOrderEmail("project-1", "po-1", input)
+    vi.setSystemTime(new Date("2026-08-27T04:00:00.000Z"))
+    await sendPurchaseOrderEmail("project-1", "po-1", input)
+
+    const expiredClaim = await emailDb
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.id, "po-1"))
+      .get()
+    if (!expiredClaim) throw new Error("expired claim missing")
+
+    await expect(
+      reconcilePurchaseOrderEmailDelivery("project-1", "po-1", {
+        expectedRevision: expiredClaim.revision,
+        outcome: "delivered",
+        providerMessageId: "resend-reconciled",
+      })
+    ).resolves.toEqual({ success: true, id: "po-1" })
+
+    const reconciledOrder = await emailDb
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.id, "po-1"))
+      .get()
+    expect(reconciledOrder?.status).toBe("sent")
+    expect(reconciledOrder?.purchaseOrderEmailClaimStatus).toBe("sent")
+    expect(reconciledOrder?.purchaseOrderEmailClaimToken).toBeNull()
+    expect(reconciledOrder?.purchaseOrderEmailProviderMessageId).toBe(
+      "resend-reconciled"
+    )
+    expect(reconciledOrder?.purchaseOrderEmailReconciliationOutcome).toBe(
+      "delivered"
+    )
+    expect(reconciledOrder?.purchaseOrderEmailReconciledByUserId).toBe("staff-1")
+    expect(reconciledOrder?.purchaseOrderEmailReconciledAt).toBe(
+      "2026-08-27T04:00:00.000Z"
+    )
+    expect(reconciledOrder?.purchaseOrderEmailReconciliationEvidence).toContain(
+      "resend-reconciled"
+    )
+    expect(reconciledOrder?.sagePayloadJson).toContain("vendor@example.com")
+    expect(reconciledOrder?.sagePayloadJson).toContain(
+      "project-manager@example.com"
+    )
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    sqlite.close()
+  })
+
   it("refuses ambiguous recovery through a different provider credential", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
@@ -2136,6 +2292,79 @@ describe("Nu-Tech purchase-order release versus supplier email", () => {
     expect(storedOrder?.purchaseOrderEmailClaimStatus).toBe("sent")
     expect(storedWorkflow?.purchaseOrderReleasedAt).toBeNull()
     expect(storedWorkflow?.orderStatus).toBe("customer_approved")
+    sqlite.close()
+  })
+
+  it("keeps the workflow unreleased when an email claim revises an already-sent order before the release batch", async () => {
+    let releaseBatch: () => void = () => undefined
+    const batchPaused = new Promise<void>((resolve) => {
+      releaseBatch = resolve
+    })
+    let signalBatch: () => void = () => undefined
+    const batchReached = new Promise<void>((resolve) => {
+      signalBatch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare("UPDATE project_operations SET status = 'sent' WHERE id = ?").run("po-1")
+    const releaseDb = drizzle(
+      // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+      createD1(sqlite, undefined, {
+        paused: batchPaused,
+        signal: signalBatch,
+      }),
+      { schema: { projectOperations, projects, nuTechOrderWorkflows, nuTechOrderItems } }
+    )
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const emailDb = drizzle(createD1(sqlite), {
+      schema: { projectOperations, projectPurchaseOrderLines, projects },
+    })
+    mocks.getDb.mockReturnValueOnce(releaseDb).mockReturnValueOnce(emailDb)
+
+    const releaseAttempt = releaseNuTechAirlitePurchaseOrder("project-1")
+    await batchReached
+
+    let releaseProvider: (response: Response) => void = () => undefined
+    const providerStarted = new Promise<void>((resolve) => {
+      mocks.fetch.mockImplementationOnce(
+        async (): Promise<Response> => {
+          resolve()
+          return await new Promise<Response>((resolveResponse) => {
+            releaseProvider = resolveResponse
+          })
+        }
+      )
+    })
+    const emailAttempt = sendPurchaseOrderEmail("project-1", "po-1", {
+      to: "vendor@example.com",
+      cc: null,
+      subject: "Purchase order",
+      message: "Please review.",
+    })
+    await providerStarted
+
+    releaseBatch()
+    await expect(releaseAttempt).resolves.toEqual({
+      success: false,
+      error: "This purchase order is being emailed. Try again after delivery finishes.",
+    })
+
+    const storedWorkflowBeforeEmailCompletion = await emailDb
+      .select()
+      .from(nuTechOrderWorkflows)
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .get()
+    expect(storedWorkflowBeforeEmailCompletion?.purchaseOrderReleasedAt).toBeNull()
+    expect(storedWorkflowBeforeEmailCompletion?.orderStatus).toBe("customer_approved")
+
+    releaseProvider(new Response(JSON.stringify({ id: "resend-race" }), { status: 200 }))
+    await expect(emailAttempt).resolves.toEqual({
+      success: true,
+      status: "sent",
+      providerMessageId: "resend-race",
+    })
     sqlite.close()
   })
 
