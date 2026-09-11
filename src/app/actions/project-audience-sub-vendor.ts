@@ -393,13 +393,17 @@ export async function respondToSubVendorPurchaseOrder(
               submittedAt: now,
             }
           ),
+          revision: purchaseOrder.revision + 1,
           updatedAt: now,
         })
         .where(
           and(
             eq(projectOperations.id, purchaseOrderId),
             eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
             eq(projectOperations.status, purchaseOrder.status),
+            eq(projectOperations.revision, purchaseOrder.revision),
+            isNull(projectOperations.purchaseOrderEmailClaimToken),
             eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
           )
         )

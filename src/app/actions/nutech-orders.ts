@@ -883,6 +883,34 @@ export async function releaseNuTechAirlitePurchaseOrder(
       purchaseOrder.status === "draft" || purchaseOrder.status === "approved"
         ? "sent"
         : purchaseOrder.status
+    const unchangedReleaseReadiness = () =>
+      and(
+        eq(nuTechOrderWorkflows.id, order.id),
+        eq(nuTechOrderWorkflows.customerType, order.customerType),
+        eq(nuTechOrderWorkflows.pricingMode, order.pricingMode),
+        eq(nuTechOrderWorkflows.quantitySource, order.quantitySource),
+        eq(
+          nuTechOrderWorkflows.takeoffAcknowledgementStatus,
+          order.takeoffAcknowledgementStatus
+        ),
+        eq(
+          nuTechOrderWorkflows.airliteWorkbookStatus,
+          order.airliteWorkbookStatus
+        ),
+        eq(
+          nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+          purchaseOrderId
+        ),
+        eq(nuTechOrderWorkflows.orderStatus, order.orderStatus),
+        eq(nuTechOrderWorkflows.updatedAt, order.updatedAt),
+        isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+        exists(
+          access.db
+            .select({ id: nuTechOrderItems.id })
+            .from(nuTechOrderItems)
+            .where(eq(nuTechOrderItems.workflowId, order.id))
+        )
+      )
     const releaseResults = await access.db.batch([
       access.db
         .update(projectOperations)
@@ -898,16 +926,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
               access.db
                 .select({ id: nuTechOrderWorkflows.id })
                 .from(nuTechOrderWorkflows)
-                .where(
-                  and(
-                    eq(nuTechOrderWorkflows.id, order.id),
-                    eq(
-                      nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
-                      purchaseOrderId
-                    ),
-                    isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
-                  )
-                )
+                .where(unchangedReleaseReadiness())
             )
           )
         ),
@@ -922,9 +941,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
         })
         .where(
           and(
-            eq(nuTechOrderWorkflows.id, order.id),
-            isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
-            eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, purchaseOrderId),
+            unchangedReleaseReadiness(),
             exists(
               access.db
                 .select({ id: projectOperations.id })

@@ -337,34 +337,6 @@
       "when": 1787671000000,
       "tag": "0137_cherish_anonymous_submission",
       "breakpoints": true
-    },
-    {
-      "idx": 48,
-      "version": "6",
-      "when": 1789086786350,
-      "tag": "0160_project_operation_revision",
-      "breakpoints": true
-    },
-    {
-      "idx": 49,
-      "version": "6",
-      "when": 1789086787350,
-      "tag": "0161_purchase_order_email_claim",
-      "breakpoints": true
-    },
-    {
-      "idx": 50,
-      "version": "6",
-      "when": 1789086788350,
-      "tag": "0162_purchase_order_email_claim_recovery",
-      "breakpoints": true
-    },
-    {
-      "idx": 51,
-      "version": "6",
-      "when": 1789086789350,
-      "tag": "0163_nutech_order_item_release_guards",
-      "breakpoints": true
     }
   ]
 }

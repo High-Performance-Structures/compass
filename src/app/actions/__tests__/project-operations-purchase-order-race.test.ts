@@ -12,7 +12,11 @@ import {
   projectPurchaseOrderLines,
   projects,
 } from "@/db/schema"
-import { nuTechOrderItems, nuTechOrderWorkflows } from "@/db/schema-nutech"
+import {
+  nuTechCatalogVersions,
+  nuTechOrderItems,
+  nuTechOrderWorkflows,
+} from "@/db/schema-nutech"
 
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
@@ -55,6 +59,7 @@ import {
   getNuTechOrderDashboard,
   getProjectNuTechOrderWorkspace,
   releaseNuTechAirlitePurchaseOrder,
+  saveProjectNuTechOrder,
 } from "@/app/actions/nutech-orders"
 import {
   deleteNuTechOrderItem,
@@ -261,9 +266,16 @@ function createSchema(sqlite: Sqlite): void {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE nutech_catalog_versions (
+      id TEXT PRIMARY KEY NOT NULL,
+      organization_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      effective_date TEXT NOT NULL
+    );
+
     CREATE TABLE nutech_order_workflows (
       id TEXT PRIMARY KEY NOT NULL,
-      project_id TEXT NOT NULL,
+      project_id TEXT NOT NULL UNIQUE,
       catalog_version_id TEXT,
       customer_type TEXT NOT NULL,
       pricing_mode TEXT NOT NULL,
@@ -2172,6 +2184,91 @@ describe("Nu-Tech purchase-order release versus supplier email", () => {
     expect(storedOrder?.revision).toBe(1)
     expect(storedWorkflow?.purchaseOrderReleasedAt).toBe(FIXED_NOW)
     expect(storedWorkflow?.orderStatus).toBe("po_released")
+    sqlite.close()
+  })
+
+  it("rejects release when a concurrent order save makes the workbook stale", async () => {
+    let releaseBatch: () => void = () => undefined
+    const batchPaused = new Promise<void>((resolve) => {
+      releaseBatch = resolve
+    })
+    let signalBatch: () => void = () => undefined
+    const batchReached = new Promise<void>((resolve) => {
+      signalBatch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    const releaseDb = drizzle(
+      // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+      createD1(sqlite, undefined, {
+        paused: batchPaused,
+        signal: signalBatch,
+      }),
+      { schema: { projectOperations, projects, nuTechOrderWorkflows, nuTechOrderItems } }
+    )
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const saveDb = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projectOperations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+      },
+    })
+    mocks.getDb.mockReturnValueOnce(releaseDb).mockReturnValueOnce(saveDb)
+
+    const releaseAttempt = releaseNuTechAirlitePurchaseOrder("project-1")
+    await batchReached
+
+    await expect(
+      saveProjectNuTechOrder("project-1", {
+        customerType: "new",
+        pricingMode: "standard",
+        quantitySource: "customer_provided",
+        takeoffAcknowledgementStatus: "not_required",
+        scopeType: "block_sale",
+        blockQuantityNotes: null,
+        bracingIncluded: false,
+        bracingRentalStartDate: null,
+        bracingRentalEndDate: null,
+        bracingNotes: null,
+        deliveryMethod: "delivery",
+        requestedDeliveryDate: "2026-09-30",
+        airlitePurchaseOrderOperationId: "po-1",
+        orderStatus: "customer_approved",
+        vendorConfirmationNumber: null,
+        vendorInvoiceNumber: null,
+        vendorInvoiceStatus: "not_received",
+        vendorInvoiceReceivedAt: null,
+        notes: null,
+      })
+    ).resolves.toEqual({ success: true, id: "workflow-1" })
+
+    releaseBatch()
+    await expect(releaseAttempt).resolves.toEqual({
+      success: false,
+      error: "This purchase order is being emailed. Try again after delivery finishes.",
+    })
+
+    const storedOrder = await releaseDb
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.id, "po-1"))
+      .get()
+    const storedWorkflow = await releaseDb
+      .select()
+      .from(nuTechOrderWorkflows)
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .get()
+    expect(storedOrder?.status).toBe("draft")
+    expect(storedOrder?.revision).toBe(0)
+    expect(storedWorkflow?.airliteWorkbookStatus).toBe("stale")
+    expect(storedWorkflow?.purchaseOrderReleasedAt).toBeNull()
+    expect(storedWorkflow?.orderStatus).toBe("customer_approved")
     sqlite.close()
   })
 })
