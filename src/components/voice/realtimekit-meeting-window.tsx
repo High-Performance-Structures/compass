@@ -7,6 +7,10 @@ import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
+import {
+  createPictureInPictureTileRegistry,
+  selectPictureInPictureVideo,
+} from "@/lib/realtimekit/picture-in-picture"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
 
 type TranscriptEntry = {
@@ -438,6 +442,7 @@ export function RealtimeKitMeetingWindow({
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
+  const pipTileRegistryRef = React.useRef(createPictureInPictureTileRegistry())
 
   const getVoiceTracks = React.useCallback((): readonly MediaStreamTrack[] => {
     if (!meeting) return []
@@ -505,6 +510,14 @@ export function RealtimeKitMeetingWindow({
       videoTrackRef.current = null
     }
   }, [])
+
+  React.useEffect(() => {
+    if (!meeting || loading || error) return
+    const meetingUi = meetingUiRef.current
+    if (!meetingUi) return
+
+    return pipTileRegistryRef.current.attach(meetingUi)
+  }, [error, loading, meeting])
 
   React.useEffect(() => {
     if (!meeting || loading || error) return
@@ -864,16 +877,9 @@ export function RealtimeKitMeetingWindow({
         return
       }
 
-      const videos = Array.from(document.querySelectorAll("video"))
-      const activeVideo =
-        videos.find(
-          (video) =>
-            !video.disablePictureInPicture &&
-            video.videoWidth > 0 &&
-            video.videoHeight > 0
-        ) ??
-        videos.find((video) => !video.disablePictureInPicture) ??
-        null
+      const activeVideo = selectPictureInPictureVideo(
+        pipTileRegistryRef.current.getCandidates(meeting.self.id)
+      )
 
       if (!activeVideo) {
         setScreenShareMessage("Turn video on before starting picture-in-picture.")
@@ -891,7 +897,7 @@ export function RealtimeKitMeetingWindow({
       setPipStatus("error")
       setScreenShareMessage(errorMessageForCause(cause))
     }
-  }, [canUsePictureInPicture])
+  }, [canUsePictureInPicture, meeting])
 
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
