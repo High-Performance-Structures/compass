@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -272,6 +272,7 @@ export async function respondToSubVendorPurchaseOrder(
         companyName: projectOperations.companyName,
         sageVendorName: projectOperations.sageVendorName,
         sagePayloadJson: projectOperations.sagePayloadJson,
+        revision: projectOperations.revision,
         updatedAt: projectOperations.updatedAt,
       })
       .from(projectOperations)
@@ -329,13 +330,17 @@ export async function respondToSubVendorPurchaseOrder(
               submittedAt: now,
             }
           ),
+          revision: purchaseOrder.revision + 1,
           updatedAt: now,
         })
         .where(
           and(
             eq(projectOperations.id, purchaseOrderId),
             eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
             eq(projectOperations.status, purchaseOrder.status),
+            eq(projectOperations.revision, purchaseOrder.revision),
+            isNull(projectOperations.purchaseOrderEmailClaimToken),
             eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
           )
         )
