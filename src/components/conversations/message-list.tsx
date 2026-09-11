@@ -165,7 +165,7 @@ export function MessageList({
       messages: [...initialMessages].reverse(),
       hasMore: true,
     })
-    const frame = requestAnimationFrame(() => scrollToNewest("auto"))
+    const frame = requestAnimationFrame(() => scrollToNewest("smooth"))
     return () => cancelAnimationFrame(frame)
   }, [initialMessages, scrollToNewest])
 
