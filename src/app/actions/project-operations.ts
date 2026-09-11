@@ -1041,36 +1041,164 @@ type PurchaseOrderEmailProviderPayload = Readonly<{
   html: string
 }>
 
+type PurchaseOrderEmailProviderSnapshot = Readonly<{
+  version: 1
+  provider: "resend"
+  providerCredentialFingerprint: string | null
+  requestIntentFingerprint: string
+  authenticatedSender: Readonly<{
+    userId: string
+    email: string
+    displayName: string | null
+  }>
+  requestBody: string
+  payload: PurchaseOrderEmailProviderPayload
+  serialized: string
+}>
+
 function isStringArray(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
 }
 
-function parsePurchaseOrderEmailProviderPayload(
-  value: string | null
-): PurchaseOrderEmailProviderPayload | null {
-  if (!value) return null
+function serializePurchaseOrderEmailProviderPayload(
+  payload: PurchaseOrderEmailProviderPayload
+): string {
+  const requestBody: Record<string, unknown> = {
+    from: payload.from,
+    to: payload.to,
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html,
+  }
+  if (payload.cc.length > 0) {
+    requestBody.cc = payload.cc
+  }
+  return JSON.stringify(requestBody)
+}
 
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort()
+  const sortedExpected = [...expected].sort()
+  return (
+    actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index])
+  )
+}
+
+function parsePurchaseOrderEmailProviderRequestBody(
+  value: string
+): PurchaseOrderEmailProviderPayload | null {
   try {
     const parsed: unknown = JSON.parse(value)
+    if (!isRecord(parsed)) return null
+    const expectedKeys =
+      parsed.cc === undefined
+        ? ["from", "html", "subject", "text", "to"]
+        : ["cc", "from", "html", "subject", "text", "to"]
     if (
-      !isRecord(parsed) ||
+      !hasExactKeys(parsed, expectedKeys) ||
       typeof parsed.from !== "string" ||
       !isStringArray(parsed.to) ||
-      !isStringArray(parsed.cc) ||
+      (parsed.cc !== undefined && !isStringArray(parsed.cc)) ||
       typeof parsed.subject !== "string" ||
       typeof parsed.text !== "string" ||
       typeof parsed.html !== "string"
     ) {
       return null
     }
-    return {
+    const payload = {
       from: parsed.from,
       to: parsed.to,
-      cc: parsed.cc,
+      cc: parsed.cc ?? [],
       subject: parsed.subject,
       text: parsed.text,
       html: parsed.html,
     }
+    return serializePurchaseOrderEmailProviderPayload(payload) === value
+      ? payload
+      : null
+  } catch {
+    return null
+  }
+}
+
+function createPurchaseOrderEmailProviderSnapshot(input: {
+  readonly payload: PurchaseOrderEmailProviderPayload
+  readonly providerCredentialFingerprint: string | null
+  readonly requestIntentFingerprint: string
+  readonly authenticatedSender: Readonly<{
+    userId: string
+    email: string
+    displayName: string | null
+  }>
+}): PurchaseOrderEmailProviderSnapshot {
+  const requestBody = serializePurchaseOrderEmailProviderPayload(input.payload)
+  const persisted = {
+    version: 1 as const,
+    provider: "resend" as const,
+    providerCredentialFingerprint: input.providerCredentialFingerprint,
+    requestIntentFingerprint: input.requestIntentFingerprint,
+    authenticatedSender: input.authenticatedSender,
+    requestBody,
+  }
+  return {
+    ...persisted,
+    payload: input.payload,
+    serialized: JSON.stringify(persisted),
+  }
+}
+
+function parsePurchaseOrderEmailProviderSnapshot(
+  value: string | null
+): PurchaseOrderEmailProviderSnapshot | null {
+  if (!value) return null
+
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (
+      !isRecord(parsed) ||
+      !hasExactKeys(parsed, [
+        "authenticatedSender",
+        "provider",
+        "providerCredentialFingerprint",
+        "requestBody",
+        "requestIntentFingerprint",
+        "version",
+      ]) ||
+      parsed.version !== 1 ||
+      parsed.provider !== "resend" ||
+      !(
+        parsed.providerCredentialFingerprint === null ||
+        (typeof parsed.providerCredentialFingerprint === "string" &&
+          /^[a-f0-9]{64}$/.test(parsed.providerCredentialFingerprint))
+      ) ||
+      typeof parsed.requestIntentFingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(parsed.requestIntentFingerprint) ||
+      !isRecord(parsed.authenticatedSender) ||
+      !hasExactKeys(parsed.authenticatedSender, ["displayName", "email", "userId"]) ||
+      typeof parsed.authenticatedSender.userId !== "string" ||
+      typeof parsed.authenticatedSender.email !== "string" ||
+      !(
+        parsed.authenticatedSender.displayName === null ||
+        typeof parsed.authenticatedSender.displayName === "string"
+      ) ||
+      typeof parsed.requestBody !== "string"
+    ) {
+      return null
+    }
+    const payload = parsePurchaseOrderEmailProviderRequestBody(parsed.requestBody)
+    if (payload === null) return null
+    const snapshot = createPurchaseOrderEmailProviderSnapshot({
+      payload,
+      providerCredentialFingerprint: parsed.providerCredentialFingerprint,
+      requestIntentFingerprint: parsed.requestIntentFingerprint,
+      authenticatedSender: {
+        userId: parsed.authenticatedSender.userId,
+        email: parsed.authenticatedSender.email,
+        displayName: parsed.authenticatedSender.displayName,
+      },
+    })
+    return snapshot.serialized === value ? snapshot : null
   } catch {
     return null
   }
@@ -1079,7 +1207,7 @@ function parsePurchaseOrderEmailProviderPayload(
 async function sendResendPurchaseOrderEmail(
   input: {
     readonly apiKey: string | null
-    readonly payload: PurchaseOrderEmailProviderPayload
+    readonly snapshot: PurchaseOrderEmailProviderSnapshot
     readonly idempotencyKey: string
   }
 ): Promise<{
@@ -1097,17 +1225,6 @@ async function sendResendPurchaseOrderEmail(
     }
   }
 
-  const requestBody: Record<string, unknown> = {
-    from: input.payload.from,
-    to: input.payload.to,
-    subject: input.payload.subject,
-    text: input.payload.text,
-    html: input.payload.html,
-  }
-  if (input.payload.cc.length > 0) {
-    requestBody.cc = input.payload.cc
-  }
-
   let response: Response
   try {
     response = await fetch("https://api.resend.com/emails", {
@@ -1117,7 +1234,7 @@ async function sendResendPurchaseOrderEmail(
         "Content-Type": "application/json",
         "Idempotency-Key": input.idempotencyKey,
       },
-      body: JSON.stringify(requestBody),
+      body: input.snapshot.requestBody,
     })
   } catch {
     return {
@@ -1212,19 +1329,26 @@ async function sha256Hex(value: string): Promise<string> {
   ).join("")
 }
 
-async function purchaseOrderEmailRequestFingerprint(input: {
+async function purchaseOrderEmailRequestFingerprint(
+  snapshot: PurchaseOrderEmailProviderSnapshot
+): Promise<string> {
+  return sha256Hex(snapshot.serialized)
+}
+
+async function purchaseOrderEmailIntentFingerprint(input: {
   readonly to: readonly string[]
   readonly cc: readonly string[]
   readonly subject: string
   readonly message: string
 }): Promise<string> {
-  const serialized = JSON.stringify({
-    to: input.to,
-    cc: input.cc,
-    subject: input.subject,
-    message: input.message,
-  })
-  return sha256Hex(serialized)
+  return sha256Hex(
+    JSON.stringify({
+      to: input.to,
+      cc: input.cc,
+      subject: input.subject,
+      message: input.message,
+    })
+  )
 }
 
 function operationToScheduleItem(
@@ -3396,14 +3520,21 @@ export async function reconcilePurchaseOrderEmailDelivery(
       }
     }
 
-    const providerPayload = parsePurchaseOrderEmailProviderPayload(
+    const providerSnapshot = parsePurchaseOrderEmailProviderSnapshot(
       operation.purchaseOrderEmailClaimProviderPayload
     )
-    if (input.outcome === "delivered" && providerPayload === null) {
+    const retainedFingerprint = providerSnapshot
+      ? await purchaseOrderEmailRequestFingerprint(providerSnapshot)
+      : null
+    if (
+      input.outcome === "delivered" &&
+      (providerSnapshot === null ||
+        retainedFingerprint !== operation.purchaseOrderEmailClaimFingerprint)
+    ) {
       return {
         success: false,
         error:
-          "The retained provider payload is unavailable. Do not mark this email delivered until its recipients are verified.",
+          "The retained provider snapshot is unavailable or changed. Do not mark this email delivered until its recipients are verified.",
       }
     }
 
@@ -3428,10 +3559,10 @@ export async function reconcilePurchaseOrderEmailDelivery(
             ? purchaseOrderStatusAfterEmail(operation.status)
             : operation.status,
         sagePayloadJson:
-          input.outcome === "delivered" && providerPayload !== null
+          input.outcome === "delivered" && providerSnapshot !== null
             ? withPortalPurchaseOrderRecipients(operation.sagePayloadJson, [
-                ...providerPayload.to,
-                ...providerPayload.cc,
+                ...providerSnapshot.payload.to,
+                ...providerSnapshot.payload.cc,
               ])
             : operation.sagePayloadJson,
         purchaseOrderEmailClaimStatus:
@@ -3512,6 +3643,12 @@ export async function sendPurchaseOrderEmail(
     const providerCredentialFingerprint = providerApiKey
       ? await sha256Hex(providerApiKey)
       : null
+    const requestIntentFingerprint = await purchaseOrderEmailIntentFingerprint({
+      to,
+      cc,
+      subject,
+      message,
+    })
 
     if (to.length === 0) {
       return { success: false, error: "Enter at least one supplier email." }
@@ -3548,15 +3685,9 @@ export async function sendPurchaseOrderEmail(
       return { success: false, error: "Purchase order not found." }
     }
 
-    const requestFingerprint = await purchaseOrderEmailRequestFingerprint({
-      to,
-      cc,
-      subject,
-      message,
-    })
     const existingClaimToken = operation.purchaseOrderEmailClaimToken
     const existingClaimStatus = operation.purchaseOrderEmailClaimStatus
-    const existingProviderPayload = parsePurchaseOrderEmailProviderPayload(
+    const existingProviderSnapshot = parsePurchaseOrderEmailProviderSnapshot(
       operation.purchaseOrderEmailClaimProviderPayload
     )
     const requestNow = new Date().toISOString()
@@ -3620,12 +3751,44 @@ export async function sendPurchaseOrderEmail(
         }
       }
       if (
-        operation.purchaseOrderEmailClaimFingerprint !== requestFingerprint
+        existingProviderSnapshot === null
+      ) {
+        return {
+          success: false,
+          error:
+            "This email delivery reservation cannot be retried safely because its canonical provider snapshot is unavailable. Reconcile delivery before trying again.",
+        }
+      }
+      const existingSnapshotFingerprint =
+        await purchaseOrderEmailRequestFingerprint(existingProviderSnapshot)
+      if (
+        operation.purchaseOrderEmailClaimFingerprint !==
+        existingSnapshotFingerprint
+      ) {
+        return {
+          success: false,
+          error:
+            "This email delivery reservation cannot be retried safely because its canonical provider snapshot changed. Reconcile delivery before trying again.",
+        }
+      }
+      if (
+        existingProviderSnapshot.requestIntentFingerprint !==
+        requestIntentFingerprint
       ) {
         return {
           success: false,
           error:
             "This purchase order has a different email delivery reservation. Refresh and try again.",
+        }
+      }
+      if (
+        existingProviderSnapshot.providerCredentialFingerprint !==
+        operation.purchaseOrderEmailClaimProviderCredentialFingerprint
+      ) {
+        return {
+          success: false,
+          error:
+            "This email delivery reservation cannot be retried safely because its provider identity evidence changed. Reconcile delivery before trying again.",
         }
       }
       if (existingClaimStatus === "sent") {
@@ -3636,16 +3799,9 @@ export async function sendPurchaseOrderEmail(
             operation.purchaseOrderEmailProviderMessageId,
         }
       }
-      if (existingProviderPayload === null) {
-        return {
-          success: false,
-          error:
-            "This email delivery reservation cannot be retried safely because its provider payload is unavailable. Reconcile delivery before trying again.",
-        }
-      }
       if (
         existingClaimIsAmbiguous &&
-        operation.purchaseOrderEmailClaimProviderCredentialFingerprint !==
+        existingProviderSnapshot.providerCredentialFingerprint !==
           providerCredentialFingerprint
       ) {
         return {
@@ -3685,52 +3841,64 @@ export async function sendPurchaseOrderEmail(
       }
     }
 
-    const lineRows = await db
-      .select()
-      .from(projectPurchaseOrderLines)
-      .where(eq(projectPurchaseOrderLines.operationId, purchaseOrderId))
-      .orderBy(asc(projectPurchaseOrderLines.lineNumber))
+    let providerSnapshot = existingClaimToken
+      ? existingProviderSnapshot
+      : null
+    if (providerSnapshot === null) {
+      const lineRows = await db
+        .select()
+        .from(projectPurchaseOrderLines)
+        .where(eq(projectPurchaseOrderLines.operationId, purchaseOrderId))
+        .orderBy(asc(projectPurchaseOrderLines.lineNumber))
 
-    const order: ProjectPurchaseOrderItem = {
-      ...toOperationItem(operation),
-      lines: lineRows.map(toPurchaseOrderLineItem),
-      vendorAddress: null,
-      vendorEmail: null,
-      vendorAcknowledgement: parsePortalPurchaseOrderPayload(
-        operation.sagePayloadJson
-      ).acknowledgement,
-      emailDeliveryRequiresReconciliation: false,
-    }
-    const senderName = user.displayName ?? user.email
-    const emailInput = {
-      brand: projectBrandFor({
-        projectId: project.id,
+      const order: ProjectPurchaseOrderItem = {
+        ...toOperationItem(operation),
+        lines: lineRows.map(toPurchaseOrderLineItem),
+        vendorAddress: null,
+        vendorEmail: null,
+        vendorAcknowledgement: parsePortalPurchaseOrderPayload(
+          operation.sagePayloadJson
+        ).acknowledgement,
+        emailDeliveryRequiresReconciliation: false,
+      }
+      const senderName = user.displayName ?? user.email
+      const emailInput = {
+        brand: projectBrandFor({
+          projectId: project.id,
+          projectNumber: project.projectNumber,
+        }),
+        projectName: project.name,
         projectNumber: project.projectNumber,
-      }),
-      projectName: project.name,
-      projectNumber: project.projectNumber,
-      senderName,
-      message,
-      deliveryLocation: resolvedPurchaseOrderShipTo({
-        storedShipTo: order.sageShipTo,
-        jobsiteAddress: project.address,
-      }),
-      order,
+        senderName,
+        message,
+        deliveryLocation: resolvedPurchaseOrderShipTo({
+          storedShipTo: order.sageShipTo,
+          jobsiteAddress: project.address,
+        }),
+        order,
+      }
+      providerSnapshot = createPurchaseOrderEmailProviderSnapshot({
+        providerCredentialFingerprint,
+        requestIntentFingerprint,
+        authenticatedSender: {
+          userId: user.id,
+          email: user.email,
+          displayName: user.displayName ?? null,
+        },
+        payload: {
+          from:
+            envString(env, "COMPASS_EMAIL_FROM") ??
+            "Compass <notifications@compass.build>",
+          to,
+          cc,
+          subject,
+          text: purchaseOrderEmailText(emailInput),
+          html: purchaseOrderEmailHtml(emailInput),
+        },
+      })
     }
-    const renderedProviderPayload: PurchaseOrderEmailProviderPayload = {
-      from:
-        envString(env, "COMPASS_EMAIL_FROM") ??
-        "Compass <notifications@compass.build>",
-      to,
-      cc,
-      subject,
-      text: purchaseOrderEmailText(emailInput),
-      html: purchaseOrderEmailHtml(emailInput),
-    }
-    const providerPayload =
-      existingClaimToken && existingProviderPayload !== null
-        ? existingProviderPayload
-        : renderedProviderPayload
+    const requestFingerprint =
+      await purchaseOrderEmailRequestFingerprint(providerSnapshot)
     const claimRevision = operation.revision
     const claimAttempt =
       existingClaimToken || existingClaimStatus === "failed"
@@ -3746,9 +3914,8 @@ export async function sendPurchaseOrderEmail(
       : new Date(
           Date.parse(claimNow) + PURCHASE_ORDER_EMAIL_RETRY_WINDOW_MS
         ).toISOString()
-    const claimProviderCredentialFingerprint = existingClaimIsReclaimable
-      ? operation.purchaseOrderEmailClaimProviderCredentialFingerprint
-      : providerCredentialFingerprint
+    const claimProviderCredentialFingerprint =
+      providerSnapshot.providerCredentialFingerprint
     const claimTokenPredicate = existingClaimToken
       ? eq(projectOperations.purchaseOrderEmailClaimToken, claimToken)
       : isNull(projectOperations.purchaseOrderEmailClaimToken)
@@ -3779,7 +3946,7 @@ export async function sendPurchaseOrderEmail(
         purchaseOrderEmailClaimError: null,
         purchaseOrderEmailClaimReclaimAfter: claimReclaimAfter,
         purchaseOrderEmailClaimRetryUntil: claimRetryUntil,
-        purchaseOrderEmailClaimProviderPayload: JSON.stringify(providerPayload),
+        purchaseOrderEmailClaimProviderPayload: providerSnapshot.serialized,
         purchaseOrderEmailClaimProviderCredentialFingerprint:
           claimProviderCredentialFingerprint,
         revision: claimRevision + 1,
@@ -3844,7 +4011,7 @@ export async function sendPurchaseOrderEmail(
 
     const delivery = await sendResendPurchaseOrderEmail({
       apiKey: providerApiKey,
-      payload: providerPayload,
+      snapshot: providerSnapshot,
       idempotencyKey: claimToken,
     })
 
@@ -3935,7 +4102,7 @@ export async function sendPurchaseOrderEmail(
         status: purchaseOrderStatusAfterEmail(operation.status),
         sagePayloadJson: withPortalPurchaseOrderRecipients(
           operation.sagePayloadJson,
-          [...to, ...cc]
+          [...providerSnapshot.payload.to, ...providerSnapshot.payload.cc]
         ),
         purchaseOrderEmailClaimStatus: "sent",
         purchaseOrderEmailClaimToken: null,
