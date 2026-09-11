@@ -3,7 +3,8 @@ import {
   publishOwnerProjectUpdate,
   updateOwnerProjectUpdateDraft,
 } from "@/app/actions/project-field"
-import { ownerUpdateDraftEditSchema } from "@/lib/owner-updates/draft-recovery"
+import { requireAuth } from "@/lib/auth"
+import { parseOwnerUpdateDraftEdit } from "@/lib/owner-updates/draft-recovery"
 import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
 export async function PUT(
@@ -17,6 +18,15 @@ export async function PUT(
     }>
   }
 ): Promise<Response> {
+  try {
+    await requireAuth()
+  } catch {
+    return Response.json(
+      { success: false, error: "Authentication is required." },
+      { status: 401 }
+    )
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -27,7 +37,7 @@ export async function PUT(
     )
   }
 
-  const parsed = ownerUpdateDraftEditSchema.safeParse(body)
+  const parsed = parseOwnerUpdateDraftEdit(body)
   if (!parsed.success) {
     return Response.json(
       { success: false, error: "The draft contains invalid data." },

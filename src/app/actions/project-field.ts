@@ -2907,7 +2907,12 @@ export async function updateOwnerProjectUpdateDraft(
           serializeOwnerUpdateComposerSnapshot(composerSnapshot),
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(ownerProjectUpdates.id, updateId))
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
@@ -3372,7 +3377,12 @@ export async function publishOwnerProjectUpdate(
       publishedAt: now,
       updatedAt: now,
     })
-    .where(eq(ownerProjectUpdates.id, updateId))
+    .where(
+      and(
+        eq(ownerProjectUpdates.id, updateId),
+        eq(ownerProjectUpdates.projectId, projectId)
+      )
+    )
 
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(

@@ -34,15 +34,15 @@ const todoSelectionSchema = z.object({
 export const ownerUpdateDraftEditSchema = z.object({
   title: z.string(),
   updateDate: z.string(),
-  periodStart: z.string(),
-  periodEnd: z.string(),
+  periodStart: z.string().optional(),
+  periodEnd: z.string().optional(),
   summary: z.string(),
-  sourceDailyLogIds: z.array(z.string()),
-  selectedPhotoIds: z.array(z.string()),
-  selectedDocumentIds: z.array(z.string()),
-  completedScheduleItems: z.array(scheduleSelectionSchema),
-  lookAheadScheduleItems: z.array(scheduleSelectionSchema),
-  todos: z.array(todoSelectionSchema),
+  sourceDailyLogIds: z.array(z.string()).default([]),
+  selectedPhotoIds: z.array(z.string()).default([]),
+  selectedDocumentIds: z.array(z.string()).default([]),
+  completedScheduleItems: z.array(scheduleSelectionSchema).default([]),
+  lookAheadScheduleItems: z.array(scheduleSelectionSchema).default([]),
+  todos: z.array(todoSelectionSchema).default([]),
 })
 
 const ownerUpdateDraftBackupSchema = z.object({
@@ -71,6 +71,32 @@ export type OwnerUpdateDraftBackup = {
   readonly savedAt: string
   readonly serverUpdatedAt: string
   readonly draft: OwnerUpdateDraftEdit
+}
+
+export function parseOwnerUpdateDraftEdit(
+  value: unknown
+):
+  | { readonly success: true; readonly data: OwnerUpdateDraftEdit }
+  | { readonly success: false } {
+  const result = ownerUpdateDraftEditSchema.safeParse(value)
+  if (!result.success) return { success: false }
+
+  return {
+    success: true,
+    data: {
+      title: result.data.title,
+      updateDate: result.data.updateDate,
+      periodStart: result.data.periodStart ?? result.data.updateDate,
+      periodEnd: result.data.periodEnd ?? result.data.updateDate,
+      summary: result.data.summary,
+      sourceDailyLogIds: result.data.sourceDailyLogIds,
+      selectedPhotoIds: result.data.selectedPhotoIds,
+      selectedDocumentIds: result.data.selectedDocumentIds,
+      completedScheduleItems: result.data.completedScheduleItems,
+      lookAheadScheduleItems: result.data.lookAheadScheduleItems,
+      todos: result.data.todos,
+    },
+  }
 }
 
 export function ownerUpdateDraftStorageKey(
@@ -117,5 +143,13 @@ export function parseRecoverableOwnerUpdateDraft(
     return null
   }
 
-  return result.data
+  const draftResult = parseOwnerUpdateDraftEdit(result.data.draft)
+  if (!draftResult.success) return null
+
+  return {
+    version: result.data.version,
+    savedAt: result.data.savedAt,
+    serverUpdatedAt: result.data.serverUpdatedAt,
+    draft: draftResult.data,
+  }
 }
