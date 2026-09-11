@@ -1,10 +1,10 @@
 "use server"
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectOperations, projects } from "@/db/schema"
+import { organizations, projectOperations, projects } from "@/db/schema"
 import {
   nuTechCatalogPrices,
   nuTechCatalogVersions,
@@ -24,6 +24,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -47,11 +48,29 @@ export type NuTechOrderItemActionResult =
 
 async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
   const user = await requireAuth()
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
   if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
   await requireFeaturePermission(user, "nutech-orders", "update")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Purchase orders require an active internal organization.")
+  }
   const project = await db
     .select({
       id: projects.id,
@@ -273,6 +292,8 @@ export async function deleteNuTechOrderItem(
 export async function generateNuTechAirliteWorkbook(
   projectId: string
 ): Promise<NuTechOrderItemActionResult> {
+  let claimedWorkflowId: string | null = null
+  let claimedDb: CompassDb | null = null
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
@@ -293,6 +314,26 @@ export async function generateNuTechAirliteWorkbook(
     if (!workflow.airlitePurchaseOrderOperationId) {
       throw new Error("Link the Compass Airlite purchase order before generating its workbook.")
     }
+    const generationClaim = await access.db
+      .update(nuTechOrderWorkflows)
+      .set({
+        airliteWorkbookStatus: "generating",
+        updatedBy: access.user.id,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.id, workflow.id),
+          isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+          eq(nuTechOrderWorkflows.airliteWorkbookStatus, workflow.airliteWorkbookStatus)
+        )
+      )
+      .run()
+    if (generationClaim.meta.changes !== 1) {
+      throw new Error("The Airlite PO workbook is being released. Try again.")
+    }
+    claimedWorkflowId = workflow.id
+    claimedDb = access.db
     const [catalogVersion, purchaseOrder, lineRows] = await Promise.all([
       access.db
         .select({ airliteTemplateId: nuTechCatalogVersions.airliteTemplateId })
@@ -391,7 +432,7 @@ export async function generateNuTechAirliteWorkbook(
     const workbookUrl =
       workbook.webViewLink ??
       `https://docs.google.com/spreadsheets/d/${workbook.id}/edit`
-    await access.db
+    const completed = await access.db
       .update(nuTechOrderWorkflows)
       .set({
         airliteWorkbookId: workbook.id,
@@ -411,10 +452,36 @@ export async function generateNuTechAirliteWorkbook(
         updatedBy: access.user.id,
         updatedAt: now,
       })
-      .where(eq(nuTechOrderWorkflows.id, workflow.id))
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.id, workflow.id),
+          isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+          eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating")
+        )
+      )
+      .run()
+    if (completed.meta.changes !== 1) {
+      throw new Error("The Airlite PO workbook was released while it was generating.")
+    }
     revalidateNuTechOrder(projectId)
     return { success: true, id: workflow.id, workbookUrl }
   } catch (error) {
+    if (claimedDb !== null && claimedWorkflowId !== null) {
+      try {
+        await claimedDb
+          .update(nuTechOrderWorkflows)
+          .set({ airliteWorkbookStatus: "stale" })
+          .where(
+            and(
+              eq(nuTechOrderWorkflows.id, claimedWorkflowId),
+              isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+              eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating")
+            )
+          )
+      } catch {
+        // Preserve the provider error; a later save can recover the status.
+      }
+    }
     return actionError(error, "Failed to generate the Airlite workbook.")
   }
 }
