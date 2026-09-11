@@ -227,6 +227,19 @@ class FeedbackStatusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.validate_feedback_status_payload(payload)
 
+    def test_status_rejects_trailing_slash_origin_before_network(self) -> None:
+        payload = self.valid_payload()
+        with patch.dict(
+            os.environ,
+            {
+                "COMPASS_BASE_URL": f"{MODULE.COMPASS_PRODUCTION_BASE_URL}/",
+                "JARVIS_BRIDGE_SECRET": "test-secret",
+            },
+        ), patch.object(MODULE, "request_json") as request:
+            with self.assertRaises(RuntimeError):
+                MODULE.request_feedback_status(payload)
+        request.assert_not_called()
+
     def test_retries_use_the_same_idempotency_key_and_body(self) -> None:
         payload = self.valid_payload()
         with patch.dict(

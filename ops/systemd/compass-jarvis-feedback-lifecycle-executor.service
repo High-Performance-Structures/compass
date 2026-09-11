@@ -1,0 +1,18 @@
+[Unit]
+Description=Compass approved Feedback Desk lifecycle executor
+After=network-online.target hermes-gateway.service
+Wants=network-online.target hermes-gateway.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.hermes/.env
+ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/.local/lib/compass/jarvis-feedback-lifecycle-executor.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target
