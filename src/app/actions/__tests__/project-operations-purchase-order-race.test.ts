@@ -822,6 +822,95 @@ describe("purchase-order supplier email claim fence", () => {
     vi.useRealTimers()
   })
 
+  it("binds the claim fingerprint to the canonical provider snapshot and account identity", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    const emailActor = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const emailDb = drizzle(emailActor, {
+      schema: { projectOperations, projectPurchaseOrderLines, projects },
+    })
+    mocks.getDb.mockReturnValue(emailDb)
+    mocks.getCloudflareContext.mockResolvedValue({
+      env: {
+        DB: {},
+        RESEND_API_KEY: "resend-test",
+        COMPASS_EMAIL_FROM: "HPS Purchasing <purchasing@compass.build>",
+      },
+    })
+    mocks.fetch.mockRejectedValueOnce(new TypeError("network connection reset"))
+
+    await sendPurchaseOrderEmail("project-1", "po-1", {
+      to: "vendor@example.com",
+      cc: "project-manager@example.com",
+      subject: "Purchase order",
+      message: "Please review.",
+    })
+
+    const claimedOrder = await emailDb
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.id, "po-1"))
+      .get()
+    const serializedSnapshot = claimedOrder?.purchaseOrderEmailClaimProviderPayload
+    if (!serializedSnapshot) throw new Error("provider snapshot missing")
+    const snapshot = JSON.parse(serializedSnapshot) as {
+      version?: unknown
+      provider?: unknown
+      providerCredentialFingerprint?: unknown
+      requestIntentFingerprint?: unknown
+      authenticatedSender?: unknown
+      requestBody?: unknown
+    }
+    expect(snapshot).toMatchObject({
+      version: 1,
+      provider: "resend",
+      authenticatedSender: {
+        userId: "staff-1",
+        email: "staff@example.com",
+        displayName: "Project Manager",
+      },
+    })
+    const credentialDigest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode("resend-test")
+    )
+    const expectedCredentialFingerprint = Array.from(
+      new Uint8Array(credentialDigest),
+      (byte) => byte.toString(16).padStart(2, "0")
+    ).join("")
+    expect(snapshot.providerCredentialFingerprint).toBe(
+      expectedCredentialFingerprint
+    )
+    expect(snapshot.requestIntentFingerprint).toMatch(/^[a-f0-9]{64}$/)
+    expect(typeof snapshot.requestBody).toBe("string")
+    const requestBody = JSON.parse(String(snapshot.requestBody)) as Record<
+      string,
+      unknown
+    >
+    expect(requestBody).toMatchObject({
+      from: "HPS Purchasing <purchasing@compass.build>",
+      to: ["vendor@example.com"],
+      cc: ["project-manager@example.com"],
+      subject: "Purchase order",
+    })
+    expect(String(requestBody.text)).toContain("Sent through Compass by Project Manager.")
+    expect(String(requestBody.html)).toContain("Project Manager")
+
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(serializedSnapshot)
+    )
+    const expectedFingerprint = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("")
+    expect(claimedOrder?.purchaseOrderEmailClaimFingerprint).toBe(
+      expectedFingerprint
+    )
+    sqlite.close()
+  })
+
   it("keeps a missing provider credential retryable instead of marking the email sent", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
@@ -1454,9 +1543,174 @@ describe("purchase-order supplier email claim fence", () => {
       status: "sent",
       providerMessageId: "resend-replayed",
     })
-    expect(mocks.fetch.mock.calls[1]?.[1]).toEqual(originalRequest)
+    const replayedRequest = mocks.fetch.mock.calls[1]?.[1]
+    expect(replayedRequest).toEqual(originalRequest)
+    const replayedBody = String(replayedRequest?.body)
+    expect(replayedBody).toContain("Original line")
+    expect(replayedBody).toContain("Project Manager")
+    expect(replayedBody).toContain("Original Compass")
+    expect(replayedBody).not.toContain("Changed Project")
+    expect(replayedBody).not.toContain("999 Changed Street")
+    expect(replayedBody).not.toContain("Different Project Manager")
+    expect(replayedBody).not.toContain("Changed Compass")
     sqlite.close()
   })
+
+  it("rejects changed caller intent instead of replaying it under an ambiguous claim", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    const emailActor = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const emailDb = drizzle(emailActor, {
+      schema: { projectOperations, projectPurchaseOrderLines, projects },
+    })
+    mocks.getDb.mockReturnValue(emailDb)
+    mocks.fetch.mockRejectedValueOnce(new TypeError("network connection reset"))
+    const input = {
+      to: "vendor@example.com",
+      cc: null,
+      subject: "Purchase order",
+      message: "Please review.",
+    } as const
+
+    await sendPurchaseOrderEmail("project-1", "po-1", input)
+    vi.setSystemTime(new Date("2026-08-25T05:05:00.000Z"))
+    mocks.fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ id: "resend-must-not-send" }), {
+        status: 200,
+      })
+    )
+
+    await expect(
+      sendPurchaseOrderEmail("project-1", "po-1", {
+        ...input,
+        message: "Changed request text",
+      })
+    ).resolves.toEqual({
+      success: false,
+      error:
+        "This purchase order has a different email delivery reservation. Refresh and try again.",
+    })
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    sqlite.close()
+  })
+
+  it.each([
+    [
+      "authenticated sender identity",
+      (snapshot: Record<string, unknown>) => {
+        snapshot.authenticatedSender = {
+          userId: "staff-2",
+          email: "staff-2@example.com",
+          displayName: "Different Project Manager",
+        }
+      },
+    ],
+    [
+      "configured from-address",
+      (snapshot: Record<string, unknown>) => {
+        const requestBody = JSON.parse(String(snapshot.requestBody)) as Record<
+          string,
+          unknown
+        >
+        requestBody.from = "Changed Compass <changed@compass.build>"
+        snapshot.requestBody = JSON.stringify(requestBody)
+      },
+    ],
+    [
+      "rendered body",
+      (snapshot: Record<string, unknown>) => {
+        const requestBody = JSON.parse(String(snapshot.requestBody)) as Record<
+          string,
+          unknown
+        >
+        requestBody.text = "Changed rendered text"
+        requestBody.html = "<p>Changed rendered HTML</p>"
+        snapshot.requestBody = JSON.stringify(requestBody)
+      },
+    ],
+    [
+      "parent-derived project metadata",
+      (snapshot: Record<string, unknown>) => {
+        const requestBody = JSON.parse(String(snapshot.requestBody)) as Record<
+          string,
+          unknown
+        >
+        requestBody.text = String(requestBody.text).replace(
+          "N-001 - Test Project",
+          "N-999 - Changed Project"
+        )
+        requestBody.html = String(requestBody.html).replace(
+          "N-001 - Test Project",
+          "N-999 - Changed Project"
+        )
+        snapshot.requestBody = JSON.stringify(requestBody)
+      },
+    ],
+  ])(
+    "fails closed before provider dispatch when retained %s changes",
+    async (_label, mutateSnapshot) => {
+      const sqlite = new Database(":memory:")
+      createSchema(sqlite)
+      seedDraft(sqlite, FIXED_NOW)
+      const emailActor = createD1(sqlite)
+      // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+      const emailDb = drizzle(emailActor, {
+        schema: { projectOperations, projectPurchaseOrderLines, projects },
+      })
+      mocks.getDb.mockReturnValue(emailDb)
+      mocks.fetch.mockRejectedValueOnce(new TypeError("network connection reset"))
+      const input = {
+        to: "vendor@example.com",
+        cc: null,
+        subject: "Purchase order",
+        message: "Please review.",
+      } as const
+
+      await sendPurchaseOrderEmail("project-1", "po-1", input)
+      const uncertainClaim = await emailDb
+        .select()
+        .from(projectOperations)
+        .where(eq(projectOperations.id, "po-1"))
+        .get()
+      if (!uncertainClaim?.purchaseOrderEmailClaimProviderPayload) {
+        throw new Error("provider snapshot missing")
+      }
+      const changedSnapshot = JSON.parse(
+        uncertainClaim.purchaseOrderEmailClaimProviderPayload
+      ) as Record<string, unknown>
+      mutateSnapshot(changedSnapshot)
+      sqlite
+        .prepare(
+          "UPDATE project_operations SET purchase_order_email_claim_provider_payload = ? WHERE id = ?"
+        )
+        .run(JSON.stringify(changedSnapshot), "po-1")
+
+      vi.setSystemTime(new Date("2026-08-25T05:05:00.000Z"))
+      mocks.fetch.mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "resend-must-not-send" }), {
+          status: 200,
+        })
+      )
+      await expect(
+        sendPurchaseOrderEmail("project-1", "po-1", input)
+      ).resolves.toMatchObject({
+        success: false,
+        error: expect.stringContaining("canonical provider snapshot"),
+      })
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+
+      const finalOrder = await emailDb
+        .select()
+        .from(projectOperations)
+        .where(eq(projectOperations.id, "po-1"))
+        .get()
+      expect(finalOrder?.purchaseOrderEmailClaimStatus).toBe("uncertain")
+      expect(finalOrder?.purchaseOrderEmailClaimAttempt).toBe(1)
+      sqlite.close()
+    }
+  )
 
   it("keeps an expired uncertain claim fenced so a later send cannot dispatch", async () => {
     const sqlite = new Database(":memory:")
