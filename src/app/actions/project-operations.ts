@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
+import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -14,15 +14,17 @@ import {
   projectOperations,
   projectPurchaseOrderLines,
   projects,
+  organizations,
   sageCostCodes,
   scheduleTasks,
   vendors,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
+import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import {
@@ -93,6 +95,7 @@ export type ProjectOperationItem = {
   readonly sageRequiredDate: string | null
   readonly sageWriteStatus: string
   readonly sagePayloadJson: string | null
+  readonly revision: number
   readonly updatedAt: string
 }
 
@@ -116,6 +119,7 @@ export type ProjectPurchaseOrderItem = ProjectOperationItem & {
   readonly vendorAddress: string | null
   readonly vendorEmail: string | null
   readonly vendorAcknowledgement: PortalPurchaseOrderAcknowledgement | null
+  readonly emailDeliveryRequiresReconciliation: boolean
 }
 
 export type ProjectPurchaseOrderPhaseOption = {
@@ -247,7 +251,7 @@ export type CreatePurchaseOrderRequestInput = {
 
 export type UpdatePurchaseOrderRequestInput =
   CreatePurchaseOrderRequestInput & {
-    readonly expectedUpdatedAt: string
+    readonly expectedRevision: number
   }
 
 export type CreatePurchaseOrderLineInput = {
@@ -300,6 +304,17 @@ export type SendPurchaseOrderEmailInput = {
   readonly subject: string
   readonly message: string
 }
+
+export type ReconcilePurchaseOrderEmailDeliveryInput =
+  | {
+      readonly expectedRevision: number
+      readonly outcome: "delivered"
+      readonly providerMessageId: string | null
+    }
+  | {
+      readonly expectedRevision: number
+      readonly outcome: "not_delivered"
+    }
 
 export type ProjectTaskRecordType =
   | "staff_task"
@@ -396,16 +411,51 @@ type NormalizedRfqDocumentLink = {
   readonly notes: string | null
 }
 
+function ensureActiveInternalPurchaseOrderStaff(user: AuthUser): void {
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
+}
+
+async function ensureActiveInternalPurchaseOrderOrganization(
+  db: ReturnType<typeof getDb>,
+  organizationId: string
+): Promise<void> {
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Purchase orders require an active internal organization.")
+  }
+}
+
 async function verifyProjectAccess(
   projectId: string,
-  featureId: string = "project-hub"
+  featureId: string = "project-hub",
+  internalStaffOnly = false
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
+  if (internalStaffOnly || featureId === "purchase-orders") {
+    ensureActiveInternalPurchaseOrderStaff(user)
+  }
   await requireFeaturePermission(user, featureId, "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+
+  if (internalStaffOnly || featureId === "purchase-orders") {
+    await ensureActiveInternalPurchaseOrderOrganization(db, orgId)
+  }
 
   const existing = await db
     .select({ id: projects.id })
@@ -420,11 +470,20 @@ async function verifyProjectAccess(
   return db
 }
 
-async function verifyProjectUpdateAccess(
+type ProjectUpdateAccess = {
+  readonly db: ReturnType<typeof getDb>
+  readonly user: AuthUser
+}
+
+async function verifyProjectUpdateAccessWithActor(
   projectId: string,
-  featureId: string = "project-hub"
-): Promise<ReturnType<typeof getDb>> {
+  featureId: string = "project-hub",
+  internalStaffOnly = false
+): Promise<ProjectUpdateAccess> {
   const user = await requireAuth()
+  if (internalStaffOnly || featureId === "purchase-orders") {
+    ensureActiveInternalPurchaseOrderStaff(user)
+  }
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
@@ -433,6 +492,10 @@ async function verifyProjectUpdateAccess(
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+
+  if (internalStaffOnly || featureId === "purchase-orders") {
+    await ensureActiveInternalPurchaseOrderOrganization(db, orgId)
+  }
 
   const existing = await db
     .select({ id: projects.id })
@@ -444,7 +507,20 @@ async function verifyProjectUpdateAccess(
     throw new Error("Project not found")
   }
 
-  return db
+  return { db, user }
+}
+
+async function verifyProjectUpdateAccess(
+  projectId: string,
+  featureId: string = "project-hub",
+  internalStaffOnly = false
+): Promise<ReturnType<typeof getDb>> {
+  const access = await verifyProjectUpdateAccessWithActor(
+    projectId,
+    featureId,
+    internalStaffOnly
+  )
+  return access.db
 }
 
 function cleanText(value: string | null): string | null {
@@ -615,7 +691,8 @@ function numberOrDefault(value: number | null, fallback: number): number {
 
 function normalizePurchaseOrderLines(
   lines: readonly CreatePurchaseOrderLineInput[],
-  fallbackDescription: string
+  fallbackDescription: string,
+  allowEmpty = false
 ): readonly NormalizedPurchaseOrderLine[] {
   const normalized = lines
     .map((line, index) => {
@@ -650,9 +727,9 @@ function normalizePurchaseOrderLines(
         taxGroup,
       }
     })
-    .filter((line) => line !== null)
+    .filter((line): line is NormalizedPurchaseOrderLine => line !== null)
 
-  if (normalized.length > 0) return normalized
+  if (normalized.length > 0 || allowEmpty) return normalized
 
   return [
     {
@@ -912,6 +989,7 @@ function toOperationItem(
     sageRequiredDate: row.sageRequiredDate,
     sageWriteStatus: row.sageWriteStatus,
     sagePayloadJson: row.sagePayloadJson,
+    revision: row.revision,
     updatedAt: row.updatedAt,
   }
 }
@@ -954,53 +1032,266 @@ function toPurchaseOrderLineItem(
   }
 }
 
+type PurchaseOrderEmailProviderPayload = Readonly<{
+  from: string
+  to: readonly string[]
+  cc: readonly string[]
+  subject: string
+  text: string
+  html: string
+}>
+
+type PurchaseOrderEmailProviderSnapshot = Readonly<{
+  version: 1
+  provider: "resend"
+  providerCredentialFingerprint: string | null
+  requestIntentFingerprint: string
+  authenticatedSender: Readonly<{
+    userId: string
+    email: string
+    displayName: string | null
+  }>
+  requestBody: string
+  payload: PurchaseOrderEmailProviderPayload
+  serialized: string
+}>
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+function serializePurchaseOrderEmailProviderPayload(
+  payload: PurchaseOrderEmailProviderPayload
+): string {
+  const requestBody: Record<string, unknown> = {
+    from: payload.from,
+    to: payload.to,
+    subject: payload.subject,
+    text: payload.text,
+    html: payload.html,
+  }
+  if (payload.cc.length > 0) {
+    requestBody.cc = payload.cc
+  }
+  return JSON.stringify(requestBody)
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort()
+  const sortedExpected = [...expected].sort()
+  return (
+    actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index])
+  )
+}
+
+function parsePurchaseOrderEmailProviderRequestBody(
+  value: string
+): PurchaseOrderEmailProviderPayload | null {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!isRecord(parsed)) return null
+    const expectedKeys =
+      parsed.cc === undefined
+        ? ["from", "html", "subject", "text", "to"]
+        : ["cc", "from", "html", "subject", "text", "to"]
+    if (
+      !hasExactKeys(parsed, expectedKeys) ||
+      typeof parsed.from !== "string" ||
+      !isStringArray(parsed.to) ||
+      (parsed.cc !== undefined && !isStringArray(parsed.cc)) ||
+      typeof parsed.subject !== "string" ||
+      typeof parsed.text !== "string" ||
+      typeof parsed.html !== "string"
+    ) {
+      return null
+    }
+    const payload = {
+      from: parsed.from,
+      to: parsed.to,
+      cc: parsed.cc ?? [],
+      subject: parsed.subject,
+      text: parsed.text,
+      html: parsed.html,
+    }
+    return serializePurchaseOrderEmailProviderPayload(payload) === value
+      ? payload
+      : null
+  } catch {
+    return null
+  }
+}
+
+function createPurchaseOrderEmailProviderSnapshot(input: {
+  readonly payload: PurchaseOrderEmailProviderPayload
+  readonly providerCredentialFingerprint: string | null
+  readonly requestIntentFingerprint: string
+  readonly authenticatedSender: Readonly<{
+    userId: string
+    email: string
+    displayName: string | null
+  }>
+}): PurchaseOrderEmailProviderSnapshot {
+  const requestBody = serializePurchaseOrderEmailProviderPayload(input.payload)
+  const persisted = {
+    version: 1 as const,
+    provider: "resend" as const,
+    providerCredentialFingerprint: input.providerCredentialFingerprint,
+    requestIntentFingerprint: input.requestIntentFingerprint,
+    authenticatedSender: input.authenticatedSender,
+    requestBody,
+  }
+  return {
+    ...persisted,
+    payload: input.payload,
+    serialized: JSON.stringify(persisted),
+  }
+}
+
+function parsePurchaseOrderEmailProviderSnapshot(
+  value: string | null
+): PurchaseOrderEmailProviderSnapshot | null {
+  if (!value) return null
+
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (
+      !isRecord(parsed) ||
+      !hasExactKeys(parsed, [
+        "authenticatedSender",
+        "provider",
+        "providerCredentialFingerprint",
+        "requestBody",
+        "requestIntentFingerprint",
+        "version",
+      ]) ||
+      parsed.version !== 1 ||
+      parsed.provider !== "resend" ||
+      !(
+        parsed.providerCredentialFingerprint === null ||
+        (typeof parsed.providerCredentialFingerprint === "string" &&
+          /^[a-f0-9]{64}$/.test(parsed.providerCredentialFingerprint))
+      ) ||
+      typeof parsed.requestIntentFingerprint !== "string" ||
+      !/^[a-f0-9]{64}$/.test(parsed.requestIntentFingerprint) ||
+      !isRecord(parsed.authenticatedSender) ||
+      !hasExactKeys(parsed.authenticatedSender, ["displayName", "email", "userId"]) ||
+      typeof parsed.authenticatedSender.userId !== "string" ||
+      typeof parsed.authenticatedSender.email !== "string" ||
+      !(
+        parsed.authenticatedSender.displayName === null ||
+        typeof parsed.authenticatedSender.displayName === "string"
+      ) ||
+      typeof parsed.requestBody !== "string"
+    ) {
+      return null
+    }
+    const payload = parsePurchaseOrderEmailProviderRequestBody(parsed.requestBody)
+    if (payload === null) return null
+    const snapshot = createPurchaseOrderEmailProviderSnapshot({
+      payload,
+      providerCredentialFingerprint: parsed.providerCredentialFingerprint,
+      requestIntentFingerprint: parsed.requestIntentFingerprint,
+      authenticatedSender: {
+        userId: parsed.authenticatedSender.userId,
+        email: parsed.authenticatedSender.email,
+        displayName: parsed.authenticatedSender.displayName,
+      },
+    })
+    return snapshot.serialized === value ? snapshot : null
+  } catch {
+    return null
+  }
+}
+
 async function sendResendPurchaseOrderEmail(
-  env: unknown,
   input: {
-    readonly to: readonly string[]
-    readonly cc: readonly string[]
-    readonly subject: string
-    readonly text: string
-    readonly html: string
+    readonly apiKey: string | null
+    readonly snapshot: PurchaseOrderEmailProviderSnapshot
+    readonly idempotencyKey: string
   }
 ): Promise<{
+  readonly outcome: "accepted" | "rejected" | "uncertain"
   readonly status: string
   readonly providerMessageId: string | null
   readonly error: string | null
 }> {
-  const apiKey = envString(env, "RESEND_API_KEY")
-  if (!apiKey) {
+  if (!input.apiKey) {
     return {
-      status: "pending_provider",
+      outcome: "rejected",
+      status: "failed",
       providerMessageId: null,
       error: "RESEND_API_KEY is not configured",
     }
   }
 
-  const fromAddress =
-    envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <notifications@compass.build>"
-  const requestBody: Record<string, unknown> = {
-    from: fromAddress,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  }
-  if (input.cc.length > 0) {
-    requestBody.cc = input.cc
+  let response: Response
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.apiKey}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": input.idempotencyKey,
+      },
+      body: input.snapshot.requestBody,
+    })
+  } catch {
+    return {
+      outcome: "uncertain",
+      status: "unknown",
+      providerMessageId: null,
+      error:
+        "Email provider delivery outcome is uncertain. Try again after the delivery reservation expires.",
+    }
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  })
-
-  const responseText = await response.text()
+  let responseText: string
+  try {
+    responseText = await response.text()
+  } catch {
+    if (
+      response.status === 409 ||
+      response.status === 429 ||
+      (response.status >= 500 && response.status <= 599)
+    ) {
+      return {
+        outcome: "uncertain",
+        status: "unknown",
+        providerMessageId: null,
+        error:
+          "Email provider delivery outcome is uncertain. Try again after the delivery reservation expires.",
+      }
+    }
+    if (!response.ok) {
+      return {
+        outcome: "rejected",
+        status: "failed",
+        providerMessageId: null,
+        error: `Email provider rejected the request (HTTP ${response.status}).`,
+      }
+    }
+    return {
+      outcome: "uncertain",
+      status: "unknown",
+      providerMessageId: null,
+      error:
+        "Email provider delivery outcome is uncertain. Try again after the delivery reservation expires.",
+    }
+  }
+  if (
+    response.status === 409 ||
+    response.status === 429 ||
+    (response.status >= 500 && response.status <= 599)
+  ) {
+    return {
+      outcome: "uncertain",
+      status: "unknown",
+      providerMessageId: null,
+      error:
+        "Email provider delivery outcome is uncertain. Try again after the delivery reservation expires.",
+    }
+  }
   let providerMessageId: string | null = null
   try {
     const parsed = JSON.parse(responseText)
@@ -1012,10 +1303,52 @@ async function sendResendPurchaseOrderEmail(
   }
 
   return {
+    outcome: response.ok ? "accepted" : "rejected",
     status: response.ok ? "sent" : "failed",
     providerMessageId,
     error: response.ok ? null : responseText.slice(0, 500),
   }
+}
+
+const PURCHASE_ORDER_EMAIL_CLAIM_LEASE_MS = 5 * 60 * 1000
+const PURCHASE_ORDER_EMAIL_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000
+const PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS =
+  "reconciliation_required"
+const PURCHASE_ORDER_EMAIL_EXPIRY_ERROR =
+  "This email can no longer be retried safely because the provider idempotency window expired. Reconcile delivery before trying again."
+const PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_ERROR =
+  "Email delivery requires authorized reconciliation before another send can be attempted."
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  )
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("")
+}
+
+async function purchaseOrderEmailRequestFingerprint(
+  snapshot: PurchaseOrderEmailProviderSnapshot
+): Promise<string> {
+  return sha256Hex(snapshot.serialized)
+}
+
+async function purchaseOrderEmailIntentFingerprint(input: {
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+  readonly subject: string
+  readonly message: string
+}): Promise<string> {
+  return sha256Hex(
+    JSON.stringify({
+      to: input.to,
+      cc: input.cc,
+      subject: input.subject,
+      message: input.message,
+    })
+  )
 }
 
 function operationToScheduleItem(
@@ -1034,7 +1367,7 @@ function operationToScheduleItem(
 export async function getProjectOperationsSummary(
   projectId: string
 ): Promise<ProjectOperationsSummary> {
-  const db = await verifyProjectAccess(projectId)
+  const db = await verifyProjectAccess(projectId, "project-hub", true)
   const today = new Date().toISOString().slice(0, 10)
 
   const operations = await db
@@ -1216,7 +1549,7 @@ export async function getScheduleTaskTodos(
 export async function getProjectSageSyncQueue(
   projectId: string
 ): Promise<ProjectSageSyncQueue> {
-  const db = await verifyProjectAccess(projectId, "sage-sync")
+  const db = await verifyProjectAccess(projectId, "sage-sync", true)
 
   const operationRows = await db
     .select()
@@ -1337,7 +1670,7 @@ export async function queueProjectOperationForSageSync(
   operationId: string
 ): Promise<ProjectSyncActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId, "sage-sync")
+    const db = await verifyProjectUpdateAccess(projectId, "sage-sync", true)
     const [operation] = await db
       .select()
       .from(projectOperations)
@@ -1358,19 +1691,52 @@ export async function queueProjectOperationForSageSync(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(projectOperations)
-      .set({
-        syncStatus: "queued_sage",
-        sageWriteStatus: "queued",
-        updatedAt: now,
-      })
-      .where(eq(projectOperations.id, operationId))
+    const queueResults = await db.batch([
+      db
+        .update(projectOperations)
+        .set({
+          syncStatus: "queued_sage",
+          sageWriteStatus: "queued",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, operationId),
+            isNull(projectOperations.purchaseOrderEmailClaimToken)
+          )
+        ),
+      db
+        .update(projectPurchaseOrderLines)
+        .set({ syncStatus: "queued_sage", updatedAt: now })
+        .where(
+          and(
+            eq(projectPurchaseOrderLines.operationId, operationId),
+            eq(projectPurchaseOrderLines.projectId, projectId),
+            inArray(
+              projectPurchaseOrderLines.operationId,
+              db
+                .select({ id: projectOperations.id })
+                .from(projectOperations)
+                .where(
+                  and(
+                    eq(projectOperations.id, operationId),
+                    eq(projectOperations.projectId, projectId),
+                    eq(projectOperations.sourceRecordType, "purchase_order"),
+                    isNull(projectOperations.purchaseOrderEmailClaimToken)
+                  )
+                )
+            )
+          )
+        ),
+    ])
+    const queuedResult = queueResults[0]
 
-    await db
-      .update(projectPurchaseOrderLines)
-      .set({ syncStatus: "queued_sage", updatedAt: now })
-      .where(eq(projectPurchaseOrderLines.operationId, operationId))
+    if (queuedResult.meta.changes !== 1) {
+      return {
+        success: false,
+        error: "This purchase order is being emailed. Try again after delivery finishes.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
@@ -1391,7 +1757,7 @@ export async function queueProjectOperationsForSageSync(
   projectId: string
 ): Promise<ProjectSyncActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId, "sage-sync")
+    const db = await verifyProjectUpdateAccess(projectId, "sage-sync", true)
     const operations = await db
       .select()
       .from(projectOperations)
@@ -1406,24 +1772,53 @@ export async function queueProjectOperationsForSageSync(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(projectOperations)
-      .set({
-        syncStatus: "queued_sage",
-        sageWriteStatus: "queued",
-        updatedAt: now,
-      })
-      .where(inArray(projectOperations.id, readyIds))
-
-    await db
-      .update(projectPurchaseOrderLines)
-      .set({ syncStatus: "queued_sage", updatedAt: now })
-      .where(inArray(projectPurchaseOrderLines.operationId, readyIds))
+    const queueResults = await db.batch([
+      db
+        .update(projectOperations)
+        .set({
+          syncStatus: "queued_sage",
+          sageWriteStatus: "queued",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            inArray(projectOperations.id, readyIds),
+            isNull(projectOperations.purchaseOrderEmailClaimToken)
+          )
+        ),
+      db
+        .update(projectPurchaseOrderLines)
+        .set({ syncStatus: "queued_sage", updatedAt: now })
+        .where(
+          inArray(
+            projectPurchaseOrderLines.operationId,
+            db
+              .select({ id: projectOperations.id })
+              .from(projectOperations)
+              .where(
+                and(
+                  inArray(projectOperations.id, readyIds),
+                  eq(projectOperations.projectId, projectId),
+                  eq(projectOperations.sourceRecordType, "purchase_order"),
+                  isNull(projectOperations.purchaseOrderEmailClaimToken)
+                )
+              )
+          )
+        ),
+    ])
+    const queuedResult = queueResults[0]
+    const updatedCount = queuedResult.meta.changes
+    if (updatedCount === 0) {
+      return {
+        success: false,
+        error: "This purchase order is being emailed. Try again after delivery finishes.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard")
-    return { success: true, updatedCount: readyIds.length }
+    return { success: true, updatedCount }
   } catch (error) {
     return {
       success: false,
@@ -1436,9 +1831,8 @@ export async function queueProjectOperationsForSageSync(
 export async function getProjectPurchaseOrders(
   projectId: string
 ): Promise<readonly ProjectPurchaseOrderItem[]> {
-  const user = await requireAuth()
-  const orgId = requireOrg(user)
   const db = await verifyProjectAccess(projectId, "purchase-orders")
+  const orgId = requireOrg(await requireAuth())
   const rows = await db
     .select()
     .from(projectOperations)
@@ -1510,6 +1904,9 @@ export async function getProjectPurchaseOrders(
       vendorEmail: vendorDetails.email,
       vendorAcknowledgement: parsePortalPurchaseOrderPayload(row.sagePayloadJson)
         .acknowledgement,
+      emailDeliveryRequiresReconciliation:
+        row.purchaseOrderEmailClaimStatus ===
+        PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS,
     }
   })
 }
@@ -1729,7 +2126,7 @@ export async function updateProjectOperationStatus(
       }
     }
 
-    await db
+    const statusResult = await db
       .update(projectOperations)
       .set({
         status: requestedStatus,
@@ -1739,9 +2136,17 @@ export async function updateProjectOperationStatus(
         and(
           eq(projectOperations.id, operationId),
           eq(projectOperations.projectId, projectId),
-          eq(projectOperations.sourceRecordType, operationKind)
+          eq(projectOperations.sourceRecordType, operationKind),
+          isNull(projectOperations.purchaseOrderEmailClaimToken)
         )
       )
+
+    if (statusResult.meta.changes !== 1) {
+      return {
+        success: false,
+        error: "This purchase order is being emailed. Try again after delivery finishes.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(
@@ -1941,7 +2346,7 @@ export async function updatePurchaseOrderRequest(
         "This purchase order can no longer be edited because it was sent or queued for Sage."
       )
     }
-    if (existing.updatedAt !== input.expectedUpdatedAt) {
+    if (existing.revision !== input.expectedRevision) {
       throw new Error(
         "This purchase order changed after you opened it. Refresh and try again."
       )
@@ -1958,7 +2363,11 @@ export async function updatePurchaseOrderRequest(
     const shipTo = cleanText(input.shipTo)
     const orderDate = cleanDate(input.orderDate, "P.O. date")
     const dueDate = cleanDate(input.dueDate, "Required date")
-    const lines = normalizePurchaseOrderLines(input.lines, description ?? title)
+    const lines = normalizePurchaseOrderLines(
+      input.lines,
+      description ?? title,
+      true
+    )
     const amount = lines.reduce((total, line) => total + line.amount, 0)
     const headerCostCode = lines.length === 1 ? lines[0]?.costCode ?? null : null
     const headerPhaseCode = lines.length === 1 ? lines[0]?.phaseCode ?? null : null
@@ -1981,30 +2390,64 @@ export async function updatePurchaseOrderRequest(
       })
     )
 
+    // D1 executes a batch as one transaction. Gate line replacement on the
+    // version the editor opened, then advance that version with the final
+    // header statement. A stale writer therefore cannot delete or insert
+    // lines, even when both writers produce the same updatedAt timestamp.
     const lineInserts = lines.map((line) =>
-      db.insert(projectPurchaseOrderLines).values({
-        id: crypto.randomUUID(),
-        operationId: purchaseOrderId,
-        projectId,
-        sourceSystem: "compass",
-        sourceRecordId: null,
-        lineNumber: line.lineNumber,
-        costCode: line.costCode,
-        phaseCode: line.phaseCode,
-        description: line.description,
-        quantity: line.quantity,
-        unitCost: line.unitCost,
-        unit: line.unit,
-        amount: line.amount,
-        taxGroup: line.taxGroup,
-        sagePayloadJson: JSON.stringify(line),
-        syncStatus: "pending_sage",
-        createdAt: now,
-        updatedAt: now,
-      })
+      db.insert(projectPurchaseOrderLines).select(sql`
+        SELECT
+          ${crypto.randomUUID()},
+          po.id,
+          ${projectId},
+          'compass',
+          NULL,
+          ${line.lineNumber},
+          ${line.costCode},
+          ${line.phaseCode},
+          ${line.description},
+          ${line.quantity},
+          ${line.unitCost},
+          ${line.unit},
+          ${line.amount},
+          ${line.taxGroup},
+          ${JSON.stringify(line)},
+          'pending_sage',
+          NULL,
+          ${now},
+          ${now}
+        FROM project_operations AS po
+        WHERE po.id = ${purchaseOrderId}
+          AND po.project_id = ${projectId}
+          AND po.revision = ${input.expectedRevision}
+          AND po.purchase_order_email_claim_token IS NULL
+      `)
     )
 
-    await db.batch([
+    const batchResults = await db.batch([
+      db
+        .delete(projectPurchaseOrderLines)
+        .where(
+          and(
+            eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
+            eq(projectPurchaseOrderLines.projectId, projectId),
+            inArray(
+              projectPurchaseOrderLines.operationId,
+              db
+                .select({ id: projectOperations.id })
+                .from(projectOperations)
+                .where(
+                  and(
+                    eq(projectOperations.id, purchaseOrderId),
+                    eq(projectOperations.projectId, projectId),
+                    eq(projectOperations.revision, input.expectedRevision),
+                    isNull(projectOperations.purchaseOrderEmailClaimToken)
+                  )
+                )
+            )
+          )
+        ),
+      ...lineInserts,
       db
         .update(projectOperations)
         .set({
@@ -2026,25 +2469,26 @@ export async function updatePurchaseOrderRequest(
           sageOrderDate: orderDate,
           sageRequiredDate: dueDate,
           sagePayloadJson,
+          revision: input.expectedRevision + 1,
           updatedAt: now,
         })
         .where(
           and(
             eq(projectOperations.id, purchaseOrderId),
             eq(projectOperations.projectId, projectId),
-            eq(projectOperations.updatedAt, input.expectedUpdatedAt)
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, input.expectedRevision),
+            isNull(projectOperations.purchaseOrderEmailClaimToken)
           )
         ),
-      db
-        .delete(projectPurchaseOrderLines)
-        .where(
-          and(
-            eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
-            eq(projectPurchaseOrderLines.projectId, projectId)
-          )
-        ),
-      ...lineInserts,
     ])
+
+    const headerResult = batchResults[batchResults.length - 1]
+    if ((headerResult?.meta.changes ?? 0) !== 1) {
+      throw new Error(
+        "This purchase order changed after you opened it. Refresh and try again."
+      )
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
@@ -2327,7 +2771,10 @@ export async function deletePurchaseOrderRequest(
       "purchase-orders"
     )
     const [existing] = await db
-      .select({ id: projectOperations.id })
+      .select({
+        id: projectOperations.id,
+        revision: projectOperations.revision,
+      })
       .from(projectOperations)
       .where(
         and(
@@ -2342,23 +2789,68 @@ export async function deletePurchaseOrderRequest(
       return { success: false, error: "Purchase order not found." }
     }
 
-    await db
-      .delete(projectPurchaseOrderLines)
-      .where(
-        and(
-          eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
-          eq(projectPurchaseOrderLines.projectId, projectId)
+    // D1 batches are transactional. Fence both deletes to the revision read above
+    // so a supplier-email claim either wins before this batch without losing lines,
+    // or observes the whole order already deleted after the batch commits.
+    const batchResults = await db.batch([
+      db
+        .delete(projectPurchaseOrderLines)
+        .where(
+          and(
+            eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
+            eq(projectPurchaseOrderLines.projectId, projectId),
+            inArray(
+              projectPurchaseOrderLines.operationId,
+              db
+                .select({ id: projectOperations.id })
+                .from(projectOperations)
+                .where(
+                  and(
+                    eq(projectOperations.id, purchaseOrderId),
+                    eq(projectOperations.projectId, projectId),
+                    eq(projectOperations.sourceRecordType, "purchase_order"),
+                    eq(projectOperations.revision, existing.revision),
+                    isNull(projectOperations.purchaseOrderEmailClaimToken)
+                  )
+                )
+            )
+          )
+        ),
+      db
+        .delete(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, existing.revision),
+            isNull(projectOperations.purchaseOrderEmailClaimToken)
+          )
+        ),
+    ])
+    const deletedOperation = batchResults[batchResults.length - 1]
+
+    if ((deletedOperation?.meta.changes ?? 0) !== 1) {
+      const [current] = await db
+        .select({
+          emailClaimToken: projectOperations.purchaseOrderEmailClaimToken,
+        })
+        .from(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order")
+          )
         )
-      )
-    await db
-      .delete(projectOperations)
-      .where(
-        and(
-          eq(projectOperations.id, purchaseOrderId),
-          eq(projectOperations.projectId, projectId),
-          eq(projectOperations.sourceRecordType, "purchase_order")
-        )
-      )
+        .limit(1)
+      return {
+        success: false,
+        error: current?.emailClaimToken
+          ? "This purchase order is being emailed. Try again after delivery finishes."
+          : "This purchase order changed while it was being deleted. Refresh and try again.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
@@ -2989,6 +3481,147 @@ export async function deleteProjectTodo(
   }
 }
 
+export async function reconcilePurchaseOrderEmailDelivery(
+  projectId: string,
+  purchaseOrderId: string,
+  input: ReconcilePurchaseOrderEmailDeliveryInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const { db, user } = await verifyProjectUpdateAccessWithActor(
+      projectId,
+      "purchase-orders",
+      true
+    )
+    const [operation] = await db
+      .select()
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+      .limit(1)
+
+    if (!operation) {
+      return { success: false, error: "Purchase order not found." }
+    }
+    if (
+      operation.revision !== input.expectedRevision ||
+      operation.purchaseOrderEmailClaimStatus !==
+        PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS ||
+      operation.purchaseOrderEmailClaimToken === null
+    ) {
+      return {
+        success: false,
+        error:
+          "This email reconciliation changed after you opened it. Refresh and review the latest delivery state.",
+      }
+    }
+
+    const providerSnapshot = parsePurchaseOrderEmailProviderSnapshot(
+      operation.purchaseOrderEmailClaimProviderPayload
+    )
+    const retainedFingerprint = providerSnapshot
+      ? await purchaseOrderEmailRequestFingerprint(providerSnapshot)
+      : null
+    if (
+      input.outcome === "delivered" &&
+      (providerSnapshot === null ||
+        retainedFingerprint !== operation.purchaseOrderEmailClaimFingerprint)
+    ) {
+      return {
+        success: false,
+        error:
+          "The retained provider snapshot is unavailable or changed. Do not mark this email delivered until its recipients are verified.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    const providerMessageId =
+      input.outcome === "delivered" ? cleanText(input.providerMessageId) : null
+    const reconciliationEvidence = JSON.stringify({
+      version: 1,
+      outcome: input.outcome,
+      reconciledAt: now,
+      reconciledByUserId: user.id,
+      providerMessageId,
+      claimFingerprint: operation.purchaseOrderEmailClaimFingerprint,
+      providerCredentialFingerprint:
+        operation.purchaseOrderEmailClaimProviderCredentialFingerprint,
+    })
+    const reconciled = await db
+      .update(projectOperations)
+      .set({
+        status:
+          input.outcome === "delivered"
+            ? purchaseOrderStatusAfterEmail(operation.status)
+            : operation.status,
+        sagePayloadJson:
+          input.outcome === "delivered" && providerSnapshot !== null
+            ? withPortalPurchaseOrderRecipients(operation.sagePayloadJson, [
+                ...providerSnapshot.payload.to,
+                ...providerSnapshot.payload.cc,
+              ])
+            : operation.sagePayloadJson,
+        purchaseOrderEmailClaimStatus:
+          input.outcome === "delivered" ? "sent" : "failed",
+        purchaseOrderEmailClaimToken: null,
+        purchaseOrderEmailProviderMessageId: providerMessageId,
+        purchaseOrderEmailClaimError:
+          input.outcome === "delivered"
+            ? null
+            : "Authorized reconciliation confirmed that the email was not delivered.",
+        purchaseOrderEmailClaimReclaimAfter: null,
+        purchaseOrderEmailClaimRetryUntil: null,
+        purchaseOrderEmailClaimProviderPayload: null,
+        purchaseOrderEmailClaimProviderCredentialFingerprint: null,
+        purchaseOrderEmailReconciliationOutcome: input.outcome,
+        purchaseOrderEmailReconciledAt: now,
+        purchaseOrderEmailReconciledByUserId: user.id,
+        purchaseOrderEmailReconciliationEvidence: reconciliationEvidence,
+        revision: operation.revision + 1,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order"),
+          eq(projectOperations.revision, input.expectedRevision),
+          eq(
+            projectOperations.purchaseOrderEmailClaimStatus,
+            PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS
+          ),
+          eq(
+            projectOperations.purchaseOrderEmailClaimToken,
+            operation.purchaseOrderEmailClaimToken
+          )
+        )
+      )
+
+    if (reconciled.meta.changes !== 1) {
+      return {
+        success: false,
+        error:
+          "This email reconciliation changed while it was being saved. Refresh and review the latest delivery state.",
+      }
+    }
+
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    return { success: true, id: purchaseOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to reconcile purchase order email delivery.",
+    }
+  }
+}
+
 export async function sendPurchaseOrderEmail(
   projectId: string,
   purchaseOrderId: string,
@@ -2996,14 +3629,26 @@ export async function sendPurchaseOrderEmail(
 ): Promise<ProjectOperationEmailActionResult> {
   try {
     const user = await requireAuth()
+    ensureActiveInternalPurchaseOrderStaff(user)
     await requireFeaturePermission(user, "purchase-orders", "update")
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    await ensureActiveInternalPurchaseOrderOrganization(db, orgId)
     const to = parseEmailList(input.to)
     const cc = parseEmailList(input.cc)
     const subject = requireText(input.subject, "Subject")
     const message = requireText(input.message, "Message")
+    const providerApiKey = envString(env, "RESEND_API_KEY")
+    const providerCredentialFingerprint = providerApiKey
+      ? await sha256Hex(providerApiKey)
+      : null
+    const requestIntentFingerprint = await purchaseOrderEmailIntentFingerprint({
+      to,
+      cc,
+      subject,
+      message,
+    })
 
     if (to.length === 0) {
       return { success: false, error: "Enter at least one supplier email." }
@@ -3040,64 +3685,456 @@ export async function sendPurchaseOrderEmail(
       return { success: false, error: "Purchase order not found." }
     }
 
-    const lineRows = await db
-      .select()
-      .from(projectPurchaseOrderLines)
-      .where(eq(projectPurchaseOrderLines.operationId, purchaseOrderId))
-      .orderBy(asc(projectPurchaseOrderLines.lineNumber))
+    const existingClaimToken = operation.purchaseOrderEmailClaimToken
+    const existingClaimStatus = operation.purchaseOrderEmailClaimStatus
+    const existingProviderSnapshot = parsePurchaseOrderEmailProviderSnapshot(
+      operation.purchaseOrderEmailClaimProviderPayload
+    )
+    const requestNow = new Date().toISOString()
+    const existingClaimIsAmbiguous =
+      existingClaimStatus === "in_flight" || existingClaimStatus === "uncertain"
+    const existingRetryWindowIsOpen =
+      operation.purchaseOrderEmailClaimRetryUntil !== null &&
+      requestNow < operation.purchaseOrderEmailClaimRetryUntil
+    const existingClaimIsReclaimable =
+      existingClaimIsAmbiguous &&
+      existingRetryWindowIsOpen &&
+      operation.purchaseOrderEmailClaimReclaimAfter !== null &&
+      operation.purchaseOrderEmailClaimReclaimAfter <= requestNow
+    const existingClaimIsExpired =
+      existingClaimIsAmbiguous && !existingRetryWindowIsOpen
+    if (existingClaimToken && existingClaimIsExpired) {
+      const expiredResult = await db
+        .update(projectOperations)
+        .set({
+          // An ambiguous provider attempt is never an ordinary failure after
+          // the provider's idempotency horizon. Keep the claim and canonical
+          // replay evidence as a durable fence until an authorized
+          // reconciliation decision is made.
+          purchaseOrderEmailClaimStatus:
+            PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS,
+          purchaseOrderEmailClaimError: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR,
+          purchaseOrderEmailClaimReclaimAfter: null,
+          revision: operation.revision + 1,
+          updatedAt: requestNow,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, operation.revision),
+            eq(projectOperations.purchaseOrderEmailClaimToken, existingClaimToken),
+            inArray(projectOperations.purchaseOrderEmailClaimStatus, [
+              "in_flight",
+              "uncertain",
+            ])
+          )
+        )
+      if (expiredResult.meta.changes !== 1) {
+        return {
+          success: false,
+          error:
+            "This purchase order changed while the email was being reconciled. Refresh and try again.",
+        }
+      }
+      return { success: false, error: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR }
+    }
+    if (existingClaimToken) {
+      if (
+        existingClaimStatus ===
+        PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS
+      ) {
+        return {
+          success: false,
+          error: PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_ERROR,
+        }
+      }
+      if (
+        existingProviderSnapshot === null
+      ) {
+        return {
+          success: false,
+          error:
+            "This email delivery reservation cannot be retried safely because its canonical provider snapshot is unavailable. Reconcile delivery before trying again.",
+        }
+      }
+      const existingSnapshotFingerprint =
+        await purchaseOrderEmailRequestFingerprint(existingProviderSnapshot)
+      if (
+        operation.purchaseOrderEmailClaimFingerprint !==
+        existingSnapshotFingerprint
+      ) {
+        return {
+          success: false,
+          error:
+            "This email delivery reservation cannot be retried safely because its canonical provider snapshot changed. Reconcile delivery before trying again.",
+        }
+      }
+      if (
+        existingProviderSnapshot.requestIntentFingerprint !==
+        requestIntentFingerprint
+      ) {
+        return {
+          success: false,
+          error:
+            "This purchase order has a different email delivery reservation. Refresh and try again.",
+        }
+      }
+      if (
+        existingProviderSnapshot.providerCredentialFingerprint !==
+        operation.purchaseOrderEmailClaimProviderCredentialFingerprint
+      ) {
+        return {
+          success: false,
+          error:
+            "This email delivery reservation cannot be retried safely because its provider identity evidence changed. Reconcile delivery before trying again.",
+        }
+      }
+      if (existingClaimStatus === "sent") {
+        return {
+          success: true,
+          status: "sent",
+          providerMessageId:
+            operation.purchaseOrderEmailProviderMessageId,
+        }
+      }
+      if (
+        existingClaimIsAmbiguous &&
+        existingProviderSnapshot.providerCredentialFingerprint !==
+          providerCredentialFingerprint
+      ) {
+        return {
+          success: false,
+          error:
+            "Email provider credentials changed after this delivery became uncertain. Restore the original provider credential or reconcile delivery before retrying.",
+        }
+      }
+      if (existingClaimStatus === "in_flight" && !existingClaimIsReclaimable) {
+        return {
+          success: false,
+          error: "This purchase order email is already being sent. Try again shortly.",
+        }
+      }
+      if (existingClaimStatus === "uncertain" && !existingClaimIsReclaimable) {
+        return {
+          success: false,
+          error:
+            "This purchase order email has an uncertain delivery outcome. Try again shortly.",
+        }
+      }
+      if (existingClaimStatus !== "failed" && !existingClaimIsReclaimable) {
+        return {
+          success: false,
+          error: "This purchase order email has an invalid delivery reservation.",
+        }
+      }
+    }
 
-    const order: ProjectPurchaseOrderItem = {
-      ...toOperationItem(operation),
-      lines: lineRows.map(toPurchaseOrderLineItem),
-      vendorAddress: null,
-      vendorEmail: null,
-      vendorAcknowledgement: parsePortalPurchaseOrderPayload(
-        operation.sagePayloadJson
-      ).acknowledgement,
+    if (
+      !isPurchaseOrderStatus(operation.status) ||
+      ["complete", "closed", "void"].includes(operation.status)
+    ) {
+      return {
+        success: false,
+        error: "This purchase order is not eligible for supplier email.",
+      }
     }
-    const senderName = user.displayName ?? user.email
-    const emailInput = {
-      brand: projectBrandFor({
-        projectId: project.id,
+
+    let providerSnapshot = existingClaimToken
+      ? existingProviderSnapshot
+      : null
+    if (providerSnapshot === null) {
+      const lineRows = await db
+        .select()
+        .from(projectPurchaseOrderLines)
+        .where(eq(projectPurchaseOrderLines.operationId, purchaseOrderId))
+        .orderBy(asc(projectPurchaseOrderLines.lineNumber))
+
+      const order: ProjectPurchaseOrderItem = {
+        ...toOperationItem(operation),
+        lines: lineRows.map(toPurchaseOrderLineItem),
+        vendorAddress: null,
+        vendorEmail: null,
+        vendorAcknowledgement: parsePortalPurchaseOrderPayload(
+          operation.sagePayloadJson
+        ).acknowledgement,
+        emailDeliveryRequiresReconciliation: false,
+      }
+      const senderName = user.displayName ?? user.email
+      const emailInput = {
+        brand: projectBrandFor({
+          projectId: project.id,
+          projectNumber: project.projectNumber,
+        }),
+        projectName: project.name,
         projectNumber: project.projectNumber,
-      }),
-      projectName: project.name,
-      projectNumber: project.projectNumber,
-      senderName,
-      message,
-      deliveryLocation: resolvedPurchaseOrderShipTo({
-        storedShipTo: order.sageShipTo,
-        jobsiteAddress: project.address,
-      }),
-      order,
+        senderName,
+        message,
+        deliveryLocation: resolvedPurchaseOrderShipTo({
+          storedShipTo: order.sageShipTo,
+          jobsiteAddress: project.address,
+        }),
+        order,
+      }
+      providerSnapshot = createPurchaseOrderEmailProviderSnapshot({
+        providerCredentialFingerprint,
+        requestIntentFingerprint,
+        authenticatedSender: {
+          userId: user.id,
+          email: user.email,
+          displayName: user.displayName ?? null,
+        },
+        payload: {
+          from:
+            envString(env, "COMPASS_EMAIL_FROM") ??
+            "Compass <notifications@compass.build>",
+          to,
+          cc,
+          subject,
+          text: purchaseOrderEmailText(emailInput),
+          html: purchaseOrderEmailHtml(emailInput),
+        },
+      })
     }
-    const delivery = await sendResendPurchaseOrderEmail(env, {
-      to,
-      cc,
-      subject,
-      text: purchaseOrderEmailText(emailInput),
-      html: purchaseOrderEmailHtml(emailInput),
+    const requestFingerprint =
+      await purchaseOrderEmailRequestFingerprint(providerSnapshot)
+    const claimRevision = operation.revision
+    const claimAttempt =
+      existingClaimToken || existingClaimStatus === "failed"
+        ? (operation.purchaseOrderEmailClaimAttempt ?? 0) + 1
+        : 1
+    const claimToken = existingClaimToken ?? crypto.randomUUID()
+    const claimNow = new Date().toISOString()
+    const claimReclaimAfter = new Date(
+      Date.parse(claimNow) + PURCHASE_ORDER_EMAIL_CLAIM_LEASE_MS
+    ).toISOString()
+    const claimRetryUntil = existingClaimIsReclaimable
+      ? operation.purchaseOrderEmailClaimRetryUntil
+      : new Date(
+          Date.parse(claimNow) + PURCHASE_ORDER_EMAIL_RETRY_WINDOW_MS
+        ).toISOString()
+    const claimProviderCredentialFingerprint =
+      providerSnapshot.providerCredentialFingerprint
+    const claimTokenPredicate = existingClaimToken
+      ? eq(projectOperations.purchaseOrderEmailClaimToken, claimToken)
+      : isNull(projectOperations.purchaseOrderEmailClaimToken)
+    const claimStatusPredicate = existingClaimToken
+      ? existingClaimStatus === "failed"
+        ? eq(projectOperations.purchaseOrderEmailClaimStatus, "failed")
+        : and(
+            inArray(projectOperations.purchaseOrderEmailClaimStatus, [
+              "in_flight",
+              "uncertain",
+            ]),
+            lte(projectOperations.purchaseOrderEmailClaimReclaimAfter, claimNow),
+            gt(projectOperations.purchaseOrderEmailClaimRetryUntil, claimNow)
+          )
+      : or(
+          isNull(projectOperations.purchaseOrderEmailClaimStatus),
+          eq(projectOperations.purchaseOrderEmailClaimStatus, "failed")
+        )
+    const claimResult = await db
+      .update(projectOperations)
+      .set({
+        purchaseOrderEmailClaimToken: claimToken,
+        purchaseOrderEmailClaimRevision: claimRevision,
+        purchaseOrderEmailClaimFingerprint: requestFingerprint,
+        purchaseOrderEmailClaimStatus: "in_flight",
+        purchaseOrderEmailClaimAttempt: claimAttempt,
+        purchaseOrderEmailProviderMessageId: null,
+        purchaseOrderEmailClaimError: null,
+        purchaseOrderEmailClaimReclaimAfter: claimReclaimAfter,
+        purchaseOrderEmailClaimRetryUntil: claimRetryUntil,
+        purchaseOrderEmailClaimProviderPayload: providerSnapshot.serialized,
+        purchaseOrderEmailClaimProviderCredentialFingerprint:
+          claimProviderCredentialFingerprint,
+        revision: claimRevision + 1,
+        updatedAt: claimNow,
+      })
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order"),
+          eq(projectOperations.status, operation.status),
+          eq(projectOperations.revision, claimRevision),
+          claimTokenPredicate,
+          claimStatusPredicate
+        )
+      )
+
+    if (claimResult.meta.changes !== 1) {
+      return {
+        success: false,
+        error:
+          "This purchase order changed while the email was being prepared. Refresh and try again.",
+      }
+    }
+
+    const dispatchNow = new Date().toISOString()
+    if (claimRetryUntil === null || dispatchNow >= claimRetryUntil) {
+      const expiredResult = await db
+        .update(projectOperations)
+        .set({
+          // The claim was acquired, but dispatch can no longer be retried
+          // safely. Retain the exact provider payload, account fingerprint,
+          // token, and retry horizon for authorized reconciliation.
+          purchaseOrderEmailClaimStatus:
+            PURCHASE_ORDER_EMAIL_RECONCILIATION_REQUIRED_STATUS,
+          purchaseOrderEmailClaimError: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR,
+          purchaseOrderEmailClaimReclaimAfter: null,
+          revision: claimRevision + 2,
+          updatedAt: dispatchNow,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, claimRevision + 1),
+            eq(projectOperations.purchaseOrderEmailClaimRevision, claimRevision),
+            eq(projectOperations.purchaseOrderEmailClaimToken, claimToken),
+            eq(projectOperations.purchaseOrderEmailClaimAttempt, claimAttempt),
+            eq(projectOperations.purchaseOrderEmailClaimStatus, "in_flight")
+          )
+        )
+      if (expiredResult.meta.changes !== 1) {
+        return {
+          success: false,
+          error:
+            "This purchase order changed while the email was being sent. Refresh and try again.",
+        }
+      }
+      return { success: false, error: PURCHASE_ORDER_EMAIL_EXPIRY_ERROR }
+    }
+
+    const delivery = await sendResendPurchaseOrderEmail({
+      apiKey: providerApiKey,
+      snapshot: providerSnapshot,
+      idempotencyKey: claimToken,
     })
 
-    if (delivery.status === "failed") {
+    const recoveredAmbiguousClaimWasRejected =
+      existingClaimIsReclaimable && delivery.outcome === "rejected"
+    if (delivery.outcome === "uncertain" || recoveredAmbiguousClaimWasRejected) {
+      const uncertaintyNow = new Date().toISOString()
+      const uncertaintyError = recoveredAmbiguousClaimWasRejected
+        ? "Email provider delivery outcome is uncertain. Try again after the delivery reservation expires."
+        : delivery.error
+      const uncertaintyResult = await db
+        .update(projectOperations)
+        .set({
+          purchaseOrderEmailClaimStatus: "uncertain",
+          purchaseOrderEmailClaimError: uncertaintyError,
+          revision: claimRevision + 2,
+          updatedAt: uncertaintyNow,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, claimRevision + 1),
+            eq(projectOperations.purchaseOrderEmailClaimRevision, claimRevision),
+            eq(projectOperations.purchaseOrderEmailClaimToken, claimToken),
+            eq(projectOperations.purchaseOrderEmailClaimAttempt, claimAttempt),
+            eq(projectOperations.purchaseOrderEmailClaimStatus, "in_flight")
+          )
+        )
+      if (uncertaintyResult.meta.changes !== 1) {
+        return {
+          success: false,
+          error:
+            "This purchase order changed while the email was being sent. Refresh and try again.",
+        }
+      }
+      return {
+        success: false,
+        error:
+          uncertaintyError ??
+          "Email provider delivery outcome is uncertain. Try again after the delivery reservation expires.",
+      }
+    }
+
+    if (delivery.outcome === "rejected") {
+      const failureNow = new Date().toISOString()
+      const failureResult = await db
+        .update(projectOperations)
+        .set({
+          purchaseOrderEmailClaimStatus: "failed",
+          purchaseOrderEmailClaimToken: null,
+          purchaseOrderEmailClaimError: delivery.error,
+          purchaseOrderEmailClaimReclaimAfter: null,
+          purchaseOrderEmailClaimRetryUntil: null,
+          revision: claimRevision + 2,
+          updatedAt: failureNow,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, claimRevision + 1),
+            eq(projectOperations.purchaseOrderEmailClaimRevision, claimRevision),
+            eq(projectOperations.purchaseOrderEmailClaimToken, claimToken),
+            eq(projectOperations.purchaseOrderEmailClaimAttempt, claimAttempt),
+            eq(projectOperations.purchaseOrderEmailClaimStatus, "in_flight")
+          )
+        )
+      if (failureResult.meta.changes !== 1) {
+        return {
+          success: false,
+          error:
+            "This purchase order changed while the email was being sent. Refresh and try again.",
+        }
+      }
       return {
         success: false,
         error: delivery.error ?? "Unable to send purchase order email.",
       }
     }
 
-    const now = new Date().toISOString()
-    await db
+    const completionNow = new Date().toISOString()
+    const completionResult = await db
       .update(projectOperations)
       .set({
         status: purchaseOrderStatusAfterEmail(operation.status),
         sagePayloadJson: withPortalPurchaseOrderRecipients(
           operation.sagePayloadJson,
-          [...to, ...cc]
+          [...providerSnapshot.payload.to, ...providerSnapshot.payload.cc]
         ),
-        updatedAt: now,
+        purchaseOrderEmailClaimStatus: "sent",
+        purchaseOrderEmailClaimToken: null,
+        purchaseOrderEmailProviderMessageId: delivery.providerMessageId,
+        purchaseOrderEmailClaimError: null,
+        purchaseOrderEmailClaimReclaimAfter: null,
+        purchaseOrderEmailClaimRetryUntil: null,
+        purchaseOrderEmailClaimProviderPayload: null,
+        purchaseOrderEmailClaimProviderCredentialFingerprint: null,
+        revision: claimRevision + 2,
+        updatedAt: completionNow,
       })
-      .where(eq(projectOperations.id, purchaseOrderId))
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order"),
+          eq(projectOperations.revision, claimRevision + 1),
+          eq(projectOperations.purchaseOrderEmailClaimRevision, claimRevision),
+          eq(projectOperations.purchaseOrderEmailClaimToken, claimToken),
+          eq(projectOperations.purchaseOrderEmailClaimAttempt, claimAttempt),
+          eq(projectOperations.purchaseOrderEmailClaimStatus, "in_flight")
+        )
+      )
+
+    if (completionResult.meta.changes !== 1) {
+      return {
+        success: false,
+        error:
+          "This purchase order changed while the email was being sent. Refresh and try again.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
