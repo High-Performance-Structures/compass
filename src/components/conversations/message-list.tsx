@@ -82,6 +82,7 @@ export function MessageList({
   const [loading, setLoading] = React.useState(false)
   const [historyError, setHistoryError] = React.useState<string | null>(null)
   const [atNewestEdge, setAtNewestEdge] = React.useState(true)
+  const atNewestEdgeRef = React.useRef(true)
   const [historyCommitId, setHistoryCommitId] = React.useState(0)
   const [realtimeCommitId, setRealtimeCommitId] = React.useState(0)
   const scrollViewportRef = React.useRef<HTMLDivElement>(null)
@@ -116,7 +117,7 @@ export function MessageList({
 
     // mark as consumed
     unconsumed.forEach((msg) => consumedNewMessagesRef.current.add(msg.id))
-    pendingNewestScrollRef.current = atNewestEdge
+    pendingNewestScrollRef.current = atNewestEdgeRef.current
 
     // append new messages in chronological order
     setMessageWindow((previous) => {
@@ -129,7 +130,7 @@ export function MessageList({
       }
     })
     setRealtimeCommitId((previous) => previous + 1)
-  }, [atNewestEdge, newMessages])
+  }, [newMessages])
 
   const getScrollViewport = React.useCallback((): HTMLElement | null => {
     return scrollViewportRef.current
@@ -148,6 +149,7 @@ export function MessageList({
           behavior,
         })
       }
+      atNewestEdgeRef.current = true
       setAtNewestEdge(true)
     },
     [getScrollViewport],
@@ -160,6 +162,7 @@ export function MessageList({
     pendingNewestScrollRef.current = false
     setLoading(false)
     setHistoryError(null)
+    atNewestEdgeRef.current = true
     setAtNewestEdge(true)
     setMessageWindow({
       messages: [...initialMessages].reverse(),
@@ -176,6 +179,7 @@ export function MessageList({
     if (pendingNewestScrollRef.current) {
       pendingNewestScrollRef.current = false
       viewport.scrollTop = getNewestScrollTop(viewport)
+      atNewestEdgeRef.current = true
       setAtNewestEdge(true)
     }
   }, [getScrollViewport, realtimeCommitId])
@@ -195,7 +199,9 @@ export function MessageList({
     ) {
       prependScrollRef.current = null
       pendingNewestScrollRef.current = false
-      setAtNewestEdge(isAtNewestEdge(viewport))
+      const nextAtNewestEdge = isAtNewestEdge(viewport)
+      atNewestEdgeRef.current = nextAtNewestEdge
+      setAtNewestEdge(nextAtNewestEdge)
       return
     }
 
@@ -210,7 +216,9 @@ export function MessageList({
     }
     prependScrollRef.current = null
     pendingNewestScrollRef.current = false
-    setAtNewestEdge(isAtNewestEdge(viewport))
+    const nextAtNewestEdge = isAtNewestEdge(viewport)
+    atNewestEdgeRef.current = nextAtNewestEdge
+    setAtNewestEdge(nextAtNewestEdge)
   }, [getScrollViewport, historyCommitId])
 
   React.useEffect(() => {
@@ -219,7 +227,9 @@ export function MessageList({
 
     const updateNewestEdge = () => {
       scrollIntentIdRef.current += 1
-      setAtNewestEdge(isAtNewestEdge(viewport))
+      const nextAtNewestEdge = isAtNewestEdge(viewport)
+      atNewestEdgeRef.current = nextAtNewestEdge
+      setAtNewestEdge(nextAtNewestEdge)
     }
     viewport.addEventListener("scroll", updateNewestEdge)
     updateNewestEdge()
