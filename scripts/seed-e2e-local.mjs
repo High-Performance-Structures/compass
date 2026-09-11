@@ -127,10 +127,34 @@ const upsert = db.transaction(() => {
   `).run(now, now)
 
   db.prepare(`
+    INSERT INTO users (
+      id, email, first_name, last_name, display_name, role, is_active,
+      created_at, updated_at
+    ) VALUES (
+      'e2e-user-002', 'field@compass.build', 'Field', 'Tester', 'Field Tester',
+      'field', 1, ?, ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      display_name = excluded.display_name,
+      role = excluded.role,
+      is_active = excluded.is_active,
+      updated_at = excluded.updated_at
+  `).run(now, now)
+
+  db.prepare(`
     INSERT INTO organization_members (
       id, organization_id, user_id, role, joined_at
     ) VALUES (
       'e2e-membership-001', 'demo-org-meridian', 'demo-user-001', 'admin', ?
+    )
+    ON CONFLICT(id) DO UPDATE SET role = excluded.role
+  `).run(now)
+
+  db.prepare(`
+    INSERT INTO organization_members (
+      id, organization_id, user_id, role, joined_at
+    ) VALUES (
+      'e2e-membership-002', 'demo-org-meridian', 'e2e-user-002', 'member', ?
     )
     ON CONFLICT(id) DO UPDATE SET role = excluded.role
   `).run(now)
@@ -229,15 +253,44 @@ const upsert = db.transaction(() => {
   `).run(now)
 
   db.prepare(`
-    INSERT INTO messages (
-      id, channel_id, user_id, content, is_pinned, reply_count, created_at
+    INSERT INTO channel_members (
+      id, channel_id, user_id, role, notify_level, joined_at
     ) VALUES (
-      'e2e-message-001', 'e2e-channel-001', 'demo-user-001',
-      'Regression conversation message', 0, 0, ?
+      'e2e-channel-member-002', 'e2e-channel-001', 'e2e-user-002',
+      'member', 'all', ?
     )
     ON CONFLICT(id) DO UPDATE SET
-      content = excluded.content
+      role = excluded.role,
+      notify_level = excluded.notify_level
   `).run(now)
+
+  db.prepare(`
+    DELETE FROM messages
+    WHERE channel_id = 'e2e-channel-001'
+      AND id LIKE 'e2e-message-%'
+  `).run()
+
+  const insertConversationMessage = db.prepare(`
+    INSERT INTO messages (
+      id, channel_id, user_id, content, is_pinned, reply_count, created_at
+    ) VALUES (?, 'e2e-channel-001', ?, ?, 0, 0, ?)
+  `)
+  for (let index = 1; index <= 64; index += 1) {
+    const createdAt = new Date(Date.now() - (65 - index) * 60 * 1000).toISOString()
+    const userId = index % 2 === 0 ? 'e2e-user-002' : 'demo-user-001'
+    insertConversationMessage.run(
+      `e2e-message-history-${String(index).padStart(3, "0")}`,
+      userId,
+      `History message ${String(index).padStart(3, "0")}`,
+      createdAt,
+    )
+  }
+  insertConversationMessage.run(
+    'e2e-message-001',
+    'demo-user-001',
+    'Regression conversation message',
+    now,
+  )
 
   const overflowScheduleItems = [
     ["e2e-schedule-002", "Overflow schedule item two", 2],

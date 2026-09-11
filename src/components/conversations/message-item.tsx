@@ -27,6 +27,7 @@ import {
 import { useRouter } from "next/navigation"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 import { importedConversationContent } from "@/lib/conversations/imported-message-content"
+import { getMessageAlignmentClass } from "./message-list-behavior"
 
 type MessageData = {
   readonly id: string
@@ -63,6 +64,7 @@ type MessageData = {
 type MessageItemProps = {
   readonly message: MessageData
   readonly showThreadAction?: boolean
+  readonly currentUserId?: string | null
 }
 
 function getRoleBadge(email: string) {
@@ -87,13 +89,15 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
     prevMsg.attachments?.length === nextMsg.attachments?.length &&
     prevMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|") ===
       nextMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|") &&
-    prev.showThreadAction === next.showThreadAction
+    prev.showThreadAction === next.showThreadAction &&
+    prev.currentUserId === next.currentUserId
   )
 }
 
 export const MessageItem = React.memo(function MessageItem({
   message,
   showThreadAction = true,
+  currentUserId = null,
 }: MessageItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
@@ -106,6 +110,8 @@ export const MessageItem = React.memo(function MessageItem({
   const displayName = user?.displayName ?? user?.email.split("@")[0] ?? "Unknown"
   const avatarFallback = displayName.substring(0, 2).toUpperCase()
   const roleBadge = user ? getRoleBadge(user.email) : null
+  const isOwnMessage = currentUserId !== null && user?.id === currentUserId
+  const alignmentClass = getMessageAlignmentClass(currentUserId, user?.id ?? null)
 
   const timestamp = parseISO(message.createdAt)
   const isRecent = Date.now() - timestamp.getTime() < 24 * 60 * 60 * 1000
@@ -141,11 +147,17 @@ export const MessageItem = React.memo(function MessageItem({
 
   if (message.deletedAt) {
     return (
-      <div className="group relative flex gap-3 px-4 py-2 hover:bg-muted/50">
+      <div
+        data-message-id={message.id}
+        className={cn(
+          "group relative flex w-full gap-3 px-4 py-2 hover:bg-muted/50",
+          alignmentClass,
+        )}
+      >
         <Avatar className="h-8 w-8">
           <AvatarFallback className="text-xs">{avatarFallback}</AvatarFallback>
         </Avatar>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 max-w-[min(85%,42rem)] flex-none">
           <div className="flex items-baseline gap-2">
             <span className="text-sm font-medium">{displayName}</span>
             <span className="text-xs text-muted-foreground">{timeDisplay}</span>
@@ -158,7 +170,11 @@ export const MessageItem = React.memo(function MessageItem({
 
   return (
     <div
-      className="group relative flex gap-3 px-4 py-2 hover:bg-muted/50"
+      data-message-id={message.id}
+      className={cn(
+        "group relative flex w-full gap-3 px-4 py-2 hover:bg-muted/50",
+        alignmentClass,
+      )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onFocus={() => setIsFocused(true)}
@@ -169,7 +185,7 @@ export const MessageItem = React.memo(function MessageItem({
         <AvatarFallback className="text-xs">{avatarFallback}</AvatarFallback>
       </Avatar>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 max-w-[min(85%,42rem)] flex-none">
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-medium">{displayName}</span>
           {roleBadge && (
@@ -260,7 +276,12 @@ export const MessageItem = React.memo(function MessageItem({
       </div>
 
       {(isHovered || isFocused || reactionOpen) && (
-        <div className="absolute right-4 top-2 flex gap-1 rounded-md border bg-background p-1 shadow-sm">
+        <div
+          className={cn(
+            "absolute top-2 flex gap-1 rounded-md border bg-background p-1 shadow-sm",
+            isOwnMessage ? "left-4" : "right-4",
+          )}
+        >
           {showThreadAction && (
             <Button
               variant="ghost"
