@@ -230,6 +230,58 @@ class LifecycleExecutorTests(unittest.TestCase):
             },
         }])
 
+    def test_systemd_unit_uses_only_the_dedicated_lifecycle_environment(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        unit = (
+            repo_root
+            / "ops/systemd/compass-jarvis-feedback-lifecycle-executor.service"
+        ).read_text(encoding="utf-8")
+
+        environment_file_lines = [
+            line for line in unit.splitlines() if line.startswith("EnvironmentFile=")
+        ]
+        self.assertEqual(environment_file_lines, [
+            "EnvironmentFile=%h/.config/compass/"
+            "jarvis-feedback-lifecycle-executor.env",
+        ])
+        self.assertNotIn("%h/.hermes/.env", unit)
+
+        environment_template = (
+            repo_root
+            / "ops/systemd/compass-jarvis-feedback-lifecycle-executor.env.example"
+        ).read_text(encoding="utf-8")
+        configured_keys = {
+            line.split("=", 1)[0]
+            for line in environment_template.splitlines()
+            if line and not line.startswith("#")
+        }
+        self.assertEqual(
+            configured_keys,
+            {
+                "COMPASS_BASE_URL",
+                "JARVIS_BRIDGE_SECRET",
+                "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS",
+                "LOG_LEVEL",
+            },
+        )
+        self.assertIn(
+            "COMPASS_BASE_URL=https://compass.openrangeconstruction.ltd",
+            environment_template,
+        )
+        self.assertIn("JARVIS_BRIDGE_SECRET=", environment_template)
+        self.assertIn(
+            "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS=2",
+            environment_template,
+        )
+        self.assertIn("LOG_LEVEL=INFO", environment_template)
+        self.assertNotIn("OPENROUTER_API_KEY", environment_template)
+
+        installation = (repo_root / "deploy/systemd/README.md").read_text(
+            encoding="utf-8",
+        )
+        self.assertIn("jarvis-feedback-lifecycle-executor.env", installation)
+        self.assertIn("install -m 0600", installation)
+
     def test_compass_request_rejects_non_https_runtime_origin(self) -> None:
         with patch.dict(
             os.environ,

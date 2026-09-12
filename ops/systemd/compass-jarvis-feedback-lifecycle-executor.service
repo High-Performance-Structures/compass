@@ -5,7 +5,7 @@ Wants=network-online.target hermes-gateway.service
 
 [Service]
 Type=simple
-EnvironmentFile=%h/.hermes/.env
+EnvironmentFile=%h/.config/compass/jarvis-feedback-lifecycle-executor.env
 ExecStart=%h/.hermes/hermes-agent/venv/bin/python %h/.local/lib/compass/jarvis-feedback-lifecycle-executor.py
 Restart=always
 RestartSec=5

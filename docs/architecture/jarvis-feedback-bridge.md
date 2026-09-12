@@ -296,9 +296,14 @@ rejected, or oversized requests are terminal failures; transport failures use a
 bounded retry delay and preserve the original idempotency key. The executor
 emits a bounded service heartbeat and never exposes response bodies, secrets,
 arbitrary URLs, or remote command controls. Install it only in the authorized
-private runtime using the existing bridge credential; the macOS scheduler must
-not invoke it through local credentials, browser impersonation, direct D1
-writes, or arbitrary Signet execution.
+private runtime using the existing bridge credential. Its unit reads only the
+dedicated mode-`0600`
+`~/.config/compass/jarvis-feedback-lifecycle-executor.env`, whose assignments
+are limited to the fixed production origin, bridge secret, two-second poll
+interval, and `INFO` log level. It must never load or copy the shared
+`~/.hermes/.env`; see `deploy/systemd/README.md` for the installation gate. The
+macOS scheduler must not invoke it through local credentials, browser
+impersonation, direct D1 writes, or arbitrary Signet execution.
 
 Confirmed bugs that an administrator moves into `triaged` also enqueue one
 `feedback.delivery_requested` event. The event is the supported handoff to the
