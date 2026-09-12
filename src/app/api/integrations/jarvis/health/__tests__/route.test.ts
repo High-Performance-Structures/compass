@@ -54,4 +54,21 @@ describe("POST /api/integrations/jarvis/health", () => {
       status: "healthy",
     }))
   })
+
+  it("accepts the durable lifecycle executor heartbeat", async () => {
+    const response = await POST(new Request("https://compass.example/api/integrations/jarvis/health", {
+      method: "POST",
+      body: JSON.stringify({
+        serviceName: "jarvis-feedback-lifecycle-executor",
+        status: "degraded",
+        metadata: { claimedEventCount: 1, completedCount: 0, failedCount: 1 },
+      }),
+    }))
+
+    expect(response.status).toBe(200)
+    expect(mocks.recordFeedbackServiceHealth).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      serviceName: "jarvis-feedback-lifecycle-executor",
+      status: "degraded",
+    }))
+  })
 })

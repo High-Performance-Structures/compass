@@ -286,6 +286,25 @@ update twice before acknowledgement. The notifier service runs with Hermes's
 virtual-environment Python so those send adapters use the same dependencies as
 the Hermes gateway.
 
+The approved non-feature lifecycle executor is the separate private-runtime
+service `scripts/jarvis-feedback-lifecycle-executor.py` with unit template
+`ops/systemd/compass-jarvis-feedback-lifecycle-executor.service`. It pulls only
+`feedback.lifecycle_requested` events, validates the closed schema and fixed
+production target, invokes the co-installed constrained status helper, and
+acknowledges each event with its claim token. Malformed, feature, endpoint-
+rejected, or oversized requests are terminal failures; transport failures use a
+bounded retry delay and preserve the original idempotency key. The executor
+emits a bounded service heartbeat and never exposes response bodies, secrets,
+arbitrary URLs, or remote command controls. Install it only in the authorized
+private runtime using the existing bridge credential. Its unit reads only the
+dedicated mode-`0600`
+`~/.config/compass/jarvis-feedback-lifecycle-executor.env`, whose assignments
+are limited to the fixed production origin, bridge secret, two-second poll
+interval, and `INFO` log level. It must never load or copy the shared
+`~/.hermes/.env`; see `deploy/systemd/README.md` for the installation gate. The
+macOS scheduler must not invoke it through local credentials, browser
+impersonation, direct D1 writes, or arbitrary Signet execution.
+
 Confirmed bugs that an administrator moves into `triaged` also enqueue one
 `feedback.delivery_requested` event. The event is the supported handoff to the
 private Hermes/Kanban runtime: it contains only the Feedback Desk item's opaque
@@ -322,10 +341,10 @@ keys.
 All private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
 Feedback Desk shows heartbeat age, last failure, and pending/processing/failed
-bridge counts. The delivery consumer reports `degraded` when any claimed event
-fails or is returned for retry, so a healthy process cannot mask per-event
-failures. A missing heartbeat is an operational failure even when the process
-manager still reports the service as running.
+bridge counts. Queue consumers report `degraded` after processing when any
+claimed event fails or is returned for retry, so a healthy process cannot mask
+per-event failures. A missing heartbeat is an operational failure even when
+the process manager still reports the service as running.
 
 ### Acknowledge an event
 
@@ -334,10 +353,10 @@ POST /api/integrations/jarvis/events/<event-id>/ack
 ```
 
 The pull response includes an opaque `claimToken` for each claimed event. A
-`feedback.delivery_requested` acknowledgement must echo that token; the server
-fences the terminal update to the active claim so an expired worker cannot
-complete a replacement worker's event. Completed acknowledgements remain
-idempotent after the worker loses its response.
+`feedback.delivery_requested` and `feedback.lifecycle_requested` acknowledgements
+must echo that token; the server fences the terminal update to the active claim so
+an expired worker cannot complete a replacement worker's event. Completed
+acknowledgements remain idempotent after the worker loses its response.
 
 Completed:
 
