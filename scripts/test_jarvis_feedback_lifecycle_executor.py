@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib.util
 import os
 import threading
@@ -179,6 +181,54 @@ class LifecycleExecutorTests(unittest.TestCase):
         )
         self.assertNotIn("schemaVersion", payloads[0])
         self.assertNotIn("kind", payloads[0])
+
+    def test_run_once_reports_item_failures_after_processing(self) -> None:
+        calls: list[str] = []
+        health_payloads: list[dict[str, object]] = []
+
+        def request(method: str, target: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+            if method == "GET" and target == MODULE.PULL_TARGET:
+                calls.append("pull")
+                return {"events": [self.event()]}
+            if method == "POST" and target == MODULE.HEALTH_TARGET:
+                calls.append("health")
+                if payload is not None:
+                    health_payloads.append(payload)
+                return {"success": True}
+            raise AssertionError(f"unexpected bridge request: {method} {target}")
+
+        def acknowledge(
+            event_id: str,
+            claim_token: str,
+            body: dict[str, object],
+        ) -> None:
+            calls.append("event")
+            self.assertEqual(event_id, "123e4567-e89b-12d3-a456-426614174001")
+            self.assertEqual(claim_token, "claim-1")
+            self.assertEqual(body, {
+                "status": "failed",
+                "error": "compass_rejected_feedback_status",
+            })
+
+        with (
+            patch.object(MODULE, "compass_request", side_effect=request),
+            patch.object(MODULE, "execute_lifecycle", return_value={"success": False}),
+            patch.object(MODULE, "acknowledge", side_effect=acknowledge),
+        ):
+            MODULE.run_once()
+
+        self.assertEqual(calls, ["pull", "event", "health"])
+        self.assertEqual(health_payloads, [{
+            "serviceName": "jarvis-feedback-lifecycle-executor",
+            "status": "degraded",
+            "error": None,
+            "metadata": {
+                "claimedEventCount": 1,
+                "completedCount": 0,
+                "failedCount": 1,
+                "retryableCount": 0,
+            },
+        }])
 
     def test_compass_request_rejects_non_https_runtime_origin(self) -> None:
         with patch.dict(

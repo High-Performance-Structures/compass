@@ -17,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_REQUEST_BYTES = 64 * 1024
@@ -72,6 +72,7 @@ ALLOWED_PAYLOAD_KEYS = frozenset(
     }
 )
 HELPER_PAYLOAD_KEYS = frozenset(ALLOWED_PAYLOAD_KEYS - {"schemaVersion", "kind"})
+EventOutcome = Literal["completed", "failed", "retryable"]
 
 
 class InvalidLifecycleRequest(ValueError):
@@ -360,7 +361,7 @@ def acknowledge(
     )
 
 
-def handle_event(event: dict[str, object]) -> None:
+def handle_event(event: dict[str, object]) -> EventOutcome:
     event_id = event.get("id")
     claim_token = event.get("claimToken")
     payload = event.get("payload")
@@ -380,7 +381,7 @@ def handle_event(event: dict[str, object]) -> None:
                 claim_token,
                 {"status": "failed", "error": "invalid_lifecycle_event"},
             )
-        return
+        return "failed"
     try:
         result = execute_lifecycle(payload)
     except InvalidLifecycleRequest:
@@ -389,7 +390,7 @@ def handle_event(event: dict[str, object]) -> None:
             claim_token,
             {"status": "failed", "error": "invalid_lifecycle_request"},
         )
-        return
+        return "failed"
     except RetryableExecutionError:
         acknowledge(
             event_id,
@@ -400,14 +401,14 @@ def handle_event(event: dict[str, object]) -> None:
                 "retryAfterSeconds": RETRY_AFTER_SECONDS,
             },
         )
-        return
+        return "retryable"
     except TerminalExecutionError:
         acknowledge(
             event_id,
             claim_token,
             {"status": "failed", "error": "lifecycle_execution_failed"},
         )
-        return
+        return "failed"
 
     if result.get("success") is not True:
         acknowledge(
@@ -415,15 +416,20 @@ def handle_event(event: dict[str, object]) -> None:
             claim_token,
             {"status": "failed", "error": "compass_rejected_feedback_status"},
         )
-        return
+        return "failed"
     acknowledge(
         event_id,
         claim_token,
         {"status": "completed", "result": result},
     )
+    return "completed"
 
 
-def heartbeat(status: str, error: str | None = None) -> None:
+def heartbeat(
+    status: str,
+    error: str | None = None,
+    metadata: dict[str, object] | None = None,
+) -> None:
     try:
         compass_request(
             "POST",
@@ -432,6 +438,7 @@ def heartbeat(status: str, error: str | None = None) -> None:
                 "serviceName": "jarvis-feedback-lifecycle-executor",
                 "status": status,
                 "error": error[:2000] if error else None,
+                "metadata": metadata or {},
             },
         )
     except Exception:
@@ -443,10 +450,26 @@ def run_once() -> None:
     events = response.get("events") if isinstance(response, dict) else None
     if not isinstance(events, list):
         raise TerminalExecutionError("Compass queue response is invalid")
-    heartbeat("healthy")
+    counts: dict[str, int] = {
+        "completed": 0,
+        "failed": 0,
+        "retryable": 0,
+    }
     for event in events:
         if isinstance(event, dict):
-            handle_event(event)
+            outcome = handle_event(event)
+            counts[outcome] += 1
+        else:
+            counts["failed"] += 1
+    heartbeat(
+        "degraded" if counts["failed"] or counts["retryable"] else "healthy",
+        metadata={
+            "claimedEventCount": len(events),
+            "completedCount": counts["completed"],
+            "failedCount": counts["failed"],
+            "retryableCount": counts["retryable"],
+        },
+    )
 
 
 def run() -> None:

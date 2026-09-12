@@ -15,6 +15,7 @@ const heartbeatSchema = z.object({
     "jarvis-agent-poller",
     "jarvis-feedback-notifier",
     "jarvis-feedback-delivery-consumer",
+    "jarvis-feedback-lifecycle-executor",
   ]),
   status: z.enum(["healthy", "degraded", "failed"]),
   error: z.string().max(2_000).nullable().optional(),
