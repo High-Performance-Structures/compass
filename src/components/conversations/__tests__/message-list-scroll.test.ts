@@ -145,6 +145,63 @@ describe("MessageList scrolling", () => {
     ).toBeDefined()
   })
 
+  it("does not override a manual scroll before the initial newest frame runs", async () => {
+    const pendingFrames: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrames.push(callback)
+      return pendingFrames.length
+    })
+
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-1",
+          currentUserId: null,
+          initialMessages: [
+            {
+              id: "message-1",
+              channelId: "channel-1",
+              threadId: null,
+              content: "Existing message",
+              contentHtml: null,
+              editedAt: null,
+              deletedAt: null,
+              isPinned: false,
+              replyCount: 0,
+              lastReplyAt: null,
+              createdAt: "2026-09-09T12:00:00.000Z",
+              user: null,
+            },
+          ],
+        }),
+      )
+    })
+
+    const viewport = host.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    expect(viewport).not.toBeNull()
+    if (!viewport) throw new Error("Expected the initial message viewport")
+
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    })
+    viewport.scrollTop = 0
+
+    await act(async () => {
+      viewport.dispatchEvent(new Event("scroll"))
+    })
+    expect(pendingFrames).toHaveLength(1)
+
+    await act(async () => {
+      pendingFrames.shift()?.(0)
+    })
+
+    expect(viewport.scrollTop).toBe(0)
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
+
   it("scrolls only the message viewport when an existing conversation opens", async () => {
     await act(async () => {
       root.render(

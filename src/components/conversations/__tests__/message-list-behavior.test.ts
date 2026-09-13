@@ -5,6 +5,7 @@ import {
   getNewestScrollTop,
   getPreservedScrollTop,
   getHistoryLoadError,
+  isInitialScrollCurrent,
   isHistoryRequestCurrent,
   isHistoryScrollRestoreCurrent,
   isAtNewestEdge,
@@ -68,6 +69,12 @@ describe("message list behavior", () => {
   it("does not restore request-start scroll over a later manual scroll", () => {
     expect(isHistoryScrollRestoreCurrent(4, 4, 12, 12)).toBe(true)
     expect(isHistoryScrollRestoreCurrent(4, 4, 12, 13)).toBe(false)
+  })
+
+  it("requires both the initial scroll intent and viewport generation", () => {
+    expect(isInitialScrollCurrent(12, 12, 4, 4)).toBe(true)
+    expect(isInitialScrollCurrent(12, 13, 4, 4)).toBe(false)
+    expect(isInitialScrollCurrent(12, 12, 4, 5)).toBe(false)
   })
 
   it("stops at the retained limit using messages appended during a history request", () => {
