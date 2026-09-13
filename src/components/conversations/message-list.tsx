@@ -14,6 +14,7 @@ import {
   getNewestScrollTop,
   getPreservedScrollTop,
   getHistoryLoadError,
+  isInitialScrollCurrent,
   isHistoryRequestCurrent,
   isHistoryScrollRestoreCurrent,
   isAtNewestEdge,
@@ -96,6 +97,7 @@ export function MessageList({
   const pendingNewestScrollRef = React.useRef(false)
   const historyRequestIdRef = React.useRef(0)
   const scrollIntentIdRef = React.useRef(0)
+  const viewportGenerationRef = React.useRef(0)
 
   // get last message id for real-time polling
   const lastMessageId = React.useMemo(() => {
@@ -168,9 +170,35 @@ export function MessageList({
       messages: [...initialMessages].reverse(),
       hasMore: true,
     })
-    const frame = requestAnimationFrame(() => scrollToNewest("smooth"))
-    return () => cancelAnimationFrame(frame)
-  }, [initialMessages, scrollToNewest])
+    const viewport = getScrollViewport()
+    if (!viewport) return
+
+    // A queued frame must yield to a scroll or viewport replacement that
+    // happens before the browser gets a chance to run it.
+    const requestScrollIntentId = scrollIntentIdRef.current
+    const requestViewportGeneration = viewportGenerationRef.current + 1
+    viewportGenerationRef.current = requestViewportGeneration
+    const frame = requestAnimationFrame(() => {
+      if (
+        scrollViewportRef.current !== viewport ||
+        !isInitialScrollCurrent(
+          requestScrollIntentId,
+          scrollIntentIdRef.current,
+          requestViewportGeneration,
+          viewportGenerationRef.current,
+        )
+      ) {
+        return
+      }
+      scrollToNewest("smooth")
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      if (viewportGenerationRef.current === requestViewportGeneration) {
+        viewportGenerationRef.current += 1
+      }
+    }
+  }, [getScrollViewport, initialMessages, scrollToNewest])
 
   React.useLayoutEffect(() => {
     const viewport = getScrollViewport()
@@ -232,7 +260,9 @@ export function MessageList({
       setAtNewestEdge(nextAtNewestEdge)
     }
     viewport.addEventListener("scroll", updateNewestEdge)
-    updateNewestEdge()
+    const initialAtNewestEdge = isAtNewestEdge(viewport)
+    atNewestEdgeRef.current = initialAtNewestEdge
+    setAtNewestEdge(initialAtNewestEdge)
     return () => viewport.removeEventListener("scroll", updateNewestEdge)
   }, [getScrollViewport])
 

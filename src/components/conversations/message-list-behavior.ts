@@ -75,6 +75,18 @@ export function isHistoryScrollRestoreCurrent(
   )
 }
 
+export function isInitialScrollCurrent(
+  requestScrollIntentId: number,
+  currentScrollIntentId: number,
+  requestViewportGeneration: number,
+  currentViewportGeneration: number,
+): boolean {
+  return (
+    requestScrollIntentId === currentScrollIntentId &&
+    requestViewportGeneration === currentViewportGeneration
+  )
+}
+
 export function getHistoryLoadError(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
     ? error.message
