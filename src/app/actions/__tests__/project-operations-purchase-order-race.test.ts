@@ -16,11 +16,13 @@ import {
   nuTechCatalogVersions,
   nuTechOrderItems,
   nuTechOrderWorkflows,
+  nuTechProducts,
 } from "@/db/schema-nutech"
 
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
+  getOrganizationDriveContext: vi.fn(),
   fetch: vi.fn(),
   isInternalStaffRole: vi.fn(),
   requireAuth: vi.fn(),
@@ -33,6 +35,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
+vi.mock("@/lib/google/organization-drive", () => ({
+  getOrganizationDriveContext: mocks.getOrganizationDriveContext,
+}))
 vi.mock("@/lib/demo", () => ({ isDemoUser: vi.fn(() => false) }))
 vi.mock("@/lib/org-scope", () => ({ requireOrg: mocks.requireOrg }))
 vi.mock("@/lib/permission-enforcement", () => ({
@@ -181,7 +186,8 @@ function createSchema(sqlite: Sqlite): void {
       name TEXT,
       project_number TEXT,
       client_name TEXT,
-      address TEXT
+      address TEXT,
+      google_drive_folder_id TEXT
     );
 
     CREATE TABLE project_operations (
@@ -275,7 +281,33 @@ function createSchema(sqlite: Sqlite): void {
       id TEXT PRIMARY KEY NOT NULL,
       organization_id TEXT NOT NULL,
       status TEXT NOT NULL,
-      effective_date TEXT NOT NULL
+      effective_date TEXT,
+      airlite_template_id TEXT
+    );
+
+    CREATE TABLE nutech_products (
+      id TEXT PRIMARY KEY NOT NULL,
+      organization_id TEXT NOT NULL,
+      manufacturer_sku TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      price_unit TEXT NOT NULL,
+      minimum_order_increment INTEGER NOT NULL,
+      package_label TEXT NOT NULL,
+      airlite_template_row INTEGER,
+      active INTEGER NOT NULL
+    );
+
+    CREATE TABLE nutech_catalog_prices (
+      id TEXT PRIMARY KEY NOT NULL,
+      catalog_version_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      airlite_cost_cents INTEGER NOT NULL,
+      new_standard_price_cents INTEGER NOT NULL,
+      new_cash_price_cents INTEGER NOT NULL,
+      returning_standard_price_cents INTEGER NOT NULL,
+      returning_cash_price_cents INTEGER NOT NULL
     );
 
     CREATE TABLE nutech_order_workflows (
@@ -309,6 +341,13 @@ function createSchema(sqlite: Sqlite): void {
       vendor_invoice_received_at TEXT,
       vendor_invoice_released_at TEXT,
       vendor_invoice_released_by TEXT,
+      airlite_workbook_claim_token TEXT,
+      airlite_workbook_claim_revision INTEGER,
+      airlite_workbook_claim_attempt INTEGER,
+      airlite_workbook_claim_reclaim_after TEXT,
+      airlite_workbook_claim_retry_until TEXT,
+      airlite_workbook_claim_fingerprint TEXT,
+      airlite_workbook_claim_error TEXT,
       notes TEXT,
       created_by TEXT,
       updated_by TEXT,
@@ -341,6 +380,9 @@ function seedDraft(sqlite: Sqlite, now: string): void {
   sqlite.prepare(
     "INSERT INTO projects (id, organization_id, name, project_number, address) VALUES (?, ?, ?, ?, ?)"
   ).run("project-1", "org-1", "Test Project", "N-001", "123 Main St")
+  sqlite
+    .prepare("UPDATE projects SET google_drive_folder_id = ? WHERE id = ?")
+    .run("folder-1", "project-1")
   sqlite.prepare(`
     INSERT INTO project_operations (
       id, project_id, source_system, source_record_type, source_record_number,
@@ -378,12 +420,30 @@ function seedDraft(sqlite: Sqlite, now: string): void {
 
 function seedNuTechWorkflow(sqlite: Sqlite, now: string): void {
   sqlite.prepare(`
+    INSERT INTO nutech_catalog_versions (
+      id, organization_id, status, effective_date, airlite_template_id
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run("catalog-1", "org-1", "active", "2026-01-01", "template-1")
+  sqlite.prepare(`
+    INSERT INTO nutech_products (
+      id, organization_id, manufacturer_sku, name, category, origin,
+      price_unit, minimum_order_increment, package_label, airlite_template_row, active
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run("product-1", "org-1", "SKU-1", "Block", "block", "USA", "each", 1, "Each", 10, 1)
+  sqlite.prepare(`
+    INSERT INTO nutech_catalog_prices (
+      id, catalog_version_id, product_id, airlite_cost_cents,
+      new_standard_price_cents, new_cash_price_cents,
+      returning_standard_price_cents, returning_cash_price_cents
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run("price-1", "catalog-1", "product-1", 100, 120, 110, 115, 105)
+  sqlite.prepare(`
     INSERT INTO nutech_order_workflows (
       id, project_id, customer_type, pricing_mode, quantity_source,
       takeoff_acknowledgement_status, scope_type, bracing_included,
-      delivery_method, airlite_purchase_order_operation_id, order_status,
+      delivery_method, airlite_purchase_order_operation_id, catalog_version_id, order_status,
       airlite_workbook_status, vendor_invoice_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     "workflow-1",
     "project-1",
@@ -395,6 +455,7 @@ function seedNuTechWorkflow(sqlite: Sqlite, now: string): void {
     0,
     "delivery",
     "po-1",
+    "catalog-1",
     "customer_approved",
     "generated",
     "not_received",
@@ -2774,6 +2835,344 @@ describe("Nu-Tech purchase-order release versus supplier email", () => {
     expect(storedWorkflow?.airliteWorkbookStatus).toBe("stale")
     expect(storedWorkflow?.purchaseOrderReleasedAt).toBeNull()
     expect(storedWorkflow?.orderStatus).toBe("customer_approved")
+    sqlite.close()
+  })
+})
+
+describe("Nu-Tech Airlite workbook generation claim", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(FIXED_NOW))
+    vi.clearAllMocks()
+    mocks.fetch.mockReset()
+    mocks.requireAuth.mockResolvedValue({
+      id: "staff-1",
+      role: "project_manager",
+      isActive: true,
+      displayName: "Project Manager",
+      email: "staff@example.com",
+    })
+    mocks.isInternalStaffRole.mockReturnValue(true)
+    mocks.requireFeaturePermission.mockResolvedValue(undefined)
+    mocks.requireOrg.mockReturnValue("org-1")
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("permits one provider workbook copy when two database actors race", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actorOne = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actorTwo = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    let releaseProvider: (workbook: {
+      readonly id: string
+      readonly webViewLink: string
+    }) => void = () => undefined
+    let providerStarted: () => void = () => undefined
+    const providerReached = new Promise<void>((resolve) => {
+      providerStarted = resolve
+    })
+    const copyFile = vi.fn(
+      async (): Promise<{ readonly id: string; readonly webViewLink: string }> => {
+        providerStarted()
+        if (copyFile.mock.calls.length > 1) {
+          return {
+            id: "workbook-2",
+            webViewLink: "https://drive.test/workbook-2",
+          }
+        }
+        return await new Promise((resolve) => {
+          releaseProvider = resolve
+        })
+      }
+    )
+    const batchUpdateValues = vi.fn(async () => undefined)
+    const addSheet = vi.fn(async () => ({ sheetId: 1 }))
+    const listFiles = vi.fn(async () => ({ files: [] }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: { batchUpdateValues, addSheet },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockImplementationOnce(() => actorOne).mockImplementationOnce(() => actorTwo)
+
+    const firstWorker = generateNuTechAirliteWorkbook("project-1")
+    await expect(
+      Promise.race([
+        providerReached.then(() => "provider"),
+        firstWorker.then(
+          () => "completed",
+          (error: unknown) => `failed: ${error instanceof Error ? error.message : String(error)}`
+        ),
+      ])
+    ).resolves.toBe("provider")
+
+    const secondResult = await generateNuTechAirliteWorkbook("project-1")
+    expect(secondResult).toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+    expect(copyFile).toHaveBeenCalledTimes(1)
+
+    releaseProvider({ id: "workbook-1", webViewLink: "https://drive.test/workbook-1" })
+    await expect(firstWorker).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/workbook-1",
+    })
+    expect(batchUpdateValues).toHaveBeenCalledTimes(1)
+    const stored = sqlite
+      .prepare(
+        "SELECT airlite_workbook_status, airlite_workbook_claim_token FROM nutech_order_workflows WHERE id = ?"
+      )
+      .get("workflow-1") as {
+      airlite_workbook_status: string
+      airlite_workbook_claim_token: string | null
+    }
+    expect(stored.airlite_workbook_status).toBe("generated")
+    expect(stored.airlite_workbook_claim_token).toBeNull()
+    sqlite.close()
+  })
+
+  it("reuses a provider artifact with the deterministic generation fingerprint", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const copyFile = vi.fn()
+    const listFiles = vi.fn(async () => ({
+      files: [
+        {
+          id: "recovered-workbook",
+          name: "Recovered workbook",
+          mimeType: "application/vnd.google-apps.spreadsheet",
+          webViewLink: "https://drive.test/recovered-workbook",
+          trashed: false,
+        },
+      ],
+    }))
+    const batchUpdateValues = vi.fn(async () => undefined)
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        batchUpdateValues,
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockImplementation(() => actor)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/recovered-workbook",
+    })
+    expect(copyFile).not.toHaveBeenCalled()
+    expect(batchUpdateValues).toHaveBeenCalledTimes(1)
+    sqlite.close()
+  })
+
+  it("fences the expired worker when a replacement claim takes over", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actorOne = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actorTwo = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    let releaseFirstProvider: (workbook: {
+      readonly id: string
+      readonly webViewLink: string
+    }) => void = () => undefined
+    let providerCalls = 0
+    const copyFile = vi.fn(
+      async (): Promise<{ readonly id: string; readonly webViewLink: string }> => {
+        providerCalls += 1
+        if (providerCalls === 1) {
+          return await new Promise((resolve) => {
+            releaseFirstProvider = resolve
+          })
+        }
+        return {
+          id: "replacement-workbook",
+          webViewLink: "https://drive.test/replacement-workbook",
+        }
+      }
+    )
+    const listFiles = vi.fn(async () => ({ files: [] }))
+    const batchUpdateValues = vi.fn(async () => undefined)
+    const addSheet = vi.fn(async () => ({ sheetId: 1 }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: { batchUpdateValues, addSheet },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockImplementationOnce(() => actorOne).mockImplementationOnce(() => actorTwo)
+
+    const firstWorker = generateNuTechAirliteWorkbook("project-1")
+    await vi.waitFor(() => expect(copyFile).toHaveBeenCalledTimes(1))
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/replacement-workbook",
+    })
+    releaseFirstProvider({
+      id: "expired-workbook",
+      webViewLink: "https://drive.test/expired-workbook",
+    })
+    await expect(firstWorker).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook generation claim expired or was replaced.",
+    })
+    expect(copyFile).toHaveBeenCalledTimes(2)
+    const stored = sqlite
+      .prepare(
+        "SELECT airlite_workbook_id, airlite_workbook_status, airlite_workbook_claim_revision FROM nutech_order_workflows WHERE id = ?"
+      )
+      .get("workflow-1") as {
+      airlite_workbook_id: string
+      airlite_workbook_status: string
+      airlite_workbook_claim_revision: number
+    }
+    expect(stored).toEqual({
+      airlite_workbook_id: "replacement-workbook",
+      airlite_workbook_status: "generated",
+      airlite_workbook_claim_revision: 2,
+    })
+    sqlite.close()
+  })
+
+  it("recovers a failed provider attempt and stops after three bounded retries", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const copyFile = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+    const listFiles = vi.fn(async () => ({ files: [] }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        batchUpdateValues: vi.fn(async () => undefined),
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockImplementation(() => actor)
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+        success: false,
+        error: "provider unavailable",
+      })
+    }
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook generation retry limit has been reached. Try again later.",
+    })
+    expect(copyFile).toHaveBeenCalledTimes(3)
+    const stored = sqlite
+      .prepare(
+        "SELECT airlite_workbook_status, airlite_workbook_claim_attempt, airlite_workbook_claim_token FROM nutech_order_workflows WHERE id = ?"
+      )
+      .get("workflow-1") as {
+      airlite_workbook_status: string
+      airlite_workbook_claim_attempt: number
+      airlite_workbook_claim_token: string | null
+    }
+    expect(stored).toEqual({
+      airlite_workbook_status: "stale",
+      airlite_workbook_claim_attempt: 3,
+      airlite_workbook_claim_token: null,
+    })
+    copyFile.mockResolvedValue({
+      id: "window-reset-workbook",
+      webViewLink: "https://drive.test/window-reset-workbook",
+    })
+    vi.advanceTimersByTime(23 * 60 * 60 * 1000 + 1)
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/window-reset-workbook",
+    })
+    expect(copyFile).toHaveBeenCalledTimes(4)
     sqlite.close()
   })
 })

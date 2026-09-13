@@ -750,9 +750,13 @@ export async function saveProjectNuTechOrder(
       existing !== undefined &&
       (purchaseOrderId !== existing.airlitePurchaseOrderOperationId ||
         requestedDeliveryDate !== existing.requestedDeliveryDate)
+    const workbookClaimInvalidated =
+      workbookInputsChanged &&
+      existing !== undefined &&
+      (existing.airliteWorkbookStatus === "generating" ||
+        existing.airliteWorkbookStatus.startsWith("generated"))
     const nextWorkbookStatus =
-      existing?.airliteWorkbookStatus.startsWith("generated") &&
-      workbookInputsChanged
+      workbookClaimInvalidated
         ? "stale"
         : existing?.airliteWorkbookStatus ?? "not_generated"
     const saveWorkflowQuery = access.db
@@ -781,6 +785,16 @@ export async function saveProjectNuTechOrder(
           vendorInvoiceStatus: values.vendorInvoiceStatus,
           vendorInvoiceReceivedAt: values.vendorInvoiceReceivedAt,
           airliteWorkbookStatus: nextWorkbookStatus,
+          airliteWorkbookClaimToken: workbookClaimInvalidated ? null : undefined,
+          airliteWorkbookClaimReclaimAfter: workbookClaimInvalidated
+            ? null
+            : undefined,
+          airliteWorkbookClaimRetryUntil: workbookClaimInvalidated ? null : undefined,
+          airliteWorkbookClaimAttempt: workbookClaimInvalidated ? null : undefined,
+          airliteWorkbookClaimFingerprint: workbookClaimInvalidated
+            ? null
+            : undefined,
+          airliteWorkbookClaimError: workbookClaimInvalidated ? null : undefined,
           notes: values.notes,
           updatedBy: access.user.id,
           updatedAt: now,

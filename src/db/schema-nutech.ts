@@ -178,6 +178,19 @@ export const nuTechOrderWorkflows = sqliteTable(
     airliteWorkbookStatus: text("airlite_workbook_status")
       .notNull()
       .default("not_generated"),
+    airliteWorkbookClaimToken: text("airlite_workbook_claim_token"),
+    airliteWorkbookClaimRevision: integer("airlite_workbook_claim_revision"),
+    airliteWorkbookClaimAttempt: integer("airlite_workbook_claim_attempt"),
+    airliteWorkbookClaimReclaimAfter: text(
+      "airlite_workbook_claim_reclaim_after"
+    ),
+    airliteWorkbookClaimRetryUntil: text(
+      "airlite_workbook_claim_retry_until"
+    ),
+    airliteWorkbookClaimFingerprint: text(
+      "airlite_workbook_claim_fingerprint"
+    ),
+    airliteWorkbookClaimError: text("airlite_workbook_claim_error"),
     airliteWorkbookGeneratedAt: text("airlite_workbook_generated_at"),
     airliteWorkbookGeneratedBy: text(
       "airlite_workbook_generated_by"

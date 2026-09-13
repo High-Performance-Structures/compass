@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, isNull } from "drizzle-orm"
+import { and, asc, eq, gt, isNull, lte, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -45,6 +45,59 @@ type NuTechItemAccess = {
 export type NuTechOrderItemActionResult =
   | { readonly success: true; readonly id: string; readonly workbookUrl?: string }
   | { readonly success: false; readonly error: string }
+
+const AIRLITE_WORKBOOK_CLAIM_LEASE_MS = 5 * 60 * 1000
+const AIRLITE_WORKBOOK_RETRY_WINDOW_MS = 23 * 60 * 60 * 1000
+const AIRLITE_WORKBOOK_MAX_ATTEMPTS = 3
+const AIRLITE_WORKBOOK_GENERATING_ERROR =
+  "The Airlite workbook is already being generated. Try again shortly."
+const AIRLITE_WORKBOOK_CLAIM_LOST_ERROR =
+  "The Airlite workbook generation claim expired or was replaced."
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  )
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("")
+}
+
+async function renewAirliteWorkbookClaim(input: {
+  readonly db: CompassDb
+  readonly workflowId: string
+  readonly claimToken: string
+  readonly claimRevision: number
+}): Promise<void> {
+  const now = new Date().toISOString()
+  const renewed = await input.db
+    .update(nuTechOrderWorkflows)
+    .set({
+      airliteWorkbookClaimReclaimAfter: new Date(
+        Date.now() + AIRLITE_WORKBOOK_CLAIM_LEASE_MS
+      ).toISOString(),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(nuTechOrderWorkflows.id, input.workflowId),
+        eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, input.claimToken),
+        eq(
+          nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+          input.claimRevision
+        ),
+        eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+        isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+        gt(
+          nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
+          now
+        )
+      )
+    )
+    .run()
+  if (renewed.meta.changes !== 1) throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
+}
 
 async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
   const user = await requireAuth()
@@ -183,6 +236,9 @@ export async function saveNuTechOrderItem(
     const existing = existingItems.find((item) => item.productId === product.id)
     const id = existing?.id ?? crypto.randomUUID()
     const now = new Date().toISOString()
+    const workbookClaimInvalidated =
+      workflow.airliteWorkbookStatus === "generating" ||
+      workflow.airliteWorkbookStatus.startsWith("generated")
     const unitPriceCents = nuTechCustomerPriceCents(
       product,
       storedCustomerType(workflow.customerType),
@@ -222,10 +278,27 @@ export async function saveNuTechOrderItem(
             workflow.orderStatus === "intake"
               ? "quantities_ready"
               : workflow.orderStatus,
-          airliteWorkbookStatus:
-            workflow.airliteWorkbookStatus.startsWith("generated")
-              ? "stale"
-              : workflow.airliteWorkbookStatus,
+          airliteWorkbookStatus: workbookClaimInvalidated
+            ? "stale"
+            : workflow.airliteWorkbookStatus,
+          airliteWorkbookClaimToken: workbookClaimInvalidated
+            ? null
+            : workflow.airliteWorkbookClaimToken,
+          airliteWorkbookClaimReclaimAfter: workbookClaimInvalidated
+            ? null
+            : workflow.airliteWorkbookClaimReclaimAfter,
+          airliteWorkbookClaimRetryUntil: workbookClaimInvalidated
+            ? null
+            : workflow.airliteWorkbookClaimRetryUntil,
+          airliteWorkbookClaimAttempt: workbookClaimInvalidated
+            ? null
+            : workflow.airliteWorkbookClaimAttempt,
+          airliteWorkbookClaimFingerprint: workbookClaimInvalidated
+            ? null
+            : workflow.airliteWorkbookClaimFingerprint,
+          airliteWorkbookClaimError: workbookClaimInvalidated
+            ? null
+            : workflow.airliteWorkbookClaimError,
           updatedBy: access.user.id,
           updatedAt: now,
         })
@@ -249,6 +322,14 @@ export async function deleteNuTechOrderItem(
         id: nuTechOrderItems.id,
         workflowId: nuTechOrderItems.workflowId,
         airliteWorkbookStatus: nuTechOrderWorkflows.airliteWorkbookStatus,
+        airliteWorkbookClaimToken: nuTechOrderWorkflows.airliteWorkbookClaimToken,
+        airliteWorkbookClaimReclaimAfter:
+          nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
+        airliteWorkbookClaimRetryUntil: nuTechOrderWorkflows.airliteWorkbookClaimRetryUntil,
+        airliteWorkbookClaimAttempt: nuTechOrderWorkflows.airliteWorkbookClaimAttempt,
+        airliteWorkbookClaimFingerprint:
+          nuTechOrderWorkflows.airliteWorkbookClaimFingerprint,
+        airliteWorkbookClaimError: nuTechOrderWorkflows.airliteWorkbookClaimError,
         purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
       })
       .from(nuTechOrderItems)
@@ -269,14 +350,35 @@ export async function deleteNuTechOrderItem(
       throw new Error("Released Airlite PO quantities are locked.")
     }
     const now = new Date().toISOString()
+    const workbookClaimInvalidated =
+      item.airliteWorkbookStatus === "generating" ||
+      item.airliteWorkbookStatus.startsWith("generated")
     await access.db.batch([
       access.db.delete(nuTechOrderItems).where(eq(nuTechOrderItems.id, item.id)),
       access.db
         .update(nuTechOrderWorkflows)
         .set({
-          airliteWorkbookStatus: item.airliteWorkbookStatus.startsWith("generated")
+          airliteWorkbookStatus: workbookClaimInvalidated
             ? "stale"
             : item.airliteWorkbookStatus,
+          airliteWorkbookClaimToken: workbookClaimInvalidated
+            ? null
+            : item.airliteWorkbookClaimToken,
+          airliteWorkbookClaimReclaimAfter: workbookClaimInvalidated
+            ? null
+            : item.airliteWorkbookClaimReclaimAfter,
+          airliteWorkbookClaimRetryUntil: workbookClaimInvalidated
+            ? null
+            : item.airliteWorkbookClaimRetryUntil,
+          airliteWorkbookClaimAttempt: workbookClaimInvalidated
+            ? null
+            : item.airliteWorkbookClaimAttempt,
+          airliteWorkbookClaimFingerprint: workbookClaimInvalidated
+            ? null
+            : item.airliteWorkbookClaimFingerprint,
+          airliteWorkbookClaimError: workbookClaimInvalidated
+            ? null
+            : item.airliteWorkbookClaimError,
           updatedBy: access.user.id,
           updatedAt: now,
         })
@@ -294,6 +396,8 @@ export async function generateNuTechAirliteWorkbook(
 ): Promise<NuTechOrderItemActionResult> {
   let claimedWorkflowId: string | null = null
   let claimedDb: CompassDb | null = null
+  let claimToken: string | null = null
+  let claimRevision: number | null = null
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
@@ -314,26 +418,32 @@ export async function generateNuTechAirliteWorkbook(
     if (!workflow.airlitePurchaseOrderOperationId) {
       throw new Error("Link the Compass Airlite purchase order before generating its workbook.")
     }
-    const generationClaim = await access.db
-      .update(nuTechOrderWorkflows)
-      .set({
-        airliteWorkbookStatus: "generating",
-        updatedBy: access.user.id,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(nuTechOrderWorkflows.id, workflow.id),
-          isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
-          eq(nuTechOrderWorkflows.airliteWorkbookStatus, workflow.airliteWorkbookStatus)
-        )
-      )
-      .run()
-    if (generationClaim.meta.changes !== 1) {
-      throw new Error("The Airlite PO workbook is being released. Try again.")
+    const now = new Date().toISOString()
+    const reclaimExpired =
+      workflow.airliteWorkbookClaimReclaimAfter === null ||
+      workflow.airliteWorkbookClaimReclaimAfter <= now
+    if (
+      workflow.airliteWorkbookStatus === "generating" &&
+      !reclaimExpired
+    ) {
+      throw new Error(AIRLITE_WORKBOOK_GENERATING_ERROR)
     }
-    claimedWorkflowId = workflow.id
-    claimedDb = access.db
+    const retryWindowExpired =
+      workflow.airliteWorkbookClaimRetryUntil !== null &&
+      workflow.airliteWorkbookClaimRetryUntil <= now
+    const previousAttempt = workflow.airliteWorkbookClaimAttempt ?? 0
+    const nextAttempt =
+      retryWindowExpired ||
+      workflow.airliteWorkbookStatus === "generated" ||
+      workflow.airliteWorkbookStatus === "not_generated"
+        ? 1
+        : previousAttempt + 1
+    if (nextAttempt > AIRLITE_WORKBOOK_MAX_ATTEMPTS) {
+      throw new Error(
+        "The Airlite workbook generation retry limit has been reached. Try again later."
+      )
+    }
+
     const [catalogVersion, purchaseOrder, lineRows] = await Promise.all([
       access.db
         .select({ airliteTemplateId: nuTechCatalogVersions.airliteTemplateId })
@@ -380,7 +490,6 @@ export async function generateNuTechAirliteWorkbook(
     if (!purchaseOrder?.number) {
       throw new Error("The linked Compass purchase order needs a PO number.")
     }
-    const now = new Date().toISOString()
     const plan = buildNuTechAirliteWorkbookPlan({
       purchaseOrderNumber: purchaseOrder.number,
       purchaseOrderDate: now.slice(0, 10),
@@ -393,6 +502,73 @@ export async function generateNuTechAirliteWorkbook(
       deliveryContact: access.project.clientName,
       lines: lineRows,
     })
+    const claimFingerprint = await sha256Hex(
+      JSON.stringify({
+        workflowId: workflow.id,
+        purchaseOrderNumber: purchaseOrder.number,
+        requestedDeliveryDate: workflow.requestedDeliveryDate,
+        lines: lineRows,
+      })
+    )
+    const nextClaimToken = crypto.randomUUID()
+    const nextClaimRevision = (workflow.airliteWorkbookClaimRevision ?? 0) + 1
+    const retryUntil =
+      workflow.airliteWorkbookClaimRetryUntil !== null &&
+      !retryWindowExpired
+        ? workflow.airliteWorkbookClaimRetryUntil
+        : new Date(Date.now() + AIRLITE_WORKBOOK_RETRY_WINDOW_MS).toISOString()
+    const generationClaim = await access.db
+      .update(nuTechOrderWorkflows)
+      .set({
+        airliteWorkbookStatus: "generating",
+        airliteWorkbookClaimToken: nextClaimToken,
+        airliteWorkbookClaimRevision: nextClaimRevision,
+        airliteWorkbookClaimAttempt: nextAttempt,
+        airliteWorkbookClaimReclaimAfter: new Date(
+          Date.now() + AIRLITE_WORKBOOK_CLAIM_LEASE_MS
+        ).toISOString(),
+        airliteWorkbookClaimRetryUntil: retryUntil,
+        airliteWorkbookClaimFingerprint: claimFingerprint,
+        airliteWorkbookClaimError: null,
+        updatedBy: access.user.id,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.id, workflow.id),
+          eq(nuTechOrderWorkflows.updatedAt, workflow.updatedAt),
+          isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+          or(
+            ne(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+            and(
+              eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+              or(
+                isNull(nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter),
+                lte(
+                  nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
+                  now
+                )
+              )
+            )
+          )
+        )
+      )
+      .run()
+    if (generationClaim.meta.changes !== 1) {
+      throw new Error(AIRLITE_WORKBOOK_GENERATING_ERROR)
+    }
+    claimedWorkflowId = workflow.id
+    claimedDb = access.db
+    claimToken = nextClaimToken
+    claimRevision = nextClaimRevision
+
+    const claim = {
+      db: access.db,
+      workflowId: workflow.id,
+      claimToken: nextClaimToken,
+      claimRevision: nextClaimRevision,
+    }
+    await renewAirliteWorkbookClaim(claim)
     const { env } = await getCloudflareContext()
     const { client, sheetsClient, userEmail } = await getOrganizationDriveContext({
       db: access.db,
@@ -400,25 +576,44 @@ export async function generateNuTechAirliteWorkbook(
       organizationId: access.organizationId,
       user: access.user,
     })
-    const workbook = await client.copyFile(
-      userEmail,
-      catalogVersion.airliteTemplateId,
-      {
-        name: `${access.project.projectNumber ?? access.project.name} Airlite Order ${now.slice(0, 10)}`,
-        parentId: access.project.googleDriveFolderId,
-      }
+    await renewAirliteWorkbookClaim(claim)
+    const matchingFiles = await client.listFiles(userEmail, {
+      folderId: access.project.googleDriveFolderId,
+      query: `appProperties has { key='compassAirliteGenerationFingerprint' and value='${claimFingerprint}' }`,
+      pageSize: 10,
+    })
+    const existingWorkbook = matchingFiles.files.find(
+      (file) => file.trashed !== true
     )
+    let workbook = existingWorkbook
+    if (!workbook) {
+      await renewAirliteWorkbookClaim(claim)
+      workbook = await client.copyFile(
+        userEmail,
+        catalogVersion.airliteTemplateId,
+        {
+          name: `${access.project.projectNumber ?? access.project.name} Airlite Order ${now.slice(0, 10)}`,
+          parentId: access.project.googleDriveFolderId,
+          appProperties: {
+            compassAirliteGenerationFingerprint: claimFingerprint,
+          },
+        }
+      )
+    }
+    await renewAirliteWorkbookClaim(claim)
     await sheetsClient.batchUpdateValues(userEmail, {
       spreadsheetId: workbook.id,
       updates: plan.updates,
     })
     if (plan.addendumValues.length > 0) {
+      await renewAirliteWorkbookClaim(claim)
       await sheetsClient.addSheet(userEmail, {
         spreadsheetId: workbook.id,
         title: "Compass Addendum",
         rowCount: Math.max(100, plan.addendumValues.length + 10),
         columnCount: 8,
       })
+      await renewAirliteWorkbookClaim(claim)
       await sheetsClient.batchUpdateValues(userEmail, {
         spreadsheetId: workbook.id,
         updates: [
@@ -439,6 +634,10 @@ export async function generateNuTechAirliteWorkbook(
         airliteWorkbookUrl: workbookUrl,
         airliteWorkbookStatus:
           plan.addendumItemCount > 0 ? "generated_with_addendum" : "generated",
+        airliteWorkbookClaimToken: null,
+        airliteWorkbookClaimReclaimAfter: null,
+        airliteWorkbookClaimRetryUntil: null,
+        airliteWorkbookClaimError: null,
         airliteWorkbookGeneratedAt: now,
         airliteWorkbookGeneratedBy: access.user.id,
         orderStatus: [
@@ -455,29 +654,47 @@ export async function generateNuTechAirliteWorkbook(
       .where(
         and(
           eq(nuTechOrderWorkflows.id, workflow.id),
-          isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
-          eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating")
+          eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, nextClaimToken),
+          eq(
+            nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+            nextClaimRevision
+          ),
+          eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+          isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
         )
       )
       .run()
-    if (completed.meta.changes !== 1) {
-      throw new Error("The Airlite PO workbook was released while it was generating.")
-    }
+    if (completed.meta.changes !== 1) throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
     revalidateNuTechOrder(projectId)
     return { success: true, id: workflow.id, workbookUrl }
   } catch (error) {
-    if (claimedDb !== null && claimedWorkflowId !== null) {
+    if (
+      claimedDb !== null &&
+      claimedWorkflowId !== null &&
+      claimToken !== null &&
+      claimRevision !== null
+    ) {
       try {
         await claimedDb
           .update(nuTechOrderWorkflows)
-          .set({ airliteWorkbookStatus: "stale" })
+          .set({
+            airliteWorkbookStatus: "stale",
+            airliteWorkbookClaimToken: null,
+            airliteWorkbookClaimReclaimAfter: null,
+            airliteWorkbookClaimError:
+              error instanceof Error ? error.message : "Workbook generation failed.",
+            updatedAt: new Date().toISOString(),
+          })
           .where(
             and(
               eq(nuTechOrderWorkflows.id, claimedWorkflowId),
-              isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
-              eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating")
+              eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, claimToken),
+              eq(nuTechOrderWorkflows.airliteWorkbookClaimRevision, claimRevision),
+              eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+              isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
             )
           )
+          .run()
       } catch {
         // Preserve the provider error; a later save can recover the status.
       }

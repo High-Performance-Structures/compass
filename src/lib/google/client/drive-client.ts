@@ -227,6 +227,7 @@ export class DriveClient {
     options: {
       readonly name: string
       readonly parentId: string
+      readonly appProperties?: Readonly<Record<string, string>>
     }
   ): Promise<DriveFile> {
     const params = new URLSearchParams({
@@ -243,6 +244,9 @@ export class DriveClient {
         body: JSON.stringify({
           name: options.name,
           parents: [options.parentId],
+          ...(options.appProperties === undefined
+            ? {}
+            : { appProperties: options.appProperties }),
         }),
       }
     )
