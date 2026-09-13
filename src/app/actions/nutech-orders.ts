@@ -195,6 +195,9 @@ function cleanText(value: string | null): string | null {
   return cleaned.length > 0 ? cleaned : null
 }
 
+const AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR =
+  "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes."
+
 function activeAirliteWorkbookClaim(
   workflow: Pick<
     typeof nuTechOrderWorkflows.$inferSelect,
@@ -693,6 +696,9 @@ export async function saveProjectNuTechOrder(
       .limit(1)
       .get()
     const now = new Date().toISOString()
+    if (existing?.airliteWorkbookProviderStatus === "in_flight") {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    }
     if (existing && activeAirliteWorkbookClaim(existing, now)) {
       throw new Error("The Airlite workbook is already being generated. Try again shortly.")
     }
@@ -1132,6 +1138,7 @@ export async function deleteProjectNuTechOrder(
         airliteWorkbookClaimRevision: nuTechOrderWorkflows.airliteWorkbookClaimRevision,
         airliteWorkbookClaimReclaimAfter:
           nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
+        airliteWorkbookProviderStatus: nuTechOrderWorkflows.airliteWorkbookProviderStatus,
         purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
         vendorInvoiceReleasedAt: nuTechOrderWorkflows.vendorInvoiceReleasedAt,
         updatedAt: nuTechOrderWorkflows.updatedAt,
@@ -1142,6 +1149,9 @@ export async function deleteProjectNuTechOrder(
       .get()
     if (!existing) throw new Error("Nu-Tech order workflow not found.")
     const now = new Date().toISOString()
+    if (existing.airliteWorkbookProviderStatus === "in_flight") {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    }
     if (activeAirliteWorkbookClaim(existing, now)) {
       throw new Error("The Airlite workbook is already being generated. Try again shortly.")
     }

@@ -15,6 +15,7 @@ import {
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { GoogleDriveCopyOutcomeUnknownError } from "@/lib/google/client/drive-client"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import type { DriveFile } from "@/lib/google/client/types"
 import { buildNuTechAirliteWorkbookPlan } from "@/lib/nutech/airlite-workbook"
@@ -283,6 +284,9 @@ export async function saveNuTechOrderItem(
       .get()
     if (!workflow) throw new Error("Save the Nu-Tech intake before adding products.")
     const now = new Date().toISOString()
+    if (workflow.airliteWorkbookProviderStatus === "in_flight") {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    }
     if (activeAirliteWorkbookClaim(workflow, now)) {
       throw new Error(AIRLITE_WORKBOOK_GENERATING_ERROR)
     }
@@ -529,6 +533,9 @@ export async function deleteNuTechOrderItem(
       .get()
     if (!item) throw new Error("Nu-Tech order item not found.")
     const now = new Date().toISOString()
+    if (item.airliteWorkbookProviderStatus === "in_flight") {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    }
     if (activeAirliteWorkbookClaim(item, now)) {
       throw new Error(AIRLITE_WORKBOOK_GENERATING_ERROR)
     }
@@ -628,6 +635,7 @@ export async function generateNuTechAirliteWorkbook(
   let claimedDb: CompassDb | null = null
   let claimToken: string | null = null
   let claimRevision: number | null = null
+  let inheritedProviderAttemptUnresolved = false
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
@@ -800,6 +808,7 @@ export async function generateNuTechAirliteWorkbook(
     claimedDb = access.db
     claimToken = nextClaimToken
     claimRevision = nextClaimRevision
+    inheritedProviderAttemptUnresolved = providerEffectInFlight
 
     const claim = {
       db: access.db,
@@ -822,7 +831,10 @@ export async function generateNuTechAirliteWorkbook(
       pageSize: 10,
     })
     const existingWorkbook = matchingFiles.files.find(
-      (file) => file.trashed !== true
+      (file) =>
+        file.trashed !== true &&
+        (!providerEffectInFlight ||
+          file.appProperties?.compassAirliteGenerationFingerprint === claimFingerprint)
     )
     let workbook = existingWorkbook
     const providerEffectKey = `${userEmail}:${catalogVersion.airliteTemplateId}:${claimFingerprint}`
@@ -852,6 +864,7 @@ export async function generateNuTechAirliteWorkbook(
       if (adopted.meta.changes !== 1) {
         throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
       }
+      inheritedProviderAttemptUnresolved = false
     } else {
       if (providerEffectInFlight && !airliteProviderEffects.has(providerEffectKey)) {
         throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
@@ -912,6 +925,7 @@ export async function generateNuTechAirliteWorkbook(
       if (recorded.meta.changes !== 1) {
         throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
       }
+      inheritedProviderAttemptUnresolved = false
     }
     await runWithAirliteProviderWriteFence({
       ...claim,
@@ -1007,8 +1021,39 @@ export async function generateNuTechAirliteWorkbook(
     return { success: true, id: workflow.id, workbookUrl }
   } catch (error) {
     const providerAttemptUnresolved =
-      error instanceof Error &&
-      error.message === AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR
+      inheritedProviderAttemptUnresolved ||
+      error instanceof GoogleDriveCopyOutcomeUnknownError ||
+      (error instanceof Error &&
+        error.message === AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    if (
+      providerAttemptUnresolved &&
+      claimedDb !== null &&
+      claimedWorkflowId !== null &&
+      claimToken !== null &&
+      claimRevision !== null
+    ) {
+      try {
+        await claimedDb
+          .update(nuTechOrderWorkflows)
+          .set({
+            airliteWorkbookClaimError: AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(
+            and(
+              eq(nuTechOrderWorkflows.id, claimedWorkflowId),
+              eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, claimToken),
+              eq(nuTechOrderWorkflows.airliteWorkbookClaimRevision, claimRevision),
+              eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+              eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "in_flight"),
+              isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+            )
+          )
+          .run()
+      } catch {
+        // Keep the provider outcome unresolved even if recording its message fails.
+      }
+    }
     if (
       !providerAttemptUnresolved &&
       claimedDb !== null &&
@@ -1041,6 +1086,12 @@ export async function generateNuTechAirliteWorkbook(
       } catch {
         // Preserve the provider error; a later save can recover the status.
       }
+    }
+    if (providerAttemptUnresolved) {
+      return actionError(
+        new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR),
+        "Failed to generate the Airlite workbook."
+      )
     }
     return actionError(error, "Failed to generate the Airlite workbook.")
   }

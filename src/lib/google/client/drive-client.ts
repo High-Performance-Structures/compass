@@ -30,6 +30,15 @@ import {
 const MAX_RETRIES = 3
 const INITIAL_BACKOFF_MS = 1000
 
+export class GoogleDriveCopyOutcomeUnknownError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "GoogleDriveCopyOutcomeUnknownError"
+  }
+}
+
+type RequestRetryMode = "retry-safe" | "single-attempt"
+
 type DriveClientConfig = {
   readonly serviceAccountKey: ServiceAccountKey
   readonly limiter?: ConcurrencyLimiter
@@ -61,7 +70,8 @@ export class DriveClient {
     userEmail: string,
     path: string,
     options: RequestInit = {},
-    isUpload = false
+    isUpload = false,
+    retryMode: RequestRetryMode = "retry-safe"
   ): Promise<T> {
     return this.limiter.execute(async () => {
       let lastError: Error | null = null
@@ -72,17 +82,40 @@ export class DriveClient {
           ? GOOGLE_UPLOAD_API
           : GOOGLE_DRIVE_API
 
-        const response = await fetch(`${baseUrl}${path}`, {
-          ...options,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            ...options.headers,
-          },
-        })
+        let response: Response
+        try {
+          response = await fetch(`${baseUrl}${path}`, {
+            ...options,
+            headers: {
+              Authorization: `Bearer ${token}`,
+              ...options.headers,
+            },
+          })
+        } catch (error) {
+          if (retryMode === "single-attempt") {
+            throw new GoogleDriveCopyOutcomeUnknownError(
+              `Google Drive copy outcome is unknown after a network failure: ${
+                error instanceof Error ? error.message : "unknown error"
+              }`
+            )
+          }
+          throw error
+        }
 
         if (response.ok) {
           if (response.status === 204) return undefined as T
-          return response.json() as Promise<T>
+          try {
+            return await (response.json() as Promise<T>)
+          } catch (error) {
+            if (retryMode === "single-attempt") {
+              throw new GoogleDriveCopyOutcomeUnknownError(
+                `Google Drive copy outcome is unknown because its successful response could not be read: ${
+                  error instanceof Error ? error.message : "unknown error"
+                }`
+              )
+            }
+            throw error
+          }
         }
 
         // refresh token on 401
@@ -96,6 +129,11 @@ export class DriveClient {
           response.status === 429 ||
           response.status >= 500
         ) {
+          if (retryMode === "single-attempt") {
+            throw new GoogleDriveCopyOutcomeUnknownError(
+              `Google Drive copy outcome is unknown after provider response ${response.status}.`
+            )
+          }
           if (response.status === 429) {
             this.limiter.reduceConcurrency()
           }
@@ -237,18 +275,13 @@ export class DriveClient {
       supportsAllDrives: "true",
     })
 
-    const copy = (): Promise<DriveFile> =>
-      this.request<DriveFile>(
+    const copy = async (): Promise<DriveFile> => {
+      const copiedFile = await this.request<DriveFile>(
         userEmail,
         `/files/${fileId}/copy?${params.toString()}`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(options.idempotencyKey === undefined
-              ? {}
-              : { "X-Compass-Idempotency-Key": options.idempotencyKey }),
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: options.name,
             parents: [options.parentId],
@@ -256,8 +289,19 @@ export class DriveClient {
               ? {}
               : { appProperties: options.appProperties }),
           }),
-        }
+        },
+        false,
+        "single-attempt"
       )
+      if (typeof copiedFile?.id !== "string" || copiedFile.id.trim().length === 0) {
+        throw new GoogleDriveCopyOutcomeUnknownError(
+          "Google Drive copy outcome is unknown because its successful response had no usable file ID."
+        )
+      }
+      return copiedFile
+    }
+    // Drive files.copy has no provider idempotency key. This map only coalesces
+    // concurrent calls in this process; durable recovery uses appProperties.
     if (options.idempotencyKey === undefined) return copy()
     const key = `${userEmail}:${fileId}:${options.idempotencyKey}`
     const existing = this.idempotentCopyEffects.get(key)

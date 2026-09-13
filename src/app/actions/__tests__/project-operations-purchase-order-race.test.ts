@@ -75,6 +75,7 @@ import {
   generateNuTechAirliteWorkbook,
   saveNuTechOrderItem,
 } from "@/app/actions/nutech-order-items"
+import { GoogleDriveCopyOutcomeUnknownError } from "@/lib/google/client/drive-client"
 
 type Sqlite = InstanceType<typeof Database>
 
@@ -3055,6 +3056,102 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     sqlite.close()
   })
 
+  it.each([
+    {
+      label: "item save",
+      invoke: () =>
+        saveNuTechOrderItem("project-1", {
+          productId: "product-1",
+          quantity: 2,
+        }),
+    },
+    {
+      label: "item delete",
+      invoke: () => deleteNuTechOrderItem("project-1", "nutech-item-1"),
+    },
+    {
+      label: "workflow save",
+      invoke: () =>
+        saveProjectNuTechOrder("project-1", {
+          customerType: "new",
+          pricingMode: "standard",
+          quantitySource: "customer_provided",
+          takeoffAcknowledgementStatus: "not_required",
+          scopeType: "block_sale",
+          blockQuantityNotes: null,
+          bracingIncluded: false,
+          bracingRentalStartDate: null,
+          bracingRentalEndDate: null,
+          bracingNotes: null,
+          deliveryMethod: "delivery",
+          requestedDeliveryDate: "2026-09-30",
+          airlitePurchaseOrderOperationId: "po-1",
+          orderStatus: "customer_approved",
+          vendorConfirmationNumber: null,
+          vendorInvoiceNumber: null,
+          vendorInvoiceStatus: "not_received",
+          vendorInvoiceReceivedAt: null,
+          notes: "Blocked ambiguous edit",
+        }),
+    },
+    {
+      label: "workflow delete",
+      invoke: () => deleteProjectNuTechOrder("project-1"),
+    },
+  ])("preserves an expired unresolved provider attempt during $label", async ({ invoke }) => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET airlite_workbook_status = 'generating',
+          airlite_workbook_claim_token = 'ambiguous-owner',
+          airlite_workbook_claim_revision = 1,
+          airlite_workbook_claim_reclaim_after = '2026-08-25T04:59:59.000Z',
+          airlite_workbook_claim_retry_until = '2026-08-26T04:00:00.000Z',
+          airlite_workbook_claim_fingerprint = 'generation-fingerprint',
+          airlite_workbook_claim_error = 'provider outcome unresolved',
+          airlite_workbook_provider_status = 'in_flight',
+          airlite_workbook_provider_attempted_at = '2026-08-25T04:59:00.000Z'
+      WHERE id = 'workflow-1'
+    `).run()
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projectOperations,
+        projects,
+        nuTechCatalogPrices,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(invoke()).resolves.toEqual({
+      success: false,
+      error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
+    })
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_fingerprint, airlite_workbook_provider_status
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: "ambiguous-owner",
+      airlite_workbook_claim_fingerprint: "generation-fingerprint",
+      airlite_workbook_provider_status: "in_flight",
+    })
+    expect(sqlite.prepare(`
+      SELECT quantity FROM nutech_order_items WHERE id = 'nutech-item-1'
+    `).get()).toEqual({ quantity: 1 })
+    sqlite.close()
+  })
+
   it("does not let a stale sibling save clear a claim acquired after its read", async () => {
     let releaseRead: () => void = () => undefined
     const readPaused = new Promise<void>((resolve) => {
@@ -3697,6 +3794,194 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       airlite_workbook_claim_revision: 2,
       airlite_workbook_provider_status: "in_flight",
       airlite_workbook_provider_attempted_at: "2026-08-25T04:59:00.000Z",
+    })
+    sqlite.close()
+  })
+
+  it.each([
+    {
+      label: "Drive reconciliation fails",
+      listFiles: async () => {
+        throw new Error("Drive listing unavailable")
+      },
+    },
+    {
+      label: "Drive returns a mismatched artifact",
+      listFiles: async () => ({
+        files: [
+          {
+            id: "wrong-workbook",
+            name: "Wrong workbook",
+            mimeType: "application/vnd.google-apps.spreadsheet",
+            appProperties: {
+              compassAirliteGenerationFingerprint: "wrong-fingerprint",
+            },
+            trashed: false,
+          },
+        ],
+      }),
+    },
+  ])("preserves an expired provider fence when $label", async ({ listFiles }) => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    const serializedFingerprint = JSON.stringify({
+      workflowId: "workflow-1",
+      purchaseOrderNumber: "PRJ-PO-001",
+      requestedDeliveryDate: null,
+      lines: [
+        {
+          manufacturerSku: "SKU-1",
+          name: "Block",
+          origin: "USA",
+          category: "block",
+          quantity: 1,
+          minimumOrderIncrement: 1,
+          packageLabel: "Each",
+          priceUnit: "each",
+          airliteTemplateRow: 10,
+          unitCostCents: 100,
+        },
+      ],
+    })
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(serializedFingerprint)
+    )
+    const fingerprint = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("")
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET airlite_workbook_status = 'generating',
+          airlite_workbook_claim_token = 'expired-owner',
+          airlite_workbook_claim_revision = 1,
+          airlite_workbook_claim_attempt = 1,
+          airlite_workbook_claim_reclaim_after = '2026-08-25T04:59:59.000Z',
+          airlite_workbook_claim_retry_until = '2026-08-26T04:00:00.000Z',
+          airlite_workbook_claim_fingerprint = ?,
+          airlite_workbook_provider_status = 'in_flight',
+          airlite_workbook_provider_attempted_at = '2026-08-25T04:59:00.000Z'
+      WHERE id = 'workflow-1'
+    `).run(fingerprint)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogPrices,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const copyFile = vi.fn()
+    const listFilesMock = vi.fn(listFiles)
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles: listFilesMock },
+      sheetsClient: {
+        batchUpdateValues: vi.fn(async () => undefined),
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
+    })
+    expect(listFilesMock).toHaveBeenCalledWith("staff@example.com", {
+      folderId: "folder-1",
+      query: `appProperties has { key='compassAirliteGenerationFingerprint' and value='${fingerprint}' }`,
+      pageSize: 10,
+    })
+    expect(copyFile).not.toHaveBeenCalled()
+    await expect(
+      saveNuTechOrderItem("project-1", {
+        productId: "product-1",
+        quantity: 2,
+      })
+    ).resolves.toEqual({
+      success: false,
+      error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
+    })
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_fingerprint, airlite_workbook_provider_status
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: expect.any(String),
+      airlite_workbook_claim_fingerprint: fingerprint,
+      airlite_workbook_provider_status: "in_flight",
+    })
+    sqlite.close()
+  })
+
+  it("keeps an ambiguous copy attempt unresolved until its fingerprint can be reconciled", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const ambiguousCopyError = new GoogleDriveCopyOutcomeUnknownError(
+      "Google Drive copy outcome is unknown after a network failure."
+    )
+    const copyFile = vi
+      .fn()
+      .mockRejectedValueOnce(ambiguousCopyError)
+      .mockResolvedValueOnce({
+        id: "duplicate-workbook",
+        webViewLink: "https://drive.test/duplicate-workbook",
+      })
+    const listFiles = vi.fn(async () => ({ files: [] }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        batchUpdateValues: vi.fn(async () => undefined),
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
+    })
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+    expect(copyFile).toHaveBeenCalledTimes(1)
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_provider_status, airlite_workbook_claim_error
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: expect.any(String),
+      airlite_workbook_provider_status: "in_flight",
+      airlite_workbook_claim_error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
     })
     sqlite.close()
   })
