@@ -19,6 +19,22 @@ if SPEC is None or SPEC.loader is None:
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
+EXPECTED_ENVIRONMENT_ASSIGNMENTS = [
+    "COMPASS_BASE_URL=https://compass.openrangeconstruction.ltd",
+    "JARVIS_BRIDGE_SECRET=",
+    "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS=2",
+    "LOG_LEVEL=INFO",
+]
+EXPECTED_ENVIRONMENT_FILE = (
+    "EnvironmentFile=%h/.config/compass/"
+    "jarvis-feedback-lifecycle-executor.env"
+)
+EXPECTED_ENVIRONMENT_INSTALL = (
+    "install -m 0600 \\\n"
+    "  ops/systemd/compass-jarvis-feedback-lifecycle-executor.env.example \\\n"
+    "  \"$HOME/.config/compass/jarvis-feedback-lifecycle-executor.env\""
+)
+
 
 class LifecycleExecutorTests(unittest.TestCase):
     def valid_payload(self) -> dict[str, object]:
@@ -230,57 +246,119 @@ class LifecycleExecutorTests(unittest.TestCase):
             },
         }])
 
-    def test_systemd_unit_uses_only_the_dedicated_lifecycle_environment(self) -> None:
+    def lifecycle_service_scope_files(self) -> tuple[str, str, str]:
         repo_root = Path(__file__).resolve().parents[1]
         unit = (
             repo_root
             / "ops/systemd/compass-jarvis-feedback-lifecycle-executor.service"
         ).read_text(encoding="utf-8")
-
-        environment_file_lines = [
-            line for line in unit.splitlines() if line.startswith("EnvironmentFile=")
-        ]
-        self.assertEqual(environment_file_lines, [
-            "EnvironmentFile=%h/.config/compass/"
-            "jarvis-feedback-lifecycle-executor.env",
-        ])
-        self.assertNotIn("%h/.hermes/.env", unit)
-
         environment_template = (
             repo_root
             / "ops/systemd/compass-jarvis-feedback-lifecycle-executor.env.example"
         ).read_text(encoding="utf-8")
-        configured_keys = {
-            line.split("=", 1)[0]
-            for line in environment_template.splitlines()
-            if line and not line.startswith("#")
-        }
-        self.assertEqual(
-            configured_keys,
-            {
-                "COMPASS_BASE_URL",
-                "JARVIS_BRIDGE_SECRET",
-                "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS",
-                "LOG_LEVEL",
-            },
-        )
-        self.assertIn(
-            "COMPASS_BASE_URL=https://compass.openrangeconstruction.ltd",
-            environment_template,
-        )
-        self.assertIn("JARVIS_BRIDGE_SECRET=", environment_template)
-        self.assertIn(
-            "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS=2",
-            environment_template,
-        )
-        self.assertIn("LOG_LEVEL=INFO", environment_template)
-        self.assertNotIn("OPENROUTER_API_KEY", environment_template)
-
         installation = (repo_root / "deploy/systemd/README.md").read_text(
             encoding="utf-8",
         )
-        self.assertIn("jarvis-feedback-lifecycle-executor.env", installation)
-        self.assertIn("install -m 0600", installation)
+        return unit, environment_template, installation
+
+    def assert_lifecycle_service_scope(
+        self,
+        unit: str,
+        environment_template: str,
+        installation: str,
+    ) -> None:
+        assignments = [
+            line
+            for line in environment_template.splitlines()
+            if line and not line.startswith("#")
+        ]
+        self.assertEqual(assignments, EXPECTED_ENVIRONMENT_ASSIGNMENTS)
+        self.assertNotIn("OPENROUTER_API_KEY", environment_template)
+
+        environment_directives = [
+            line.strip()
+            for line in unit.splitlines()
+            if line.strip().startswith(
+                ("EnvironmentFile=", "Environment=", "PassEnvironment=")
+            )
+        ]
+        self.assertEqual(environment_directives, [EXPECTED_ENVIRONMENT_FILE])
+        self.assertNotIn(".hermes/.env", unit)
+        self.assertEqual(installation.count(EXPECTED_ENVIRONMENT_INSTALL), 1)
+
+    def test_systemd_unit_uses_only_the_dedicated_lifecycle_environment(self) -> None:
+        self.assert_lifecycle_service_scope(*self.lifecycle_service_scope_files())
+
+    def test_service_scope_rejects_duplicate_assignment(self) -> None:
+        unit, environment_template, installation = self.lifecycle_service_scope_files()
+        mutated_template = environment_template.replace(
+            "LOG_LEVEL=INFO",
+            "LOG_LEVEL=INFO\nLOG_LEVEL=INFO",
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_lifecycle_service_scope(unit, mutated_template, installation)
+
+    def test_service_scope_rejects_committed_bridge_secret(self) -> None:
+        unit, environment_template, installation = self.lifecycle_service_scope_files()
+        mutated_template = environment_template.replace(
+            "JARVIS_BRIDGE_SECRET=",
+            "JARVIS_BRIDGE_SECRET=committed-secret",
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_lifecycle_service_scope(unit, mutated_template, installation)
+
+    def test_service_scope_rejects_changed_poll_value(self) -> None:
+        unit, environment_template, installation = self.lifecycle_service_scope_files()
+        mutated_template = environment_template.replace(
+            "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS=2",
+            "COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS=30",
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_lifecycle_service_scope(unit, mutated_template, installation)
+
+    def test_service_scope_rejects_unrelated_unit_secret(self) -> None:
+        unit, environment_template, installation = self.lifecycle_service_scope_files()
+        mutated_unit = f"{unit}\nEnvironment=OPENROUTER_API_KEY=committed-secret\n"
+
+        with self.assertRaises(AssertionError):
+            self.assert_lifecycle_service_scope(
+                mutated_unit,
+                environment_template,
+                installation,
+            )
+
+    def test_service_scope_rejects_alternate_environment_source(self) -> None:
+        unit, environment_template, installation = self.lifecycle_service_scope_files()
+        mutated_unit = unit.replace(
+            EXPECTED_ENVIRONMENT_FILE,
+            "EnvironmentFile=%h/.hermes/.env",
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_lifecycle_service_scope(
+                mutated_unit,
+                environment_template,
+                installation,
+            )
+
+    def test_service_scope_rejects_weak_install_matching(self) -> None:
+        unit, environment_template, installation = self.lifecycle_service_scope_files()
+        mutated_installation = installation.replace(
+            EXPECTED_ENVIRONMENT_INSTALL,
+            "install -m 0644 \\\n"
+            "  ops/systemd/compass-jarvis-feedback-lifecycle-executor.env.example \\\n"
+            "  \"$HOME/.config/compass/jarvis-feedback-lifecycle-executor.env\"",
+        )
+
+        with self.assertRaises(AssertionError):
+            self.assert_lifecycle_service_scope(
+                unit,
+                environment_template,
+                mutated_installation,
+            )
 
     def test_compass_request_rejects_non_https_runtime_origin(self) -> None:
         with patch.dict(
