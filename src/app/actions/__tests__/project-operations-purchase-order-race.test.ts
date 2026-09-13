@@ -64,6 +64,7 @@ import {
 import {
   getNuTechOrderDashboard,
   getProjectNuTechOrderWorkspace,
+  deleteProjectNuTechOrder,
   releaseNuTechAirlitePurchaseOrder,
   saveProjectNuTechOrder,
 } from "@/app/actions/nutech-orders"
@@ -348,6 +349,8 @@ function createSchema(sqlite: Sqlite): void {
       airlite_workbook_claim_retry_until TEXT,
       airlite_workbook_claim_fingerprint TEXT,
       airlite_workbook_claim_error TEXT,
+      airlite_workbook_provider_status TEXT NOT NULL DEFAULT 'not_started',
+      airlite_workbook_provider_attempted_at TEXT,
       notes TEXT,
       created_by TEXT,
       updated_by TEXT,
@@ -2862,6 +2865,214 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     vi.useRealTimers()
   })
 
+  it("rejects a sibling order save while an active workbook claim is held", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET airlite_workbook_status = 'generating',
+          airlite_workbook_claim_token = 'claim-owner',
+          airlite_workbook_claim_revision = 1,
+          airlite_workbook_claim_reclaim_after = '2026-08-25T06:00:00.000Z'
+      WHERE id = 'workflow-1'
+    `).run()
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projectOperations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+      },
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(
+      saveProjectNuTechOrder("project-1", {
+        customerType: "new",
+        pricingMode: "standard",
+        quantitySource: "customer_provided",
+        takeoffAcknowledgementStatus: "not_required",
+        scopeType: "block_sale",
+        blockQuantityNotes: null,
+        bracingIncluded: false,
+        bracingRentalStartDate: null,
+        bracingRentalEndDate: null,
+        bracingNotes: null,
+        deliveryMethod: "delivery",
+        requestedDeliveryDate: "2026-09-30",
+        airlitePurchaseOrderOperationId: "po-1",
+        orderStatus: "customer_approved",
+        vendorConfirmationNumber: null,
+        vendorInvoiceNumber: null,
+        vendorInvoiceStatus: "not_received",
+        vendorInvoiceReceivedAt: null,
+        notes: "Sibling edit",
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+
+    const stored = sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_revision, notes
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()
+    expect(stored).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: "claim-owner",
+      airlite_workbook_claim_revision: 1,
+      notes: null,
+    })
+    sqlite.close()
+  })
+
+  it("rejects sibling item and workflow deletes while an active workbook claim is held", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET airlite_workbook_status = 'generating',
+          airlite_workbook_claim_token = 'claim-owner',
+          airlite_workbook_claim_revision = 1,
+          airlite_workbook_claim_reclaim_after = '2026-08-25T06:00:00.000Z'
+      WHERE id = 'workflow-1'
+    `).run()
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projectOperations,
+        projects,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+      },
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(deleteNuTechOrderItem("project-1", "nutech-item-1")).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+    await expect(deleteProjectNuTechOrder("project-1")).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+
+    expect(sqlite.prepare(
+      "SELECT COUNT(*) AS count FROM nutech_order_items WHERE id = 'nutech-item-1'"
+    ).get()).toEqual({ count: 1 })
+    expect(sqlite.prepare(
+      "SELECT airlite_workbook_claim_token, airlite_workbook_claim_revision FROM nutech_order_workflows WHERE id = 'workflow-1'"
+    ).get()).toEqual({
+      airlite_workbook_claim_token: "claim-owner",
+      airlite_workbook_claim_revision: 1,
+    })
+    sqlite.close()
+  })
+
+  it("does not let a stale sibling save clear a claim acquired after its read", async () => {
+    let releaseRead: () => void = () => undefined
+    const readPaused = new Promise<void>((resolve) => {
+      releaseRead = resolve
+    })
+    let signalRead: () => void = () => undefined
+    const readCompleted = new Promise<void>((resolve) => {
+      signalRead = resolve
+    })
+    let readSignaled = false
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    const staleClient = createD1(sqlite, {
+      paused: readPaused,
+      shouldPause: (query) =>
+        query.startsWith("select") && query.includes('from "nutech_order_workflows"'),
+      signal: () => {
+        if (readSignaled) return
+        readSignaled = true
+        signalRead()
+      },
+    })
+    const currentClient = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleClient, {
+      schema: {
+        organizations,
+        projectOperations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const currentActor = drizzle(currentClient, {
+      schema: { nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleSave = saveProjectNuTechOrder("project-1", {
+      customerType: "new",
+      pricingMode: "standard",
+      quantitySource: "customer_provided",
+      takeoffAcknowledgementStatus: "not_required",
+      scopeType: "block_sale",
+      blockQuantityNotes: null,
+      bracingIncluded: false,
+      bracingRentalStartDate: null,
+      bracingRentalEndDate: null,
+      bracingNotes: null,
+      deliveryMethod: "delivery",
+      requestedDeliveryDate: "2026-09-30",
+      airlitePurchaseOrderOperationId: "po-1",
+      orderStatus: "customer_approved",
+      vendorConfirmationNumber: null,
+      vendorInvoiceNumber: null,
+      vendorInvoiceStatus: "not_received",
+      vendorInvoiceReceivedAt: null,
+      notes: "Stale sibling edit",
+    })
+    await readCompleted
+
+    await currentActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        airliteWorkbookStatus: "generating",
+        airliteWorkbookClaimToken: "claim-current",
+        airliteWorkbookClaimRevision: 2,
+        airliteWorkbookClaimReclaimAfter: "2026-08-25T06:00:00.000Z",
+        updatedAt: "2026-08-25T05:01:00.000Z",
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+
+    releaseRead()
+    await expect(staleSave).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while it was being saved. Refresh and try again.",
+    })
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_revision, notes
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: "claim-current",
+      airlite_workbook_claim_revision: 2,
+      notes: null,
+    })
+    sqlite.close()
+  })
+
   it("permits one provider workbook copy when two database actors race", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
@@ -3073,20 +3284,28 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     await vi.waitFor(() => expect(copyFile).toHaveBeenCalledTimes(1))
     vi.advanceTimersByTime(5 * 60 * 1000 + 1)
 
-    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
-      success: true,
-      id: "workflow-1",
-      workbookUrl: "https://drive.test/replacement-workbook",
+    const replacementWorker = generateNuTechAirliteWorkbook("project-1")
+    await vi.waitFor(() => {
+      const claim = sqlite.prepare(`
+        SELECT airlite_workbook_claim_revision AS revision
+        FROM nutech_order_workflows WHERE id = 'workflow-1'
+      `).get() as { revision: number }
+      expect(claim.revision).toBe(2)
     })
     releaseFirstProvider({
       id: "expired-workbook",
       webViewLink: "https://drive.test/expired-workbook",
     })
+    await expect(replacementWorker).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/expired-workbook",
+    })
     await expect(firstWorker).resolves.toEqual({
       success: false,
       error: "The Airlite workbook generation claim expired or was replaced.",
     })
-    expect(copyFile).toHaveBeenCalledTimes(2)
+    expect(copyFile).toHaveBeenCalledTimes(1)
     const stored = sqlite
       .prepare(
         "SELECT airlite_workbook_id, airlite_workbook_status, airlite_workbook_claim_revision FROM nutech_order_workflows WHERE id = ?"
@@ -3097,7 +3316,7 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       airlite_workbook_claim_revision: number
     }
     expect(stored).toEqual({
-      airlite_workbook_id: "replacement-workbook",
+      airlite_workbook_id: "expired-workbook",
       airlite_workbook_status: "generated",
       airlite_workbook_claim_revision: 2,
     })

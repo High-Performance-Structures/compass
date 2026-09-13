@@ -191,6 +191,14 @@ export const nuTechOrderWorkflows = sqliteTable(
       "airlite_workbook_claim_fingerprint"
     ),
     airliteWorkbookClaimError: text("airlite_workbook_claim_error"),
+    airliteWorkbookProviderStatus: text(
+      "airlite_workbook_provider_status"
+    )
+      .notNull()
+      .default("not_started"),
+    airliteWorkbookProviderAttemptedAt: text(
+      "airlite_workbook_provider_attempted_at"
+    ),
     airliteWorkbookGeneratedAt: text("airlite_workbook_generated_at"),
     airliteWorkbookGeneratedBy: text(
       "airlite_workbook_generated_by"

@@ -195,6 +195,21 @@ function cleanText(value: string | null): string | null {
   return cleaned.length > 0 ? cleaned : null
 }
 
+function activeAirliteWorkbookClaim(
+  workflow: Pick<
+    typeof nuTechOrderWorkflows.$inferSelect,
+    "airliteWorkbookStatus" | "airliteWorkbookClaimToken" | "airliteWorkbookClaimReclaimAfter"
+  >,
+  now: string
+): boolean {
+  return (
+    workflow.airliteWorkbookStatus === "generating" &&
+    workflow.airliteWorkbookClaimToken !== null &&
+    workflow.airliteWorkbookClaimReclaimAfter !== null &&
+    workflow.airliteWorkbookClaimReclaimAfter > now
+  )
+}
+
 function cleanDate(value: string | null, label: string): string | null {
   const cleaned = cleanText(value)
   if (cleaned === null) return null
@@ -677,6 +692,10 @@ export async function saveProjectNuTechOrder(
       .where(eq(nuTechOrderWorkflows.projectId, projectId))
       .limit(1)
       .get()
+    const now = new Date().toISOString()
+    if (existing && activeAirliteWorkbookClaim(existing, now)) {
+      throw new Error("The Airlite workbook is already being generated. Try again shortly.")
+    }
     const releaseAuditIssues = nuTechReleaseAuditIssues({
       orderStatus: parsedOrderStatus,
       vendorInvoiceStatus: parsedVendorInvoiceStatus,
@@ -712,7 +731,6 @@ export async function saveProjectNuTechOrder(
           .orderBy(desc(nuTechCatalogVersions.effectiveDate))
           .limit(1)
           .get()
-    const now = new Date().toISOString()
     const id = existing?.id ?? crypto.randomUUID()
     const values: NewNuTechOrderWorkflow = {
       id,
@@ -795,16 +813,48 @@ export async function saveProjectNuTechOrder(
             ? null
             : undefined,
           airliteWorkbookClaimError: workbookClaimInvalidated ? null : undefined,
+          airliteWorkbookProviderStatus: workbookClaimInvalidated
+            ? "not_started"
+            : undefined,
+          airliteWorkbookProviderAttemptedAt: workbookClaimInvalidated
+            ? null
+            : undefined,
           notes: values.notes,
           updatedBy: access.user.id,
           updatedAt: now,
         },
-        where: isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+        where:
+          existing === undefined
+            ? isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+            : and(
+                isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+                eq(nuTechOrderWorkflows.updatedAt, existing.updatedAt),
+                eq(
+                  nuTechOrderWorkflows.airliteWorkbookStatus,
+                  existing.airliteWorkbookStatus
+                ),
+                existing.airliteWorkbookClaimToken === null
+                  ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
+                  : eq(
+                      nuTechOrderWorkflows.airliteWorkbookClaimToken,
+                      existing.airliteWorkbookClaimToken
+                    ),
+                existing.airliteWorkbookClaimRevision === null
+                  ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
+                  : eq(
+                      nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+                      existing.airliteWorkbookClaimRevision
+                    )
+              ),
       })
       .returning({ id: nuTechOrderWorkflows.id })
     const savedWorkflow = await saveWorkflowQuery.get()
     if (!savedWorkflow) {
-      throw new Error("Released Airlite PO details are locked.")
+      throw new Error(
+        existing === undefined
+          ? "Released Airlite PO details are locked."
+          : "The Nu-Tech order changed while it was being saved. Refresh and try again."
+      )
     }
     if (values.catalogVersionId !== null) {
       const selectedPriceColumn =
@@ -1051,14 +1101,24 @@ export async function deleteProjectNuTechOrder(
     const existing = await access.db
       .select({
         id: nuTechOrderWorkflows.id,
+        airliteWorkbookStatus: nuTechOrderWorkflows.airliteWorkbookStatus,
+        airliteWorkbookClaimToken: nuTechOrderWorkflows.airliteWorkbookClaimToken,
+        airliteWorkbookClaimRevision: nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+        airliteWorkbookClaimReclaimAfter:
+          nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
         purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
         vendorInvoiceReleasedAt: nuTechOrderWorkflows.vendorInvoiceReleasedAt,
+        updatedAt: nuTechOrderWorkflows.updatedAt,
       })
       .from(nuTechOrderWorkflows)
       .where(eq(nuTechOrderWorkflows.projectId, projectId))
       .limit(1)
       .get()
     if (!existing) throw new Error("Nu-Tech order workflow not found.")
+    const now = new Date().toISOString()
+    if (activeAirliteWorkbookClaim(existing, now)) {
+      throw new Error("The Airlite workbook is already being generated. Try again shortly.")
+    }
     if (
       existing.purchaseOrderReleasedAt !== null ||
       existing.vendorInvoiceReleasedAt !== null
@@ -1067,9 +1127,31 @@ export async function deleteProjectNuTechOrder(
         "Released Nu-Tech workflows are retained for audit and cannot be deleted."
       )
     }
-    await access.db
+    const deleted = await access.db
       .delete(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.id, existing.id))
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.id, existing.id),
+          eq(nuTechOrderWorkflows.updatedAt, existing.updatedAt),
+          eq(nuTechOrderWorkflows.airliteWorkbookStatus, existing.airliteWorkbookStatus),
+          existing.airliteWorkbookClaimToken === null
+            ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
+            : eq(
+                nuTechOrderWorkflows.airliteWorkbookClaimToken,
+                existing.airliteWorkbookClaimToken
+              ),
+          existing.airliteWorkbookClaimRevision === null
+            ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
+            : eq(
+                nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+                existing.airliteWorkbookClaimRevision
+              )
+        )
+      )
+      .run()
+    if (deleted.meta.changes !== 1) {
+      throw new Error("The Nu-Tech order changed while it was being deleted. Refresh and try again.")
+    }
     revalidateNuTechPaths(projectId)
     return { success: true, id: existing.id }
   } catch (error) {

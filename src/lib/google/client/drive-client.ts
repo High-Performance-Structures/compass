@@ -38,6 +38,7 @@ type DriveClientConfig = {
 export class DriveClient {
   private serviceAccountKey: ServiceAccountKey
   private limiter: ConcurrencyLimiter
+  private readonly idempotentCopyEffects = new Map<string, Promise<DriveFile>>()
 
   constructor(config: DriveClientConfig) {
     this.serviceAccountKey = config.serviceAccountKey
@@ -228,6 +229,7 @@ export class DriveClient {
       readonly name: string
       readonly parentId: string
       readonly appProperties?: Readonly<Record<string, string>>
+      readonly idempotencyKey?: string
     }
   ): Promise<DriveFile> {
     const params = new URLSearchParams({
@@ -235,21 +237,41 @@ export class DriveClient {
       supportsAllDrives: "true",
     })
 
-    return this.request<DriveFile>(
-      userEmail,
-      `/files/${fileId}/copy?${params.toString()}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: options.name,
-          parents: [options.parentId],
-          ...(options.appProperties === undefined
-            ? {}
-            : { appProperties: options.appProperties }),
-        }),
+    const copy = (): Promise<DriveFile> =>
+      this.request<DriveFile>(
+        userEmail,
+        `/files/${fileId}/copy?${params.toString()}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(options.idempotencyKey === undefined
+              ? {}
+              : { "X-Compass-Idempotency-Key": options.idempotencyKey }),
+          },
+          body: JSON.stringify({
+            name: options.name,
+            parents: [options.parentId],
+            ...(options.appProperties === undefined
+              ? {}
+              : { appProperties: options.appProperties }),
+          }),
+        }
+      )
+    if (options.idempotencyKey === undefined) return copy()
+    const key = `${userEmail}:${fileId}:${options.idempotencyKey}`
+    const existing = this.idempotentCopyEffects.get(key)
+    if (existing) return existing
+    const effect = Promise.resolve().then(copy)
+    this.idempotentCopyEffects.set(key, effect)
+    try {
+      return await effect
+    } catch (error) {
+      if (this.idempotentCopyEffects.get(key) === effect) {
+        this.idempotentCopyEffects.delete(key)
       }
-    )
+      throw error
+    }
   }
 
   async initiateResumableUpload(
