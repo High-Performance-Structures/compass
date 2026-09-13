@@ -272,6 +272,52 @@ class WatchdogQueryTests(unittest.TestCase):
             ],
         )
 
+    def test_timezone_less_heartbeat_fails_through_sanitized_main_path(self) -> None:
+        payload = json.loads(self.payload())
+        services = payload[4]["results"]
+        if not isinstance(services, list) or not services:
+            self.fail("test payload did not include a service row")
+        service = services[0]
+        if not isinstance(service, dict):
+            self.fail("test payload service row was not an object")
+        service["last_heartbeat_at"] = "2026-09-11T00:00:00"
+        runner = FakeRunner(
+            [
+                self.result(returncode=0, stdout=json.dumps(payload)),
+                self.result(returncode=0, stdout=json.dumps(payload)),
+                self.result(returncode=0, stdout=json.dumps(payload)),
+            ]
+        )
+        actual_run_query = MODULE.run_query
+        with (
+            patch.dict(
+                MODULE.os.environ,
+                {"COMPASS_REPO_ROOT": str(self.repo_root())},
+                clear=False,
+            ),
+            patch.object(
+                MODULE,
+                "run_query",
+                side_effect=lambda: actual_run_query(runner=runner, sleep=lambda _: None),
+            ),
+            patch.object(MODULE, "notify_desktop_when_changed", return_value=False) as notify,
+            patch.object(MODULE, "send_imessage_alert") as send,
+            patch("builtins.print") as output,
+        ):
+            exit_status = MODULE.main()
+
+        self.assertEqual(exit_status, 1)
+        notify.assert_called_once_with(
+            "ALERT: Compass Feedback Desk monitor query failed "
+            "(category=unexpected_response, exit_status=0)"
+        )
+        send.assert_not_called()
+        output.assert_called_once_with(
+            "ALERT: Compass Feedback Desk monitor query failed "
+            "(category=unexpected_response, exit_status=0)"
+        )
+        self.assertEqual(len(runner.calls), MODULE.MAX_QUERY_ATTEMPTS)
+
 
 if __name__ == "__main__":
     unittest.main()
