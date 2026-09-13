@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gt, isNull, lte, ne, or } from "drizzle-orm"
+import { and, asc, eq, exists, gt, isNull, lte, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -161,6 +161,42 @@ async function renewAirliteWorkbookClaim(input: {
   if (renewed.meta.changes !== 1) throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
 }
 
+async function runWithAirliteProviderWriteFence<T>(input: {
+  readonly db: CompassDb
+  readonly workflowId: string
+  readonly claimToken: string
+  readonly claimRevision: number
+  readonly effect: () => Promise<T>
+}): Promise<T> {
+  const now = new Date().toISOString()
+  const fenced = await input.db
+    .update(nuTechOrderWorkflows)
+    .set({
+      airliteWorkbookClaimReclaimAfter: new Date(
+        Date.now() + AIRLITE_WORKBOOK_RETRY_WINDOW_MS
+      ).toISOString(),
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(nuTechOrderWorkflows.id, input.workflowId),
+        eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, input.claimToken),
+        eq(
+          nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+          input.claimRevision
+        ),
+        eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+        isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
+        gt(nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter, now)
+      )
+    )
+    .run()
+  if (fenced.meta.changes !== 1) throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
+  const result = await input.effect()
+  await renewAirliteWorkbookClaim(input)
+  return result
+}
+
 async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
   const user = await requireAuth()
   if (!user.isActive || !isInternalStaffRole(user.role)) {
@@ -309,33 +345,95 @@ export async function saveNuTechOrderItem(
       storedCustomerType(workflow.customerType),
       storedPricingMode(workflow.pricingMode)
     )
-    await access.db.batch([
-      access.db
-        .insert(nuTechOrderItems)
-        .values({
-          id,
-          workflowId: workflow.id,
-          productId: product.id,
-          catalogVersionId: workflow.catalogVersionId,
-          quantity: input.quantity,
-          manufacturerSkuSnapshot: product.manufacturerSku,
-          productNameSnapshot: product.name,
-          priceUnitSnapshot: product.priceUnit,
-          unitCostCents: product.airliteCostCents,
-          unitPriceCents,
-          sortOrder: existing?.sortOrder ?? existingItems.length,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [nuTechOrderItems.workflowId, nuTechOrderItems.productId],
-          set: {
+    const unchangedWorkflow = and(
+      eq(nuTechOrderWorkflows.id, workflow.id),
+      eq(nuTechOrderWorkflows.updatedAt, workflow.updatedAt),
+      eq(nuTechOrderWorkflows.airliteWorkbookStatus, workflow.airliteWorkbookStatus),
+      workflow.airliteWorkbookClaimToken === null
+        ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
+        : eq(
+            nuTechOrderWorkflows.airliteWorkbookClaimToken,
+            workflow.airliteWorkbookClaimToken
+          ),
+      workflow.airliteWorkbookClaimRevision === null
+        ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
+        : eq(
+            nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+            workflow.airliteWorkbookClaimRevision
+          ),
+      isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+    )
+    const itemMutation = existing
+      ? access.db
+          .update(nuTechOrderItems)
+          .set({
             quantity: input.quantity,
             unitCostCents: product.airliteCostCents,
             unitPriceCents,
             updatedAt: now,
-          },
-        }),
+          })
+          .where(
+            and(
+              eq(nuTechOrderItems.id, existing.id),
+              eq(nuTechOrderItems.workflowId, workflow.id),
+              eq(nuTechOrderItems.productId, product.id),
+              exists(
+                access.db
+                  .select({ id: nuTechOrderWorkflows.id })
+                  .from(nuTechOrderWorkflows)
+                  .where(unchangedWorkflow)
+              )
+            )
+          )
+      : access.db
+          .insert(nuTechOrderItems)
+          .select(
+            access.db
+              .select({
+                id: sql<string>`${id}`.as("id"),
+                workflowId: nuTechOrderWorkflows.id,
+                productId: sql<string>`${product.id}`.as("productId"),
+                catalogVersionId: sql<string>`${workflow.catalogVersionId}`.as(
+                  "catalogVersionId"
+                ),
+                quantity: sql<number>`${input.quantity}`.as("quantity"),
+                manufacturerSkuSnapshot: sql<string>`${product.manufacturerSku}`.as(
+                  "manufacturerSkuSnapshot"
+                ),
+                productNameSnapshot: sql<string>`${product.name}`.as(
+                  "productNameSnapshot"
+                ),
+                priceUnitSnapshot: sql<string>`${product.priceUnit}`.as(
+                  "priceUnitSnapshot"
+                ),
+                unitCostCents: sql<number>`${product.airliteCostCents}`.as(
+                  "unitCostCents"
+                ),
+                unitPriceCents: sql<number>`${unitPriceCents}`.as("unitPriceCents"),
+                sortOrder: sql<number>`${existingItems.length}`.as("sortOrder"),
+                createdAt: sql<string>`${now}`.as("createdAt"),
+                updatedAt: sql<string>`${now}`.as("updatedAt"),
+              })
+              .from(nuTechOrderWorkflows)
+              .where(unchangedWorkflow)
+          )
+          .onConflictDoUpdate({
+            target: [nuTechOrderItems.workflowId, nuTechOrderItems.productId],
+            set: {
+              quantity: input.quantity,
+              unitCostCents: product.airliteCostCents,
+              unitPriceCents,
+              updatedAt: now,
+            },
+            setWhere: exists(
+              access.db
+                .select({ id: nuTechOrderWorkflows.id })
+                .from(nuTechOrderWorkflows)
+                .where(unchangedWorkflow)
+            ),
+          })
+    const saveResults = await access.db.batch([
+      itemMutation,
       access.db
         .update(nuTechOrderWorkflows)
         .set({
@@ -373,27 +471,16 @@ export async function saveNuTechOrderItem(
           updatedBy: access.user.id,
           updatedAt: now,
         })
-        .where(
-          and(
-            eq(nuTechOrderWorkflows.id, workflow.id),
-            eq(nuTechOrderWorkflows.updatedAt, workflow.updatedAt),
-            eq(nuTechOrderWorkflows.airliteWorkbookStatus, workflow.airliteWorkbookStatus),
-            workflow.airliteWorkbookClaimToken === null
-              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
-              : eq(
-                  nuTechOrderWorkflows.airliteWorkbookClaimToken,
-                  workflow.airliteWorkbookClaimToken
-                ),
-            workflow.airliteWorkbookClaimRevision === null
-              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
-              : eq(
-                  nuTechOrderWorkflows.airliteWorkbookClaimRevision,
-                  workflow.airliteWorkbookClaimRevision
-                ),
-            isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
-          )
-        ),
+        .where(unchangedWorkflow),
     ])
+    if (
+      (saveResults[0]?.meta.changes ?? 0) !== 1 ||
+      (saveResults[1]?.meta.changes ?? 0) !== 1
+    ) {
+      throw new Error(
+        "The Nu-Tech order changed while the item was being saved. Refresh and try again."
+      )
+    }
     revalidateNuTechOrder(projectId)
     return { success: true, id }
   } catch (error) {
@@ -451,8 +538,39 @@ export async function deleteNuTechOrderItem(
     const workbookClaimInvalidated =
       item.airliteWorkbookStatus === "generating" ||
       item.airliteWorkbookStatus.startsWith("generated")
-    await access.db.batch([
-      access.db.delete(nuTechOrderItems).where(eq(nuTechOrderItems.id, item.id)),
+    const unchangedWorkflow = and(
+      eq(nuTechOrderWorkflows.id, item.workflowId),
+      eq(nuTechOrderWorkflows.updatedAt, item.updatedAt),
+      eq(nuTechOrderWorkflows.airliteWorkbookStatus, item.airliteWorkbookStatus),
+      item.airliteWorkbookClaimToken === null
+        ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
+        : eq(
+            nuTechOrderWorkflows.airliteWorkbookClaimToken,
+            item.airliteWorkbookClaimToken
+          ),
+      item.airliteWorkbookClaimRevision === null
+        ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
+        : eq(
+            nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+            item.airliteWorkbookClaimRevision
+          ),
+      isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+    )
+    const deleteResults = await access.db.batch([
+      access.db
+        .delete(nuTechOrderItems)
+        .where(
+          and(
+            eq(nuTechOrderItems.id, item.id),
+            eq(nuTechOrderItems.workflowId, item.workflowId),
+            exists(
+              access.db
+                .select({ id: nuTechOrderWorkflows.id })
+                .from(nuTechOrderWorkflows)
+                .where(unchangedWorkflow)
+            )
+          )
+        ),
       access.db
         .update(nuTechOrderWorkflows)
         .set({
@@ -486,27 +604,16 @@ export async function deleteNuTechOrderItem(
           updatedBy: access.user.id,
           updatedAt: now,
         })
-        .where(
-          and(
-            eq(nuTechOrderWorkflows.id, item.workflowId),
-            eq(nuTechOrderWorkflows.updatedAt, item.updatedAt),
-            eq(nuTechOrderWorkflows.airliteWorkbookStatus, item.airliteWorkbookStatus),
-            item.airliteWorkbookClaimToken === null
-              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
-              : eq(
-                  nuTechOrderWorkflows.airliteWorkbookClaimToken,
-                  item.airliteWorkbookClaimToken
-                ),
-            item.airliteWorkbookClaimRevision === null
-              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
-              : eq(
-                  nuTechOrderWorkflows.airliteWorkbookClaimRevision,
-                  item.airliteWorkbookClaimRevision
-                ),
-            isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
-          )
-        ),
+        .where(unchangedWorkflow),
     ])
+    if (
+      (deleteResults[0]?.meta.changes ?? 0) !== 1 ||
+      (deleteResults[1]?.meta.changes ?? 0) !== 1
+    ) {
+      throw new Error(
+        "The Nu-Tech order changed while the item was being deleted. Refresh and try again."
+      )
+    }
     revalidateNuTechOrder(projectId)
     return { success: true, id: item.id }
   } catch (error) {
@@ -806,28 +913,52 @@ export async function generateNuTechAirliteWorkbook(
         throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
       }
     }
-    await renewAirliteWorkbookClaim(claim)
-    await sheetsClient.batchUpdateValues(userEmail, {
-      spreadsheetId: workbook.id,
-      updates: plan.updates,
+    await runWithAirliteProviderWriteFence({
+      ...claim,
+      effect: () =>
+        sheetsClient.batchUpdateValues(userEmail, {
+          spreadsheetId: workbook.id,
+          updates: plan.updates,
+        }),
     })
     if (plan.addendumValues.length > 0) {
-      await renewAirliteWorkbookClaim(claim)
-      await sheetsClient.addSheet(userEmail, {
-        spreadsheetId: workbook.id,
-        title: "Compass Addendum",
-        rowCount: Math.max(100, plan.addendumValues.length + 10),
-        columnCount: 8,
+      await runWithAirliteProviderWriteFence({
+        ...claim,
+        effect: async () => {
+          const hasAddendum = async (): Promise<boolean> => {
+            const metadata = await sheetsClient.getSpreadsheetMetadata(
+              userEmail,
+              workbook.id
+            )
+            return metadata.sheets.some((sheet) => sheet.title === "Compass Addendum")
+          }
+          if (await hasAddendum()) return
+          try {
+            await sheetsClient.addSheet(userEmail, {
+              spreadsheetId: workbook.id,
+              title: "Compass Addendum",
+              rowCount: Math.max(100, plan.addendumValues.length + 10),
+              columnCount: 8,
+            })
+          } catch (error) {
+            // A timed-out add can still have committed at Google. Reconcile by title
+            // before surfacing the failure so a retry never creates a second sheet.
+            if (!(await hasAddendum())) throw error
+          }
+        },
       })
-      await renewAirliteWorkbookClaim(claim)
-      await sheetsClient.batchUpdateValues(userEmail, {
-        spreadsheetId: workbook.id,
-        updates: [
-          {
-            range: `'Compass Addendum'!A1:H${plan.addendumValues.length}`,
-            values: plan.addendumValues,
-          },
-        ],
+      await runWithAirliteProviderWriteFence({
+        ...claim,
+        effect: () =>
+          sheetsClient.batchUpdateValues(userEmail, {
+            spreadsheetId: workbook.id,
+            updates: [
+              {
+                range: `'Compass Addendum'!A1:H${plan.addendumValues.length}`,
+                values: plan.addendumValues,
+              },
+            ],
+          }),
       })
     }
     const workbookUrl =
@@ -875,7 +1006,11 @@ export async function generateNuTechAirliteWorkbook(
     revalidateNuTechOrder(projectId)
     return { success: true, id: workflow.id, workbookUrl }
   } catch (error) {
+    const providerAttemptUnresolved =
+      error instanceof Error &&
+      error.message === AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR
     if (
+      !providerAttemptUnresolved &&
       claimedDb !== null &&
       claimedWorkflowId !== null &&
       claimToken !== null &&

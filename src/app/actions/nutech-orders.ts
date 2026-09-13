@@ -1060,14 +1060,15 @@ export async function releaseNuTechVendorInvoice(
     if (order.vendorInvoiceReleasedAt !== null) {
       return { success: true, id: order.id }
     }
-    if (cleanText(order.vendorInvoiceNumber) === null) {
+    const vendorInvoiceNumber = cleanText(order.vendorInvoiceNumber)
+    if (vendorInvoiceNumber === null) {
       throw new Error("Enter and save the Airlite vendor invoice number first.")
     }
     if (order.purchaseOrderReleasedAt === null) {
       throw new Error("Record the Airlite PO release before releasing its invoice.")
     }
     const now = new Date().toISOString()
-    await access.db
+    const released = await access.db
       .update(nuTechOrderWorkflows)
       .set({
         orderStatus: "invoice_released",
@@ -1078,7 +1079,32 @@ export async function releaseNuTechVendorInvoice(
         updatedBy: access.user.id,
         updatedAt: now,
       })
-      .where(eq(nuTechOrderWorkflows.id, order.id))
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.id, order.id),
+          eq(nuTechOrderWorkflows.updatedAt, order.updatedAt),
+          eq(nuTechOrderWorkflows.orderStatus, order.orderStatus),
+          eq(nuTechOrderWorkflows.vendorInvoiceNumber, vendorInvoiceNumber),
+          eq(nuTechOrderWorkflows.vendorInvoiceStatus, order.vendorInvoiceStatus),
+          order.vendorInvoiceReceivedAt === null
+            ? isNull(nuTechOrderWorkflows.vendorInvoiceReceivedAt)
+            : eq(
+                nuTechOrderWorkflows.vendorInvoiceReceivedAt,
+                order.vendorInvoiceReceivedAt
+              ),
+          eq(
+            nuTechOrderWorkflows.purchaseOrderReleasedAt,
+            order.purchaseOrderReleasedAt
+          ),
+          isNull(nuTechOrderWorkflows.vendorInvoiceReleasedAt)
+        )
+      )
+      .run()
+    if (released.meta.changes !== 1) {
+      throw new Error(
+        "The Nu-Tech order changed while the vendor invoice was being released. Refresh and try again."
+      )
+    }
     revalidateNuTechPaths(projectId)
     revalidatePath("/dashboard/financials")
     return { success: true, id: order.id }

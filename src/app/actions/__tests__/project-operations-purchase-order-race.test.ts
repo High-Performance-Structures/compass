@@ -13,6 +13,7 @@ import {
   projects,
 } from "@/db/schema"
 import {
+  nuTechCatalogPrices,
   nuTechCatalogVersions,
   nuTechOrderItems,
   nuTechOrderWorkflows,
@@ -66,6 +67,7 @@ import {
   getProjectNuTechOrderWorkspace,
   deleteProjectNuTechOrder,
   releaseNuTechAirlitePurchaseOrder,
+  releaseNuTechVendorInvoice,
   saveProjectNuTechOrder,
 } from "@/app/actions/nutech-orders"
 import {
@@ -371,7 +373,8 @@ function createSchema(sqlite: Sqlite): void {
       unit_price_cents INTEGER NOT NULL,
       sort_order INTEGER NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      UNIQUE(workflow_id, product_id)
     );
   `)
 }
@@ -2840,6 +2843,80 @@ describe("Nu-Tech purchase-order release versus supplier email", () => {
     expect(storedWorkflow?.orderStatus).toBe("customer_approved")
     sqlite.close()
   })
+
+  it("does not release a vendor invoice from a stale workflow snapshot", async () => {
+    let releaseRead: () => void = () => undefined
+    const readPaused = new Promise<void>((resolve) => {
+      releaseRead = resolve
+    })
+    let signalRead: () => void = () => undefined
+    const readCompleted = new Promise<void>((resolve) => {
+      signalRead = resolve
+    })
+    let readSignaled = false
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET order_status = 'po_released',
+          purchase_order_released_at = '2026-08-24T05:00:00.000Z',
+          purchase_order_released_by = 'staff-1',
+          vendor_invoice_number = 'INV-OLD',
+          vendor_invoice_status = 'received',
+          vendor_invoice_received_at = '2026-08-25'
+      WHERE id = 'workflow-1'
+    `).run()
+    const staleClient = createD1(sqlite, {
+      paused: readPaused,
+      shouldPause: (query) =>
+        query.startsWith("select") && query.includes('from "nutech_order_workflows"'),
+      signal: () => {
+        if (readSignaled) return
+        readSignaled = true
+        signalRead()
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleClient, {
+      schema: { organizations, projects, nuTechOrderWorkflows },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const currentActor = drizzle(createD1(sqlite), {
+      schema: { nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleRelease = releaseNuTechVendorInvoice("project-1")
+    await readCompleted
+    await currentActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        vendorInvoiceNumber: "INV-CURRENT",
+        updatedAt: "2026-08-25T05:01:00.000Z",
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+
+    releaseRead()
+    await expect(staleRelease).resolves.toEqual({
+      success: false,
+      error:
+        "The Nu-Tech order changed while the vendor invoice was being released. Refresh and try again.",
+    })
+    expect(sqlite.prepare(`
+      SELECT vendor_invoice_number, vendor_invoice_status,
+             vendor_invoice_released_at, order_status
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      vendor_invoice_number: "INV-CURRENT",
+      vendor_invoice_status: "received",
+      vendor_invoice_released_at: null,
+      order_status: "po_released",
+    })
+    sqlite.close()
+  })
 })
 
 describe("Nu-Tech Airlite workbook generation claim", () => {
@@ -3073,6 +3150,165 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     sqlite.close()
   })
 
+  it.each([
+    { label: "existing", seedExisting: true },
+    { label: "new", seedExisting: false },
+  ])("does not let a stale $label item save commit after a workbook claim wins", async ({
+    seedExisting,
+  }) => {
+    let releaseBatch: () => void = () => undefined
+    const batchPaused = new Promise<void>((resolve) => {
+      releaseBatch = resolve
+    })
+    let signalBatch: () => void = () => undefined
+    const batchReached = new Promise<void>((resolve) => {
+      signalBatch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    if (!seedExisting) {
+      sqlite
+        .prepare("DELETE FROM nutech_order_items WHERE id = 'nutech-item-1'")
+        .run()
+    }
+    const staleClient = createD1(sqlite, undefined, {
+      paused: batchPaused,
+      signal: signalBatch,
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogPrices,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const currentActor = drizzle(createD1(sqlite), {
+      schema: { nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleSave = saveNuTechOrderItem("project-1", {
+      productId: "product-1",
+      quantity: 2,
+    })
+    await expect(
+      Promise.race([
+        batchReached.then(() => "batch"),
+        staleSave.then((result) => `completed: ${JSON.stringify(result)}`),
+      ])
+    ).resolves.toBe("batch")
+    await currentActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        airliteWorkbookStatus: "generating",
+        airliteWorkbookClaimToken: "claim-current",
+        airliteWorkbookClaimRevision: 2,
+        airliteWorkbookClaimReclaimAfter: "2026-08-25T06:00:00.000Z",
+        updatedAt: "2026-08-25T05:01:00.000Z",
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+
+    releaseBatch()
+    await expect(staleSave).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while the item was being saved. Refresh and try again.",
+    })
+    expect(sqlite.prepare(`
+      SELECT quantity FROM nutech_order_items WHERE workflow_id = 'workflow-1'
+        AND product_id = 'product-1'
+    `).get()).toEqual(seedExisting ? { quantity: 1 } : undefined)
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_revision
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: "claim-current",
+      airlite_workbook_claim_revision: 2,
+    })
+    sqlite.close()
+  })
+
+  it("does not let a stale item delete commit after a workbook claim wins", async () => {
+    let releaseBatch: () => void = () => undefined
+    const batchPaused = new Promise<void>((resolve) => {
+      releaseBatch = resolve
+    })
+    let signalBatch: () => void = () => undefined
+    const batchReached = new Promise<void>((resolve) => {
+      signalBatch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    const staleClient = createD1(sqlite, undefined, {
+      paused: batchPaused,
+      signal: signalBatch,
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const currentActor = drizzle(createD1(sqlite), {
+      schema: { nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleDelete = deleteNuTechOrderItem("project-1", "nutech-item-1")
+    await expect(
+      Promise.race([
+        batchReached.then(() => "batch"),
+        staleDelete.then((result) => `completed: ${JSON.stringify(result)}`),
+      ])
+    ).resolves.toBe("batch")
+    await currentActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        airliteWorkbookStatus: "generating",
+        airliteWorkbookClaimToken: "claim-current",
+        airliteWorkbookClaimRevision: 2,
+        airliteWorkbookClaimReclaimAfter: "2026-08-25T06:00:00.000Z",
+        updatedAt: "2026-08-25T05:01:00.000Z",
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+
+    releaseBatch()
+    await expect(staleDelete).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while the item was being deleted. Refresh and try again.",
+    })
+    expect(sqlite.prepare(`
+      SELECT COUNT(*) AS count FROM nutech_order_items WHERE id = 'nutech-item-1'
+    `).get()).toEqual({ count: 1 })
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_revision
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: "claim-current",
+      airlite_workbook_claim_revision: 2,
+    })
+    sqlite.close()
+  })
+
   it("permits one provider workbook copy when two database actors race", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
@@ -3172,6 +3408,88 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     sqlite.close()
   })
 
+  it("holds a durable claim fence across each Sheets provider write", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actorOne = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actorTwo = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    let releaseSheets: () => void = () => undefined
+    const sheetsPaused = new Promise<void>((resolve) => {
+      releaseSheets = resolve
+    })
+    let signalSheets: () => void = () => undefined
+    const sheetsReached = new Promise<void>((resolve) => {
+      signalSheets = resolve
+    })
+    const batchUpdateValues = vi.fn(async () => {
+      if (batchUpdateValues.mock.calls.length !== 1) return
+      signalSheets()
+      await sheetsPaused
+    })
+    const workbook = {
+      id: "workbook-1",
+      name: "Existing workbook",
+      mimeType: "application/vnd.google-apps.spreadsheet",
+      webViewLink: "https://drive.test/workbook-1",
+      trashed: false,
+    }
+    const copyFile = vi.fn()
+    const listFiles = vi.fn(async () => ({ files: [workbook] }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        batchUpdateValues,
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockImplementationOnce(() => actorOne).mockImplementationOnce(() => actorTwo)
+
+    const firstWorker = generateNuTechAirliteWorkbook("project-1")
+    await sheetsReached
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1)
+    const secondResult = await generateNuTechAirliteWorkbook("project-1")
+    releaseSheets()
+    const firstResult = await firstWorker
+
+    expect(secondResult).toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+    expect(firstResult).toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/workbook-1",
+    })
+    expect(copyFile).not.toHaveBeenCalled()
+    expect(batchUpdateValues).toHaveBeenCalledTimes(1)
+    sqlite.close()
+  })
+
   it("reuses a provider artifact with the deterministic generation fingerprint", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
@@ -3219,6 +3537,167 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     })
     expect(copyFile).not.toHaveBeenCalled()
     expect(batchUpdateValues).toHaveBeenCalledTimes(1)
+    sqlite.close()
+  })
+
+  it("reuses an addendum sheet after an ambiguous prior provider write", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite
+      .prepare("UPDATE nutech_products SET airlite_template_row = NULL WHERE id = ?")
+      .run("product-1")
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const copyFile = vi.fn()
+    const listFiles = vi.fn(async () => ({
+      files: [
+        {
+          id: "recovered-workbook",
+          name: "Recovered workbook",
+          mimeType: "application/vnd.google-apps.spreadsheet",
+          webViewLink: "https://drive.test/recovered-workbook",
+          trashed: false,
+        },
+      ],
+    }))
+    const batchUpdateValues = vi.fn(async () => undefined)
+    const addSheet = vi.fn(async () => ({ sheetId: 2 }))
+    const getSpreadsheetMetadata = vi.fn(async () => ({
+      title: "Recovered workbook",
+      sheets: [
+        {
+          sheetId: 1,
+          title: "Compass Addendum",
+          index: 1,
+          hidden: false,
+          rowCount: 100,
+        },
+      ],
+    }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        getSpreadsheetMetadata,
+        batchUpdateValues,
+        addSheet,
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/recovered-workbook",
+    })
+    expect(getSpreadsheetMetadata).toHaveBeenCalledTimes(1)
+    expect(addSheet).not.toHaveBeenCalled()
+    expect(batchUpdateValues).toHaveBeenCalledTimes(2)
+    sqlite.close()
+  })
+
+  it("preserves an unresolved durable provider attempt across process restart", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    const serializedFingerprint = JSON.stringify({
+      workflowId: "workflow-1",
+      purchaseOrderNumber: "PRJ-PO-001",
+      requestedDeliveryDate: null,
+      lines: [
+        {
+          manufacturerSku: "SKU-1",
+          name: "Block",
+          origin: "USA",
+          category: "block",
+          quantity: 1,
+          minimumOrderIncrement: 1,
+          packageLabel: "Each",
+          priceUnit: "each",
+          airliteTemplateRow: 10,
+          unitCostCents: 100,
+        },
+      ],
+    })
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(serializedFingerprint)
+    )
+    const fingerprint = Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("")
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET airlite_workbook_status = 'generating',
+          airlite_workbook_claim_token = 'expired-owner',
+          airlite_workbook_claim_revision = 1,
+          airlite_workbook_claim_attempt = 1,
+          airlite_workbook_claim_reclaim_after = '2026-08-25T04:59:59.000Z',
+          airlite_workbook_claim_retry_until = '2026-08-26T04:00:00.000Z',
+          airlite_workbook_claim_fingerprint = ?,
+          airlite_workbook_provider_status = 'in_flight',
+          airlite_workbook_provider_attempted_at = '2026-08-25T04:59:00.000Z'
+      WHERE id = 'workflow-1'
+    `).run(fingerprint)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const copyFile = vi.fn()
+    const listFiles = vi.fn(async () => ({ files: [] }))
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        batchUpdateValues: vi.fn(async () => undefined),
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
+    })
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+    expect(copyFile).not.toHaveBeenCalled()
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_status, airlite_workbook_claim_token,
+             airlite_workbook_claim_revision, airlite_workbook_provider_status,
+             airlite_workbook_provider_attempted_at
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_claim_token: expect.any(String),
+      airlite_workbook_claim_revision: 2,
+      airlite_workbook_provider_status: "in_flight",
+      airlite_workbook_provider_attempted_at: "2026-08-25T04:59:00.000Z",
+    })
     sqlite.close()
   })
 
