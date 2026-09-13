@@ -122,12 +122,17 @@ export async function POST(
     return Response.json({ success: true, duplicate: true })
   }
 
-  if (existing.eventType === "feedback.delivery_requested" && !claimToken) {
-    return Response.json({ error: "A delivery event claim token is required" }, { status: 409 })
+  if (
+    (existing.eventType === "feedback.delivery_requested" ||
+      existing.eventType === "feedback.lifecycle_requested") &&
+    !claimToken
+  ) {
+    return Response.json({ error: "An event claim token is required" }, { status: 409 })
   }
 
   if (
-    existing.eventType === "feedback.delivery_requested" &&
+    (existing.eventType === "feedback.delivery_requested" ||
+      existing.eventType === "feedback.lifecycle_requested") &&
     existing.claimToken !== claimToken
   ) {
     return Response.json({ error: "Event claim is no longer active" }, { status: 409 })

@@ -151,6 +151,36 @@ injected `JARVIS_BRIDGE_SECRET`, and retries at most once with the same
 idempotency key. Compass remains responsible for organization authorization,
 evidence gates, D1 persistence, and source-specific requester delivery.
 
+## Durable private-runtime executor
+
+The authorized private runtime has a separate systemd user service for scheduled
+non-feature lifecycle handoffs. It pulls only `feedback.lifecycle_requested`
+through the signed Compass event queue, validates the bounded closed payload,
+invokes the co-installed constrained helper, and acknowledges with the exact
+claim token. Malformed, feature, unsupported-target, endpoint-rejected, and
+oversized requests are terminal and remain visible; transport failures are
+returned to the queue with a bounded retry delay. Every retry reuses the source
+idempotency key. The service records a bounded heartbeat and never exposes
+response bodies, secrets, arbitrary commands, or arbitrary URLs.
+
+Install `scripts/jarvis-feedback-lifecycle-executor.py` and the constrained
+`skills/compass-feedback-desk/scripts/compass_feedback_bridge.py` side by side
+as
+`~/.local/lib/compass/jarvis-feedback-lifecycle-executor.py` and
+`~/.local/lib/compass/compass_feedback_bridge.py`, respectively, and use
+`ops/systemd/compass-jarvis-feedback-lifecycle-executor.service` under
+`~/.config/systemd/user/`. Install the allowlisted environment template as
+`~/.config/compass/jarvis-feedback-lifecycle-executor.env` with mode `0600`,
+then provision only its blank bridge-secret value through the approved private
+secret broker. Keep only the fixed production origin, bridge secret,
+two-second poll interval, and `INFO` log level in that file. Never point the
+service at or copy `~/.hermes/.env`; follow the exact gate in
+`deploy/systemd/README.md`. Run it only in the existing authorized private
+runtime with the existing bridge credential. The macOS scheduler must not
+invoke remote commands, use local credentials, impersonate a browser, copy
+payloads, or write D1 directly. Do not change the existing agent poller or
+requester notifier service for this lifecycle queue.
+
 The command prints only a compact JSON result containing endpoint acceptance,
 duplicate status, lifecycle status, notification count, and whether a
 requester update was queued. It never prints response bodies, request data,

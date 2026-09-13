@@ -116,7 +116,7 @@ describe("correspondence core D1 integration", () => {
   it("rolls back the whole batch when attachment linking fails", async () => {
     const db = open()
     const conversationId = seedConversation(db, {})
-    insertAttachment(db.sqlite, { id: "staged-file", projectId: "project-a", ownerUserId: "staff-a", driveFileId: "drive-file" })
+    insertAttachment(db.sqlite, { id: "staged-file", projectId: "project-a", ownerUserId: "staff-a", driveFileId: "drive-file", createdAt: new Date().toISOString() })
     db.failures.failNextMatching('set "message_id"')
     const input = {
       projectId: "project-a", conversationId, subject: "Project correspondence", recipientUserIds: ["owner-a"],

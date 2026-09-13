@@ -48,6 +48,33 @@ const updateSchema = z.object({
   ]).optional(),
 })
 
+const lifecycleRequestSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(FEEDBACK_DESK_STATUSES),
+  idempotencyKey: z.string().min(1).max(256).regex(
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/,
+  ),
+  message: z.string().min(1).max(2_000).refine(
+    (value) => value.trim().length > 0,
+    "Message cannot be blank",
+  ).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  githubIssueUrl: z.union([
+    z.url().max(2_048).refine(
+      (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/[1-9][0-9]*(?:\/)?$/.test(value),
+      "GitHub issue URL required",
+    ),
+    z.null(),
+  ]).optional(),
+  draftPullRequestUrl: z.union([
+    z.url().max(2_048).refine(
+      (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*(?:\/)?$/.test(value),
+      "GitHub pull request URL required",
+    ),
+    z.null(),
+  ]).optional(),
+}).strict()
+
 async function requireFeedbackAdmin(): Promise<Readonly<{
   id: string
   organizationId: string
@@ -384,6 +411,80 @@ export async function setFeedbackFeaturePriorityApproval(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Priority decision update failed",
+    }
+  }
+}
+
+export async function queueFeedbackLifecycleRequest(
+  input: z.infer<typeof lifecycleRequestSchema>,
+): Promise<Readonly<{
+  success: boolean
+  duplicate?: boolean
+  error?: string
+}>> {
+  try {
+    const parsed = lifecycleRequestSchema.parse(input)
+    const admin = await requireFeedbackAdmin()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const item = await db.select().from(feedbackDeskItems).where(and(
+      eq(feedbackDeskItems.id, parsed.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+    )).get()
+    if (!item) return { success: false, error: "Feedback request not found" }
+    if (item.kind === "feature") {
+      return {
+        success: false,
+        error: "Feature lifecycle updates require the approved feature workflow",
+      }
+    }
+    const evidenceError = feedbackBugTransitionIsBlocked({
+      ...item,
+      nextStatus: parsed.status,
+      githubDraftPullRequestUrl:
+        parsed.draftPullRequestUrl === undefined
+          ? item.githubDraftPullRequestUrl
+          : parsed.draftPullRequestUrl,
+    })
+    if (evidenceError) return { success: false, error: evidenceError }
+
+    const idempotencyKey = `feedback-lifecycle-request:${item.id}:${parsed.idempotencyKey}`
+    const now = new Date().toISOString()
+    const inserted = await db.insert(jarvisBridgeEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: item.organizationId,
+      direction: "outbound",
+      source: "feedback-desk",
+      eventType: "feedback.lifecycle_requested",
+      status: "pending",
+      idempotencyKey,
+      feedbackDeskItemId: item.id,
+      payload: JSON.stringify({
+        schemaVersion: 1,
+        itemId: item.id,
+        kind: item.kind,
+        status: parsed.status,
+        ...(parsed.message === undefined ? {} : { message: parsed.message }),
+        ...(parsed.priority === undefined ? {} : { priority: parsed.priority }),
+        ...(parsed.githubIssueUrl === undefined
+          ? {}
+          : { githubIssueUrl: parsed.githubIssueUrl }),
+        ...(parsed.draftPullRequestUrl === undefined
+          ? {}
+          : { draftPullRequestUrl: parsed.draftPullRequestUrl }),
+        idempotencyKey: parsed.idempotencyKey,
+      }),
+      availableAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing().returning({ id: jarvisBridgeEvents.id }).get()
+    revalidatePath("/dashboard/requests")
+    revalidatePath("/dashboard/requests/manage")
+    return { success: true, duplicate: !inserted }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Lifecycle request queue failed",
     }
   }
 }

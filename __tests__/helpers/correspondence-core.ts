@@ -258,8 +258,8 @@ export function insertGrant(sqlite: Sqlite, values: { readonly id: string; reado
   sqlite.prepare("INSERT INTO correspondence_recipients (id,message_id,user_id,name,kind,baseline) VALUES (?,?,?,?,?,?)").run(values.id, values.messageId, values.userId, values.userId, values.kind ?? "to", values.baseline ? 1 : 0)
 }
 
-export function insertAttachment(sqlite: Sqlite, values: { readonly id: string; readonly projectId?: string; readonly ownerUserId?: string; readonly driveFileId?: string | null; readonly messageId?: string | null; readonly retiredAt?: string | null }): void {
+export function insertAttachment(sqlite: Sqlite, values: { readonly id: string; readonly projectId?: string; readonly ownerUserId?: string; readonly driveFileId?: string | null; readonly messageId?: string | null; readonly createdAt?: string; readonly retiredAt?: string | null }): void {
   sqlite.prepare("INSERT INTO correspondence_attachments (id,organization_id,project_id,owner_user_id,message_id,name,content_type,size,drive_file_id,created_at,retired_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(
-    values.id, "org-a", values.projectId ?? "project-a", values.ownerUserId ?? "staff-a", values.messageId ?? null, `${values.id}.txt`, "text/plain", 12, values.driveFileId === undefined ? "drive-file" : values.driveFileId, "2026-09-05T12:00:00.000Z", values.retiredAt ?? null,
+    values.id, "org-a", values.projectId ?? "project-a", values.ownerUserId ?? "staff-a", values.messageId ?? null, `${values.id}.txt`, "text/plain", 12, values.driveFileId === undefined ? "drive-file" : values.driveFileId, values.createdAt ?? "2026-09-05T12:00:00.000Z", values.retiredAt ?? null,
   )
 }

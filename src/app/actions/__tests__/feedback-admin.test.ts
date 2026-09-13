@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({ canManageUserAccess: mocks.canManageUserAccess }))
@@ -23,6 +24,7 @@ vi.mock("@/lib/jarvis/feedback-status-update", () => ({
 }))
 
 import {
+  queueFeedbackLifecycleRequest,
   setFeedbackGithubIssueCreationApproval,
   updateFeedbackAdminItem,
 } from "@/app/actions/feedback-admin"
@@ -106,5 +108,107 @@ describe("setFeedbackGithubIssueCreationApproval concurrency gate", () => {
       success: false,
       error: "This request changed while its GitHub approval was being updated",
     })
+  })
+})
+
+describe("queueFeedbackLifecycleRequest", () => {
+  it("enqueues a bounded, idempotent lifecycle event for a non-feature request", async () => {
+    const selectChain = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    selectChain.from.mockReturnValue(selectChain)
+    selectChain.where.mockReturnValue(selectChain)
+    selectChain.get.mockResolvedValue({
+      ...unprovenBug,
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      organizationId: "org-1",
+    })
+    const insertResult = { id: "event-1" }
+    const returning = vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue(insertResult) })
+    const onConflictDoNothing = vi.fn().mockReturnValue({ returning })
+    const values = vi.fn().mockReturnValue({ onConflictDoNothing })
+    const insert = vi.fn().mockReturnValue({ values })
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(selectChain),
+      insert,
+    })
+    mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
+    mocks.canManageUserAccess.mockReturnValue(true)
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+
+    const result = await queueFeedbackLifecycleRequest({
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      status: "triaged",
+      idempotencyKey: "scheduled-nonfeature-1",
+      message: "A bounded update",
+    })
+
+    expect(result).toEqual({ success: true, duplicate: false })
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: "feedback.lifecycle_requested",
+      status: "pending",
+      feedbackDeskItemId: "123e4567-e89b-12d3-a456-426614174000",
+      payload: expect.stringContaining('"idempotencyKey":"scheduled-nonfeature-1"'),
+    }))
+  })
+
+  it("reports a duplicate without creating a second logical request", async () => {
+    const selectChain = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    selectChain.from.mockReturnValue(selectChain)
+    selectChain.where.mockReturnValue(selectChain)
+    selectChain.get.mockResolvedValue({
+      ...unprovenBug,
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      organizationId: "org-1",
+    })
+    const returningGet = vi.fn().mockResolvedValue(null)
+    const insert = vi.fn().mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoNothing: vi.fn().mockReturnValue({
+          returning: vi.fn().mockReturnValue({ get: returningGet }),
+        }),
+      }),
+    })
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(selectChain),
+      insert,
+    })
+    mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
+    mocks.canManageUserAccess.mockReturnValue(true)
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+
+    const result = await queueFeedbackLifecycleRequest({
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      status: "triaged",
+      idempotencyKey: "scheduled-nonfeature-1",
+    })
+
+    expect(result).toEqual({ success: true, duplicate: true })
+    expect(returningGet).toHaveBeenCalledOnce()
+  })
+
+  it("rejects feature requests before creating a lifecycle event", async () => {
+    const selectChain = { from: vi.fn(), where: vi.fn(), get: vi.fn() }
+    selectChain.from.mockReturnValue(selectChain)
+    selectChain.where.mockReturnValue(selectChain)
+    selectChain.get.mockResolvedValue({ ...unprovenBug, kind: "feature" })
+    const insert = vi.fn()
+    mocks.getDb.mockReturnValue({
+      select: vi.fn().mockReturnValue(selectChain),
+      insert,
+    })
+    mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
+    mocks.canManageUserAccess.mockReturnValue(true)
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+
+    const result = await queueFeedbackLifecycleRequest({
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      status: "planned",
+      idempotencyKey: "scheduled-feature-1",
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: "Feature lifecycle updates require the approved feature workflow",
+    })
+    expect(insert).not.toHaveBeenCalled()
   })
 })

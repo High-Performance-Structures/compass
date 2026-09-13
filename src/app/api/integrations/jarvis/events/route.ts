@@ -23,12 +23,14 @@ type EventTypeFilter =
   | "agent.prompt"
   | "feedback.status_changed"
   | "feedback.delivery_requested"
+  | "feedback.lifecycle_requested"
 
 function isEventTypeFilter(value: string): value is EventTypeFilter {
   return (
     value === "agent.prompt" ||
     value === "feedback.status_changed" ||
-    value === "feedback.delivery_requested"
+    value === "feedback.delivery_requested" ||
+    value === "feedback.lifecycle_requested"
   )
 }
 

@@ -45,9 +45,12 @@ const completeItem = {
   deliveryGraphReleaseTaskId: "release-1",
 }
 
-function configureDb(item: Readonly<Record<string, unknown>> | null) {
+function configureDb(
+  item: Readonly<Record<string, unknown>> | null,
+  selectedEvent: Readonly<Record<string, unknown>> = event,
+) {
   const get = vi.fn()
-    .mockResolvedValueOnce(event)
+    .mockResolvedValueOnce(selectedEvent)
     .mockResolvedValueOnce(item)
   const selectChain = {
     from: vi.fn(),
@@ -70,11 +73,16 @@ function configureDb(item: Readonly<Record<string, unknown>> | null) {
   return { update, set, where, getUpdated }
 }
 
-async function acknowledge() {
+async function acknowledge(
+  body: Readonly<Record<string, unknown>> = {
+    status: "completed",
+    claimToken: "claim-1",
+  },
+) {
   return POST(
     new Request("https://compass.example/api/integrations/jarvis/events/123e4567-e89b-12d3-a456-426614174000/ack", {
       method: "POST",
-      body: JSON.stringify({ status: "completed", claimToken: "claim-1" }),
+      body: JSON.stringify(body),
     }),
     { params: Promise.resolve({ id: "123e4567-e89b-12d3-a456-426614174000" }) },
   )
@@ -127,6 +135,17 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
     expect(db.set).toHaveBeenCalledWith(expect.objectContaining({
       status: "completed",
     }))
+  })
+
+  it("requires the opaque claim token for lifecycle events", async () => {
+    configureDb(completeItem, {
+      ...event,
+      eventType: "feedback.lifecycle_requested",
+    })
+
+    const response = await acknowledge({ status: "completed" })
+
+    expect(response.status).toBe(409)
   })
 
   it("rejects an acknowledgement after another claimer fenced the event", async () => {

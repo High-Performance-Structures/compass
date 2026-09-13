@@ -75,3 +75,34 @@ that repository; the service must not point `COMPASS_KANBAN_REPO_ROOT` at the
 directory containing only the installed consumer script. The consumer is the
 repository's `scripts/jarvis-feedback-delivery.py` copied to the fixed
 `%h/.local/lib/compass/jarvis-feedback-delivery.py` path used by `ExecStart`.
+
+## Feedback Desk lifecycle executor
+
+The lifecycle executor must use its own environment file. Never point this
+service at `~/.hermes/.env` or copy the shared Hermes environment into the
+dedicated file. From the Compass repository root, install the two constrained
+scripts, unit, and allowlisted environment template:
+
+```bash
+install -d -m 0700 "$HOME/.config/compass"
+install -d "$HOME/.local/lib/compass" "$HOME/.config/systemd/user"
+install -m 0755 scripts/jarvis-feedback-lifecycle-executor.py \
+  "$HOME/.local/lib/compass/jarvis-feedback-lifecycle-executor.py"
+install -m 0755 skills/compass-feedback-desk/scripts/compass_feedback_bridge.py \
+  "$HOME/.local/lib/compass/compass_feedback_bridge.py"
+install -m 0644 ops/systemd/compass-jarvis-feedback-lifecycle-executor.service \
+  "$HOME/.config/systemd/user/"
+install -m 0600 \
+  ops/systemd/compass-jarvis-feedback-lifecycle-executor.env.example \
+  "$HOME/.config/compass/jarvis-feedback-lifecycle-executor.env"
+```
+
+Provision `JARVIS_BRIDGE_SECRET` into that mode-`0600` file through the
+private runtime's approved secret broker without printing it or placing it in
+shell history. Keep exactly these four assignments: the fixed production
+`COMPASS_BASE_URL`, `JARVIS_BRIDGE_SECRET`,
+`COMPASS_FEEDBACK_LIFECYCLE_POLL_SECONDS=2`, and `LOG_LEVEL=INFO`. Reject the
+installation if the file contains any other key, if the origin differs from
+`https://compass.openrangeconstruction.ltd`, if the bridge secret is blank, or
+if the file mode is not `0600`. Only after those checks pass may an authorized
+operator run `systemctl --user daemon-reload` and enable the service.

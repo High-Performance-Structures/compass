@@ -271,7 +271,7 @@ def redact_feedback_status_response(response: object) -> dict[str, object]:
 
 def require_feedback_status_production_origin() -> None:
     """Prevent the lifecycle command from being redirected to another host."""
-    configured = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
+    configured = os.environ.get("COMPASS_BASE_URL", "")
     expected = COMPASS_PRODUCTION_BASE_URL
     parsed = urllib.parse.urlsplit(configured)
     expected_parsed = urllib.parse.urlsplit(expected)
@@ -280,7 +280,9 @@ def require_feedback_status_production_origin() -> None:
         or parsed.scheme != expected_parsed.scheme
         or parsed.hostname != expected_parsed.hostname
         or parsed.port != expected_parsed.port
-        or parsed.path not in {"", "/"}
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != ""
         or parsed.query
         or parsed.fragment
     ):
