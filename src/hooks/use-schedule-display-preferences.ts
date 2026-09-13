@@ -16,16 +16,46 @@ import {
 
 type DisplayColorLabels = Record<DisplayColor, string>
 
-export interface ScheduleDisplayPreferences {
+type StoredPreferences = Readonly<{
   readonly displayColorPalette: DisplayColorPalette
   readonly displayColorLabels: DisplayColorLabels
+}>
+
+export interface ScheduleDisplayPreferences extends StoredPreferences {
   readonly resetPreferences: () => void
   readonly updatePaletteColor: (color: DisplayColor, value: string) => void
   readonly updatePaletteLabel: (color: DisplayColor, value: string) => void
 }
 
+const DEFAULT_PREFERENCES: StoredPreferences = {
+  displayColorPalette: { ...DEFAULT_DISPLAY_COLOR_PALETTE },
+  displayColorLabels: { ...DEFAULT_DISPLAY_COLOR_LABELS },
+}
+
+const preferencesByScope = new Map<string, StoredPreferences>()
+const listenersByScope = new Map<string, Set<() => void>>()
+let observedStorage: Storage | null | undefined
+let storageListenerStorage: Storage | null | undefined
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function getLocalStorage(): Storage | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function resetCacheIfStorageChanged(): void {
+  const storage = getLocalStorage()
+  if (storage === observedStorage) return
+  preferencesByScope.clear()
+  observedStorage = storage
 }
 
 function readPalette(value: string | null): DisplayColorPalette | null {
@@ -66,79 +96,168 @@ function readLabels(value: string | null): DisplayColorLabels | null {
   }
 }
 
-function readPreferences(scopeKey: string): {
-  readonly displayColorPalette: DisplayColorPalette
-  readonly displayColorLabels: DisplayColorLabels
-} {
+function defaultPreferences(): StoredPreferences {
+  return {
+    displayColorPalette: { ...DEFAULT_DISPLAY_COLOR_PALETTE },
+    displayColorLabels: { ...DEFAULT_DISPLAY_COLOR_LABELS },
+  }
+}
+
+function readPreferences(scopeKey: string): StoredPreferences {
+  const storage = getLocalStorage()
+  if (!storage) return defaultPreferences()
+
   try {
     return {
       displayColorPalette:
-        readPalette(window.localStorage.getItem(schedulePaletteStorageKey(scopeKey))) ??
+        readPalette(storage.getItem(schedulePaletteStorageKey(scopeKey))) ??
         { ...DEFAULT_DISPLAY_COLOR_PALETTE },
       displayColorLabels:
-        readLabels(window.localStorage.getItem(schedulePaletteLabelStorageKey(scopeKey))) ??
+        readLabels(storage.getItem(schedulePaletteLabelStorageKey(scopeKey))) ??
         { ...DEFAULT_DISPLAY_COLOR_LABELS },
     }
   } catch {
-    return {
-      displayColorPalette: { ...DEFAULT_DISPLAY_COLOR_PALETTE },
-      displayColorLabels: { ...DEFAULT_DISPLAY_COLOR_LABELS },
+    return defaultPreferences()
+  }
+}
+
+function getPreferences(scopeKey: string): StoredPreferences {
+  resetCacheIfStorageChanged()
+  const cached = preferencesByScope.get(scopeKey)
+  if (cached) return cached
+
+  const preferences = readPreferences(scopeKey)
+  preferencesByScope.set(scopeKey, preferences)
+  return preferences
+}
+
+function notifyScope(scopeKey: string): void {
+  const listeners = listenersByScope.get(scopeKey)
+  if (!listeners) return
+
+  for (const listener of listeners) listener()
+}
+
+function persistPreferences(scopeKey: string, preferences: StoredPreferences): void {
+  const storage = getLocalStorage()
+  if (!storage) return
+
+  try {
+    storage.setItem(
+      schedulePaletteStorageKey(scopeKey),
+      JSON.stringify(preferences.displayColorPalette)
+    )
+    storage.setItem(
+      schedulePaletteLabelStorageKey(scopeKey),
+      JSON.stringify(preferences.displayColorLabels)
+    )
+  } catch {
+    // Local preferences are best effort and must not interrupt schedule rendering.
+  }
+}
+
+function setPreferences(scopeKey: string, preferences: StoredPreferences): void {
+  resetCacheIfStorageChanged()
+  preferencesByScope.set(scopeKey, preferences)
+  persistPreferences(scopeKey, preferences)
+  notifyScope(scopeKey)
+}
+
+function scopeForStorageKey(key: string): string | null {
+  const palettePrefix = "compass:schedule-display-palette:"
+  const labelsPrefix = "compass:schedule-display-labels:"
+  if (key.startsWith(palettePrefix)) return key.slice(palettePrefix.length)
+  if (key.startsWith(labelsPrefix)) return key.slice(labelsPrefix.length)
+  return null
+}
+
+function handleStorageChange(event: StorageEvent): void {
+  const storage = getLocalStorage()
+  if (event.storageArea && event.storageArea !== storage) return
+  resetCacheIfStorageChanged()
+
+  if (event.key === null) {
+    for (const scopeKey of preferencesByScope.keys()) {
+      preferencesByScope.set(scopeKey, readPreferences(scopeKey))
+      notifyScope(scopeKey)
     }
+    return
+  }
+
+  const scopeKey = scopeForStorageKey(event.key)
+  if (!scopeKey) return
+  if (!preferencesByScope.has(scopeKey) && !listenersByScope.has(scopeKey)) return
+  preferencesByScope.set(scopeKey, readPreferences(scopeKey))
+  notifyScope(scopeKey)
+}
+
+function ensureStorageListener(): void {
+  if (typeof window === "undefined") return
+
+  const storage = getLocalStorage()
+  if (storage === storageListenerStorage) return
+  if (storageListenerStorage) window.removeEventListener("storage", handleStorageChange)
+  storageListenerStorage = storage
+  if (storage) window.addEventListener("storage", handleStorageChange)
+}
+
+function subscribeToScope(scopeKey: string, listener: () => void): () => void {
+  resetCacheIfStorageChanged()
+  ensureStorageListener()
+  persistPreferences(scopeKey, getPreferences(scopeKey))
+  const listeners = listenersByScope.get(scopeKey) ?? new Set<() => void>()
+  listeners.add(listener)
+  listenersByScope.set(scopeKey, listeners)
+
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0) listenersByScope.delete(scopeKey)
   }
 }
 
 export function useScheduleDisplayPreferences(
   scopeKey: string
 ): ScheduleDisplayPreferences {
-  const [displayColorPalette, setDisplayColorPalette] = React.useState<DisplayColorPalette>(
-    () => ({ ...DEFAULT_DISPLAY_COLOR_PALETTE })
+  const subscribe = React.useCallback(
+    (listener: () => void) => subscribeToScope(scopeKey, listener),
+    [scopeKey]
   )
-  const [displayColorLabels, setDisplayColorLabels] = React.useState<DisplayColorLabels>(
-    () => ({ ...DEFAULT_DISPLAY_COLOR_LABELS })
+  const getSnapshot = React.useCallback(() => getPreferences(scopeKey), [scopeKey])
+  const preferences = React.useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => DEFAULT_PREFERENCES
   )
-  const [loadedScopeKey, setLoadedScopeKey] = React.useState<string | null>(null)
 
-  React.useEffect(() => {
-    setLoadedScopeKey(null)
-    const preferences = readPreferences(scopeKey)
-    setDisplayColorPalette(preferences.displayColorPalette)
-    setDisplayColorLabels(preferences.displayColorLabels)
-    setLoadedScopeKey(scopeKey)
-  }, [scopeKey])
+  const updatePaletteColor = React.useCallback(
+    (color: DisplayColor, value: string) => {
+      const current = getPreferences(scopeKey)
+      setPreferences(scopeKey, {
+        displayColorPalette: { ...current.displayColorPalette, [color]: value },
+        displayColorLabels: current.displayColorLabels,
+      })
+    },
+    [scopeKey]
+  )
 
-  React.useEffect(() => {
-    if (loadedScopeKey !== scopeKey) return
-
-    try {
-      window.localStorage.setItem(
-        schedulePaletteStorageKey(scopeKey),
-        JSON.stringify(displayColorPalette)
-      )
-      window.localStorage.setItem(
-        schedulePaletteLabelStorageKey(scopeKey),
-        JSON.stringify(displayColorLabels)
-      )
-    } catch {
-      // Local preferences are best effort and must not interrupt schedule rendering.
-    }
-  }, [displayColorLabels, displayColorPalette, loadedScopeKey, scopeKey])
-
-  const updatePaletteColor = React.useCallback((color: DisplayColor, value: string) => {
-    setDisplayColorPalette((palette) => ({ ...palette, [color]: value }))
-  }, [])
-
-  const updatePaletteLabel = React.useCallback((color: DisplayColor, value: string) => {
-    setDisplayColorLabels((labels) => ({ ...labels, [color]: value }))
-  }, [])
+  const updatePaletteLabel = React.useCallback(
+    (color: DisplayColor, value: string) => {
+      const current = getPreferences(scopeKey)
+      setPreferences(scopeKey, {
+        displayColorPalette: current.displayColorPalette,
+        displayColorLabels: { ...current.displayColorLabels, [color]: value },
+      })
+    },
+    [scopeKey]
+  )
 
   const resetPreferences = React.useCallback(() => {
-    setDisplayColorPalette({ ...DEFAULT_DISPLAY_COLOR_PALETTE })
-    setDisplayColorLabels({ ...DEFAULT_DISPLAY_COLOR_LABELS })
-  }, [])
+    setPreferences(scopeKey, defaultPreferences())
+  }, [scopeKey])
 
   return {
-    displayColorPalette,
-    displayColorLabels,
+    displayColorPalette: preferences.displayColorPalette,
+    displayColorLabels: preferences.displayColorLabels,
     resetPreferences,
     updatePaletteColor,
     updatePaletteLabel,

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { act } from "react"
+import { flushSync } from "react-dom"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
@@ -19,6 +20,16 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 })
 
 type HarnessProps = Readonly<{ scopeKey: string }>
+
+type PreferenceSnapshot = Readonly<{
+  readonly scopeKey: string
+  readonly palette: typeof DEFAULT_DISPLAY_COLOR_PALETTE
+  readonly labels: typeof DEFAULT_DISPLAY_COLOR_LABELS
+}>
+
+type SnapshotProbeProps = HarnessProps & {
+  readonly snapshots: PreferenceSnapshot[]
+}
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
@@ -72,6 +83,24 @@ function Harness({ scopeKey }: HarnessProps): React.ReactElement {
       "Set custom blue"
     )
   )
+}
+
+function SnapshotProbe({ scopeKey, snapshots }: SnapshotProbeProps): React.ReactElement {
+  const { displayColorLabels, displayColorPalette } =
+    useScheduleDisplayPreferences(scopeKey)
+
+  React.useInsertionEffect(() => {
+    snapshots.push({
+      scopeKey,
+      palette: displayColorPalette,
+      labels: displayColorLabels,
+    })
+  }, [displayColorLabels, displayColorPalette, scopeKey, snapshots])
+
+  return React.createElement("output", {
+    "data-palette": JSON.stringify(displayColorPalette),
+    "data-labels": JSON.stringify(displayColorLabels),
+  })
 }
 
 function readRenderedPreferences(host: HTMLDivElement): {
@@ -145,6 +174,36 @@ describe("useScheduleDisplayPreferences", () => {
     expect(window.localStorage.getItem(schedulePaletteLabelStorageKey(projectB))).toBe(
       JSON.stringify(DEFAULT_DISPLAY_COLOR_LABELS)
     )
+  })
+
+  it("uses the new scope during the committed render before passive effects run", async () => {
+    const projectA = "project-a-before-passive"
+    const projectB = "project-b-before-passive"
+    const projectAPalette = { ...DEFAULT_DISPLAY_COLOR_PALETTE, blue: "#123456" }
+    const snapshots: PreferenceSnapshot[] = []
+    window.localStorage.setItem(schedulePaletteStorageKey(projectA), JSON.stringify(projectAPalette))
+
+    flushSync(() => {
+      root.render(
+        React.createElement(SnapshotProbe, { scopeKey: projectA, snapshots })
+      )
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    snapshots.length = 0
+
+    flushSync(() => {
+      root.render(
+        React.createElement(SnapshotProbe, { scopeKey: projectB, snapshots })
+      )
+    })
+
+    expect(snapshots.at(-1)).toEqual({
+      scopeKey: projectB,
+      palette: DEFAULT_DISPLAY_COLOR_PALETTE,
+      labels: DEFAULT_DISPLAY_COLOR_LABELS,
+    })
   })
 
   it("fails closed for malformed new-scope values instead of carrying the prior scope", async () => {
@@ -226,5 +285,28 @@ describe("useScheduleDisplayPreferences", () => {
     await render(root, host, "project-b")
     await render(root, host, projectA)
     expect(readRenderedPreferences(host).palette.blue).toBe("#12abef")
+  })
+
+  it("synchronizes independently mounted consumers after a palette update", async () => {
+    const secondHost = document.createElement("div")
+    document.body.appendChild(secondHost)
+    const secondRoot = createRoot(secondHost)
+
+    try {
+      await render(root, host, "shared-scope")
+      await render(secondRoot, secondHost, "shared-scope")
+
+      const firstButton = host.querySelector("button")
+      if (!firstButton) throw new Error("First palette control did not render")
+      await act(async () => {
+        firstButton.click()
+        await Promise.resolve()
+      })
+
+      expect(readRenderedPreferences(secondHost).palette.blue).toBe("#12abef")
+    } finally {
+      await act(async () => secondRoot.unmount())
+      secondHost.remove()
+    }
   })
 })
