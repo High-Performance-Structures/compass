@@ -9,6 +9,7 @@ import { ProjectBrandContactDetails } from "@/components/projects/project-brand-
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
 import {
+  clientEstimateBuilderFeeExclusionSummary,
   clientEstimatePhases,
   clientEstimateTaxSummary,
   type ClientEstimateLine,
@@ -118,8 +119,8 @@ export default async function ProjectEstimatePrintPage({
     estimate.overheadRateBasisPoints +
     estimate.marginRateBasisPoints +
     estimate.contingencyRateBasisPoints
-  const builderFeeExclusions = phases.flatMap((phase) =>
-    phase.lines.filter((line) => !line.includeInBuilderFee)
+  const builderFeeExclusions = clientEstimateBuilderFeeExclusionSummary(
+    phases.flatMap((phase) => phase.lines)
   )
   return (
     <>
@@ -389,7 +390,7 @@ export default async function ProjectEstimatePrintPage({
           </div>
         </section>
 
-        {builderFeeExclusions.length > 0 && (
+        {builderFeeExclusions.lines.length > 0 && (
           <section className="mt-6 break-inside-avoid text-sm">
             <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">
               Builder-fee exclusions
@@ -399,15 +400,28 @@ export default async function ProjectEstimatePrintPage({
               excluded from the overhead, margin, and contingency calculation.
             </p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
-              {builderFeeExclusions.map((line) => (
-                <li key={line.id}>
-                  {line.costCode} · {line.costCodeName}
-                  {line.description.trim() !== line.costCodeName.trim()
-                    ? ` — ${line.description}`
-                    : ""}
+              {builderFeeExclusions.lines.map((line) => (
+                <li key={line.id} className="break-inside-avoid">
+                  <div className="flex justify-between gap-4">
+                    <span>
+                      {line.costCode} · {line.costCodeName}
+                      {line.description.trim() !== line.costCodeName.trim()
+                        ? ` — ${line.description}`
+                        : ""}
+                    </span>
+                    <span className="shrink-0 text-right tabular-nums">
+                      {money(line.lineTotalCents)}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
+            <div className="mt-2 flex justify-between border-t border-black pt-2 font-semibold">
+              <span>Total exclusions</span>
+              <span className="ml-4 text-right tabular-nums">
+                {money(builderFeeExclusions.totalCents)}
+              </span>
+            </div>
           </section>
         )}
 
