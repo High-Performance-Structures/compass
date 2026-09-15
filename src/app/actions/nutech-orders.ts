@@ -12,6 +12,7 @@ import {
   nuTechOrderItems,
   nuTechOrderWorkflows,
   nuTechProducts,
+  nutechVendorInvoiceReleaseGuards,
   type NewNuTechOrderWorkflow,
 } from "@/db/schema-nutech"
 import { requireAuth, type AuthUser } from "@/lib/auth"
@@ -197,6 +198,8 @@ function cleanText(value: string | null): string | null {
 
 const AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR =
   "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes."
+const VENDOR_INVOICE_RELEASE_CONFLICT_ERROR =
+  "The Nu-Tech order changed while the vendor invoice was being released. Refresh and try again."
 
 function activeAirliteWorkbookClaim(
   workflow: Pick<
@@ -1135,52 +1138,173 @@ export async function releaseNuTechVendorInvoice(
     if (order.purchaseOrderReleasedAt === null) {
       throw new Error("Record the Airlite PO release before releasing its invoice.")
     }
-    const now = new Date().toISOString()
-    const released = await access.db
-      .update(nuTechOrderWorkflows)
-      .set({
-        orderStatus: "invoice_released",
-        vendorInvoiceStatus: "released",
-        vendorInvoiceReceivedAt: order.vendorInvoiceReceivedAt ?? now.slice(0, 10),
-        vendorInvoiceReleasedAt: now,
-        vendorInvoiceReleasedBy: access.user.id,
-        updatedBy: access.user.id,
-        updatedAt: now,
+    const purchaseOrderId = order.airlitePurchaseOrderOperationId
+    if (purchaseOrderId === null) {
+      throw new Error("The Airlite purchase order link is missing.")
+    }
+    const purchaseOrder = await access.db
+      .select({
+        id: projectOperations.id,
+        status: projectOperations.status,
+        revision: projectOperations.revision,
       })
+      .from(projectOperations)
       .where(
         and(
-          eq(nuTechOrderWorkflows.id, order.id),
-          eq(nuTechOrderWorkflows.updatedAt, order.updatedAt),
-          eq(nuTechOrderWorkflows.orderStatus, order.orderStatus),
-          eq(nuTechOrderWorkflows.vendorInvoiceNumber, vendorInvoiceNumber),
-          eq(nuTechOrderWorkflows.vendorInvoiceStatus, order.vendorInvoiceStatus),
-          order.vendorInvoiceReceivedAt === null
-            ? isNull(nuTechOrderWorkflows.vendorInvoiceReceivedAt)
-            : eq(
-                nuTechOrderWorkflows.vendorInvoiceReceivedAt,
-                order.vendorInvoiceReceivedAt
-              ),
-          eq(
-            nuTechOrderWorkflows.purchaseOrderReleasedAt,
-            order.purchaseOrderReleasedAt
-          ),
-          isNull(nuTechOrderWorkflows.vendorInvoiceReleasedAt)
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
         )
       )
-      .run()
-    if (released.meta.changes !== 1) {
-      throw new Error(
-        "The Nu-Tech order changed while the vendor invoice was being released. Refresh and try again."
-      )
+      .limit(1)
+      .get()
+    if (!purchaseOrder) {
+      throw new Error("The linked Airlite purchase order was not found.")
+    }
+    const now = new Date().toISOString()
+    const receivedAtPredicate =
+      order.vendorInvoiceReceivedAt === null
+        ? sql`workflow.vendor_invoice_received_at IS NULL`
+        : sql`workflow.vendor_invoice_received_at = ${order.vendorInvoiceReceivedAt}`
+    const releaseGuardValid = sql<number>`CASE WHEN EXISTS (
+      SELECT 1
+      FROM nutech_order_workflows AS workflow
+      INNER JOIN project_operations AS operation
+        ON operation.id = workflow.airlite_purchase_order_operation_id
+      WHERE workflow.id = ${order.id}
+        AND workflow.project_id = ${projectId}
+        AND workflow.airlite_purchase_order_operation_id = ${purchaseOrderId}
+        AND workflow.updated_at = ${order.updatedAt}
+        AND workflow.order_status = ${order.orderStatus}
+        AND workflow.vendor_invoice_number = ${vendorInvoiceNumber}
+        AND workflow.vendor_invoice_status = ${order.vendorInvoiceStatus}
+        AND ${receivedAtPredicate}
+        AND workflow.purchase_order_released_at = ${order.purchaseOrderReleasedAt}
+        AND workflow.vendor_invoice_released_at IS NULL
+        AND operation.id = ${purchaseOrderId}
+        AND operation.project_id = ${projectId}
+        AND operation.source_record_type = 'purchase_order'
+        AND operation.revision = ${purchaseOrder.revision}
+        AND operation.status = ${purchaseOrder.status}
+        AND operation.status NOT IN ('complete', 'closed', 'void')
+        AND operation.purchase_order_email_claim_token IS NULL
+    ) THEN 1 ELSE 0 END`
+    const releaseGuard = access.db
+      .insert(nutechVendorInvoiceReleaseGuards)
+      .values({ workflowId: order.id, valid: releaseGuardValid, createdAt: now })
+      .onConflictDoUpdate({
+        target: nutechVendorInvoiceReleaseGuards.workflowId,
+        set: { valid: releaseGuardValid, createdAt: now },
+      })
+    const releaseGuardFinalValid = sql<number>`CASE WHEN EXISTS (
+      SELECT 1
+      FROM nutech_order_workflows AS workflow
+      INNER JOIN project_operations AS operation
+        ON operation.id = workflow.airlite_purchase_order_operation_id
+      WHERE workflow.id = ${order.id}
+        AND workflow.project_id = ${projectId}
+        AND workflow.order_status = 'invoice_released'
+        AND workflow.vendor_invoice_status = 'released'
+        AND workflow.vendor_invoice_released_at = ${now}
+        AND operation.id = ${purchaseOrderId}
+        AND operation.project_id = ${projectId}
+        AND operation.status = 'complete'
+        AND operation.revision = ${purchaseOrder.revision + 1}
+    ) THEN 1 ELSE 0 END`
+    const releaseGuardFinal = access.db
+      .insert(nutechVendorInvoiceReleaseGuards)
+      .values({ workflowId: order.id, valid: releaseGuardFinalValid, createdAt: now })
+      .onConflictDoUpdate({
+        target: nutechVendorInvoiceReleaseGuards.workflowId,
+        set: { valid: releaseGuardFinalValid, createdAt: now },
+      })
+    const releaseResults = await access.db.batch([
+      releaseGuard,
+      access.db
+        .update(projectOperations)
+        .set({
+          status: "complete",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "purchase_order"),
+            eq(projectOperations.revision, purchaseOrder.revision),
+            eq(projectOperations.status, purchaseOrder.status),
+            isNull(projectOperations.purchaseOrderEmailClaimToken)
+          )
+        ),
+      access.db
+        .update(nuTechOrderWorkflows)
+        .set({
+          orderStatus: "invoice_released",
+          vendorInvoiceStatus: "released",
+          vendorInvoiceReceivedAt: order.vendorInvoiceReceivedAt ?? now.slice(0, 10),
+          vendorInvoiceReleasedAt: now,
+          vendorInvoiceReleasedBy: access.user.id,
+          updatedBy: access.user.id,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(nuTechOrderWorkflows.id, order.id),
+            eq(nuTechOrderWorkflows.projectId, projectId),
+            eq(nuTechOrderWorkflows.updatedAt, order.updatedAt),
+            eq(nuTechOrderWorkflows.orderStatus, order.orderStatus),
+            eq(nuTechOrderWorkflows.vendorInvoiceNumber, vendorInvoiceNumber),
+            eq(nuTechOrderWorkflows.vendorInvoiceStatus, order.vendorInvoiceStatus),
+            order.vendorInvoiceReceivedAt === null
+              ? isNull(nuTechOrderWorkflows.vendorInvoiceReceivedAt)
+              : eq(
+                  nuTechOrderWorkflows.vendorInvoiceReceivedAt,
+                  order.vendorInvoiceReceivedAt
+                ),
+            eq(
+              nuTechOrderWorkflows.purchaseOrderReleasedAt,
+              order.purchaseOrderReleasedAt
+            ),
+            isNull(nuTechOrderWorkflows.vendorInvoiceReleasedAt),
+            exists(
+              access.db
+                .select({ id: projectOperations.id })
+                .from(projectOperations)
+                .where(
+                  and(
+                    eq(projectOperations.id, purchaseOrderId),
+                    eq(projectOperations.projectId, projectId),
+                    eq(projectOperations.status, "complete"),
+                    eq(projectOperations.revision, purchaseOrder.revision + 1)
+                  )
+                )
+            )
+          )
+        ),
+      releaseGuardFinal,
+      access.db
+        .delete(nutechVendorInvoiceReleaseGuards)
+        .where(eq(nutechVendorInvoiceReleaseGuards.workflowId, order.id)),
+    ])
+    if (
+      (releaseResults[1]?.meta.changes ?? 0) !== 1 ||
+      (releaseResults[2]?.meta.changes ?? 0) !== 1
+    ) {
+      throw new Error(VENDOR_INVOICE_RELEASE_CONFLICT_ERROR)
     }
     revalidateNuTechPaths(projectId)
     revalidatePath("/dashboard/financials")
     return { success: true, id: order.id }
   } catch (error) {
+    const releaseConflict =
+      error instanceof Error &&
+      (error.message.includes("CHECK constraint failed") ||
+        error.message.includes("nutech_vendor_invoice_release_guards"))
     return {
       success: false,
-      error:
-        error instanceof Error
+      error: releaseConflict
+        ? VENDOR_INVOICE_RELEASE_CONFLICT_ERROR
+        : error instanceof Error
           ? error.message
           : "Failed to release the Airlite vendor invoice.",
     }

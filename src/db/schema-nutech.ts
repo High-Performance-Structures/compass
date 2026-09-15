@@ -276,6 +276,18 @@ export const nuTechOrderItems = sqliteTable(
   ]
 )
 
+// A short-lived row used by the D1 batch guard for cross-table invoice release.
+// The release action inserts only valid=1; the CHECK turns a stale preflight or
+// postcondition into a SQL error so the whole batch rolls back.
+export const nutechVendorInvoiceReleaseGuards = sqliteTable(
+  "nutech_vendor_invoice_release_guards",
+  {
+    workflowId: text("workflow_id").primaryKey(),
+    valid: integer("valid").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+)
+
 export type NuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferSelect
 export type NewNuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferInsert
 export type NuTechCatalogVersion = typeof nuTechCatalogVersions.$inferSelect

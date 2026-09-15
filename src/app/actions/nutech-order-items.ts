@@ -674,6 +674,8 @@ export async function generateNuTechAirliteWorkbook(
   let claimedPurchaseOrderOperationId: string | null = null
   let inheritedProviderAttemptUnresolved = false
   let providerEffectSucceeded = false
+  let knownProviderArtifactId: string | null = null
+  let knownProviderArtifactUrl: string | null = null
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
@@ -903,7 +905,10 @@ export async function generateNuTechAirliteWorkbook(
         typeof file.id === "string" &&
         file.id.trim().length > 0 &&
         file.trashed !== true &&
-        file.appProperties?.compassAirliteGenerationFingerprint === claimFingerprint
+        file.appProperties?.compassAirliteGenerationFingerprint === claimFingerprint &&
+        file.name === workbookName &&
+        file.mimeType === "application/vnd.google-apps.spreadsheet" &&
+        file.parents?.includes(destinationFolderId) === true
     )
     const durableWorkbook =
       providerEffectAlreadySucceeded && workflow.airliteWorkbookId !== null
@@ -996,6 +1001,14 @@ export async function generateNuTechAirliteWorkbook(
         parentId: destinationFolderId,
         fingerprint: claimFingerprint,
       })
+      // files.copy has no provider idempotency key. Record that the provider
+      // effect succeeded before attempting local adoption so a restart keeps
+      // the durable fence instead of issuing a duplicate copy.
+      providerEffectSucceeded = true
+      knownProviderArtifactId = workbook.id
+      knownProviderArtifactUrl =
+        workbook.webViewLink ??
+        `https://docs.google.com/spreadsheets/d/${workbook.id}/edit`
       const recorded = await access.db
         .update(nuTechOrderWorkflows)
         .set({
@@ -1169,6 +1182,7 @@ export async function generateNuTechAirliteWorkbook(
     }
     if (
       providerEffectSucceeded &&
+      knownProviderArtifactId !== null &&
       claimedDb !== null &&
       claimedWorkflowId !== null &&
       claimToken !== null &&
@@ -1178,6 +1192,9 @@ export async function generateNuTechAirliteWorkbook(
         await claimedDb
           .update(nuTechOrderWorkflows)
           .set({
+            airliteWorkbookId: knownProviderArtifactId,
+            airliteWorkbookUrl: knownProviderArtifactUrl,
+            airliteWorkbookProviderStatus: "succeeded",
             airliteWorkbookClaimError:
               error instanceof Error ? error.message : "Workbook population failed.",
             updatedAt: new Date().toISOString(),
@@ -1188,7 +1205,10 @@ export async function generateNuTechAirliteWorkbook(
               eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, claimToken),
               eq(nuTechOrderWorkflows.airliteWorkbookClaimRevision, claimRevision),
               eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
-              eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "succeeded"),
+              or(
+                eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "in_flight"),
+                eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "succeeded")
+              ),
               claimedPurchaseOrderOperationId === null
                 ? isNull(nuTechOrderWorkflows.airlitePurchaseOrderOperationId)
                 : eq(

@@ -393,6 +393,13 @@
       "when": 1789433742000,
       "tag": "0167_nutech_purchase_order_release_token",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1789437000000,
+      "tag": "0168_nutech_vendor_invoice_release_guard",
+      "breakpoints": true
     }
   ]
 }
