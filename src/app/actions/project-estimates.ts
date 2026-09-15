@@ -1,6 +1,18 @@
 "use server"
 
-import { and, asc, desc, eq, gt, inArray, like, ne, sql } from "drizzle-orm"
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  ne,
+  sql,
+} from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 
@@ -1082,7 +1094,12 @@ export async function getProjectEstimateWorkspace(
         ? access.db
             .select()
             .from(projectEstimateLineCostItems)
-            .where(eq(projectEstimateLineCostItems.estimateId, selected.id))
+            .where(
+              and(
+                eq(projectEstimateLineCostItems.estimateId, selected.id),
+                isNull(projectEstimateLineCostItems.deletedAt)
+              )
+            )
             .orderBy(
               asc(projectEstimateLineCostItems.estimateLineId),
               asc(projectEstimateLineCostItems.sortOrder)
@@ -1653,7 +1670,8 @@ export async function duplicateProjectEstimate(
              AND copied_line.sort_order = source_line.sort_order
              AND copied_line.cost_code = source_line.cost_code
              AND copied_line.description = source_line.description
-           WHERE cost_item.estimate_id = ? AND cost_item.project_id = ?`
+           WHERE cost_item.estimate_id = ? AND cost_item.project_id = ?
+             AND cost_item.deleted_at IS NULL`
         )
         .bind(id, now, now, id, sourceEstimateId, projectId),
       access.rawDb
@@ -2579,7 +2597,12 @@ export async function saveProjectEstimateLine(
             lineTotalCents: projectEstimateLineCostItems.lineTotalCents,
           })
           .from(projectEstimateLineCostItems)
-          .where(eq(projectEstimateLineCostItems.estimateLineId, lineId))
+          .where(
+            and(
+              eq(projectEstimateLineCostItems.estimateLineId, lineId),
+              isNull(projectEstimateLineCostItems.deletedAt)
+            )
+          )
       : []
     const usesCostBreakdown = breakdownRows.length > 0
     const breakdownRollup = usesCostBreakdown
@@ -2739,7 +2762,8 @@ async function refreshEstimateLineFromCostItems(
       .where(
         and(
           eq(projectEstimateLineCostItems.estimateId, estimateId),
-          eq(projectEstimateLineCostItems.estimateLineId, lineId)
+          eq(projectEstimateLineCostItems.estimateLineId, lineId),
+          isNull(projectEstimateLineCostItems.deletedAt)
         )
       ),
   ])
@@ -2885,7 +2909,8 @@ export async function saveProjectEstimateLineCostItem(
           and(
             eq(projectEstimateLineCostItems.id, costItemId),
             eq(projectEstimateLineCostItems.estimateId, estimateId),
-            eq(projectEstimateLineCostItems.estimateLineId, lineId)
+            eq(projectEstimateLineCostItems.estimateLineId, lineId),
+            isNull(projectEstimateLineCostItems.deletedAt)
           )
         )
         .limit(1)
@@ -2938,25 +2963,68 @@ export async function deleteProjectEstimateLineCostItem(
     const access = await estimateAccess(projectId, true)
     await requireEditableEstimate(access.db, projectId, estimateId)
     const existingRows = await access.db
-      .select({ id: projectEstimateLineCostItems.id })
+      .select({
+        id: projectEstimateLineCostItems.id,
+        costCode: projectEstimateLineCostItems.costCode,
+        description: projectEstimateLineCostItems.description,
+        lineTotalCents: projectEstimateLineCostItems.lineTotalCents,
+      })
       .from(projectEstimateLineCostItems)
       .where(
         and(
           eq(projectEstimateLineCostItems.id, costItemId),
           eq(projectEstimateLineCostItems.projectId, projectId),
           eq(projectEstimateLineCostItems.estimateId, estimateId),
-          eq(projectEstimateLineCostItems.estimateLineId, lineId)
+          eq(projectEstimateLineCostItems.estimateLineId, lineId),
+          isNull(projectEstimateLineCostItems.deletedAt)
         )
       )
       .limit(1)
-    if (!existingRows[0]) throw new Error("Cost item not found.")
-    await access.db
-      .delete(projectEstimateLineCostItems)
-      .where(eq(projectEstimateLineCostItems.id, costItemId))
-      .run()
+    const existing = existingRows[0]
+    if (!existing) throw new Error("Cost item not found.")
     const now = new Date().toISOString()
+    const removal = await access.db
+      .update(projectEstimateLineCostItems)
+      .set({
+        deletedAt: now,
+        deletedByUserId: access.user.id,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.id, costItemId),
+          isNull(projectEstimateLineCostItems.deletedAt)
+        )
+      )
+      .run()
+    if ((removal.meta.changes ?? 0) !== 1) {
+      throw new Error(
+        "The cost item changed before it could be removed. Refresh and try again."
+      )
+    }
     await refreshEstimateLineFromCostItems(access.db, estimateId, lineId, now)
     await refreshEstimateTotals(access.db, estimateId, now)
+    if (access.organizationId) {
+      await recordActivityEvent({
+        db: access.db,
+        organizationId: access.organizationId,
+        projectId,
+        actor: access.user,
+        category: "financial",
+        action: "estimate_breakdown_item_deleted",
+        entityType: "project_estimate_line_cost_item",
+        entityId: costItemId,
+        summary: `Removed ${existing.costCode} from an estimate line breakdown.`,
+        metadata: {
+          estimateId,
+          estimateLineId: lineId,
+          costCode: existing.costCode,
+          description: existing.description,
+          lineTotalCents: existing.lineTotalCents,
+        },
+        createdAt: now,
+      })
+    }
     revalidateEstimate(projectId)
     return { success: true, id: costItemId }
   } catch (error) {
@@ -2966,6 +3034,92 @@ export async function deleteProjectEstimateLineCostItem(
         error instanceof Error
           ? error.message
           : "Unable to delete the line cost item.",
+    }
+  }
+}
+
+export async function restoreProjectEstimateLineCostItem(
+  projectId: string,
+  estimateId: string,
+  lineId: string,
+  costItemId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const deletedRows = await access.db
+      .select({
+        id: projectEstimateLineCostItems.id,
+        costCode: projectEstimateLineCostItems.costCode,
+        description: projectEstimateLineCostItems.description,
+        lineTotalCents: projectEstimateLineCostItems.lineTotalCents,
+      })
+      .from(projectEstimateLineCostItems)
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.id, costItemId),
+          eq(projectEstimateLineCostItems.projectId, projectId),
+          eq(projectEstimateLineCostItems.estimateId, estimateId),
+          eq(projectEstimateLineCostItems.estimateLineId, lineId),
+          isNotNull(projectEstimateLineCostItems.deletedAt)
+        )
+      )
+      .limit(1)
+    const deleted = deletedRows[0]
+    if (!deleted) throw new Error("Deleted cost item not found.")
+
+    const now = new Date().toISOString()
+    const restoration = await access.db
+      .update(projectEstimateLineCostItems)
+      .set({
+        deletedAt: null,
+        deletedByUserId: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.id, costItemId),
+          isNotNull(projectEstimateLineCostItems.deletedAt)
+        )
+      )
+      .run()
+    if ((restoration.meta.changes ?? 0) !== 1) {
+      throw new Error(
+        "The cost item changed before it could be restored. Refresh and try again."
+      )
+    }
+    await refreshEstimateLineFromCostItems(access.db, estimateId, lineId, now)
+    await refreshEstimateTotals(access.db, estimateId, now)
+    if (access.organizationId) {
+      await recordActivityEvent({
+        db: access.db,
+        organizationId: access.organizationId,
+        projectId,
+        actor: access.user,
+        category: "financial",
+        action: "estimate_breakdown_item_restored",
+        entityType: "project_estimate_line_cost_item",
+        entityId: costItemId,
+        summary: `Restored ${deleted.costCode} to an estimate line breakdown.`,
+        metadata: {
+          estimateId,
+          estimateLineId: lineId,
+          costCode: deleted.costCode,
+          description: deleted.description,
+          lineTotalCents: deleted.lineTotalCents,
+        },
+        createdAt: now,
+      })
+    }
+    revalidateEstimate(projectId)
+    return { success: true, id: costItemId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to restore the line cost item.",
     }
   }
 }
@@ -2987,7 +3141,12 @@ export async function applyProjectEstimateLineMarkup(
     const costItems = await access.db
       .select()
       .from(projectEstimateLineCostItems)
-      .where(eq(projectEstimateLineCostItems.estimateId, estimateId))
+      .where(
+        and(
+          eq(projectEstimateLineCostItems.estimateId, estimateId),
+          isNull(projectEstimateLineCostItems.deletedAt)
+        )
+      )
 
     const now = new Date().toISOString()
     const legacyAdjustmentCodes = new Set<string>(
@@ -3048,7 +3207,8 @@ export async function applyProjectEstimateLineMarkup(
              SET markup_rate_basis_points = ?, direct_cost_cents = ?,
                markup_cents = ?, tax_cents = ?, line_total_cents = ?,
                total_cost_cents = ?, updated_at = ?
-             WHERE id = ? AND estimate_id = ? AND project_id = ?`
+             WHERE id = ? AND estimate_id = ? AND project_id = ?
+               AND deleted_at IS NULL`
           )
           .bind(
             markupRateBasisPoints,
@@ -3355,7 +3515,12 @@ export async function prepareProjectEstimateForClientSignature(
         access.db
           .select()
           .from(projectEstimateLineCostItems)
-          .where(eq(projectEstimateLineCostItems.estimateId, estimateId))
+          .where(
+            and(
+              eq(projectEstimateLineCostItems.estimateId, estimateId),
+              isNull(projectEstimateLineCostItems.deletedAt)
+            )
+          )
           .orderBy(
             asc(projectEstimateLineCostItems.estimateLineId),
             asc(projectEstimateLineCostItems.sortOrder)

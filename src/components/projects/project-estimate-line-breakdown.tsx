@@ -13,6 +13,7 @@ import { toast } from "sonner"
 
 import {
   deleteProjectEstimateLineCostItem,
+  restoreProjectEstimateLineCostItem,
   saveProjectEstimateLineCostItem,
   type ProjectEstimateCostCodeOption,
   type ProjectEstimateLineCostItem,
@@ -240,7 +241,27 @@ export function ProjectEstimateLineBreakdown({
       if (draft.id === item.id) {
         setDraft(emptyCostCode(line, defaultTaxEntityId))
       }
-      toast.success("Breakdown cost code deleted")
+      toast.success("Breakdown cost code removed", {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            startTransition(async () => {
+              const restoreResult = await restoreProjectEstimateLineCostItem(
+                projectId,
+                estimateId,
+                line.id,
+                item.id
+              )
+              if (!restoreResult.success) {
+                toast.error(restoreResult.error)
+                return
+              }
+              toast.success("Breakdown cost code restored")
+              router.refresh()
+            })
+          },
+        },
+      })
       router.refresh()
     })
   }
@@ -268,6 +289,7 @@ export function ProjectEstimateLineBreakdown({
               the unit type, markup, and taxability for each item. The parent
               line becomes a summary of those calculated amounts; builder-fee
               eligibility remains on the parent line.
+              There is no item-count or dollar-total limit.
             </p>
           </div>
           <p className="text-sm font-semibold">

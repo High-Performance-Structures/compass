@@ -131,6 +131,33 @@ describe("estimate ledger", () => {
     })
   })
 
+  it("rolls more than five breakdown items above $59K without a cap", () => {
+    const items = [
+      1_100_000,
+      1_250_000,
+      1_300_000,
+      1_425_000,
+      1_550_000,
+      1_675_000,
+    ].map((directCostCents) => ({
+      directCostCents,
+      markupRateBasisPoints: 0,
+      markupCents: 0,
+      taxable: false,
+      taxEntityId: null,
+      taxCode: null,
+      taxName: null,
+      taxRateBasisPoints: 0,
+      taxCents: 0,
+      lineTotalCents: directCostCents,
+    }))
+
+    expect(calculateEstimateLineBreakdownRollup(items)).toMatchObject({
+      directCostCents: 8_300_000,
+      lineTotalCents: 8_300_000,
+    })
+  })
+
   it("rolls estimate totals once across all lines", () => {
     expect(
       calculateEstimateTotals([
