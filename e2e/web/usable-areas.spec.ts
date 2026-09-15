@@ -489,6 +489,73 @@ test.describe("usable Compass areas", () => {
     await page.keyboard.press("Escape")
   })
 
+  test("Gantt persists a seeded viewport before an immediate refresh", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 768 })
+    const schedulePath =
+      "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
+    const response = await page.goto(schedulePath)
+    await expectHealthyNavigation(page, response, schedulePath)
+
+    const chart = page.locator(".gantt-container:visible").first()
+    await expect(chart).toBeVisible()
+
+    const seeded = await chart.evaluate((element) => {
+      const maximumLeft = element.scrollWidth - element.clientWidth
+      const left = Math.max(1, Math.round(maximumLeft * 0.7))
+      element.scrollLeft = left
+      element.dispatchEvent(new Event("scroll"))
+      const stored = window.sessionStorage.getItem(
+        "compass:schedule-scroll:e2e-project-001"
+      )
+      return { left: element.scrollLeft, stored }
+    })
+    expect(seeded.left).toBeGreaterThan(0)
+    expect(seeded.stored).toContain(`"left":${seeded.left}`)
+
+    // Do not wait for a debounce. WebKit can tear down the page before a
+    // timer callback runs during a refresh.
+    await page.reload({ waitUntil: "commit" })
+    await expect(chart).toBeVisible()
+    await expect
+      .poll(() => chart.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(seeded.left * 0.5)
+  })
+
+  test("Gantt restores its viewport on mobile after an immediate refresh", async ({
+    page,
+  }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith("mobile-"), "mobile project only")
+    const schedulePath =
+      "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
+    const response = await page.goto(schedulePath)
+    await expectHealthyNavigation(page, response, schedulePath)
+
+    const chart = page.locator(".gantt-container:visible").first()
+    await expect(chart).toBeVisible()
+    const seeded = await chart.evaluate((element) => {
+      const maximumLeft = element.scrollWidth - element.clientWidth
+      const left = Math.max(1, Math.round(maximumLeft * 0.6))
+      element.scrollLeft = left
+      element.dispatchEvent(new Event("scroll"))
+      return {
+        left: element.scrollLeft,
+        stored: window.sessionStorage.getItem(
+          "compass:schedule-scroll:e2e-project-001"
+        ),
+      }
+    })
+    expect(seeded.left).toBeGreaterThan(0)
+    expect(seeded.stored).toContain(`"left":${seeded.left}`)
+
+    await page.reload({ waitUntil: "commit" })
+    await expect(chart).toBeVisible()
+    await expect
+      .poll(() => chart.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(seeded.left * 0.5)
+  })
+
   test("Gantt keeps rows synchronized and reserves horizontal scrolling for Shift", async ({
     page,
   }) => {
