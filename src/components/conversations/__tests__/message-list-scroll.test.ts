@@ -245,4 +245,80 @@ describe("MessageList scrolling", () => {
       behavior: "smooth",
     })
   })
+
+  it("preserves a manual upward scroll when server messages refresh", async () => {
+    const initialMessages = [
+      {
+        id: "message-1",
+        channelId: "channel-1",
+        threadId: null,
+        content: "Existing message",
+        contentHtml: null,
+        editedAt: null,
+        deletedAt: null,
+        isPinned: false,
+        replyCount: 0,
+        lastReplyAt: null,
+        createdAt: "2026-09-09T12:00:00.000Z",
+        user: null,
+      },
+    ]
+
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-1",
+          currentUserId: null,
+          initialMessages,
+        }),
+      )
+    })
+
+    const viewport = host.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    expect(viewport).not.toBeNull()
+    if (!viewport) throw new Error("Expected the refreshed message viewport")
+
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    })
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+      })
+    })
+
+    viewport.scrollTop = 0
+    await act(async () => {
+      viewport.dispatchEvent(new Event("scroll"))
+    })
+    scrollTo.mockClear()
+
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-1",
+          currentUserId: null,
+          initialMessages: [
+            {
+              ...initialMessages[0],
+              content: "Refreshed message",
+            },
+          ],
+        }),
+      )
+    })
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+      })
+    })
+
+    expect(viewport.scrollTop).toBe(0)
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
 })

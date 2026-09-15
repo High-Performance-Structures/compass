@@ -159,19 +159,20 @@ export function MessageList({
 
   // sync when server re-fetches (router.refresh)
   React.useEffect(() => {
+    const shouldScrollToNewest = atNewestEdgeRef.current
     historyRequestIdRef.current += 1
     prependScrollRef.current = null
     pendingNewestScrollRef.current = false
     setLoading(false)
     setHistoryError(null)
-    atNewestEdgeRef.current = true
-    setAtNewestEdge(true)
+    atNewestEdgeRef.current = shouldScrollToNewest
+    setAtNewestEdge(shouldScrollToNewest)
     setMessageWindow({
       messages: [...initialMessages].reverse(),
       hasMore: true,
     })
     const viewport = getScrollViewport()
-    if (!viewport) return
+    if (!viewport || !shouldScrollToNewest) return
 
     // A queued frame must yield to a scroll or viewport replacement that
     // happens before the browser gets a chance to run it.

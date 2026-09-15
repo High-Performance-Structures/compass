@@ -36,12 +36,7 @@ const projectAreas = [
 ]
 
 async function enterDemo(page: Page): Promise<void> {
-  await page.goto("/")
-  const host = new URL(page.url()).hostname
-  await page.context().addCookies([
-    { name: "compass-demo", value: "true", domain: host, path: "/" },
-  ])
-  await page.goto("/dashboard")
+  await page.goto("/demo")
   await page.waitForURL(/\/dashboard/)
   await expect(page.locator("body")).not.toContainText(applicationErrorText)
 }
@@ -661,9 +656,10 @@ test.describe("usable Compass areas", () => {
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
 
-    const message = page.getByText("Regression conversation message", {
-      exact: true,
-    })
+    const message = page
+      .locator('[data-slot="scroll-area-viewport"]:visible')
+      .last()
+      .getByText("Regression conversation message", { exact: true })
     await message.hover()
     await page.getByRole("button", { name: "Reply to message" }).click()
 
@@ -714,9 +710,10 @@ test.describe("usable Compass areas", () => {
       await route.continue()
     })
 
-    const message = page.getByText("Regression conversation message", {
-      exact: true,
-    })
+    const message = page
+      .locator('[data-slot="scroll-area-viewport"]:visible')
+      .last()
+      .getByText("Regression conversation message", { exact: true })
     await message.hover()
     const replyButton = page.getByRole("button", { name: "Reply to message" })
     await expect(replyButton).toBeVisible()
