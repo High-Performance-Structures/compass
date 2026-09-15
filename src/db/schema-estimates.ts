@@ -361,6 +361,10 @@ export const projectEstimateLineCostItems = sqliteTable(
     lineTotalCents: integer("line_total_cents").notNull().default(0),
     totalCostCents: integer("total_cost_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
+    deletedAt: text("deleted_at"),
+    deletedByUserId: text("deleted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -372,6 +376,11 @@ export const projectEstimateLineCostItems = sqliteTable(
     index("project_estimate_line_cost_items_estimate_idx").on(
       table.estimateId,
       table.estimateLineId
+    ),
+    index("project_estimate_line_cost_items_active_idx").on(
+      table.estimateLineId,
+      table.deletedAt,
+      table.sortOrder
     ),
   ]
 )
