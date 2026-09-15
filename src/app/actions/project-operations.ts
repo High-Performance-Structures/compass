@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm"
+import { and, asc, eq, exists, gt, gte, inArray, isNull, lte, ne, not, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -59,6 +59,7 @@ import {
   type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
+import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -2084,7 +2085,11 @@ export async function updateProjectOperationStatus(
     }
 
     const existing = await db
-      .select({ id: projectOperations.id })
+      .select({
+        id: projectOperations.id,
+        revision: projectOperations.revision,
+        status: projectOperations.status,
+      })
       .from(projectOperations)
       .where(
         and(
@@ -2126,6 +2131,46 @@ export async function updateProjectOperationStatus(
       }
     }
 
+    const releasedAirliteWorkflow =
+      operationKind === "purchase_order"
+        ? await db
+            .select({ id: nuTechOrderWorkflows.id })
+            .from(nuTechOrderWorkflows)
+            .where(
+              and(
+                eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, operationId),
+                eq(nuTechOrderWorkflows.projectId, projectId),
+                sql`${nuTechOrderWorkflows.purchaseOrderReleasedAt} IS NOT NULL`
+              )
+            )
+            .limit(1)
+            .then((rows) => rows[0] ?? null)
+        : null
+    if (releasedAirliteWorkflow) {
+      return {
+        success: false,
+        error: "Released Airlite purchase orders are locked.",
+      }
+    }
+
+    const unreleasedAirliteGuard =
+      operationKind === "purchase_order"
+        ? not(
+            exists(
+              db
+                .select({ id: nuTechOrderWorkflows.id })
+                .from(nuTechOrderWorkflows)
+                .where(
+                  and(
+                    eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, operationId),
+                    eq(nuTechOrderWorkflows.projectId, projectId),
+                    sql`${nuTechOrderWorkflows.purchaseOrderReleasedAt} IS NOT NULL`
+                  )
+                )
+            )
+          )
+        : sql`1 = 1`
+
     const statusResult = await db
       .update(projectOperations)
       .set({
@@ -2137,6 +2182,9 @@ export async function updateProjectOperationStatus(
           eq(projectOperations.id, operationId),
           eq(projectOperations.projectId, projectId),
           eq(projectOperations.sourceRecordType, operationKind),
+          eq(projectOperations.revision, existing.revision),
+          eq(projectOperations.status, existing.status),
+          unreleasedAirliteGuard,
           isNull(projectOperations.purchaseOrderEmailClaimToken)
         )
       )
@@ -2789,6 +2837,27 @@ export async function deletePurchaseOrderRequest(
       return { success: false, error: "Purchase order not found." }
     }
 
+    const activeAirliteClaim = await db
+      .select({ id: nuTechOrderWorkflows.id })
+      .from(nuTechOrderWorkflows)
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, purchaseOrderId),
+          or(
+            eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+            eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "in_flight")
+          )
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (activeAirliteClaim) {
+      return {
+        success: false,
+        error: "The Airlite workbook is already being generated. Try again shortly.",
+      }
+    }
+
     // D1 batches are transactional. Fence both deletes to the revision read above
     // so a supplier-email claim either wins before this batch without losing lines,
     // or observes the whole order already deleted after the batch commits.
@@ -2810,6 +2879,28 @@ export async function deletePurchaseOrderRequest(
                     eq(projectOperations.projectId, projectId),
                     eq(projectOperations.sourceRecordType, "purchase_order"),
                     eq(projectOperations.revision, existing.revision),
+                    not(
+                      exists(
+                        db
+                          .select({ id: nuTechOrderWorkflows.id })
+                          .from(nuTechOrderWorkflows)
+                          .where(
+                            and(
+                              eq(
+                                nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                                purchaseOrderId
+                              ),
+                              or(
+                                eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+                                eq(
+                                  nuTechOrderWorkflows.airliteWorkbookProviderStatus,
+                                  "in_flight"
+                                )
+                              )
+                            )
+                          )
+                      )
+                    ),
                     isNull(projectOperations.purchaseOrderEmailClaimToken)
                   )
                 )
@@ -2824,6 +2915,28 @@ export async function deletePurchaseOrderRequest(
             eq(projectOperations.projectId, projectId),
             eq(projectOperations.sourceRecordType, "purchase_order"),
             eq(projectOperations.revision, existing.revision),
+            not(
+              exists(
+                db
+                  .select({ id: nuTechOrderWorkflows.id })
+                  .from(nuTechOrderWorkflows)
+                  .where(
+                    and(
+                      eq(
+                        nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                        purchaseOrderId
+                      ),
+                      or(
+                        eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+                        eq(
+                          nuTechOrderWorkflows.airliteWorkbookProviderStatus,
+                          "in_flight"
+                        )
+                      )
+                    )
+                  )
+              )
+            ),
             isNull(projectOperations.purchaseOrderEmailClaimToken)
           )
         ),

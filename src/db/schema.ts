@@ -1544,6 +1544,7 @@ export const projectOperations = sqliteTable("project_operations", {
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
   revision: integer("revision").notNull().default(0),
+  purchaseOrderReleaseToken: text("purchase_order_release_token"),
   purchaseOrderEmailClaimToken: text("purchase_order_email_claim_token"),
   purchaseOrderEmailClaimRevision: integer("purchase_order_email_claim_revision"),
   purchaseOrderEmailClaimFingerprint: text(

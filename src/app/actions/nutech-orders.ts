@@ -696,7 +696,13 @@ export async function saveProjectNuTechOrder(
       .limit(1)
       .get()
     const now = new Date().toISOString()
-    if (existing?.airliteWorkbookProviderStatus === "in_flight") {
+    if (
+      existing &&
+      existing.airliteWorkbookStatus === "generating" &&
+      (existing.airliteWorkbookProviderStatus === "in_flight" ||
+        (existing.airliteWorkbookProviderStatus === "succeeded" &&
+          existing.airliteWorkbookId !== null))
+    ) {
       throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
     }
     if (existing && activeAirliteWorkbookClaim(existing, now)) {
@@ -783,6 +789,71 @@ export async function saveProjectNuTechOrder(
       workbookClaimInvalidated
         ? "stale"
         : existing?.airliteWorkbookStatus ?? "not_generated"
+    const workflowSaveGuard =
+      existing === undefined
+        ? isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+        : and(
+            existing.purchaseOrderReleasedAt === null
+              ? isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+              : eq(
+                  nuTechOrderWorkflows.purchaseOrderReleasedAt,
+                  existing.purchaseOrderReleasedAt
+                ),
+            eq(nuTechOrderWorkflows.updatedAt, existing.updatedAt),
+            eq(nuTechOrderWorkflows.customerType, existing.customerType),
+            eq(nuTechOrderWorkflows.pricingMode, existing.pricingMode),
+            eq(nuTechOrderWorkflows.quantitySource, existing.quantitySource),
+            eq(nuTechOrderWorkflows.scopeType, existing.scopeType),
+            eq(nuTechOrderWorkflows.deliveryMethod, existing.deliveryMethod),
+            eq(
+              nuTechOrderWorkflows.bracingIncluded,
+              existing.bracingIncluded
+            ),
+            existing.bracingRentalStartDate === null
+              ? isNull(nuTechOrderWorkflows.bracingRentalStartDate)
+              : eq(
+                  nuTechOrderWorkflows.bracingRentalStartDate,
+                  existing.bracingRentalStartDate
+                ),
+            existing.bracingRentalEndDate === null
+              ? isNull(nuTechOrderWorkflows.bracingRentalEndDate)
+              : eq(
+                  nuTechOrderWorkflows.bracingRentalEndDate,
+                  existing.bracingRentalEndDate
+                ),
+            existing.catalogVersionId === null
+              ? isNull(nuTechOrderWorkflows.catalogVersionId)
+              : eq(nuTechOrderWorkflows.catalogVersionId, existing.catalogVersionId),
+            existing.airlitePurchaseOrderOperationId === null
+              ? isNull(nuTechOrderWorkflows.airlitePurchaseOrderOperationId)
+              : eq(
+                  nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                  existing.airlitePurchaseOrderOperationId
+                ),
+            existing.requestedDeliveryDate === null
+              ? isNull(nuTechOrderWorkflows.requestedDeliveryDate)
+              : eq(
+                  nuTechOrderWorkflows.requestedDeliveryDate,
+                  existing.requestedDeliveryDate
+                ),
+            eq(nuTechOrderWorkflows.orderStatus, existing.orderStatus),
+            eq(
+              nuTechOrderWorkflows.airliteWorkbookStatus,
+              existing.airliteWorkbookStatus
+            ),
+            existing.airliteWorkbookClaimToken === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimToken,
+                  existing.airliteWorkbookClaimToken
+                ),
+            existing.airliteWorkbookClaimRevision === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimRevision,
+                  existing.airliteWorkbookClaimRevision
+                )
+          )
     const saveWorkflowQuery = access.db
       .insert(nuTechOrderWorkflows)
       .values(values)
@@ -829,40 +900,12 @@ export async function saveProjectNuTechOrder(
           updatedBy: access.user.id,
           updatedAt: now,
         },
-        where:
-          existing === undefined
-            ? isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
-            : and(
-                isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
-                eq(nuTechOrderWorkflows.updatedAt, existing.updatedAt),
-                eq(
-                  nuTechOrderWorkflows.airliteWorkbookStatus,
-                  existing.airliteWorkbookStatus
-                ),
-                existing.airliteWorkbookClaimToken === null
-                  ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
-                  : eq(
-                      nuTechOrderWorkflows.airliteWorkbookClaimToken,
-                      existing.airliteWorkbookClaimToken
-                    ),
-                existing.airliteWorkbookClaimRevision === null
-                  ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRevision)
-                  : eq(
-                      nuTechOrderWorkflows.airliteWorkbookClaimRevision,
-                      existing.airliteWorkbookClaimRevision
-                    )
-              ),
+        where: workflowSaveGuard,
       })
-      .returning({ id: nuTechOrderWorkflows.id })
-    const savedWorkflow = await saveWorkflowQuery.get()
-    if (!savedWorkflow) {
-      throw new Error(
-        existing === undefined
-          ? "Released Airlite PO details are locked."
-          : "The Nu-Tech order changed while it was being saved. Refresh and try again."
-      )
-    }
-    if (values.catalogVersionId !== null) {
+    if (
+      values.catalogVersionId !== null &&
+      (existing === undefined || existing.purchaseOrderReleasedAt === null)
+    ) {
       const selectedPriceColumn =
         parsedCustomerType === "new"
           ? parsedPricingMode === "cash_discount"
@@ -884,9 +927,22 @@ export async function saveProjectNuTechOrder(
           updatedAt: now,
         })
         .where(eq(nuTechOrderItems.workflowId, id))
-      await repriceOrderItemsQuery.run()
+      const saveResults = await access.db.batch([
+        saveWorkflowQuery,
+        repriceOrderItemsQuery,
+      ])
+      if ((saveResults[0]?.meta.changes ?? 0) !== 1) {
+        throw new Error(
+          "The Nu-Tech order changed while it was being saved. Refresh and try again."
+        )
+      }
     } else {
-      // The workflow upsert above is the complete save when no catalog is active.
+      const saved = await saveWorkflowQuery.run()
+      if (saved.meta.changes !== 1) {
+        throw new Error(
+          "The Nu-Tech order changed while it was being saved. Refresh and try again."
+        )
+      }
     }
     revalidateNuTechPaths(projectId)
     return { success: true, id }
@@ -949,6 +1005,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
       .get()
     if (!purchaseOrder) throw new Error("The linked Airlite purchase order was not found.")
     const now = new Date().toISOString()
+    const releaseToken = crypto.randomUUID()
     const purchaseOrderStatus =
       purchaseOrder.status === "draft" || purchaseOrder.status === "approved"
         ? "sent"
@@ -984,7 +1041,11 @@ export async function releaseNuTechAirlitePurchaseOrder(
     const releaseResults = await access.db.batch([
       access.db
         .update(projectOperations)
-        .set({ status: purchaseOrderStatus, updatedAt: now })
+        .set({
+          status: purchaseOrderStatus,
+          purchaseOrderReleaseToken: releaseToken,
+          updatedAt: now,
+        })
         .where(
           and(
             eq(projectOperations.id, purchaseOrderId),
@@ -1023,6 +1084,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
                     eq(projectOperations.sourceRecordType, "purchase_order"),
                     eq(projectOperations.revision, purchaseOrder.revision + 1),
                     eq(projectOperations.status, purchaseOrderStatus),
+                    eq(projectOperations.purchaseOrderReleaseToken, releaseToken),
                     isNull(projectOperations.purchaseOrderEmailClaimToken)
                   )
                 )
@@ -1139,6 +1201,7 @@ export async function deleteProjectNuTechOrder(
         airliteWorkbookClaimReclaimAfter:
           nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
         airliteWorkbookProviderStatus: nuTechOrderWorkflows.airliteWorkbookProviderStatus,
+        airliteWorkbookId: nuTechOrderWorkflows.airliteWorkbookId,
         purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
         vendorInvoiceReleasedAt: nuTechOrderWorkflows.vendorInvoiceReleasedAt,
         updatedAt: nuTechOrderWorkflows.updatedAt,
@@ -1149,7 +1212,12 @@ export async function deleteProjectNuTechOrder(
       .get()
     if (!existing) throw new Error("Nu-Tech order workflow not found.")
     const now = new Date().toISOString()
-    if (existing.airliteWorkbookProviderStatus === "in_flight") {
+    if (
+      existing.airliteWorkbookStatus === "generating" &&
+      (existing.airliteWorkbookProviderStatus === "in_flight" ||
+        (existing.airliteWorkbookProviderStatus === "succeeded" &&
+          existing.airliteWorkbookId !== null))
+    ) {
       throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
     }
     if (activeAirliteWorkbookClaim(existing, now)) {

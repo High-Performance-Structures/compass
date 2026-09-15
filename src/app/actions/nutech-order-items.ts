@@ -75,6 +75,20 @@ function activeAirliteWorkbookClaim(
   )
 }
 
+function airliteProviderEffectRequiresFence(
+  workflow: Pick<
+    typeof nuTechOrderWorkflows.$inferSelect,
+    "airliteWorkbookStatus" | "airliteWorkbookProviderStatus" | "airliteWorkbookId"
+  >
+): boolean {
+  return (
+    workflow.airliteWorkbookStatus === "generating" &&
+    (workflow.airliteWorkbookProviderStatus === "in_flight" ||
+      (workflow.airliteWorkbookProviderStatus === "succeeded" &&
+        workflow.airliteWorkbookId !== null))
+  )
+}
+
 async function copyAirliteWorkbookOnce(input: {
   readonly client: {
     readonly copyFile: (
@@ -132,6 +146,7 @@ async function renewAirliteWorkbookClaim(input: {
   readonly workflowId: string
   readonly claimToken: string
   readonly claimRevision: number
+  readonly purchaseOrderOperationId: string
 }): Promise<void> {
   const now = new Date().toISOString()
   const renewed = await input.db
@@ -151,6 +166,10 @@ async function renewAirliteWorkbookClaim(input: {
           input.claimRevision
         ),
         eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+        eq(
+          nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+          input.purchaseOrderOperationId
+        ),
         isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
         gt(
           nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
@@ -167,6 +186,7 @@ async function runWithAirliteProviderWriteFence<T>(input: {
   readonly workflowId: string
   readonly claimToken: string
   readonly claimRevision: number
+  readonly purchaseOrderOperationId: string
   readonly effect: () => Promise<T>
 }): Promise<T> {
   const now = new Date().toISOString()
@@ -187,6 +207,10 @@ async function runWithAirliteProviderWriteFence<T>(input: {
           input.claimRevision
         ),
         eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+        eq(
+          nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+          input.purchaseOrderOperationId
+        ),
         isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
         gt(nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter, now)
       )
@@ -326,6 +350,9 @@ export async function saveNuTechOrderItem(
       .limit(1)
       .get()
     if (!product) throw new Error("Choose a product from this order's catalog.")
+    if (airliteProviderEffectRequiresFence(workflow)) {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    }
     validateNuTechOrderQuantity({
       manufacturerSku: product.manufacturerSku,
       quantity: input.quantity,
@@ -512,6 +539,7 @@ export async function deleteNuTechOrderItem(
         airliteWorkbookClaimFingerprint:
           nuTechOrderWorkflows.airliteWorkbookClaimFingerprint,
         airliteWorkbookClaimError: nuTechOrderWorkflows.airliteWorkbookClaimError,
+        airliteWorkbookId: nuTechOrderWorkflows.airliteWorkbookId,
         airliteWorkbookProviderStatus: nuTechOrderWorkflows.airliteWorkbookProviderStatus,
         airliteWorkbookProviderAttemptedAt:
           nuTechOrderWorkflows.airliteWorkbookProviderAttemptedAt,
@@ -541,6 +569,14 @@ export async function deleteNuTechOrderItem(
     }
     if (item.purchaseOrderReleasedAt !== null) {
       throw new Error("Released Airlite PO quantities are locked.")
+    }
+    if (
+      item.airliteWorkbookStatus === "generating" &&
+      (item.airliteWorkbookProviderStatus === "in_flight" ||
+        (item.airliteWorkbookProviderStatus === "succeeded" &&
+          item.airliteWorkbookId !== null))
+    ) {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
     }
     const workbookClaimInvalidated =
       item.airliteWorkbookStatus === "generating" ||
@@ -635,12 +671,15 @@ export async function generateNuTechAirliteWorkbook(
   let claimedDb: CompassDb | null = null
   let claimToken: string | null = null
   let claimRevision: number | null = null
+  let claimedPurchaseOrderOperationId: string | null = null
   let inheritedProviderAttemptUnresolved = false
+  let providerEffectSucceeded = false
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
       throw new Error("Provision the project Google Drive folder before generating the Airlite workbook.")
     }
+    const destinationFolderId = access.project.googleDriveFolderId
     const workflow = await access.db
       .select()
       .from(nuTechOrderWorkflows)
@@ -656,7 +695,10 @@ export async function generateNuTechAirliteWorkbook(
     if (!workflow.airlitePurchaseOrderOperationId) {
       throw new Error("Link the Compass Airlite purchase order before generating its workbook.")
     }
+    const purchaseOrderOperationId = workflow.airlitePurchaseOrderOperationId
     const now = new Date().toISOString()
+    const workbookDate =
+      workflow.airliteWorkbookProviderAttemptedAt?.slice(0, 10) ?? now.slice(0, 10)
     const reclaimExpired =
       workflow.airliteWorkbookClaimReclaimAfter === null ||
       workflow.airliteWorkbookClaimReclaimAfter <= now
@@ -699,7 +741,7 @@ export async function generateNuTechAirliteWorkbook(
         .from(projectOperations)
         .where(
           and(
-            eq(projectOperations.id, workflow.airlitePurchaseOrderOperationId),
+            eq(projectOperations.id, purchaseOrderOperationId),
             eq(projectOperations.projectId, projectId),
             eq(projectOperations.sourceRecordType, "purchase_order")
           )
@@ -730,7 +772,7 @@ export async function generateNuTechAirliteWorkbook(
     }
     const plan = buildNuTechAirliteWorkbookPlan({
       purchaseOrderNumber: purchaseOrder.number,
-      purchaseOrderDate: now.slice(0, 10),
+      purchaseOrderDate: workbookDate,
       requestedDeliveryDate: workflow.requestedDeliveryDate,
       projectName: access.project.name,
       jobsiteAddress: access.project.address,
@@ -740,17 +782,40 @@ export async function generateNuTechAirliteWorkbook(
       deliveryContact: access.project.clientName,
       lines: lineRows,
     })
+    const { env } = await getCloudflareContext()
+    const { client, sheetsClient, userEmail } = await getOrganizationDriveContext({
+      db: access.db,
+      environment: env,
+      organizationId: access.organizationId,
+      user: access.user,
+    })
+    const workbookName = `${access.project.projectNumber ?? access.project.name} Airlite Order ${workbookDate}`
     const claimFingerprint = await sha256Hex(
       JSON.stringify({
+        providerAccount: userEmail,
+        templateId: catalogVersion.airliteTemplateId,
+        destinationFolderId,
+        workbookName,
         workflowId: workflow.id,
+        purchaseOrderOperationId,
         purchaseOrderNumber: purchaseOrder.number,
         requestedDeliveryDate: workflow.requestedDeliveryDate,
-        lines: lineRows,
+        plan,
       })
     )
+    if (
+      workflow.airliteWorkbookProviderStatus === "in_flight" &&
+      workflow.airliteWorkbookClaimFingerprint !== claimFingerprint
+    ) {
+      throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
+    }
     const providerEffectInFlight =
       workflow.airliteWorkbookClaimFingerprint === claimFingerprint &&
       workflow.airliteWorkbookProviderStatus === "in_flight"
+    const providerEffectAlreadySucceeded =
+      workflow.airliteWorkbookClaimFingerprint === claimFingerprint &&
+      workflow.airliteWorkbookProviderStatus === "succeeded" &&
+      workflow.airliteWorkbookId !== null
     const nextClaimToken = crypto.randomUUID()
     const nextClaimRevision = (workflow.airliteWorkbookClaimRevision ?? 0) + 1
     const retryUntil =
@@ -773,8 +838,11 @@ export async function generateNuTechAirliteWorkbook(
         airliteWorkbookClaimError: null,
         airliteWorkbookProviderStatus: providerEffectInFlight
           ? "in_flight"
-          : "not_started",
-        airliteWorkbookProviderAttemptedAt: providerEffectInFlight
+          : providerEffectAlreadySucceeded
+            ? "succeeded"
+            : "not_started",
+        airliteWorkbookProviderAttemptedAt:
+          providerEffectInFlight || providerEffectAlreadySucceeded
           ? workflow.airliteWorkbookProviderAttemptedAt
           : null,
         updatedBy: access.user.id,
@@ -784,6 +852,10 @@ export async function generateNuTechAirliteWorkbook(
         and(
           eq(nuTechOrderWorkflows.id, workflow.id),
           eq(nuTechOrderWorkflows.updatedAt, workflow.updatedAt),
+          eq(
+            nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+            purchaseOrderOperationId
+          ),
           isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt),
           or(
             ne(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
@@ -808,41 +880,54 @@ export async function generateNuTechAirliteWorkbook(
     claimedDb = access.db
     claimToken = nextClaimToken
     claimRevision = nextClaimRevision
+    claimedPurchaseOrderOperationId = purchaseOrderOperationId
     inheritedProviderAttemptUnresolved = providerEffectInFlight
+    providerEffectSucceeded = providerEffectAlreadySucceeded
 
     const claim = {
       db: access.db,
       workflowId: workflow.id,
       claimToken: nextClaimToken,
       claimRevision: nextClaimRevision,
+      purchaseOrderOperationId,
     }
     await renewAirliteWorkbookClaim(claim)
-    const { env } = await getCloudflareContext()
-    const { client, sheetsClient, userEmail } = await getOrganizationDriveContext({
-      db: access.db,
-      environment: env,
-      organizationId: access.organizationId,
-      user: access.user,
-    })
     await renewAirliteWorkbookClaim(claim)
     const matchingFiles = await client.listFiles(userEmail, {
-      folderId: access.project.googleDriveFolderId,
+      folderId: destinationFolderId,
       query: `appProperties has { key='compassAirliteGenerationFingerprint' and value='${claimFingerprint}' }`,
       pageSize: 10,
     })
     const existingWorkbook = matchingFiles.files.find(
       (file) =>
+        typeof file.id === "string" &&
+        file.id.trim().length > 0 &&
         file.trashed !== true &&
-        (!providerEffectInFlight ||
-          file.appProperties?.compassAirliteGenerationFingerprint === claimFingerprint)
+        file.appProperties?.compassAirliteGenerationFingerprint === claimFingerprint
     )
-    let workbook = existingWorkbook
+    const durableWorkbook =
+      providerEffectAlreadySucceeded && workflow.airliteWorkbookId !== null
+        ? {
+            id: workflow.airliteWorkbookId,
+            name: workbookName,
+            mimeType: "application/vnd.google-apps.spreadsheet",
+            parents: [destinationFolderId],
+            appProperties: {
+              compassAirliteGenerationFingerprint: claimFingerprint,
+            },
+            webViewLink: workflow.airliteWorkbookUrl ?? undefined,
+          }
+        : undefined
+    let workbook = durableWorkbook ?? existingWorkbook
     const providerEffectKey = `${userEmail}:${catalogVersion.airliteTemplateId}:${claimFingerprint}`
     if (workbook) {
       const adopted = await access.db
         .update(nuTechOrderWorkflows)
         .set({
           airliteWorkbookId: workbook.id,
+          airliteWorkbookUrl:
+            workbook.webViewLink ??
+            `https://docs.google.com/spreadsheets/d/${workbook.id}/edit`,
           airliteWorkbookProviderStatus: "succeeded",
           airliteWorkbookProviderAttemptedAt:
             workflow.airliteWorkbookProviderAttemptedAt ?? now,
@@ -857,6 +942,10 @@ export async function generateNuTechAirliteWorkbook(
               nextClaimRevision
             ),
             eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+            eq(
+              nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+              purchaseOrderOperationId
+            ),
             isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
           )
         )
@@ -865,6 +954,7 @@ export async function generateNuTechAirliteWorkbook(
         throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
       }
       inheritedProviderAttemptUnresolved = false
+      providerEffectSucceeded = true
     } else {
       if (providerEffectInFlight && !airliteProviderEffects.has(providerEffectKey)) {
         throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
@@ -887,6 +977,10 @@ export async function generateNuTechAirliteWorkbook(
               nextClaimRevision
             ),
             eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+            eq(
+              nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+              purchaseOrderOperationId
+            ),
             isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
           )
         )
@@ -898,14 +992,17 @@ export async function generateNuTechAirliteWorkbook(
         client,
         userEmail,
         templateId: catalogVersion.airliteTemplateId,
-        name: `${access.project.projectNumber ?? access.project.name} Airlite Order ${now.slice(0, 10)}`,
-        parentId: access.project.googleDriveFolderId,
+        name: workbookName,
+        parentId: destinationFolderId,
         fingerprint: claimFingerprint,
       })
       const recorded = await access.db
         .update(nuTechOrderWorkflows)
         .set({
           airliteWorkbookId: workbook.id,
+          airliteWorkbookUrl:
+            workbook.webViewLink ??
+            `https://docs.google.com/spreadsheets/d/${workbook.id}/edit`,
           airliteWorkbookProviderStatus: "succeeded",
           updatedAt: new Date().toISOString(),
         })
@@ -918,6 +1015,10 @@ export async function generateNuTechAirliteWorkbook(
               nextClaimRevision
             ),
             eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+            eq(
+              nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+              purchaseOrderOperationId
+            ),
             isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
           )
         )
@@ -926,7 +1027,9 @@ export async function generateNuTechAirliteWorkbook(
         throw new Error(AIRLITE_WORKBOOK_CLAIM_LOST_ERROR)
       }
       inheritedProviderAttemptUnresolved = false
+      providerEffectSucceeded = true
     }
+    if (!workbook) throw new Error(AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR)
     await runWithAirliteProviderWriteFence({
       ...claim,
       effect: () =>
@@ -1012,6 +1115,10 @@ export async function generateNuTechAirliteWorkbook(
             nextClaimRevision
           ),
           eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+          eq(
+            nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+            purchaseOrderOperationId
+          ),
           isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
         )
       )
@@ -1046,6 +1153,12 @@ export async function generateNuTechAirliteWorkbook(
               eq(nuTechOrderWorkflows.airliteWorkbookClaimRevision, claimRevision),
               eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
               eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "in_flight"),
+              claimedPurchaseOrderOperationId === null
+                ? isNull(nuTechOrderWorkflows.airlitePurchaseOrderOperationId)
+                : eq(
+                    nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                    claimedPurchaseOrderOperationId
+                  ),
               isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
             )
           )
@@ -1055,7 +1168,44 @@ export async function generateNuTechAirliteWorkbook(
       }
     }
     if (
+      providerEffectSucceeded &&
+      claimedDb !== null &&
+      claimedWorkflowId !== null &&
+      claimToken !== null &&
+      claimRevision !== null
+    ) {
+      try {
+        await claimedDb
+          .update(nuTechOrderWorkflows)
+          .set({
+            airliteWorkbookClaimError:
+              error instanceof Error ? error.message : "Workbook population failed.",
+            updatedAt: new Date().toISOString(),
+          })
+          .where(
+            and(
+              eq(nuTechOrderWorkflows.id, claimedWorkflowId),
+              eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, claimToken),
+              eq(nuTechOrderWorkflows.airliteWorkbookClaimRevision, claimRevision),
+              eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+              eq(nuTechOrderWorkflows.airliteWorkbookProviderStatus, "succeeded"),
+              claimedPurchaseOrderOperationId === null
+                ? isNull(nuTechOrderWorkflows.airlitePurchaseOrderOperationId)
+                : eq(
+                    nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                    claimedPurchaseOrderOperationId
+                  ),
+              isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+            )
+          )
+          .run()
+      } catch {
+        // Preserve the durable successful provider effect if error recording fails.
+      }
+    }
+    if (
       !providerAttemptUnresolved &&
+      !providerEffectSucceeded &&
       claimedDb !== null &&
       claimedWorkflowId !== null &&
       claimToken !== null &&
@@ -1079,6 +1229,12 @@ export async function generateNuTechAirliteWorkbook(
               eq(nuTechOrderWorkflows.airliteWorkbookClaimToken, claimToken),
               eq(nuTechOrderWorkflows.airliteWorkbookClaimRevision, claimRevision),
               eq(nuTechOrderWorkflows.airliteWorkbookStatus, "generating"),
+              claimedPurchaseOrderOperationId === null
+                ? isNull(nuTechOrderWorkflows.airlitePurchaseOrderOperationId)
+                : eq(
+                    nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+                    claimedPurchaseOrderOperationId
+                  ),
               isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
             )
           )

@@ -61,6 +61,7 @@ import {
   reconcilePurchaseOrderEmailDelivery,
   sendPurchaseOrderEmail,
   updatePurchaseOrderRequest,
+  updateProjectOperationStatus,
 } from "@/app/actions/project-operations"
 import {
   getNuTechOrderDashboard,
@@ -230,6 +231,7 @@ function createSchema(sqlite: Sqlite): void {
       sync_status TEXT NOT NULL DEFAULT 'synced',
       last_synced_at TEXT,
       revision INTEGER NOT NULL DEFAULT 0,
+      purchase_order_release_token TEXT,
       purchase_order_email_claim_token TEXT,
       purchase_order_email_claim_revision INTEGER,
       purchase_order_email_claim_fingerprint TEXT,
@@ -3555,7 +3557,19 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       trashed: false,
     }
     const copyFile = vi.fn()
-    const listFiles = vi.fn(async () => ({ files: [workbook] }))
+    const listFiles = vi.fn(
+      async (_userEmail: string, options: { readonly query?: string }) => ({
+        files: [
+          {
+            ...workbook,
+            appProperties: {
+              compassAirliteGenerationFingerprint:
+                options.query?.match(/value='([^']+)'/)?.[1] ?? "",
+            },
+          },
+        ],
+      })
+    )
     mocks.getOrganizationDriveContext.mockResolvedValue({
       client: { copyFile, listFiles },
       sheetsClient: {
@@ -3605,17 +3619,23 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       },
     })
     const copyFile = vi.fn()
-    const listFiles = vi.fn(async () => ({
-      files: [
-        {
-          id: "recovered-workbook",
-          name: "Recovered workbook",
-          mimeType: "application/vnd.google-apps.spreadsheet",
-          webViewLink: "https://drive.test/recovered-workbook",
-          trashed: false,
-        },
-      ],
-    }))
+    const listFiles = vi.fn(
+      async (_userEmail: string, options: { readonly query?: string }) => ({
+        files: [
+          {
+            id: "recovered-workbook",
+            name: "Recovered workbook",
+            mimeType: "application/vnd.google-apps.spreadsheet",
+            webViewLink: "https://drive.test/recovered-workbook",
+            trashed: false,
+            appProperties: {
+              compassAirliteGenerationFingerprint:
+                options.query?.match(/value='([^']+)'/)?.[1] ?? "",
+            },
+          },
+        ],
+      })
+    )
     const batchUpdateValues = vi.fn(async () => undefined)
     mocks.getOrganizationDriveContext.mockResolvedValue({
       client: { copyFile, listFiles },
@@ -3658,17 +3678,23 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       },
     })
     const copyFile = vi.fn()
-    const listFiles = vi.fn(async () => ({
-      files: [
-        {
-          id: "recovered-workbook",
-          name: "Recovered workbook",
-          mimeType: "application/vnd.google-apps.spreadsheet",
-          webViewLink: "https://drive.test/recovered-workbook",
-          trashed: false,
-        },
-      ],
-    }))
+    const listFiles = vi.fn(
+      async (_userEmail: string, options: { readonly query?: string }) => ({
+        files: [
+          {
+            id: "recovered-workbook",
+            name: "Recovered workbook",
+            mimeType: "application/vnd.google-apps.spreadsheet",
+            webViewLink: "https://drive.test/recovered-workbook",
+            trashed: false,
+            appProperties: {
+              compassAirliteGenerationFingerprint:
+                options.query?.match(/value='([^']+)'/)?.[1] ?? "",
+            },
+          },
+        ],
+      })
+    )
     const batchUpdateValues = vi.fn(async () => undefined)
     const addSheet = vi.fn(async () => ({ sheetId: 2 }))
     const getSpreadsheetMetadata = vi.fn(async () => ({
@@ -3780,7 +3806,8 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
     })
     await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
       success: false,
-      error: "The Airlite workbook is already being generated. Try again shortly.",
+      error:
+        "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
     })
     expect(copyFile).not.toHaveBeenCalled()
     expect(sqlite.prepare(`
@@ -3790,8 +3817,8 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       FROM nutech_order_workflows WHERE id = 'workflow-1'
     `).get()).toEqual({
       airlite_workbook_status: "generating",
-      airlite_workbook_claim_token: expect.any(String),
-      airlite_workbook_claim_revision: 2,
+      airlite_workbook_claim_token: "expired-owner",
+      airlite_workbook_claim_revision: 1,
       airlite_workbook_provider_status: "in_flight",
       airlite_workbook_provider_attempted_at: "2026-08-25T04:59:00.000Z",
     })
@@ -3895,11 +3922,7 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       error:
         "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes.",
     })
-    expect(listFilesMock).toHaveBeenCalledWith("staff@example.com", {
-      folderId: "folder-1",
-      query: `appProperties has { key='compassAirliteGenerationFingerprint' and value='${fingerprint}' }`,
-      pageSize: 10,
-    })
+    expect(listFilesMock).not.toHaveBeenCalled()
     expect(copyFile).not.toHaveBeenCalled()
     await expect(
       saveNuTechOrderItem("project-1", {
@@ -4156,6 +4179,200 @@ describe("Nu-Tech Airlite workbook generation claim", () => {
       workbookUrl: "https://drive.test/window-reset-workbook",
     })
     expect(copyFile).toHaveBeenCalledTimes(4)
+    sqlite.close()
+  })
+
+  it("preserves a successful Drive copy when downstream Sheets population fails", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+      },
+    })
+    const copyFile = vi.fn(async () => ({
+      id: "workbook-1",
+      name: "Airlite order",
+      mimeType: "application/vnd.google-apps.spreadsheet",
+      parents: ["folder-1"],
+      appProperties: { compassAirliteGenerationFingerprint: "unused" },
+      webViewLink: "https://drive.test/workbook-1",
+    }))
+    const listFiles = vi.fn(async () => ({ files: [] }))
+    const batchUpdateValues = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Sheets population unavailable"))
+      .mockResolvedValue(undefined)
+    mocks.getOrganizationDriveContext.mockResolvedValue({
+      client: { copyFile, listFiles },
+      sheetsClient: {
+        batchUpdateValues,
+        addSheet: vi.fn(async () => ({ sheetId: 1 })),
+      },
+      userEmail: "staff@example.com",
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: false,
+      error: "Sheets population unavailable",
+    })
+    vi.advanceTimersByTime(23 * 60 * 60 * 1000 + 1)
+
+    await expect(generateNuTechAirliteWorkbook("project-1")).resolves.toEqual({
+      success: true,
+      id: "workflow-1",
+      workbookUrl: "https://drive.test/workbook-1",
+    })
+    expect(copyFile).toHaveBeenCalledTimes(1)
+    expect(listFiles).toHaveBeenCalledTimes(2)
+    expect(sqlite.prepare(`
+      SELECT airlite_workbook_id, airlite_workbook_provider_status,
+             airlite_workbook_status, airlite_workbook_claim_token
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      airlite_workbook_id: "workbook-1",
+      airlite_workbook_provider_status: "succeeded",
+      airlite_workbook_status: "generated",
+      airlite_workbook_claim_token: null,
+    })
+    sqlite.close()
+  })
+
+  it("rejects purchase-order deletion while an Airlite workbook claim is active", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET airlite_workbook_status = 'generating',
+          airlite_workbook_claim_token = 'claim-owner',
+          airlite_workbook_claim_revision = 1,
+          airlite_workbook_claim_reclaim_after = '2026-08-25T06:00:00.000Z'
+      WHERE id = 'workflow-1'
+    `).run()
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        projectOperations,
+        projectPurchaseOrderLines,
+        nuTechOrderWorkflows,
+      },
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(deletePurchaseOrderRequest("project-1", "po-1")).resolves.toEqual({
+      success: false,
+      error: "The Airlite workbook is already being generated. Try again shortly.",
+    })
+    expect(sqlite.prepare("SELECT id FROM project_operations WHERE id = 'po-1'").get()).toEqual({
+      id: "po-1",
+    })
+    sqlite.close()
+  })
+
+  it("keeps vendor invoice entry writable after Airlite PO release", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET order_status = 'po_released',
+          purchase_order_released_at = '2026-08-24T05:00:00.000Z',
+          purchase_order_released_by = 'staff-1'
+      WHERE id = 'workflow-1'
+    `).run()
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projectOperations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechCatalogPrices,
+      },
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(
+      saveProjectNuTechOrder("project-1", {
+        customerType: "new",
+        pricingMode: "standard",
+        quantitySource: "customer_provided",
+        takeoffAcknowledgementStatus: "not_required",
+        scopeType: "block_sale",
+        blockQuantityNotes: null,
+        bracingIncluded: false,
+        bracingRentalStartDate: null,
+        bracingRentalEndDate: null,
+        bracingNotes: null,
+        deliveryMethod: "delivery",
+        requestedDeliveryDate: null,
+        airlitePurchaseOrderOperationId: "po-1",
+        orderStatus: "po_released",
+        vendorConfirmationNumber: null,
+        vendorInvoiceNumber: "INV-123",
+        vendorInvoiceStatus: "received",
+        vendorInvoiceReceivedAt: "2026-08-25",
+        notes: null,
+      })
+    ).resolves.toEqual({ success: true, id: "workflow-1" })
+    expect(sqlite.prepare(`
+      SELECT vendor_invoice_number, vendor_invoice_status,
+             vendor_invoice_received_at, purchase_order_released_at
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      vendor_invoice_number: "INV-123",
+      vendor_invoice_status: "received",
+      vendor_invoice_received_at: "2026-08-25",
+      purchase_order_released_at: "2026-08-24T05:00:00.000Z",
+    })
+    sqlite.close()
+  })
+
+  it("does not let a generic purchase-order status write regress a released Airlite PO", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite.prepare("UPDATE project_operations SET status = 'sent' WHERE id = 'po-1'").run()
+    sqlite.prepare(`
+      UPDATE nutech_order_workflows
+      SET order_status = 'po_released',
+          purchase_order_released_at = '2026-08-24T05:00:00.000Z',
+          purchase_order_released_by = 'staff-1'
+      WHERE id = 'workflow-1'
+    `).run()
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actor = drizzle(createD1(sqlite), {
+      schema: { organizations, projects, projectOperations, nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(actor)
+
+    await expect(
+      updateProjectOperationStatus("project-1", "po-1", "purchase_order", "draft")
+    ).resolves.toEqual({
+      success: false,
+      error: "Released Airlite purchase orders are locked.",
+    })
+    expect(sqlite.prepare("SELECT status FROM project_operations WHERE id = 'po-1'").get()).toEqual({
+      status: "sent",
+    })
     sqlite.close()
   })
 })

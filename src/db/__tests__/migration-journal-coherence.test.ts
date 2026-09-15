@@ -43,7 +43,7 @@ describe("D1 migration journal coherence", () => {
     expect(entries.map((entry) => entry.idx)).toEqual(
       entries.map((_entry, index) => index)
     )
-    expect(journalTags.slice(-7)).toEqual([
+    expect(journalTags.slice(-8)).toEqual([
       "0160_project_operation_revision",
       "0161_purchase_order_email_claim",
       "0162_purchase_order_email_claim_recovery",
@@ -51,6 +51,7 @@ describe("D1 migration journal coherence", () => {
       "0164_purchase_order_email_reconciliation_evidence",
       "0165_nutech_workbook_claim",
       "0166_nutech_workbook_provider_effect",
+      "0167_nutech_purchase_order_release_token",
     ])
   })
 
