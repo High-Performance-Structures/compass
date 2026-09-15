@@ -134,7 +134,11 @@ export async function ProjectAudienceConversation({
                 projectHref={homeHref}
                 conversationBaseHref={conversationBaseHref}
               />
-              <MessageList channelId={channelId} initialMessages={messages} />
+              <MessageList
+                channelId={channelId}
+                initialMessages={messages}
+                currentUserId={preview.viewer.id}
+              />
               <MessageComposer
                 channelId={channelId}
                 channelName={channel.name}
