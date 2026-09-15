@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useScheduleDisplayPreferences } from "@/hooks/use-schedule-display-preferences"
 import {
   GanttChart,
   type GanttScrollPosition,
@@ -73,13 +74,7 @@ import { validateScheduleShiftReason } from "@/lib/schedule/shift-tracking"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
   DEFAULT_DISPLAY_COLOR_LABELS,
-  DEFAULT_DISPLAY_COLOR_PALETTE,
   DISPLAY_COLOR_OPTIONS,
-  schedulePaletteLabelStorageKey,
-  normalizeDisplayColorPalette,
-  schedulePaletteStorageKey,
-  type DisplayColor,
-  type DisplayColorPalette,
 } from "@/lib/schedule/appearance"
 import type {
   ScheduleTaskData,
@@ -143,12 +138,14 @@ export function ScheduleGanttView({
   const [showCriticalPath, setShowCriticalPath] = useState(false)
   const [showScheduleKey, setShowScheduleKey] = useState(false)
   const [editingScheduleKey, setEditingScheduleKey] = useState(false)
-  const [displayColorPalette, setDisplayColorPalette] = useState<DisplayColorPalette>(
-    DEFAULT_DISPLAY_COLOR_PALETTE
-  )
-  const [displayColorLabels, setDisplayColorLabels] = useState<Record<DisplayColor, string>>(
-    DEFAULT_DISPLAY_COLOR_LABELS
-  )
+  const preferenceScopeKey = projectId ?? "unified"
+  const {
+    displayColorPalette,
+    displayColorLabels,
+    resetPreferences,
+    updatePaletteColor,
+    updatePaletteLabel,
+  } = useScheduleDisplayPreferences(preferenceScopeKey)
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
@@ -164,7 +161,6 @@ export function ScheduleGanttView({
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
-  const preferenceScopeKey = projectId ?? "unified"
   const scrollStorageKey = `compass:schedule-scroll:${preferenceScopeKey}`
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
@@ -176,59 +172,6 @@ export function ScheduleGanttView({
     setPhaseGrouping(groupByPhase)
   }, [groupByPhase])
 
-  const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
-
-  useEffect(() => {
-    try {
-      const storedPalette = window.localStorage.getItem(
-        schedulePaletteStorageKey(preferenceScopeKey)
-      )
-      const storedLabels = window.localStorage.getItem(
-        schedulePaletteLabelStorageKey(preferenceScopeKey)
-      )
-      if (storedPalette) {
-        setDisplayColorPalette(normalizeDisplayColorPalette(JSON.parse(storedPalette)))
-      }
-      if (storedLabels) {
-        const candidate = JSON.parse(storedLabels) as Partial<Record<DisplayColor, string>>
-        setDisplayColorLabels({
-          ...DEFAULT_DISPLAY_COLOR_LABELS,
-          ...Object.fromEntries(
-            Object.entries(candidate).filter(([, value]) => typeof value === "string" && value.trim())
-          ),
-        })
-      }
-    } catch {
-      // A malformed or unavailable local preference falls back to the default palette.
-    } finally {
-      setHasLoadedPalette(true)
-    }
-  }, [preferenceScopeKey])
-
-  useEffect(() => {
-    if (!hasLoadedPalette) return
-    window.localStorage.setItem(
-      schedulePaletteStorageKey(preferenceScopeKey),
-      JSON.stringify(displayColorPalette)
-    )
-    window.localStorage.setItem(
-      schedulePaletteLabelStorageKey(preferenceScopeKey),
-      JSON.stringify(displayColorLabels)
-    )
-  }, [
-    displayColorLabels,
-    displayColorPalette,
-    hasLoadedPalette,
-    preferenceScopeKey,
-  ])
-
-  const updatePaletteColor = (color: DisplayColor, value: string) => {
-    setDisplayColorPalette((palette) => ({ ...palette, [color]: value }))
-  }
-
-  const updatePaletteLabel = (color: DisplayColor, value: string) => {
-    setDisplayColorLabels((labels) => ({ ...labels, [color]: value }))
-  }
 
   const defaultWidths: Record<ViewMode, number> = {
     Day: 38,
@@ -931,10 +874,7 @@ export function ScheduleGanttView({
             variant="ghost"
             size="sm"
             className="mt-2 h-6 px-1.5 text-[10px]"
-            onClick={() => {
-              setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
-              setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
-            }}
+            onClick={resetPreferences}
           >
             Reset personal colors
           </Button>
