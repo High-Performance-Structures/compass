@@ -1995,10 +1995,8 @@ export async function draftOwnerUpdateFromDailyLogs(
   input: OwnerUpdateDraftInput
 ): Promise<OwnerUpdateDraftResult> {
   try {
-    const { db, userId } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const userId = user.id
     const dailyLogIds = [...new Set(input.dailyLogIds)].filter(
       (id) => id.trim().length > 0
     )
@@ -2144,10 +2142,8 @@ export async function createManualOwnerProjectUpdateDraft(
   updateDate: string
 ): Promise<OwnerUpdateDraftResult> {
   try {
-    const { db, userId } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const userId = user.id
     const normalizedDate = updateDate.trim()
     if (!isValidOwnerUpdatePeriod(normalizedDate, normalizedDate)) {
       return { success: false, error: "Enter a valid update date." }
@@ -2225,10 +2221,7 @@ export async function deleteOwnerProjectUpdateDraft(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
@@ -2995,15 +2988,14 @@ export async function draftOwnerProjectUpdateWithJarvis(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const { db, user } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
         title: ownerProjectUpdates.title,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
         periodStart: ownerProjectUpdates.periodStart,
         periodEnd: ownerProjectUpdates.periodEnd,
         sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
@@ -3177,19 +3169,34 @@ export async function draftOwnerProjectUpdateWithJarvis(
       return { success: false, error: "Jarvis returned an empty draft." }
     }
 
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         summary,
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: new Date().toISOString(),
       })
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "draft")
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, update.revision),
+          eq(ownerProjectUpdates.updatedAt, update.updatedAt)
         )
       )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    if (!updatedRows[0]) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while Jarvis was drafting. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
     revalidatePath(
@@ -3474,14 +3481,11 @@ export async function recallOwnerProjectUpdate(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const orgId = user.organizationId
+    if (!orgId) {
+      return { success: false, error: "Active organization is required" }
     }
-    await requireFeaturePermission(user, "owner-updates", "update")
-    const orgId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const [update] = await db
       .select({ status: ownerProjectUpdates.status })
