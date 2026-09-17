@@ -2,16 +2,37 @@ import { describe, expect, it, vi } from "vitest"
 
 import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
+type Version = {
+  readonly revision: number
+  readonly updatedAt: string
+}
+
+type SaveResult =
+  | ({ readonly success: true } & Version)
+  | { readonly success: false; readonly error: string }
+
 describe("owner update draft publishing", () => {
-  it("saves current edits before publishing", async () => {
+  it("passes the saved version to publish", async () => {
     const sequence: string[] = []
-    const save = vi.fn(async () => {
+    const save = vi.fn(async (): Promise<SaveResult> => {
       sequence.push("save")
-      return { success: true } as const
+      return {
+        success: true,
+        revision: 4,
+        updatedAt: "2026-07-28T14:30:00.000Z",
+      }
     })
-    const publish = vi.fn(async () => {
+    const publish = vi.fn(async (version: Version): Promise<SaveResult> => {
       sequence.push("publish")
-      return { success: true } as const
+      expect(version).toEqual({
+        revision: 4,
+        updatedAt: "2026-07-28T14:30:00.000Z",
+      })
+      return {
+        success: true,
+        revision: 5,
+        updatedAt: "2026-07-28T14:31:00.000Z",
+      }
     })
 
     const result = await persistOwnerUpdateDraft({
@@ -20,16 +41,24 @@ describe("owner update draft publishing", () => {
       publish,
     })
 
-    expect(result).toEqual({ success: true })
+    expect(result).toEqual({
+      success: true,
+      revision: 5,
+      updatedAt: "2026-07-28T14:31:00.000Z",
+    })
     expect(sequence).toEqual(["save", "publish"])
   })
 
   it("does not publish when saving fails", async () => {
-    const save = vi.fn(async () => ({
+    const save = vi.fn(async (): Promise<SaveResult> => ({
       success: false,
       error: "Unable to save the draft.",
-    }) as const)
-    const publish = vi.fn(async () => ({ success: true }) as const)
+    }))
+    const publish = vi.fn(async (): Promise<SaveResult> => ({
+      success: true,
+      revision: 5,
+      updatedAt: "2026-07-28T14:31:00.000Z",
+    }))
 
     const result = await persistOwnerUpdateDraft({
       intent: "publish",
@@ -45,8 +74,16 @@ describe("owner update draft publishing", () => {
   })
 
   it("does not publish for an ordinary save", async () => {
-    const save = vi.fn(async () => ({ success: true }) as const)
-    const publish = vi.fn(async () => ({ success: true }) as const)
+    const save = vi.fn(async (): Promise<SaveResult> => ({
+      success: true,
+      revision: 4,
+      updatedAt: "2026-07-28T14:30:00.000Z",
+    }))
+    const publish = vi.fn(async (): Promise<SaveResult> => ({
+      success: true,
+      revision: 5,
+      updatedAt: "2026-07-28T14:31:00.000Z",
+    }))
 
     const result = await persistOwnerUpdateDraft({
       intent: "save",
@@ -54,7 +91,11 @@ describe("owner update draft publishing", () => {
       publish,
     })
 
-    expect(result).toEqual({ success: true })
+    expect(result).toEqual({
+      success: true,
+      revision: 4,
+      updatedAt: "2026-07-28T14:30:00.000Z",
+    })
     expect(publish).not.toHaveBeenCalled()
   })
 })

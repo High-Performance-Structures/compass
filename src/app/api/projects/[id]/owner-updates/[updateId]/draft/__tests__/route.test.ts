@@ -2,8 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 type PersistInput = {
   readonly intent: "save" | "publish"
-  readonly save: () => Promise<{ readonly success: true }>
-  readonly publish: () => Promise<{ readonly success: true }>
+  readonly save: () => Promise<{
+    readonly success: true
+    readonly revision: number
+    readonly updatedAt: string
+  }>
+  readonly publish: (version: {
+    readonly revision: number
+    readonly updatedAt: string
+  }) => Promise<{
+    readonly success: true
+    readonly revision: number
+    readonly updatedAt: string
+  }>
 }
 
 const mocks = {
@@ -36,18 +47,35 @@ const legacyDraft = {
   selectedPhotoIds: ["photo-1"],
 }
 
+const versionedLegacyDraft = {
+  ...legacyDraft,
+  expectedRevision: 0,
+  expectedUpdatedAt: "2026-07-28T14:20:14.659Z",
+}
+
 describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuth.mockResolvedValue({ id: "user-1" })
     mocks.resolveProjectRouteId.mockResolvedValue("project-1")
-    mocks.updateOwnerProjectUpdateDraft.mockResolvedValue({ success: true })
-    mocks.publishOwnerProjectUpdate.mockResolvedValue({ success: true })
+    mocks.updateOwnerProjectUpdateDraft.mockResolvedValue({
+      success: true,
+      revision: 1,
+      updatedAt: "2026-07-28T14:30:00.000Z",
+    })
+    mocks.publishOwnerProjectUpdate.mockResolvedValue({
+      success: true,
+      revision: 2,
+      updatedAt: "2026-07-28T14:31:00.000Z",
+    })
     mocks.persistOwnerUpdateDraft.mockImplementation(
       async (input: PersistInput) => {
         const saved = await input.save()
         if (!saved.success || input.intent === "save") return saved
-        return input.publish()
+        return input.publish({
+          revision: saved.revision,
+          updatedAt: saved.updatedAt,
+        })
       }
     )
   })
@@ -73,7 +101,7 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
     const response = await PUT(
       new Request(
         "https://compass.example/api/projects/project-1/owner-updates/update-1/draft",
-        { method: "PUT", body: JSON.stringify(legacyDraft) }
+        { method: "PUT", body: JSON.stringify(versionedLegacyDraft) }
       ),
       { params: Promise.resolve({ id: "project-1", updateId: "update-1" }) }
     )
@@ -90,6 +118,8 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
         completedScheduleItems: [],
         lookAheadScheduleItems: [],
         todos: [],
+        expectedRevision: 0,
+        expectedUpdatedAt: "2026-07-28T14:20:14.659Z",
       }
     )
   })
@@ -98,7 +128,7 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
     const response = await PUT(
       new Request(
         "https://compass.example/api/projects/project-1/owner-updates/update-1/draft?intent=publish",
-        { method: "PUT", body: JSON.stringify(legacyDraft) }
+        { method: "PUT", body: JSON.stringify(versionedLegacyDraft) }
       ),
       { params: Promise.resolve({ id: "project-1", updateId: "update-1" }) }
     )
@@ -106,8 +136,22 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
     expect(response.status).toBe(200)
     expect(mocks.publishOwnerProjectUpdate).toHaveBeenCalledWith(
       "project-1",
-      "update-1"
+      "update-1",
+      { revision: 1, updatedAt: "2026-07-28T14:30:00.000Z" }
     )
+  })
+
+  it("rejects a draft write without an expected server version", async () => {
+    const response = await PUT(
+      new Request(
+        "https://compass.example/api/projects/project-1/owner-updates/update-1/draft",
+        { method: "PUT", body: JSON.stringify(legacyDraft) }
+      ),
+      { params: Promise.resolve({ id: "project-1", updateId: "update-1" }) }
+    )
+
+    expect(response.status).toBe(400)
+    expect(mocks.persistOwnerUpdateDraft).not.toHaveBeenCalled()
   })
 
   it("rejects invalid input after authentication without invoking mutations", async () => {
