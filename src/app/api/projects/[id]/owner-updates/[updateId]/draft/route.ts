@@ -4,6 +4,7 @@ import {
   updateOwnerProjectUpdateDraft,
 } from "@/app/actions/project-field"
 import { requireAuth } from "@/lib/auth"
+import { assertOwnerUpdateRouteAccess } from "@/lib/owner-updates/access"
 import { parseOwnerUpdateDraftWrite } from "@/lib/owner-updates/draft-recovery"
 import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
@@ -18,12 +19,28 @@ export async function PUT(
     }>
   }
 ): Promise<Response> {
+  let user: Awaited<ReturnType<typeof requireAuth>>
   try {
-    await requireAuth()
+    user = await requireAuth()
   } catch {
     return Response.json(
       { success: false, error: "Authentication is required." },
       { status: 401 }
+    )
+  }
+
+  try {
+    await assertOwnerUpdateRouteAccess(user)
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Permission denied: internal staff access is required",
+      },
+      { status: 403 }
     )
   }
 
