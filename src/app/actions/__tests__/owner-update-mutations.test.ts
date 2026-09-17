@@ -68,6 +68,8 @@ type Sqlite = Readonly<{
 
 type SqliteConstructor = new (file: string) => Sqlite
 
+const D1_MAX_BOUND_VARIABLES = 100
+
 function isSqliteConstructor(value: unknown): value is SqliteConstructor {
   return typeof value === "function"
 }
@@ -119,12 +121,21 @@ function createD1(sqlite: Sqlite) {
     return {
       bind: (...nextValues) => prepared(sqlText, nextValues),
       async run() {
+        if (values.length > D1_MAX_BOUND_VARIABLES) {
+          throw new Error("D1 bound-variable limit exceeded")
+        }
         return { success: true, meta: query.run(...values) }
       },
       async all() {
+        if (values.length > D1_MAX_BOUND_VARIABLES) {
+          throw new Error("D1 bound-variable limit exceeded")
+        }
         return { success: true, results: query.all(...values) }
       },
       async raw() {
+        if (values.length > D1_MAX_BOUND_VARIABLES) {
+          throw new Error("D1 bound-variable limit exceeded")
+        }
         if (query.values) return query.values(...values)
         return query
           .all(...values)
@@ -256,6 +267,13 @@ function createDatabase(): {
       project_id TEXT NOT NULL,
       daily_log_id TEXT,
       captured_at TEXT,
+      source_system TEXT NOT NULL DEFAULT 'compass',
+      file_name TEXT NOT NULL DEFAULT 'attachment',
+      mime_type TEXT,
+      drive_file_id TEXT,
+      drive_url TEXT,
+      thumbnail_url TEXT,
+      caption TEXT,
       review_status TEXT NOT NULL,
       owner_visible INTEGER NOT NULL,
       updated_at TEXT NOT NULL
@@ -304,6 +322,39 @@ function seedDraft(sqlite: Sqlite): void {
       version.expectedUpdatedAt,
       0
   )
+}
+
+function seedLargeAttachmentSelection(sqlite: Sqlite): {
+  readonly photoIds: readonly string[]
+  readonly documentIds: readonly string[]
+} {
+  const photoIds = Array.from({ length: 121 }, (_, index) => `photo-${index}`)
+  const documentIds = Array.from(
+    { length: 29 },
+    (_, index) => `document-${index}`
+  )
+  for (const id of [...photoIds, ...documentIds]) {
+    const isPhoto = photoIds.includes(id)
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, daily_log_id, captured_at, source_system, file_name,
+          mime_type, thumbnail_url, review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      id,
+      "project-1",
+      null,
+      "2026-07-28T12:00:00.000Z",
+      "compass",
+      `${id}.${isPhoto ? "jpg" : "pdf"}`,
+      isPhoto ? "image/jpeg" : "application/pdf",
+      isPhoto ? `https://example.test/${id}` : null,
+      "pending",
+      0,
+      version.expectedUpdatedAt
+    )
+  }
+  return { photoIds, documentIds }
 }
 
 async function waitForRelayCall(): Promise<void> {
@@ -624,6 +675,45 @@ describe("owner update mutation authorization and fencing", () => {
         "photo-1"
       )
     ).toEqual({ review_status: "pending", owner_visible: 0 })
+  })
+
+  it("saves and publishes 121 photos plus 29 documents under the D1 binding limit", async () => {
+    const { photoIds, documentIds } = seedLargeAttachmentSelection(sqlite)
+
+    const saved = await updateOwnerProjectUpdateDraft(
+      "project-1",
+      "update-1",
+      {
+        ...draft,
+        selectedPhotoIds: photoIds,
+        selectedDocumentIds: documentIds,
+      }
+    )
+    expect(saved).toMatchObject({ success: true, revision: 1 })
+    if (!saved.success) throw new Error(saved.error)
+
+    const published = await publishOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      { revision: saved.revision, updatedAt: saved.updatedAt }
+    )
+
+    expect(published).toMatchObject({ success: true, revision: 2 })
+    expect(
+      get(
+        sqlite,
+        "SELECT status, revision FROM owner_project_updates WHERE id = ?",
+        "update-1"
+      )
+    ).toEqual({ status: "published", revision: 2 })
+    expect(
+      get(
+        sqlite,
+        "SELECT COUNT(*) AS count FROM daily_log_photos WHERE review_status = ? AND owner_visible = ?",
+        "approved",
+        1
+      )
+    ).toEqual({ count: 150 })
   })
 
   it("rejects a stale draft delete without removing the newer update", async () => {
