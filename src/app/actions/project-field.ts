@@ -3410,6 +3410,21 @@ export async function publishOwnerProjectUpdate(
             AND publish_update.revision = ${version.revision}
             AND publish_update.updated_at = ${version.updatedAt}
         )`
+  // Keep the final attachment ownership check inside the publish CAS while
+  // binding the selection as one JSON value instead of one value per ID.
+  // D1 rejects statements that exceed its bound-variable limit. Reuse this
+  // fence on attachment updates so a failed publish cannot partially approve
+  // files when a selected row disappears between validation and publication.
+  const selectedAttachmentsBelongToProject = sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM json_each(${JSON.stringify(selectedAttachmentIds)}) AS selected_attachment
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM daily_log_photos AS publish_photo
+      WHERE publish_photo.project_id = ${projectId}
+        AND publish_photo.id = selected_attachment.value
+    )
+  )`
   const attachmentUpdates = attachmentBatches.map((idBatch) =>
     db
       .update(dailyLogPhotos)
@@ -3422,25 +3437,18 @@ export async function publishOwnerProjectUpdate(
         attachmentFence === null
           ? and(
               eq(dailyLogPhotos.projectId, projectId),
-              inArray(dailyLogPhotos.id, idBatch)
+              inArray(dailyLogPhotos.id, idBatch),
+              selectedAttachmentsBelongToProject
             )
           : and(
               eq(dailyLogPhotos.projectId, projectId),
               inArray(dailyLogPhotos.id, idBatch),
+              selectedAttachmentsBelongToProject,
               attachmentFence
             )
       )
       .returning({ id: dailyLogPhotos.id })
   )
-  const selectedAttachmentCount = sql<boolean>`(
-    SELECT COUNT(*)
-    FROM daily_log_photos AS publish_photo
-    WHERE publish_photo.project_id = ${projectId}
-      AND publish_photo.id IN (${sql.join(
-        selectedAttachmentIds.map((id) => sql`${id}`),
-        sql`, `
-      )})
-  ) = ${selectedAttachmentIds.length}`
   const publishStatement = db
     .update(ownerProjectUpdates)
     .set({
@@ -3462,7 +3470,7 @@ export async function publishOwnerProjectUpdate(
         eq(ownerProjectUpdates.status, "draft"),
         eq(ownerProjectUpdates.revision, version.revision),
         eq(ownerProjectUpdates.updatedAt, version.updatedAt),
-        selectedAttachmentCount
+        selectedAttachmentsBelongToProject
       )
     )
     .returning({
