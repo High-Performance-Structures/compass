@@ -13,10 +13,32 @@ import {
   normalizeWheelDelta,
   paddingToIncludeDate,
   persistGanttScrollPosition,
+  scheduleScrollStorageKey,
+  shouldRestoreGanttScroll,
   synchronizedScrollTop,
 } from "../gantt-scroll"
 
 describe("Gantt dominant-axis scrolling", () => {
+  it("restores the first global and project viewport, but not a repeated route", () => {
+    expect(shouldRestoreGanttScroll(null, undefined)).toBe(true)
+    expect(shouldRestoreGanttScroll("project-1", undefined)).toBe(true)
+    expect(shouldRestoreGanttScroll(null, null)).toBe(false)
+    expect(shouldRestoreGanttScroll("project-1", "project-1")).toBe(false)
+    expect(shouldRestoreGanttScroll(null, "project-1")).toBe(true)
+  })
+
+  it("keeps global and project viewport storage keys isolated", () => {
+    expect(scheduleScrollStorageKey(null)).toBe(
+      "compass:schedule-scroll:unified"
+    )
+    expect(scheduleScrollStorageKey("project-1")).toBe(
+      "compass:schedule-scroll:project-1"
+    )
+    expect(scheduleScrollStorageKey(null)).not.toBe(
+      scheduleScrollStorageKey("project-1")
+    )
+  })
+
   it("persists a viewport before the scroll handler returns", () => {
     const values = new Map<string, string>()
     const storage = {

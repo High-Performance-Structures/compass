@@ -102,6 +102,8 @@ import {
   nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
   persistGanttScrollPosition,
+  scheduleScrollStorageKey,
+  shouldRestoreGanttScroll,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
 
@@ -163,9 +165,9 @@ export function ScheduleGanttView({
   const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
-  const scrollRestoredProjectRef = useRef<string | null>(null)
+  const scrollRestoredProjectRef = useRef<string | null | undefined>(undefined)
   const preferenceScopeKey = projectId ?? "unified"
-  const scrollStorageKey = `compass:schedule-scroll:${preferenceScopeKey}`
+  const scrollStorageKey = scheduleScrollStorageKey(projectId)
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects]
@@ -338,7 +340,7 @@ export function ScheduleGanttView({
       if (!container) return
 
       let position = scrollPositionRef.current
-      if (scrollRestoredProjectRef.current !== projectId) {
+      if (shouldRestoreGanttScroll(projectId, scrollRestoredProjectRef.current)) {
         try {
           const stored = window.sessionStorage.getItem(scrollStorageKey)
           if (stored) {
