@@ -13,6 +13,7 @@ import {
   projectOperations,
   scheduleTasks,
   projects,
+  organizations,
   users,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
@@ -61,6 +62,11 @@ import {
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
+import type { OwnerUpdateDraftWriteInput } from "@/lib/owner-updates/draft-recovery"
+import type {
+  OwnerUpdateMutationResult,
+  OwnerUpdateMutationVersion,
+} from "@/lib/owner-updates/draft-publish"
 
 type LatestDailyLog = {
   readonly id: string
@@ -277,19 +283,7 @@ type OwnerUpdateDraftInput = {
   readonly dailyLogIds: readonly string[]
 }
 
-export type OwnerUpdateDraftEditInput = {
-  readonly title: string
-  readonly updateDate: string
-  readonly periodStart: string
-  readonly periodEnd: string
-  readonly summary: string
-  readonly sourceDailyLogIds: readonly string[]
-  readonly selectedPhotoIds: readonly string[]
-  readonly selectedDocumentIds: readonly string[]
-  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
-  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
-  readonly todos: readonly OwnerUpdateTodoSelection[]
-}
+export type OwnerUpdateDraftEditInput = OwnerUpdateDraftWriteInput
 
 type DailyLogMutationResult =
   | { readonly success: true }
@@ -330,6 +324,7 @@ export type OwnerProjectUpdateDocument = {
     readonly publishedAt: string | null
     readonly sentAt: string | null
     readonly recalledAt: string | null
+    readonly revision: number
     readonly updatedAt: string
     readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
@@ -683,6 +678,57 @@ async function verifyProjectMutationAccess(
   }
 
   return { db, userId: user.id, user }
+}
+
+async function verifyOwnerUpdateMutationAccess(
+  projectId: string
+): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly user: Awaited<ReturnType<typeof requireAuth>>
+}> {
+  const user = await requireAuth()
+  if (isDemoUser(user.id)) {
+    throw new Error("DEMO_READ_ONLY")
+  }
+  if (
+    !user.isActive ||
+    !isInternalStaffRole(user.role) ||
+    user.organizationType !== "internal" ||
+    !user.organizationId
+  ) {
+    throw new Error("Permission denied: internal staff access is required")
+  }
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Permission denied: active internal organization is required")
+  }
+
+  await requireFeaturePermission(user, "owner-updates", "update")
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, user.organizationId)))
+    .limit(1)
+
+  if (!existing[0]) {
+    throw new Error("Project not found")
+  }
+
+  return { db, user }
 }
 
 async function verifyDailyLogStaffMutationAccess(
@@ -2274,6 +2320,7 @@ export async function getOwnerProjectUpdateDocument(
       publishedAt: ownerProjectUpdates.publishedAt,
       sentAt: ownerProjectUpdates.sentAt,
       recalledAt: ownerProjectUpdates.recalledAt,
+      revision: ownerProjectUpdates.revision,
       updatedAt: ownerProjectUpdates.updatedAt,
     })
     .from(ownerProjectUpdates)
@@ -2600,6 +2647,7 @@ export async function getOwnerProjectUpdateDocument(
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
       recalledAt: update.recalledAt,
+      revision: update.revision,
       updatedAt: update.updatedAt,
       sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
@@ -2635,15 +2683,9 @@ export async function updateOwnerProjectUpdateDraft(
   projectId: string,
   updateId: string,
   input: OwnerUpdateDraftEditInput
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+): Promise<OwnerUpdateMutationResult> {
   try {
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const title = input.title.trim()
     const updateDate = input.updateDate.trim()
     const periodStart = input.periodStart.trim()
@@ -2676,6 +2718,8 @@ export async function updateOwnerProjectUpdateDraft(
       .select({
         id: ownerProjectUpdates.id,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
       })
       .from(ownerProjectUpdates)
       .where(
@@ -2893,7 +2937,7 @@ export async function updateOwnerProjectUpdateDraft(
       documents: documentSelections,
     }
 
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         title,
@@ -2905,14 +2949,31 @@ export async function updateOwnerProjectUpdateDraft(
         selectedPhotoIds: JSON.stringify(selectedPhotoIds),
         scheduleSnapshot:
           serializeOwnerUpdateComposerSnapshot(composerSnapshot),
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: new Date().toISOString(),
       })
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
-          eq(ownerProjectUpdates.projectId, projectId)
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, input.expectedRevision),
+          eq(ownerProjectUpdates.updatedAt, input.expectedUpdatedAt)
         )
       )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were saving. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
@@ -2920,7 +2981,7 @@ export async function updateOwnerProjectUpdateDraft(
       `/dashboard/projects/${projectId}/owner-updates/${updateId}`
     )
 
-    return { success: true }
+    return { success: true, ...updated }
   } catch (error) {
     return {
       success: false,
@@ -3155,23 +3216,22 @@ export async function draftOwnerProjectUpdateWithJarvis(
 
 export async function publishOwnerProjectUpdate(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "owner-updates", "update")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
+  const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+  const orgId = user.organizationId
+  if (!orgId) {
+    return { success: false, error: "Active organization is required" }
+  }
 
   const [update] = await db
     .select({
       id: ownerProjectUpdates.id,
       projectId: ownerProjectUpdates.projectId,
       status: ownerProjectUpdates.status,
+      revision: ownerProjectUpdates.revision,
+      updatedAt: ownerProjectUpdates.updatedAt,
       title: ownerProjectUpdates.title,
       updateDate: ownerProjectUpdates.updateDate,
       summary: ownerProjectUpdates.summary,
@@ -3197,7 +3257,11 @@ export async function publishOwnerProjectUpdate(
   }
 
   if (update.status === "published") {
-    return { success: true }
+    return {
+      success: true,
+      revision: update.revision,
+      updatedAt: update.updatedAt,
+    }
   }
 
   if (
@@ -3364,7 +3428,7 @@ export async function publishOwnerProjectUpdate(
 
   const now = new Date().toISOString()
 
-  await db
+  const updatedRows = await db
     .update(ownerProjectUpdates)
     .set({
       status: "published",
@@ -3374,22 +3438,38 @@ export async function publishOwnerProjectUpdate(
       selectedPhotoIds: JSON.stringify(selectedPhotoIds),
       scheduleSnapshot:
         serializeOwnerUpdateComposerSnapshot(composerSnapshot),
+      revision: sql`${ownerProjectUpdates.revision} + 1`,
       publishedAt: now,
       updatedAt: now,
     })
     .where(
       and(
         eq(ownerProjectUpdates.id, updateId),
-        eq(ownerProjectUpdates.projectId, projectId)
+        eq(ownerProjectUpdates.projectId, projectId),
+        eq(ownerProjectUpdates.status, "draft"),
+        eq(ownerProjectUpdates.revision, version.revision),
+        eq(ownerProjectUpdates.updatedAt, version.updatedAt)
       )
     )
+    .returning({
+      revision: ownerProjectUpdates.revision,
+      updatedAt: ownerProjectUpdates.updatedAt,
+    })
+  const updated = updatedRows[0]
+  if (!updated) {
+    return {
+      success: false,
+      error:
+        "This owner update changed while you were publishing. Refresh and review the latest version.",
+    }
+  }
 
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(
     `/dashboard/projects/${projectId}/owner-updates/${updateId}`
   )
 
-  return { success: true }
+  return { success: true, ...updated }
 }
 
 export async function recallOwnerProjectUpdate(

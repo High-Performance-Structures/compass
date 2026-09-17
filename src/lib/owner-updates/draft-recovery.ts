@@ -73,6 +73,11 @@ export type OwnerUpdateDraftBackup = {
   readonly draft: OwnerUpdateDraftEdit
 }
 
+export type OwnerUpdateDraftWriteInput = OwnerUpdateDraftEdit & {
+  readonly expectedRevision: number
+  readonly expectedUpdatedAt: string
+}
+
 export function parseOwnerUpdateDraftEdit(
   value: unknown
 ):
@@ -95,6 +100,33 @@ export function parseOwnerUpdateDraftEdit(
       completedScheduleItems: result.data.completedScheduleItems,
       lookAheadScheduleItems: result.data.lookAheadScheduleItems,
       todos: result.data.todos,
+    },
+  }
+}
+
+export function parseOwnerUpdateDraftWrite(
+  value: unknown
+):
+  | { readonly success: true; readonly data: OwnerUpdateDraftWriteInput }
+  | { readonly success: false } {
+  const result = z
+    .object({
+      expectedRevision: z.number().int().nonnegative(),
+      expectedUpdatedAt: z.string().trim().min(1),
+    })
+    .and(ownerUpdateDraftEditSchema)
+    .safeParse(value)
+  if (!result.success) return { success: false }
+
+  const draftResult = parseOwnerUpdateDraftEdit(result.data)
+  if (!draftResult.success) return { success: false }
+
+  return {
+    success: true,
+    data: {
+      ...draftResult.data,
+      expectedRevision: result.data.expectedRevision,
+      expectedUpdatedAt: result.data.expectedUpdatedAt,
     },
   }
 }
