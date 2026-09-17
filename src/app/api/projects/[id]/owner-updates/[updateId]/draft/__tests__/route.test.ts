@@ -19,6 +19,7 @@ type PersistInput = {
 
 const mocks = {
   requireAuth: vi.fn(),
+  assertOwnerUpdateRouteAccess: vi.fn(),
   resolveProjectRouteId: vi.fn(),
   persistOwnerUpdateDraft: vi.fn(),
   publishOwnerProjectUpdate: vi.fn(),
@@ -26,6 +27,9 @@ const mocks = {
 }
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("@/lib/owner-updates/access", () => ({
+  assertOwnerUpdateRouteAccess: mocks.assertOwnerUpdateRouteAccess,
+}))
 vi.mock("@/lib/project-route-id", () => ({
   resolveProjectRouteId: mocks.resolveProjectRouteId,
 }))
@@ -57,6 +61,7 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuth.mockResolvedValue({ id: "user-1" })
+    mocks.assertOwnerUpdateRouteAccess.mockResolvedValue(undefined)
     mocks.resolveProjectRouteId.mockResolvedValue("project-1")
     mocks.updateOwnerProjectUpdateDraft.mockResolvedValue({
       success: true,
@@ -94,6 +99,43 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
 
     expect(response.status).toBe(401)
     expect(json).not.toHaveBeenCalled()
+    expect(mocks.persistOwnerUpdateDraft).not.toHaveBeenCalled()
+  })
+
+  it("denies an external caller before resolving a project alias", async () => {
+    mocks.assertOwnerUpdateRouteAccess.mockRejectedValue(
+      new Error("Permission denied: internal staff access is required")
+    )
+
+    const response = await PUT(
+      new Request(
+        "https://compass.example/api/projects/legacy-project/owner-updates/update-1/draft",
+        { method: "PUT", body: JSON.stringify(versionedLegacyDraft) }
+      ),
+      { params: Promise.resolve({ id: "legacy-project", updateId: "update-1" }) }
+    )
+
+    expect(response.status).toBe(403)
+    expect(mocks.assertOwnerUpdateRouteAccess).toHaveBeenCalledWith({ id: "user-1" })
+    expect(mocks.resolveProjectRouteId).not.toHaveBeenCalled()
+    expect(mocks.persistOwnerUpdateDraft).not.toHaveBeenCalled()
+  })
+
+  it("denies an inactive internal organization before resolving a project alias", async () => {
+    mocks.assertOwnerUpdateRouteAccess.mockRejectedValue(
+      new Error("Permission denied: active internal organization is required")
+    )
+
+    const response = await PUT(
+      new Request(
+        "https://compass.example/api/projects/legacy-project/owner-updates/update-1/draft",
+        { method: "PUT", body: JSON.stringify(versionedLegacyDraft) }
+      ),
+      { params: Promise.resolve({ id: "legacy-project", updateId: "update-1" }) }
+    )
+
+    expect(response.status).toBe(403)
+    expect(mocks.resolveProjectRouteId).not.toHaveBeenCalled()
     expect(mocks.persistOwnerUpdateDraft).not.toHaveBeenCalled()
   })
 
