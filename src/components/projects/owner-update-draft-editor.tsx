@@ -444,7 +444,11 @@ export function OwnerUpdateDraftEditor({
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(currentDraft),
+          body: JSON.stringify({
+            ...currentDraft,
+            expectedRevision: document.update.revision,
+            expectedUpdatedAt: document.update.updatedAt,
+          }),
         }
       )
       const result = parseDraftSaveResult(await response.json())

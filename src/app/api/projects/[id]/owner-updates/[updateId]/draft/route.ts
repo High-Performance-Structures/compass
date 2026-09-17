@@ -4,7 +4,7 @@ import {
   updateOwnerProjectUpdateDraft,
 } from "@/app/actions/project-field"
 import { requireAuth } from "@/lib/auth"
-import { parseOwnerUpdateDraftEdit } from "@/lib/owner-updates/draft-recovery"
+import { parseOwnerUpdateDraftWrite } from "@/lib/owner-updates/draft-recovery"
 import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
 export async function PUT(
@@ -37,7 +37,7 @@ export async function PUT(
     )
   }
 
-  const parsed = parseOwnerUpdateDraftEdit(body)
+  const parsed = parseOwnerUpdateDraftWrite(body)
   if (!parsed.success) {
     return Response.json(
       { success: false, error: "The draft contains invalid data." },
@@ -60,7 +60,7 @@ export async function PUT(
         updateId,
         parsed.data
       ),
-    publish: () => publishOwnerProjectUpdate(id, updateId),
+    publish: (version) => publishOwnerProjectUpdate(id, updateId, version),
   })
 
   return Response.json(result, { status: result.success ? 200 : 400 })
