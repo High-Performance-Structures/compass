@@ -108,7 +108,8 @@ function createD1(sqlite: Sqlite) {
     values: readonly unknown[] = []
   ): {
     readonly bind: (...nextValues: readonly unknown[]) => ReturnType<typeof prepared>
-    readonly all: () => Promise<{
+ readonly run: () => Promise<{ readonly success: true; readonly meta: unknown }>
+ readonly all: () => Promise<{
       readonly success: true
       readonly results: readonly unknown[]
     }>
@@ -117,6 +118,9 @@ function createD1(sqlite: Sqlite) {
     const query = statement(sqlite, sqlText)
     return {
       bind: (...nextValues) => prepared(sqlText, nextValues),
+      async run() {
+        return { success: true, meta: query.run(...values) }
+      },
       async all() {
         return { success: true, results: query.all(...values) }
       },
@@ -138,7 +142,7 @@ function createD1(sqlite: Sqlite) {
     batch: async (
       statements: readonly ReturnType<typeof prepared>[]
     ): Promise<readonly unknown[]> => {
-      return statements.map((item) => item.all())
+      return Promise.all(statements.map((item) => item.all()))
     },
     exec: async (sqlText: string) => {
       sqlite.exec(sqlText)
@@ -150,6 +154,11 @@ function createD1(sqlite: Sqlite) {
 const version = {
   expectedRevision: 0,
   expectedUpdatedAt: "2026-07-28T14:20:14.659Z",
+}
+
+const mutationVersion = {
+  revision: version.expectedRevision,
+  updatedAt: version.expectedUpdatedAt,
 }
 
 const draft = {
@@ -209,6 +218,7 @@ function createDatabase(): {
       published_at TEXT,
       sent_at TEXT,
       recalled_at TEXT,
+      recalled_by TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       revision INTEGER NOT NULL DEFAULT 0
@@ -235,6 +245,20 @@ function createDatabase(): {
       company_name TEXT,
       due_date TEXT,
       source_record_type TEXT NOT NULL
+    );
+    CREATE TABLE daily_logs (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      log_date TEXT NOT NULL
+    );
+    CREATE TABLE daily_log_photos (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      daily_log_id TEXT,
+      captured_at TEXT,
+      review_status TEXT NOT NULL,
+      owner_visible INTEGER NOT NULL,
+      updated_at TEXT NOT NULL
     );
   `)
   // @ts-expect-error The test adapter implements the D1 methods used by Drizzle.
@@ -282,6 +306,13 @@ function seedDraft(sqlite: Sqlite): void {
   )
 }
 
+async function waitForRelayCall(): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (mocks.relayAgentRequest.mock.calls.length > 0) return
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  }
+}
+
 describe("owner update mutation authorization and fencing", () => {
   let sqlite: Sqlite
 
@@ -321,9 +352,9 @@ describe("owner update mutation authorization and fencing", () => {
     const results = await Promise.all([
       draftOwnerUpdateFromDailyLogs("project-1", { dailyLogIds: ["log-1"] }),
       createManualOwnerProjectUpdateDraft("project-1", "2026-07-28"),
-      deleteOwnerProjectUpdateDraft("project-1", "update-1"),
+      deleteOwnerProjectUpdateDraft("project-1", "update-1", mutationVersion),
       draftOwnerProjectUpdateWithJarvis("project-1", "update-1"),
-      recallOwnerProjectUpdate("project-1", "update-1"),
+      recallOwnerProjectUpdate("project-1", "update-1", mutationVersion),
     ])
 
     expect(results).toEqual([
@@ -345,9 +376,9 @@ describe("owner update mutation authorization and fencing", () => {
     const results = await Promise.all([
       draftOwnerUpdateFromDailyLogs("project-1", { dailyLogIds: ["log-1"] }),
       createManualOwnerProjectUpdateDraft("project-1", "2026-07-28"),
-      deleteOwnerProjectUpdateDraft("project-1", "update-1"),
+      deleteOwnerProjectUpdateDraft("project-1", "update-1", mutationVersion),
       draftOwnerProjectUpdateWithJarvis("project-1", "update-1"),
-      recallOwnerProjectUpdate("project-1", "update-1"),
+      recallOwnerProjectUpdate("project-1", "update-1", mutationVersion),
     ])
 
     expect(results).toEqual([
@@ -380,9 +411,9 @@ describe("owner update mutation authorization and fencing", () => {
     const results = await Promise.all([
       draftOwnerUpdateFromDailyLogs("project-2", { dailyLogIds: ["log-1"] }),
       createManualOwnerProjectUpdateDraft("project-2", "2026-07-28"),
-      deleteOwnerProjectUpdateDraft("project-2", "update-1"),
+      deleteOwnerProjectUpdateDraft("project-2", "update-1", mutationVersion),
       draftOwnerProjectUpdateWithJarvis("project-2", "update-1"),
-      recallOwnerProjectUpdate("project-2", "update-1"),
+      recallOwnerProjectUpdate("project-2", "update-1", mutationVersion),
     ])
 
     expect(results).toEqual([
@@ -448,6 +479,23 @@ describe("owner update mutation authorization and fencing", () => {
       success: false,
       error: "Permission denied: active internal organization is required",
     })
+    expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+  })
+
+  it("denies demo owner-update mutations before opening the database", async () => {
+    mocks.isDemoUser.mockReturnValue(true)
+    mocks.getCloudflareContext.mockImplementation(() => {
+      throw new Error("database access reached")
+    })
+
+    const result = await updateOwnerProjectUpdateDraft(
+      "project-1",
+      "update-1",
+      draft
+    )
+
+    expect(result).toEqual({ success: false, error: "DEMO_READ_ONLY" })
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
     expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
   })
 
@@ -528,6 +576,157 @@ describe("owner update mutation authorization and fencing", () => {
     ).toEqual({ status: "draft", revision: 1 })
   })
 
+  it("does not change attachment visibility when publication CAS is stale", async () => {
+    run(
+      sqlite,
+      "INSERT INTO daily_logs (id, project_id, log_date) VALUES (?, ?, ?)",
+      "log-1",
+      "project-1",
+      "2026-07-28"
+    )
+    run(
+      sqlite,
+      `INSERT INTO daily_log_photos
+         (id, project_id, daily_log_id, captured_at, review_status, owner_visible, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      "photo-1",
+      "project-1",
+      "log-1",
+      "2026-07-28T12:00:00.000Z",
+      "pending",
+      0,
+      version.expectedUpdatedAt
+    )
+    run(
+      sqlite,
+      "UPDATE owner_project_updates SET selected_photo_ids = ?, revision = ?, updated_at = ? WHERE id = ?",
+      JSON.stringify(["photo-1"]),
+      1,
+      "2026-07-28T14:30:00.000Z",
+      "update-1"
+    )
+
+    const result = await publishOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      { revision: version.expectedRevision, updatedAt: version.expectedUpdatedAt }
+    )
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        "This owner update changed while you were publishing. Refresh and review the latest version.",
+    })
+    expect(
+      get(
+        sqlite,
+        "SELECT review_status, owner_visible FROM daily_log_photos WHERE id = ?",
+        "photo-1"
+      )
+    ).toEqual({ review_status: "pending", owner_visible: 0 })
+  })
+
+  it("rejects a stale draft delete without removing the newer update", async () => {
+    run(
+      sqlite,
+      "UPDATE owner_project_updates SET revision = ?, updated_at = ? WHERE id = ?",
+      1,
+      "2026-07-28T14:30:00.000Z",
+      "update-1"
+    )
+
+    const result = await deleteOwnerProjectUpdateDraft(
+      "project-1",
+      "update-1",
+      mutationVersion
+    )
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        "This owner update changed while you were deleting. Refresh and review the latest version.",
+    })
+    expect(
+      get(sqlite, "SELECT id FROM owner_project_updates WHERE id = ?", "update-1")
+    ).toEqual({ id: "update-1" })
+  })
+
+  it("rejects a stale recall without reverting the newer publication", async () => {
+    run(
+      sqlite,
+      "UPDATE owner_project_updates SET status = ?, published_at = ?, revision = ?, updated_at = ? WHERE id = ?",
+      "published",
+      "2026-07-28T14:25:00.000Z",
+      1,
+      "2026-07-28T14:30:00.000Z",
+      "update-1"
+    )
+
+    const result = await recallOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      mutationVersion
+    )
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        "This owner update changed while you were recalling. Refresh and review the latest version.",
+    })
+    expect(
+      get(
+        sqlite,
+        "SELECT status, revision, published_at FROM owner_project_updates WHERE id = ?",
+        "update-1"
+      )
+    ).toEqual({
+      status: "published",
+      revision: 1,
+      published_at: "2026-07-28T14:25:00.000Z",
+    })
+  })
+
+  it("increments the revision when recalling a current publication", async () => {
+    run(
+      sqlite,
+      "UPDATE owner_project_updates SET status = ?, published_at = ? WHERE id = ?",
+      "published",
+      "2026-07-28T14:25:00.000Z",
+      "update-1"
+    )
+    expect(
+      get(
+        sqlite,
+        "SELECT status, revision, updated_at FROM owner_project_updates WHERE id = ?",
+        "update-1"
+      )
+    ).toEqual({
+      status: "published",
+      revision: 0,
+      updated_at: version.expectedUpdatedAt,
+    })
+
+    const result = await recallOwnerProjectUpdate(
+      "project-1",
+      "update-1",
+      mutationVersion
+    )
+
+    expect(result).toMatchObject({ success: true, revision: 1 })
+    expect(
+      get(
+        sqlite,
+        "SELECT status, revision, published_at, recalled_by FROM owner_project_updates WHERE id = ?",
+        "update-1"
+      )
+    ).toEqual({
+      status: "draft",
+      revision: 1,
+      published_at: null,
+      recalled_by: "staff-1",
+    })
+  })
+
   it("does not let a stale Jarvis response overwrite a newer user save", async () => {
     let releaseRelay:
       | ((value: { readonly success: true; readonly content: string }) => void)
@@ -540,7 +739,8 @@ describe("owner update mutation authorization and fencing", () => {
     )
 
     const jarvisPromise = draftOwnerProjectUpdateWithJarvis("project-1", "update-1")
-    await vi.waitFor(() => expect(mocks.relayAgentRequest).toHaveBeenCalled())
+    await waitForRelayCall()
+    expect(mocks.relayAgentRequest).toHaveBeenCalled()
 
     run(
       sqlite,
@@ -579,7 +779,8 @@ describe("owner update mutation authorization and fencing", () => {
     )
 
     const jarvisPromise = draftOwnerProjectUpdateWithJarvis("project-1", "update-1")
-    await vi.waitFor(() => expect(mocks.relayAgentRequest).toHaveBeenCalled())
+    await waitForRelayCall()
+    expect(mocks.relayAgentRequest).toHaveBeenCalled()
 
     run(
       sqlite,
