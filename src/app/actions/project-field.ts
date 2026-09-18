@@ -44,6 +44,7 @@ import {
   ownerUpdateTodoTiming,
 } from "@/lib/owner-updates/composer"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
+import { assertOwnerUpdateRouteAccess } from "@/lib/owner-updates/access"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
@@ -61,6 +62,11 @@ import {
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
+import type { OwnerUpdateDraftWriteInput } from "@/lib/owner-updates/draft-recovery"
+import type {
+  OwnerUpdateMutationResult,
+  OwnerUpdateMutationVersion,
+} from "@/lib/owner-updates/draft-publish"
 
 type LatestDailyLog = {
   readonly id: string
@@ -277,19 +283,7 @@ type OwnerUpdateDraftInput = {
   readonly dailyLogIds: readonly string[]
 }
 
-export type OwnerUpdateDraftEditInput = {
-  readonly title: string
-  readonly updateDate: string
-  readonly periodStart: string
-  readonly periodEnd: string
-  readonly summary: string
-  readonly sourceDailyLogIds: readonly string[]
-  readonly selectedPhotoIds: readonly string[]
-  readonly selectedDocumentIds: readonly string[]
-  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
-  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
-  readonly todos: readonly OwnerUpdateTodoSelection[]
-}
+export type OwnerUpdateDraftEditInput = OwnerUpdateDraftWriteInput
 
 type DailyLogMutationResult =
   | { readonly success: true }
@@ -330,6 +324,7 @@ export type OwnerProjectUpdateDocument = {
     readonly publishedAt: string | null
     readonly sentAt: string | null
     readonly recalledAt: string | null
+    readonly revision: number
     readonly updatedAt: string
     readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
@@ -683,6 +678,30 @@ async function verifyProjectMutationAccess(
   }
 
   return { db, userId: user.id, user }
+}
+
+async function verifyOwnerUpdateMutationAccess(
+  projectId: string
+): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly user: Awaited<ReturnType<typeof requireAuth>>
+}> {
+  const user = await requireAuth()
+  const db = await assertOwnerUpdateRouteAccess(user)
+
+  await requireFeaturePermission(user, "owner-updates", "update")
+  const orgId = requireOrg(user)
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!existing[0]) {
+    throw new Error("Project not found")
+  }
+
+  return { db, user }
 }
 
 async function verifyDailyLogStaffMutationAccess(
@@ -1949,10 +1968,8 @@ export async function draftOwnerUpdateFromDailyLogs(
   input: OwnerUpdateDraftInput
 ): Promise<OwnerUpdateDraftResult> {
   try {
-    const { db, userId } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const userId = user.id
     const dailyLogIds = [...new Set(input.dailyLogIds)].filter(
       (id) => id.trim().length > 0
     )
@@ -2098,10 +2115,8 @@ export async function createManualOwnerProjectUpdateDraft(
   updateDate: string
 ): Promise<OwnerUpdateDraftResult> {
   try {
-    const { db, userId } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const userId = user.id
     const normalizedDate = updateDate.trim()
     if (!isValidOwnerUpdatePeriod(normalizedDate, normalizedDate)) {
       return { success: false, error: "Enter a valid update date." }
@@ -2173,20 +2188,17 @@ export async function createManualOwnerProjectUpdateDraft(
 
 export async function deleteOwnerProjectUpdateDraft(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
   try {
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
       })
       .from(ownerProjectUpdates)
       .where(
@@ -2207,20 +2219,31 @@ export async function deleteOwnerProjectUpdateDraft(
       }
     }
 
-    await db
+    const deletedRows = await db
       .delete(ownerProjectUpdates)
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "draft")
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, version.revision),
+          eq(ownerProjectUpdates.updatedAt, version.updatedAt)
         )
       )
+      .returning({ id: ownerProjectUpdates.id })
+
+    if (!deletedRows[0]) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were deleting. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
 
-    return { success: true }
+    return { success: true, revision: update.revision, updatedAt: update.updatedAt }
   } catch (error) {
     return {
       success: false,
@@ -2268,6 +2291,7 @@ export async function getOwnerProjectUpdateDocument(
       publishedAt: ownerProjectUpdates.publishedAt,
       sentAt: ownerProjectUpdates.sentAt,
       recalledAt: ownerProjectUpdates.recalledAt,
+      revision: ownerProjectUpdates.revision,
       updatedAt: ownerProjectUpdates.updatedAt,
     })
     .from(ownerProjectUpdates)
@@ -2594,6 +2618,7 @@ export async function getOwnerProjectUpdateDocument(
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
       recalledAt: update.recalledAt,
+      revision: update.revision,
       updatedAt: update.updatedAt,
       sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
@@ -2629,15 +2654,9 @@ export async function updateOwnerProjectUpdateDraft(
   projectId: string,
   updateId: string,
   input: OwnerUpdateDraftEditInput
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+): Promise<OwnerUpdateMutationResult> {
   try {
-    const { db } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db } = await verifyOwnerUpdateMutationAccess(projectId)
     const title = input.title.trim()
     const updateDate = input.updateDate.trim()
     const periodStart = input.periodStart.trim()
@@ -2670,6 +2689,8 @@ export async function updateOwnerProjectUpdateDraft(
       .select({
         id: ownerProjectUpdates.id,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
       })
       .from(ownerProjectUpdates)
       .where(
@@ -2887,7 +2908,7 @@ export async function updateOwnerProjectUpdateDraft(
       documents: documentSelections,
     }
 
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         title,
@@ -2899,9 +2920,31 @@ export async function updateOwnerProjectUpdateDraft(
         selectedPhotoIds: JSON.stringify(selectedPhotoIds),
         scheduleSnapshot:
           serializeOwnerUpdateComposerSnapshot(composerSnapshot),
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(ownerProjectUpdates.id, updateId))
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, input.expectedRevision),
+          eq(ownerProjectUpdates.updatedAt, input.expectedUpdatedAt)
+        )
+      )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were saving. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
@@ -2909,7 +2952,7 @@ export async function updateOwnerProjectUpdateDraft(
       `/dashboard/projects/${projectId}/owner-updates/${updateId}`
     )
 
-    return { success: true }
+    return { success: true, ...updated }
   } catch (error) {
     return {
       success: false,
@@ -2929,15 +2972,14 @@ export async function draftOwnerProjectUpdateWithJarvis(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const { db, user } = await verifyProjectMutationAccess(
-      projectId,
-      "owner-updates"
-    )
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
         title: ownerProjectUpdates.title,
         status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
         periodStart: ownerProjectUpdates.periodStart,
         periodEnd: ownerProjectUpdates.periodEnd,
         sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
@@ -3111,19 +3153,34 @@ export async function draftOwnerProjectUpdateWithJarvis(
       return { success: false, error: "Jarvis returned an empty draft." }
     }
 
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         summary,
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: new Date().toISOString(),
       })
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "draft")
+          eq(ownerProjectUpdates.status, "draft"),
+          eq(ownerProjectUpdates.revision, update.revision),
+          eq(ownerProjectUpdates.updatedAt, update.updatedAt)
         )
       )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    if (!updatedRows[0]) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while Jarvis was drafting. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
     revalidatePath(
@@ -3144,23 +3201,22 @@ export async function draftOwnerProjectUpdateWithJarvis(
 
 export async function publishOwnerProjectUpdate(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, "owner-updates", "update")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
+  const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+  const orgId = user.organizationId
+  if (!orgId) {
+    return { success: false, error: "Active organization is required" }
+  }
 
   const [update] = await db
     .select({
       id: ownerProjectUpdates.id,
       projectId: ownerProjectUpdates.projectId,
       status: ownerProjectUpdates.status,
+      revision: ownerProjectUpdates.revision,
+      updatedAt: ownerProjectUpdates.updatedAt,
       title: ownerProjectUpdates.title,
       updateDate: ownerProjectUpdates.updateDate,
       summary: ownerProjectUpdates.summary,
@@ -3186,7 +3242,11 @@ export async function publishOwnerProjectUpdate(
   }
 
   if (update.status === "published") {
-    return { success: true }
+    return {
+      success: true,
+      revision: update.revision,
+      updatedAt: update.updatedAt,
+    }
   }
 
   if (
@@ -3333,27 +3393,63 @@ export async function publishOwnerProjectUpdate(
           "Selected files must be tied to a source log or captured during the reporting period.",
       }
     }
-
-    for (const idBatch of ownerUpdateIdBatches(selectedAttachmentIds)) {
-      await db
-        .update(dailyLogPhotos)
-        .set({
-          reviewStatus: "approved",
-          ownerVisible: true,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(
-          and(
-            eq(dailyLogPhotos.projectId, projectId),
-            inArray(dailyLogPhotos.id, idBatch)
-          )
-        )
-    }
   }
 
   const now = new Date().toISOString()
 
-  await db
+  const attachmentBatches = ownerUpdateIdBatches(selectedAttachmentIds)
+  const attachmentFence =
+    selectedAttachmentIds.length === 0
+      ? null
+      : sql<boolean>`EXISTS (
+          SELECT 1
+          FROM owner_project_updates AS publish_update
+          WHERE publish_update.id = ${updateId}
+            AND publish_update.project_id = ${projectId}
+            AND publish_update.status = 'draft'
+            AND publish_update.revision = ${version.revision}
+            AND publish_update.updated_at = ${version.updatedAt}
+        )`
+  // Keep the final attachment ownership check inside the publish CAS while
+  // binding the selection as one JSON value instead of one value per ID.
+  // D1 rejects statements that exceed its bound-variable limit. Reuse this
+  // fence on attachment updates so a failed publish cannot partially approve
+  // files when a selected row disappears between validation and publication.
+  const selectedAttachmentsBelongToProject = sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM json_each(${JSON.stringify(selectedAttachmentIds)}) AS selected_attachment
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM daily_log_photos AS publish_photo
+      WHERE publish_photo.project_id = ${projectId}
+        AND publish_photo.id = selected_attachment.value
+    )
+  )`
+  const attachmentUpdates = attachmentBatches.map((idBatch) =>
+    db
+      .update(dailyLogPhotos)
+      .set({
+        reviewStatus: "approved",
+        ownerVisible: true,
+        updatedAt: now,
+      })
+      .where(
+        attachmentFence === null
+          ? and(
+              eq(dailyLogPhotos.projectId, projectId),
+              inArray(dailyLogPhotos.id, idBatch),
+              selectedAttachmentsBelongToProject
+            )
+          : and(
+              eq(dailyLogPhotos.projectId, projectId),
+              inArray(dailyLogPhotos.id, idBatch),
+              selectedAttachmentsBelongToProject,
+              attachmentFence
+            )
+      )
+      .returning({ id: dailyLogPhotos.id })
+  )
+  const publishStatement = db
     .update(ownerProjectUpdates)
     .set({
       status: "published",
@@ -3363,38 +3459,75 @@ export async function publishOwnerProjectUpdate(
       selectedPhotoIds: JSON.stringify(selectedPhotoIds),
       scheduleSnapshot:
         serializeOwnerUpdateComposerSnapshot(composerSnapshot),
+      revision: sql`${ownerProjectUpdates.revision} + 1`,
       publishedAt: now,
       updatedAt: now,
     })
-    .where(eq(ownerProjectUpdates.id, updateId))
+    .where(
+      and(
+        eq(ownerProjectUpdates.id, updateId),
+        eq(ownerProjectUpdates.projectId, projectId),
+        eq(ownerProjectUpdates.status, "draft"),
+        eq(ownerProjectUpdates.revision, version.revision),
+        eq(ownerProjectUpdates.updatedAt, version.updatedAt),
+        selectedAttachmentsBelongToProject
+      )
+    )
+    .returning({
+      revision: ownerProjectUpdates.revision,
+      updatedAt: ownerProjectUpdates.updatedAt,
+    })
+  const batchResults =
+    attachmentUpdates.length === 0
+      ? await db.batch([publishStatement])
+      : await db.batch([
+          attachmentUpdates[0],
+          ...attachmentUpdates.slice(1),
+          publishStatement,
+        ])
+  const lastBatchResult = batchResults[batchResults.length - 1]
+  const updated = Array.isArray(lastBatchResult)
+    ? lastBatchResult.find((row): row is OwnerUpdateMutationVersion => {
+        if (row === null || typeof row !== "object") return false
+        const revision = Reflect.get(row, "revision")
+        const updatedAt = Reflect.get(row, "updatedAt")
+        return typeof revision === "number" && typeof updatedAt === "string"
+      })
+    : undefined
+  if (!updated) {
+    return {
+      success: false,
+      error:
+        "This owner update changed while you were publishing. Refresh and review the latest version.",
+    }
+  }
 
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(
     `/dashboard/projects/${projectId}/owner-updates/${updateId}`
   )
 
-  return { success: true }
+  return { success: true, ...updated }
 }
 
 export async function recallOwnerProjectUpdate(
   projectId: string,
-  updateId: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+  updateId: string,
+  version: OwnerUpdateMutationVersion
+): Promise<OwnerUpdateMutationResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
+    const { db, user } = await verifyOwnerUpdateMutationAccess(projectId)
+    const orgId = user.organizationId
+    if (!orgId) {
+      return { success: false, error: "Active organization is required" }
     }
-    await requireFeaturePermission(user, "owner-updates", "update")
-    const orgId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
 
     const [update] = await db
-      .select({ status: ownerProjectUpdates.status })
+      .select({
+        status: ownerProjectUpdates.status,
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
       .from(ownerProjectUpdates)
       .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
       .where(
@@ -3409,8 +3542,22 @@ export async function recallOwnerProjectUpdate(
     if (!update) {
       return { success: false, error: "Owner update not found." }
     }
+    if (
+      update.revision !== version.revision ||
+      update.updatedAt !== version.updatedAt
+    ) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were recalling. Refresh and review the latest version.",
+      }
+    }
     if (update.status === "draft") {
-      return { success: true }
+      return {
+        success: true,
+        revision: update.revision,
+        updatedAt: update.updatedAt,
+      }
     }
     if (update.status !== "published") {
       return {
@@ -3420,22 +3567,38 @@ export async function recallOwnerProjectUpdate(
     }
 
     const now = new Date().toISOString()
-    await db
+    const updatedRows = await db
       .update(ownerProjectUpdates)
       .set({
         status: "draft",
         publishedAt: null,
         recalledAt: now,
         recalledBy: user.id,
+        revision: sql`${ownerProjectUpdates.revision} + 1`,
         updatedAt: now,
       })
       .where(
         and(
           eq(ownerProjectUpdates.id, updateId),
           eq(ownerProjectUpdates.projectId, projectId),
-          eq(ownerProjectUpdates.status, "published")
+          eq(ownerProjectUpdates.status, "published"),
+          eq(ownerProjectUpdates.revision, version.revision),
+          eq(ownerProjectUpdates.updatedAt, version.updatedAt)
         )
       )
+      .returning({
+        revision: ownerProjectUpdates.revision,
+        updatedAt: ownerProjectUpdates.updatedAt,
+      })
+
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This owner update changed while you were recalling. Refresh and review the latest version.",
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
@@ -3444,7 +3607,7 @@ export async function recallOwnerProjectUpdate(
     )
     revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
 
-    return { success: true }
+    return { success: true, ...updated }
   } catch (error) {
     return {
       success: false,
