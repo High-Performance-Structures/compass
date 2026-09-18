@@ -1,0 +1,14 @@
+[Unit]
+Description=Read-only Square production authentication monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=90
+Environment=COMPASS_BASE_URL=https://compass.openrangeconstruction.ltd
+ExecStart=/usr/bin/python3 %h/.local/lib/compass/wait_for_signet_secret_exec.py --signet %h/.bun/install/global/node_modules/signetai-linux-x64/bin/signet --secret HPS_SQUARE_PRODUCTION_ACCESS_TOKEN --secret JARVIS_BRIDGE_SECONDARY_SECRET --timeout 60 /usr/bin/python3 %h/.local/lib/compass/square_auth_monitor.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only

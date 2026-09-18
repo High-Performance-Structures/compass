@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Square production authentication every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+RandomizedDelaySec=5s
+Persistent=true
+Unit=compass-square-auth-monitor.service
+
+[Install]
+WantedBy=timers.target
