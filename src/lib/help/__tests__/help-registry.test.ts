@@ -160,6 +160,24 @@ describe("help registry", () => {
     expect(navigationGuide?.content).toContain("current count is zero")
   })
 
+  it("keeps current workflow guidance searchable and navigation reversible", () => {
+    const navigationGuide = getHelpGuide("navigating-projects")
+    expect(navigationGuide?.content).toContain("Close help")
+    expect(navigationGuide?.content).not.toContain("in a separate tab")
+    expect(getHelpTopic("projects.navigation.duplicate-projects")?.href).toBe(
+      "/dashboard/help/navigating-projects#duplicate-projects"
+    )
+    expect(
+      getHelpGuidesForRoute("/dashboard/executive-admin/project-archive")
+        .map((guide) => guide.id)
+    ).toContain("projects.navigation")
+    expect(searchHelpGuides("retired number registry cleanup")[0]?.guide.id)
+      .toBe("projects.navigation")
+    expect(getHelpGuide("schedules-and-tasks")?.content).toContain("**Notes**")
+    expect(getHelpGuide("project-operations")?.content).toContain("**Pickup copy**")
+    expect(getHelpGuide("greeting-cards")?.content).toContain("search the design catalog")
+  })
+
   it("retains canonical audience and resource-permission metadata", () => {
     expect(helpAudienceForRole("client")).toBe("owner")
     expect(helpAudienceForRole("field_superintendent")).toBe("staff")
