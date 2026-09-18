@@ -525,7 +525,7 @@ export async function importApprovedProjectRfqBid(
       access.db.insert(projectEstimateLines).select(
         sql`SELECT
           ${line.estimateLine.id}, ${line.estimateLine.projectId},
-          ${line.estimateLine.estimateId}, NULL,
+          ${line.estimateLine.estimateId}, NULL, NULL,
           ${line.estimateLine.divisionCode}, ${line.estimateLine.divisionName},
           ${line.estimateLine.costCode}, ${line.estimateLine.costCodeName},
           ${line.estimateLine.description}, ${line.estimateLine.specifications},

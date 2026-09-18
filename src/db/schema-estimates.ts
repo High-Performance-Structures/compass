@@ -262,6 +262,23 @@ export const projectEstimateAcknowledgements = sqliteTable(
   ]
 )
 
+export const projectEstimateReportPhases = sqliteTable(
+  "project_estimate_report_phases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id").notNull().references(() => projectEstimates.id, { onDelete: "cascade" }),
+    divisionCode: text("division_code").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    itemize: integer("itemize", { mode: "boolean" }).notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(1),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder)]
+)
+
 export const projectEstimateLines = sqliteTable(
   "project_estimate_lines",
   {
@@ -276,6 +293,7 @@ export const projectEstimateLines = sqliteTable(
       () => estimateTemplateLines.id,
       { onDelete: "set null" }
     ),
+    reportPhaseId: text("report_phase_id").references(() => projectEstimateReportPhases.id, { onDelete: "set null" }),
     divisionCode: text("division_code").notNull(),
     divisionName: text("division_name").notNull(),
     costCode: text("cost_code").notNull(),
@@ -321,6 +339,7 @@ export const projectEstimateLines = sqliteTable(
       table.projectId,
       table.costCode
     ),
+    index("project_estimate_lines_report_phase_idx").on(table.reportPhaseId),
   ]
 )
 
