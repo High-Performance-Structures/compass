@@ -1,5 +1,6 @@
 import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/d1"
+import { Miniflare } from "miniflare"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createJarvisSignature } from "@/lib/jarvis/auth"
 import { isPublicPath } from "@/lib/public-paths"
@@ -243,7 +244,57 @@ describe("Square authentication health", () => {
       "healthy"
     )
     const options: unknown = fetching.mock.calls[0]?.[1]
-    expect(options).toMatchObject({ redirect: "error" })
+    expect(options).toMatchObject({ redirect: "manual" })
+  })
+
+  it("uses a redirect policy accepted by the real Workers runtime", async () => {
+    const fetching = vi.fn().mockResolvedValue(Response.json({ locations: [] }))
+    vi.stubGlobal("fetch", fetching)
+    await checkCompassSquareAuthentication(cloudflareEnv)
+    const options: unknown = fetching.mock.calls[0]?.[1]
+    if (typeof options !== "object" || options === null)
+      throw new Error("Missing monitor fetch options")
+    const redirect: unknown = Reflect.get(options, "redirect")
+    // Miniflare startup and its local dispatcher need real timers and fetch.
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    const runtime = new Miniflare({
+      modules: true,
+      // Keep this within the bundled workerd's supported compatibility dates.
+      compatibilityDate: "2026-06-02",
+      script: `export default {
+        async fetch(request) {
+          const options = await request.json();
+          const outbound = new Request("https://connect.squareup.com/v2/locations", options);
+          return Response.json({ redirect: outbound.redirect });
+        }
+      }`,
+    })
+    try {
+      const response = await runtime.dispatchFetch("http://monitor.test/", {
+        method: "POST",
+        body: JSON.stringify({ redirect }),
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({ redirect: "manual" })
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it("treats redirects as unavailable without following the token", async () => {
+    const fetching = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: { Location: "https://other.example.test/" },
+      })
+    )
+    vi.stubGlobal("fetch", fetching)
+    expect((await checkCompassSquareAuthentication(cloudflareEnv)).state).toBe(
+      "unavailable"
+    )
+    expect(fetching).toHaveBeenCalledTimes(1)
+    expect(fetching.mock.calls[0]?.[1]).toMatchObject({ redirect: "manual" })
   })
 
   async function signedRequest(
