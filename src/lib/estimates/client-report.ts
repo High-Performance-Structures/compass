@@ -1,4 +1,5 @@
 import type { ProjectDepartment } from "@/lib/project-branding"
+import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
 
 export const ESTIMATE_TEXT_TEMPLATE_TYPES = [
   "terms",
@@ -31,6 +32,7 @@ export type EstimateTextTemplateOption = {
 
 export type ClientEstimateLine = {
   readonly id: string
+  readonly reportPhaseId: string | null
   readonly divisionCode: string
   readonly divisionName: string
   readonly costCode: string
@@ -52,6 +54,13 @@ export type ClientEstimateLine = {
 }
 
 export type ClientEstimateLineCostItem = {
+  readonly id: string
+  readonly costCode: string
+  readonly costCodeName: string
+  readonly description: string
+  readonly quantity: number
+  readonly unit: string
+  readonly unitCostCents: number
   readonly taxCode: string | null
   readonly taxName: string | null
   readonly taxRateBasisPoints: number
@@ -60,6 +69,10 @@ export type ClientEstimateLineCostItem = {
 }
 
 export type ClientEstimatePhase = {
+  readonly id: string
+  readonly name: string
+  readonly custom: boolean
+  readonly itemize: boolean
   readonly divisionCode: string
   readonly divisionName: string
   readonly description: string
@@ -287,30 +300,53 @@ export function mergeEstimateTextTemplates(input: {
 export function clientEstimatePhases(input: {
   readonly lines: readonly ClientEstimateLine[]
   readonly phaseDescriptions: Readonly<Record<string, string>>
+  readonly reportPhases?: readonly EstimateReportPhase[]
+  readonly defaultItemize?: boolean
 }): readonly ClientEstimatePhase[] {
+  const definitions = new Map((input.reportPhases ?? []).map((phase) => [phase.id, phase]))
   const groups = new Map<string, ClientEstimateLine[]>()
   for (const line of input.lines) {
     if (!line.ownerVisible) continue
-    const current = groups.get(line.divisionCode) ?? []
+    const assignedPhase = line.reportPhaseId ? definitions.get(line.reportPhaseId) : null
+    // Missing/stale assignments fall back to CSI rather than losing costs.
+    const key = assignedPhase?.divisionCode === line.divisionCode
+      ? assignedPhase.id
+      : `division:${line.divisionCode}`
+    const current = groups.get(key) ?? []
     current.push(line)
-    groups.set(line.divisionCode, current)
+    groups.set(key, current)
   }
 
   return [...groups.entries()]
-    .sort((left, right) => left[0].localeCompare(right[0]))
-    .map(([divisionCode, sourceLines]) => {
+    .sort((left, right) => {
+      const divisionOrder = (left[1][0]?.divisionCode ?? "").localeCompare(right[1][0]?.divisionCode ?? "")
+      if (divisionOrder !== 0) return divisionOrder
+      const leftPhase = definitions.get(left[0])
+      const rightPhase = definitions.get(right[0])
+      if (leftPhase && rightPhase) return leftPhase.sortOrder - rightPhase.sortOrder || leftPhase.id.localeCompare(rightPhase.id)
+      if (leftPhase) return -1
+      if (rightPhase) return 1
+      return left[0].localeCompare(right[0])
+    })
+    .map(([key, sourceLines]) => {
       const lines = [...sourceLines].sort((left, right) => {
         const sortOrder = left.sortOrder - right.sortOrder
         if (sortOrder !== 0) return sortOrder
         return left.costCode.localeCompare(right.costCode)
       })
+      const divisionCode = lines[0]?.divisionCode ?? ""
       const divisionName = lines[0]?.divisionName ?? `Phase ${divisionCode}`
       const customDescription = input.phaseDescriptions[divisionCode]?.trim()
+      const definition = definitions.get(key)
       return {
+        id: key,
+        name: definition?.name ?? divisionName,
+        custom: Boolean(definition),
+        itemize: definition?.itemize ?? input.defaultItemize ?? false,
         divisionCode,
         divisionName,
         description:
-          customDescription && customDescription.length > 0
+          definition ? definition.description : customDescription && customDescription.length > 0
             ? customDescription
             : divisionName,
         subtotalCents: lines.reduce(

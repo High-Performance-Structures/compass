@@ -32,6 +32,7 @@ import {
   projectEstimateLineCostItems,
   projectEstimateLines,
   projectEstimatePhaseDescriptions,
+  projectEstimateReportPhases,
   projectEstimates,
   sageTaxEntities,
 } from "@/db/schema-estimates"
@@ -89,6 +90,7 @@ import {
   type EstimateAcceptanceMethod,
 } from "@/lib/estimates/manual-acceptance"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
+import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
 import {
   getGoogleConfig,
   getGoogleCryptoSalt,
@@ -175,6 +177,7 @@ export type ProjectEstimateSigner = {
 
 export type ProjectEstimateLineItem = {
   readonly id: string
+  readonly reportPhaseId: string | null
   readonly divisionCode: string
   readonly divisionName: string
   readonly costCode: string
@@ -318,6 +321,7 @@ export type ProjectEstimateWorkspace = {
   readonly closingTemplates: readonly ProjectEstimateTermsOption[]
   readonly acknowledgementTemplates: readonly ProjectEstimateTermsOption[]
   readonly phaseDescriptions: readonly ProjectEstimatePhaseDescriptionItem[]
+  readonly reportPhases: readonly EstimateReportPhase[]
   readonly selectedAcknowledgements: readonly ProjectEstimateAcknowledgementItem[]
   readonly signerContacts: readonly ProjectEstimateSignerOption[]
 }
@@ -372,6 +376,7 @@ export type ProjectEstimateHeaderInput = {
 }
 
 export type ProjectEstimateLineInput = {
+  readonly reportPhaseId: string | null
   readonly costCode: string | null
   readonly description: string | null
   readonly specifications: string | null
@@ -775,6 +780,7 @@ function estimateLineItem(
 ): ProjectEstimateLineItem {
   return {
     id: row.id,
+    reportPhaseId: row.reportPhaseId,
     divisionCode: row.divisionCode,
     divisionName: row.divisionName,
     costCode: row.costCode,
@@ -1075,6 +1081,7 @@ export async function getProjectEstimateWorkspace(
     taxRows,
     templateRows,
     phaseRows,
+    reportPhaseRows,
     acknowledgementRows,
     signerContactRows,
     projectDocumentRows,
@@ -1144,6 +1151,11 @@ export async function getProjectEstimateWorkspace(
               eq(projectEstimatePhaseDescriptions.estimateId, selected.id)
             )
             .orderBy(asc(projectEstimatePhaseDescriptions.divisionCode))
+        : Promise.resolve([]),
+      selected
+        ? access.db.select().from(projectEstimateReportPhases)
+            .where(eq(projectEstimateReportPhases.estimateId, selected.id))
+            .orderBy(asc(projectEstimateReportPhases.sortOrder), asc(projectEstimateReportPhases.id))
         : Promise.resolve([]),
       selected
         ? access.db
@@ -1295,6 +1307,14 @@ export async function getProjectEstimateWorkspace(
     phaseDescriptions: phaseRows.map((row) => ({
       divisionCode: row.divisionCode,
       description: row.description,
+    })),
+    reportPhases: reportPhaseRows.map((row) => ({
+      id: row.id,
+      divisionCode: row.divisionCode,
+      name: row.name,
+      description: row.description,
+      itemize: row.itemize,
+      sortOrder: row.sortOrder,
     })),
     selectedAcknowledgements: acknowledgementRows.map((row) => ({
       id: row.id,
@@ -1549,6 +1569,9 @@ export async function duplicateProjectEstimate(
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     const versionNumber = (priorVersions[0]?.versionNumber ?? 0) + 1
+    const sourcePhases = await access.db.select().from(projectEstimateReportPhases)
+      .where(and(eq(projectEstimateReportPhases.estimateId, sourceEstimateId), eq(projectEstimateReportPhases.projectId, projectId)))
+    const phaseCopies = sourcePhases.map((phase) => ({ phase, id: crypto.randomUUID() }))
     const copyStatements: D1PreparedStatement[] = [
       access.rawDb
         .prepare(
@@ -1619,10 +1642,15 @@ export async function duplicateProjectEstimate(
           sourceEstimateId,
           projectId
         ),
+      ...phaseCopies.map((copy) => access.rawDb.prepare(
+        `INSERT INTO project_estimate_report_phases
+         (id, project_id, estimate_id, division_code, name, description, itemize, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(copy.id, projectId, id, copy.phase.divisionCode, copy.phase.name, copy.phase.description, copy.phase.itemize ? 1 : 0, copy.phase.sortOrder, now, now)),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_lines (
-             id, project_id, estimate_id, template_line_id, division_code,
+             id, project_id, estimate_id, template_line_id, report_phase_id, division_code,
              division_name, cost_code, cost_code_name, description,
              specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
              markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
@@ -1631,6 +1659,7 @@ export async function duplicateProjectEstimate(
              sort_order, created_at, updated_at
            )
            SELECT lower(hex(randomblob(16))), project_id, ?, template_line_id,
+             report_phase_id,
              division_code, division_name, cost_code, cost_code_name,
              description, specifications, quantity, unit, unit_cost_cents,
              direct_cost_cents, markup_rate_basis_points, markup_cents, taxable,
@@ -1641,6 +1670,12 @@ export async function duplicateProjectEstimate(
            WHERE estimate_id = ? AND project_id = ?`
         )
         .bind(id, now, now, sourceEstimateId, projectId),
+      // Remap atomically with fixed-size statements; phase count does not
+      // consume D1's per-statement parameter budget.
+      ...phaseCopies.map((copy) => access.rawDb.prepare(
+        `UPDATE project_estimate_lines SET report_phase_id = ?
+         WHERE estimate_id = ? AND project_id = ? AND report_phase_id = ?`
+      ).bind(copy.id, id, projectId, copy.phase.id)),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_line_cost_items (
@@ -2456,6 +2491,7 @@ export async function importPlanSwiftEstimateLines(
         projectId,
         estimateId,
         templateLineId: null,
+        reportPhaseId: null,
         divisionCode: cost.divisionCode,
         divisionName: cost.divisionDescription,
         costCode: cost.code,
@@ -2566,6 +2602,18 @@ export async function saveProjectEstimateLine(
     if (!cost) {
       throw new Error("Choose a verified CSI/Sage catalog cost code.")
     }
+    const reportPhaseId = cleanText(input.reportPhaseId)
+    if (reportPhaseId) {
+      const [phase] = await access.db.select({ id: projectEstimateReportPhases.id })
+        .from(projectEstimateReportPhases)
+        .where(and(
+          eq(projectEstimateReportPhases.id, reportPhaseId),
+          eq(projectEstimateReportPhases.projectId, projectId),
+          eq(projectEstimateReportPhases.estimateId, estimateId),
+          eq(projectEstimateReportPhases.divisionCode, cost.divisionCode)
+        )).limit(1)
+      if (!phase) throw new Error("Choose a report phase belonging to this estimate and CSI division.")
+    }
     const existingRows = lineId
       ? await access.db
           .select({ id: projectEstimateLines.id })
@@ -2654,6 +2702,7 @@ export async function saveProjectEstimateLine(
           .where(eq(projectEstimateLines.estimateId, estimateId))
           .orderBy(desc(projectEstimateLines.sortOrder))
     const values = {
+      reportPhaseId,
       divisionCode: cost.divisionCode,
       divisionName: cost.divisionDescription,
       costCode: cost.code,
@@ -3504,6 +3553,7 @@ export async function prepareProjectEstimateForClientSignature(
       costItems,
       basisDocuments,
       phaseDescriptions,
+      reportPhases,
       acknowledgements,
     ] =
       await Promise.all([
@@ -3535,6 +3585,9 @@ export async function prepareProjectEstimateForClientSignature(
           .from(projectEstimatePhaseDescriptions)
           .where(eq(projectEstimatePhaseDescriptions.estimateId, estimateId))
           .orderBy(asc(projectEstimatePhaseDescriptions.divisionCode)),
+        access.db.select().from(projectEstimateReportPhases)
+          .where(eq(projectEstimateReportPhases.estimateId, estimateId))
+          .orderBy(asc(projectEstimateReportPhases.sortOrder), asc(projectEstimateReportPhases.id)),
         access.db
           .select()
           .from(projectEstimateAcknowledgements)
@@ -3631,6 +3684,7 @@ export async function prepareProjectEstimateForClientSignature(
       contingencyRateBasisPoints: estimate.contingencyRateBasisPoints,
       lines: lines.map((line) => ({
         id: line.id,
+        reportPhaseId: line.reportPhaseId,
         divisionCode: line.divisionCode,
         costCode: line.costCode,
         costCodeName: line.costCodeName,
@@ -3651,6 +3705,12 @@ export async function prepareProjectEstimateForClientSignature(
         sortOrder: line.sortOrder,
         costItems: (costItemsByLineId.get(line.id) ?? []).map((item) => ({
           id: item.id,
+          costCode: item.costCode,
+          costCodeName: item.costCodeName,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitCostCents: item.unitCostCents,
           taxCode: item.taxCode,
           taxName: item.taxName,
           taxRateBasisPoints: item.taxRateBasisPoints,
@@ -3674,6 +3734,10 @@ export async function prepareProjectEstimateForClientSignature(
       phaseDescriptions: phaseDescriptions.map((phase) => ({
         divisionCode: phase.divisionCode,
         description: phase.description,
+      })),
+      reportPhases: reportPhases.map((phase) => ({
+        id: phase.id, divisionCode: phase.divisionCode, name: phase.name,
+        description: phase.description, itemize: phase.itemize, sortOrder: phase.sortOrder,
       })),
       acknowledgements: acknowledgements.map((acknowledgement) => ({
         templateId: acknowledgement.templateId,

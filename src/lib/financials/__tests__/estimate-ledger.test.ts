@@ -314,6 +314,7 @@ describe("estimate ledger", () => {
         {
           id: "line-1",
           divisionCode: "03",
+          reportPhaseId: null,
           costCode: "03 11 13",
           costCodeName: "Concrete Forming",
           description: "Concrete forming",
@@ -351,9 +352,18 @@ describe("estimate ledger", () => {
       phaseDescriptions: [
         { divisionCode: "03", description: "Concrete structure" },
       ],
+      reportPhases: [],
       acknowledgements: [],
     }
     const original = await estimateSourceHash(input)
+    const phase = { id: "fox", divisionCode: "03", name: "Fox Blocks", description: "ICF walls", itemize: true, sortOrder: 1 }
+    const withPhases = { ...input, reportPhases: [phase] }
+    const phaseHash = await estimateSourceHash(withPhases)
+    expect(phaseHash).not.toBe(original)
+    for (const change of [{ name: "ICF walls" }, { description: "New scope" }, { itemize: false }, { sortOrder: 2 }]) {
+      expect(await estimateSourceHash({ ...withPhases, reportPhases: [{ ...phase, ...change }] })).not.toBe(phaseHash)
+    }
+    expect(await estimateSourceHash({ ...withPhases, lines: input.lines.map((line) => ({ ...line, reportPhaseId: "fox" })) })).not.toBe(phaseHash)
     const revised = await estimateSourceHash({
       ...input,
       lines: [{ ...input.lines[0], specifications: "Per revision B" }],
@@ -396,6 +406,7 @@ describe("estimate ledger", () => {
           costItems: [
             {
               id: "cost-item-1",
+              costCode: "03 11 13", costCodeName: "Forming", description: "Forming", quantity: 1, unit: "LS", unitCostCents: 10_000,
               taxCode: "DENVER",
               taxName: "Denver",
               taxRateBasisPoints: 881,

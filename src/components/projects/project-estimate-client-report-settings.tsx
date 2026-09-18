@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ProjectEstimateReportPhaseEditor } from "@/components/projects/project-estimate-report-phase-editor"
 
 function reportModeLabel(mode: EstimateClientReportMode): string {
   if (mode === "division_summary") return "Division subtotals + grand total"
@@ -168,10 +169,9 @@ export function ProjectEstimateClientReportSettings({
           <div>
             <h2 className="font-semibold">Client report presentation</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              The client view follows the {workspace.department}-department
-              estimate format. Internal markup and tax details stay in the
-              working estimate; quantity and unit cost appear only in the
-              line-item report view.
+              Your {workspace.department}-department format is the default.
+              Custom report phases can mix itemized costs and lump sums in any
+              department. Internal markup rates stay in the working estimate.
             </p>
           </div>
         </div>
@@ -186,7 +186,7 @@ export function ProjectEstimateClientReportSettings({
 
       <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
         <div className="space-y-1.5">
-          <Label htmlFor="client-report-view">Client report detail</Label>
+          <Label htmlFor="client-report-view">Default client report detail (unassigned CSI groups)</Label>
           <Select
             value={reportMode}
             onValueChange={(value) => {
@@ -222,13 +222,15 @@ export function ProjectEstimateClientReportSettings({
         )}
       </div>
 
+      <ProjectEstimateReportPhaseEditor projectId={projectId} estimateId={estimate.id} workspace={workspace} editable={editable} key={estimate.id} />
+
       {workspace.reportMode !== "division_summary" && phases.length > 0 && (
         <div className="mt-5 space-y-3 border-t pt-4">
           <div>
-            <h3 className="text-sm font-semibold">Phase descriptions</h3>
+            <h3 className="text-sm font-semibold">Default CSI group descriptions</h3>
             <p className="text-xs text-muted-foreground">
-              These client-facing descriptions replace the default CSI division
-              names. Phase subtotals continue to come from the estimate lines.
+              These descriptions apply to lines not assigned to a custom phase.
+              Custom phases use their own name and scope description above.
             </p>
           </div>
           {phases.map(([divisionCode, divisionName]) => (

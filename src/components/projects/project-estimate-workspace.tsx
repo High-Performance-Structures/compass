@@ -134,6 +134,7 @@ function selectedTemplateBody(
 
 type LineDraft = {
   readonly id: string | null
+  readonly reportPhaseId: string
   readonly divisionCode: string
   readonly costCode: string
   readonly description: string
@@ -150,6 +151,7 @@ type LineDraft = {
 
 const EMPTY_LINE: LineDraft = {
   id: null,
+  reportPhaseId: "",
   divisionCode: "",
   costCode: "",
   description: "",
@@ -167,6 +169,7 @@ const EMPTY_LINE: LineDraft = {
 function lineDraft(line: ProjectEstimateLineItem): LineDraft {
   return {
     id: line.id,
+    reportPhaseId: line.reportPhaseId ?? "",
     divisionCode: line.divisionCode,
     costCode: line.costCode,
     description: line.description,
@@ -428,6 +431,7 @@ export function ProjectEstimateWorkspacePanel({
         line.id,
         {
           costCode: line.costCode,
+          reportPhaseId: line.reportPhaseId || null,
           description: formText(formData, "description"),
           specifications: formText(formData, "specifications"),
           quantity: formNumber(formData, "quantity"),
@@ -1404,6 +1408,9 @@ export function ProjectEstimateWorkspacePanel({
                                 {item.description}
                               </p>
                             )}
+                            {item.reportPhaseId && <p className="mt-1 text-xs text-muted-foreground">
+                              Report phase: {workspace.reportPhases.find((phase) => phase.id === item.reportPhaseId)?.name ?? "Default CSI grouping"}
+                            </p>}
                             {!mappedCostCodes.has(item.costCode) && (
                               <Badge variant="outline" className="mt-1">
                                 Sage mapping required
@@ -1441,6 +1448,7 @@ export function ProjectEstimateWorkspacePanel({
                                       {
                                         ...EMPTY_LINE,
                                         divisionCode: item.divisionCode,
+                                        reportPhaseId: item.reportPhaseId ?? "",
                                       },
                                       item.id
                                     )
@@ -1515,7 +1523,7 @@ export function ProjectEstimateWorkspacePanel({
                 <Select
                   value={line.divisionCode}
                   onValueChange={(value) =>
-                    setLine({ ...line, divisionCode: value, costCode: "" })
+                    setLine({ ...line, divisionCode: value, costCode: "", reportPhaseId: "" })
                   }
                 >
                   <SelectTrigger><SelectValue placeholder="Choose division first" /></SelectTrigger>
@@ -1548,6 +1556,17 @@ export function ProjectEstimateWorkspacePanel({
                   disabled={lineUsesCostBreakdown}
                   onValueChange={(value) => setLine({ ...line, unit: value })}
                 />
+              </div>
+              <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                <Label htmlFor="estimate-report-phase">Customer-facing report phase</Label>
+                <Select value={line.reportPhaseId || "__csi__"} onValueChange={(value) => setLine({ ...line, reportPhaseId: value === "__csi__" ? "" : value })}>
+                  <SelectTrigger id="estimate-report-phase"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__csi__">Default CSI grouping</SelectItem>
+                    {workspace.reportPhases.filter((phase) => phase.divisionCode === line.divisionCode).map((phase) => <SelectItem key={phase.id} value={phase.id}>{phase.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Create phases in Client report settings. CSI cost codes and calculations are unchanged.</p>
               </div>
               <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
                 <Label htmlFor="estimateDescription">Description</Label>
