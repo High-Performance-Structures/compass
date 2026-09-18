@@ -52,6 +52,7 @@ import {
   isStaleServerActionError,
   purchaseOrderSubmissionErrorMessage,
 } from "@/lib/purchase-orders/action-errors"
+import { canRemovePurchaseOrderLine } from "@/lib/purchase-orders/draft-edit"
 import {
   purchaseOrderCostCodesForPhase,
   purchaseOrderSiteContactOptions,
@@ -236,9 +237,8 @@ function textFromNumber(value: number): string {
 function draftLinesFromPurchaseOrder(
   purchaseOrder: ProjectPurchaseOrderItem | null
 ): readonly DraftPurchaseOrderLine[] {
-  if (purchaseOrder === null || purchaseOrder.lines.length === 0) {
-    return [newLine()]
-  }
+  if (purchaseOrder === null) return [newLine()]
+  if (purchaseOrder.lines.length === 0) return []
 
   return purchaseOrder.lines.map((line) => ({
     id: line.id,
@@ -399,9 +399,12 @@ function ProjectPurchaseOrderForm(
   }
 
   function removeLine(id: string): void {
-    setLines((current) =>
-      current.length === 1 ? current : current.filter((line) => line.id !== id)
-    )
+    setLines((current) => {
+      if (!canRemovePurchaseOrderLine(current.length, purchaseOrder !== null)) {
+        return current
+      }
+      return current.filter((line) => line.id !== id)
+    })
   }
 
   function updateLine(
@@ -471,7 +474,7 @@ function ProjectPurchaseOrderForm(
           ? await createPurchaseOrderRequest(projectId, request)
           : await updatePurchaseOrderRequest(projectId, purchaseOrder.id, {
               ...request,
-              expectedUpdatedAt: purchaseOrder.updatedAt,
+              expectedRevision: purchaseOrder.revision,
             })
 
       if (!result.success) {
@@ -838,7 +841,12 @@ function ProjectPurchaseOrderForm(
                     variant="ghost"
                     size="icon"
                     className="size-9"
-                    disabled={lines.length === 1}
+                    disabled={
+                      !canRemovePurchaseOrderLine(
+                        lines.length,
+                        purchaseOrder !== null
+                      )
+                    }
                     onClick={() => removeLine(line.id)}
                     aria-label={`Remove line ${index + 1}`}
                   >
