@@ -78,6 +78,7 @@ export async function checkCompassSquareAuthentication(
   const token = getJarvisEnvValue(env, "SQUARE_PRODUCTION_ACCESS_TOKEN")
   let state: SquareAuthObservation["state"] = "missing_credential"
   if (token) {
+    let httpStatus: number | null = null
     try {
       const response = await fetch(
         "https://connect.squareup.com/v2/locations",
@@ -90,15 +91,18 @@ export async function checkCompassSquareAuthentication(
           redirect: "error",
         }
       )
+      httpStatus = response.status
       state =
         response.status === 401 || response.status === 403
           ? "credentials_rejected"
           : response.ok
             ? await locationState(response)
             : "unavailable"
-      // Only the HTTP status is needed. Never persist the provider's body/token.
-      await response.body?.cancel()
-    } catch {
+      // Cleanup must not turn a known 401/403 into an availability diagnosis.
+      if (!response.ok) await response.body?.cancel().catch(() => undefined)
+      if (state !== "healthy") console.warn(JSON.stringify({ event: "square_auth_check_failed", state, httpStatus }))
+    } catch (error) {
+      console.warn(JSON.stringify({ event: "square_auth_check_failed", httpStatus, errorType: error instanceof TypeError ? "TypeError" : error instanceof DOMException ? "DOMException" : "Error" }))
       state = "unavailable"
     }
   }
@@ -144,7 +148,7 @@ async function locationState(
   } catch {
     return "unavailable"
   } finally {
-    await reader.cancel()
+    await reader.cancel().catch(() => undefined)
     reader.releaseLock()
   }
 }

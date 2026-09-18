@@ -45,6 +45,7 @@ class AuthMonitorTests(unittest.TestCase):
             request = opening.call_args.args[0]
             self.assertEqual(request.get_method(), "POST")
             self.assertTrue(request.get_header("X-compass-signature").startswith("sha256="))
+            self.assertEqual(request.get_header("User-agent"), "Compass-Square-Auth-Monitor/1.0")
             self.assertNotIn("test-secret", request.data.decode())
 
     def test_reject_unsafe_origins_and_redirects(self):
@@ -56,9 +57,14 @@ class AuthMonitorTests(unittest.TestCase):
     def test_reporting_failure_never_logs_secrets(self):
         output = io.StringIO()
         with patch.dict(os.environ, {"HPS_SQUARE_PRODUCTION_ACCESS_TOKEN": "private-token"}), patch.object(monitor, "check_authentication", return_value="credentials_rejected"), patch.object(monitor, "report_observation", side_effect=ValueError("private-token")), contextlib.redirect_stdout(output):
-            self.assertEqual(monitor.main(), 1)
+            self.assertEqual(monitor.main([]), 1)
         self.assertNotIn("private-token", output.getvalue())
         self.assertFalse(json.loads(output.getvalue())["reported"])
+
+    def test_explicit_origin_survives_secret_broker_environment(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(monitor, "check_authentication", return_value="healthy"), patch.object(monitor, "report_observation") as reporting, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(monitor.main(["--compass-base-url", "https://compass.example"]), 0)
+            self.assertEqual(reporting.call_args.args[0], "https://compass.example")
 
 
 if __name__ == "__main__":

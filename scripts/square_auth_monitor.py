@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import argparse
 import hashlib
 import hmac
 import json
@@ -65,6 +66,7 @@ def report_observation(base_url: str, secret: str, observation: dict[str, str]) 
     timestamp = str(int(time.time()))
     signature = hmac.new(secret.encode(), f"{timestamp}.POST.{TARGET}.{body}".encode(), hashlib.sha256).hexdigest()
     request = urllib.request.Request(base_url.rstrip("/") + TARGET, method="POST", data=body.encode(), headers={
+        "Accept": "application/json", "User-Agent": "Compass-Square-Auth-Monitor/1.0",
         "Content-Type": "application/json", "X-Compass-Timestamp": timestamp,
         "X-Compass-Signature": "sha256=" + signature,
     })
@@ -77,11 +79,14 @@ def report_observation(base_url: str, secret: str, observation: dict[str, str]) 
             raise ValueError("Compass did not acknowledge the observation")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--compass-base-url", default=os.environ.get("COMPASS_BASE_URL", ""))
+    args = parser.parse_args(argv)
     state = check_authentication(os.environ.get("HPS_SQUARE_PRODUCTION_ACCESS_TOKEN", ""))
     observation = {"state": state, "checkedAt": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")}
     try:
-        report_observation(os.environ.get("COMPASS_BASE_URL", ""), os.environ.get("JARVIS_BRIDGE_SECONDARY_SECRET", ""), observation)
+        report_observation(args.compass_base_url, os.environ.get("JARVIS_BRIDGE_SECONDARY_SECRET", ""), observation)
     except (OSError, ValueError, urllib.error.URLError):
         # Provider exception bodies can contain sensitive information. Never log them.
         print(json.dumps({"status": "failed", "state": state, "reported": False, "error": "Compass health report failed"}))
