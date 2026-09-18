@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/cards"],
   "owner": "Company operations",
-  "lastReviewed": "2026-09-07"
+  "lastReviewed": "2026-09-14"
 }
 ---
 
@@ -20,7 +20,7 @@
 
 Open **Greeting Cards** and select **New card request**. Choose a mailed handwritten card or an e-card, then select the recipient type and occasion. You may search saved clients, trade partners, vendors, or employees, or enter the recipient manually. Choosing a saved contact fills the available fields, but you are responsible for checking and completing them.
 
-Choose the design, write the message and closing, and review the displayed character limit. For mailed cards, verify the recipient's full US mailing address. For e-cards, verify the email address and preview the finished card. Select **Submit for approval** only when the recipient, delivery method, message, and contact details are correct.
+Choose the design, write the message and closing, and review the displayed character limit. For e-cards, search the design catalog by design, department, occasion, or code to find an appropriate option. For mailed cards, verify the recipient's full US mailing address. For e-cards, verify the email address and preview the finished card. Select **Submit for approval** only when the recipient, delivery method, message, and contact details are correct.
 
 Submitting creates a request. It does not place a Handwrytten order, send an email, or purchase a gift.
 
