@@ -2,6 +2,7 @@ import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/d1"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createJarvisSignature } from "@/lib/jarvis/auth"
+import { isPublicPath } from "@/lib/public-paths"
 
 const mocks = vi.hoisted(() => ({ getDb: vi.fn(), context: vi.fn() }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
@@ -52,6 +53,12 @@ function d1(sqlite: Sqlite): unknown {
 }
 
 describe("Square authentication health", () => {
+  it("allows only the exact signed monitoring routes past interactive login", () => {
+    expect(isPublicPath("/api/integrations/square/auth-health")).toBe(true)
+    expect(isPublicPath("/api/operations/square/auth-health")).toBe(true)
+    expect(isPublicPath("/api/integrations/square/auth-health/anything")).toBe(false)
+    expect(isPublicPath("/api/operations/square/private")).toBe(false)
+  })
   let sqlite: Sqlite
   const env = {
     DB: {},
