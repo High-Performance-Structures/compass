@@ -1,10 +1,10 @@
-import { getCurrentUser } from "@/lib/auth"
 import { conversationFullViewHref, conversationRecipientHref } from "@/lib/conversations/notification-route"
 import { notFound, redirect } from "next/navigation"
 import { getChannel } from "@/app/actions/conversations"
 import { getMessages } from "@/app/actions/chat-messages"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { getCurrentUser } from "@/lib/auth"
 import { ChannelHeader } from "@/components/conversations/channel-header"
 import { MessageList } from "@/components/conversations/message-list"
 import {
@@ -20,19 +20,19 @@ export default async function ChannelPage({
   readonly params: Promise<{ readonly channelId: string }>
 }) {
   const { channelId } = await params
-  const [channelResult, user] = await Promise.all([
+  const [channelResult, currentUser] = await Promise.all([
     getChannel(channelId),
     getCurrentUser(),
   ])
 
-  if (!user || !channelResult.success || !channelResult.data) {
+  if (!currentUser || !channelResult.success || !channelResult.data) {
     notFound()
   }
 
   const channel = channelResult.data
   // Shared notification URLs land here. Keep external recipients in their portal
   // after getChannel has verified organization and channel access.
-  const recipientHref = conversationRecipientHref(channel, user.role)
+  const recipientHref = conversationRecipientHref(channel, currentUser.role)
   if (recipientHref !== conversationFullViewHref(channel.id)) redirect(recipientHref)
   const messagesResult = await getMessages(channelId)
   const isBuildertrendArchive = isBuildertrendArchiveChannelId(channel.id)
@@ -74,6 +74,7 @@ export default async function ChannelPage({
         <MessageList
           channelId={channelId}
           initialMessages={messages}
+          currentUserId={currentUser?.id ?? null}
         />
         {isBuildertrendArchive ? (
           <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
