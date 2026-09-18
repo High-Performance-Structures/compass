@@ -88,7 +88,9 @@ export async function checkCompassSquareAuthentication(
             "Square-Version": "2026-08-19",
           },
           signal: AbortSignal.timeout(10_000),
-          redirect: "error",
+          // Workers rejects "error" before sending. "manual" exposes 3xx as a
+          // failed check without ever forwarding the bearer token elsewhere.
+          redirect: "manual",
         }
       )
       httpStatus = response.status
