@@ -13,6 +13,7 @@ const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
 const GOTO_MESSAGE_RECOVERY_TARGET =
   "/api/operations/goto/recover-message-bodies"
 const SAGE_BRIDGE_HEALTH_TARGET = "/api/operations/sage/health"
+const SQUARE_AUTH_HEALTH_TARGET = "/api/operations/square/auth-health"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
   "/api/operations/sage/square-receipts"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"
@@ -182,7 +183,7 @@ async function recoverGotoMessageBodies(env: CloudflareEnv): Promise<void> {
   }
 }
 
-async function checkSageBridgeHealth(env: CloudflareEnv): Promise<void> {
+async function checkBridgeHealth(env: CloudflareEnv, target: string): Promise<void> {
   const body = ""
   const timestamp = String(Math.floor(Date.now() / 1_000))
   const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
@@ -191,13 +192,13 @@ async function checkSageBridgeHealth(env: CloudflareEnv): Promise<void> {
     secret,
     timestamp,
     "POST",
-    SAGE_BRIDGE_HEALTH_TARGET,
+    target,
     body
   )
   const worker = env.WORKER_SELF_REFERENCE
   if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
   const response = await worker.fetch(
-    `https://compass.internal${SAGE_BRIDGE_HEALTH_TARGET}`,
+    `https://compass.internal${target}`,
     {
       method: "POST",
       headers: {
@@ -208,7 +209,7 @@ async function checkSageBridgeHealth(env: CloudflareEnv): Promise<void> {
     }
   )
   if (!response.ok) {
-    throw new Error(`Sage bridge health check failed with ${response.status}`)
+    throw new Error(`Bridge health check failed with ${response.status}`)
   }
 }
 
@@ -273,9 +274,10 @@ export default {
   async scheduled(controller, env, ctx): Promise<void> {
     if (controller.cron === SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON) {
       ctx.waitUntil(
-        runMaintenanceJob("Sage Square manual receipts", () =>
-          reconcileSageSquareReceipts(env)
-        )
+        Promise.all([
+          runMaintenanceJob("Sage Square manual receipts", () => reconcileSageSquareReceipts(env)),
+          runMaintenanceJob("Square authentication health", () => checkBridgeHealth(env, SQUARE_AUTH_HEALTH_TARGET)),
+        ]).then(() => undefined)
       )
       return
     }
@@ -287,7 +289,7 @@ export default {
           recoverGotoMessageBodies(env)
         ),
         runMaintenanceJob("Sage bridge health", () =>
-          checkSageBridgeHealth(env)
+          checkBridgeHealth(env, SAGE_BRIDGE_HEALTH_TARGET)
         ),
       ]).then(() => undefined)
     )
