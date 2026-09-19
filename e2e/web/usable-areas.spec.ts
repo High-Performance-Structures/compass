@@ -273,9 +273,7 @@ test.describe("usable Compass areas", () => {
       "aria-label",
       /Not selected for schedule comparison$/
     )
-    await page.getByPlaceholder("Search projects...").focus()
-    await page.keyboard.press("ArrowDown")
-    await page.keyboard.press("Enter")
+    await project.click()
     await expect(page).toHaveURL(/scope=selected.*projects=[^&]+/)
     await page.reload()
     await page.getByRole("combobox", { name: "Choose schedule scope" }).click()

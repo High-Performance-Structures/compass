@@ -29,4 +29,18 @@ describe("desktop E2E workflow fixtures", () => {
       expect(job).toContain("LOCAL_DB_PATH: .e2e/compass.db")
     }
   })
+
+  it("runs the full desktop matrix for pull requests and preserves rendered artifacts", () => {
+    const workflow = readFileSync(
+      join(process.cwd(), ".github/workflows/test.yml"),
+      "utf8",
+    )
+    const job = desktopJob(workflow, "e2e-desktop", "  # Coverage report")
+
+    expect(job).toContain(
+      "if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'",
+    )
+    expect(job).toContain("name: playwright-report-desktop-${{ matrix.os }}")
+    expect(job).toContain("path: |\n            playwright-report/\n            test-results/")
+  })
 })
