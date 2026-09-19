@@ -32,7 +32,7 @@ test.describe("Electron runtime", () => {
         )
         .toBe(true)
 
-      const previewWindowPromise = app.waitForEvent("window")
+      const previewWindowPromise = page.waitForEvent("popup")
       await page.evaluate(() => {
         window.open(
           `${window.location.origin}/preview/projects/desktop-preview-test/owner`,
@@ -41,6 +41,9 @@ test.describe("Electron runtime", () => {
         )
       })
       const previewWindow = await previewWindowPromise
+      await expect(previewWindow).toHaveURL(
+        /\/preview\/projects\/desktop-preview-test\/owner$/,
+      )
       await previewWindow.close()
 
       await expect
