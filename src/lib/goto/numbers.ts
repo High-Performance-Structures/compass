@@ -1,3 +1,5 @@
+import type { ProjectDepartment } from "@/lib/project-branding"
+
 const DEFAULT_GOTO_ORC_FROM_NUMBER = "+17196308767"
 const DEFAULT_GOTO_NUTECH_FROM_NUMBER = "+17196860770"
 const DEFAULT_GOTO_HPS_FROM_NUMBER = "+17199008850"
@@ -55,10 +57,64 @@ export function gotoSenderNumberForProject(
   }
   if (prefix === "O" || prefix === "D") {
     return normalizeSmsPhoneNumber(
-      envString(env, "GOTO_SMS_ORC_FROM_NUMBER") ?? DEFAULT_GOTO_ORC_FROM_NUMBER
+      envString(env, "GOTO_SMS_ORC_FROM_NUMBER") ??
+        envString(env, "GOTO_SMS_FROM_NUMBER") ??
+        DEFAULT_GOTO_ORC_FROM_NUMBER
     )
   }
   return normalizeSmsPhoneNumber(
     envString(env, "GOTO_SMS_FROM_NUMBER") ?? DEFAULT_GOTO_ORC_FROM_NUMBER
   )
+}
+
+export function gotoDepartmentsForOwnerNumber(
+  env: unknown,
+  ownerPhoneNumber: string
+): readonly ProjectDepartment[] {
+  const ownerNumber = normalizeSmsPhoneNumber(ownerPhoneNumber)
+  const departments: ProjectDepartment[] = []
+  const legacyOwnerNumber = normalizeSmsPhoneNumber(
+    envString(env, "GOTO_SMS_FROM_NUMBER") ?? DEFAULT_GOTO_ORC_FROM_NUMBER
+  )
+
+  if (
+    gotoSenderNumberForProject(env, "O-0-SMS") === ownerNumber ||
+    legacyOwnerNumber === ownerNumber
+  ) {
+    departments.push("O", "D")
+  }
+  if (gotoSenderNumberForProject(env, "N-0-SMS") === ownerNumber) {
+    departments.push("N")
+  }
+  if (gotoSenderNumberForProject(env, "H-0-SMS") === ownerNumber) {
+    departments.push("H")
+  }
+
+  return [...new Set(departments)]
+}
+
+export function gotoDepartmentSmsDirectory(env: unknown): readonly {
+  readonly label: string
+  readonly phoneNumber: string
+}[] {
+  return [
+    {
+      label: "Open Range / Design",
+      phoneNumber: gotoSenderNumberForProject(env, "O-0-SMS"),
+    },
+    {
+      label: "Nu-Tech",
+      phoneNumber: gotoSenderNumberForProject(env, "N-0-SMS"),
+    },
+    {
+      label: "HPS",
+      phoneNumber: gotoSenderNumberForProject(env, "H-0-SMS"),
+    },
+  ]
+}
+
+export function displaySmsPhoneNumber(value: string): string {
+  const digits = normalizeSmsPhoneNumber(value).replace(/\D/g, "")
+  if (digits.length !== 11 || !digits.startsWith("1")) return value
+  return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
 }
