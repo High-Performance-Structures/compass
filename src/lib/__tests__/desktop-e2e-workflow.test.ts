@@ -54,6 +54,10 @@ function workflow(): Record<string, unknown> {
   return parsed
 }
 
+function playwrightConfig(): string {
+  return readFileSync(join(process.cwd(), "playwright.config.ts"), "utf8")
+}
+
 describe("desktop E2E workflow fixtures", () => {
   it("prepares the local schema before every desktop E2E job", () => {
     const jobs = recordProperty(workflow(), "jobs")
@@ -102,5 +106,13 @@ describe("desktop E2E workflow fixtures", () => {
     )
     expect(artifactInputs.path).toBe("playwright-report/\ntest-results/\n")
     expect(artifactInputs["if-no-files-found"]).toBe("error")
+  })
+
+  it("starts the Playwright server with shell-neutral commands", () => {
+    const config = playwrightConfig()
+
+    expect(config).not.toContain('"COMPASS_E2E=true node')
+    expect(config).toContain('"node node_modules/next/dist/bin/next start"')
+    expect(config).toContain('"node node_modules/next/dist/bin/next dev --webpack"')
   })
 })

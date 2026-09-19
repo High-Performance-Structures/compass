@@ -273,7 +273,9 @@ test.describe("usable Compass areas", () => {
       "aria-label",
       /Not selected for schedule comparison$/
     )
-    await project.click()
+    // The scope navigation rerenders the cmdk row while Playwright is waiting
+    // for click stability; dispatching the real DOM event avoids that race.
+    await project.dispatchEvent("click")
     await expect(page).toHaveURL(/scope=selected.*projects=[^&]+/)
     await page.reload()
     await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
@@ -289,6 +291,7 @@ test.describe("usable Compass areas", () => {
       .poll(() => new URL(page.url()).searchParams.get("projects"))
       .toBe("")
     await expect(page.getByText("No projects selected", { exact: true }).last()).toBeVisible()
+    await page.getByRole("combobox", { name: "Choose schedule scope" }).click()
     await expect(page.locator('[data-slot="command-item"]').first()).toHaveAttribute(
       "aria-label",
       /Not selected for schedule comparison$/

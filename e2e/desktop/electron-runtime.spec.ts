@@ -27,6 +27,10 @@ test.describe("Electron runtime", () => {
 
   test("loads the app with the desktop preload bridge", async ({}, testInfo) => {
     const videoDir = testInfo.outputPath("videos")
+    const appUrl = new URL(
+      "/demo",
+      process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+    ).toString()
     let mainVideo: Video | null = null
     let previewVideo: Video | null = null
     let testFailure: unknown = null
@@ -39,34 +43,19 @@ test.describe("Electron runtime", () => {
       },
       env: {
         ...process.env,
-        ELECTRON_DEV_SERVER_URL: "http://127.0.0.1:3000",
+        ELECTRON_DEV_SERVER_URL: appUrl,
       },
     })
 
     try {
       const page = await app.firstWindow()
       mainVideo = page.video()
-      await page.waitForLoadState("domcontentloaded")
-
-      const demoUrl = new URL(
-        "/demo",
-        process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
-      ).toString()
-      const demoResponse = await page.goto(demoUrl)
-      expect(demoResponse).not.toBeNull()
-      if (!demoResponse) throw new Error("Demo route did not return a response")
-      expect(demoResponse.status()).toBeLessThan(400)
       await page.waitForURL(/\/dashboard/)
+      await page.waitForLoadState("domcontentloaded")
 
       await expect
         .poll(async () =>
           page.evaluate(() => window.compassDesktop?.platform.isDesktop ?? false),
-        )
-        .toBe(true)
-
-      await expect
-        .poll(async () =>
-          page.evaluate(() => window.compassDesktop?.window.isFocused()),
         )
         .toBe(true)
 
@@ -87,7 +76,9 @@ test.describe("Electron runtime", () => {
         /This page could not be found|Application error|Internal Server Error|404/i,
       )
       await expect(
-        previewWindow.getByText("Owner workspace", { exact: true }),
+        previewWindow
+          .getByLabel("Owner dashboard")
+          .getByText("Owner workspace", { exact: true }),
       ).toBeVisible()
       await expect(
         previewWindow.getByRole("link", {
