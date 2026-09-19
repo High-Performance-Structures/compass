@@ -24,15 +24,21 @@ export function projectSmsHelp(
     readonly phoneNumber: string
   }[]
 ): string {
+  const hpsPhoneNumber = departmentNumbers.find(
+    (department) => department.label === "HPS"
+  )?.phoneNumber
+  const commandNumber = hpsPhoneNumber ?? "the HPS number"
+
   return [
     "Compass project texting",
     ...departmentNumbers.map(
       (department) => `${department.label}: ${department.phoneNumber}`
     ),
-    "Text the project number, a tag, and your update.",
-    "Example: <project number> [DAILY LOG] Crew arrived at 7:00. Framing started.",
+    "Send project updates to the appropriate department number above. Text the project number, a tag, and your update.",
+    "Example: H-430-1900 [DAILY LOG] Crew arrived at 7:00. Framing started.",
     "Tags: [DAILY LOG] notes/photos; [TO-DO] tasks; [DELIVERY] deliveries; [RFI] questions; [VIDEO] video clips.",
-    "Attach photos or video to the same text. Verified staff can text [list] for active project numbers.",
+    "Attach photos or video to the same text.",
+    `For the complete active-project list or these instructions, text [list] or [help] to HPS only: ${commandNumber}.`,
   ].join("\n")
 }
 
