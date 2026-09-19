@@ -86,6 +86,9 @@ jobs:
       - name: Prepare deterministic E2E database
         run: bun run test:e2e:prepare
 
+      - name: Install Playwright ffmpeg
+        run: bunx playwright install ffmpeg
+
       - name: Install Electron runtime dependencies
         run: |
           sudo apt-get update
@@ -106,7 +109,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Desktop E2E tests (Electron) - only on main branch
+  # Desktop E2E tests: the full matrix proves every exact candidate.
   e2e-desktop:
     name: E2E Desktop
     runs-on: ${{ matrix.os }}
@@ -161,7 +164,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 7
 
   # Coverage report

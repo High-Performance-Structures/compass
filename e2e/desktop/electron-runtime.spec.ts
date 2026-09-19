@@ -1,18 +1,41 @@
-import { expect, test, _electron as electron } from "@playwright/test"
+import {
+  expect,
+  test,
+  _electron as electron,
+  type Video,
+} from "@playwright/test"
 
 function isElectron(): boolean {
   return process.env.ELECTRON === "true" || process.env.ELECTRON_TEST === "true"
+}
+
+type AttemptResult =
+  | { readonly success: true }
+  | { readonly success: false; readonly error: unknown }
+
+async function attempt(action: () => Promise<void>): Promise<AttemptResult> {
+  try {
+    await action()
+    return { success: true }
+  } catch (error) {
+    return { success: false, error }
+  }
 }
 
 test.describe("Electron runtime", () => {
   test.skip(!isElectron(), "Desktop only")
 
   test("loads the app with the desktop preload bridge", async ({}, testInfo) => {
+    const videoDir = testInfo.outputPath("videos")
+    let mainVideo: Video | null = null
+    let previewVideo: Video | null = null
+    let testFailure: unknown = null
     const app = await electron.launch({
       args: ["dist-electron/electron/main.js"],
-      artifactsDir: testInfo.outputPath("electron-artifacts"),
       recordVideo: {
+        dir: videoDir,
         size: { width: 1180, height: 800 },
+        showActions: { position: "top-right" },
       },
       env: {
         ...process.env,
@@ -22,6 +45,9 @@ test.describe("Electron runtime", () => {
 
     try {
       const page = await app.firstWindow()
+      mainVideo = page.video()
+      await page.waitForLoadState("domcontentloaded")
+
       const demoUrl = new URL(
         "/demo",
         process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
@@ -53,6 +79,7 @@ test.describe("Electron runtime", () => {
         )
       })
       const previewWindow = await previewWindowPromise
+      previewVideo = previewWindow.video()
       await expect(previewWindow).toHaveURL(
         /\/preview\/projects\/e2e-project-001\/owner$/,
       )
@@ -60,9 +87,12 @@ test.describe("Electron runtime", () => {
         /This page could not be found|Application error|Internal Server Error|404/i,
       )
       await expect(
+        previewWindow.getByText("Owner workspace", { exact: true }),
+      ).toBeVisible()
+      await expect(
         previewWindow.getByRole("link", {
-          name: /H-E2E-001.*Regression Test Project/,
-        }).first(),
+          name: "H-E2E-001 · Regression Test Project",
+        }),
       ).toBeVisible()
       await expect(
         previewWindow.getByText(
@@ -70,9 +100,11 @@ test.describe("Electron runtime", () => {
           { exact: true },
         ),
       ).toBeVisible()
-      await previewWindow.screenshot({
-        path: testInfo.outputPath("electron-preview.png"),
-        fullPage: true,
+      const previewScreenshot = testInfo.outputPath("preview-window.png")
+      await previewWindow.screenshot({ path: previewScreenshot, fullPage: true })
+      await testInfo.attach("preview-window", {
+        path: previewScreenshot,
+        contentType: "image/png",
       })
       await previewWindow.close()
 
@@ -81,8 +113,33 @@ test.describe("Electron runtime", () => {
           page.evaluate(() => window.compassDesktop?.window.isFocused())
         )
         .toBe(true)
-    } finally {
-      await app.close()
+    } catch (error) {
+      testFailure = error
     }
+
+    async function preserveFirstFailure(action: () => Promise<void>): Promise<void> {
+      const result = await attempt(action)
+      if (!result.success && testFailure === null) testFailure = result.error
+    }
+
+    await preserveFirstFailure(() => app.close())
+    if (mainVideo) {
+      await preserveFirstFailure(async () => {
+        await testInfo.attach("desktop-main-window-recording", {
+          path: await mainVideo.path(),
+          contentType: "video/webm",
+        })
+      })
+    }
+    if (previewVideo) {
+      await preserveFirstFailure(async () => {
+        await testInfo.attach("desktop-preview-window-recording", {
+          path: await previewVideo.path(),
+          contentType: "video/webm",
+        })
+      })
+    }
+
+    if (testFailure !== null) throw testFailure
   })
 })

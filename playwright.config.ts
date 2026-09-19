@@ -80,5 +80,10 @@ export default defineConfig({
         url: baseURL,
         timeout: 120000,
         reuseExistingServer: !process.env.CI,
+        env: {
+          COMPASS_E2E: "true",
+          WORKOS_API_KEY: "placeholder-e2e",
+          WORKOS_CLIENT_ID: "placeholder-e2e",
+        },
       },
 })
