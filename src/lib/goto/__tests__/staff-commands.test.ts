@@ -26,9 +26,11 @@ describe("staff SMS commands", () => {
     expect(parseStaffSmsCommand(" [HELP] ")).toEqual({ kind: "help" })
     expect(help).toContain("HPS: (719) 900-8850")
     expect(help).toContain(
-      "<project number> [DAILY LOG] Crew arrived at 7:00."
+      "H-430-1900 [DAILY LOG] Crew arrived at 7:00."
     )
-    expect(help).toContain("[list]")
+    expect(help).toContain(
+      "text [list] or [help] to HPS only: (719) 900-8850"
+    )
     expect(help.length).toBeLessThanOrEqual(850)
   })
 

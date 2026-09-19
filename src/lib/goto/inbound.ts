@@ -33,6 +33,7 @@ import {
   displaySmsPhoneNumber,
   gotoDepartmentSmsDirectory,
   gotoDepartmentsForOwnerNumber,
+  gotoProjectListDepartmentsForOwnerNumber,
   gotoSenderNumberForProject,
   normalizeSmsPhoneNumber,
 } from "@/lib/goto/numbers"
@@ -210,13 +211,17 @@ async function handleStaffCommand(input: {
     input.env,
     input.message.ownerTouchpoint
   )
+  const listDepartments = gotoProjectListDepartmentsForOwnerNumber(
+    input.env,
+    input.message.ownerTouchpoint
+  )
   let bodies: readonly string[]
 
   if (input.command.kind === "invalid_list") {
     bodies = ["Use [list], [list O], [list D], [list H], or [list N]."]
   } else if (
     input.command.department !== null &&
-    !availableDepartments.includes(input.command.department)
+    !listDepartments.includes(input.command.department)
   ) {
     bodies = [
       `${input.command.department} projects are not served by this text number. Text [list] to see this number's departments.`,
@@ -224,7 +229,7 @@ async function handleStaffCommand(input: {
   } else {
     const departments = input.command.department
       ? [input.command.department]
-      : availableDepartments
+      : listDepartments
     const activeProjects = await activeDepartmentProjects({
       db: input.db,
       organizationId: input.organizationId,
@@ -266,6 +271,7 @@ async function handleStaffCommand(input: {
       requestedDepartment:
         input.command.kind === "list" ? input.command.department : null,
       receivingDepartments: availableDepartments.join(","),
+      listedDepartments: listDepartments.join(","),
     },
     createdAt: input.message.receivedAt,
   })

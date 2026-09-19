@@ -93,6 +93,17 @@ export function gotoDepartmentsForOwnerNumber(
   return [...new Set(departments)]
 }
 
+export function gotoProjectListDepartmentsForOwnerNumber(
+  env: unknown,
+  ownerPhoneNumber: string
+): readonly ProjectDepartment[] {
+  const ownerNumber = normalizeSmsPhoneNumber(ownerPhoneNumber)
+  const hpsNumber = gotoSenderNumberForProject(env, "H-0-SMS")
+
+  if (ownerNumber === hpsNumber) return ["O", "D", "H", "N"]
+  return gotoDepartmentsForOwnerNumber(env, ownerPhoneNumber)
+}
+
 export function gotoDepartmentSmsDirectory(env: unknown): readonly {
   readonly label: string
   readonly phoneNumber: string

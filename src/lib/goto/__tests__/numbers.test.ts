@@ -4,6 +4,7 @@ import {
   displaySmsPhoneNumber,
   gotoDepartmentsForOwnerNumber,
   gotoDepartmentSmsDirectory,
+  gotoProjectListDepartmentsForOwnerNumber,
 } from "@/lib/goto/numbers"
 
 const ENV = {
@@ -24,6 +25,15 @@ describe("GoTo department numbers", () => {
 
   it("rejects unconfigured receiving numbers", () => {
     expect(gotoDepartmentsForOwnerNumber(ENV, "+17195550999")).toEqual([])
+  })
+
+  it("uses HPS as the complete active-project list endpoint", () => {
+    expect(
+      gotoProjectListDepartmentsForOwnerNumber(ENV, "+17195550300")
+    ).toEqual(["O", "D", "H", "N"])
+    expect(
+      gotoProjectListDepartmentsForOwnerNumber(ENV, "+17195550100")
+    ).toEqual(["O", "D"])
   })
 
   it("supports the legacy single GoTo sender number as ORC and Design", () => {
