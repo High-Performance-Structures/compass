@@ -97,11 +97,33 @@ test.describe("Electron runtime", () => {
         path: previewScreenshot,
         contentType: "image/png",
       })
+      const focusRequestSwitch = "compass-e2e-main-focus-requested"
+      await app.evaluate(
+        ({ app: electronApp, BrowserWindow }, switchName) => {
+          const mainWindow = BrowserWindow.getAllWindows().find(
+            (candidate) => !candidate.webContents.getURL().includes("/preview/"),
+          )
+          if (!mainWindow) throw new Error("Main Electron window not found")
+
+          // Headless CI desktops may refuse OS focus. Observe the native focus
+          // request while still forwarding it to verify Compass restores focus.
+          const focusMainWindow = mainWindow.focus.bind(mainWindow)
+          mainWindow.focus = () => {
+            electronApp.commandLine.appendSwitch(switchName)
+            focusMainWindow()
+          }
+        },
+        focusRequestSwitch,
+      )
       await previewWindow.close()
 
       await expect
-        .poll(async () =>
-          page.evaluate(() => window.compassDesktop?.window.isFocused())
+        .poll(() =>
+          app.evaluate(
+            ({ app: electronApp }, switchName) =>
+              electronApp.commandLine.hasSwitch(switchName),
+            focusRequestSwitch,
+          ),
         )
         .toBe(true)
     } catch (error) {
