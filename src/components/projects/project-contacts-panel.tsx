@@ -76,6 +76,8 @@ function isCompanyOnlyVendor(contact: ProjectContactItem): boolean {
 }
 
 function accessStatusLabel(contact: ProjectContactItem): string {
+  if (!contact.active) return "Historical record"
+
   switch (contact.accessStatus) {
     case "active":
       return "Active"
@@ -97,6 +99,8 @@ function accessStatusLabel(contact: ProjectContactItem): string {
 function accessStatusBadgeVariant(
   contact: ProjectContactItem
 ): "default" | "secondary" | "destructive" | "outline" {
+  if (!contact.active) return "outline"
+
   if (
     contact.accessStatus === "not_invited" &&
     contact.compassAccountStatus === "inactive"
@@ -370,14 +374,20 @@ export function ProjectContactsDirectory({
             <div className="flex items-center gap-2">
               <IconShieldCheck className="size-4 text-muted-foreground" />
               <h2 className="text-sm font-semibold">
-                Former employees and historical internal users
+                Historical internal contacts
               </h2>
             </div>
             <Badge variant="outline">{summary.historicalContacts.length}</Badge>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Historical Buildertrend internal contacts are retained for the record.
-            They are inactive, uninvited, and excluded from active project access.
+            Legacy Buildertrend contacts are retained as read-only records and
+            do not represent current employment or project access. Manage the
+            person in{" "}
+            <Link href="/dashboard/settings?section=team" className="underline">
+              Settings → Team
+            </Link>
+            , then use Add contact above to place an active team member on this
+            project.
           </p>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {summary.historicalContacts.map((contact) => (
@@ -420,4 +430,3 @@ export function ProjectContactsDirectory({
     </div>
   )
 }
-

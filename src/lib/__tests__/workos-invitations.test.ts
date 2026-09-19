@@ -19,6 +19,7 @@ describe("sendOrResendWorkOSInvitation", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     workosMocks.listUsers.mockResolvedValue({ data: [] })
+    workosMocks.listInvitations.mockResolvedValue({ data: [] })
   })
 
   it("resends a pending invitation", async () => {
@@ -74,7 +75,7 @@ describe("sendOrResendWorkOSInvitation", () => {
     expect(workosMocks.resendInvitation).not.toHaveBeenCalled()
   })
 
-  it("returns an existing WorkOS user instead of sending another invitation", async () => {
+  it("returns a signed-in WorkOS user instead of sending another invitation", async () => {
     workosMocks.listUsers.mockResolvedValue({
       data: [
         {
@@ -107,5 +108,63 @@ describe("sendOrResendWorkOSInvitation", () => {
     })
     expect(workosMocks.listInvitations).not.toHaveBeenCalled()
     expect(workosMocks.sendInvitation).not.toHaveBeenCalled()
+  })
+
+  it("resends a pending invitation for a never-signed-in WorkOS user", async () => {
+    workosMocks.listUsers.mockResolvedValue({
+      data: [
+        {
+          id: "user_stanley",
+          email: "stanley@example.com",
+          firstName: null,
+          lastName: null,
+          profilePictureUrl: null,
+          lastSignInAt: null,
+        },
+      ],
+    })
+    workosMocks.listInvitations.mockResolvedValue({
+      data: [{ id: "invitation_pending", state: "pending" }],
+    })
+
+    const result = await sendOrResendWorkOSInvitation({
+      apiKey: "test-key",
+      email: "stanley@example.com",
+    })
+
+    expect(result).toEqual({ success: true, outcome: "invitation_sent" })
+    expect(workosMocks.resendInvitation).toHaveBeenCalledWith(
+      "invitation_pending"
+    )
+    expect(workosMocks.sendInvitation).not.toHaveBeenCalled()
+  })
+
+  it("replaces an expired invitation for a never-signed-in WorkOS user", async () => {
+    workosMocks.listUsers.mockResolvedValue({
+      data: [
+        {
+          id: "user_stanley",
+          email: "stanley@example.com",
+          firstName: null,
+          lastName: null,
+          profilePictureUrl: null,
+          lastSignInAt: null,
+        },
+      ],
+    })
+    workosMocks.listInvitations.mockResolvedValue({
+      data: [{ id: "invitation_expired", state: "expired" }],
+    })
+
+    const result = await sendOrResendWorkOSInvitation({
+      apiKey: "test-key",
+      email: "stanley@example.com",
+    })
+
+    expect(result).toEqual({ success: true, outcome: "invitation_sent" })
+    expect(workosMocks.sendInvitation).toHaveBeenCalledWith({
+      email: "stanley@example.com",
+    })
+    expect(workosMocks.resendInvitation).not.toHaveBeenCalled()
   })
 })
