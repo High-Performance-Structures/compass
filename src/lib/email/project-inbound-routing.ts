@@ -35,8 +35,10 @@ import {
 } from "@/lib/email/internal-email-alias"
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
+import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 import { projectDepartment } from "@/lib/project-branding"
 import { isMeaningfulClientInteraction } from "@/lib/project-profile"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import {
   isYoutubeApiAuditApproved,
@@ -899,13 +901,17 @@ function normalizedPhone(value: string): string {
   return digits
 }
 
-async function verifiedSmsCandidate(input: {
+type VerifiedSmsSender = {
+  readonly email: string
+  readonly name: string | null
+}
+
+async function verifiedSmsSender(input: {
   readonly db: Db
   readonly organizationId: string
   readonly projectId: string
   readonly senderPhone: string
-  readonly candidate: InboundCandidate
-}): Promise<InboundCandidate | null> {
+}): Promise<VerifiedSmsSender | null> {
   const senderPhone = normalizedPhone(input.senderPhone)
   const internal = await input.db
     .select({
@@ -913,30 +919,45 @@ async function verifiedSmsCandidate(input: {
       displayName: users.displayName,
       firstName: users.firstName,
       lastName: users.lastName,
-      phone: notificationPreferences.smsPhoneNumber,
+      role: organizationMembers.role,
+      smsEnabled: notificationPreferences.smsEnabled,
+      smsPhone: notificationPreferences.smsPhoneNumber,
+      smsConsentAccepted: notificationPreferences.smsConsentAccepted,
+      smsConsentDisclosureVersion:
+        notificationPreferences.smsConsentDisclosureVersion,
+      smsConsentPhoneNumber: notificationPreferences.smsConsentPhoneNumber,
     })
-    .from(notificationPreferences)
-    .innerJoin(users, eq(users.id, notificationPreferences.userId))
-    .innerJoin(
-      organizationMembers,
-      eq(organizationMembers.userId, users.id)
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .leftJoin(
+      notificationPreferences,
+      eq(notificationPreferences.userId, users.id)
     )
     .where(
       and(
         eq(organizationMembers.organizationId, input.organizationId),
-        eq(users.isActive, true),
-        eq(notificationPreferences.smsConsentAccepted, true)
+        eq(users.isActive, true)
       )
     )
   const member = internal.find(
-    (item) => item.phone !== null && normalizedPhone(item.phone) === senderPhone
+    (item) =>
+      isInternalStaffRole(item.role) &&
+      item.smsEnabled === true &&
+      hasCurrentSmsConsent({
+        accepted: item.smsConsentAccepted === true,
+        phoneNumber: item.smsPhone,
+        consentPhoneNumber: item.smsConsentPhoneNumber,
+        disclosureVersion: item.smsConsentDisclosureVersion,
+      }) &&
+      item.smsPhone !== null &&
+      normalizedPhone(item.smsPhone) === senderPhone
   )
   if (member) {
     const name =
       member.displayName ??
       ([member.firstName, member.lastName].filter(Boolean).join(" ").trim() ||
         null)
-    return { ...input.candidate, fromAddress: member.email, fromName: name }
+    return { email: member.email, name }
   }
 
   const contacts = await input.db
@@ -957,10 +978,18 @@ async function verifiedSmsCandidate(input: {
   )
   if (!contact) return null
   return {
-    ...input.candidate,
-    fromAddress: contact.email ?? `sms:${input.senderPhone}`,
-    fromName: contact.displayName,
+    email: contact.email ?? `sms:${input.senderPhone}`,
+    name: contact.displayName,
   }
+}
+
+export async function canAutoRouteProjectInboundSms(input: {
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly senderPhone: string
+}): Promise<boolean> {
+  return (await verifiedSmsSender(input)) !== null
 }
 
 export async function routeProjectInboundSms(input: {
@@ -971,8 +1000,11 @@ export async function routeProjectInboundSms(input: {
   readonly senderPhone: string
   readonly candidate: InboundCandidate
 }): Promise<ProjectInboundRouteResult> {
-  const verifiedCandidate = await verifiedSmsCandidate(input)
-  if (!verifiedCandidate) {
+  const verifiedSender = await verifiedSmsSender(input)
+  if (!verifiedSender) {
+    // Unknown senders are intentionally retained for internal review. Sender
+    // recognition controls automatic routing, never whether Compass receives
+    // a project text in the first place.
     await recordActivityEvent({
       db: input.db,
       id: `project-sms-review-${input.candidate.gmailMessageId}`,
@@ -995,7 +1027,11 @@ export async function routeProjectInboundSms(input: {
     db: input.db,
     organizationId: input.organizationId,
     projectId: input.projectId,
-    candidate: verifiedCandidate,
+    candidate: {
+      ...input.candidate,
+      fromAddress: verifiedSender.email,
+      fromName: verifiedSender.name,
+    },
     source: SMS_SOURCE,
   })
 }
