@@ -12,6 +12,16 @@ function desktopJob(workflow: string, jobName: string, nextMarker: string): stri
   return workflow.slice(jobStart, jobEnd)
 }
 
+function expectInOrder(source: string, fragments: readonly string[]): void {
+  let cursor = 0
+
+  for (const fragment of fragments) {
+    const index = source.indexOf(fragment, cursor)
+    expect(index, `Missing workflow fragment: ${fragment}`).toBeGreaterThanOrEqual(cursor)
+    cursor = index + fragment.length
+  }
+}
+
 describe("desktop E2E workflow fixtures", () => {
   it("prepares the local schema before every desktop E2E job", () => {
     const workflow = readFileSync(
@@ -24,9 +34,11 @@ describe("desktop E2E workflow fixtures", () => {
     ]
 
     for (const job of jobs) {
-      expect(job).toContain("Prepare deterministic E2E database")
-      expect(job).toContain("run: bun run test:e2e:prepare")
-      expect(job).toContain("LOCAL_DB_PATH: .e2e/compass.db")
+      expectInOrder(job, [
+        "    env:\n      LOCAL_DB_PATH: .e2e/compass.db\n      COMPASS_E2E: \"true\"",
+        "      - name: Prepare deterministic E2E database\n        run: bun run test:e2e:prepare",
+        "      - name: Run desktop E2E",
+      ])
     }
   })
 
@@ -37,10 +49,11 @@ describe("desktop E2E workflow fixtures", () => {
     )
     const job = desktopJob(workflow, "e2e-desktop", "  # Coverage report")
 
-    expect(job).toContain(
+    expectInOrder(job, [
       "if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'",
-    )
-    expect(job).toContain("name: playwright-report-desktop-${{ matrix.os }}")
-    expect(job).toContain("path: |\n            playwright-report/\n            test-results/")
+      "        os: [ubuntu-latest, macos-latest, windows-latest]",
+      "name: playwright-report-desktop-${{ matrix.os }}",
+      "path: |\n            playwright-report/\n            test-results/",
+    ])
   })
 })
