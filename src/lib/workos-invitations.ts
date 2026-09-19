@@ -29,7 +29,9 @@ export async function sendOrResendWorkOSInvitation(input: {
     (user) => user.email.trim().toLowerCase() === input.email.trim().toLowerCase()
   )
 
-  if (existingUser) {
+  // WorkOS may create the user object before invitation acceptance. Only a
+  // user who has actually signed in should bypass invitation delivery.
+  if (existingUser?.lastSignInAt) {
     return {
       success: true,
       outcome: "existing_user",
@@ -59,6 +61,7 @@ export async function sendOrResendWorkOSInvitation(input: {
   }
 
   if (
+    !existingUser &&
     existingInvitations.some((invitation) => invitation.state === "accepted")
   ) {
     return {

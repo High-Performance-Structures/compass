@@ -543,23 +543,26 @@ export async function inviteUser(input: {
       // send invitation through workos
       try {
         if (existing) {
-          if (!isPendingInvitationPlaceholder(existing)) {
+          const existingMemberships = await db
+            .select({
+              id: organizationMembers.id,
+              organizationId: organizationMembers.organizationId,
+            })
+            .from(organizationMembers)
+            .where(eq(organizationMembers.userId, existing.id))
+          const existingMembership = existingMemberships.find(
+            (membership) =>
+              membership.organizationId === targetOrganizationId
+          )
+
+          if (existingMembership && !isPendingInvitationPlaceholder(existing)) {
             return { success: false, error: "User already exists" }
           }
-          const existingMembership = await db
-            .select({ id: organizationMembers.id })
-            .from(organizationMembers)
-            .where(
-              and(
-                eq(organizationMembers.userId, existing.id),
-                eq(organizationMembers.organizationId, targetOrganizationId)
-              )
-            )
-            .get()
-          if (!existingMembership) {
+          if (!existingMembership && existingMemberships.length > 0) {
             return {
               success: false,
-              error: "This pending user belongs to another organization",
+              error:
+                "This user already belongs to another organization. An administrator must transfer or share their access.",
             }
           }
 
@@ -596,16 +599,33 @@ export async function inviteUser(input: {
             })
             .where(eq(users.id, existing.id))
             .run()
-          await db
-            .update(organizationMembers)
-            .set({ role: validated.role })
-            .where(eq(organizationMembers.id, existingMembership.id))
-            .run()
+          if (existingMembership) {
+            await db
+              .update(organizationMembers)
+              .set({ role: validated.role })
+              .where(eq(organizationMembers.id, existingMembership.id))
+              .run()
+          } else {
+            // Legacy imports could create a user without attaching them to an
+            // organization. Reclaim only truly orphaned accounts; never cross
+            // an existing organization boundary implicitly.
+            await db
+              .insert(organizationMembers)
+              .values({
+                id: crypto.randomUUID(),
+                organizationId: targetOrganizationId,
+                userId: existing.id,
+                role: validated.role,
+                joinedAt: now,
+              })
+              .run()
+          }
           revalidatePath("/dashboard/settings")
           revalidatePath("/dashboard/people")
           return {
             success: true,
-            accessStatus: workosUser ? "active" : "invited",
+            accessStatus:
+              workosUser || existing.isActive ? "active" : "invited",
           }
         }
 
@@ -697,7 +717,50 @@ export async function inviteUser(input: {
       }
     } else {
       if (existing) {
-        return { success: false, error: "User already exists" }
+        const existingMemberships = await db
+          .select({
+            id: organizationMembers.id,
+            organizationId: organizationMembers.organizationId,
+          })
+          .from(organizationMembers)
+          .where(eq(organizationMembers.userId, existing.id))
+        const existingMembership = existingMemberships.find(
+          (membership) => membership.organizationId === targetOrganizationId
+        )
+        if (existingMembership) {
+          return { success: false, error: "User already exists" }
+        }
+        if (existingMemberships.length > 0) {
+          return {
+            success: false,
+            error:
+              "This user already belongs to another organization. An administrator must transfer or share their access.",
+          }
+        }
+
+        await db.batch([
+          db
+            .update(users)
+            .set({
+              role: validated.role,
+              displayName: validated.displayName || existing.displayName,
+              updatedAt: now,
+            })
+            .where(eq(users.id, existing.id)),
+          db.insert(organizationMembers).values({
+            id: crypto.randomUUID(),
+            organizationId: targetOrganizationId,
+            userId: existing.id,
+            role: validated.role,
+            joinedAt: now,
+          }),
+        ])
+        revalidatePath("/dashboard/settings")
+        revalidatePath("/dashboard/people")
+        return {
+          success: true,
+          accessStatus: existing.isActive ? "active" : "invited",
+        }
       }
       // development mode: just create user in db without sending email
       const newUser: NewUser = {

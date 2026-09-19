@@ -1,6 +1,6 @@
 "use server"
 
-import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
+import { getWorkOS, signOut, withAuth } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
@@ -90,6 +90,14 @@ function nullableProfileValue(value: string): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
+async function authenticatedWorkOSUserId(): Promise<string> {
+  const session = await withAuth()
+  if (!session?.user?.id) {
+    throw new Error("Your authentication session has expired. Sign in again.")
+  }
+  return session.user.id
+}
+
 /**
  * Update the signed-in user's identity in WorkOS and every linked Compass
  * contact snapshot. Once an account is active, this is the identity source of
@@ -112,6 +120,7 @@ export async function updateProfile(
 
     // Get current authenticated user
     const currentUser = await requireAuth()
+    const workosUserId = await authenticatedWorkOSUserId()
 
     const normalizedCurrentEmail = currentUser.email.trim().toLowerCase()
     const emailChanged = email !== normalizedCurrentEmail
@@ -120,7 +129,7 @@ export async function updateProfile(
     // email managed by SSO or directory sync before any local values change.
     const workos = getWorkOS()
     await workos.userManagement.updateUser({
-      userId: currentUser.id,
+      userId: workosUserId,
       firstName,
       lastName,
       ...(emailChanged ? { email } : {}),
@@ -298,7 +307,7 @@ export async function updateProfile(
     if (emailChanged) {
       try {
         await workos.userManagement.sendVerificationEmail({
-          userId: currentUser.id,
+          userId: workosUserId,
         })
         verificationEmailSent = true
       } catch (error) {
@@ -348,12 +357,13 @@ export async function changePassword(
     const { newPassword } = parsed.data
 
     // Get current authenticated user
-    const currentUser = await requireAuth()
+    await requireAuth()
+    const workosUserId = await authenticatedWorkOSUserId()
 
     // Update password in WorkOS
     const workos = getWorkOS()
     await workos.userManagement.updateUser({
-      userId: currentUser.id,
+      userId: workosUserId,
       password: newPassword,
     })
 

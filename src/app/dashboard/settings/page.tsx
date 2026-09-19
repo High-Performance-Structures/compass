@@ -80,7 +80,13 @@ export default function SettingsPage() {
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.has("google-calendar") || params.has("social") || params.has("social-draft")) {
+    const requestedSection = params.get("section")
+    const matchingSection = SETTINGS_TABS.find(
+      (tab) => tab.value === requestedSection
+    )
+    if (matchingSection) {
+      setActiveSection(matchingSection.value)
+    } else if (params.has("google-calendar") || params.has("social") || params.has("social-draft")) {
       setActiveSection("integrations")
     }
   }, [])
