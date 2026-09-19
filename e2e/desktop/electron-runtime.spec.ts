@@ -22,9 +22,11 @@ test.describe("Electron runtime", () => {
 
     try {
       const page = await app.firstWindow()
-      await page.waitForLoadState("domcontentloaded")
-
-      const demoResponse = await page.goto("/demo")
+      const demoUrl = new URL(
+        "/demo",
+        process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+      ).toString()
+      const demoResponse = await page.goto(demoUrl)
       expect(demoResponse).not.toBeNull()
       if (!demoResponse) throw new Error("Demo route did not return a response")
       expect(demoResponse.status()).toBeLessThan(400)
