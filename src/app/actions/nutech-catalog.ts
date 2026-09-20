@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { sageCostCodes } from "@/db/schema"
+import { organizations, sageCostCodes } from "@/db/schema"
 import {
   nuTechCatalogPrices,
   nuTechCatalogVersions,
@@ -22,6 +22,7 @@ import {
   canFeature,
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type NuTechCatalogVersionSummary = {
   readonly id: string
@@ -92,12 +93,46 @@ async function sourceHash(value: unknown): Promise<string> {
   ).join("")
 }
 
-export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspace> {
+type NuTechCatalogAccess = {
+  readonly user: Awaited<ReturnType<typeof requireAuth>>
+  readonly organizationId: string
+  readonly db: ReturnType<typeof getDb>
+}
+
+async function nuTechCatalogAccess(
+  action: "read" | "approve" | "delete"
+): Promise<NuTechCatalogAccess> {
   const user = await requireAuth()
-  await requireFeaturePermission(user, "nutech-orders", "read")
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Nu-Tech catalog is limited to active internal staff.")
+  }
+  if (action !== "read" && isDemoUser(user.id)) {
+    throw new Error("DEMO_READ_ONLY")
+  }
+  await requireFeaturePermission(user, "nutech-orders", action)
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Nu-Tech catalog requires an active internal organization.")
+  }
+  return { user, organizationId, db }
+}
+
+export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspace> {
+  const { user, organizationId, db } = await nuTechCatalogAccess("read")
   const [versionRows, priceRows, sageRows, canImport, canDelete] =
     await Promise.all([
       db
@@ -193,12 +228,8 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
 
 export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-    await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
+    const { user, organizationId, db } = await nuTechCatalogAccess("approve")
     const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const { sheetsClient, userEmail } = await getOrganizationDriveContext({
       db,
       environment: env,
@@ -403,12 +434,7 @@ export async function activateNuTechCatalogVersion(
   versionId: string
 ): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-    await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, organizationId, db } = await nuTechCatalogAccess("approve")
     const version = await db
       .select({ id: nuTechCatalogVersions.id })
       .from(nuTechCatalogVersions)
@@ -441,7 +467,12 @@ export async function activateNuTechCatalogVersion(
           activatedBy: user.id,
           updatedAt: now,
         })
-        .where(eq(nuTechCatalogVersions.id, versionId)),
+        .where(
+          and(
+            eq(nuTechCatalogVersions.id, versionId),
+            eq(nuTechCatalogVersions.organizationId, organizationId)
+          )
+        ),
     ])
     revalidateCatalogPaths()
     return { success: true, id: versionId }
@@ -455,12 +486,7 @@ export async function mapNuTechProductToSageCostCode(
   sageCostCodeId: string | null
 ): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-    await requireFeaturePermission(user, "nutech-orders", "approve")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { user, organizationId, db } = await nuTechCatalogAccess("approve")
     const product = await db
       .select({ id: nuTechProducts.id })
       .from(nuTechProducts)
@@ -492,7 +518,12 @@ export async function mapNuTechProductToSageCostCode(
         sageMappedBy: sageCostCodeId === null ? null : user.id,
         updatedAt: now,
       })
-      .where(eq(nuTechProducts.id, productId))
+      .where(
+        and(
+          eq(nuTechProducts.id, productId),
+          eq(nuTechProducts.organizationId, organizationId)
+        )
+      )
     revalidateCatalogPaths()
     return { success: true, id: productId }
   } catch (error) {
@@ -504,12 +535,7 @@ export async function deleteNuTechCatalogVersion(
   versionId: string
 ): Promise<NuTechCatalogActionResult> {
   try {
-    const user = await requireAuth()
-    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-    await requireFeaturePermission(user, "nutech-orders", "delete")
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const { organizationId, db } = await nuTechCatalogAccess("delete")
     const version = await db
       .select({ id: nuTechCatalogVersions.id, status: nuTechCatalogVersions.status })
       .from(nuTechCatalogVersions)
@@ -534,7 +560,12 @@ export async function deleteNuTechCatalogVersion(
     if (linkedOrder) throw new Error("This catalog is already linked to a Nu-Tech order.")
     await db
       .delete(nuTechCatalogVersions)
-      .where(eq(nuTechCatalogVersions.id, versionId))
+      .where(
+        and(
+          eq(nuTechCatalogVersions.id, versionId),
+          eq(nuTechCatalogVersions.organizationId, organizationId)
+        )
+      )
     revalidateCatalogPaths()
     return { success: true, id: versionId }
   } catch (error) {

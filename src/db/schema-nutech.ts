@@ -178,6 +178,27 @@ export const nuTechOrderWorkflows = sqliteTable(
     airliteWorkbookStatus: text("airlite_workbook_status")
       .notNull()
       .default("not_generated"),
+    airliteWorkbookClaimToken: text("airlite_workbook_claim_token"),
+    airliteWorkbookClaimRevision: integer("airlite_workbook_claim_revision"),
+    airliteWorkbookClaimAttempt: integer("airlite_workbook_claim_attempt"),
+    airliteWorkbookClaimReclaimAfter: text(
+      "airlite_workbook_claim_reclaim_after"
+    ),
+    airliteWorkbookClaimRetryUntil: text(
+      "airlite_workbook_claim_retry_until"
+    ),
+    airliteWorkbookClaimFingerprint: text(
+      "airlite_workbook_claim_fingerprint"
+    ),
+    airliteWorkbookClaimError: text("airlite_workbook_claim_error"),
+    airliteWorkbookProviderStatus: text(
+      "airlite_workbook_provider_status"
+    )
+      .notNull()
+      .default("not_started"),
+    airliteWorkbookProviderAttemptedAt: text(
+      "airlite_workbook_provider_attempted_at"
+    ),
     airliteWorkbookGeneratedAt: text("airlite_workbook_generated_at"),
     airliteWorkbookGeneratedBy: text(
       "airlite_workbook_generated_by"
@@ -253,6 +274,18 @@ export const nuTechOrderItems = sqliteTable(
       table.sortOrder
     ),
   ]
+)
+
+// A short-lived row used by the D1 batch guard for cross-table invoice release.
+// The release action inserts only valid=1; the CHECK turns a stale preflight or
+// postcondition into a SQL error so the whole batch rolls back.
+export const nutechVendorInvoiceReleaseGuards = sqliteTable(
+  "nutech_vendor_invoice_release_guards",
+  {
+    workflowId: text("workflow_id").primaryKey(),
+    valid: integer("valid").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
 )
 
 export type NuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferSelect
