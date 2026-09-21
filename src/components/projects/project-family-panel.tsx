@@ -3,6 +3,7 @@ import Link from "next/link"
 import type { ProjectFamilySummary } from "@/app/actions/project-families"
 import { Badge } from "@/components/ui/badge"
 import {
+  ProjectFamilyPhaseActivateButton,
   ProjectFamilyPhaseDriveRetryButton,
   ProjectFamilyPhaseCreateForm,
   ProjectFamilySetupPrompt,
@@ -120,6 +121,8 @@ export function ProjectFamilyPanel({
                 >
                   Open phase project
                 </Link>
+              ) : canManage && phase.authorizedAt ? (
+                <ProjectFamilyPhaseActivateButton phaseId={phase.id} />
               ) : phase.googleDriveFolderId ? (
                 <a
                   href={driveUrl(phase.googleDriveFolderId)}

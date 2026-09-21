@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import {
   projectChangeOrders,
+  customers,
+  projectContacts,
   projectExternalLinks,
   projectJobStatuses,
   projects,
@@ -15,6 +17,10 @@ import {
   projectFamilyPhases,
 } from "@/db/schema-project-families"
 import { requireAuth } from "@/lib/auth"
+import {
+  createProjectShell,
+  type CreateProjectShellInput,
+} from "@/app/actions/projects"
 import { getCloudflareContext } from "@/lib/db"
 import {
   canManageProjectRegistry,
@@ -29,14 +35,34 @@ import {
   projectJobStatusLabel,
 } from "@/lib/project-profile"
 import {
+  baseProjectNumber,
+  projectNumberPhaseNumber,
+} from "@/lib/project-profile"
+import {
   projectFamilyPhaseDriveFolderName,
   projectFamilyProjectNumber,
 } from "@/lib/project-family"
 import { projectWorkspaceClients } from "@/lib/google/project-workspace"
+import type { SheetsClient } from "@/lib/google/client/sheets-client"
+import {
+  buildDepartmentTrackerRow,
+  buildProjectRegistryRow,
+  departmentTrackingDestination,
+  locateProjectTrackerLayout,
+  projectRowNumber,
+  PROJECT_REGISTRY_DESTINATION,
+  type ProjectIntakeDepartment,
+  type ProjectIntakeTrackerInput,
+  type ProjectTrackerLayout,
+} from "@/lib/google/project-intake-tracker"
 import {
   provisionProjectDriveFolder as provisionGoogleProjectDriveFolder,
 } from "@/lib/google/project-drive-provisioning"
 import { requireOrg } from "@/lib/org-scope"
+import {
+  parseSageClientStatusId,
+  parseSageJobTypeId,
+} from "@/lib/sage/client-project-write"
 
 export type ProjectFamilyPhaseSummary = {
   readonly id: string
@@ -395,6 +421,229 @@ async function saveProjectDriveMapping(input: {
   })
 }
 
+type PhaseTrackerWrite = {
+  readonly updatedRange: string | null
+  readonly alreadyPresent: boolean
+}
+
+function quotedSheetRange(sheetTitle: string, range: string): string {
+  return `'${sheetTitle.replaceAll("'", "''")}'!${range}`
+}
+
+async function appendPhaseTrackerRowIfMissing(input: {
+  readonly sheets: SheetsClient
+  readonly googleEmail: string
+  readonly spreadsheetId: string
+  readonly sheetTitle: string
+  readonly rows: ReadonlyArray<ReadonlyArray<unknown>>
+  readonly layout: ProjectTrackerLayout
+  readonly projectNumber: string
+  readonly row: readonly string[]
+}): Promise<PhaseTrackerWrite> {
+  const existingRow = projectRowNumber(
+    input.rows,
+    input.layout,
+    input.projectNumber,
+  )
+  if (existingRow !== null) {
+    return {
+      updatedRange: quotedSheetRange(input.sheetTitle, `A${existingRow}:AZ${existingRow}`),
+      alreadyPresent: true,
+    }
+  }
+  const appended = await input.sheets.appendValues(input.googleEmail, {
+    spreadsheetId: input.spreadsheetId,
+    range: quotedSheetRange(
+      input.sheetTitle,
+      `A${input.layout.headerRowNumber}:AZ`,
+    ),
+    values: [input.row],
+  })
+  return {
+    updatedRange: appended.updatedRange,
+    alreadyPresent: false,
+  }
+}
+
+function phaseAddressParts(address: string | null): {
+  readonly streetNumber: string | null
+  readonly streetName: string | null
+  readonly cityStateZip: string | null
+} {
+  const parts = address?.split(",").map((part) => part.trim()).filter(Boolean) ?? []
+  const street = parts[0] ?? ""
+  const match = /^(\S+)\s+(.+)$/.exec(street)
+  return {
+    streetNumber: match?.[1] ?? null,
+    streetName: match?.[2] ?? (street || null),
+    cityStateZip: parts.slice(1).join(", ") || null,
+  }
+}
+
+function phaseTrackerInput(input: {
+  readonly department: ProjectIntakeDepartment
+  readonly phaseName: string
+  readonly clientName: string | null
+  readonly address: string | null
+  readonly projectManager: string | null
+  readonly intakeDate: string
+}): ProjectIntakeTrackerInput {
+  const clientName = cleanText(input.clientName)
+  const nameParts = clientName?.split(/\s+/).filter(Boolean) ?? []
+  const address = phaseAddressParts(input.address)
+  return {
+    department: input.department,
+    projectName: input.phaseName,
+    clientName,
+    companyName: null,
+    clientFirstName: nameParts[0] ?? null,
+    clientLastName: nameParts.slice(1).join(" ") || null,
+    contactPhone: null,
+    contactEmail: null,
+    streetNumber: address.streetNumber,
+    streetName: address.streetName,
+    cityStateZip: address.cityStateZip,
+    billingAddress: null,
+    assignedTo: cleanText(input.projectManager),
+    referredBy: null,
+    notes: "Created from an authorized project family phase.",
+    intakeDate: input.intakeDate,
+  }
+}
+
+async function syncPhaseTrackerRows(input: {
+  readonly context: Awaited<ReturnType<typeof requireFamilyAdminContext>>
+  readonly phase: { readonly name: string }
+  readonly project: {
+    readonly projectNumber: string
+    readonly clientName: string | null
+    readonly address: string | null
+    readonly projectManager: string | null
+    readonly googleDriveFolderId: string | null
+  }
+  readonly now: string
+}): Promise<{
+  readonly registry: PhaseTrackerWrite
+  readonly department: PhaseTrackerWrite
+}> {
+  const department = projectFamilyDepartment(input.project.projectNumber)
+  if (!department) throw new Error("The phase project has no supported department.")
+  const googleClients = await projectWorkspaceClients({
+    environment: input.context.environment,
+    organizationId: input.context.organizationId,
+  })
+  const trackerEmail = googleClients.projectIntakeGoogleEmail
+  const departmentDestination = departmentTrackingDestination(department)
+  const [registryRows, departmentRows] = await Promise.all([
+    googleClients.sheets.getValues(trackerEmail, {
+      spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
+      range: quotedSheetRange(PROJECT_REGISTRY_DESTINATION.sheetTitle, "A:ZZ"),
+    }),
+    googleClients.sheets.getValues(trackerEmail, {
+      spreadsheetId: departmentDestination.spreadsheetId,
+      range: quotedSheetRange(departmentDestination.sheetTitle, "A:ZZ"),
+    }),
+  ])
+  const registryLayout = locateProjectTrackerLayout(registryRows)
+  const departmentLayout = locateProjectTrackerLayout(departmentRows)
+  if (!registryLayout || !departmentLayout) {
+    throw new Error("The Developer Project Registry or department Tracker headers could not be identified.")
+  }
+  const trackerProject = phaseTrackerInput({
+    department,
+    phaseName: input.phase.name,
+    clientName: input.project.clientName,
+    address: input.project.address,
+    projectManager: input.project.projectManager,
+    intakeDate: input.now.slice(0, 10),
+  })
+  const driveFolderUrl = input.project.googleDriveFolderId
+    ? `https://drive.google.com/drive/folders/${input.project.googleDriveFolderId}`
+    : null
+  const registry = await appendPhaseTrackerRowIfMissing({
+    sheets: googleClients.sheets,
+    googleEmail: trackerEmail,
+    spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
+    sheetTitle: PROJECT_REGISTRY_DESTINATION.sheetTitle,
+    rows: registryRows,
+    layout: registryLayout,
+    projectNumber: input.project.projectNumber,
+    row: buildProjectRegistryRow({
+      layout: registryLayout,
+      project: trackerProject,
+      projectNumber: input.project.projectNumber,
+      driveFolderUrl,
+      departmentTrackerUrl: `https://docs.google.com/spreadsheets/d/${departmentDestination.spreadsheetId}`,
+      createdBy: input.context.user.displayName ?? input.context.user.email,
+    }),
+  })
+  const departmentWrite = await appendPhaseTrackerRowIfMissing({
+    sheets: googleClients.sheets,
+    googleEmail: trackerEmail,
+    spreadsheetId: departmentDestination.spreadsheetId,
+    sheetTitle: departmentDestination.sheetTitle,
+    rows: departmentRows,
+    layout: departmentLayout,
+    projectNumber: input.project.projectNumber,
+    row: buildDepartmentTrackerRow({
+      layout: departmentLayout,
+      project: trackerProject,
+      projectNumber: input.project.projectNumber,
+      driveFolderUrl,
+    }),
+  })
+  return { registry, department: departmentWrite }
+}
+
+async function savePhaseTrackerLink(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly projectId: string
+  readonly system: "google_project_registry" | "google_department_tracker"
+  readonly label: string
+  readonly spreadsheetId: string
+  readonly projectNumber: string
+  readonly syncStatus: "mapped" | "pending"
+  readonly metadata: Record<string, unknown>
+  readonly now: string
+}): Promise<void> {
+  const existing = await input.db
+    .select({ id: projectExternalLinks.id })
+    .from(projectExternalLinks)
+    .where(
+      and(
+        eq(projectExternalLinks.projectId, input.projectId),
+        eq(projectExternalLinks.system, input.system),
+      ),
+    )
+    .limit(1)
+    .get()
+  const values = {
+    label: input.label,
+    externalId: input.spreadsheetId,
+    externalNumber: input.projectNumber,
+    externalUrl: `https://docs.google.com/spreadsheets/d/${input.spreadsheetId}`,
+    syncDirection: "bidirectional",
+    syncStatus: input.syncStatus,
+    metadata: JSON.stringify(input.metadata),
+    lastSyncedAt: input.syncStatus === "mapped" ? input.now : null,
+    updatedAt: input.now,
+  }
+  if (existing) {
+    await input.db
+      .update(projectExternalLinks)
+      .set(values)
+      .where(eq(projectExternalLinks.id, existing.id))
+    return
+  }
+  await input.db.insert(projectExternalLinks).values({
+    id: crypto.randomUUID(),
+    projectId: input.projectId,
+    system: input.system,
+    createdAt: input.now,
+    ...values,
+  })
+}
+
 export async function createProjectFamily(
   input: CreateProjectFamilyInput,
 ): Promise<ProjectFamilyMutationResult> {
@@ -740,6 +989,248 @@ export async function createProjectFamilyPhase(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to create project phase.",
+    }
+  }
+}
+
+/**
+ * Turns an authorized planned phase into a normal Compass project. The phase
+ * number is supplied by the family record so this path cannot accidentally
+ * consume the next top-level project sequence.
+ */
+export async function activateProjectFamilyPhase(
+  phaseId: string,
+): Promise<ProjectFamilyMutationResult> {
+  try {
+    const context = await requireFamilyAdminContext()
+    const phase = await context.db
+      .select({
+        id: projectFamilyPhases.id,
+        familyId: projectFamilyPhases.familyId,
+        projectId: projectFamilyPhases.projectId,
+        projectNumber: projectFamilyPhases.projectNumber,
+        name: projectFamilyPhases.name,
+        jobStatusId: projectFamilyPhases.jobStatusId,
+        authorizedAt: projectFamilyPhases.authorizedAt,
+        originatingChangeOrderId: projectFamilyPhases.originatingChangeOrderId,
+      })
+      .from(projectFamilyPhases)
+      .innerJoin(projectFamilies, eq(projectFamilies.id, projectFamilyPhases.familyId))
+      .where(
+        and(
+          eq(projectFamilyPhases.id, phaseId),
+          eq(projectFamilies.organizationId, context.organizationId),
+        ),
+      )
+      .limit(1)
+      .get()
+    if (!phase) return { success: false, error: "Project phase not found." }
+    if (phase.projectId) {
+      return {
+        success: false,
+        error: "This phase is already an active Compass project.",
+      }
+    }
+    if (!phase.projectNumber) {
+      return { success: false, error: "The phase does not have a project number." }
+    }
+    if (!phase.authorizedAt && !phase.originatingChangeOrderId) {
+      return {
+        success: false,
+        error: "Authorize the phase with contract data or an originating change order before creating its Sage project.",
+      }
+    }
+    const phaseNumber = projectNumberPhaseNumber(phase.projectNumber)
+    const baseNumber = baseProjectNumber(phase.projectNumber)
+    if (phaseNumber === null || !baseNumber) {
+      return { success: false, error: "The phase number is not a valid phased project number." }
+    }
+
+    const baseProject = await context.db
+      .select({
+        id: projects.id,
+        projectNumber: projects.projectNumber,
+        department: projects.department,
+        name: projects.name,
+        status: projects.status,
+        address: projects.address,
+        clientName: projects.clientName,
+        projectManager: projects.projectManager,
+        sageJobTypeName: projects.sageJobTypeName,
+      })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.organizationId, context.organizationId),
+          eq(projects.projectNumber, baseNumber),
+        ),
+      )
+      .limit(1)
+      .get()
+    if (!baseProject) {
+      return { success: false, error: "The original project for this phase was not found." }
+    }
+    const department = projectFamilyDepartment(baseNumber)
+    if (!department) {
+      return { success: false, error: "The original project has no supported department." }
+    }
+    const customer = await context.db
+      .select({ sageClientStatusId: customers.sageClientStatusId })
+      .from(projectContacts)
+      .innerJoin(customers, eq(customers.id, projectContacts.sourceEntityId))
+      .where(
+        and(
+          eq(projectContacts.projectId, baseProject.id),
+          eq(projectContacts.sourceEntityType, "customer"),
+        ),
+      )
+      .limit(1)
+      .get()
+    const shellInput: CreateProjectShellInput = {
+      projectNumber: phase.projectNumber,
+      name: phase.name,
+      department,
+      clientName: baseProject.clientName,
+      address: baseProject.address,
+      status: baseProject.status,
+      sageClientStatusId:
+        parseSageClientStatusId(customer?.sageClientStatusId) ?? 1,
+      sageJobStatusId: phase.jobStatusId,
+      sageJobType:
+        parseSageJobTypeId(baseProject.sageJobTypeName?.toLowerCase() ?? "customer") ??
+        "customer",
+      confirmedDistinctProjectIds: [baseProject.id],
+    }
+    const created = await createProjectShell(shellInput)
+    if (!created.success) {
+      if ("error" in created) return { success: false, error: created.error }
+      return {
+        success: false,
+        error: "A possible duplicate project must be reviewed before activating this phase.",
+      }
+    }
+
+    const linked = await linkProjectToFamilyPhase({
+      phaseId,
+      projectId: created.id,
+    })
+    if (!linked.success) {
+      return {
+        success: false,
+        error: `Phase project ${phase.projectNumber} was created, but Compass could not finish linking it: ${linked.error}`,
+      }
+    }
+
+    const project = await context.db
+      .select({
+        projectNumber: projects.projectNumber,
+        clientName: projects.clientName,
+        address: projects.address,
+        projectManager: projects.projectManager,
+        googleDriveFolderId: projects.googleDriveFolderId,
+      })
+      .from(projects)
+      .where(eq(projects.id, created.id))
+      .limit(1)
+      .get()
+    if (!project?.projectNumber) {
+      return {
+        success: false,
+        error: "Phase project was created, but its project number could not be read back.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    let warning = linked.warning ?? null
+    try {
+      const trackerWrites = await syncPhaseTrackerRows({
+        context,
+        phase,
+        project: {
+          projectNumber: project.projectNumber,
+          clientName: project.clientName,
+          address: project.address,
+          projectManager: project.projectManager,
+          googleDriveFolderId: project.googleDriveFolderId,
+        },
+        now,
+      })
+      await Promise.all([
+        savePhaseTrackerLink({
+          db: context.db,
+          projectId: created.id,
+          system: "google_project_registry",
+          label: PROJECT_REGISTRY_DESTINATION.workbookTitle,
+          spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
+          projectNumber: project.projectNumber,
+          syncStatus: "mapped",
+          metadata: {
+            sheet: PROJECT_REGISTRY_DESTINATION.sheetTitle,
+            updatedRange: trackerWrites.registry.updatedRange,
+            alreadyPresent: trackerWrites.registry.alreadyPresent,
+          },
+          now,
+        }),
+        savePhaseTrackerLink({
+          db: context.db,
+          projectId: created.id,
+          system: "google_department_tracker",
+          label: `${department} department tracker`,
+          spreadsheetId: departmentTrackingDestination(department).spreadsheetId,
+          projectNumber: project.projectNumber,
+          syncStatus: "mapped",
+          metadata: {
+            sheet: departmentTrackingDestination(department).sheetTitle,
+            updatedRange: trackerWrites.department.updatedRange,
+            alreadyPresent: trackerWrites.department.alreadyPresent,
+          },
+          now,
+        }),
+      ])
+    } catch (error) {
+      warning = warning
+        ? `${warning} Registry/tracker sync is pending: ${error instanceof Error ? error.message : "Google Sheets could not be updated."}`
+        : `Registry/tracker sync is pending: ${error instanceof Error ? error.message : "Google Sheets could not be updated."}`
+      await Promise.all([
+        savePhaseTrackerLink({
+          db: context.db,
+          projectId: created.id,
+          system: "google_project_registry",
+          label: PROJECT_REGISTRY_DESTINATION.workbookTitle,
+          spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
+          projectNumber: project.projectNumber,
+          syncStatus: "pending",
+          metadata: { sheet: PROJECT_REGISTRY_DESTINATION.sheetTitle, error: warning },
+          now,
+        }),
+        savePhaseTrackerLink({
+          db: context.db,
+          projectId: created.id,
+          system: "google_department_tracker",
+          label: `${department} department tracker`,
+          spreadsheetId: departmentTrackingDestination(department).spreadsheetId,
+          projectNumber: project.projectNumber,
+          syncStatus: "pending",
+          metadata: { sheet: departmentTrackingDestination(department).sheetTitle, error: warning },
+          now,
+        }),
+      ])
+    }
+
+    revalidatePath(`/dashboard/projects/${created.id}`)
+    revalidatePath(`/dashboard/projects/${baseProject.id}`)
+    revalidatePath("/dashboard/projects")
+    return {
+      success: true,
+      id: created.id,
+      projectNumber: project.projectNumber,
+      driveStatus: linked.driveStatus,
+      warning,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to activate the project phase.",
     }
   }
 }

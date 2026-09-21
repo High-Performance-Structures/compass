@@ -4,6 +4,7 @@ import { FormEvent, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 
 import {
+  activateProjectFamilyPhase,
   createProjectFamilyFromProject,
   createProjectFamilyPhase,
   provisionProjectFamilyPhaseDriveFolder,
@@ -94,6 +95,8 @@ export function ProjectFamilyPhaseCreateForm({
   const [sequence, setSequence] = useState(String(nextSequence))
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [authorizedAmount, setAuthorizedAmount] = useState("")
+  const [authorizedAt, setAuthorizedAt] = useState("")
   const [message, setMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -108,8 +111,12 @@ export function ProjectFamilyPhaseCreateForm({
         description: description.trim() || null,
         jobStatusId: "awaiting_funding",
         originatingChangeOrderId: null,
-        authorizedContractAmountCents: null,
-        authorizedAt: null,
+        authorizedContractAmountCents: authorizedAmount.trim()
+          ? Math.round(Number(authorizedAmount) * 100)
+          : null,
+        authorizedAt: authorizedAt
+          ? `${authorizedAt}T00:00:00.000Z`
+          : null,
       })
       if (!result.success) {
         setMessage(result.error)
@@ -122,6 +129,8 @@ export function ProjectFamilyPhaseCreateForm({
       }
       setName("")
       setDescription("")
+      setAuthorizedAmount("")
+      setAuthorizedAt("")
       setSequence(String(nextSequence + 1))
       router.refresh()
     })
@@ -144,6 +153,29 @@ export function ProjectFamilyPhaseCreateForm({
             min="2"
             value={sequence}
             onChange={(event) => setSequence(event.target.value)}
+            disabled={isPending}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="project-family-authorized-amount">Authorized contract amount</Label>
+          <Input
+            id="project-family-authorized-amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={authorizedAmount}
+            onChange={(event) => setAuthorizedAmount(event.target.value)}
+            placeholder="Optional"
+            disabled={isPending}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="project-family-authorized-at">Authorization date</Label>
+          <Input
+            id="project-family-authorized-at"
+            type="date"
+            value={authorizedAt}
+            onChange={(event) => setAuthorizedAt(event.target.value)}
             disabled={isPending}
           />
         </div>
@@ -175,6 +207,38 @@ export function ProjectFamilyPhaseCreateForm({
         {message && <p className="text-sm text-destructive">{message}</p>}
       </div>
     </form>
+  )
+}
+
+export function ProjectFamilyPhaseActivateButton({
+  phaseId,
+}: {
+  readonly phaseId: string
+}): React.ReactElement {
+  const router = useRouter()
+  const [message, setMessage] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function activate(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await activateProjectFamilyPhase(phaseId)
+      if (!result.success) {
+        setMessage(result.error)
+        return
+      }
+      if (result.warning) setMessage(result.warning)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <Button type="button" size="sm" onClick={activate} disabled={isPending}>
+        {isPending ? "Activating..." : "Create phase project"}
+      </Button>
+      {message && <p className="max-w-xs text-right text-xs text-destructive">{message}</p>}
+    </div>
   )
 }
 
