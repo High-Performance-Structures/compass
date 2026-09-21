@@ -19,19 +19,15 @@ import {
   users,
 } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
-import { googleAuth } from "@/db/schema-google"
+import {
+  projectFamilies,
+  projectFamilyPhases,
+} from "@/db/schema-project-families"
 import { and, asc, eq, notExists, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
-import { decrypt } from "@/lib/crypto"
 import { recordActivityEvent } from "@/lib/activity-log"
-import { SheetsClient } from "@/lib/google/client/sheets-client"
-import { DriveClient } from "@/lib/google/client/drive-client"
-import {
-  getGoogleConfig,
-  getGoogleCryptoSalt,
-  parseServiceAccountKey,
-} from "@/lib/google/config"
+import type { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   buildProjectDriveFolderName,
   projectDriveTemplateFolderId,
@@ -49,7 +45,7 @@ import {
   type ProjectIntakeTrackerInput,
   type ProjectTrackerLayout,
 } from "@/lib/google/project-intake-tracker"
-import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
+import { projectWorkspaceClients } from "@/lib/google/project-workspace"
 import { requireOrg } from "@/lib/org-scope"
 import {
   contactIdentityChanged,
@@ -330,47 +326,6 @@ function intakeClientName(input: CreateProjectIntakeInput): string | null {
     .filter((value) => value !== null)
     .join(" ")
   return contact || cleanText(input.companyName)
-}
-
-type ProjectWorkspaceClients = {
-  readonly sheets: SheetsClient
-  readonly drive: DriveClient
-  readonly projectIntakeGoogleEmail: string
-}
-
-async function projectWorkspaceClients(input: {
-  readonly environment: CloudflareEnv
-  readonly organizationId: string
-}): Promise<ProjectWorkspaceClients> {
-  const db = getDb(input.environment.DB)
-  const authRows = await db
-    .select({
-      serviceAccountKeyEncrypted: googleAuth.serviceAccountKeyEncrypted,
-      connectorGoogleEmail: users.googleEmail,
-      connectorEmail: users.email,
-    })
-    .from(googleAuth)
-    .innerJoin(users, eq(users.id, googleAuth.connectedBy))
-    .where(eq(googleAuth.organizationId, input.organizationId))
-    .limit(1)
-  const auth = authRows[0]
-  if (!auth) throw new Error("Google Workspace service account is not connected.")
-
-  const config = getGoogleConfig(input.environment)
-  const keyJson = await decrypt(
-    auth.serviceAccountKeyEncrypted,
-    config.encryptionKey,
-    getGoogleCryptoSalt()
-  )
-  const serviceAccountKey = parseServiceAccountKey(keyJson)
-  return {
-    sheets: new SheetsClient(serviceAccountKey),
-    drive: new DriveClient({ serviceAccountKey }),
-    projectIntakeGoogleEmail: resolveProjectIntakeIntegrationEmail({
-      connectorGoogleEmail: auth.connectorGoogleEmail,
-      connectorEmail: auth.connectorEmail,
-    }),
-  }
 }
 
 function appendWarning(current: string | null, next: string): string {
@@ -1263,6 +1218,61 @@ export async function provisionProjectDriveFolder(
       )
       .limit(1)
     if (!project) return { success: false, error: "Project not found" }
+    const [familyPhase] = await db
+      .select({
+        phaseId: projectFamilyPhases.id,
+        familyId: projectFamilyPhases.familyId,
+        sequence: projectFamilyPhases.sequence,
+        phaseFolderId: projectFamilyPhases.googleDriveFolderId,
+        familyFolderId: projectFamilies.googleDriveFolderId,
+      })
+      .from(projectFamilyPhases)
+      .innerJoin(projectFamilies, eq(projectFamilies.id, projectFamilyPhases.familyId))
+      .where(
+        and(
+          eq(projectFamilyPhases.projectId, projectId),
+          eq(projectFamilies.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    let familyParentFolderId =
+      familyPhase?.sequence && familyPhase.sequence > 1
+        ? familyPhase.familyFolderId
+        : null
+    if (familyPhase?.sequence && familyPhase.sequence > 1 && !familyParentFolderId) {
+      const basePhase = await db
+        .select({
+          phaseFolderId: projectFamilyPhases.googleDriveFolderId,
+          linkedProjectFolderId: projects.googleDriveFolderId,
+        })
+        .from(projectFamilyPhases)
+        .leftJoin(projects, eq(projects.id, projectFamilyPhases.projectId))
+        .where(
+          and(
+            eq(projectFamilyPhases.familyId, familyPhase.familyId),
+            eq(projectFamilyPhases.sequence, 1),
+          ),
+        )
+        .limit(1)
+        .get()
+      familyParentFolderId =
+        basePhase?.phaseFolderId ?? basePhase?.linkedProjectFolderId ?? null
+      if (familyParentFolderId) {
+        await db
+          .update(projectFamilies)
+          .set({
+            googleDriveFolderId: familyParentFolderId,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(projectFamilies.id, familyPhase.familyId))
+      }
+    }
+    if (familyPhase?.sequence && familyPhase.sequence > 1 && !familyParentFolderId) {
+      return {
+        success: false,
+        error: "The family base project is not mapped to a Google Drive folder yet.",
+      }
+    }
     const department = projectDepartment(project.projectNumber)
     if (!department || !project.projectNumber) {
       return {
@@ -1301,7 +1311,12 @@ export async function provisionProjectDriveFolder(
       {
         department,
         folderName,
-        existingFolderId: project.googleDriveFolderId ?? undefined,
+        existingFolderId:
+          project.googleDriveFolderId ?? familyPhase?.phaseFolderId ?? undefined,
+        parentFolderId:
+          familyPhase?.sequence && familyPhase.sequence > 1
+            ? familyParentFolderId ?? undefined
+            : undefined,
       }
     )
     const now = new Date().toISOString()
@@ -1327,6 +1342,23 @@ export async function provisionProjectDriveFolder(
       .update(projects)
       .set({ googleDriveFolderId: drive.folderId, updatedAt: now })
       .where(eq(projects.id, projectId))
+    const phaseUpdate = familyPhase
+      ? db
+          .update(projectFamilyPhases)
+          .set({
+            projectNumber: project.projectNumber,
+            googleDriveFolderId: drive.folderId,
+            updatedAt: now,
+          })
+          .where(eq(projectFamilyPhases.id, familyPhase.phaseId))
+      : null
+    const familyUpdate =
+      familyPhase?.sequence === 1
+        ? db
+            .update(projectFamilies)
+            .set({ googleDriveFolderId: drive.folderId, updatedAt: now })
+            .where(eq(projectFamilies.id, familyPhase.familyId))
+        : null
     const sageOperationUpdate = db
       .update(projectOperations)
       .set({ externalUrl: drive.folderUrl, updatedAt: now })
@@ -1340,6 +1372,8 @@ export async function provisionProjectDriveFolder(
       await db.batch([
         projectUpdate,
         sageOperationUpdate,
+        ...(phaseUpdate ? [phaseUpdate] : []),
+        ...(familyUpdate ? [familyUpdate] : []),
         db
           .update(projectExternalLinks)
           .set(linkValues)
@@ -1349,6 +1383,8 @@ export async function provisionProjectDriveFolder(
       await db.batch([
         projectUpdate,
         sageOperationUpdate,
+        ...(phaseUpdate ? [phaseUpdate] : []),
+        ...(familyUpdate ? [familyUpdate] : []),
         db.insert(projectExternalLinks).values({
           id: crypto.randomUUID(),
           projectId,
@@ -1534,9 +1570,24 @@ export async function createProjectShell(
     if (!sageClientStatusId) {
       return { success: false, error: "Choose a Sage client status." }
     }
-    const sageJobStatus = PROJECT_JOB_STATUS_DEFINITIONS.find(
+    const builtInSageJobStatus = PROJECT_JOB_STATUS_DEFINITIONS.find(
       (option) => option.id === input.sageJobStatusId
     )
+    const customSageJobStatus = builtInSageJobStatus
+      ? null
+      : await db
+          .select({ id: projectJobStatuses.id, label: projectJobStatuses.label })
+          .from(projectJobStatuses)
+          .where(
+            and(
+              eq(projectJobStatuses.id, input.sageJobStatusId),
+              eq(projectJobStatuses.organizationId, orgId),
+              eq(projectJobStatuses.active, true),
+            ),
+          )
+          .limit(1)
+          .get()
+    const sageJobStatus = builtInSageJobStatus ?? customSageJobStatus
     if (!sageJobStatus) {
       return { success: false, error: "Choose a Sage job status." }
     }

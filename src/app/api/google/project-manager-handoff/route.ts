@@ -7,7 +7,15 @@ import {
   projectOperations,
   projects,
 } from "@/db/schema"
+import {
+  projectFamilies,
+  projectFamilyPhases,
+} from "@/db/schema-project-families"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  baseProjectNumber,
+  projectNumberPhaseNumber,
+} from "@/lib/project-profile"
 import {
   projectDepartmentFromDivisionLabel,
   resolvedProjectDepartment,
@@ -412,6 +420,100 @@ async function stageProjectForSageSync(
   })
 }
 
+async function linkPhasedHandoffToFamily(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly projectId: string
+  readonly projectNumber: string
+  readonly projectName: string
+  readonly folderId: string | null
+  readonly now: string
+}): Promise<void> {
+  const phaseNumber = projectNumberPhaseNumber(input.projectNumber)
+  const baseNumber = baseProjectNumber(input.projectNumber)
+  if (phaseNumber === null || !baseNumber) return
+
+  const baseProject = await input.db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.organizationId, input.organizationId),
+        eq(projects.projectNumber, baseNumber),
+      ),
+    )
+    .limit(1)
+    .get()
+  if (!baseProject) return
+
+  const family = await input.db
+    .select({ id: projectFamilies.id })
+    .from(projectFamilies)
+    .innerJoin(
+      projectFamilyPhases,
+      and(
+        eq(projectFamilyPhases.familyId, projectFamilies.id),
+        eq(projectFamilyPhases.projectId, baseProject.id),
+      ),
+    )
+    .where(eq(projectFamilies.organizationId, input.organizationId))
+    .limit(1)
+    .get()
+  if (!family) return
+
+  const sequence = phaseNumber + 1
+  const existing = await input.db
+    .select({
+      id: projectFamilyPhases.id,
+      projectId: projectFamilyPhases.projectId,
+      googleDriveFolderId: projectFamilyPhases.googleDriveFolderId,
+    })
+    .from(projectFamilyPhases)
+    .where(
+      and(
+        eq(projectFamilyPhases.familyId, family.id),
+        eq(projectFamilyPhases.sequence, sequence),
+      ),
+    )
+    .limit(1)
+    .get()
+  if (existing && existing.projectId && existing.projectId !== input.projectId) {
+    return
+  }
+
+  if (existing) {
+    await input.db
+      .update(projectFamilyPhases)
+      .set({
+        projectId: input.projectId,
+        projectNumber: input.projectNumber,
+        googleDriveFolderId: input.folderId ?? existing.googleDriveFolderId,
+        name: input.projectName,
+        updatedAt: input.now,
+      })
+      .where(eq(projectFamilyPhases.id, existing.id))
+    return
+  }
+
+  await input.db.insert(projectFamilyPhases).values({
+    id: crypto.randomUUID(),
+    familyId: family.id,
+    projectId: input.projectId,
+    projectNumber: input.projectNumber,
+    googleDriveFolderId: input.folderId,
+    sequence,
+    name: input.projectName,
+    description: null,
+    jobStatusId: "awaiting_funding",
+    originatingChangeOrderId: null,
+    authorizedContractAmountCents: null,
+    authorizedAt: null,
+    createdBy: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  })
+}
+
 export async function POST(request: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
   const expectedToken = envValue(env, "GOOGLE_PROJECT_MANAGER_HANDOFF_TOKEN")
@@ -556,6 +658,15 @@ export async function POST(request: Request): Promise<Response> {
   })
 
   await stageProjectForSageSync(db, { projectId, payload, now })
+  await linkPhasedHandoffToFamily({
+    db,
+    organizationId,
+    projectId,
+    projectNumber: payload.projectNumber,
+    projectName: payload.name,
+    folderId,
+    now,
+  })
 
   return Response.json({
     success: true,

@@ -22,6 +22,7 @@ export default defineConfig({
     "./src/db/schema-templates.ts",
     "./src/db/schema-social.ts",
     "./src/db/schema-rfqs.ts",
+    "./src/db/schema-project-families.ts",
     "./src/lib/sync/schema.ts",
   ],
   out: "./drizzle",

@@ -104,6 +104,26 @@ describe("Google Developer-folder project tracking intake", () => {
     ).toBe("O-212-55")
   })
 
+  it("does not treat a family phase suffix as a new top-level sequence", () => {
+    const rows = [
+      ["PROJECT NUMBER"],
+      ["O-64-660"],
+      ["O-64-660-1"],
+    ]
+    const layout = locateProjectTrackerLayout(rows)
+    expect(layout).not.toBeNull()
+    if (!layout) return
+
+    expect(
+      allocateProjectNumber({
+        department: "O",
+        streetNumber: "77",
+        rows,
+        layout,
+      }),
+    ).toBe("O-65-77")
+  })
+
   it("allocates from the Developer Project Registry Project ID column", () => {
     const rows = [
       ["Project ID", "Division", "Sequence"],

@@ -39,6 +39,8 @@ export type ProjectDriveProvisioningInput = {
   readonly department: ProjectIntakeDepartment
   readonly folderName: string
   readonly existingFolderId?: string
+  /** Optional family parent; defaults to the department project root. */
+  readonly parentFolderId?: string
 }
 
 export type ProjectDriveProvisioningResult = {
@@ -243,23 +245,31 @@ export async function provisionProjectDriveFolder(
   input: ProjectDriveProvisioningInput
 ): Promise<ProjectDriveProvisioningResult> {
   const source = sourceForDepartment(input.department)
+  const parentFolderId = input.parentFolderId ?? source.folderId
   const folderName = cleanFolderPart(input.folderName)
   if (!folderName) throw new Error("Project folder name is required.")
 
+  if (input.parentFolderId) {
+    const parent = await client.getFile(userEmail, input.parentFolderId)
+    if (parent.mimeType !== GOOGLE_FOLDER_MIME_TYPE) {
+      throw new Error("The configured project family Drive parent is not a folder.")
+    }
+  }
+
   const existingRoot = input.existingFolderId
     ? await client.getFile(userEmail, input.existingFolderId)
-    : await findFolder(client, userEmail, source.folderId, folderName)
+    : await findFolder(client, userEmail, parentFolderId, folderName)
   const root =
     existingRoot ??
     (await client.createFolder(userEmail, {
       name: folderName,
-      parentId: source.folderId,
+      parentId: parentFolderId,
     }))
   const verifiedRoot = await client.getFile(userEmail, root.id)
   verifyFolder(
     verifiedRoot,
     input.existingFolderId ? verifiedRoot.name : folderName,
-    source.folderId
+    parentFolderId
   )
 
   const templateFolderId = projectDriveTemplateFolderId(input.department)
@@ -285,7 +295,7 @@ export async function provisionProjectDriveFolder(
     folderId: verifiedRoot.id,
     folderName: verifiedRoot.name,
     folderUrl: `https://drive.google.com/drive/folders/${verifiedRoot.id}`,
-    parentFolderId: source.folderId,
+    parentFolderId,
     childFolderNames,
     createdRoot: existingRoot === null,
     createdChildCount: copied.createdFolderCount,
