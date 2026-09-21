@@ -121,7 +121,7 @@ export function ProjectFamilyPanel({
                 >
                   Open phase project
                 </Link>
-              ) : canManage && phase.authorizedAt ? (
+              ) : canManage && (phase.authorizedAt || phase.originatingChangeOrder) ? (
                 <ProjectFamilyPhaseActivateButton phaseId={phase.id} />
               ) : phase.googleDriveFolderId ? (
                 <a

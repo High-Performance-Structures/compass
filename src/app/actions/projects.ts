@@ -1522,9 +1522,24 @@ export async function createProjectShell(
     if (!sageClientStatusId) {
       return { success: false, error: "Choose a Sage client status." }
     }
-    const sageJobStatus = PROJECT_JOB_STATUS_DEFINITIONS.find(
+    const builtInSageJobStatus = PROJECT_JOB_STATUS_DEFINITIONS.find(
       (option) => option.id === input.sageJobStatusId
     )
+    const customSageJobStatus = builtInSageJobStatus
+      ? null
+      : await db
+          .select({ id: projectJobStatuses.id, label: projectJobStatuses.label })
+          .from(projectJobStatuses)
+          .where(
+            and(
+              eq(projectJobStatuses.id, input.sageJobStatusId),
+              eq(projectJobStatuses.organizationId, orgId),
+              eq(projectJobStatuses.active, true),
+            ),
+          )
+          .limit(1)
+          .get()
+    const sageJobStatus = builtInSageJobStatus ?? customSageJobStatus
     if (!sageJobStatus) {
       return { success: false, error: "Choose a Sage job status." }
     }
