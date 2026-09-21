@@ -696,8 +696,8 @@ function SidebarNav({
                   currentProjectId={activeProjectId}
                   targetSection={projectTargetSection}
                   placeholder="Choose a project"
-                  placeholderClassName="text-sidebar-foreground/70"
-                  className="h-8 w-full border-sidebar-border/60 bg-sidebar-accent/20 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  placeholderClassName="text-sidebar-foreground/90"
+                  className="h-8 w-full cursor-pointer border-sidebar-foreground/30 bg-sidebar-accent/35 px-2 text-sidebar-foreground shadow-sm transition-colors hover:border-sidebar-foreground/50 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:border-sidebar-ring focus-visible:ring-sidebar-ring/50 disabled:cursor-not-allowed"
                 />
               </div>
             ),
