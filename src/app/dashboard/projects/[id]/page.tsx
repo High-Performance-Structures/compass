@@ -46,9 +46,14 @@ import {
   getProjectRfiSummary,
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
+import {
+  getProjectFamilySummary,
+  type ProjectFamilySummary,
+} from "@/app/actions/project-families"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
+import { ProjectFamilyPanel } from "@/components/projects/project-family-panel"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -155,6 +160,7 @@ export default async function ProjectSummaryPage({
   let operationsSummary: ProjectOperationsSummary | null = null
   let sageSyncQueue: ProjectSageSyncQueue | null = null
   let rfiSummary: ProjectRfiSummary | null = null
+  let familySummary: ProjectFamilySummary | null = null
   let canEditRegistry = false
   let developerModeEnabled = false
   let userRole: string | null = null
@@ -316,6 +322,7 @@ export default async function ProjectSummaryPage({
       loadedContactsSummary,
       loadedOperationsSummary,
       loadedRfiSummary,
+      loadedFamilySummary,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -334,6 +341,9 @@ export default async function ProjectSummaryPage({
         getProjectOperationsSummary(id)
       ),
       loadOptionalSummary("RFI summary", () => getProjectRfiSummary(id)),
+      loadOptionalSummary("project family summary", () =>
+        getProjectFamilySummary(id),
+      ),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -342,6 +352,7 @@ export default async function ProjectSummaryPage({
     contactsSummary = loadedContactsSummary
     operationsSummary = loadedOperationsSummary
     rfiSummary = loadedRfiSummary
+    familySummary = loadedFamilySummary
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -442,6 +453,13 @@ export default async function ProjectSummaryPage({
             Project Information & Follow-up
           </Link>
         </div>
+
+        <ProjectFamilyPanel
+          summary={familySummary}
+          canManage={canEditRegistry}
+          projectId={id}
+          projectName={projectName}
+        />
 
         <section className="mb-4 grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 sm:mb-5 lg:grid-cols-4">
           <Link

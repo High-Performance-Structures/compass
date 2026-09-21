@@ -1,4 +1,7 @@
-import { projectNumberParts } from "@/lib/project-profile"
+import {
+  projectNumberParts,
+  projectNumberPhaseNumber,
+} from "@/lib/project-profile"
 
 export function projectNumberReviewDecisionKey(
   projectId: string,
@@ -58,6 +61,11 @@ export function projectNumberReviewIssue(
 ): ProjectNumberReviewIssue | null {
   if (!value) return null
   const trimmed = value.trim()
+  // Numeric suffixes are reserved for explicit project-family phases. They
+  // are valid project numbers, not legacy extra-segment cutovers.
+  if (projectNumberPhaseNumber(trimmed) !== null && projectNumberParts(trimmed)) {
+    return null
+  }
   if (BUILDERTREND_PROJECT_NUMBER_PATTERN.test(trimmed)) {
     const inferred = governedNumberFromProjectName(projectName)
     return {
@@ -104,7 +112,7 @@ export function projectNumberDepartmentSequence(
   const issue = projectNumberReviewIssue(value, projectName)
   if (issue?.reason === "extra_segments") return null
   const candidate = issue?.suggestedProjectNumber ?? value
-  const match = /^([OHND])\s*-\s*(\d+)(?:\s*-\s*[A-Z0-9]+)?$/i.exec(
+  const match = /^([OHND])\s*-\s*(\d+)(?:\s*-\s*[A-Z0-9]+)?(?:\s*-\s*\d+)?$/i.exec(
     candidate.trim(),
   )
   const department = match?.[1]?.toUpperCase()

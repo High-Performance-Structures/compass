@@ -140,4 +140,37 @@ describe("project Drive provisioning", () => {
     expect(second.createdChildCount).toBe(0)
     expect(second.copiedFileCount).toBe(0)
   })
+
+  it("provisions a phase folder under an existing family parent", async () => {
+    const client = new FakeDriveClient()
+    const templateId = projectDriveTemplateFolderId("H")
+    client.add({
+      id: templateId,
+      name: "H-SequentialNumber-AddressNumber-LastName",
+      mimeType: FOLDER_MIME_TYPE,
+    })
+    client.add({
+      id: "family-parent",
+      name: "H-999 - Existing project",
+      mimeType: FOLDER_MIME_TYPE,
+      parents: ["department-root"],
+    })
+
+    const result = await provisionProjectDriveFolder(
+      client,
+      "projects@hps-colorado.com",
+      {
+        department: "H",
+        folderName: "H-999-1 - Phase 1",
+        parentFolderId: "family-parent",
+      },
+    )
+
+    expect(result.parentFolderId).toBe("family-parent")
+    const phaseFolder = await client.getFile(
+      "projects@hps-colorado.com",
+      result.folderId,
+    )
+    expect(phaseFolder.parents).toEqual(["family-parent"])
+  })
 })
