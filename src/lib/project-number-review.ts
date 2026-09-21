@@ -120,7 +120,10 @@ export function projectNumberDepartmentSequence(
   if (!department || !rawSequence) return null
 
   const sequence = rawSequence.replace(/^0+(?=\d)/, "")
-  return `${department}-${sequence}`
+  const phaseNumber = projectNumberPhaseNumber(candidate)
+  return phaseNumber === null
+    ? `${department}-${sequence}`
+    : `${department}-${sequence}-P${phaseNumber}`
 }
 
 export function isApprovedProjectNumber(value: string | null): boolean {

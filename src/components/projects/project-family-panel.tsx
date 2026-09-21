@@ -6,6 +6,7 @@ import {
   ProjectFamilyPhaseActivateButton,
   ProjectFamilyPhaseDriveRetryButton,
   ProjectFamilyPhaseCreateForm,
+  ProjectFamilyExistingPhaseLinkForm,
   ProjectFamilySetupPrompt,
 } from "@/components/projects/project-family-setup"
 
@@ -114,7 +115,11 @@ export function ProjectFamilyPanel({
                 )}
               </div>
 
-              {phase.projectId ? (
+              {phase.projectId && isCurrent ? (
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  Current project
+                </span>
+              ) : phase.projectId ? (
                 <Link
                   href={`/dashboard/projects/${phase.projectId}`}
                   className="shrink-0 text-sm text-primary hover:underline"
@@ -144,10 +149,16 @@ export function ProjectFamilyPanel({
         })}
       </div>
       {canManage && (
-        <ProjectFamilyPhaseCreateForm
-          familyId={summary.family.id}
-          nextSequence={nextSequence}
-        />
+        <>
+          <ProjectFamilyPhaseCreateForm
+            familyId={summary.family.id}
+            nextSequence={nextSequence}
+          />
+          <ProjectFamilyExistingPhaseLinkForm
+            familyId={summary.family.id}
+            nextSequence={nextSequence}
+          />
+        </>
       )}
     </section>
   )

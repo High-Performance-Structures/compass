@@ -197,46 +197,65 @@ async function copyTemplateContents(
   const destinationByKey = new Map(
     destinationItems.map((item) => [templateItemKey(item), item])
   )
-  let createdFolderCount = 0
-  let copiedFileCount = 0
-
+  // Different template items are independent Drive operations. Run siblings
+  // concurrently so a project with many standard folders does not keep the
+  // phase-creation server action open for several minutes. Identical keys are
+  // still serialized to preserve the previous merge-on-retry behavior.
+  const pendingByKey = new Map<string, Promise<TemplateCopyCounts>>()
   for (const templateItem of templateItems) {
     const key = templateItemKey(templateItem)
-    const existing = destinationByKey.get(key) ?? null
+    const prior = pendingByKey.get(key) ??
+      Promise.resolve({ createdFolderCount: 0, copiedFileCount: 0 })
+    const pending = prior.then(async (priorCounts) => {
+      const existing = destinationByKey.get(key) ?? null
 
-    if (templateItem.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
-      const destinationFolder =
-        existing ??
-        (await client.createFolder(userEmail, {
-          name: templateItem.name,
-          parentId: destinationFolderId,
-        }))
-      if (!existing) {
-        destinationByKey.set(key, destinationFolder)
-        createdFolderCount += 1
+      if (templateItem.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
+        const destinationFolder =
+          existing ??
+          (await client.createFolder(userEmail, {
+            name: templateItem.name,
+            parentId: destinationFolderId,
+          }))
+        if (!existing) destinationByKey.set(key, destinationFolder)
+        const nested = await copyTemplateContents(
+          client,
+          userEmail,
+          templateItem.id,
+          destinationFolder.id
+        )
+        return {
+          createdFolderCount:
+            priorCounts.createdFolderCount +
+            (existing ? 0 : 1) +
+            nested.createdFolderCount,
+          copiedFileCount:
+            priorCounts.copiedFileCount + nested.copiedFileCount,
+        }
       }
-      const nested = await copyTemplateContents(
-        client,
-        userEmail,
-        templateItem.id,
-        destinationFolder.id
-      )
-      createdFolderCount += nested.createdFolderCount
-      copiedFileCount += nested.copiedFileCount
-      continue
-    }
 
-    if (!existing) {
+      if (existing) return priorCounts
       const copied = await client.copyFile(userEmail, templateItem.id, {
         name: templateItem.name,
         parentId: destinationFolderId,
       })
       destinationByKey.set(key, copied)
-      copiedFileCount += 1
-    }
+      return {
+        createdFolderCount: priorCounts.createdFolderCount,
+        copiedFileCount: priorCounts.copiedFileCount + 1,
+      }
+    })
+    pendingByKey.set(key, pending)
   }
 
-  return { createdFolderCount, copiedFileCount }
+  const counts = await Promise.all(pendingByKey.values())
+  return counts.reduce(
+    (total, count) => ({
+      createdFolderCount:
+        total.createdFolderCount + count.createdFolderCount,
+      copiedFileCount: total.copiedFileCount + count.copiedFileCount,
+    }),
+    { createdFolderCount: 0, copiedFileCount: 0 },
+  )
 }
 
 export async function provisionProjectDriveFolder(

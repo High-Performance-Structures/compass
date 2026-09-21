@@ -64,6 +64,13 @@ describe("project number review", () => {
     ).toBeNull()
   })
 
+  it("keeps project-family phases in distinct collision groups", () => {
+    expect(projectNumberDepartmentSequence("O-31-2067")).toBe("O-31")
+    expect(projectNumberDepartmentSequence("O-31-2067-01")).toBe("O-31-P1")
+    expect(projectNumberDepartmentSequence("O-31-9999-1")).toBe("O-31-P1")
+    expect(projectNumberDepartmentSequence("O-31-2067-2")).toBe("O-31-P2")
+  })
+
   it.each(["H-401-5025", "N-1000-00", "O-202-WEST", "D-2-DESIGN"])(
     "accepts the governed three-part form %s",
     (projectNumber) => {

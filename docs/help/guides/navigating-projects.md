@@ -7,7 +7,7 @@
   "summary": "Find projects, switch jobs without losing your workflow, and confirm project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "status", "project switcher", "context", "help beacon", "tooltip", "duplicate review", "project archive"],
+  "tags": ["projects", "navigation", "status", "project switcher", "context", "help beacon", "tooltip", "duplicate review", "project archive", "project family", "phase"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects", "/dashboard/executive-admin/project-archive"],
@@ -37,6 +37,22 @@ The Help icon in the main header opens the searchable guide drawer without leavi
 Status controls how a job appears in the Project Hub. Open the status selector and choose either a lifecycle view—**All**, **Active**, **Warranty**, **Complete**, **Inactive**, **Archive**, or **Other**—or an exact job status. Search the selector when the status list is long. Counts show how many projects match each choice, and approved job statuses remain listed even when their current count is zero.
 
 Lifecycle views group related job statuses for browsing; an exact job status narrows the list to that one value. The Project Hub opens on **Active**. Use **All** when a project may have moved to another lifecycle, and use **Clear filters** to reset both department and status. Only authorized users should change a project's underlying status, and historical projects should be retained rather than recreated.
+
+## Group Long-Running Work into Phases {#project-phases}
+
+Use a project family when one overall client effort receives separately
+funded scopes months or years apart. The original project is Phase 1 and keeps
+its unsuffixed number. Later phases use the same base number with `-1`, `-2`,
+and so on. Each phase remains a normal Compass project with its own contract,
+change orders, status, Sage review, and project records.
+
+Authorized registry managers can plan a future phase or link an existing
+project as a phase. Linking preserves the existing project and its records; it
+does not merge the projects' financial or operational data. If Compass changes
+the existing number to the canonical family phase number, the old number is
+retained as a historical alias and the Drive/tracker update workflow is queued.
+Only use this path when the existing project is genuinely a separately funded
+scope within the same overall project family.
 
 ## Review Duplicate Projects and Registry Cleanup {#duplicate-projects}
 
