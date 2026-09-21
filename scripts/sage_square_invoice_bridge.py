@@ -18,8 +18,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Mapping, Sequence
+from decimal import Decimal, ROUND_HALF_EVEN, ROUND_HALF_UP
+from typing import Any, Literal, Mapping, Sequence
 
 
 DEFAULT_SAGE_SERVER = "100.100.201.24"
@@ -30,6 +30,14 @@ SAGE_SQL_APP_NAME = "Sage100Contractor¦JarvisCompassPayAppRO"
 SQUARE_API_VERSION = "2026-08-19"
 SQUARE_PRODUCTION_ORIGIN = "https://connect.squareup.com"
 SQUARE_SANDBOX_ORIGIN = "https://connect.squareupsandbox.com"
+SQUARE_CREDIT_STATUS = "SQUARE:CREDIT"
+SQUARE_DEBIT_STATUS = "SQUARE:DEBIT"
+SQUARE_ACH_STATUS = "SQUARE:ACH"
+SQUARE_CARD_FEE_PERCENT = Decimal("2")
+SQUARE_CARD_FEE_UID = "hps-credit-card-fee"
+SQUARE_CARD_FEE_NAME = "Credit card fee (2%)"
+
+SquarePaymentRoute = Literal["CREDIT", "DEBIT", "ACH"]
 
 PREFIX_TO_LOCATION_NAME = {
     "H": "HPS",
@@ -119,6 +127,42 @@ def square_quantity(value: Decimal) -> str:
     return rendered if rendered != "-0" else "0"
 
 
+def payment_route_for_status(value: Any) -> SquarePaymentRoute:
+    status = text(value)
+    routes: dict[str, SquarePaymentRoute] = {
+        SQUARE_CREDIT_STATUS: "CREDIT",
+        SQUARE_DEBIT_STATUS: "DEBIT",
+        SQUARE_ACH_STATUS: "ACH",
+    }
+    route = routes.get(status or "")
+    if route is None:
+        raise BridgeError(
+            "Sage Square Status must be exactly SQUARE:CREDIT, SQUARE:DEBIT, "
+            "or SQUARE:ACH"
+        )
+    return route
+
+
+def square_client_fee_cents(
+    invoice: SageInvoice, payment_route: SquarePaymentRoute
+) -> int:
+    if payment_route != "CREDIT":
+        return 0
+    return int(
+        (invoice.total * SQUARE_CARD_FEE_PERCENT).quantize(
+            Decimal("1"), rounding=ROUND_HALF_EVEN
+        )
+    )
+
+
+def square_invoice_total_cents(
+    invoice: SageInvoice, payment_route: SquarePaymentRoute
+) -> int:
+    return square_cents(invoice.total) + square_client_fee_cents(
+        invoice, payment_route
+    )
+
+
 def clean_line_text(value: Any) -> str | None:
     normalized = text(value)
     if normalized is None:
@@ -162,7 +206,12 @@ def route_square_location(
     return prefix, PREFIX_TO_LOCATION_NAME[prefix]
 
 
-def build_square_order(invoice: SageInvoice, location_id: str, customer_id: str) -> dict[str, Any]:
+def build_square_order(
+    invoice: SageInvoice,
+    location_id: str,
+    customer_id: str,
+    payment_route: SquarePaymentRoute,
+) -> dict[str, Any]:
     line_items = [
         {
             "name": line.name[:512],
@@ -209,8 +258,21 @@ def build_square_order(invoice: SageInvoice, location_id: str, customer_id: str)
                 "scope": "ORDER",
             }
         ]
+    if payment_route == "CREDIT":
+        order["service_charges"] = [
+            {
+                "uid": SQUARE_CARD_FEE_UID,
+                "name": SQUARE_CARD_FEE_NAME,
+                "percentage": format(SQUARE_CARD_FEE_PERCENT.normalize(), "f"),
+                "calculation_phase": "TOTAL_PHASE",
+                "taxable": False,
+                "scope": "ORDER",
+            }
+        ]
     return {
-        "idempotency_key": f"sage-ar-order-{invoice.sage_invoice_id}",
+        "idempotency_key": (
+            f"sage-ar-order-{invoice.sage_invoice_id}-{payment_route.lower()}-v2"
+        ),
         "order": order,
     }
 
@@ -220,9 +282,20 @@ def build_square_invoice(
     location_id: str,
     order_id: str,
     customer_id: str,
+    payment_route: SquarePaymentRoute,
 ) -> dict[str, Any]:
+    route_description = {
+        "CREDIT": (
+            "Payment route CREDIT. This invoice includes the disclosed 2% "
+            "credit card fee; please use a credit card only."
+        ),
+        "DEBIT": "Payment route DEBIT. Please use a debit card only.",
+        "ACH": "Payment route ACH. Please pay by ACH bank transfer.",
+    }[payment_route]
     return {
-        "idempotency_key": f"sage-ar-invoice-{invoice.sage_invoice_id}",
+        "idempotency_key": (
+            f"sage-ar-invoice-{invoice.sage_invoice_id}-{payment_route.lower()}-v2"
+        ),
         "invoice": {
             "location_id": location_id,
             "order_id": order_id,
@@ -235,9 +308,9 @@ def build_square_invoice(
                 }
             ],
             "accepted_payment_methods": {
-                "card": True,
+                "card": payment_route in {"CREDIT", "DEBIT"},
                 "square_gift_card": False,
-                "bank_account": False,
+                "bank_account": payment_route == "ACH",
                 "buy_now_pay_later": False,
                 "cash_app_pay": False,
             },
@@ -246,7 +319,7 @@ def build_square_invoice(
             "title": invoice.job_short_name[:100],
             "description": (
                 f"Sage invoice {invoice.invoice_number}. "
-                f"Source record {invoice.sage_invoice_id}."
+                f"Source record {invoice.sage_invoice_id}. {route_description}"
             )[:65536],
             "sale_or_service_date": invoice.invoice_date,
             "custom_fields": [
@@ -555,19 +628,24 @@ class SquareClient:
         invoice: SageInvoice,
         location_id: str,
         customer_id: str,
+        payment_route: SquarePaymentRoute,
     ) -> dict[str, Any]:
-        order_payload = build_square_order(invoice, location_id, customer_id)
+        order_payload = build_square_order(
+            invoice, location_id, customer_id, payment_route
+        )
         calculated = self.calculate_order(order_payload)
-        validate_square_order_total(calculated, invoice)
+        validate_square_order_total(calculated, invoice, payment_route)
         order_value = self.request("POST", "/v2/orders", order_payload)
         order = order_value.get("order")
         if not isinstance(order, dict) or not isinstance(order.get("id"), str):
             raise BridgeError("Square did not return the created order")
-        validate_square_order_total(order, invoice)
+        validate_square_order_total(order, invoice, payment_route)
         invoice_value = self.request(
             "POST",
             "/v2/invoices",
-            build_square_invoice(invoice, location_id, order["id"], customer_id),
+            build_square_invoice(
+                invoice, location_id, order["id"], customer_id, payment_route
+            ),
         )
         created = invoice_value.get("invoice")
         if not isinstance(created, dict) or not isinstance(created.get("id"), str):
@@ -598,6 +676,7 @@ def validate_existing_square_invoice(
     sage_invoice: SageInvoice,
     location_id: str,
     customer_id: str,
+    payment_route: SquarePaymentRoute,
 ) -> None:
     if square_invoice.get("location_id") != location_id:
         raise BridgeError("Square draft location no longer matches the Sage route")
@@ -610,20 +689,61 @@ def validate_existing_square_invoice(
     if not isinstance(requests, list) or len(requests) != 1:
         raise BridgeError("Square draft payment schedule no longer matches the bridge")
     computed = requests[0].get("computed_amount_money")
-    if not isinstance(computed, dict) or computed.get("amount") != square_cents(
-        sage_invoice.total
+    if (
+        not isinstance(computed, dict)
+        or computed.get("currency") != "USD"
+        or computed.get("amount")
+        != square_invoice_total_cents(sage_invoice, payment_route)
     ):
         raise BridgeError("Square draft total no longer matches the current Sage invoice")
+    accepted = square_invoice.get("accepted_payment_methods")
+    expected_card = payment_route in {"CREDIT", "DEBIT"}
+    expected_bank = payment_route == "ACH"
+    if (
+        not isinstance(accepted, dict)
+        or accepted.get("card") is not expected_card
+        or accepted.get("bank_account") is not expected_bank
+    ):
+        raise BridgeError("Square draft payment methods no longer match the Sage route")
+    route_marker = f"Payment route {payment_route}."
+    if route_marker not in str(square_invoice.get("description") or ""):
+        raise BridgeError("Square draft payment route no longer matches Sage")
 
 
 def validate_square_order_total(
-    square_order: Mapping[str, Any], sage_invoice: SageInvoice
+    square_order: Mapping[str, Any],
+    sage_invoice: SageInvoice,
+    payment_route: SquarePaymentRoute,
 ) -> None:
     total = square_order.get("total_money")
     if not isinstance(total, dict) or total.get("currency") != "USD":
         raise BridgeError("Square order did not return a USD total")
-    if total.get("amount") != square_cents(sage_invoice.total):
+    if total.get("amount") != square_invoice_total_cents(
+        sage_invoice, payment_route
+    ):
         raise BridgeError("Square order total does not match the current Sage invoice")
+    service_charges = square_order.get("service_charges") or []
+    if payment_route != "CREDIT":
+        if service_charges:
+            raise BridgeError("Square order unexpectedly contains a service charge")
+        return
+    if not isinstance(service_charges, list) or len(service_charges) != 1:
+        raise BridgeError("Square credit order is missing its 2% card fee")
+    service_charge = service_charges[0]
+    if not isinstance(service_charge, dict):
+        raise BridgeError("Square credit order returned an invalid card fee")
+    applied = service_charge.get("applied_money")
+    if (
+        service_charge.get("uid") != SQUARE_CARD_FEE_UID
+        or service_charge.get("name") != SQUARE_CARD_FEE_NAME
+        or service_charge.get("percentage") not in {"2", "2.0", "2.00"}
+        or service_charge.get("calculation_phase") != "TOTAL_PHASE"
+        or service_charge.get("taxable") is not False
+        or not isinstance(applied, dict)
+        or applied.get("currency") != "USD"
+        or applied.get("amount") != square_client_fee_cents(sage_invoice, payment_route)
+    ):
+        raise BridgeError("Square credit order card fee does not match the approved 2% fee")
 
 
 def recipient_email(invoice: SageInvoice, override: str | None) -> str:
@@ -670,6 +790,7 @@ def public_summary(
     customer_created: bool,
     square_invoice: Mapping[str, Any] | None,
     action: str,
+    payment_route: SquarePaymentRoute,
 ) -> dict[str, Any]:
     return {
         "action": action,
@@ -701,6 +822,9 @@ def public_summary(
         "total": f"{invoice.total:.2f}",
         "salesTax": f"{sage_tax_amount(invoice):.2f}",
         "balance": f"{invoice.balance:.2f}",
+        "paymentRoute": payment_route,
+        "clientCardFee": f"{square_client_fee_cents(invoice, payment_route) / 100:.2f}",
+        "squareTotal": f"{square_invoice_total_cents(invoice, payment_route) / 100:.2f}",
         "lineCount": len(invoice.lines),
         "squareInvoice": (
             {
@@ -759,6 +883,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     prefix, location_name = route_square_location(
         invoice.job_short_name, invoice.job_name, invoice.sage_department
     )
+    payment_route = payment_route_for_status(invoice.square_status)
     origin = (
         SQUARE_PRODUCTION_ORIGIN
         if args.environment == "production"
@@ -802,7 +927,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise BridgeError("Square customer is missing its ID")
     if existing is not None:
         validate_existing_square_invoice(
-            existing, invoice, location_id, customer_id
+            existing, invoice, location_id, customer_id, payment_route
         )
 
     action = "preview"
@@ -811,9 +936,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if existing is not None:
             action = "existing"
         else:
-            result = square.create_draft(invoice, location_id, customer_id)
+            result = square.create_draft(
+                invoice, location_id, customer_id, payment_route
+            )
             validate_existing_square_invoice(
-                result, invoice, location_id, customer_id
+                result, invoice, location_id, customer_id, payment_route
             )
             action = "draft_created"
     elif args.publish:
@@ -839,6 +966,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 customer_created,
                 result,
                 action,
+                payment_route,
             ),
             indent=2,
         )

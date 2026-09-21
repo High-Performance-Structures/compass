@@ -20,6 +20,22 @@ often blank. When `dptmnt` contains a recognized historical value, the bridge
 also checks it and stops if it conflicts with the job prefix. Unknown job
 prefixes always fail closed.
 
+The Sage **Square Status** field selects the customer-confirmed payment route:
+
+| Square Status | Square payment option | Client fee |
+| --- | --- | --- |
+| `SQUARE:CREDIT` | Card | 2% non-taxable credit card fee |
+| `SQUARE:DEBIT` | Card | None |
+| `SQUARE:ACH` | ACH bank transfer | None |
+
+Square's invoice API exposes one combined card checkout and cannot prevent a
+buyer from entering a debit card on the credit route. Staff must ask the client
+which method they will use and set `SQUARE:CREDIT` only after the client
+confirms credit. Compass checks Square's reported funding type after payment.
+Any reported funding type that conflicts with the selected route stops
+automatic posting. A debit or prepaid card used on the credit route also
+instructs staff to refund the 2% fee before review.
+
 ## Safety model
 
 - Sage access is read-only and uses the existing restricted SQL login.
@@ -31,8 +47,8 @@ prefixes always fail closed.
   number.
 - Deterministic Square idempotency keys and a Sage source marker prevent
   duplicate invoices on retries.
-- A draft must still match the Sage total, Square location, confirmed customer,
-  and invoice number before it can be published.
+- A draft must still match the Sage amount, selected payment route, Square
+  location, confirmed customer, and invoice number before it can be published.
 - Existing Square invoice numbers without the Sage source marker stop the run
   for manual review.
 - The Sage client email is used by default. A command-line override must match
@@ -42,7 +58,8 @@ prefixes always fail closed.
   first and uses a deterministic Sage-client idempotency key and reference ID.
 - Sage sales tax is represented as an order-level Square tax. Square calculates
   the order before creation, and the bridge stops unless the calculated total
-  exactly matches Sage.
+  exactly matches Sage plus the approved 2% fee on the credit route. The debit
+  and ACH routes reject every service charge.
 
 ## Required secrets
 
@@ -54,6 +71,9 @@ prefixes always fail closed.
 
 Run the script through the approved secret injector on the private bridge host.
 The examples use placeholders deliberately.
+
+Before previewing, set the Sage Square Status to exactly `SQUARE:CREDIT`,
+`SQUARE:DEBIT`, or `SQUARE:ACH` based on the client's confirmed method.
 
 Preview:
 
@@ -116,10 +136,12 @@ and timer in `scripts/systemd/`. The production rollout starts at Sage invoice
 record `1627`; older open invoices are never considered.
 
 Each bounded poll reads open Sage invoices at or above the cutoff whose Sage
-**Square Status** custom field (`acrinv.usrdf1`) is exactly `SQUARE:READY`. It
-validates that value again before any Square API call. Record `1627` is
-therefore excluded unless an operator later sets that status in Sage. For
-ready invoices, the poller checks for an existing
+**Square Status** custom field (`acrinv.usrdf1`) is exactly `SQUARE:CREDIT`,
+`SQUARE:DEBIT`, or `SQUARE:ACH`. The former `SQUARE:READY` value is intentionally
+ignored because it does not identify a customer-confirmed payment method. The
+poller validates the route again before any Square API call. Record `1627` is
+therefore excluded unless an operator later sets an approved route. For routed
+invoices, the poller checks for an existing
 bridge-owned Square invoice before any write and then uses the same route,
 recipient, total, tax, and idempotency validations as the manual command. A
 missing Square customer is created only when Sage supplies a valid customer

@@ -32,6 +32,7 @@ export type SageSquareManualReceiptNotificationInput = {
   readonly sageInvoiceNumber: string
   readonly department: "HPS" | "ORC" | "Nu-Tech"
   readonly ownerPaymentCents: number
+  readonly clientPaidFeeCents: number
   readonly depositAccountNumber: number
   readonly merchantFeeAccountNumber: number
 }
@@ -46,10 +47,16 @@ function usdFromCents(cents: number): string {
 export function manualReceiptNotificationBody(
   input: SageSquareManualReceiptNotificationInput
 ): string {
+  const opening = input.clientPaidFeeCents > 0
+    ? `Square received ${usdFromCents(input.ownerPaymentCents + input.clientPaidFeeCents)} for Sage invoice ${input.sageInvoiceNumber} (${input.department}): ${usdFromCents(input.ownerPaymentCents)} invoice principal plus a ${usdFromCents(input.clientPaidFeeCents)} client-paid credit card fee.`
+    : `Square received ${usdFromCents(input.ownerPaymentCents)} for Sage invoice ${input.sageInvoiceNumber} (${input.department}).`
+  const feeInstruction = input.clientPaidFeeCents > 0
+    ? `Credit the ${usdFromCents(input.clientPaidFeeCents)} client-paid fee to account ${input.merchantFeeAccountNumber} — Merchant Service Fees as a contra-expense.`
+    : `Compass is retaining the Square fee reconciliation for account ${input.merchantFeeAccountNumber} — Merchant Service Fees.`
   return [
-    `Square received ${usdFromCents(input.ownerPaymentCents)} for Sage invoice ${input.sageInvoiceNumber} (${input.department}).`,
-    `In Sage 3-3-2 Electronic Receipts, use Post—not Process and Post—apply the full amount to this invoice, and use account ${input.depositAccountNumber} — FSB Project Checking.`,
-    `Compass is retaining the Square fee reconciliation for account ${input.merchantFeeAccountNumber} — Merchant Service Fees. This is a posting step, not a second payment approval.`,
+    opening,
+    `In Sage 3-3-2 Electronic Receipts, use Post—not Process and Post—apply ${usdFromCents(input.ownerPaymentCents)} to this invoice, and use account ${input.depositAccountNumber} — FSB Project Checking.`,
+    `${feeInstruction} This is a posting step, not a second payment approval.`,
   ].join(" ")
 }
 

@@ -12,9 +12,9 @@ has been sent.
 - Square settlement activity uses Sage account **10000 — FSB Project
   Checking**.
 - Square processing fees use Sage account **62020 — Merchant Service Fees**.
-- A separately identified client-paid merchant fee uses the same merchant fee
-  account as an offset. The current bridge does not add a client fee, so the
-  value is normally zero.
+- A separately identified 2% client-paid credit card fee uses the same merchant
+  fee account as a contra-expense credit. Debit and ACH routes always have a
+  zero client-paid fee.
 - H-prefixed jobs route to HPS, O-prefixed jobs route to ORC, N-prefixed jobs
   route to Nu-Tech, and legacy D-prefixed jobs route to ORC.
 
@@ -32,10 +32,15 @@ operations. The invoice must contain all bridge markers:
   and inactive projects remain eligible because an owner can pay a valid Sage
   receivable after the project is operationally complete.
 - `Source record RECORD_ID.` in the Square invoice description.
+- `Payment route CREDIT.`, `Payment route DEBIT.`, or `Payment route ACH.` in
+  the Square invoice description for newly routed invoices.
 
 Compass retrieves the Square order and payment before enqueueing anything. It
 requires the deterministic order reference, exact location-to-job routing,
-completed USD payment status, zero tip, and zero refund. The production cutoff
+completed USD payment status, zero tip, zero refund, and a funding type that
+matches the selected route. The credit route additionally requires exactly one
+non-taxable 2% bridge-owned service charge; debit and ACH routes reject service
+charges. The production cutoff
 is `2026-08-29T00:15:00.000Z`; Square events and payments older than the cutoff
 are never backfilled. An invoice may have been sent before the cutoff and still
 qualify when its actual payment is completed afterward.
@@ -108,9 +113,12 @@ For every eligible Square payment, Compass therefore:
    Sage invoice and Compass project, then sends one deduplicated in-app
    notification to active administrators in that project organization;
 3. tells the administrator to use Sage **3-3-2 Electronic Receipts**, choose
-   **Post** rather than **Process and Post**, apply the full amount to the
-   invoice, and use account **10000 — FSB Project Checking**; and
-4. keeps the Square processing-fee operation separate for account **62020 —
+   **Post** rather than **Process and Post**, apply only the original Sage
+   invoice amount to the invoice, and use account **10000 — FSB Project
+   Checking**;
+4. identifies any client-paid credit card fee separately for a credit to
+   **62020 — Merchant Service Fees** as a contra-expense; and
+5. keeps the Square processing-fee operation separate for account **62020 —
    Merchant Service Fees** and the supported general-ledger writer path.
 
 The ten-minute Compass maintenance cycle also retries mapping exceptions after
@@ -127,7 +135,8 @@ endpoint. Direct SQL writes remain prohibited.
 The existing company **Financials → Payments** tab and each project's
 **Financials** page show a dedicated Square receipt queue. It includes the
 linked project and client, Sage invoice and record, Square payment ID, gross
-receipt, Square fee, deposit/fee accounts, timestamps, and independent
+Sage receipt, client-paid credit card fee, Square processing fee, deposit/fee
+accounts, timestamps, and independent
 receipt/fee statuses. Notification links open the project Financials page and
 highlight the exact receipt. The view does not offer an approval control.
 
