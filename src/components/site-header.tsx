@@ -142,8 +142,8 @@ export function SiteHeader({
               {canUseAskCompass ? "Ask Jarvis or search..." : "Search Compass..."}
             </span>
           </button>
-          <NotificationsPopover />
           <QuickAddMenu showInDevelopment={showQuickAddInDevelopment} />
+          <NotificationsPopover />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -273,8 +273,8 @@ export function SiteHeader({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
-          <NotificationsPopover />
           <QuickAddMenu showInDevelopment={showQuickAddInDevelopment} />
+          <NotificationsPopover />
           {canUseAskCompass && (
             <Button
               variant="ghost"
