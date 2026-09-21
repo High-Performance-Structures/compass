@@ -4,10 +4,10 @@
   "featureId": "financials",
   "slug": "financial-workflows",
   "title": "Estimates, Budgets, Pay Applications, and Sage",
-  "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
-  "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
+  "summary": "Understand estimates, client report phases, budgets, G703 views, pay applications, and Sage synchronization.",
+  "contextSummary": "Use custom report phases to control an estimate's client-facing presentation without changing CSI codes or costs. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
+  "tags": ["estimates", "assemblies", "customer report", "client report", "report phases", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "sync", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
@@ -59,6 +59,16 @@ When you create a change order, choose how it's built:
 - **Replace the contract estimate**: a newer contract-estimate version becomes the baseline before work is bought or billed. Recording the owners' acceptance of a new version on the estimate page creates this change order for you.
 
 Change orders no longer take typed cost lines. Their lines come from the accepted estimate and are shown read-only. Older change orders keep the lines they were recorded with; choosing how one is built clears those lines, and **Build change-order estimate** prices it with an estimate instead. Once its estimate is started, a change order stays priced by that estimate.
+
+## Client Report Phases {#client-report-phases}
+
+In an editable estimate, use **Client report presentation** to control how the client report groups and explains the work. The default report-detail choice still applies to estimate lines that are not assigned to a custom phase.
+
+Select **Add report phase**, choose its source CSI division, enter a customer-facing name and scope description, set its order within that division, and select the estimate lines it includes. Each line can belong to only one custom phase; selecting a line that is already assigned moves it to the new phase. A phase may be saved empty and assigned lines later.
+
+Turn on **Itemize costs for the client** to show the phase's individual lines and assembly breakdown costs. Leave it off to show only the phase name, scope description, and subtotal. Internal-only lines remain hidden in either view. Preview the client report before sending it and confirm the grouping, descriptions, detail level, subtotals, and grand total.
+
+Custom report phases change presentation only. They do not change CSI divisions, cost codes, quantities, costs, or accounting data. Deleting a phase requires confirmation, preserves every estimate line and cost, and returns its lines to their default CSI grouping. If an estimate is locked, create an authorized revision before changing its report phases.
 
 ## Price a Change Order with an Estimate {#change-order-estimates}
 
