@@ -145,6 +145,8 @@ export default async function DashboardLayout({
           canManageFeedback={canManageFeedback}
           canUseExecutiveAdmin={canAccessExecutiveAdmin}
           canPrepareGreetingCards={canAccessGreetingCards}
+          canUseOfficeTalk={canUseCompassOfficeTalk}
+          canUseDirectMessages={canUseDirectMessages}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />
@@ -154,8 +156,6 @@ export default async function DashboardLayout({
             user={user}
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
-            canUseDirectMessages={canUseDirectMessages}
-            canViewHelp={canViewHelp}
           />
           <NavigationProgress />
           <div className="flex min-h-0 flex-1 overflow-hidden">

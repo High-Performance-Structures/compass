@@ -2,52 +2,31 @@
 
 import * as React from "react"
 import Image from "next/image"
-import Link from "next/link"
 import {
-  IconAutomation,
   IconChevronUp,
-  IconCreditCard,
   IconPhotoEdit,
   IconRefresh,
-  IconLogout,
-  IconUserCircle,
+  IconUpload,
+  IconMessageCircle,
   IconMicrophone,
   IconMicrophoneOff,
   IconHeadphones,
   IconHeadphonesOff,
-  IconSettings,
+  IconVideo,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { logout, updateWorkspacePhoto } from "@/app/actions/profile"
-
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  SidebarMenu,
-  SidebarMenuItem,
-  useSidebar,
-} from "@/components/ui/sidebar"
+import { updateWorkspacePhoto } from "@/app/actions/profile"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { AccountModal } from "@/components/account-modal"
+import { Button } from "@/components/ui/button"
+import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
 import { DevicePicker } from "@/components/voice/device-picker"
 import { useVoiceState } from "@/hooks/use-voice-state"
+import { openOfficeTalkWindow } from "@/components/site-header"
 import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
@@ -56,10 +35,6 @@ import type { SidebarUser } from "@/lib/auth"
 function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
   e.preventDefault()
-}
-
-function stopPropagation(e: React.MouseEvent | React.PointerEvent): void {
-  e.stopPropagation()
 }
 
 function defaultSidebarPhoto(user: SidebarUser): string | null {
@@ -141,32 +116,18 @@ function resizeSidebarPhoto(dataUrl: string): Promise<string> {
   })
 }
 
-export function NavUser({
+export function SidebarDeskPhoto({
   user,
 }: {
   readonly user: SidebarUser | null
 }): React.ReactElement | null {
-  const { isMobile } = useSidebar()
-  const [accountOpen, setAccountOpen] = React.useState(false)
   const [sidebarPhotoUrl, setSidebarPhotoUrl] = React.useState<string | null>(
     null
   )
   const [sidebarPhotoFailed, setSidebarPhotoFailed] = React.useState(false)
-  const [isLoggingOut, startLogoutTransition] = React.useTransition()
+  const [isUpdatingPhoto, startPhotoTransition] = React.useTransition()
   const photoInputRef = React.useRef<HTMLInputElement>(null)
   const migratedLegacyPhotoFor = React.useRef<string | null>(null)
-  const {
-    isMuted,
-    isDeafened,
-    inputDeviceId,
-    outputDeviceId,
-    inputDevices,
-    outputDevices,
-    toggleMute,
-    toggleDeafen,
-    setInputDevice,
-    setOutputDevice,
-  } = useVoiceState()
 
   React.useEffect(() => {
     if (!user) return
@@ -190,17 +151,9 @@ export function NavUser({
     }
   }, [user])
 
-  if (!user) {
-    return null
-  }
+  if (!user) return null
 
   const initials = getInitials(user.name)
-
-  function handleLogout(): void {
-    startLogoutTransition(async () => {
-      await logout()
-    })
-  }
 
   async function handleSidebarPhotoUpload(
     event: React.ChangeEvent<HTMLInputElement>
@@ -231,183 +184,207 @@ export function NavUser({
     }
   }
 
-  async function handleSidebarPhotoReset(): Promise<void> {
-    if (!user) return
+  function handleSidebarPhotoReset(): void {
+    startPhotoTransition(async () => {
+      if (!user) return
 
-    const result = await updateWorkspacePhoto("sidebar", null)
-    if (!result.success) {
-      toast.error(result.error)
-      return
-    }
-    resetSidebarPhoto(user)
-    setSidebarPhotoFailed(false)
-    setSidebarPhotoUrl(defaultSidebarPhoto(user))
-    toast.success("Sidebar photo reset.")
+      const result = await updateWorkspacePhoto("sidebar", null)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      resetSidebarPhoto(user)
+      setSidebarPhotoFailed(false)
+      setSidebarPhotoUrl(defaultSidebarPhoto(user))
+      toast.success("Sidebar photo reset.")
+    })
   }
 
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <div
-              role="button"
-              tabIndex={0}
-              data-slot="sidebar-menu-button"
-              data-sidebar="menu-button"
-              data-size="lg"
-              data-active={false}
-              className={cn(
-                "peer/menu-button flex h-28 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]",
-                "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground",
-                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
-                "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden",
-                "[data-mobile=true]_&:h-28 [data-mobile=true]_&:text-base",
-              )}
-            >
-              <span className="relative h-24 min-w-0 flex-1 overflow-hidden rounded-sm border border-sidebar-border bg-sidebar-accent group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:flex-none">
-                {sidebarPhotoUrl && !sidebarPhotoFailed ? (
-                  <Image
-                    src={sidebarPhotoUrl}
-                    alt={`${user.name}'s sidebar photo`}
-                    fill
-                    sizes="220px"
-                    unoptimized
-                    className="object-cover"
-                    onError={() => setSidebarPhotoFailed(true)}
-                  />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center bg-sidebar-accent text-xs font-semibold text-sidebar-foreground/70">
-                    {initials}
-                  </span>
-                )}
-                <span className="absolute inset-x-0 bottom-0 hidden items-center justify-center bg-black/45 py-0.5 text-[9px] font-medium text-white group-hover/menu-button:flex group-data-[collapsible=icon]:hidden">
-                  Account
-                </span>
-              </span>
-              {/* Keep the controls within the photo height without changing their hit areas. */}
-              <div className="group-data-[collapsible=icon]:hidden flex h-24 w-[6.375rem] shrink-0 flex-col items-center justify-between py-1">
-                <DeviceButtonGroup
-                  isMuted={isMuted}
-                  onToggle={(e) => { stopEvent(e); toggleMute() }}
-                  icon={isMuted ? IconMicrophoneOff : IconMicrophone}
-                  label={isMuted ? "Unmute" : "Mute"}
-                  dimmed={isMuted}
-                  devices={inputDevices}
-                  selectedDeviceId={inputDeviceId}
-                  onSelectDevice={setInputDevice}
-                  deviceLabel="Input Device"
-                />
-                <DeviceButtonGroup
-                  isMuted={isDeafened}
-                  onToggle={(e) => { stopEvent(e); toggleDeafen() }}
-                  icon={isDeafened ? IconHeadphonesOff : IconHeadphones}
-                  label={isDeafened ? "Undeafen" : "Deafen"}
-                  dimmed={isDeafened}
-                  devices={outputDevices}
-                  selectedDeviceId={outputDeviceId}
-                  onSelectDevice={setOutputDevice}
-                  deviceLabel="Output Device"
-                />
-                <Link
-                  href="/dashboard/settings"
-                  onClick={stopPropagation}
-                  onPointerDown={stopPropagation}
-                  aria-label="Settings"
-                  className="flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                >
-                  <IconSettings className="size-3" />
-                </Link>
-              </div>
-            </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-            side={isMobile ? "bottom" : "right"}
-            align="end"
-            sideOffset={4}
+    <div className="px-2 pb-2 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:pb-1">
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="group/photo block w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none"
+            aria-label="Edit sidebar photo"
           >
-            <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  {user.avatar && (
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                  )}
-                  <AvatarFallback className="rounded-lg">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    {user.email}
-                  </span>
-                </div>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  photoInputRef.current?.click()
-                }}
+            <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-sidebar-accent group-data-[collapsible=icon]:aspect-square group-data-[collapsible=icon]:rounded-md">
+              {sidebarPhotoUrl && !sidebarPhotoFailed ? (
+                <Image
+                  src={sidebarPhotoUrl}
+                  alt={`${user.name}'s sidebar photo`}
+                  fill
+                  sizes="240px"
+                  unoptimized
+                  className="object-cover"
+                  onError={() => setSidebarPhotoFailed(true)}
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center bg-sidebar-accent text-xs font-semibold text-sidebar-foreground/70">
+                  {initials}
+                </span>
+              )}
+              <span className="absolute inset-x-0 bottom-0 hidden items-center justify-between bg-black/45 px-2 py-1 text-[11px] font-medium text-white group-hover/photo:flex group-data-[collapsible=icon]:hidden">
+                <span>Desk photo</span>
+                <IconPhotoEdit className="size-3.5" />
+              </span>
+            </div>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="right" align="start" className="w-72">
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Sidebar photo</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                A small personal photo for your Compass sidebar.
+              </p>
+            </div>
+            <div className="relative aspect-[16/10] overflow-hidden rounded-md border bg-muted">
+              {sidebarPhotoUrl && !sidebarPhotoFailed ? (
+                <Image
+                  src={sidebarPhotoUrl}
+                  alt={`${user.name}'s sidebar photo preview`}
+                  fill
+                  sizes="288px"
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-muted-foreground">
+                  {initials}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="flex-1"
+                onClick={() => photoInputRef.current?.click()}
               >
-                <IconPhotoEdit />
-                Change sidebar photo
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => void handleSidebarPhotoReset()}
+                <IconUpload />
+                Change photo
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSidebarPhotoReset}
+                disabled={isUpdatingPhoto}
               >
                 <IconRefresh />
-                Reset sidebar photo
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
-                <IconUserCircle />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/financials">
-                  <IconCreditCard />
-                  Financials
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/settings">
-                  <IconSettings />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/automations">
-                  <IconAutomation />
-                  Automations
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
-              <IconLogout />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          aria-label="Choose sidebar photo"
-          onChange={handleSidebarPhotoUpload}
+                Reset
+              </Button>
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              aria-label="Choose sidebar photo"
+              onChange={handleSidebarPhotoUpload}
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
+export function SidebarCommunicationDock({
+  canUseOfficeTalk = false,
+  canUseDirectMessages = false,
+}: {
+  readonly canUseOfficeTalk?: boolean
+  readonly canUseDirectMessages?: boolean
+}): React.ReactElement {
+  const conversationPanel = useConversationPanelOptional()
+  const {
+    isMuted,
+    isDeafened,
+    inputDeviceId,
+    outputDeviceId,
+    inputDevices,
+    outputDevices,
+    toggleMute,
+    toggleDeafen,
+    setInputDevice,
+    setOutputDevice,
+  } = useVoiceState()
+  const controlCount =
+    2 + Number(canUseOfficeTalk) + Number(canUseDirectMessages)
+  const gridColumnsClass =
+    controlCount === 4
+      ? "grid-cols-4"
+      : controlCount === 3
+        ? "grid-cols-3"
+        : "grid-cols-2"
+
+  return (
+    <div className="group-data-[collapsible=icon]:hidden px-1 pb-1">
+      <div
+        className={cn(
+          "grid items-center gap-1 rounded-md bg-sidebar-accent/20 p-1",
+          gridColumnsClass,
+        )}
+      >
+        <DeviceButtonGroup
+          isMuted={isMuted}
+          onToggle={(e) => { stopEvent(e); toggleMute() }}
+          icon={isMuted ? IconMicrophoneOff : IconMicrophone}
+          label={isMuted ? "Unmute" : "Mute"}
+          dimmed={isMuted}
+          devices={inputDevices}
+          selectedDeviceId={inputDeviceId}
+          onSelectDevice={setInputDevice}
+          deviceLabel="Input Device"
+          className="h-8 w-full px-1"
         />
-      </SidebarMenuItem>
-      <AccountModal
-        open={accountOpen}
-        onOpenChange={setAccountOpen}
-        user={user}
-      />
-    </SidebarMenu>
+        <DeviceButtonGroup
+          isMuted={isDeafened}
+          onToggle={(e) => { stopEvent(e); toggleDeafen() }}
+          icon={isDeafened ? IconHeadphonesOff : IconHeadphones}
+          label={isDeafened ? "Undeafen" : "Deafen"}
+          dimmed={isDeafened}
+          devices={outputDevices}
+          selectedDeviceId={outputDeviceId}
+          onSelectDevice={setOutputDevice}
+          deviceLabel="Output Device"
+          className="h-8 w-full px-1"
+        />
+        {canUseOfficeTalk && (
+          <button
+            type="button"
+            onClick={(event) => {
+              stopEvent(event)
+              openOfficeTalkWindow()
+            }}
+            onPointerDown={stopEvent}
+            aria-label="Open Office Talk"
+            title="Office Talk"
+            className="flex h-8 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
+            <IconVideo className="size-4" />
+          </button>
+        )}
+        {canUseDirectMessages && (
+          <button
+            type="button"
+            onClick={(event) => {
+              stopEvent(event)
+              conversationPanel?.openDirectMessages()
+            }}
+            onPointerDown={stopEvent}
+            aria-label="Direct message a team member"
+            title="Direct message"
+            className="flex h-8 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
+            <IconMessageCircle className="size-4" />
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -424,6 +401,7 @@ function DeviceButtonGroup({
   selectedDeviceId,
   onSelectDevice,
   deviceLabel,
+  className,
 }: {
   readonly isMuted: boolean
   readonly onToggle: (e: React.MouseEvent) => void
@@ -434,9 +412,13 @@ function DeviceButtonGroup({
   readonly selectedDeviceId: string | undefined
   readonly onSelectDevice: (deviceId: string) => void
   readonly deviceLabel: string
+  readonly className?: string
 }): React.ReactElement {
   return (
-    <div className="flex items-center">
+    <div className={cn(
+      "flex w-full min-w-0 items-center justify-center rounded-md text-sidebar-foreground/70 transition-colors",
+      className,
+    )}>
       <button
         type="button"
         onClick={onToggle}

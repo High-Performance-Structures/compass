@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   IconAddressBook,
   IconArchive,
@@ -30,6 +31,7 @@ import {
   IconShieldCheck,
   IconShoppingCart,
   IconShoppingCartQuestion,
+  IconSettings,
   IconTemplate,
   IconUsers,
   IconVideo,
@@ -45,7 +47,7 @@ import {
 } from "@/components/nav-main"
 import { NavFiles } from "@/components/nav-files"
 import { NavConversations } from "@/components/nav-conversations"
-import { NavUser } from "@/components/nav-user"
+import { SidebarCommunicationDock, SidebarDeskPhoto } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
@@ -349,7 +351,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
     ],
   },
   {
-    title: "Communication",
+    title: "Conversations & Requests",
     icon: IconMessageCircle,
     items: [
       {
@@ -367,7 +369,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
     ],
   },
   {
-    title: "Office",
+    title: "Office Tools",
     icon: IconActivity,
     items: [
       {
@@ -662,7 +664,7 @@ function SidebarNav({
     ...staffMessageDeskNav,
     {
       kind: "group",
-      title: "Planning",
+      title: "Tasks & Schedule",
       icon: IconCalendarStats,
       items: projectScopedPlanningNav,
     },
@@ -713,6 +715,8 @@ export function AppSidebar({
   canManageFeedback = false,
   canUseExecutiveAdmin = false,
   canPrepareGreetingCards = false,
+  canUseOfficeTalk = false,
+  canUseDirectMessages = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser | null
@@ -723,8 +727,9 @@ export function AppSidebar({
   readonly canManageFeedback?: boolean
   readonly canUseExecutiveAdmin?: boolean
   readonly canPrepareGreetingCards?: boolean
+  readonly canUseOfficeTalk?: boolean
+  readonly canUseDirectMessages?: boolean
 }) {
-  const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
   const pathname = usePathname()
 
@@ -745,20 +750,31 @@ export function AppSidebar({
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">
-        {isMobile && (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={openFeedbackDialog}
-              >
-                <IconMessageCircle />
-                <span>Feedback</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
+        <SidebarDeskPhoto user={user} />
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={openFeedbackDialog}
+              tooltip="Report feedback"
+            >
+              <IconMessageReport />
+              <span>Report feedback</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Settings">
+              <Link href="/dashboard/settings">
+                <IconSettings />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarCommunicationDock
+          canUseOfficeTalk={canUseOfficeTalk}
+          canUseDirectMessages={canUseDirectMessages}
+        />
         {channelId !== null && <VoicePanel />}
-        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   )

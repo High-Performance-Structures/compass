@@ -21,13 +21,14 @@ import {
   IconClipboardText,
   IconFileInvoice,
   IconHome2,
+  IconInfoCircle,
   IconMapPin,
   IconMail,
   IconMessageCircleQuestion,
   IconPhoto,
   IconPhotoEdit,
   IconReceipt,
-  IconSparkles,
+  IconSunrise,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -57,6 +58,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { SidebarUser } from "@/lib/auth"
 import type { CherishStory } from "@/app/actions/cherish-stories"
 import {
@@ -311,6 +318,34 @@ function greetingForNow(timeZone: string): string {
   return "Good evening"
 }
 
+function DashboardTooltipTitle({
+  children,
+  description,
+}: {
+  readonly children: React.ReactNode
+  readonly description: string
+}): React.ReactElement {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          tabIndex={0}
+          className="inline-flex cursor-help items-center gap-1.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          {children}
+          <IconInfoCircle
+            aria-hidden="true"
+            className="size-3.5 text-muted-foreground/70"
+          />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" align="start" className="max-w-xs">
+        {description}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function Horizon({
   overview,
   mode,
@@ -360,14 +395,15 @@ function Horizon({
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <IconCalendarWeek className="size-4 shrink-0 text-primary" />
-          <div>
-            <h2 className="text-sm font-semibold">Five-day horizon</h2>
-            <p className="text-xs text-muted-foreground">
-              {mode === "office"
+          <DashboardTooltipTitle
+            description={
+              mode === "office"
                 ? "H-Office events first, then company-wide events"
-                : "The next commitments across active projects"}
-            </p>
-          </div>
+                : "The next commitments across active projects"
+            }
+          >
+            <h2 className="text-sm font-semibold">Five-day horizon</h2>
+          </DashboardTooltipTitle>
         </div>
         <Button asChild variant="ghost" size="sm" className="shrink-0 text-primary hover:text-primary/80">
           <Link
@@ -707,9 +743,6 @@ function OfficeTaskList({
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Office priorities</h2>
-          <p className="text-xs text-muted-foreground">
-            Reviews and follow-ups requiring action
-          </p>
         </div>
         <Button asChild variant="ghost" size="sm" className="text-primary hover:text-primary/80">
           <Link href="/dashboard/schedule?focus=tasks">All to-dos</Link>
@@ -770,7 +803,7 @@ function OfficePresence({
         currentActivity
       )
   )
-  const [isRefreshing, startRefreshTransition] = useTransition()
+  const [, startRefreshTransition] = useTransition()
 
   const refreshAvailability = useCallback(() => {
     startRefreshTransition(async () => {
@@ -815,9 +848,6 @@ function OfficePresence({
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Who&apos;s in today</h2>
-          <p className="text-xs text-muted-foreground">
-            {isRefreshing ? "Updating team availability..." : "Updates automatically"}
-          </p>
         </div>
         <IconUsers className="size-5 text-muted-foreground" />
       </div>
@@ -905,10 +935,9 @@ function OfficeAlerts({
     <section className="border-y border-border/70 bg-background">
       <div className="flex items-center gap-2 px-4 py-3">
         <IconAlertTriangle className="size-4 text-[#9d832c]" />
-        <div>
+        <DashboardTooltipTitle description="Items that may need escalation">
           <h2 className="text-sm font-semibold">Office alerts</h2>
-          <p className="text-xs text-muted-foreground">Items that may need escalation</p>
-        </div>
+        </DashboardTooltipTitle>
       </div>
       <div className="divide-y border-t">
         {alerts.map((alert) => (
@@ -1218,16 +1247,16 @@ export function DashboardLaunchpad({
     deskStatusForPresenceMessage(initialDeskStatusMessage)
   )
   return (
-    <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
+    <TooltipProvider>
+      <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
       <div className="flex flex-col gap-3 border-b pb-3 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-center">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <IconSparkles className="size-4 text-brand-nutech-gold" />
-            <p className="text-sm font-semibold">Morning launchpad</p>
+            <IconSunrise className="size-4 text-brand-nutech-gold" />
+            <DashboardTooltipTitle description="A focused start to the workday">
+              <p className="text-sm font-semibold">Morning launchpad</p>
+            </DashboardTooltipTitle>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            A focused start to the workday
-          </p>
         </div>
 
         <div className="grid grid-cols-2 border bg-muted/30 p-0.5">
@@ -1311,6 +1340,7 @@ export function DashboardLaunchpad({
           Open Project Hub
         </Link>
       </div>
-    </main>
+      </main>
+    </TooltipProvider>
   )
 }
