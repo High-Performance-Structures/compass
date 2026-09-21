@@ -214,7 +214,7 @@ function NavSubmenu({
             <IconChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <CollapsibleContent className="motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down overflow-hidden">
           {header}
           <SidebarMenuSub>
             {item.items.map((child) => (
@@ -268,7 +268,7 @@ function NavNestedSubmenu({
             </button>
           </SidebarMenuSubButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <CollapsibleContent className="motion-safe:data-[state=closed]:animate-collapsible-up motion-safe:data-[state=open]:animate-collapsible-down overflow-hidden">
           <SidebarMenuSub className="mr-0 ml-3">
             {item.items.map((child) =>
               child.kind === "coming-soon" ? (
