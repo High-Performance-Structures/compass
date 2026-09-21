@@ -51,6 +51,9 @@ describe("help registry", () => {
     expect(getHelpTopic("contacts.access.add-and-invite")?.section?.title).toBe(
       "Add and Invite a Contact"
     )
+    expect(getHelpTopic("financials.client-report-phases")?.href).toBe(
+      "/dashboard/help/financial-workflows#client-report-phases"
+    )
     expect(getHelpTopic("not-a-topic")).toBeNull()
   })
 
@@ -176,6 +179,17 @@ describe("help registry", () => {
     expect(getHelpGuide("schedules-and-tasks")?.content).toContain("**Notes**")
     expect(getHelpGuide("project-operations")?.content).toContain("**Pickup copy**")
     expect(getHelpGuide("greeting-cards")?.content).toContain("search the design catalog")
+  })
+
+  it("documents custom client report phases without changing accounting data", () => {
+    const financialGuide = getHelpGuide("financial-workflows")
+
+    expect(financialGuide?.content).toContain("**Add report phase**")
+    expect(financialGuide?.content).toContain("**Itemize costs for the client**")
+    expect(financialGuide?.content).toContain("presentation only")
+    expect(financialGuide?.content).toContain("returns its lines to their default CSI grouping")
+    expect(searchHelpGuides("custom report phase client costs")[0]?.guide.id)
+      .toBe("financials")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 
 type PhaseDraft = {
   readonly id: string | null
@@ -86,7 +87,10 @@ export function ProjectEstimateReportPhaseEditor({ projectId, estimateId, worksp
     <section className="mt-5 space-y-3 border-t pt-4" aria-labelledby="report-phases-heading">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 id="report-phases-heading" className="text-sm font-semibold">Custom report phases</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 id="report-phases-heading" className="text-sm font-semibold">Custom report phases</h3>
+            <ContextualHelpBeacon topicId="financials.client-report-phases" />
+          </div>
           <p className="max-w-2xl text-xs text-muted-foreground">
             Split any CSI division into as many client-facing phases as needed, in any department.
             Each phase has its own name, scope description, and itemize choice. CSI divisions keep
