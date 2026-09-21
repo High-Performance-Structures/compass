@@ -10,6 +10,9 @@ import {
   projectContacts,
   projectExternalLinks,
   projectJobStatuses,
+  projectNumberAliases,
+  projectProfileAuditEvents,
+  projectProfileSyncOperations,
   projects,
 } from "@/db/schema"
 import {
@@ -123,6 +126,13 @@ export type CreateProjectFamilyPhaseInput = {
 export type LinkProjectToFamilyPhaseInput = {
   readonly phaseId: string
   readonly projectId: string
+}
+
+export type LinkExistingProjectToFamilyInput = {
+  readonly familyId: string
+  readonly projectNumber: string
+  readonly sequence: number
+  readonly phaseName: string
 }
 
 export type CreateProjectFamilyFromProjectInput = {
@@ -1374,6 +1384,356 @@ export async function linkProjectToFamilyPhase(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to link project phase.",
+    }
+  }
+}
+
+/**
+ * Adopts an existing Compass project as a family phase. The project record and
+ * every record linked to it remain intact. When its legacy number differs from
+ * the family's canonical phase number, Compass retains the old number as an
+ * alias and queues the existing Drive/tracker synchronization workflow.
+ */
+export async function linkExistingProjectToFamily(
+  input: LinkExistingProjectToFamilyInput,
+): Promise<ProjectFamilyMutationResult> {
+  try {
+    const context = await requireFamilyAdminContext()
+    if (!Number.isSafeInteger(input.sequence) || input.sequence < 2) {
+      return { success: false, error: "Choose Phase 2 or later." }
+    }
+
+    const family = await context.db
+      .select({ id: projectFamilies.id })
+      .from(projectFamilies)
+      .where(
+        and(
+          eq(projectFamilies.id, input.familyId),
+          eq(projectFamilies.organizationId, context.organizationId),
+        ),
+      )
+      .limit(1)
+      .get()
+    if (!family) return { success: false, error: "Project family not found." }
+
+    const basePhase = await context.db
+      .select({
+        projectId: projectFamilyPhases.projectId,
+        phaseProjectNumber: projectFamilyPhases.projectNumber,
+        projectNumber: projects.projectNumber,
+      })
+      .from(projectFamilyPhases)
+      .leftJoin(projects, eq(projects.id, projectFamilyPhases.projectId))
+      .where(
+        and(
+          eq(projectFamilyPhases.familyId, input.familyId),
+          eq(projectFamilyPhases.sequence, 1),
+        ),
+      )
+      .limit(1)
+      .get()
+    const familyBaseNumber =
+      basePhase?.phaseProjectNumber ?? basePhase?.projectNumber ?? null
+    if (!basePhase || !familyBaseNumber) {
+      return {
+        success: false,
+        error: "The family needs an original numbered project before linking phases.",
+      }
+    }
+    const canonicalProjectNumber = projectFamilyProjectNumber(
+      familyBaseNumber,
+      input.sequence,
+    )
+    if (!canonicalProjectNumber) {
+      return { success: false, error: "Compass could not build the phase number." }
+    }
+    const canonicalDepartment = projectFamilyDepartment(canonicalProjectNumber)
+    if (!canonicalDepartment) {
+      return { success: false, error: "The family has no valid department." }
+    }
+
+    const requestedProjectNumber = requiredText(
+      input.projectNumber,
+      "Existing project number",
+      100,
+    ).toUpperCase()
+    const project = await context.db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+        department: projects.department,
+        jobStatusId: projects.jobStatusId,
+        googleDriveFolderId: projects.googleDriveFolderId,
+      })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.organizationId, context.organizationId),
+          eq(projects.projectNumber, requestedProjectNumber),
+        ),
+      )
+      .limit(1)
+      .get()
+    if (!project || !project.projectNumber) {
+      return { success: false, error: "Existing project not found." }
+    }
+    if (project.id === basePhase.projectId) {
+      return { success: false, error: "The original project is already Phase 1." }
+    }
+    const existingNumberDepartment = projectFamilyDepartment(project.projectNumber)
+    if (
+      (existingNumberDepartment && existingNumberDepartment !== canonicalDepartment) ||
+      (project.department && project.department !== canonicalDepartment)
+    ) {
+      return {
+        success: false,
+        error: "An existing project can only be linked to a family in the same department.",
+      }
+    }
+
+    const [
+      sequenceConflict,
+      linkedConflict,
+      projectNumberConflict,
+      aliasConflict,
+      phaseNumberConflict,
+    ] =
+      await Promise.all([
+        context.db
+          .select({ id: projectFamilyPhases.id })
+          .from(projectFamilyPhases)
+          .where(
+            and(
+              eq(projectFamilyPhases.familyId, input.familyId),
+              eq(projectFamilyPhases.sequence, input.sequence),
+            ),
+          )
+          .limit(1)
+          .get(),
+        context.db
+          .select({ id: projectFamilyPhases.id })
+          .from(projectFamilyPhases)
+          .where(eq(projectFamilyPhases.projectId, project.id))
+          .limit(1)
+          .get(),
+        context.db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.organizationId, context.organizationId),
+              eq(projects.projectNumber, canonicalProjectNumber),
+            ),
+          )
+          .limit(1)
+          .get(),
+        context.db
+          .select({ projectId: projectNumberAliases.projectId })
+          .from(projectNumberAliases)
+          .where(
+            and(
+              eq(projectNumberAliases.organizationId, context.organizationId),
+              eq(projectNumberAliases.projectNumber, canonicalProjectNumber),
+            ),
+          )
+          .limit(1)
+          .get(),
+        context.db
+          .select({ id: projectFamilyPhases.id })
+          .from(projectFamilyPhases)
+          .innerJoin(
+            projectFamilies,
+            eq(projectFamilies.id, projectFamilyPhases.familyId),
+          )
+          .where(
+            and(
+              eq(projectFamilies.organizationId, context.organizationId),
+              eq(projectFamilyPhases.projectNumber, canonicalProjectNumber),
+            ),
+          )
+          .limit(1)
+          .get(),
+      ])
+    if (sequenceConflict) {
+      return { success: false, error: "That phase is already used in this family." }
+    }
+    if (linkedConflict) {
+      return { success: false, error: "That project already belongs to a family." }
+    }
+    if (projectNumberConflict && projectNumberConflict.id !== project.id) {
+      return { success: false, error: `${canonicalProjectNumber} is already in use.` }
+    }
+    if (aliasConflict && aliasConflict.projectId !== project.id) {
+      return {
+        success: false,
+        error: `${canonicalProjectNumber} is a historical number for another project.`,
+      }
+    }
+    if (phaseNumberConflict) {
+      return {
+        success: false,
+        error: `${canonicalProjectNumber} is already assigned to a planned phase.`,
+      }
+    }
+
+    const phaseName = requiredText(
+      input.phaseName || project.name,
+      "Phase name",
+      200,
+    )
+    const now = new Date().toISOString()
+    const phaseId = crypto.randomUUID()
+    const changedNumber = project.projectNumber !== canonicalProjectNumber
+    const phaseInsert = context.db.insert(projectFamilyPhases).values({
+      id: phaseId,
+      familyId: input.familyId,
+      projectId: project.id,
+      projectNumber: canonicalProjectNumber,
+      googleDriveFolderId: project.googleDriveFolderId,
+      sequence: input.sequence,
+      name: phaseName,
+      description: "Linked from an existing Compass project.",
+      jobStatusId: project.jobStatusId,
+      originatingChangeOrderId: null,
+      authorizedContractAmountCents: null,
+      authorizedAt: null,
+      createdBy: context.user.id,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const auditInsert = context.db.insert(projectProfileAuditEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: context.organizationId,
+      projectId: project.id,
+      actorUserId: context.user.id,
+      eventType: "project.family_phase_linked_existing",
+      entityType: "project_family_phase",
+      entityId: phaseId,
+      beforeJson: JSON.stringify({
+        projectNumber: project.projectNumber,
+        familyId: null,
+      }),
+      afterJson: JSON.stringify({
+        projectNumber: canonicalProjectNumber,
+        previousProjectNumber: changedNumber ? project.projectNumber : null,
+        familyId: input.familyId,
+        sequence: input.sequence,
+      }),
+      createdAt: now,
+    })
+
+    if (changedNumber) {
+      const syncPayload = JSON.stringify({
+        previousProjectNumber: project.projectNumber,
+        projectNumber: canonicalProjectNumber,
+      })
+      await context.db.batch([
+        phaseInsert,
+        context.db
+          .update(projects)
+          .set({
+            projectNumber: canonicalProjectNumber,
+            department: canonicalDepartment,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(projects.id, project.id),
+              eq(projects.organizationId, context.organizationId),
+            ),
+          ),
+        context.db
+          .insert(projectNumberAliases)
+          .values({
+            id: crypto.randomUUID(),
+            organizationId: context.organizationId,
+            projectId: project.id,
+            projectNumber: project.projectNumber,
+            createdBy: context.user.id,
+            createdAt: now,
+          })
+          .onConflictDoNothing(),
+        context.db
+          .update(projectExternalLinks)
+          .set({ externalNumber: canonicalProjectNumber, updatedAt: now })
+          .where(
+            and(
+              eq(projectExternalLinks.projectId, project.id),
+              eq(projectExternalLinks.externalNumber, project.projectNumber),
+            ),
+          ),
+        context.db.insert(projectProfileSyncOperations).values([
+          {
+            id: crypto.randomUUID(),
+            organizationId: context.organizationId,
+            projectId: project.id,
+            operation: "drive_folder_rename",
+            status: "pending",
+            payloadJson: syncPayload,
+            error: null,
+            attempts: 0,
+            attemptedAt: null,
+            completedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+          {
+            id: crypto.randomUUID(),
+            organizationId: context.organizationId,
+            projectId: project.id,
+            operation: "tracker_row_update",
+            status: "pending",
+            payloadJson: syncPayload,
+            error: null,
+            attempts: 0,
+            attemptedAt: null,
+            completedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]),
+        auditInsert,
+      ])
+    } else if (project.department !== canonicalDepartment) {
+      await context.db.batch([
+        phaseInsert,
+        context.db
+          .update(projects)
+          .set({ department: canonicalDepartment, updatedAt: now })
+          .where(
+            and(
+              eq(projects.id, project.id),
+              eq(projects.organizationId, context.organizationId),
+            ),
+          ),
+        auditInsert,
+      ])
+    } else {
+      await context.db.batch([phaseInsert, auditInsert])
+    }
+
+    revalidatePath(`/dashboard/projects/${project.id}`)
+    if (basePhase.projectId) {
+      revalidatePath(`/dashboard/projects/${basePhase.projectId}`)
+    }
+    revalidatePath("/dashboard/projects")
+    return {
+      success: true,
+      id: phaseId,
+      projectNumber: canonicalProjectNumber,
+      driveStatus: project.googleDriveFolderId ? "provisioned" : "pending",
+      warning: changedNumber
+        ? "The old project number was retained as an alias. Drive and tracker renames are queued."
+        : null,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to link the existing project as a phase.",
     }
   }
 }

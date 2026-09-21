@@ -7,6 +7,7 @@ import {
   activateProjectFamilyPhase,
   createProjectFamilyFromProject,
   createProjectFamilyPhase,
+  linkExistingProjectToFamily,
   provisionProjectFamilyPhaseDriveFolder,
 } from "@/app/actions/project-families"
 import { Button } from "@/components/ui/button"
@@ -202,9 +203,99 @@ export function ProjectFamilyPhaseCreateForm({
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button type="submit" variant="outline" disabled={isPending}>
-          {isPending ? "Saving..." : "Save planned phase"}
+          {isPending ? "Creating phase folders..." : "Save planned phase"}
         </Button>
         {message && <p className="text-sm text-destructive">{message}</p>}
+      </div>
+    </form>
+  )
+}
+
+export function ProjectFamilyExistingPhaseLinkForm({
+  familyId,
+  nextSequence,
+}: {
+  readonly familyId: string
+  readonly nextSequence: number
+}): React.ReactElement {
+  const router = useRouter()
+  const [sequence, setSequence] = useState(String(nextSequence))
+  const [projectNumber, setProjectNumber] = useState("")
+  const [phaseName, setPhaseName] = useState("")
+  const [message, setMessage] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function submit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    setMessage(null)
+    startTransition(async () => {
+      const result = await linkExistingProjectToFamily({
+        familyId,
+        sequence: Number.parseInt(sequence, 10),
+        projectNumber,
+        phaseName,
+      })
+      if (!result.success) {
+        setMessage(result.error)
+        return
+      }
+      setProjectNumber("")
+      setPhaseName("")
+      setSequence(String(Number.parseInt(sequence, 10) + 1))
+      setMessage(
+        result.warning ??
+          `${result.projectNumber ?? "Project"} is now linked to this family.`,
+      )
+      router.refresh()
+    })
+  }
+
+  return (
+    <form className="mt-4 border-t pt-4" onSubmit={submit}>
+      <p className="text-sm font-medium">Link an existing project as a phase</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        This keeps the existing project and all of its records. Compass assigns
+        the family phase number, retains the former number as an alias, and
+        queues the existing Drive and tracker update workflow when needed.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-[6rem_12rem_1fr]">
+        <div className="space-y-1.5">
+          <Label htmlFor="project-family-existing-sequence">Phase</Label>
+          <Input
+            id="project-family-existing-sequence"
+            type="number"
+            min="2"
+            value={sequence}
+            onChange={(event) => setSequence(event.target.value)}
+            disabled={isPending}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="project-family-existing-number">Existing project number</Label>
+          <Input
+            id="project-family-existing-number"
+            value={projectNumber}
+            onChange={(event) => setProjectNumber(event.target.value)}
+            placeholder="O-31-2067-01"
+            disabled={isPending}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="project-family-existing-name">Phase name</Label>
+          <Input
+            id="project-family-existing-name"
+            value={phaseName}
+            onChange={(event) => setPhaseName(event.target.value)}
+            placeholder="Existing funded scope"
+            disabled={isPending}
+          />
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button type="submit" variant="outline" disabled={isPending}>
+          {isPending ? "Linking..." : "Link existing project"}
+        </Button>
+        {message && <p className="text-sm text-muted-foreground">{message}</p>}
       </div>
     </form>
   )

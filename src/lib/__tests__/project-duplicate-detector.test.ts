@@ -183,6 +183,33 @@ describe("project duplicate detector", () => {
     ).toBeNull()
   })
 
+  it("does not flag the base project and its distinct phases as duplicates", () => {
+    expect(
+      compareProjectDuplicateIdentity(
+        project("base", { projectNumber: "O-31-2067" }),
+        project("phase-1", { projectNumber: "O-31-2067-01" }),
+      ),
+    ).toBeNull()
+    expect(
+      compareProjectDuplicateIdentity(
+        project("phase-1", { projectNumber: "O-31-2067-1" }),
+        project("phase-2", { projectNumber: "O-31-2067-2" }),
+      ),
+    ).toBeNull()
+  })
+
+  it("still flags two projects assigned to the same normalized phase", () => {
+    const match = compareProjectDuplicateIdentity(
+      project("phase-1-a", { projectNumber: "O-31-2067-01" }),
+      project("phase-1-b", { projectNumber: "O-31-9999-1" }),
+    )
+
+    expect(match).toMatchObject({ score: 100, confidence: "high" })
+    expect(match?.reasons.map((reason) => reason.code)).toContain(
+      "project_department_sequence",
+    )
+  })
+
   it("does not use an extra-segment cutover number as a governed sequence match", () => {
     expect(
       compareProjectDuplicateIdentity(
