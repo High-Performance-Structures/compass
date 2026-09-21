@@ -690,13 +690,14 @@ function SidebarNav({
           items={navMain}
           groupHeaders={{
             Projects: (
-              <div className="px-2 pt-1 pb-2">
+              <div className="px-2 py-1">
                 <ProjectQuickSwitcher
                   projects={projects}
                   currentProjectId={activeProjectId}
                   targetSection={projectTargetSection}
-                  placeholder="Select project..."
-                  className="h-9 w-full border-sidebar-border/70 bg-sidebar-accent/35 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  placeholder="Choose a project"
+                  placeholderClassName="text-sidebar-foreground/70"
+                  className="h-8 w-full border-sidebar-border/60 bg-sidebar-accent/20 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 />
               </div>
             ),
