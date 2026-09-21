@@ -760,7 +760,7 @@ export function AppSidebar({
             <SidebarMenuItem>
               <HelpDrawer
                 triggerLabel="Compass Help"
-                triggerClassName="h-8 w-full justify-start gap-2 p-2 text-left text-sm group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden"
+                triggerClassName="h-7 w-full justify-start gap-1.5 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm font-normal text-sidebar-foreground ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-1.5! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden"
               />
             </SidebarMenuItem>
           ) : null}
