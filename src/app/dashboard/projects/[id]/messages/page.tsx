@@ -39,7 +39,17 @@ export default async function ProjectMessagesPage({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm">
         <span className="text-muted-foreground">Project messages · Historical correspondence is being added as it is verified.</span>
-        <Link className="underline underline-offset-4" href={withProjectConversationContext("/dashboard/conversations", projectId, null)}>Existing channels and direct messages</Link>
+        <Link
+          className="underline underline-offset-4"
+          href={withProjectConversationContext(
+            "/dashboard/conversations",
+            projectId,
+            null,
+          )}
+          prefetch={false}
+        >
+          Existing channels and direct messages
+        </Link>
       </div>
     <ProjectCorrespondenceWorkspace
       projectId={projectId}
