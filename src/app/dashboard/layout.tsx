@@ -21,6 +21,7 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { ProjectListProvider } from "@/components/project-list-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
+import { isLocalDevelopment } from "@/lib/auth-config"
 import { cookies } from "next/headers"
 import { BiometricGuard } from "@/components/native/biometric-guard"
 import { OfflineBanner } from "@/components/native/offline-banner"
@@ -74,6 +75,7 @@ export default async function DashboardLayout({
   const canUseCompassAgent = canUseAskCompass(authUser)
   const canUseCompassFieldDesk = canUseFieldDesk(authUser)
   const canUseCompassOfficeTalk = canUseOfficeTalk(authUser)
+  const isDevelopment = isLocalDevelopment()
   const helpAccess = await getEffectiveHelpGuideAccess(authUser)
   const canViewHelp = helpAccess.canViewHelp
   const allowedHelpGuideIds = new Set(helpAccess.allowedGuideIds)
@@ -156,6 +158,8 @@ export default async function DashboardLayout({
             user={user}
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
+            canViewHelp={canViewHelp}
+            showQuickAddInDevelopment={isDevelopment}
           />
           <NavigationProgress />
           <div className="flex min-h-0 flex-1 overflow-hidden">
