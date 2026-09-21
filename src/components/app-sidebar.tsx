@@ -51,6 +51,7 @@ import { SidebarCommunicationDock, SidebarDeskPhoto } from "@/components/nav-use
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
+import { HelpDrawer } from "@/components/help/help-drawer"
 import {
   useActiveProject,
   useProjectList,
@@ -717,6 +718,7 @@ export function AppSidebar({
   canPrepareGreetingCards = false,
   canUseOfficeTalk = false,
   canUseDirectMessages = false,
+  canViewHelp = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser | null
@@ -729,6 +731,7 @@ export function AppSidebar({
   readonly canPrepareGreetingCards?: boolean
   readonly canUseOfficeTalk?: boolean
   readonly canUseDirectMessages?: boolean
+  readonly canViewHelp?: boolean
 }) {
   const { channelId } = useVoiceState()
   const pathname = usePathname()
@@ -752,6 +755,14 @@ export function AppSidebar({
       <SidebarFooter className="border-t border-sidebar-border/60">
         <SidebarDeskPhoto user={user} />
         <SidebarMenu>
+          {canViewHelp ? (
+            <SidebarMenuItem>
+              <HelpDrawer
+                triggerLabel="Compass Help"
+                triggerClassName="h-8 w-full justify-start gap-2 p-2 text-left text-sm group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden"
+              />
+            </SidebarMenuItem>
+          ) : null}
           <SidebarMenuItem>
             <SidebarMenuButton
               onClick={openFeedbackDialog}

@@ -149,6 +149,7 @@ export default async function DashboardLayout({
           canPrepareGreetingCards={canAccessGreetingCards}
           canUseOfficeTalk={canUseCompassOfficeTalk}
           canUseDirectMessages={canUseDirectMessages}
+          canViewHelp={canViewHelp}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />
@@ -158,7 +159,6 @@ export default async function DashboardLayout({
             user={user}
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
-            canViewHelp={canViewHelp}
             showQuickAddInDevelopment={isDevelopment}
           />
           <NavigationProgress />

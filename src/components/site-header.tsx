@@ -35,7 +35,6 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
-import { HelpDrawer } from "@/components/help/help-drawer"
 import { openListeningRoomWindow } from "@/components/voice/listening-room-button"
 import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
@@ -81,13 +80,11 @@ export function SiteHeader({
   user,
   canUseAskCompass,
   canUseOfficeTalk,
-  canViewHelp,
   showQuickAddInDevelopment,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
   readonly canUseOfficeTalk: boolean
-  readonly canViewHelp: boolean
   readonly showQuickAddInDevelopment: boolean
 }) {
   const { theme, setTheme } = useTheme()
@@ -147,11 +144,6 @@ export function SiteHeader({
           </button>
           <NotificationsPopover />
           <QuickAddMenu showInDevelopment={showQuickAddInDevelopment} />
-          {canViewHelp ? (
-            <HelpDrawer
-              triggerClassName="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            />
-          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -283,11 +275,6 @@ export function SiteHeader({
         <div className="flex shrink-0 items-center justify-end gap-0.5">
           <NotificationsPopover />
           <QuickAddMenu showInDevelopment={showQuickAddInDevelopment} />
-          {canViewHelp ? (
-            <HelpDrawer
-              triggerClassName="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            />
-          ) : null}
           {canUseAskCompass && (
             <Button
               variant="ghost"
