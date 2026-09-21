@@ -7,7 +7,6 @@ import { useTheme } from "@/components/theme-provider"
 import {
   IconLogout,
   IconAutomation,
-  IconCreditCard,
   IconCode,
   IconMenu2,
   IconMusic,
@@ -177,12 +176,6 @@ export function SiteHeader({
                 Account
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/dashboard/financials">
-                  <IconCreditCard />
-                  Financials
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
                 <Link href="/dashboard/settings">
                   <IconSettings />
                   Settings
@@ -328,12 +321,6 @@ export function SiteHeader({
               <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
                 <IconUserCircle />
                 Account
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/financials">
-                  <IconCreditCard />
-                  Financials
-                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/settings">
