@@ -1221,6 +1221,7 @@ export async function provisionProjectDriveFolder(
     const [familyPhase] = await db
       .select({
         phaseId: projectFamilyPhases.id,
+        familyId: projectFamilyPhases.familyId,
         sequence: projectFamilyPhases.sequence,
         phaseFolderId: projectFamilyPhases.googleDriveFolderId,
         familyFolderId: projectFamilies.googleDriveFolderId,
@@ -1234,6 +1235,44 @@ export async function provisionProjectDriveFolder(
         ),
       )
       .limit(1)
+    let familyParentFolderId =
+      familyPhase?.sequence && familyPhase.sequence > 1
+        ? familyPhase.familyFolderId
+        : null
+    if (familyPhase?.sequence && familyPhase.sequence > 1 && !familyParentFolderId) {
+      const basePhase = await db
+        .select({
+          phaseFolderId: projectFamilyPhases.googleDriveFolderId,
+          linkedProjectFolderId: projects.googleDriveFolderId,
+        })
+        .from(projectFamilyPhases)
+        .leftJoin(projects, eq(projects.id, projectFamilyPhases.projectId))
+        .where(
+          and(
+            eq(projectFamilyPhases.familyId, familyPhase.familyId),
+            eq(projectFamilyPhases.sequence, 1),
+          ),
+        )
+        .limit(1)
+        .get()
+      familyParentFolderId =
+        basePhase?.phaseFolderId ?? basePhase?.linkedProjectFolderId ?? null
+      if (familyParentFolderId) {
+        await db
+          .update(projectFamilies)
+          .set({
+            googleDriveFolderId: familyParentFolderId,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(projectFamilies.id, familyPhase.familyId))
+      }
+    }
+    if (familyPhase?.sequence && familyPhase.sequence > 1 && !familyParentFolderId) {
+      return {
+        success: false,
+        error: "The family base project is not mapped to a Google Drive folder yet.",
+      }
+    }
     const department = projectDepartment(project.projectNumber)
     if (!department || !project.projectNumber) {
       return {
@@ -1276,7 +1315,7 @@ export async function provisionProjectDriveFolder(
           project.googleDriveFolderId ?? familyPhase?.phaseFolderId ?? undefined,
         parentFolderId:
           familyPhase?.sequence && familyPhase.sequence > 1
-            ? familyPhase.familyFolderId ?? undefined
+            ? familyParentFolderId ?? undefined
             : undefined,
       }
     )
@@ -1313,6 +1352,13 @@ export async function provisionProjectDriveFolder(
           })
           .where(eq(projectFamilyPhases.id, familyPhase.phaseId))
       : null
+    const familyUpdate =
+      familyPhase?.sequence === 1
+        ? db
+            .update(projectFamilies)
+            .set({ googleDriveFolderId: drive.folderId, updatedAt: now })
+            .where(eq(projectFamilies.id, familyPhase.familyId))
+        : null
     const sageOperationUpdate = db
       .update(projectOperations)
       .set({ externalUrl: drive.folderUrl, updatedAt: now })
@@ -1327,6 +1373,7 @@ export async function provisionProjectDriveFolder(
         projectUpdate,
         sageOperationUpdate,
         ...(phaseUpdate ? [phaseUpdate] : []),
+        ...(familyUpdate ? [familyUpdate] : []),
         db
           .update(projectExternalLinks)
           .set(linkValues)
@@ -1337,6 +1384,7 @@ export async function provisionProjectDriveFolder(
         projectUpdate,
         sageOperationUpdate,
         ...(phaseUpdate ? [phaseUpdate] : []),
+        ...(familyUpdate ? [familyUpdate] : []),
         db.insert(projectExternalLinks).values({
           id: crypto.randomUUID(),
           projectId,

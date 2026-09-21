@@ -466,6 +466,7 @@ async function linkPhasedHandoffToFamily(input: {
     .select({
       id: projectFamilyPhases.id,
       projectId: projectFamilyPhases.projectId,
+      googleDriveFolderId: projectFamilyPhases.googleDriveFolderId,
     })
     .from(projectFamilyPhases)
     .where(
@@ -486,7 +487,7 @@ async function linkPhasedHandoffToFamily(input: {
       .set({
         projectId: input.projectId,
         projectNumber: input.projectNumber,
-        googleDriveFolderId: input.folderId,
+        googleDriveFolderId: input.folderId ?? existing.googleDriveFolderId,
         name: input.projectName,
         updatedAt: input.now,
       })
