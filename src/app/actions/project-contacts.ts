@@ -33,6 +33,7 @@ import { requirePermission } from "@/lib/permissions"
 import {
   projectContactCompassAccountStatus,
   projectContactAccessStatus,
+  vendorAccessStatusWithSharedInvite,
   type ProjectContactAccessStatus,
   type ProjectContactCompassAccountStatus,
   type ProjectContactInvitationSnapshot,
@@ -891,6 +892,65 @@ export async function getProjectContactsSummary(
         .filter((email) => email.length > 0)
     )
   )
+  const vendorEmails = Array.from(
+    new Set(
+      rows
+        .filter((row) => row.contactType === "supplier" || row.contactType === "subcontractor")
+        .map((row) => row.email?.trim().toLowerCase() ?? "")
+        .filter((email) => email.length > 0)
+    )
+  )
+  const viewer = await requireAuth()
+  const sharedInvitationRows =
+    audience === "internal" &&
+    (isInternalStaffRole(viewer.role) || viewer.role === "developer")
+      ? (
+          await Promise.all(
+            Array.from(
+              { length: Math.ceil(vendorEmails.length / 80) },
+              (_, chunkIndex) =>
+                db
+                  .select({
+                    email: projectAccessInvitations.email,
+                    status: projectAccessInvitations.status,
+                    workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+                  })
+                  .from(projectAccessInvitations)
+                  .where(
+                    and(
+                      eq(projectAccessInvitations.organizationId, organizationId),
+                      eq(projectAccessInvitations.status, "sent"),
+                      inArray(projectAccessInvitations.role, ["supplier", "subcontractor"]),
+                      inArray(
+                        sql<string>`lower(trim(${projectAccessInvitations.email}))`,
+                        vendorEmails.slice(chunkIndex * 80, chunkIndex * 80 + 80)
+                      )
+                    )
+                  )
+                  .orderBy(desc(projectAccessInvitations.invitedAt))
+            )
+          )
+        ).flat()
+      : []
+  const sharedPendingInvitationByEmail = new Map<
+    string,
+    ProjectContactInvitationSnapshot
+  >()
+  for (const invitation of sharedInvitationRows) {
+    const email = invitation.email.trim().toLowerCase()
+    if (sharedPendingInvitationByEmail.has(email)) continue
+    const snapshot: ProjectContactInvitationSnapshot = {
+      status: invitation.status,
+      workosExpiresAt: invitation.workosExpiresAt,
+      acceptedUserActive: null,
+    }
+    if (projectContactAccessStatus({
+      activeProjectMember: false,
+      latestInvitation: snapshot,
+    }) === "pending") {
+      sharedPendingInvitationByEmail.set(email, snapshot)
+    }
+  }
   const compassAccountRows = (
     await Promise.all(
       Array.from(
@@ -977,15 +1037,23 @@ export async function getProjectContactsSummary(
         activeProjectUserIds.has(row.sourceEntityId)) ||
       (email.length > 0 && activeProjectEmails.has(email))
 
+    const projectStatus = row.active
+      ? projectContactAccessStatus({
+          activeProjectMember,
+          latestInvitation,
+          compassAccountStatus,
+        })
+      : "not_invited"
     return toContactItem(
       row,
       row.active
-        ? projectContactAccessStatus({
-            activeProjectMember,
-            latestInvitation,
+        ? vendorAccessStatusWithSharedInvite({
+            contactType: row.contactType,
+            projectStatus,
             compassAccountStatus,
+            sharedInvitation: sharedPendingInvitationByEmail.get(email) ?? null,
           })
-        : "not_invited",
+        : projectStatus,
       (row.sourceEntityId !== null &&
         directoryIdentityKeys.has(
           `${row.sourceEntityType}:${row.sourceEntityId}`
