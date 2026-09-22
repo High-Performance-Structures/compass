@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   localSyncMetadata,
   SyncStatus,
@@ -310,6 +311,12 @@ async function checkResourceAuthorization(
   // Check role-based permission
   if (!can(user, resource, action)) {
     return { authorized: false, reason: `Role ${user.role} cannot ${action} ${resource}` }
+  }
+  if (
+    (table === "scheduleTasks" || table === "taskDependencies") &&
+    !isInternalStaffRole(user.role) && user.role !== "developer"
+  ) {
+    return { authorized: false, reason: "Working schedule sync is available to internal staff only" }
   }
 
   // For project-related resources, check project membership

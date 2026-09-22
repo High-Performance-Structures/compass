@@ -15,6 +15,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/schedule/phase-colors"
 
 export type ReusableSchedulePhaseOption = {
@@ -59,6 +60,9 @@ async function verifyProject(input: {
 }> {
   const user = await requireAuth()
   requirePermission(user, "schedule", input.action)
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    throw new Error("Only internal project staff can access working schedule phases.")
+  }
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

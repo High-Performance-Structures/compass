@@ -1,15 +1,14 @@
 import type { ProjectAudience } from "@/lib/project-audience-access"
 
 type AudienceScheduleVisibility = {
-  readonly ownerVisible: boolean | null | undefined
-  readonly subVendorVisible: boolean | null | undefined
+  readonly ownerVisible?: boolean | null
+  readonly subVendorVisible?: boolean | null
 }
 
 /**
- * Existing schedules predate sub/vendor visibility flags. Until a project
- * explicitly curates partner-visible tasks, give partners the same published
- * schedule rows already approved for owners. Once any task is explicitly
- * shared with partners, the explicit partner selection becomes authoritative.
+ * Initial migrated snapshots predate sub/vendor visibility flags. Preserve
+ * their owner-approved rows for partners. Snapshots with explicit flags use
+ * the partner selection even when every flag is false.
  */
 export function selectProjectAudienceScheduleItems<
   T extends AudienceScheduleVisibility,
@@ -18,12 +17,13 @@ export function selectProjectAudienceScheduleItems<
     return items.filter((item) => item.ownerVisible !== false)
   }
 
-  const hasExplicitPartnerSelection = items.some(
-    (item) => item.subVendorVisible === true
+  const isLegacySnapshot = items.some(
+    (item) => item.subVendorVisible === undefined || item.subVendorVisible === null
   )
   return items.filter((item) =>
-    hasExplicitPartnerSelection
-      ? item.subVendorVisible === true
-      : item.ownerVisible !== false
+    isLegacySnapshot
+      ? item.subVendorVisible === true ||
+        (item.subVendorVisible == null && item.ownerVisible !== false)
+      : item.subVendorVisible === true
   )
 }

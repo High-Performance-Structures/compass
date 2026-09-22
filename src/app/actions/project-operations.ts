@@ -23,6 +23,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import {
@@ -1034,6 +1035,7 @@ function operationToScheduleItem(
 export async function getProjectOperationsSummary(
   projectId: string
 ): Promise<ProjectOperationsSummary> {
+  const viewer = await requireAuth()
   const db = await verifyProjectAccess(projectId)
   const today = new Date().toISOString().slice(0, 10)
 
@@ -1078,18 +1080,22 @@ export async function getProjectOperationsSummary(
       (operation.dueDate !== null && operation.dueDate >= today)
   )
 
-  const nextScheduleItem = nextCompassTask
-    ? {
-        id: nextCompassTask.id,
-        title: nextCompassTask.title,
-        startDate: nextCompassTask.startDate,
-        endDate: nextCompassTask.endDateCalculated,
-        assignedTo: nextCompassTask.assignedTo,
-        source: "compass_schedule" as const,
-      }
-    : nextSageOperation
-      ? operationToScheduleItem(nextSageOperation)
-      : null
+  const canViewWorkingSchedule =
+    isInternalStaffRole(viewer.role) || viewer.role === "developer"
+  const nextScheduleItem = !canViewWorkingSchedule
+    ? null
+    : nextCompassTask
+      ? {
+          id: nextCompassTask.id,
+          title: nextCompassTask.title,
+          startDate: nextCompassTask.startDate,
+          endDate: nextCompassTask.endDateCalculated,
+          assignedTo: nextCompassTask.assignedTo,
+          source: "compass_schedule" as const,
+        }
+      : nextSageOperation
+        ? operationToScheduleItem(nextSageOperation)
+        : null
 
   return {
     openPurchaseOrderCount: openPurchaseOrders.length,

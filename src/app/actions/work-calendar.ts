@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -15,6 +15,7 @@ import {
   projectOperations,
   projectRfis,
   projects,
+  schedulePublications,
   scheduleTasks,
   users,
   workCalendarEventAttendees,
@@ -64,6 +65,10 @@ import {
   linkedTodoSourceLabel,
 } from "@/lib/schedule/linked-todos"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
+import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
+import { summarizeOwnerScheduleByPhase } from "@/lib/schedule/owner-visibility"
+import { activePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import {
   expandWorkCalendarRecurrence,
   isWorkCalendarRecurrence,
@@ -281,6 +286,7 @@ export async function getWorkCalendar(
     canManageEvents && can(user, "schedule", "create")
   const canUseManagedGoogleCalendar =
     isInternalStaffRole(user.role) || user.role === "developer"
+  const canViewWorkingSchedule = canUseManagedGoogleCalendar
   const canCreateTodos =
     !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
 
@@ -311,6 +317,8 @@ export async function getWorkCalendar(
             id: projects.id,
             name: projects.name,
             projectNumber: projects.projectNumber,
+            schedulePublished: projects.schedulePublished,
+            ownerScheduleView: projects.ownerScheduleView,
           })
           .from(projects)
           .where(eq(projects.organizationId, orgId))
@@ -320,6 +328,8 @@ export async function getWorkCalendar(
             id: projects.id,
             name: projects.name,
             projectNumber: projects.projectNumber,
+            schedulePublished: projects.schedulePublished,
+            ownerScheduleView: projects.ownerScheduleView,
           })
           .from(projectMembers)
           .innerJoin(projects, eq(projects.id, projectMembers.projectId))
@@ -330,6 +340,16 @@ export async function getWorkCalendar(
             ),
           )
           .orderBy(asc(projects.projectNumber), asc(projects.name))
+  const projectRoles = new Map<string, string>()
+  if (!canViewWorkingSchedule) {
+    const memberships = await db
+      .select({ projectId: projectMembers.projectId, role: projectMembers.role })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, user.id))
+    for (const membership of memberships) {
+      projectRoles.set(membership.projectId, membership.role)
+    }
+  }
   const projectById = new Map(
     projectRows.map((project) => [project.id, project])
   )
@@ -455,7 +475,7 @@ export async function getWorkCalendar(
   for (const project of options?.eventsOnly ? [] : projectRows) {
     const label = projectLabel(project)
 
-    const taskRows = await db
+    const workingTaskRows = canViewWorkingSchedule ? await db
       .select({
         id: scheduleTasks.id,
         title: scheduleTasks.title,
@@ -468,6 +488,52 @@ export async function getWorkCalendar(
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, project.id))
       .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+      : []
+    const projectRole = projectRoles.get(project.id)
+    const audience = projectRole === "client" || projectRole === "owner"
+      ? "owner"
+      : projectRole === "subcontractor" || projectRole === "supplier"
+        ? "sub_vendor"
+        : null
+    const publication = !canViewWorkingSchedule && project.schedulePublished && audience
+      ? await db
+          .select({ snapshotData: schedulePublications.snapshotData })
+          .from(schedulePublications)
+          .where(eq(schedulePublications.projectId, project.id))
+          .orderBy(desc(schedulePublications.publishedAt))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : null
+    const snapshot = activePublishedScheduleSnapshot(
+      project.schedulePublished,
+      publication?.snapshotData ?? null
+    )
+    const publishedItems = snapshot && audience
+      ? selectProjectAudienceScheduleItems(snapshot.tasks, audience)
+      : []
+    const externalRows = audience === "owner" && project.ownerScheduleView === "phases"
+      ? summarizeOwnerScheduleByPhase(publishedItems.map((item) => ({
+          ...item,
+          endDate: item.endDateCalculated,
+        }))).map((item) => ({
+          id: item.id,
+          title: item.title,
+          status: item.status,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          assignedTo: item.assignedTo,
+          isCriticalPath: false,
+        }))
+      : publishedItems.map((item) => ({
+          id: item.id,
+          title: item.title,
+          status: item.status,
+          startDate: item.startDate,
+          endDate: item.endDateCalculated,
+          assignedTo: item.assignedTo,
+          isCriticalPath: item.isCriticalPath,
+        }))
+    const taskRows = canViewWorkingSchedule ? workingTaskRows : externalRows
     const scheduleTaskById = new Map(
       taskRows.map((scheduleTask) => [scheduleTask.id, scheduleTask])
     )
@@ -501,7 +567,13 @@ export async function getWorkCalendar(
         assignedTo: task.assignedTo,
         companyName: null,
         sourceLabel: "Project schedule",
-        href: scheduleItemHref(project.id, task.id),
+        href: canViewWorkingSchedule
+          ? scheduleItemHref(project.id, task.id)
+          : projectAudienceSectionHref(
+              project.id,
+              audience === "owner" ? "owner" : "sub-vendor",
+              "schedule"
+            ),
         eventDetails: null,
       })
     }

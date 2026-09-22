@@ -644,6 +644,7 @@ function OwnerProjectPreview({
           projectName={data.project.name}
           projectNumber={data.project.projectNumber}
           presentation={data.project.ownerScheduleView}
+          isPublished={data.project.schedulePublished}
         />
         )}
 
@@ -780,6 +781,7 @@ export function ProjectAudiencePreview({
             projectId={data.project.id}
             projectName={data.project.name}
             projectNumber={data.project.projectNumber}
+            isPublished={data.project.schedulePublished}
           />
         )}
 

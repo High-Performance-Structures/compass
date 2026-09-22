@@ -23,10 +23,19 @@ describe("project audience schedule visibility", () => {
     ).toEqual(["owner-and-partner"])
   })
 
-  it("falls back to owner-approved rows for legacy schedules", () => {
+  it("does not expose owner rows when every partner flag is off", () => {
+    expect(
+      selectProjectAudienceScheduleItems(
+        rows.map((item) => ({ ...item, subVendorVisible: false })),
+        "sub_vendor"
+      ).map((item) => item.id)
+    ).toEqual([])
+  })
+
+  it("keeps owner-approved rows visible for snapshots predating partner flags", () => {
     const legacyRows = rows.map((item) => ({
-      ...item,
-      subVendorVisible: false,
+      id: item.id,
+      ownerVisible: item.ownerVisible,
     }))
     expect(
       selectProjectAudienceScheduleItems(legacyRows, "sub_vendor").map(

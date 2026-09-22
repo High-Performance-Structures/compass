@@ -29,6 +29,7 @@ import {
 import { getSageBridgeStatus } from "@/lib/sage/config"
 import { isSageBridgeHeartbeatOnline } from "@/lib/sage/bridge-health"
 import { dateKeyInTimeZone, isValidTimeZone } from "@/lib/work-calendar"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 type DashboardTask = {
   readonly id: string
@@ -448,7 +449,9 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         : DEFAULT_DASHBOARD_TIME_ZONE
     const today = dateKeyInTimeZone(new Date(), timeZone)
 
-    const tasksByProject = groupByProjectId(allTaskRows)
+    const tasksByProject = groupByProjectId(
+      isInternalStaffRole(user.role) || user.role === "developer" ? allTaskRows : []
+    )
     const photosByProject = groupByProjectId(allPhotoRows)
     const logsByProject = groupByProjectId(allLogRows)
     const ownerUpdatesByProject = groupByProjectId(allOwnerUpdateRows)

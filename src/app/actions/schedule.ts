@@ -334,6 +334,11 @@ async function resolveAssignedUserId(
 export async function getSchedule(projectId: string): Promise<ScheduleData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
+  // External viewers use the audience workspace, which only serves the active
+  // publication. This action exposes editable working rows to internal staff.
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    return { tasks: [], dependencies: [], exceptions: [] }
+  }
   const orgId = requireOrg(user)
   const accessibleProjects = await getScheduleProjects()
   if (!accessibleProjects.some((project) => project.id === projectId)) {
@@ -488,6 +493,9 @@ export async function getScopedSchedule(
 ): Promise<ScopedScheduleData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    return { projects: [], tasks: [], dependencies: [], exceptions: [] }
+  }
   const orgId = requireOrg(user)
   const accessibleProjects = await getProjects()
   const requestedIds = new Set(

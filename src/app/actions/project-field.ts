@@ -1284,7 +1284,10 @@ export async function getProjectFieldSummary(
           summary: latestUpdate.summary,
         }
       : null,
-    nextScheduleItem: nextTask ?? null,
+    nextScheduleItem:
+      isInternalStaffRole(viewer.role) || viewer.role === "developer"
+        ? nextTask ?? null
+        : null,
   }
 }
 
@@ -1341,6 +1344,8 @@ export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
 export async function getProjectDailyLogWorkspace(
   projectId: string
 ): Promise<ProjectDailyLogWorkspace> {
+  const viewer = await requireAuth()
+  const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
   const db = await verifyProjectAccess(projectId)
 
   const [project] = await db
@@ -1431,11 +1436,12 @@ export async function getProjectDailyLogWorkspace(
     )
     .orderBy(asc(dailyLogPhotos.sortOrder), desc(dailyLogPhotos.createdAt))
 
-  const phaseRows = await db
+  const phaseRows = canViewWorkingSchedule ? await db
     .select({ phase: scheduleTasks.phase })
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.sortOrder), asc(scheduleTasks.startDate))
+    : []
 
   const schedulePhases = [
     ...new Set(
@@ -1447,7 +1453,7 @@ export async function getProjectDailyLogWorkspace(
 
   const logIds = logRows.map((row) => row.id)
   const taskRows =
-    logIds.length === 0
+    logIds.length === 0 || !canViewWorkingSchedule
       ? []
       : await db
           .select({

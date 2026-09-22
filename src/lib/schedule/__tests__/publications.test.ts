@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import {
   getPublicationChangeReasonError,
-  isDraftScheduleAction,
+  activePublishedScheduleSnapshot,
+  hasScheduleDraftChanges,
   parsePublishedScheduleSnapshot,
 } from "@/lib/schedule/publications"
 
@@ -90,11 +91,12 @@ describe("schedule publications", () => {
     expect(parsePublishedScheduleSnapshot("not-json")).toBeNull()
   })
 
-  it("distinguishes draft-changing schedule activity", () => {
-    expect(isDraftScheduleAction("schedule.item_updated")).toBe(true)
-    expect(isDraftScheduleAction("schedule.dependency_updated")).toBe(true)
-    expect(isDraftScheduleAction("schedule.baseline_created")).toBe(false)
-    expect(isDraftScheduleAction("schedule.published")).toBe(false)
+  it("hides historical snapshots while draft and never serves live rows", () => {
+    const snapshotData = JSON.stringify({ version: 1, tasks: [], dependencies: [], exceptions: [] })
+    expect(activePublishedScheduleSnapshot(false, snapshotData)).toBeNull()
+    expect(activePublishedScheduleSnapshot(true, null)).toBeNull()
+    expect(activePublishedScheduleSnapshot(true, "bad-data")).toBeNull()
+    expect(activePublishedScheduleSnapshot(true, snapshotData)?.tasks).toEqual([])
   })
 
   it("allows the first publication without a change reason", () => {
@@ -119,5 +121,46 @@ describe("schedule publications", () => {
     expect(getPublicationChangeReasonError(reason, true)).toBe(
       "Enter a publish reason of 500 characters or less."
     )
+  })
+
+  it("detects audience changes but ignores response-only updates", () => {
+    const task = {
+      id: "task-1",
+      projectId: "project-1",
+      title: "Framing",
+      startDate: "2026-07-01",
+      workdays: 5,
+      endDateCalculated: "2026-07-07",
+      phase: "framing",
+      displayColor: "blue",
+      status: "PENDING",
+      isCriticalPath: false,
+      isMilestone: false,
+      percentComplete: 0,
+      assignedTo: "Crew",
+      ownerVisible: true,
+      subVendorVisible: true,
+      sortOrder: 1,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    }
+    const createSnapshot = (changes: Record<string, unknown> = {}) =>
+      parsePublishedScheduleSnapshot(JSON.stringify({
+        version: 1,
+        tasks: [{ ...task, ...changes }],
+        dependencies: [],
+        exceptions: [],
+      }))
+    const published = createSnapshot()
+    const responseOnly = createSnapshot({
+      confirmationStatus: "confirmed",
+      confirmationRespondedAt: "2026-07-02T00:00:00.000Z",
+      updatedAt: "2026-07-02T00:00:00.000Z",
+    })
+    const visibilityChanged = createSnapshot({ subVendorVisible: false })
+    const dateChanged = createSnapshot({ startDate: "2026-07-02" })
+    expect(published && responseOnly && hasScheduleDraftChanges(published, responseOnly)).toBe(false)
+    expect(published && visibilityChanged && hasScheduleDraftChanges(published, visibilityChanged)).toBe(true)
+    expect(published && dateChanged && hasScheduleDraftChanges(published, dateChanged)).toBe(true)
   })
 })

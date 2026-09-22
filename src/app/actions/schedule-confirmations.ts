@@ -167,6 +167,18 @@ function revalidateConfirmationPaths(projectId: string): void {
   revalidatePath(`/preview/projects/${projectId}/sub-vendor/schedule`)
 }
 
+async function isSchedulePublished(
+  db: ReturnType<typeof getDb>,
+  projectId: string
+): Promise<boolean> {
+  const project = await db
+    .select({ schedulePublished: projects.schedulePublished })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get()
+  return project?.schedulePublished === true
+}
+
 export async function sendPublishedScheduleAssignment(
   taskId: string
 ): Promise<ScheduleConfirmationResult> {
@@ -197,6 +209,9 @@ export async function sendPublishedScheduleAssignment(
       )
       .get()
     if (!task) return { success: false, error: "Schedule item not found." }
+    if (!(await isSchedulePublished(db, task.projectId))) {
+      return { success: false, error: "Publish this schedule before sending assignment notifications." }
+    }
 
     const publication = await db
       .select({ snapshotData: schedulePublications.snapshotData })
@@ -445,6 +460,9 @@ export async function sendScheduleTaskReminder(
     if (!task) {
       return { success: false, error: "Schedule item not found" }
     }
+    if (!(await isSchedulePublished(db, task.projectId))) {
+      return { success: false, error: "Publish this schedule before sending reminders." }
+    }
     if (!task.confirmationRequired) {
       return {
         success: false,
@@ -607,6 +625,9 @@ export async function respondToScheduleTaskConfirmation(
     if (!project.organizationId || task.assignedUserId !== user.id) {
       return { success: false, error: "This confirmation is not assigned to you." }
     }
+    if (!(await isSchedulePublished(db, task.projectId))) {
+      return { success: false, error: "This schedule is currently a draft." }
+    }
     if (!task.confirmationRequired) {
       return { success: false, error: "Confirmation is no longer required." }
     }
@@ -749,6 +770,9 @@ export async function proposeScheduleTaskChange(
     const project = await assertProjectAccess(db, user, task.projectId)
     if (!project.organizationId || task.assignedUserId !== user.id) {
       return { success: false, error: "This schedule item is not assigned to you." }
+    }
+    if (!(await isSchedulePublished(db, task.projectId))) {
+      return { success: false, error: "This schedule is currently a draft." }
     }
     if (!task.confirmationRequired) {
       return { success: false, error: "A response is no longer required." }

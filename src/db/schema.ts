@@ -683,6 +683,9 @@ export const projects = sqliteTable("projects", {
   // Public-facing copy must not reuse the internal project name or full address.
   publicTitle: text("public_title"),
   publicLocationCity: text("public_location_city"),
+  schedulePublished: integer("schedule_published", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [

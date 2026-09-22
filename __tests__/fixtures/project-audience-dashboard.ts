@@ -67,6 +67,7 @@ export function dashboardFixture(
       clientName: "Larson",
       projectManager: "Jordan Miller",
       ownerScheduleView: "items",
+      schedulePublished: true,
       warrantyEnabled: true,
     },
     ownerUpdates:

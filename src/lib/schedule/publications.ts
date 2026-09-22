@@ -94,26 +94,62 @@ export function parsePublishedScheduleSnapshot(
   }
 }
 
-export const DRAFT_SCHEDULE_ACTIONS = [
-  "schedule.item_created",
-  "schedule.item_updated",
-  "schedule.item_deleted",
-  "schedule.items_completed",
-  "schedule.items_assigned",
-  "schedule.assignees_updated",
-  "schedule.items_deleted",
-  "schedule.items_reordered",
-  "schedule.item_status_changed",
-  "schedule.dependency_created",
-  "schedule.dependency_updated",
-  "schedule.dependency_deleted",
-  "schedule.workday_exception_created",
-  "schedule.workday_exception_updated",
-  "schedule.workday_exception_deleted",
-] as const
+/** Compare what audiences can see, ignoring timestamps and live responses. */
+export function hasScheduleDraftChanges(
+  published: PublishedScheduleSnapshot,
+  current: PublishedScheduleSnapshot
+): boolean {
+  const comparable = (snapshot: PublishedScheduleSnapshot): string =>
+    JSON.stringify({
+      tasks: snapshot.tasks.map((task) => ({
+        id: task.id,
+        title: task.title,
+        startDate: task.startDate,
+        workdays: task.workdays,
+        endDateCalculated: task.endDateCalculated,
+        phase: task.phase,
+        displayColor: task.displayColor,
+        status: task.status,
+        isCriticalPath: task.isCriticalPath,
+        isMilestone: task.isMilestone,
+        percentComplete: task.percentComplete,
+        assignedTo: task.assignedTo,
+        assignedUserId: task.assignedUserId,
+        assigneeParticipantIds: [...task.assigneeParticipantIds].sort(),
+        ownerVisible: task.ownerVisible,
+        subVendorVisible: task.subVendorVisible,
+        confirmationRequired: task.confirmationRequired,
+        sortOrder: task.sortOrder,
+      })).sort((left, right) => left.id.localeCompare(right.id)),
+      dependencies: snapshot.dependencies.map((dependency) => ({
+        id: dependency.id,
+        predecessorId: dependency.predecessorId,
+        successorId: dependency.successorId,
+        type: dependency.type,
+        lagDays: dependency.lagDays,
+      })).sort((left, right) => left.id.localeCompare(right.id)),
+      exceptions: snapshot.exceptions.map((exception) => ({
+        id: exception.id,
+        title: exception.title,
+        startDate: exception.startDate,
+        endDate: exception.endDate,
+        type: exception.type,
+        category: exception.category,
+        recurrence: exception.recurrence,
+        notes: exception.notes,
+      })).sort((left, right) => left.id.localeCompare(right.id)),
+    })
 
-export function isDraftScheduleAction(action: string): boolean {
-  return DRAFT_SCHEDULE_ACTIONS.some((draftAction) => draftAction === action)
+  return comparable(published) !== comparable(current)
+}
+
+export function activePublishedScheduleSnapshot(
+  isPublished: boolean,
+  snapshotData: string | null
+): PublishedScheduleSnapshot | null {
+  return isPublished && snapshotData !== null
+    ? parsePublishedScheduleSnapshot(snapshotData)
+    : null
 }
 
 export function getPublicationChangeReasonError(

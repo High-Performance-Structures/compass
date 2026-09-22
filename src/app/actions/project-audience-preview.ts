@@ -55,7 +55,7 @@ import {
   selectOwnScheduleCommitments,
   type OwnerScheduleView,
 } from "@/lib/schedule/owner-visibility"
-import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
+import { activePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { selectAudienceScheduleSourceRows } from "@/lib/schedule/audience-publication"
@@ -242,6 +242,7 @@ export type ProjectAudiencePreview = {
     readonly clientName: string | null
     readonly projectManager: string | null
     readonly ownerScheduleView: OwnerScheduleView
+    readonly schedulePublished: boolean
     readonly warrantyEnabled: boolean
   }
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
@@ -438,6 +439,7 @@ export async function getProjectAudiencePreview(
       clientName: projects.clientName,
       projectManager: projects.projectManager,
       ownerScheduleView: projects.ownerScheduleView,
+      schedulePublished: projects.schedulePublished,
       status: projects.status,
       jobStatusId: projects.jobStatusId,
     })
@@ -546,7 +548,20 @@ export async function getProjectAudiencePreview(
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
-  const currentScheduleRows = await db
+  const publishedSchedule = await db
+    .select({ snapshotData: schedulePublications.snapshotData })
+    .from(schedulePublications)
+    .where(eq(schedulePublications.projectId, projectId))
+    .orderBy(desc(schedulePublications.publishedAt))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  const publishedSnapshot = activePublishedScheduleSnapshot(
+    project.schedulePublished,
+    publishedSchedule?.snapshotData ?? null
+  )
+  // External viewers never read working rows for a draft. Staff can still
+  // preview those rows; active publications only overlay response state.
+  const currentScheduleRows = viewerIsInternal || publishedSnapshot ? await db
     .select({
       id: scheduleTasks.id,
       title: scheduleTasks.title,
@@ -574,7 +589,7 @@ export async function getProjectAudiencePreview(
     })
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
-    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder)) : []
   // External viewers only receive the child row that they can answer. This
   // keeps another assignee's private response message and proposal private.
   const scheduleAssigneeRows = await db
@@ -630,24 +645,13 @@ export async function getProjectAudiencePreview(
     existing.push(row)
     visibleScheduleAssigneesByTask.set(row.scheduleTaskId, existing)
   }
-  const publishedSchedule = await db
-    .select({ snapshotData: schedulePublications.snapshotData })
-    .from(schedulePublications)
-    .where(eq(schedulePublications.projectId, projectId))
-    .orderBy(desc(schedulePublications.publishedAt))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-  const publishedSnapshot = publishedSchedule
-    ? parsePublishedScheduleSnapshot(publishedSchedule.snapshotData)
-    : null
   // Once a publication exists, fail closed if its immutable snapshot cannot
   // be parsed. Falling back to live rows could expose unpublished changes.
   const currentScheduleById = new Map(
     currentScheduleRows.map((task) => [task.id, task])
   )
-  const publishedScheduleRows = publishedSchedule
-    ? publishedSnapshot
-      ? publishedSnapshot.tasks.map((task) => {
+  const publishedScheduleRows = publishedSnapshot
+    ? publishedSnapshot.tasks.map((task) => {
           const currentTask = currentScheduleById.get(task.id)
           const assigneeSetMatches = sameScheduleAssigneeSet(
             (scheduleAssigneesByTask.get(task.id) ?? []).map(
@@ -709,7 +713,6 @@ export async function getProjectAudiencePreview(
               : [],
           }
         })
-      : []
     : null
   const draftScheduleRows = currentScheduleRows.map((task) => ({
     ...task,
@@ -1129,6 +1132,7 @@ export async function getProjectAudiencePreview(
       clientName: project.clientName,
       projectManager: project.projectManager,
       ownerScheduleView,
+      schedulePublished: project.schedulePublished && publishedSnapshot !== null,
       warrantyEnabled: isWarrantyProjectStage({
         status: project.status,
         jobStatusId: project.jobStatusId,

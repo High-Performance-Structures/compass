@@ -3,9 +3,9 @@ export const dynamic = "force-dynamic"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { projects } from "@/db/schema"
-import { eq } from "drizzle-orm"
-import { notFound } from "next/navigation"
+import { projectMembers, projects } from "@/db/schema"
+import { and, eq } from "drizzle-orm"
+import { notFound, redirect } from "next/navigation"
 import { getSchedule, getScheduleProjects } from "@/app/actions/schedule"
 import { getBaselines } from "@/app/actions/baselines"
 import type { ProjectListItem } from "@/app/actions/projects"
@@ -24,6 +24,10 @@ import {
 } from "@/app/actions/schedule-publications"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
+import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
+import { can } from "@/lib/permissions"
+import { isDemoUser } from "@/lib/demo"
 
 const emptySchedule: ScheduleData = {
   tasks: [],
@@ -64,9 +68,27 @@ export default async function SchedulePage({
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   let ownerScheduleView: OwnerScheduleView = "items"
   let publicationStatus: SchedulePublicationStatus | null = null
-  const [savedViews, currentUser, schedulePreferences] = await Promise.all([
+  const currentUser = await getCurrentUser()
+
+  if (currentUser && !isInternalStaffRole(currentUser.role) && currentUser.role !== "developer") {
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const membership = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, id), eq(projectMembers.userId, currentUser.id)))
+      .get()
+    if (membership?.role === "client" || membership?.role === "owner") {
+      redirect(projectAudienceSectionHref(id, "owner", "schedule"))
+    }
+    if (membership?.role === "subcontractor" || membership?.role === "supplier") {
+      redirect(projectAudienceSectionHref(id, "sub-vendor", "schedule"))
+    }
+    notFound()
+  }
+
+  const [savedViews, schedulePreferences] = await Promise.all([
     getScheduleSavedViews(),
-    getCurrentUser(),
     getUserSchedulePreferences(),
   ])
 
@@ -123,6 +145,7 @@ export default async function SchedulePage({
         ganttScrollMode={schedulePreferences.ganttScrollMode}
         currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
         publicationStatus={publicationStatus}
+        canManagePublication={can(currentUser, "schedule", "update") && !isDemoUser(currentUser?.id ?? "")}
         initialTaskFormOpen={quickAdd === "schedule-item"}
       />
     </div>

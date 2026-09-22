@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic"
 
 import { getWorkCalendar } from "@/app/actions/work-calendar"
+import { getProjects } from "@/app/actions/projects"
 import {
   getOwnerScheduleView,
-  getScheduleProjects,
   getScopedSchedule,
 } from "@/app/actions/schedule"
 import {
@@ -32,6 +32,15 @@ import {
 } from "@/app/actions/project-contacts"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
+import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
+import { getCloudflareContext } from "@/lib/db"
+import { getDb } from "@/db"
+import { projectMembers } from "@/db/schema"
+import { eq } from "drizzle-orm"
+import { notFound, redirect } from "next/navigation"
+import { can } from "@/lib/permissions"
+import { isDemoUser } from "@/lib/demo"
 
 function kindFilter(
   value: string | readonly string[] | undefined
@@ -106,10 +115,30 @@ export default async function SchedulePage({
 }): Promise<React.ReactElement> {
   const query = await searchParams
   if (firstValue(query.mode) === "projects") {
-    const [allProjects, savedViews, currentUser, schedulePreferences] = await Promise.all([
-      getScheduleProjects(),
-      getScheduleSavedViews(),
+    const [allProjects, currentUser] = await Promise.all([
+      getProjects(),
       getCurrentUser(),
+    ])
+    if (currentUser && !isInternalStaffRole(currentUser.role) && currentUser.role !== "developer") {
+      const { env } = await getCloudflareContext()
+      const db = getDb(env.DB)
+      const memberships = await db
+        .select({ projectId: projectMembers.projectId, role: projectMembers.role })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, currentUser.id))
+      const projectIds = new Set(allProjects.map((project) => project.id))
+      const membership = memberships.find((row) => projectIds.has(row.projectId) && (
+        row.role === "client" || row.role === "owner" ||
+        row.role === "subcontractor" || row.role === "supplier"
+      ))
+      if (!membership) notFound()
+      const audience = membership.role === "client" || membership.role === "owner"
+        ? "owner"
+        : "sub-vendor"
+      redirect(projectAudienceSectionHref(membership.projectId, audience, "schedule"))
+    }
+    const [savedViews, schedulePreferences] = await Promise.all([
+      getScheduleSavedViews(),
       getUserSchedulePreferences(),
     ])
     const requestedScope = firstValue(query.scope)
@@ -221,6 +250,7 @@ export default async function SchedulePage({
           ganttScrollMode={schedulePreferences.ganttScrollMode}
           currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
           publicationStatus={publicationStatus}
+          canManagePublication={can(currentUser, "schedule", "update") && !isDemoUser(currentUser?.id ?? "")}
         />
       </div>
     )

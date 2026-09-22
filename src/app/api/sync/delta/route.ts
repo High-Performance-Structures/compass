@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1"
 import { eq, and, gt, inArray } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getCurrentUser } from "@/lib/auth"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   localSyncMetadata,
 } from "@/lib/sync/schema"
@@ -144,6 +145,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { error: "No valid tables specified" },
         { status: 400 },
+      )
+    }
+  }
+
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    requestedTables = requestedTables.filter(
+      (table) => table !== "scheduleTasks" && table !== "taskDependencies"
+    )
+    if (requestedTables.length === 0) {
+      return NextResponse.json(
+        { error: "Working schedule sync is available to internal staff only" },
+        { status: 403 },
       )
     }
   }
