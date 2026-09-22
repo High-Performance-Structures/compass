@@ -392,7 +392,7 @@ function Horizon({
 
   return (
     <section className="min-w-0 border-y border-border/70 bg-background">
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <IconCalendarWeek className="size-4 shrink-0 text-primary" />
           <DashboardTooltipTitle
