@@ -21,6 +21,7 @@ import {
   markProjectContractPacketSentOutsideCompass,
   prepareProjectContractPacketForSignature,
   recordManualProjectContractPacketExecution,
+  replaceExecutedProjectContractPacketDocument,
   saveProjectContractPacket,
   saveProjectContractPacketDocument,
   type ProjectContractPacketDocumentItem,
@@ -319,6 +320,10 @@ export function ProjectContractPacketWorkspacePanel({
   const [evidenceLabel, setEvidenceLabel] = useState("")
   const [signedAt, setSignedAt] = useState(localDateInput())
   const [attested, setAttested] = useState(false)
+  const [replacementUrl, setReplacementUrl] = useState("")
+  const [replacementLabel, setReplacementLabel] = useState("")
+  const [replacementReason, setReplacementReason] = useState("")
+  const [replacementAttested, setReplacementAttested] = useState(false)
   const parsedDepositPercent = Number(depositPercent)
   const depositRateBasisPoints = Number.isFinite(parsedDepositPercent)
     ? Math.round(parsedDepositPercent * 100)
@@ -521,6 +526,21 @@ export function ProjectContractPacketWorkspacePanel({
     }
   }
 
+  async function uploadReplacement(file: File): Promise<void> {
+    try {
+      const uploaded = await uploadEstimateAcceptanceEvidence(file, projectId)
+      setReplacementUrl(uploaded.url)
+      setReplacementLabel(uploaded.label)
+      toast.success("Replacement contract uploaded to the project Drive folder.")
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Unable to upload replacement contract."
+      )
+    }
+  }
+
   function recordManualExecution(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     if (!packet) return
@@ -535,6 +555,33 @@ export function ProjectContractPacketWorkspacePanel({
         return
       }
       toast.success(result.message)
+      router.refresh()
+    })
+  }
+
+  function replaceExecutedDocument(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (!packet) return
+    startTransition(async () => {
+      const result = await replaceExecutedProjectContractPacketDocument(
+        projectId,
+        packet.id,
+        {
+          evidenceUrl: replacementUrl,
+          evidenceLabel: replacementLabel,
+          reason: replacementReason,
+          attested: replacementAttested,
+        }
+      )
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message)
+      setReplacementUrl("")
+      setReplacementLabel("")
+      setReplacementReason("")
+      setReplacementAttested(false)
       router.refresh()
     })
   }
@@ -763,6 +810,81 @@ export function ProjectContractPacketWorkspacePanel({
               <span>I confirm the uploaded or linked packet is complete and contains every required owner and company representative signature. *</span>
             </label>
             <Button type="submit" disabled={pending || !attested}>Record execution and lock packet</Button>
+          </form>
+        )}
+        {packet.status === "executed" && workspace.canEdit && (
+          <form className="mt-5 space-y-4 border-t pt-4" onSubmit={replaceExecutedDocument}>
+            <div>
+              <h3 className="text-sm font-semibold">Replace the active executed copy</h3>
+              <p className="mt-1 max-w-3xl text-xs text-muted-foreground">
+                Use this when the archived signing-service copy is unavailable or needs a corrected presentation copy. The execution date, signatures, Foxit envelope reference, and contract status stay unchanged; Compass records the prior link and replacement reason in activity history.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="packet-replacement-file">Upload replacement PDF</Label>
+                <Input
+                  id="packet-replacement-file"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) void uploadReplacement(file)
+                  }}
+                  disabled={pending}
+                />
+                <p className="text-xs text-muted-foreground">PDF, 50 MB maximum.</p>
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="packet-replacement-url">Or link the saved replacement *</Label>
+                <Input
+                  id="packet-replacement-url"
+                  type="url"
+                  value={replacementUrl}
+                  onChange={(event) => setReplacementUrl(event.target.value)}
+                  placeholder="https://drive.google.com/..."
+                  required
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="packet-replacement-label">Document label *</Label>
+                <Input
+                  id="packet-replacement-label"
+                  value={replacementLabel}
+                  onChange={(event) => setReplacementLabel(event.target.value)}
+                  placeholder="Executed contract.pdf"
+                  maxLength={200}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="packet-replacement-reason">Replacement reason *</Label>
+                <Input
+                  id="packet-replacement-reason"
+                  value={replacementReason}
+                  onChange={(event) => setReplacementReason(event.target.value)}
+                  placeholder="Removed trial watermark from the same executed contract."
+                  maxLength={1000}
+                  required
+                />
+              </div>
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                checked={replacementAttested}
+                onCheckedChange={(checked) => setReplacementAttested(checked === true)}
+              />
+              <span>
+                I confirm this is the same complete, fully executed contract packet and that no signed terms or signature content were changed. *
+              </span>
+            </label>
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={pending || !replacementAttested || !replacementUrl}
+            >
+              Replace active contract document
+            </Button>
           </form>
         )}
         {editable && (
