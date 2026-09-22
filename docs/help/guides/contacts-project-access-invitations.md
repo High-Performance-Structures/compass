@@ -28,8 +28,6 @@ Open **Contacts**, choose the relevant customer, vendor, or internal directory, 
 
 Use one directory record when the same company works on several projects. Use separate person records when individuals need separate accounts. Do not create placeholder users for “TBD,” and do not recreate employees as customers or vendors.
 
-For an internal team contact, the project picker offers people already recorded as internal contacts on other projects in the same organization. Choose one to copy their contact details into this project, or enter a new person manually. This list is separate from the Settings team: adding a project contact does not create a Compass account or grant project access.
-
 ## Add and Invite a Contact {#add-and-invite}
 
 1. Create or correct the directory record, paying special attention to the email address.
