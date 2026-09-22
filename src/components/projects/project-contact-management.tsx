@@ -114,6 +114,8 @@ function directorySourceLabel(
       return "Vendors and subcontractors"
     case "team":
       return "Internal team"
+    case "internal_contact":
+      return "Internal project contacts"
   }
 }
 
@@ -170,7 +172,7 @@ function groupedDirectoryOptions(
   readonly sourceType: ProjectContactDirectoryOption["sourceType"]
   readonly options: readonly ProjectContactDirectoryOption[]
 }[] {
-  return (["customer", "vendor", "team"] satisfies readonly ProjectContactDirectoryOption["sourceType"][])
+  return (["customer", "vendor", "internal_contact", "team"] satisfies readonly ProjectContactDirectoryOption["sourceType"][])
     .map((sourceType) => ({
       sourceType,
       options: options.filter((option) => option.sourceType === sourceType),
@@ -377,6 +379,7 @@ export function ProjectContactEditor({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [directoryOpenKey, setDirectoryOpenKey] = useState<string | null>(null)
+  const [selectedInternalContactId, setSelectedInternalContactId] = useState<string | null>(null)
   const [availableDirectoryOptions, setAvailableDirectoryOptions] = useState(
     directoryOptions
   )
@@ -411,6 +414,9 @@ export function ProjectContactEditor({
   const customerOptions = availableDirectoryOptions.filter(
     (option) => option.sourceType === "customer"
   )
+  const selectedInternalContact = availableDirectoryOptions.find(
+    (option) => option.sourceType === "internal_contact" && option.id === selectedInternalContactId
+  ) ?? null
   const selectedVendor =
     selectedDirectory?.sourceType === "vendor" ? selectedDirectory : null
   const selectedVendorContact = selectedVendor?.vendorContacts.find(
@@ -441,6 +447,9 @@ export function ProjectContactEditor({
     key: Key,
     value: ProjectContactMutationInput[Key]
   ): void {
+    if (key === "displayName" || key === "email" || key === "phone" || key === "address") {
+      setSelectedInternalContactId(null)
+    }
     setInput((current) => ({ ...current, [key]: value }))
   }
 
@@ -450,6 +459,7 @@ export function ProjectContactEditor({
       setInput(initialInput(projectId, contact))
       setAvailableDirectoryOptions(directoryOptions)
       setDirectoryOpenKey(null)
+      setSelectedInternalContactId(null)
       setShowNewCustomer(false)
       setNewCustomerName("")
       setNewCustomerCompany("")
@@ -472,6 +482,7 @@ export function ProjectContactEditor({
   function applyDirectoryOption(option: ProjectContactDirectoryOption): void {
     setDirectoryOpenKey(`${option.sourceType}:${option.id}`)
     setCustomRoleSelected(false)
+    setSelectedInternalContactId(option.sourceType === "internal_contact" ? option.id : null)
     setInput((current) => {
       const contactType =
         option.sourceType === "vendor" &&
@@ -480,8 +491,10 @@ export function ProjectContactEditor({
           : option.suggestedContactType
       return {
         ...current,
-        directorySourceType: option.sourceType,
-        directorySourceId: option.id,
+        // Reuse contact details across projects without linking the record to
+        // Settings users or granting Compass access on the destination project.
+        directorySourceType: option.sourceType === "internal_contact" ? null : option.sourceType,
+        directorySourceId: option.sourceType === "internal_contact" ? null : option.id,
         vendorId: option.sourceType === "vendor" ? option.id : null,
         vendorContactId: null,
         contactType,
@@ -823,6 +836,7 @@ export function ProjectContactEditor({
                         }),
                   }))
                   setCustomRoleSelected(false)
+                  setSelectedInternalContactId(null)
                 }}
               >
                 <SelectTrigger id="project-contact-type">
@@ -1080,19 +1094,19 @@ export function ProjectContactEditor({
             ) : (
               !isEditing && (
                 <div className="grid gap-2">
-                  <Label>Settings team</Label>
+                  <Label>Internal project contacts</Label>
                   <DirectoryPicker
                     key={directoryOpenKey ?? "internal"}
                     options={availableDirectoryOptions.filter(
-                      (option) => option.sourceType === "team"
+                      (option) => option.sourceType === "internal_contact"
                     )}
-                    selected={selectedDirectory}
+                    selected={selectedInternalContact}
                     onSelect={applyDirectoryOption}
-                    placeholder="Choose a Settings team member..."
-                    searchPlaceholder="Search Settings team..."
+                    placeholder="Choose someone from another project..."
+                    searchPlaceholder="Search internal project contacts..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Internal contacts come from active Settings team members.
+                    Reuse an internal contact from another project, or enter a new person below. Adding a contact does not grant Compass access.
                   </p>
                 </div>
               )

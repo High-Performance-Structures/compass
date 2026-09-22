@@ -44,6 +44,7 @@ import {
   resolveProjectContactMutationIdentity,
 } from "@/lib/project-contact-directory-identity"
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
+import { reusableInternalProjectContacts } from "@/lib/reusable-internal-project-contacts"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -197,7 +198,7 @@ export type ProjectContactDirectorySource = "customer" | "vendor" | "team"
 
 export type ProjectContactDirectoryOption = {
   readonly id: string
-  readonly sourceType: ProjectContactDirectorySource
+  readonly sourceType: ProjectContactDirectorySource | "internal_contact"
   readonly displayName: string
   readonly companyName: string | null
   readonly email: string | null
@@ -1126,23 +1127,7 @@ export async function getProjectContactDirectoryOptions(
   // so project read access alone is intentionally insufficient.
   const db = await verifyProjectAccess(projectId, "update")
 
-  const existingRows = await db
-    .select({
-      sourceEntityType: projectContacts.sourceEntityType,
-      sourceEntityId: projectContacts.sourceEntityId,
-    })
-    .from(projectContacts)
-    .where(
-      and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
-    )
-  const existingSources = new Set(
-    existingRows
-      .filter(
-        (row) => row.sourceEntityId !== null && row.sourceEntityId.length > 0
-      )
-      .map((row) => `${row.sourceEntityType}:${row.sourceEntityId}`)
-  )
-  const [customerRows, vendorRows, vendorContactRows, teamRows] = await Promise.all([
+  const [customerRows, vendorRows, vendorContactRows, internalContactRows] = await Promise.all([
     db
       .select({
         id: customers.id,
@@ -1191,23 +1176,24 @@ export async function getProjectContactDirectoryOptions(
       ),
     db
       .select({
-        id: users.id,
-        email: users.email,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        phone: users.phone,
-        address: users.address,
-        role: organizationMembers.role,
+        id: projectContacts.id,
+        projectId: projectContacts.projectId,
+        displayName: projectContacts.displayName,
+        email: projectContacts.email,
+        phone: projectContacts.phone,
+        address: projectContacts.address,
+        updatedAt: projectContacts.updatedAt,
       })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .from(projectContacts)
+      .innerJoin(projects, eq(projects.id, projectContacts.projectId))
       .where(
         and(
-          eq(organizationMembers.organizationId, orgId),
-          eq(users.isActive, true)
+          eq(projects.organizationId, orgId),
+          eq(projectContacts.contactType, "internal"),
+          eq(projectContacts.active, true)
         )
-      ),
+      )
+      .orderBy(desc(projectContacts.updatedAt)),
   ])
   const directoryIdentityKeys = await activeDirectoryIdentityKeys({
     db,
@@ -1269,31 +1255,21 @@ export async function getProjectContactDirectoryOptions(
         left.name.localeCompare(right.name)
       ),
     }))
-  const teamOptions: ProjectContactDirectoryOption[] = teamRows
-    .filter(
-      (row) =>
-        isInternalStaffRole(row.role) &&
-        !existingSources.has(`user:${row.id}`)
-    )
-    .map((row) => {
-      const fullName = [row.firstName, row.lastName]
-        .filter((part): part is string => part !== null && part.trim().length > 0)
-        .join(" ")
-      return {
-        id: row.id,
-        sourceType: "team",
-        displayName: row.displayName?.trim() || fullName || row.email,
-        companyName: null,
-        email: row.email,
-        phone: row.phone,
-        address: row.address,
-        suggestedContactType: "internal",
-        identityManagedByActiveUser: true,
-        vendorContacts: [],
-      }
-    })
+  const internalOptions: ProjectContactDirectoryOption[] =
+    reusableInternalProjectContacts(internalContactRows, projectId).map((row) => ({
+      id: row.id,
+      sourceType: "internal_contact",
+      displayName: row.displayName,
+      companyName: null,
+      email: row.email,
+      phone: row.phone,
+      address: row.address,
+      suggestedContactType: "internal",
+      identityManagedByActiveUser: false,
+      vendorContacts: [],
+    }))
 
-  return [...customerOptions, ...vendorOptions, ...teamOptions].sort((left, right) =>
+  return [...customerOptions, ...vendorOptions, ...internalOptions].sort((left, right) =>
     left.displayName.localeCompare(right.displayName)
   )
 }
@@ -1399,7 +1375,7 @@ export async function saveProjectContact(
       input.directorySourceType !== null &&
       input.directorySourceType !== "team"
     ) {
-      return { success: false, error: "Choose a Settings team member." }
+      return { success: false, error: "Choose an internal project contact or enter one manually." }
     }
 
     if (input.directorySourceType && input.directorySourceId) {
