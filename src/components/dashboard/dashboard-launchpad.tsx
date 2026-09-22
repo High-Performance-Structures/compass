@@ -740,7 +740,7 @@ function OfficeTaskList({
 
   return (
     <section className="min-w-0 border-y border-border/70 bg-background">
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Office priorities</h2>
         </div>
@@ -845,7 +845,7 @@ function OfficePresence({
 
   return (
     <section className="border-y border-border/70 bg-background">
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Who&apos;s in today</h2>
         </div>
@@ -933,7 +933,7 @@ function OfficeAlerts({
 
   return (
     <section className="border-y border-border/70 bg-background">
-      <div className="flex items-center gap-2 px-4 py-3">
+      <div className="flex min-h-14 items-center gap-2 px-4 py-3">
         <IconAlertTriangle className="size-4 text-[#9d832c]" />
         <DashboardTooltipTitle description="Items that may need escalation">
           <h2 className="text-sm font-semibold">Office alerts</h2>
