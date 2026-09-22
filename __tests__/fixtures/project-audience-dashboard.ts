@@ -94,6 +94,7 @@ export function dashboardFixture(
       schedulePhaseConfidence: 100,
       schedulePhaseReason: "Selected",
     })),
+    contractDocuments: [],
     documents: [],
     schedulePublicationAvailable: true,
     scheduleItems: [dashboardScheduleItem()],

@@ -26,6 +26,7 @@ import {
   schedulePublications,
   scheduleTasks,
 } from "@/db/schema"
+import { contractPackets } from "@/db/schema-contracts"
 import { scheduleTaskAssignees, projectSourceRecordParticipants } from "@/db/schema-participants"
 import { projectDocuments } from "@/db/schema-documents"
 import { channelMembers, channels } from "@/db/schema-conversations"
@@ -222,6 +223,15 @@ export type AudienceDocument = {
   readonly publishedAt: string | null
 }
 
+export type AudienceContractDocument = {
+  readonly id: string
+  readonly packetNumber: string
+  readonly versionNumber: number
+  readonly title: string
+  readonly executedAt: string | null
+  readonly label: string | null
+}
+
 export type ProjectAudiencePreview = {
   readonly audience: ProjectAudience
   readonly viewerIsInternal: boolean
@@ -247,6 +257,7 @@ export type ProjectAudiencePreview = {
   }
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
+  readonly contractDocuments: readonly AudienceContractDocument[]
   readonly documents: readonly AudienceDocument[]
   readonly schedulePublicationAvailable: boolean
   readonly scheduleItems: readonly AudienceScheduleItem[]
@@ -1090,33 +1101,55 @@ export async function getProjectAudiencePreview(
 
   // Published construction documents use one whole-project audience. Owners,
   // assigned subcontractors, and internal previews receive the same set.
-  const documentRows = await db
-    .select({
-      id: projectDocuments.id,
-      category: projectDocuments.category,
-      title: projectDocuments.title,
-      description: projectDocuments.description,
-      documentDate: projectDocuments.documentDate,
-      revision: projectDocuments.revision,
-      status: projectDocuments.status,
-      downloadable: projectDocuments.downloadable,
-      sourceFileName: projectDocuments.sourceFileName,
-      publishedAt: projectDocuments.publishedAt,
-    })
-    .from(projectDocuments)
-    .where(
-      and(
-        eq(projectDocuments.projectId, projectId),
-        eq(projectDocuments.audience, "project_team"),
-        inArray(projectDocuments.status, ["current", "superseded"]),
-        isNotNull(projectDocuments.publishedAt)
+  const [documentRows, contractDocumentRows] = await Promise.all([
+    db
+      .select({
+        id: projectDocuments.id,
+        category: projectDocuments.category,
+        title: projectDocuments.title,
+        description: projectDocuments.description,
+        documentDate: projectDocuments.documentDate,
+        revision: projectDocuments.revision,
+        status: projectDocuments.status,
+        downloadable: projectDocuments.downloadable,
+        sourceFileName: projectDocuments.sourceFileName,
+        publishedAt: projectDocuments.publishedAt,
+      })
+      .from(projectDocuments)
+      .where(
+        and(
+          eq(projectDocuments.projectId, projectId),
+          eq(projectDocuments.audience, "project_team"),
+          inArray(projectDocuments.status, ["current", "superseded"]),
+          isNotNull(projectDocuments.publishedAt)
+        )
       )
-    )
-    .orderBy(
-      asc(projectDocuments.category),
-      desc(projectDocuments.documentDate),
-      asc(projectDocuments.title)
-    )
+      .orderBy(
+        asc(projectDocuments.category),
+        desc(projectDocuments.documentDate),
+        asc(projectDocuments.title)
+      ),
+    audience === "owner"
+      ? db
+          .select({
+            id: contractPackets.id,
+            packetNumber: contractPackets.packetNumber,
+            versionNumber: contractPackets.versionNumber,
+            title: contractPackets.title,
+            executedAt: contractPackets.signedAt,
+            label: contractPackets.acceptanceEvidenceLabel,
+          })
+          .from(contractPackets)
+          .where(
+            and(
+              eq(contractPackets.projectId, projectId),
+              eq(contractPackets.status, "executed"),
+              isNotNull(contractPackets.signaturePackageUrl)
+            )
+          )
+          .orderBy(desc(contractPackets.signedAt), desc(contractPackets.versionNumber))
+      : Promise.resolve([]),
+  ])
 
   return {
     audience,
@@ -1163,6 +1196,7 @@ export async function getProjectAudiencePreview(
             : "No phase assigned.",
       }
     }),
+    contractDocuments: contractDocumentRows,
     documents: documentRows,
     schedulePublicationAvailable: publishedSnapshot !== null,
     scheduleItems: audienceScheduleItems,
