@@ -665,6 +665,7 @@ function OwnerProjectPreview({
         {section === "documents" && (
           <ProjectAudienceDocumentLibrary
             projectId={data.project.id}
+            contractDocuments={data.contractDocuments}
             documents={data.documents}
           />
         )}
@@ -905,6 +906,7 @@ export function ProjectAudiencePreview({
         {section === "documents" && (
           <ProjectAudienceDocumentLibrary
             projectId={data.project.id}
+            contractDocuments={data.contractDocuments}
             documents={data.documents}
           />
         )}

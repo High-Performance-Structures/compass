@@ -413,6 +413,10 @@ export function ProjectContractPacketWorkspacePanel({
     })
   }
 
+  const executedDocumentUrl = packet
+    ? `/api/projects/${projectId}/contracts/${packet.id}/executed-document`
+    : ""
+
   function addSigner(): void {
     setClientSigners([
       ...clientSigners,
@@ -651,9 +655,23 @@ export function ProjectContractPacketWorkspacePanel({
             <Button variant="outline" onClick={duplicate} disabled={pending || !workspace.canEdit}>
               <IconCopy className="size-4" />Duplicate version
             </Button>
-            <Button variant="outline" onClick={preview} disabled={pending}>
-              <IconPrinter className="size-4" />Preview PDF
-            </Button>
+            {packet.status === "executed" ? (
+              packet.signaturePackageUrl ? (
+                <Button variant="outline" asChild>
+                  <Link href={executedDocumentUrl} target="_blank">
+                    <IconPrinter className="size-4" />Open executed PDF
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" disabled>
+                  <IconPrinter className="size-4" />Executed PDF unavailable
+                </Button>
+              )
+            ) : (
+              <Button variant="outline" onClick={preview} disabled={pending}>
+                <IconPrinter className="size-4" />Preview PDF
+              </Button>
+            )}
           </div>
         </div>
       </section>
@@ -768,7 +786,7 @@ export function ProjectContractPacketWorkspacePanel({
           <Button onClick={prepareForSignature} disabled={pending || !editable}>Prepare full contract packet for signature</Button>
           <Button variant="outline" onClick={markOutside} disabled={pending || !editable}>Printed / sent for signatures outside Compass</Button>
           {packet.foxitEmbeddedSessionUrl && <Button variant="outline" asChild><Link href={packet.foxitEmbeddedSessionUrl} target="_blank">Review and send in Foxit</Link></Button>}
-          {packet.signaturePackageUrl && <Button variant="outline" asChild><Link href={packet.signaturePackageUrl} target="_blank">Open signed packet</Link></Button>}
+          {packet.signaturePackageUrl && <Button variant="outline" asChild><Link href={executedDocumentUrl} target="_blank">Open signed packet</Link></Button>}
         </div>
         {packet.status === "signature_pending" && workspace.canEdit && (
           <form className="mt-5 space-y-4 border-t pt-4" onSubmit={recordManualExecution}>
