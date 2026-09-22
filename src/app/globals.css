@@ -247,6 +247,21 @@
     border-bottom: 1px solid color-mix(in oklch, var(--border) 76%, var(--foreground));
     background: color-mix(in oklch, var(--brand-stone) 42%, var(--card));
   }
+
+  .sidebar-collapsible-content {
+    overflow: hidden;
+    will-change: height;
+  }
+
+  .sidebar-collapsible-content[data-state="closed"] {
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar-collapsible-content {
+      will-change: auto;
+    }
+  }
 }
 
 [data-mobile="true"] [data-sidebar="content"] {

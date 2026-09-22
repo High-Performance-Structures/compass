@@ -1,19 +1,21 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import {
   IconLogout,
+  IconAutomation,
   IconCode,
   IconMenu2,
-  IconMessageCircle,
+  IconMusic,
   IconMoon,
   IconSearch,
   IconSparkles,
   IconSun,
+  IconSettings,
   IconUserCircle,
-  IconVideo,
 } from "@tabler/icons-react"
 
 import { logout } from "@/app/actions/profile"
@@ -33,15 +35,11 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
-import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
-import {
-  ListeningRoomLauncher,
-} from "@/components/voice/listening-room-button"
+import { openListeningRoomWindow } from "@/components/voice/listening-room-button"
 import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
-import { HelpDrawer } from "@/components/help/help-drawer"
 import { QuickAddMenu } from "@/components/quick-add-menu"
 
 const OFFICE_TALK_MEETING_HREF =
@@ -82,21 +80,18 @@ export function SiteHeader({
   user,
   canUseAskCompass,
   canUseOfficeTalk,
-  canUseDirectMessages,
-  canViewHelp = false,
+  showQuickAddInDevelopment,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
   readonly canUseOfficeTalk: boolean
-  readonly canUseDirectMessages: boolean
-  readonly canViewHelp?: boolean
+  readonly showQuickAddInDevelopment: boolean
 }) {
   const { theme, setTheme } = useTheme()
   const { open: openCommand, openWithQuery } = useCommandMenu()
   const [headerQuery, setHeaderQuery] = React.useState("")
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const agentContext = useAgentOptional()
-  const conversationPanel = useConversationPanelOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
@@ -147,59 +142,14 @@ export function SiteHeader({
               {canUseAskCompass ? "Ask Jarvis or search..." : "Search Compass..."}
             </span>
           </button>
-          <button
-            type="button"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground"
-            onClick={() => {
-              setTheme(theme === "dark" ? "light" : "dark")
-            }}
-            aria-label="Toggle theme"
-          >
-            <IconSun className="size-4 hidden dark:block" />
-            <IconMoon className="size-4 block dark:hidden" />
-          </button>
+          <QuickAddMenu showInDevelopment={showQuickAddInDevelopment} />
           <NotificationsPopover />
-          <QuickAddMenu />
-          {canUseOfficeTalk && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={openOfficeTalkWindow}
-                aria-label="Open Office Talk"
-                title="Office Talk"
-              >
-                <IconVideo className="size-4" />
-              </Button>
-              <ListeningRoomLauncher
-                channelId={OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID}
-                className="size-9 shrink-0 border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              />
-            </>
-          )}
-          {canUseDirectMessages && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={() => conversationPanel?.openDirectMessages()}
-              aria-label="Direct message a team member"
-              title="Direct message"
-            >
-              <IconMessageCircle className="size-4" />
-            </Button>
-          )}
-          {canViewHelp ? (
-            <HelpDrawer
-              triggerClassName="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            />
-          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={(e) => e.stopPropagation()}
+                aria-label="Open profile menu"
               >
                 <Avatar className="size-8 grayscale">
                   {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
@@ -217,11 +167,33 @@ export function SiteHeader({
                 <IconUserCircle />
                 Account
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings">
+                  <IconSettings />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/automations">
+                  <IconAutomation />
+                  Automations
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}>
                 <IconSun className="size-4 hidden dark:block" />
                 <IconMoon className="size-4 block dark:hidden" />
                 <span>Toggle theme</span>
               </DropdownMenuItem>
+              {canUseOfficeTalk && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    openListeningRoomWindow(OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID)
+                  }
+                >
+                  <IconMusic />
+                  Listening Room
+                </DropdownMenuItem>
+              )}
               {canUseDeveloperMode && (
                 <DropdownMenuItem
                   onSelect={() =>
@@ -248,6 +220,22 @@ export function SiteHeader({
       <div className="hidden h-12 w-full grid-cols-[1fr_minmax(0,28rem)_1fr] items-center px-4 md:grid">
         <div className="flex items-center gap-1">
           <SidebarTrigger className="-ml-1" />
+          {canUseDeveloperMode && (
+            <Button
+              variant={developerModeEnabled ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs print:hidden"
+              onClick={() =>
+                setDeveloperModeEnabled(!developerModeEnabled)
+              }
+              aria-pressed={developerModeEnabled}
+              aria-label="Toggle developer mode"
+              title={developerModeEnabled ? "Developer mode on" : "Developer mode off"}
+            >
+              <IconCode className="size-4" />
+              <span className="hidden xl:inline">Developer</span>
+            </Button>
+          )}
         </div>
 
         <div className="relative justify-self-center w-full">
@@ -285,59 +273,8 @@ export function SiteHeader({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
-          {canUseDeveloperMode && (
-            <Button
-              variant={developerModeEnabled ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 gap-1.5 px-2 text-xs print:hidden"
-              onClick={() =>
-                setDeveloperModeEnabled(!developerModeEnabled)
-              }
-              aria-pressed={developerModeEnabled}
-              aria-label="Toggle developer mode"
-              title={developerModeEnabled ? "Developer mode on" : "Developer mode off"}
-            >
-              <IconCode className="size-4" />
-              <span className="hidden xl:inline">Developer</span>
-            </Button>
-          )}
+          <QuickAddMenu showInDevelopment={showQuickAddInDevelopment} />
           <NotificationsPopover />
-          <QuickAddMenu />
-          {canUseOfficeTalk && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={openOfficeTalkWindow}
-                aria-label="Open Office Talk"
-                title="Office Talk"
-              >
-                <IconVideo className="size-4" />
-              </Button>
-              <ListeningRoomLauncher
-                channelId={OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID}
-                className="border-0 bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              />
-            </>
-          )}
-          {canUseDirectMessages && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={() => conversationPanel?.openDirectMessages()}
-              aria-label="Direct message a team member"
-              title="Direct message"
-            >
-              <IconMessageCircle className="size-4" />
-            </Button>
-          )}
-          {canViewHelp ? (
-            <HelpDrawer
-              triggerClassName="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            />
-          ) : null}
           {canUseAskCompass && (
             <Button
               variant="ghost"
@@ -345,23 +282,17 @@ export function SiteHeader({
               className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               onClick={() => agentContext?.toggle()}
               aria-label="Toggle Jarvis"
+              title="Ask Jarvis"
             >
               <IconSparkles className="size-4" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label="Toggle theme"
-          >
-            <IconSun className="size-4 hidden dark:block" />
-            <IconMoon className="size-4 block dark:hidden" />
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="ml-0.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <button
+                className="ml-0.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Open profile menu"
+              >
                 <Avatar className="size-6 grayscale">
                   {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
                   <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
@@ -378,6 +309,35 @@ export function SiteHeader({
                 <IconUserCircle />
                 Account
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings">
+                  <IconSettings />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/automations">
+                  <IconAutomation />
+                  Automations
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}
+              >
+                <IconSun className="size-4 hidden dark:block" />
+                <IconMoon className="size-4 block dark:hidden" />
+                <span>Toggle theme</span>
+              </DropdownMenuItem>
+              {canUseOfficeTalk && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    openListeningRoomWindow(OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID)
+                  }
+                >
+                  <IconMusic />
+                  Listening Room
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
                 <IconLogout />

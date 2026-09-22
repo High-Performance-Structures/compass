@@ -7,7 +7,13 @@ import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { QUICK_ADD_ACTIONS, QUICK_ADD_ACTION_LABELS, type QuickAddAction, type QuickAddProject } from "@/lib/quick-add"
+import {
+  QUICK_ADD_ACTIONS,
+  QUICK_ADD_ACTION_LABELS,
+  shouldShowQuickAdd,
+  type QuickAddAction,
+  type QuickAddProject,
+} from "@/lib/quick-add"
 
 const QuickAddContext = React.createContext<readonly QuickAddProject[]>([])
 
@@ -32,7 +38,11 @@ function ActionIcon({ action }: { readonly action: QuickAddAction }): React.Reac
   }
 }
 
-export function QuickAddMenu(): React.ReactElement | null {
+export function QuickAddMenu({
+  showInDevelopment = false,
+}: {
+  readonly showInDevelopment?: boolean
+} = {}): React.ReactElement | null {
   const router = useRouter()
   const pathname = usePathname()
   const projects = React.useContext(QuickAddContext)
@@ -68,7 +78,7 @@ export function QuickAddMenu(): React.ReactElement | null {
     router.push(`${destination.pathname}${destination.search}${destination.hash}`)
   }
 
-  if (actions.length === 0) return null
+  if (!shouldShowQuickAdd(actions, showInDevelopment)) return null
 
   return (
     <>
@@ -82,11 +92,15 @@ export function QuickAddMenu(): React.ReactElement | null {
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel>Quick Add</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {actions.map((action) => (
-            <DropdownMenuItem key={action} onSelect={() => chooseAction(action)} data-quick-add-action={action}>
-              <ActionIcon action={action} />{QUICK_ADD_ACTION_LABELS[action]}
-            </DropdownMenuItem>
-          ))}
+          {actions.length > 0 ? (
+            actions.map((action) => (
+              <DropdownMenuItem key={action} onSelect={() => chooseAction(action)} data-quick-add-action={action}>
+                <ActionIcon action={action} />{QUICK_ADD_ACTION_LABELS[action]}
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <DropdownMenuItem disabled>No quick-add actions available</DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <Dialog open={pendingAction !== null} onOpenChange={(open) => { if (!open) closePicker() }}>

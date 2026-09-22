@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AuthUser } from "@/lib/auth"
+import { getHelpGuides } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 
 const canFeatureMock = vi.hoisted(() => vi.fn())
@@ -59,5 +60,24 @@ describe("effective Help guide server access", () => {
     const access = await getEffectiveHelpGuideAccess(user("unknown"))
 
     expect(access).toEqual({ canViewHelp: false, allowedGuideIds: [] })
+  })
+
+  it("exposes the full Help guide set during local development", async () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.NODE_ENV = "development"
+
+    try {
+      await expect(getEffectiveHelpGuideAccess(user("unknown"))).resolves.toEqual({
+        canViewHelp: true,
+        allowedGuideIds: getHelpGuides().map((guide) => guide.id),
+      })
+      expect(canFeatureMock).not.toHaveBeenCalled()
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      } else {
+        process.env.NODE_ENV = previousNodeEnv
+      }
+    }
   })
 })

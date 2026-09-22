@@ -16,7 +16,7 @@ function officeNavigation(
     canUseExecutiveAdmin,
   }).find(
     (item): item is NavGroupItem =>
-      item.kind === "group" && item.title === "Office",
+      item.kind === "group" && item.title === "Office Tools",
   )
 }
 
@@ -141,7 +141,7 @@ describe("Greeting Cards sidebar navigation", () => {
       canPrepareGreetingCards: true,
     }).find(
       (item): item is NavGroupItem =>
-        item.kind === "group" && item.title === "Office",
+        item.kind === "group" && item.title === "Office Tools",
     )
 
     expect(

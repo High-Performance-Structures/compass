@@ -39,17 +39,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 export function HelpDrawer({
   triggerClassName,
+  triggerLabel,
 }: {
   readonly triggerClassName?: string
+  readonly triggerLabel?: string
 }): React.ReactElement {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -118,23 +114,18 @@ export function HelpDrawer({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={triggerClassName}
-                aria-label="Open Compass Help"
-              >
-                <HelpCompassIcon />
-              </Button>
-            </SheetTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Compass Help</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size={triggerLabel ? "default" : "icon"}
+          className={triggerClassName}
+          aria-label="Open Compass Help"
+          title="Compass Help"
+        >
+          <HelpCompassIcon />
+          {triggerLabel ? <span>{triggerLabel}</span> : null}
+        </Button>
+      </SheetTrigger>
 
       <SheetContent className="w-full gap-0 sm:max-w-lg" aria-label="Compass Help">
         <SheetHeader className="border-b border-border px-5 pb-4 pt-5">

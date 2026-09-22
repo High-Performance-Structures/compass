@@ -31,6 +31,7 @@ type ProjectComboboxProps = {
   readonly searchPlaceholder?: string
   readonly emptyMessage?: string
   readonly specialOptions?: readonly ProjectComboboxSpecialOption[]
+  readonly placeholderClassName?: string
   readonly disabled?: boolean
   readonly className?: string
   readonly popoverClassName?: string
@@ -54,6 +55,7 @@ export function ProjectCombobox({
   searchPlaceholder = "Search number, name, or client...",
   emptyMessage = "No matching projects.",
   specialOptions = [],
+  placeholderClassName,
   disabled = false,
   className,
   popoverClassName,
@@ -89,6 +91,7 @@ export function ProjectCombobox({
       searchPlaceholder={searchPlaceholder}
       emptyMessage={emptyMessage}
       groupHeading="Projects"
+      placeholderClassName={placeholderClassName}
       disabled={disabled}
       className={className}
       popoverClassName={popoverClassName}

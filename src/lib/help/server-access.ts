@@ -1,4 +1,6 @@
 import type { AuthUser } from "@/lib/auth"
+import { isLocalDevelopment } from "@/lib/auth-config"
+import { getHelpGuides } from "@/lib/help"
 import {
   getAudienceHelpGuides,
   selectAllowedHelpGuideIds,
@@ -17,6 +19,13 @@ export type EffectiveHelpGuideAccess = Readonly<{
 export async function getEffectiveHelpGuideAccess(
   user: AuthUser | null
 ): Promise<EffectiveHelpGuideAccess> {
+  if (user && isLocalDevelopment()) {
+    return {
+      canViewHelp: true,
+      allowedGuideIds: getHelpGuides().map((guide) => guide.id),
+    }
+  }
+
   const canViewHelp = await canFeature(user, "help-resources", "read")
   if (!canViewHelp || !user) {
     return { canViewHelp: false, allowedGuideIds: [] }

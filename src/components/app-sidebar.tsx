@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   IconAddressBook,
   IconArchive,
@@ -30,6 +31,7 @@ import {
   IconShieldCheck,
   IconShoppingCart,
   IconShoppingCartQuestion,
+  IconSettings,
   IconTemplate,
   IconUsers,
   IconVideo,
@@ -45,10 +47,11 @@ import {
 } from "@/components/nav-main"
 import { NavFiles } from "@/components/nav-files"
 import { NavConversations } from "@/components/nav-conversations"
-import { NavUser } from "@/components/nav-user"
+import { SidebarCommunicationDock, SidebarDeskPhoto } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
+import { HelpDrawer } from "@/components/help/help-drawer"
 import {
   useActiveProject,
   useProjectList,
@@ -349,7 +352,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
     ],
   },
   {
-    title: "Communication",
+    title: "Conversations & Requests",
     icon: IconMessageCircle,
     items: [
       {
@@ -367,7 +370,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
     ],
   },
   {
-    title: "Office",
+    title: "Office Tools",
     icon: IconActivity,
     items: [
       {
@@ -662,7 +665,7 @@ function SidebarNav({
     ...staffMessageDeskNav,
     {
       kind: "group",
-      title: "Planning",
+      title: "Tasks & Schedule",
       icon: IconCalendarStats,
       items: projectScopedPlanningNav,
     },
@@ -687,13 +690,14 @@ function SidebarNav({
           items={navMain}
           groupHeaders={{
             Projects: (
-              <div className="px-2 pt-1 pb-2">
+              <div className="px-2 py-1">
                 <ProjectQuickSwitcher
                   projects={projects}
                   currentProjectId={activeProjectId}
                   targetSection={projectTargetSection}
-                  placeholder="Select project..."
-                  className="h-9 w-full border-sidebar-border/70 bg-sidebar-accent/35 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  placeholder="Choose a project"
+                  placeholderClassName="text-sidebar-foreground/90"
+                  className="h-8 w-full cursor-pointer border-sidebar-foreground/30 bg-sidebar-accent/35 px-2 text-sidebar-foreground shadow-sm transition-colors hover:border-sidebar-foreground/50 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:border-sidebar-ring focus-visible:ring-sidebar-ring/50 disabled:cursor-not-allowed"
                 />
               </div>
             ),
@@ -713,6 +717,9 @@ export function AppSidebar({
   canManageFeedback = false,
   canUseExecutiveAdmin = false,
   canPrepareGreetingCards = false,
+  canUseOfficeTalk = false,
+  canUseDirectMessages = false,
+  canViewHelp = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser | null
@@ -723,8 +730,10 @@ export function AppSidebar({
   readonly canManageFeedback?: boolean
   readonly canUseExecutiveAdmin?: boolean
   readonly canPrepareGreetingCards?: boolean
+  readonly canUseOfficeTalk?: boolean
+  readonly canUseDirectMessages?: boolean
+  readonly canViewHelp?: boolean
 }) {
-  const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
   const pathname = usePathname()
 
@@ -745,20 +754,39 @@ export function AppSidebar({
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">
-        {isMobile && (
-          <SidebarMenu>
+        <SidebarDeskPhoto user={user} />
+        <SidebarMenu>
+          {canViewHelp ? (
             <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={openFeedbackDialog}
-              >
-                <IconMessageCircle />
-                <span>Feedback</span>
-              </SidebarMenuButton>
+              <HelpDrawer
+                triggerLabel="Compass Help"
+                triggerClassName="h-7 w-full justify-start gap-1.5 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm font-normal text-sidebar-foreground ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-1.5! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden"
+              />
             </SidebarMenuItem>
-          </SidebarMenu>
-        )}
+          ) : null}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={openFeedbackDialog}
+              tooltip="Report feedback"
+            >
+              <IconMessageReport />
+              <span>Report feedback</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Settings">
+              <Link href="/dashboard/settings">
+                <IconSettings />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarCommunicationDock
+          canUseOfficeTalk={canUseOfficeTalk}
+          canUseDirectMessages={canUseDirectMessages}
+        />
         {channelId !== null && <VoicePanel />}
-        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   )

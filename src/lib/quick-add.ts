@@ -38,6 +38,13 @@ export const QUICK_ADD_ACTION_LABELS: Readonly<Record<QuickAddAction, string>> =
     "warranty-request": "Warranty Request",
   }
 
+export function shouldShowQuickAdd(
+  actions: readonly QuickAddAction[],
+  showInDevelopment: boolean,
+): boolean {
+  return showInDevelopment || actions.length > 0
+}
+
 export function quickAddHref(
   action: QuickAddAction,
   projectId: string,
