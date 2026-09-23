@@ -157,6 +157,9 @@ describe("Buildertrend schedule task source links", () => {
         db.prepare("DELETE FROM buildertrend_schedule_task_source_links WHERE id='link-1'").run()
       ).toThrow()
 
+      db.prepare(
+        "UPDATE buildertrend_staging_records SET review_notes='Reviewed and approved by staff' WHERE id='source-1'"
+      ).run()
       db.prepare("DELETE FROM schedule_tasks WHERE id='task-1'").run()
       const tombstone = db.prepare(
         "SELECT source_record_id, schedule_task_id, schedule_task_id_snapshot, target_deleted_at FROM buildertrend_schedule_task_source_links WHERE id='link-1'"
@@ -165,7 +168,12 @@ describe("Buildertrend schedule task source links", () => {
       expect(tombstone.schedule_task_id).toBeNull()
       expect(tombstone.schedule_task_id_snapshot).toBe("task-1")
       expect(tombstone.target_deleted_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-      expect(db.prepare("SELECT promotion_status FROM buildertrend_staging_records WHERE id='source-1'").get().promotion_status).toBe("archive_only")
+      const archivedSource = db.prepare(
+        "SELECT promotion_status, promoted_record_id, review_notes FROM buildertrend_staging_records WHERE id='source-1'"
+      ).get()
+      expect(archivedSource.promotion_status).toBe("archive_only")
+      expect(archivedSource.promoted_record_id).toBe("task-1")
+      expect(archivedSource.review_notes).toBe("Reviewed and approved by staff")
       expect(() =>
         db.prepare("UPDATE buildertrend_staging_records SET project_id='project-2' WHERE id='source-1'").run()
       ).toThrow()

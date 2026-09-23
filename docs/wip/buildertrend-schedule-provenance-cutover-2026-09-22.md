@@ -27,7 +27,11 @@ deletion timestamp preserve provenance. Source deletion is restricted. Triggers
 reject insertion or reassignment across organizations/projects, incompatible
 promotion state, and mutation of link history. Deleting a Compass task also
 changes the linked staging source from promoted to archive_only. Its former
-target ID remains as a historical pointer, not a live task claim. The tombstone
+target ID remains as a historical pointer, not a live task claim. Consumers
+must check promotion_status and the link's live task FK before interpreting a
+non-null promoted_record_id as operational; an orphan check must not treat
+every non-null pointer as live. The deletion trigger leaves human review_notes
+unchanged. The tombstone
 continues to prohibit source scope changes or re-promotion; a later refresh
 must fail closed rather than recreate a staff-deleted operational task.
 

@@ -144,7 +144,6 @@ BEGIN
     AND target_deleted_at IS NULL;
   UPDATE buildertrend_staging_records
   SET promotion_status = 'archive_only',
-      review_notes = 'Operational schedule task deleted in Compass; archived source and provenance retained.',
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
   WHERE id IN (
     SELECT source_record_id
