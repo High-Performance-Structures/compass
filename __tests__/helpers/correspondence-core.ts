@@ -159,9 +159,14 @@ function createBaseSchema(sqlite: Sqlite): void {
       id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL,
       user_id TEXT NOT NULL, role TEXT NOT NULL, assigned_at TEXT NOT NULL
     );
+    CREATE TABLE internal_contacts (
+      id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL,
+      user_id TEXT, active INTEGER NOT NULL DEFAULT 1
+    );
     CREATE TABLE project_contacts (
       id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL, contact_type TEXT NOT NULL,
       source_entity_type TEXT, source_entity_id TEXT, display_name TEXT NOT NULL,
+      internal_contact_id TEXT,
       email TEXT, role TEXT, trade TEXT, csi_division TEXT, csi_division_name TEXT,
       phone TEXT, company_name TEXT, primary_contact INTEGER NOT NULL DEFAULT 0,
       active INTEGER NOT NULL DEFAULT 1, owner_portal_visible INTEGER NOT NULL DEFAULT 0,
