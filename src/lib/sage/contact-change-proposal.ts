@@ -59,8 +59,9 @@ type PlanResult =
   | { readonly success: true; readonly plan: SageContactProposalPlan }
   | { readonly success: false; readonly error: string }
 
-// Company primary-email SQL columns are still unverified against the installed
-// Sage UI/API binding, so they are deliberately absent from this allowlist.
+// Primary-email writes need a verified UI/API binding: the existing client
+// read path uses child contact line 1, while the vendor mapping remains open.
+// Both are deliberately absent from this allowlist.
 const FIELDS_BY_KIND: Readonly<Record<SageContactKind, readonly SageContactField[]>> = {
   client_company: [
     "addressLine1", "addressLine2", "city", "state", "postalCode",

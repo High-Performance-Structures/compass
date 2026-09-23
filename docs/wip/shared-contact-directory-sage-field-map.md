@@ -32,7 +32,7 @@ installed `mbxml.xsd`; the check below is partial.
 | --- | --- | --- | --- |
 | Client company | `reccln._idnum`, number `recnum` | Address 1/2, City, State, Zip | `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde` |
 | Client billing | same client | Bill Address 1/2, Bill City/State/Zip | `bilad1`, `bilad2`, `bilcty`, `bilste`, `bilzip` |
-| Client primary email | same client | Other Addresses > Primary Email | likely `stmeml`; confirm API/UI binding before write |
+| Client primary email | `clncnt` line 1 under the client, per the existing Sage-to-Square bridge | Other Addresses > Primary Email | `clncnt.e_mail` where `linnum = 1` in the existing bridge; verify current Sage UI/API binding before write |
 | Client person | `clncnt._idnum`, parent `_idref` | Contact Name, Job Title, Phone, Extension, Email, Cell | `cntnme`, `jobttl`, `phnnum`, `phnext`, `e_mail`, `cllphn` |
 | Vendor company | `actpay._idnum`, number `recnum` | Owner, Address 1/2, City, State, Zip | `ownnme`, `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde` |
 | Vendor primary email | same vendor | General Information > Primary Email | likely `prmeml`; confirm API/UI binding before write |
@@ -46,6 +46,12 @@ estimate. In particular, do not infer that a Sage client has only one contact
 from the current row count. `reccln` and `actpay` also contain legacy
 inline contact/email columns; do not update those in place of the child
 contact rows without checking the API's mirroring rules.
+The existing Sage-to-Square invoice bridge explicitly reads client primary
+email from `clncnt.e_mail` on line 1 and falls back to `reccln.e_mail` for
+General Information email. It does not use `reccln.stmeml` for that purpose.
+This is a verified read-path mapping, not authorization to write or reorder
+the first contact. Vendor `actpay.prmeml` remains a candidate, not a verified
+UI/API binding.
 
 ### Installed API schema check (2026-09-22)
 
