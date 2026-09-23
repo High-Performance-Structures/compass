@@ -13,6 +13,7 @@ import {
   customers,
   organizations,
   projects,
+  scheduleTasks,
   users,
   vendors,
 } from "./schema"
@@ -184,6 +185,43 @@ export const buildertrendArchiveFiles = sqliteTable(
     index("buildertrend_staging_files_review_idx").on(
       table.organizationId,
       table.reviewStatus
+    ),
+  ]
+)
+
+// Each link keeps the original task ID when an authorized task deletion
+// clears its nullable FK. Source capture and Compass workflow remain separate.
+export const buildertrendScheduleTaskSourceLinks = sqliteTable(
+  "buildertrend_schedule_task_source_links",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    sourceRecordId: text("source_record_id")
+      .notNull()
+      .references(() => buildertrendSourceRecords.id, { onDelete: "restrict" }),
+    scheduleTaskId: text("schedule_task_id").references(() => scheduleTasks.id, {
+      onDelete: "set null",
+    }),
+    scheduleTaskIdSnapshot: text("schedule_task_id_snapshot").notNull(),
+    linkedAt: text("linked_at").notNull(),
+    targetDeletedAt: text("target_deleted_at"),
+  },
+  (table) => [
+    uniqueIndex("buildertrend_schedule_task_source_pair_unique").on(
+      table.sourceRecordId,
+      table.scheduleTaskIdSnapshot
+    ),
+    index("buildertrend_schedule_task_source_project_idx").on(
+      table.organizationId,
+      table.projectId
+    ),
+    index("buildertrend_schedule_task_source_task_idx").on(
+      table.scheduleTaskId
     ),
   ]
 )
