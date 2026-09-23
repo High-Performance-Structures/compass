@@ -25,8 +25,8 @@ The labels below were observed in the installed Sage screens. The table and
 column names were read from the installed company's SQL metadata using the
 existing read-only Sage bridge login; no contact rows were fetched. The SQL
 map identifies read-model fields, **not** permission to write a column or the
-API XML element name. API request fields still require validation against the
-installed `mbxml.xsd`.
+API XML element name. API request fields must be validated against the
+installed `mbxml.xsd`; the check below is partial.
 
 | Compass record | Sage table and stable key | Fields shown in Sage | SQL columns |
 | --- | --- | --- | --- |
@@ -46,6 +46,29 @@ estimate. In particular, do not infer that a Sage client has only one contact
 from the current row count. `reccln` and `actpay` also contain legacy
 inline contact/email columns; do not update those in place of the child
 contact rows without checking the API's mirroring rules.
+
+### Installed API schema check (2026-09-22)
+
+Read-only inspection of the installed
+`C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\mbxml.xsd`
+(file dated 2026-04-14) confirms these XML names. This is schema evidence,
+not a successful write or proof of Sage's runtime update behavior.
+
+| API type/request | Confirmed elements relevant to contact sync |
+| --- | --- |
+| `ClientModRq` / `ClientModType` | `ObjectRef` (`ClientKeyType`), `Addr1`, `Addr2`, `City`, `State`, `PostalCode`, `BillingAddr1`, `BillingAddr2`, `BillingCity`, `BillingState`, `BillingPostalCode` |
+| `EmployeeModRq` / `EmployeeModType` | `ObjectRef` (`EmployeeKeyType`), `Addr1`, `Addr2`, `City`, `State`, `PostalCode`, `Phone`, `Mobile`, `Email` |
+| `VendorContactAddType` | `ContactName`, `JobTitle`, `Phone`, `Extension`, `Email`, `Mobile`; a vendor add sequence contains `VendorContactAdd` |
+| `VendorContactModType` | `ObjectRef` (`VendorContactKeyType`); the key type has `LineID` |
+
+The installed request list also contains `ClientQryRq`. Still to inspect in
+the installed XSD: vendor company modification fields, client child-contact
+add/modify fields, client and vendor primary-email fields, and the rest of the
+vendor child-contact modification field definitions. A separate authorized
+non-production or carefully controlled validation must confirm request/response
+behavior, stable child IDs and ordering, blank/null semantics, conflict
+detection, and read-back before any contact-write route is enabled. No Sage
+records were changed during this schema check.
 
 ## Compass storage and privacy
 
