@@ -28,7 +28,7 @@ describe("resolveProjectContactIdentity", () => {
     })
   })
 
-  it("preserves project snapshots when a linked directory field is blank", () => {
+  it("preserves snapshots only for unlinked legacy assignments", () => {
     expect(
       resolveProjectContactIdentity(
         {
@@ -41,6 +41,29 @@ describe("resolveProjectContactIdentity", () => {
     ).toEqual({
       email: "project@example.com",
       phone: "303-555-0100",
+      address: null,
+    })
+  })
+
+  it("never resurrects cleared fields for linked vendor, internal, or company records", () => {
+    const snapshot = {
+      email: "old@example.com",
+      phone: "303-555-0100",
+      address: "Old address",
+    }
+    for (const kind of ["vendor person", "internal person", "company"]) {
+      expect(
+        resolveProjectContactIdentity(
+          snapshot,
+          { email: "", phone: null, address: "  " },
+          true
+        ),
+        kind
+      ).toEqual({ email: null, phone: null, address: null })
+    }
+    expect(resolveProjectContactIdentity(snapshot, null, true)).toEqual({
+      email: null,
+      phone: null,
       address: null,
     })
   })
@@ -67,8 +90,8 @@ describe("resolveProjectContactIdentity", () => {
       })
     ).toEqual({
       email: "current@example.com",
-      phone: "970-555-0100",
-      address: "Legacy address",
+      phone: null,
+      address: null,
     })
   })
 
@@ -99,11 +122,13 @@ describe("resolveProjectContactIdentity", () => {
         {
           sourceEntityType: "vendor",
           sourceEntityId: "vendor-1",
+          customerContactId: null,
           vendorContactId: "person-1",
         },
         {
           sourceEntityType: "vendor_contact",
           sourceEntityId: "person-1",
+          customerContactId: null,
           vendorContactId: "person-1",
         }
       )
@@ -116,14 +141,35 @@ describe("resolveProjectContactIdentity", () => {
         {
           sourceEntityType: "vendor",
           sourceEntityId: "vendor-1",
+          customerContactId: null,
           vendorContactId: "person-1",
         },
         {
           sourceEntityType: "vendor_contact",
           sourceEntityId: "person-2",
+          customerContactId: null,
           vendorContactId: "person-2",
         }
       )
     ).toBe(false)
+  })
+
+  it("matches a client person by canonical contact ID across legacy source types", () => {
+    expect(
+      isSameProjectContactDirectoryIdentity(
+        {
+          sourceEntityType: "customer",
+          sourceEntityId: "customer-1",
+          customerContactId: "person-1",
+          vendorContactId: null,
+        },
+        {
+          sourceEntityType: "customer_contact",
+          sourceEntityId: "person-1",
+          customerContactId: "person-1",
+          vendorContactId: null,
+        }
+      )
+    ).toBe(true)
   })
 })

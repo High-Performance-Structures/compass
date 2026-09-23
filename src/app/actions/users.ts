@@ -17,6 +17,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
+import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 import {
   getUserAvailabilityCondition,
   sortSettingsRosterUsers,
@@ -132,6 +133,8 @@ async function getOrganizationUsers(
 
         return {
           ...user,
+          // Rosters and collaboration search are not private employee files.
+          address: null,
           teams: userTeams,
           groups: userGroups,
           projectCount,
@@ -620,6 +623,16 @@ export async function inviteUser(input: {
               })
               .run()
           }
+          if (workosUser || existing.isActive) {
+            await ensureInternalContactForStaff(db, {
+              organizationId: targetOrganizationId,
+              userId: existing.id,
+              role: validated.role,
+              name: validated.displayName || workosDisplayName || existing.displayName || normalizedEmail,
+              email: normalizedEmail,
+              phone: existing.phone,
+            })
+          }
           revalidatePath("/dashboard/settings")
           revalidatePath("/dashboard/people")
           return {
@@ -670,6 +683,15 @@ export async function inviteUser(input: {
             })
             .run()
 
+          await ensureInternalContactForStaff(db, {
+            organizationId: targetOrganizationId,
+            userId: newUser.id,
+            role: validated.role,
+            name: newUser.displayName ?? normalizedEmail,
+            email: normalizedEmail,
+            phone: null,
+          })
+
           revalidatePath("/dashboard/settings")
           revalidatePath("/dashboard/people")
           return { success: true, accessStatus: "active" }
@@ -712,7 +734,7 @@ export async function inviteUser(input: {
         console.error("WorkOS invitation error:", workosError)
         return {
           success: false,
-          error: "Failed to send invitation via WorkOS",
+          error: "Invitation or local directory setup failed. Check the user's status before retrying.",
         }
       }
     } else {
@@ -755,6 +777,16 @@ export async function inviteUser(input: {
             joinedAt: now,
           }),
         ])
+        if (existing.isActive) {
+          await ensureInternalContactForStaff(db, {
+            organizationId: targetOrganizationId,
+            userId: existing.id,
+            role: validated.role,
+            name: validated.displayName || existing.displayName || normalizedEmail,
+            email: normalizedEmail,
+            phone: existing.phone,
+          })
+        }
         revalidatePath("/dashboard/settings")
         revalidatePath("/dashboard/people")
         return {
@@ -789,6 +821,15 @@ export async function inviteUser(input: {
           joinedAt: now,
         })
         .run()
+
+      await ensureInternalContactForStaff(db, {
+        organizationId: targetOrganizationId,
+        userId: newUser.id,
+        role: validated.role,
+        name: newUser.displayName ?? normalizedEmail,
+        email: normalizedEmail,
+        phone: null,
+      })
 
       revalidatePath("/dashboard/settings")
       revalidatePath("/dashboard/people")

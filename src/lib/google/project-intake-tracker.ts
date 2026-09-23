@@ -1,5 +1,35 @@
 export type ProjectIntakeDepartment = "O" | "H" | "N" | "D"
 
+/** The sheet has one owner slot; linked person fields come from the directory. */
+export function projectTrackerOwnerContact(input: {
+  readonly projectClientName: string | null
+  readonly assignmentName: string | null
+  readonly assignmentCompanyName: string | null
+  readonly assignmentEmail: string | null
+  readonly assignmentPhone: string | null
+  readonly canonicalPersonId: string | null
+  readonly canonicalPersonName: string | null
+  readonly canonicalPersonEmail: string | null
+  readonly canonicalPersonPhone: string | null
+  readonly canonicalCompanyName: string | null
+}): {
+  readonly name: string
+  readonly companyName: string
+  readonly email: string
+  readonly phone: string
+} {
+  return {
+    name: input.canonicalPersonName ?? input.projectClientName ?? input.assignmentName ?? "",
+    companyName: input.canonicalCompanyName ?? input.assignmentCompanyName ?? "",
+    email: input.canonicalPersonId
+      ? input.canonicalPersonEmail ?? ""
+      : input.assignmentEmail ?? "",
+    phone: input.canonicalPersonId
+      ? input.canonicalPersonPhone ?? ""
+      : input.assignmentPhone ?? "",
+  }
+}
+
 export type ProjectIntakeTrackerInput = {
   readonly department: ProjectIntakeDepartment
   readonly projectName: string

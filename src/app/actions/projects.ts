@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
   customers,
+  internalContacts,
   organizationMembers,
   projectContacts,
   projectDuplicateDecisions,
@@ -565,7 +566,6 @@ export async function createProjectIntake(
             lastName: users.lastName,
             email: users.email,
             phone: users.phone,
-            address: users.address,
           })
           .from(organizationMembers)
           .innerJoin(users, eq(users.id, organizationMembers.userId))
@@ -585,6 +585,30 @@ export async function createProjectIntake(
     const projectManagerName = assignee
       ? intakeAssigneeName(assignee)
       : assignedTo
+    const assigneeDirectory = assignee
+      ? await db
+          .select({
+            id: internalContacts.id,
+            name: internalContacts.name,
+            email: internalContacts.email,
+            phone: internalContacts.phone,
+            active: internalContacts.active,
+          })
+          .from(internalContacts)
+          .where(
+            and(
+              eq(internalContacts.organizationId, organizationId),
+              eq(internalContacts.userId, assignee.id)
+            )
+          )
+          .get()
+      : null
+    if (assigneeDirectory && !assigneeDirectory.active) {
+      return { success: false, error: "The assigned staff member is inactive in the internal contact directory." }
+    }
+    const assigneeDirectoryId = assignee
+      ? assigneeDirectory?.id ?? crypto.randomUUID()
+      : null
 
     const now = new Date().toISOString()
     const projectId = `proj-${slugPart(projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
@@ -694,6 +718,22 @@ export async function createProjectIntake(
           createdAt: now,
           updatedAt: now,
         }),
+        ...(assignee && assigneeDirectoryId && !assigneeDirectory
+          ? [db.insert(internalContacts).values({
+              id: assigneeDirectoryId,
+              organizationId,
+              userId: assignee.id,
+              name: projectManagerName ?? assignee.email,
+              email: assignee.email,
+              phone: assignee.phone,
+              sourceSystem: "compass_user",
+              sourceRecordId: assignee.id,
+              active: true,
+              syncStatus: "manual",
+              createdAt: now,
+              updatedAt: now,
+            })]
+          : []),
         customerMatch
           ? db
               .update(customers)
@@ -741,17 +781,18 @@ export async function createProjectIntake(
                 projectId,
                 contactType: "internal",
                 sourceSystem: assignee
-                  ? "organization_directory"
+                  ? "internal_directory"
                   : "compass_project_intake",
-                sourceRecordId: assignee?.id ?? projectId,
-                sourceEntityType: assignee ? "user" : "manual",
-                sourceEntityId: assignee?.id ?? null,
-                displayName: projectManagerName ?? assignedTo,
+                sourceRecordId: assigneeDirectoryId ?? projectId,
+                sourceEntityType: assignee ? "internal_contact" : "manual",
+                sourceEntityId: assigneeDirectoryId,
+                internalContactId: assigneeDirectoryId,
+                displayName: assigneeDirectory?.name ?? projectManagerName ?? assignedTo,
                 companyName: null,
                 role: "Project manager",
-                email: assignee?.email ?? null,
-                phone: assignee?.phone ?? null,
-                address: assignee?.address ?? null,
+                email: assigneeDirectory?.email ?? assignee?.email ?? null,
+                phone: assigneeDirectory?.phone ?? assignee?.phone ?? null,
+                address: null,
                 notes: assignee
                   ? null
                   : "Typed project intake assignment; match this contact to an active team member when available.",

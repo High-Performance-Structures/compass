@@ -22,6 +22,7 @@ import {
 } from "@/lib/user-roles"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 
 export type AuthUser = {
   readonly id: string
@@ -483,6 +484,20 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         eq(organizations.id, organizationMembers.organizationId)
       )
       .where(eq(organizationMembers.userId, dbUser.id))
+
+    if (activatedPendingAccount) {
+      for (const membership of orgMemberships) {
+        if (membership.orgType !== "internal") continue
+        await ensureInternalContactForStaff(db, {
+          organizationId: membership.orgId,
+          userId: dbUser.id,
+          role: membership.memberRole,
+          name: dbUser.displayName ?? dbUser.email,
+          email: dbUser.email,
+          phone: dbUser.phone,
+        })
+      }
+    }
 
     let activeOrg: {
       readonly orgId: string

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  customerContacts,
   customers,
   organizationMembers,
   projectContacts,
@@ -44,6 +45,7 @@ import {
   departmentTrackingDestination,
   locateProjectTrackerLayout,
   patchProjectTrackerCells,
+  projectTrackerOwnerContact,
   PROJECT_REGISTRY_DESTINATION,
   updateProjectTrackerRow,
   type ProjectIntakeDepartment,
@@ -750,14 +752,58 @@ export async function retryProjectProfileSyncOperation(input: {
       const department = trackerDepartment(project.projectNumber)
       if (!department) throw new Error("Project number has no supported tracker department.")
       const contactRows = await db
-        .select({ displayName: projectContacts.displayName, companyName: projectContacts.companyName, email: projectContacts.email, phone: projectContacts.phone })
+        .select({
+          displayName: projectContacts.displayName,
+          customerContactId: projectContacts.customerContactId,
+          companyName: projectContacts.companyName,
+          email: projectContacts.email,
+          phone: projectContacts.phone,
+          directoryPersonName: customerContacts.name,
+          directoryPersonEmail: customerContacts.email,
+          directoryPersonPhone: customerContacts.phone,
+          directoryCompanyName: customers.company,
+        })
         .from(projectContacts)
+        .leftJoin(
+          customers,
+          and(
+            or(
+              eq(projectContacts.customerId, customers.id),
+              and(
+                eq(projectContacts.sourceEntityType, "customer"),
+                eq(projectContacts.sourceEntityId, customers.id)
+              )
+            ),
+            eq(customers.organizationId, organizationId)
+          )
+        )
+        .leftJoin(
+          customerContacts,
+          and(
+            eq(projectContacts.customerContactId, customerContacts.id),
+            eq(customerContacts.customerId, customers.id),
+            eq(customerContacts.active, true)
+          )
+        )
         .where(and(eq(projectContacts.projectId, input.projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
         .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder))
         .limit(1)
       const contact = contactRows[0]
       const address = projectAddressParts(project.address)
-      const clientName = project.clientName ?? contact?.displayName ?? ""
+      const ownerContact = projectTrackerOwnerContact({
+        projectClientName: project.clientName,
+        assignmentName: contact?.displayName ?? null,
+        assignmentCompanyName: contact?.companyName ?? null,
+        assignmentEmail: contact?.email ?? null,
+        assignmentPhone: contact?.phone ?? null,
+        canonicalPersonId: contact?.customerContactId ?? null,
+        canonicalPersonName: contact?.directoryPersonName ?? null,
+        canonicalPersonEmail: contact?.directoryPersonEmail ?? null,
+        canonicalPersonPhone: contact?.directoryPersonPhone ?? null,
+        canonicalCompanyName: contact?.directoryCompanyName ?? null,
+      })
+      const clientName = ownerContact.name
+      const companyName = ownerContact.companyName
       const nameParts = clientName.trim().split(/\s+/).filter(Boolean)
       const firstName = nameParts[0] ?? ""
       const lastName = nameParts.slice(1).join(" ")
@@ -775,7 +821,7 @@ export async function retryProjectProfileSyncOperation(input: {
         rows: registryRows,
         layout: registryLayout,
         currentProjectNumbers: syncProjectNumbers,
-        patches: patchProjectTrackerCells({ layout: registryLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, "street number code": address.streetNumber ?? "", "street name label": address.streetName ?? project.name, "client first name": firstName, "client last name": lastName, "company name": contact?.companyName ?? "", "city state zip": address.cityStateZip ?? "", "folder link": driveFolderUrl, "lead tracker link": `https://docs.google.com/spreadsheets/d/${trackerDestination.spreadsheetId}` } }),
+        patches: patchProjectTrackerCells({ layout: registryLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, "street number code": address.streetNumber ?? "", "street name label": address.streetName ?? project.name, "client first name": firstName, "client last name": lastName, "company name": companyName, "city state zip": address.cityStateZip ?? "", "folder link": driveFolderUrl, "lead tracker link": `https://docs.google.com/spreadsheets/d/${trackerDestination.spreadsheetId}` } }),
       })
       const departmentRows = await clients.sheets.getValues(clients.trackerEmail, { spreadsheetId: trackerDestination.spreadsheetId, range: "'Tracker'!A:ZZ" })
       const departmentLayout = locateProjectTrackerLayout(departmentRows)
@@ -788,7 +834,7 @@ export async function retryProjectProfileSyncOperation(input: {
         rows: departmentRows,
         layout: departmentLayout,
         currentProjectNumbers: syncProjectNumbers,
-        patches: patchProjectTrackerCells({ layout: departmentLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, client: clientName, customer: clientName, "builder gc": contact?.companyName ?? clientName, "contact person": clientName, address: project.address ?? "", "project address": project.address ?? "", phone: contact?.phone ?? "", email: contact?.email ?? "", "billing address": project.mailingAddress ?? "", "folder link": driveFolderUrl } }),
+        patches: patchProjectTrackerCells({ layout: departmentLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, client: clientName, customer: clientName, "builder gc": companyName || clientName, "contact person": clientName, address: project.address ?? "", "project address": project.address ?? "", phone: ownerContact.phone, email: ownerContact.email, "billing address": project.mailingAddress ?? "", "folder link": driveFolderUrl } }),
       })
     } else {
       return { success: false, error: "Unsupported synchronization operation." }

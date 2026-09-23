@@ -6,7 +6,9 @@ import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import {
+  customerContacts,
   customers,
+  internalContacts,
   projectAccessInvitations,
   projectContacts,
   projectMembers,
@@ -24,8 +26,12 @@ import { sendCompassEmail } from "@/lib/email/compass-email"
 import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
-import { projectContactAccessStatus } from "@/lib/project-contact-access-status"
+import {
+  projectContactAccessStatus,
+  projectContactNeedsPersonForInvitation,
+} from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
+import { projectContactAddress } from "@/lib/project-contact-privacy"
 import {
   isExternalProjectRole,
   isInternalStaffRole,
@@ -196,6 +202,10 @@ export async function sendProjectAccessInvitation(
           phone: customers.phone,
           address: customers.address,
         },
+        customerContact: {
+          email: customerContacts.email,
+          phone: customerContacts.phone,
+        },
         vendor: {
           email: vendors.email,
           phone: vendors.phone,
@@ -208,7 +218,10 @@ export async function sendProjectAccessInvitation(
         teamMember: {
           email: users.email,
           phone: users.phone,
-          address: users.address,
+        },
+        internalPerson: {
+          email: internalContacts.email,
+          phone: internalContacts.phone,
         },
       })
       .from(projectContacts)
@@ -216,9 +229,22 @@ export async function sendProjectAccessInvitation(
       .leftJoin(
         customers,
         and(
-          eq(projectContacts.sourceEntityType, "customer"),
-          eq(projectContacts.sourceEntityId, customers.id),
+          or(
+            eq(projectContacts.customerId, customers.id),
+            and(
+              eq(projectContacts.sourceEntityType, "customer"),
+              eq(projectContacts.sourceEntityId, customers.id)
+            )
+          ),
           eq(customers.organizationId, projects.organizationId)
+        )
+      )
+      .leftJoin(
+        customerContacts,
+        and(
+          eq(projectContacts.customerContactId, customerContacts.id),
+          eq(customerContacts.customerId, customers.id),
+          eq(customerContacts.active, true)
         )
       )
       .leftJoin(
@@ -254,6 +280,14 @@ export async function sendProjectAccessInvitation(
           )`
         )
       )
+      .leftJoin(
+        internalContacts,
+        and(
+          eq(projectContacts.internalContactId, internalContacts.id),
+          eq(internalContacts.organizationId, projects.organizationId),
+          eq(internalContacts.active, true)
+        )
+      )
       .where(
         and(
           eq(projectContacts.id, parsed.data.contactId),
@@ -268,15 +302,20 @@ export async function sendProjectAccessInvitation(
       return { success: false, error: "Project contact not found." }
     }
     if (
-      (row.contact.contactType === "supplier" ||
-        row.contact.contactType === "subcontractor") &&
-      !row.contact.vendorContactId
+      row.contact.contactType !== "owner" &&
+      projectContactNeedsPersonForInvitation(row.contact)
     ) {
       return {
         success: false,
         error:
           "Select or add a contact person for this vendor before inviting them.",
       }
+    }
+    if (row.contact.customerContactId && !row.customerContact) {
+      return { success: false, error: "The linked client contact is no longer active." }
+    }
+    if (row.contact.customerContactId && !row.customerContact?.email?.trim()) {
+      return { success: false, error: "Add an email to the client directory contact before inviting them." }
     }
 
     const directoryIdentity =
@@ -286,20 +325,41 @@ export async function sendProjectAccessInvitation(
             phone: row.vendorContact?.phone ?? null,
             address: null,
           }
+        : row.contact.customerContactId
+          ? {
+              email: row.customerContact?.email ?? null,
+              phone: row.customerContact?.phone ?? null,
+              address: row.customer?.address ?? null,
+            }
         : row.contact.sourceEntityType === "customer"
         ? row.customer
         : row.contact.sourceEntityType === "vendor"
           ? row.vendor
+          : row.contact.internalContactId
+            ? row.internalPerson
+              ? { ...row.internalPerson, address: null }
+              : null
           : row.contact.sourceEntityType === "user"
             ? row.teamMember
+              ? { ...row.teamMember, address: null }
+              : null
             : null
+    const canonicalLink = Boolean(
+      row.contact.customerContactId ||
+      row.contact.vendorContactId ||
+      row.contact.internalContactId ||
+      row.contact.customerId ||
+      row.contact.vendorId ||
+      directoryIdentity
+    )
     const identity = resolveProjectContactIdentity(
       {
         email: row.contact.email,
         phone: row.contact.phone,
-        address: row.contact.address,
+        address: projectContactAddress(row.contact.contactType, row.contact.address),
       },
-      directoryIdentity
+      directoryIdentity,
+      canonicalLink
     )
     const email = identity.email?.toLowerCase() ?? ""
     if (!email) {

@@ -123,13 +123,19 @@ function initialInput(
 ): ProjectContactMutationInput {
   const directorySourceType = contact?.vendorId
     ? "vendor"
-    : contact?.sourceEntityType === "customer"
+    : contact?.customerId ||
+        contact?.sourceEntityType === "customer" ||
+        contact?.sourceEntityType === "customer_contact"
       ? "customer"
-      : contact?.sourceEntityType === "user"
+      : contact?.internalContactId ||
+          contact?.sourceEntityType === "internal_contact" ||
+          contact?.sourceEntityType === "user"
         ? "team"
         : null
   const directorySourceId =
     contact?.vendorId ??
+    contact?.customerId ??
+    contact?.internalContactId ??
     (directorySourceType && contact?.sourceEntityId
       ? contact.sourceEntityId
       : null)
@@ -141,6 +147,7 @@ function initialInput(
     directorySourceId,
     vendorId: contact?.vendorId ?? null,
     vendorContactId: contact?.vendorContactId ?? null,
+    customerContactId: contact?.customerContactId ?? null,
     contactType: contact?.contactType ?? "owner",
     displayName: contact?.displayName ?? "",
     companyName: contact?.companyName ?? "",
@@ -224,6 +231,7 @@ function DirectoryPicker({
                   <CommandItem
                     key={`${option.sourceType}:${option.id}`}
                     value={`${option.displayName} ${option.companyName ?? ""} ${option.email ?? ""}`}
+                    disabled={option.alreadyOnProject}
                     onSelect={() => {
                       onSelect(option)
                       setOpen(false)
@@ -244,6 +252,9 @@ function DirectoryPicker({
                         <p className="truncate text-xs text-muted-foreground">
                           {[option.companyName, option.email].filter(Boolean).join(" · ")}
                         </p>
+                      )}
+                      {option.alreadyOnProject && (
+                        <p className="text-xs text-muted-foreground">Already on this project</p>
                       )}
                     </div>
                   </CommandItem>
@@ -413,6 +424,11 @@ export function ProjectContactEditor({
   )
   const selectedVendor =
     selectedDirectory?.sourceType === "vendor" ? selectedDirectory : null
+  const selectedCustomer =
+    selectedDirectory?.sourceType === "customer" ? selectedDirectory : null
+  const selectedCustomerContact = selectedCustomer?.customerContacts.find(
+    (person) => person.id === input.customerContactId
+  ) ?? null
   const selectedVendorContact = selectedVendor?.vendorContacts.find(
     (vendorContact) => vendorContact.id === input.vendorContactId
   ) ?? null
@@ -431,7 +447,8 @@ export function ProjectContactEditor({
   const identityManagedByActiveUser =
     input.directorySourceType === null
       ? (contact?.identityManagedByActiveUser ?? false)
-      : (selectedVendorContact?.identityManagedByActiveUser ??
+      : (selectedCustomerContact?.identityManagedByActiveUser ??
+        selectedVendorContact?.identityManagedByActiveUser ??
         selectedDirectory?.identityManagedByActiveUser ??
         contact?.identityManagedByActiveUser ??
         false)
@@ -470,6 +487,7 @@ export function ProjectContactEditor({
   }
 
   function applyDirectoryOption(option: ProjectContactDirectoryOption): void {
+    if (option.alreadyOnProject) return
     setDirectoryOpenKey(`${option.sourceType}:${option.id}`)
     setCustomRoleSelected(false)
     setInput((current) => {
@@ -484,6 +502,7 @@ export function ProjectContactEditor({
         directorySourceId: option.id,
         vendorId: option.sourceType === "vendor" ? option.id : null,
         vendorContactId: null,
+        customerContactId: null,
         contactType,
         displayName: option.displayName,
         companyName: option.companyName ?? "",
@@ -525,6 +544,33 @@ export function ProjectContactEditor({
       email: vendorContact.email ?? "",
       phone: vendorContact.phone ?? "",
       address: selectedVendor.address ?? "",
+    }))
+  }
+
+  function applyCustomerContact(contactId: string): void {
+    if (!selectedCustomer) return
+    if (contactId === "company-only") {
+      setInput((current) => ({
+        ...current,
+        customerContactId: null,
+        displayName: selectedCustomer.displayName,
+        email: selectedCustomer.email ?? "",
+        phone: selectedCustomer.phone ?? "",
+        address: selectedCustomer.address ?? "",
+      }))
+      return
+    }
+    const person = selectedCustomer.customerContacts.find(
+      (option) => option.id === contactId
+    )
+    if (!person) return
+    setInput((current) => ({
+      ...current,
+      customerContactId: person.id,
+      displayName: person.name,
+      email: person.email ?? "",
+      phone: person.phone ?? "",
+      address: selectedCustomer.address ?? "",
     }))
   }
 
@@ -625,6 +671,7 @@ export function ProjectContactEditor({
         address: customer.address,
         suggestedContactType: "owner",
         identityManagedByActiveUser: false,
+        customerContacts: [],
         vendorContacts: [],
       }
       setAvailableDirectoryOptions((current) =>
@@ -679,6 +726,7 @@ export function ProjectContactEditor({
         address: null,
         suggestedContactType: input.contactType,
         identityManagedByActiveUser: false,
+        customerContacts: [],
         vendorContacts: [],
       }
       setAvailableDirectoryOptions((current) => [...current, option])
@@ -820,6 +868,7 @@ export function ProjectContactEditor({
                           directorySourceId: null,
                           vendorId: null,
                           vendorContactId: null,
+                          customerContactId: null,
                         }),
                   }))
                   setCustomRoleSelected(false)
@@ -1007,6 +1056,37 @@ export function ProjectContactEditor({
                     Selection does not grant project access.
                   </p>
                 </div>
+                {selectedCustomer && (
+                  <div className="grid gap-2 border-t pt-4">
+                    <Label>Client contact person</Label>
+                    <Select
+                      value={input.customerContactId ?? "company-only"}
+                      onValueChange={applyCustomerContact}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a person" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="company-only">
+                          No specific person (company assignment only)
+                        </SelectItem>
+                        {selectedCustomer.customerContacts.map((person) => (
+                          <SelectItem key={person.id} value={person.id}>
+                            {person.name}
+                            {person.title ? ` · ${person.title}` : ""}
+                            {person.email ? ` · ${person.email}` : ""}
+                            {person.isPrimary ? " · Primary" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Select a directory person when this project needs a named
+                      owner contact. Existing company-linked invitation behavior
+                      remains available until legacy contacts are reconciled.
+                    </p>
+                  </div>
+                )}
                 {showNewCustomer ? (
                   <div className="grid gap-2 border-t pt-4 sm:grid-cols-2">
                     <Input
@@ -1080,7 +1160,7 @@ export function ProjectContactEditor({
             ) : (
               !isEditing && (
                 <div className="grid gap-2">
-                  <Label>Settings team</Label>
+                  <Label>Internal contact directory</Label>
                   <DirectoryPicker
                     key={directoryOpenKey ?? "internal"}
                     options={availableDirectoryOptions.filter(
@@ -1088,11 +1168,12 @@ export function ProjectContactEditor({
                     )}
                     selected={selectedDirectory}
                     onSelect={applyDirectoryOption}
-                    placeholder="Choose a Settings team member..."
-                    searchPlaceholder="Search Settings team..."
+                    placeholder="Choose an internal contact..."
+                    searchPlaceholder="Search internal contacts..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Internal contacts come from active Settings team members.
+                    Internal contacts are shared across projects. People already
+                    on this project remain visible but cannot be added twice.
                   </p>
                 </div>
               )
@@ -1210,15 +1291,17 @@ export function ProjectContactEditor({
                   disabled={identityReadOnly}
                 />
               </div>
-              <div className="grid gap-2 sm:col-span-2">
-                <Label htmlFor="project-contact-address">Address</Label>
-                <Input
-                  id="project-contact-address"
-                  value={input.address}
-                  onChange={(event) => updateInput("address", event.target.value)}
-                  disabled={identityReadOnly}
-                />
-              </div>
+              {input.contactType !== "internal" && (
+                <div className="grid gap-2 sm:col-span-2">
+                  <Label htmlFor="project-contact-address">Address</Label>
+                  <Input
+                    id="project-contact-address"
+                    value={input.address}
+                    onChange={(event) => updateInput("address", event.target.value)}
+                    disabled={identityReadOnly}
+                  />
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-csi">Estimating division</Label>
                 <Select
