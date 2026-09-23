@@ -323,7 +323,7 @@ export function CherishCardAction({
           <fieldset className="space-y-3 border-t pt-4">
             <legend className="text-sm font-semibold">Recipient and mailing address</legend>
             <p className="text-xs text-muted-foreground">
-              This address is visible only to Executive Admin fulfillment and
+              This address is visible only to staff granted CHERISH fulfillment access and
               Handwrytten. US addresses are supported in this first release.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">

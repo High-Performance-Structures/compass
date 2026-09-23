@@ -5,12 +5,6 @@ import {
   isInternalStaffRole,
 } from "@/lib/user-roles"
 
-const EXECUTIVE_ADMIN_EMAILS: readonly string[] = [
-  "dan@hps-colorado.com",
-  "martine@hps-colorado.com",
-  "martine@openrangeconstruction.com",
-]
-
 export type Resource =
   | "project"
   | "schedule"
@@ -44,6 +38,7 @@ export type PermissionFeature = {
   readonly label: string
   readonly description: string
   readonly resource: Resource
+  readonly individualOnly?: boolean
 }
 
 export const PERMISSION_ACCESS_LEVELS: readonly {
@@ -99,6 +94,39 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     label: "Project Contacts",
     description: "Project owners, vendors, subs, suppliers, and internal assignments.",
     resource: "vendor",
+  },
+  {
+    id: "employee-contact-private",
+    group: "Confidential contacts",
+    label: "Employee private contact details",
+    description:
+      "View employee home addresses or approve employee contact changes for Sage.",
+    resource: "user",
+    individualOnly: true,
+  },
+  {
+    id: "cherish-review",
+    group: "Confidential workflows",
+    label: "CHERISH review",
+    description: "View private feedback and approve or archive CHERISH submissions and fulfillment.",
+    resource: "user",
+    individualOnly: true,
+  },
+  {
+    id: "greeting-card-approval",
+    group: "Confidential workflows",
+    label: "Greeting-card approval and release",
+    description: "Review card requests and approve, release, cancel, or remove deliveries.",
+    resource: "user",
+    individualOnly: true,
+  },
+  {
+    id: "project-archive-access",
+    group: "Confidential workflows",
+    label: "Project Archive",
+    description: "View archived projects; approval access permits restoration and permanent deletion.",
+    resource: "project",
+    individualOnly: true,
   },
   {
     id: "daily-logs",
@@ -556,26 +584,8 @@ export function canUseOfficeTalk(user: AuthUser | null): boolean {
 }
 
 /**
- * Executive Admin includes confidential employee feedback, so access is
- * intentionally tied to the approved people instead of a broad Compass role.
- */
-export function canUseExecutiveAdmin(user: AuthUser | null): boolean {
-  if (
-    !user ||
-    !user.isActive ||
-    user.organizationType !== "internal" ||
-    isDemoUser(user.id) ||
-    (user.organizationId !== null && isDemoOrg(user.organizationId))
-  ) {
-    return false
-  }
-
-  return EXECUTIVE_ADMIN_EMAILS.includes(user.email.trim().toLowerCase())
-}
-
-/**
  * Greeting-card preparation is a team capability. Every active internal role
- * can prepare a request; Executive Admin still controls approval and release.
+ * can prepare a request; individual staff grants control approval and release.
  */
 export function canPrepareGreetingCards(user: AuthUser | null): boolean {
   if (
@@ -589,10 +599,6 @@ export function canPrepareGreetingCards(user: AuthUser | null): boolean {
   }
 
   return isInternalStaffRole(user.role)
-}
-
-export function canApproveGreetingCards(user: AuthUser | null): boolean {
-  return canUseExecutiveAdmin(user)
 }
 
 /**
@@ -677,6 +683,7 @@ export function getPermissionFeatureAccessLevel(
 ): PermissionAccessLevel {
   const feature = getPermissionFeature(featureId)
   if (!feature) return "none"
+  if (feature.individualOnly) return "none"
 
   const baseline = getPermissionAccessLevel(role, feature.resource)
   if (

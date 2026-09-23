@@ -6,16 +6,17 @@ import { getGreetingCardRequests } from "@/app/actions/greeting-cards"
 import { GreetingCardWorkspace } from "@/components/cards/greeting-card-workspace"
 import { getCurrentUser } from "@/lib/auth"
 import {
-  canApproveGreetingCards,
   canPrepareGreetingCards,
 } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 
 export const dynamic = "force-dynamic"
 
 export default async function GreetingCardsPage(): Promise<React.ReactElement> {
   const user = await getCurrentUser()
-  const canApprove = canApproveGreetingCards(user)
-  if (!canPrepareGreetingCards(user) && !canApprove) {
+  const canViewApprovals = await canFeature(user, "greeting-card-approval", "read")
+  const canApprove = await canFeature(user, "greeting-card-approval", "approve")
+  if (!canPrepareGreetingCards(user) && !canViewApprovals) {
     redirect("/dashboard/access-restricted?action=prepare%20greeting%20cards")
   }
   const requests = await getGreetingCardRequests()
@@ -32,7 +33,7 @@ export default async function GreetingCardsPage(): Promise<React.ReactElement> {
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Prepare mailed handwritten cards or HPS e-cards for clients,
           subcontractors, vendors, employees, and other business relationships.
-          Every delivery and optional digital gift requires Executive Admin
+          Every delivery and optional digital gift requires an authorized staff
           approval and a separate release action.
         </p>
       </header>

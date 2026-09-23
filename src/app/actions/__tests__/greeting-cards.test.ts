@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
-  canApproveGreetingCards: vi.fn(),
+  canFeature: vi.fn(),
   canPrepareGreetingCards: vi.fn(),
   createHandwryttenClient: vi.fn(),
   createDirectLink: vi.fn(),
@@ -27,9 +27,9 @@ vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({
-  canApproveGreetingCards: mocks.canApproveGreetingCards,
   canPrepareGreetingCards: mocks.canPrepareGreetingCards,
 }))
+vi.mock("@/lib/permission-enforcement", () => ({ canFeature: mocks.canFeature }))
 vi.mock("@/lib/handwrytten/config", () => ({
   getHandwryttenApiKey: mocks.getHandwryttenApiKey,
   getHandwryttenConfig: mocks.getHandwryttenConfig,
@@ -162,7 +162,7 @@ describe("greeting-card approval workflow", () => {
       displayName: "Office Staff",
     })
     mocks.canPrepareGreetingCards.mockReturnValue(true)
-    mocks.canApproveGreetingCards.mockReturnValue(false)
+    mocks.canFeature.mockResolvedValue(false)
     mocks.getCloudflareContext.mockResolvedValue({
       env: {
         DB: {},
@@ -320,7 +320,7 @@ describe("greeting-card approval workflow", () => {
   })
 
   it("records approval without releasing a provider order", async () => {
-    mocks.canApproveGreetingCards.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     const updateChain = {
       set: vi.fn(),
       where: vi.fn(),
@@ -350,7 +350,7 @@ describe("greeting-card approval workflow", () => {
   })
 
   it("does not release a request that is not in the approved state", async () => {
-    mocks.canApproveGreetingCards.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     const selectChain = { from: vi.fn(), where: vi.fn(), limit: vi.fn() }
     selectChain.from.mockReturnValue(selectChain)
     selectChain.where.mockReturnValue(selectChain)
@@ -369,7 +369,7 @@ describe("greeting-card approval workflow", () => {
   })
 
   it("places the Handwrytten order only from an approved request", async () => {
-    mocks.canApproveGreetingCards.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     const approvedRow = {
       id: "request-1",
       organizationId: "org-1",
@@ -451,7 +451,7 @@ describe("greeting-card approval workflow", () => {
   })
 
   it("purchases an approved Giftbit reward and sends the Compass e-card", async () => {
-    mocks.canApproveGreetingCards.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     const approvedRow = DIGITAL_APPROVED_ROW
     const selectChain = { from: vi.fn(), where: vi.fn(), limit: vi.fn() }
     selectChain.from.mockReturnValue(selectChain)
@@ -503,7 +503,7 @@ describe("greeting-card approval workflow", () => {
   })
 
   it("keeps a purchased reward cancellable when email delivery is unavailable", async () => {
-    mocks.canApproveGreetingCards.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     mocks.sendCompassEmail.mockResolvedValue({
       status: "pending_provider",
       provider: "none",
@@ -542,7 +542,7 @@ describe("greeting-card approval workflow", () => {
   })
 
   it("cancels an unredeemed reward from needs attention", async () => {
-    mocks.canApproveGreetingCards.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     const selectChain = { from: vi.fn(), where: vi.fn(), limit: vi.fn() }
     selectChain.from.mockReturnValue(selectChain)
     selectChain.where.mockReturnValue(selectChain)

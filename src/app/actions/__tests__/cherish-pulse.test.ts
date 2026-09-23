@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  canUseExecutiveAdmin: vi.fn(),
+  canFeature: vi.fn(),
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
   requireAuth: vi.fn(),
@@ -13,9 +13,9 @@ vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({
-  canUseExecutiveAdmin: mocks.canUseExecutiveAdmin,
   canUseFieldDesk: vi.fn(() => true),
 }))
+vi.mock("@/lib/permission-enforcement", () => ({ canFeature: mocks.canFeature }))
 vi.mock("@/lib/user-roles", () => ({
   isInternalStaffRole: vi.fn(() => true),
 }))
@@ -33,7 +33,7 @@ describe("reviewCherishPulseResponse", () => {
       organizationId: "org-1",
       email: "executive@example.com",
     })
-    mocks.canUseExecutiveAdmin.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
     mocks.getDb.mockReset()
     mocks.revalidatePath.mockReset()
@@ -240,7 +240,7 @@ describe("searchCherishPulseArchive", () => {
       organizationId: "org-1",
       email: "executive@example.com",
     })
-    mocks.canUseExecutiveAdmin.mockReturnValue(true)
+    mocks.canFeature.mockResolvedValue(true)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
     mocks.getDb.mockReset()
   })

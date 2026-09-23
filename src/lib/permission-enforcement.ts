@@ -7,6 +7,7 @@ import {
   rolePermissionOverrides,
   teamMembers,
   teamPermissionOverrides,
+  userPermissionOverrides,
 } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -19,6 +20,7 @@ import {
   type Action,
   type PermissionAccessLevel,
 } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export class FeaturePermissionDeniedError extends Error {
   readonly featureId: string
@@ -79,6 +81,40 @@ export async function getEffectivePermissionAccessLevel(
 ): Promise<PermissionAccessLevel> {
   const feature = getPermissionFeature(featureId)
   if (!feature || !user || !user.isActive) return "none"
+
+  if (feature.individualOnly) {
+    if (
+      !user.organizationId ||
+      user.organizationType !== "internal" ||
+      !isInternalStaffRole(user.role) ||
+      isDemoUser(user.id) ||
+      isDemoOrg(user.organizationId)
+    ) {
+      return "none"
+    }
+    try {
+      const { env } = await getCloudflareContext()
+      if (!env?.DB) return "none"
+      const db = getDb(env.DB)
+      const grant = await db
+        .select({ accessLevel: userPermissionOverrides.accessLevel })
+        .from(userPermissionOverrides)
+        .where(
+          and(
+            eq(userPermissionOverrides.organizationId, user.organizationId),
+            eq(userPermissionOverrides.userId, user.id),
+            eq(userPermissionOverrides.featureId, featureId)
+          )
+        )
+        .get()
+      if (grant?.accessLevel === "view" || grant?.accessLevel === "approve") {
+        return grant.accessLevel
+      }
+    } catch {
+      // Confidential access must fail closed if storage is unavailable.
+    }
+    return "none"
+  }
 
   let effectiveLevel = getPermissionFeatureAccessLevel(user.role, featureId)
 

@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+
+vi.mock("server-only", () => ({}))
 
 import {
   buildCherishNavigation,
@@ -95,16 +97,16 @@ describe("Projects sidebar navigation", () => {
   })
 })
 
-describe("Executive Admin sidebar navigation", () => {
-  it("shows Executive Admin review and archive links to approved users", () => {
+describe("restricted sidebar navigation", () => {
+  it("shows review and archive links to staff granted both permissions", () => {
     const office = officeNavigation(true)
     const executiveAdmin = office?.items.find(
-      (item) => item.kind === "subgroup" && item.title === "Executive Admin",
+      (item) => item.kind === "subgroup" && item.title === "Restricted Workflows",
     )
 
     expect(executiveAdmin).toMatchObject({
       kind: "subgroup",
-      title: "Executive Admin",
+      title: "Restricted Workflows",
       items: [
         {
           kind: "link",
@@ -120,14 +122,34 @@ describe("Executive Admin sidebar navigation", () => {
     })
   })
 
-  it("removes the entire Executive Admin subgroup for everyone else", () => {
+  it("removes the restricted subgroup without a grant", () => {
     const office = officeNavigation(false)
 
     expect(
       office?.items.some(
-        (item) => item.kind === "subgroup" && item.title === "Executive Admin",
+        (item) => item.kind === "subgroup" && item.title === "Restricted Workflows",
       ),
     ).toBe(false)
+  })
+
+  it("shows Project Archive without exposing CHERISH when only archive access is granted", () => {
+    const office = buildMainNavigation({
+      activeProjectId: null,
+      canViewActivity: true,
+      canManageFeedback: false,
+      canUseExecutiveAdmin: false,
+      canViewProjectArchive: true,
+    }).find(
+      (item): item is NavGroupItem =>
+        item.kind === "group" && item.title === "Office Tools",
+    )
+    const restricted = office?.items.find(
+      (item) => item.kind === "subgroup" && item.title === "Restricted Workflows",
+    )
+    expect(restricted).toMatchObject({
+      kind: "subgroup",
+      items: [{ title: "Project Archive" }],
+    })
   })
 })
 

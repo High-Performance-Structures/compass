@@ -5,10 +5,8 @@ import {
   accessLevelToFeatureActions,
   canCreateProject,
   canManageWorkCalendarEvents,
-  canApproveGreetingCards,
   canPrepareGreetingCards,
   canUseAskCompass,
-  canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
   getPermissionFeatureAccessLevel,
@@ -173,47 +171,6 @@ describe("canUseOfficeTalk", () => {
   })
 })
 
-describe("canUseExecutiveAdmin", () => {
-  it.each([
-    "martine@hps-colorado.com",
-    "martine@openrangeconstruction.com",
-    "dan@hps-colorado.com",
-  ])("allows approved Executive Admin identity %s", (email) => {
-    expect(
-      canUseExecutiveAdmin({
-        ...userWithRole("office"),
-        email,
-      }),
-    ).toBe(true)
-  })
-
-  it("does not trust an administrator-editable Google email override", () => {
-    expect(
-      canUseExecutiveAdmin({
-        ...userWithRole("admin"),
-        googleEmail: "martine@hps-colorado.com",
-      }),
-    ).toBe(false)
-  })
-
-  it("does not grant access from a broad admin role", () => {
-    expect(canUseExecutiveAdmin(userWithRole("admin"))).toBe(false)
-  })
-
-  it("denies approved identities outside the active internal workspace", () => {
-    const martine = {
-      ...userWithRole("admin"),
-      email: "martine@hps-colorado.com",
-    }
-
-    expect(canUseExecutiveAdmin({ ...martine, isActive: false })).toBe(false)
-    expect(
-      canUseExecutiveAdmin({ ...martine, organizationType: "client" }),
-    ).toBe(false)
-    expect(canUseExecutiveAdmin(null)).toBe(false)
-  })
-})
-
 describe("greeting-card permissions", () => {
   it.each([
     "admin",
@@ -247,14 +204,6 @@ describe("greeting-card permissions", () => {
     expect(canPrepareGreetingCards(userWithRole(role))).toBe(false)
   })
 
-  it("keeps final approval with the Executive Admin identity allowlist", () => {
-    const martine = {
-      ...userWithRole("office"),
-      email: "martine@hps-colorado.com",
-    }
-    expect(canApproveGreetingCards(martine)).toBe(true)
-    expect(canApproveGreetingCards(userWithRole("admin"))).toBe(false)
-  })
 })
 
 describe("canManageWorkCalendarEvents", () => {
@@ -353,5 +302,14 @@ describe("internal staff project editing baseline", () => {
     expect(getPermissions("field_superintendent", "project")).toEqual(["read"])
     expect(getPermissions("field_crew", "project")).toEqual(["read"])
     expect(getPermissions("field", "project")).toEqual(["read"])
+  })
+})
+
+describe("private employee contact permissions", () => {
+  it("does not grant private access merely because a user has an admin role", () => {
+    expect(getPermissionFeatureAccessLevel("admin", "employee-contact-private"))
+      .toBe("none")
+    expect(getPermissionFeatureAccessLevel("executive", "employee-contact-private"))
+      .toBe("none")
   })
 })

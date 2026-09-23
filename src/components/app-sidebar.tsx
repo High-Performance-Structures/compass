@@ -113,6 +113,7 @@ interface SidebarNavLinkSource {
   readonly internalOnly?: boolean
   readonly adminOnly?: boolean
   readonly executiveAdminOnly?: boolean
+  readonly projectArchiveOnly?: boolean
   readonly greetingCardsOnly?: boolean
 }
 
@@ -402,7 +403,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
       },
       {
         kind: "subgroup",
-        title: "Executive Admin",
+        title: "Restricted Workflows",
         icon: IconShieldCheck,
         items: [
           {
@@ -417,7 +418,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
             title: "Project Archive",
             url: "/dashboard/executive-admin/project-archive",
             icon: IconArchive,
-            executiveAdminOnly: true,
+            projectArchiveOnly: true,
           },
         ],
       },
@@ -438,11 +439,13 @@ function isNavLinkVisible(
   canManageFeedback: boolean,
   canUseExecutiveAdmin: boolean,
   canPrepareGreetingCards: boolean,
+  canViewProjectArchive: boolean,
 ): boolean {
   return (
     (!item.internalOnly || canViewActivity) &&
     (!item.adminOnly || canManageFeedback) &&
     (!item.executiveAdminOnly || canUseExecutiveAdmin) &&
+    (!item.projectArchiveOnly || canViewProjectArchive) &&
     (!item.greetingCardsOnly || canPrepareGreetingCards)
   )
 }
@@ -487,6 +490,7 @@ function buildGroupChildren({
   canManageFeedback,
   canUseExecutiveAdmin,
   canPrepareGreetingCards,
+  canViewProjectArchive,
 }: {
   readonly items: ReadonlyArray<SidebarNavGroupChildSource>
   readonly activeProjectId: string | null
@@ -495,6 +499,7 @@ function buildGroupChildren({
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
   readonly canPrepareGreetingCards: boolean
+  readonly canViewProjectArchive: boolean
 }): ReadonlyArray<NavGroupChildItem> {
   const children: NavGroupChildItem[] = []
 
@@ -507,6 +512,7 @@ function buildGroupChildren({
           canManageFeedback,
           canUseExecutiveAdmin,
           canPrepareGreetingCards,
+          canViewProjectArchive,
         )
       ) {
         children.push(
@@ -535,6 +541,7 @@ function buildGroupChildren({
           canManageFeedback,
           canUseExecutiveAdmin,
           canPrepareGreetingCards,
+          canViewProjectArchive,
         )
       ) {
         subgroupLinks.push(
@@ -567,6 +574,7 @@ export function buildMainNavigation({
   canManageFeedback,
   canUseExecutiveAdmin,
   canPrepareGreetingCards = false,
+  canViewProjectArchive = canUseExecutiveAdmin,
 }: {
   readonly activeProjectId: string | null
   readonly projectConversationReturnHref?: string | null
@@ -574,6 +582,7 @@ export function buildMainNavigation({
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
   readonly canPrepareGreetingCards?: boolean
+  readonly canViewProjectArchive?: boolean
 }): ReadonlyArray<NavItem> {
   return NAV_GROUPS.flatMap((group) => {
     const items = buildGroupChildren({
@@ -584,6 +593,7 @@ export function buildMainNavigation({
       canManageFeedback,
       canUseExecutiveAdmin,
       canPrepareGreetingCards,
+      canViewProjectArchive,
     })
 
     return items.length > 0
@@ -613,12 +623,14 @@ function SidebarNav({
   canManageFeedback,
   canUseExecutiveAdmin,
   canPrepareGreetingCards,
+  canViewProjectArchive,
 }: {
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
   readonly canPrepareGreetingCards: boolean
+  readonly canViewProjectArchive: boolean
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -648,6 +660,7 @@ function SidebarNav({
     canManageFeedback,
     canUseExecutiveAdmin,
     canPrepareGreetingCards,
+    canViewProjectArchive,
   })
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
@@ -717,6 +730,7 @@ export function AppSidebar({
   canManageFeedback = false,
   canUseExecutiveAdmin = false,
   canPrepareGreetingCards = false,
+  canViewProjectArchive = false,
   canUseOfficeTalk = false,
   canUseDirectMessages = false,
   canViewHelp = false,
@@ -730,6 +744,7 @@ export function AppSidebar({
   readonly canManageFeedback?: boolean
   readonly canUseExecutiveAdmin?: boolean
   readonly canPrepareGreetingCards?: boolean
+  readonly canViewProjectArchive?: boolean
   readonly canUseOfficeTalk?: boolean
   readonly canUseDirectMessages?: boolean
   readonly canViewHelp?: boolean
@@ -751,6 +766,7 @@ export function AppSidebar({
           canManageFeedback={canManageFeedback}
           canUseExecutiveAdmin={canUseExecutiveAdmin}
           canPrepareGreetingCards={canPrepareGreetingCards}
+          canViewProjectArchive={canViewProjectArchive}
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">

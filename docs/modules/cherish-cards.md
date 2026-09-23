@@ -13,9 +13,9 @@ access and approval
   including office and field roles using Full Compass.
 - The outside `developer` role and all client, subcontractor, supplier, and
   guest accounts are excluded.
-- A preparer sees only their own active requests. Executive Admin sees the
+- A preparer sees only their own active requests. Staff granted greeting-card approval in Settings > Permissions see the
   organization-wide queue.
-- Preparing a request is non-billable. Executive Admin must first approve the
+- Preparing a request is non-billable. An authorized reviewer must first approve the
   content and recipient, then use a separate confirmed release action.
 - Pending and rejected requests can be removed from the active queue. Removal
   is soft deletion with actor and timestamp fields so the audit record remains
@@ -48,8 +48,8 @@ physical-card workflow
 1. An employee chooses the recipient, Handwrytten card, occasion, message,
    closing, and verified US mailing address.
 2. Compass stores the request as `pending_approval`. No provider order exists.
-3. Executive Admin rejects it with a correction note or marks it `approved`.
-4. Executive Admin confirms **Release for mailing**. Compass atomically claims
+3. An authorized reviewer rejects it with a correction note or marks it `approved`.
+4. An authorized reviewer confirms **Release for mailing**. Compass atomically claims
    the request as `submitting` before contacting Handwrytten.
 5. A confirmed provider order becomes `submitted`. A definitive rejection
    returns to `approved`; an ambiguous outcome becomes `needs_attention` so a
@@ -64,7 +64,7 @@ digital-card workflow
    the email when one is available.
 2. Compass stores the private card and a high-entropy public token as
    `pending_approval`. It does not email the recipient or contact Giftbit.
-3. Executive Admin approves the exact content, email, and gift amount.
+3. An authorized reviewer approves the exact content, email, and gift amount.
 4. **Send e-card** atomically claims the request. If a gift is included,
    Compass creates one idempotent Giftbit Direct Link using the request ID.
 5. Compass sends the recipient a private `/ecard/{token}` link through the

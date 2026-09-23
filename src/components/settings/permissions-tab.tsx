@@ -7,9 +7,12 @@ import {
   getPermissionOverrideContext,
   updateRolePermissionOverride,
   updateTeamPermissionOverride,
+  updateUserPermissionOverride,
   type PermissionOverrideChoice,
+  type PermissionStaffOption,
   type PermissionTeamOption,
   type TeamPermissionOverrideChoice,
+  type UserPermissionOverrideChoice,
 } from "@/app/actions/permission-overrides"
 import {
   accessLevelToFeatureActions,
@@ -93,6 +96,7 @@ function groupedFeatures(): readonly {
   const groups = new Map<string, PermissionFeature[]>()
 
   for (const feature of PERMISSION_FEATURES) {
+    if (feature.individualOnly) continue
     const existing = groups.get(feature.group)
     if (existing) {
       existing.push(feature)
@@ -291,6 +295,11 @@ export function PermissionsTab(): React.ReactElement {
     readonly TeamPermissionOverrideChoice[]
   >([])
   const [teams, setTeams] = React.useState<readonly PermissionTeamOption[]>([])
+  const [staff, setStaff] = React.useState<readonly PermissionStaffOption[]>([])
+  const [userOverrides, setUserOverrides] = React.useState<
+    readonly UserPermissionOverrideChoice[]
+  >([])
+  const [selectedStaffId, setSelectedStaffId] = React.useState("")
   const [selectedTeamId, setSelectedTeamId] = React.useState("")
   const [pendingKey, setPendingKey] = React.useState<string | null>(null)
   const [statusMessage, setStatusMessage] = React.useState<string | null>(null)
@@ -305,6 +314,13 @@ export function PermissionsTab(): React.ReactElement {
         setRoleOverrides(context.roleOverrides)
         setTeamOverrides(context.teamOverrides)
         setTeams(context.teams)
+        setStaff(context.staff)
+        setUserOverrides(context.userOverrides)
+        setSelectedStaffId((currentStaffId) =>
+          context.staff.some((member) => member.id === currentStaffId)
+            ? currentStaffId
+            : context.staff[0]?.id ?? ""
+        )
         setSelectedTeamId((currentTeamId) => {
           if (
             currentTeamId.length > 0 &&
@@ -397,6 +413,27 @@ export function PermissionsTab(): React.ReactElement {
     setPendingKey(null)
   }
 
+  async function handleIndividualPermission(
+    feature: PermissionFeature,
+    accessLevel: "none" | "view" | "approve"
+  ): Promise<void> {
+    if (!canEditMatrix || !selectedStaffId) return
+    setPendingKey(`user:${selectedStaffId}:${feature.id}`)
+    setStatusMessage(null)
+    const result = await updateUserPermissionOverride({
+      userId: selectedStaffId,
+      featureId: feature.id,
+      accessLevel,
+    })
+    setStatusMessage(
+      result.success
+        ? `${feature.label} permission saved.`
+        : result.error
+    )
+    if (result.success) refreshOverrides()
+    setPendingKey(null)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-end lg:justify-between">
@@ -446,6 +483,67 @@ export function PermissionsTab(): React.ReactElement {
           </Select>
         </div>
       </div>
+
+      <section className="rounded-md border bg-background p-4">
+        <h3 className="text-sm font-semibold">Individual staff permissions</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Grant these confidential workflows to named staff, not an entire role or team.
+          View permits reading; Approve permits the workflow actions described below.
+          Employee home addresses never appear in project contact lists.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">Staff member</span>
+            <Select
+              value={selectedStaffId}
+              onValueChange={setSelectedStaffId}
+              disabled={staff.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Choose staff" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[320px]">
+                {staff.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.name} · {member.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-4 divide-y">
+          {PERMISSION_FEATURES.filter((feature) => feature.individualOnly).map((feature) => {
+            const level = userOverrides.find(
+              (override) => override.userId === selectedStaffId && override.featureId === feature.id
+            )?.accessLevel ?? "none"
+            return (
+              <div key={feature.id} className="grid gap-3 py-3 sm:grid-cols-2 sm:items-center">
+                <div>
+                  <p className="text-sm font-medium">{feature.label}</p>
+                  <p className="text-xs text-muted-foreground">{feature.description}</p>
+                </div>
+                <Select
+                  value={level}
+                  onValueChange={(value) => {
+                    if (value === "none" || value === "view" || value === "approve") {
+                      void handleIndividualPermission(feature, value)
+                    }
+                  }}
+                  disabled={!canEditMatrix || !selectedStaffId || pendingKey === `user:${selectedStaffId}:${feature.id}`}
+                >
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No access</SelectItem>
+                    <SelectItem value="view">View</SelectItem>
+                    <SelectItem value="approve">View and approve</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )
+          })}
+        </div>
+      </section>
 
       <div className="grid gap-3 lg:grid-cols-[1fr_300px]">
         <div className="rounded-md border bg-background">

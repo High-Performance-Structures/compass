@@ -586,6 +586,37 @@ export const teamPermissionOverrides = sqliteTable(
   ]
 )
 
+export const userPermissionOverrides = sqliteTable(
+  "user_permission_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").notNull(),
+    accessLevel: text("access_level").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_permission_overrides_unique").on(
+      table.organizationId,
+      table.userId,
+      table.featureId
+    ),
+    index("user_permission_overrides_org_idx").on(table.organizationId),
+  ]
+)
+
 export const permissionAuditEvents = sqliteTable(
   "permission_audit_events",
   {
@@ -596,6 +627,9 @@ export const permissionAuditEvents = sqliteTable(
     scope: text("scope").notNull(),
     role: text("role"),
     teamId: text("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
     featureId: text("feature_id").notNull(),
@@ -622,6 +656,10 @@ export type TeamPermissionOverride =
   typeof teamPermissionOverrides.$inferSelect
 export type NewTeamPermissionOverride =
   typeof teamPermissionOverrides.$inferInsert
+export type UserPermissionOverride =
+  typeof userPermissionOverrides.$inferSelect
+export type NewUserPermissionOverride =
+  typeof userPermissionOverrides.$inferInsert
 export type PermissionAuditEvent = typeof permissionAuditEvents.$inferSelect
 export type NewPermissionAuditEvent =
   typeof permissionAuditEvents.$inferInsert

@@ -394,7 +394,7 @@ export function GreetingCardRequestDialog({
                 />
                 <p className="text-xs text-muted-foreground">
                   Leave blank for an e-card only. A $5–$500 gift uses Giftbit's
-                  US reward catalog and is purchased only when Executive Admin releases it.
+                  US reward catalog and is purchased only when an authorized reviewer releases it.
                   The recipient has 363 days to claim the reward; after claiming,
                   the selected retailer&apos;s gift-card terms apply.
                 </p>
@@ -453,8 +453,8 @@ export function GreetingCardRequestDialog({
             </legend>
             <p className="text-xs text-muted-foreground">
               {deliveryMethod === "physical_mail"
-                ? "Verify the address carefully. Handwrytten validates US addresses again when Executive Admin releases the order."
-                : "Verify the email carefully. Compass sends the private e-card link only after Executive Admin approves and releases it."}
+                ? "Verify the address carefully. Handwrytten validates US addresses again when an authorized reviewer releases the order."
+                : "Verify the email carefully. Compass sends the private e-card link only after an authorized reviewer approves and releases it."}
             </p>
             <div className="space-y-2">
               <Label htmlFor="card-saved-recipient">Saved recipient (optional)</Label>
