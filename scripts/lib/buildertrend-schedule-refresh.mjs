@@ -240,9 +240,9 @@ export function generateBuildertrendScheduleRefreshSql(input) {
   ].join(" AND ")
 
   const statements = [
-    // A failed guard attempts to duplicate the project's primary key and aborts
-    // before any mutation. A passing guard inserts zero rows.
-    `INSERT INTO projects SELECT * FROM projects WHERE id=(SELECT id FROM projects ORDER BY id LIMIT 1) AND NOT (${guardSql});`,
+    // Malformed JSON is evaluated only on failure. This assertion does not
+    // depend on another row existing or mutate an unrelated table.
+    `SELECT CASE WHEN (${guardSql}) THEN 1 ELSE json_extract('buildertrend schedule preflight failed', '$') END AS preflight_gate;`,
     `UPDATE projects SET buildertrend_project_id=${sql(fixture.buildertrendJobId)}, updated_at=${sql(fixture.capturedAt)} WHERE id=${sql(fixture.projectId)} AND (buildertrend_project_id IS NULL OR buildertrend_project_id=${sql(fixture.buildertrendJobId)});`,
     `INSERT INTO buildertrend_staging_runs (id, organization_id, run_key, manifest_fingerprint, source_method, source_label, status, started_by, started_at, completed_at, raw_artifact_drive_file_id, raw_artifact_drive_url, source_notes, summary_json, created_at, updated_at) VALUES (${sql(runId)}, ${sql(fixture.organizationId)}, ${sql(runKey)}, ${sql(manifestFingerprint)}, 'authenticated_browser_capture', ${sql(fixture.sourceLabel)}, 'completed', NULL, ${sql(fixture.capturedAt)}, ${sql(fixture.capturedAt)}, NULL, NULL, 'Verified schedule refresh; no access grants, notifications, external links, or Sage writes.', ${sql(summary)}, ${sql(fixture.capturedAt)}, ${sql(fixture.capturedAt)}) ON CONFLICT(organization_id, run_key) DO UPDATE SET status='completed', completed_at=excluded.completed_at, summary_json=excluded.summary_json, updated_at=excluded.updated_at WHERE buildertrend_staging_runs.manifest_fingerprint=excluded.manifest_fingerprint;`,
   ]
@@ -299,7 +299,7 @@ export function generateBuildertrendScheduleRefreshSql(input) {
   for (let index = 0; index < sourceLinkChecks.length; index += 40) {
     const checks = sourceLinkChecks.slice(index, index + 40).join(" AND ")
     statements.push(
-      `INSERT INTO projects SELECT * FROM projects WHERE id=(SELECT id FROM projects ORDER BY id LIMIT 1) AND NOT (${checks});`,
+      `SELECT CASE WHEN (${checks}) THEN 1 ELSE json_extract('buildertrend schedule source link check failed', '$') END AS source_link_gate;`,
     )
   }
 

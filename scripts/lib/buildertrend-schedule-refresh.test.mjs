@@ -57,8 +57,9 @@ describe("Buildertrend schedule refresh", () => {
   it("generates guarded, idempotent SQL without user-facing Buildertrend links", () => {
     const output = generateBuildertrendScheduleRefreshSql(fixture())
 
-    expect(output).toContain("INSERT INTO projects SELECT * FROM projects")
-    expect(output).toContain("AND NOT (")
+    expect(output).toContain("AS preflight_gate")
+    expect(output).toContain("AS source_link_gate")
+    expect(output).not.toContain("INSERT INTO projects SELECT * FROM projects")
     expect(output).toContain("id='task-1' AND title='Foundation'")
     expect(output).toContain("UPDATE schedule_tasks")
     expect(output).toContain("INSERT INTO task_dependencies")

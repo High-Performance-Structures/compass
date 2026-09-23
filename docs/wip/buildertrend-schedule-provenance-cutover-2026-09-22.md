@@ -25,11 +25,17 @@ source-record/task-snapshot pair only; there is no global one-to-one constraint.
 The task FK becomes null on authorized task deletion, while the snapshot and a
 deletion timestamp preserve provenance. Source deletion is restricted. Triggers
 reject insertion or reassignment across organizations/projects, incompatible
-promotion state, and mutation of link history.
+promotion state, and mutation of link history. Deleting a Compass task also
+changes the linked staging source from promoted to archive_only. Its former
+target ID remains as a historical pointer, not a live task claim. The tombstone
+continues to prohibit source scope changes or re-promotion; a later refresh
+must fail closed rather than recreate a staff-deleted operational task.
 
 The refresh SQL creates each link after its staging record and task are
-verified. It checks exact links before reporting success. It does not change
-existing task IDs, progress, dates, assignees, or visibility.
+verified. It checks exact links before reporting success. Its existing
+behavior updates task dates and progress, so it must be used only for the
+specific schedule-refresh workflow and not as a generic provenance backfill.
+The new link logic does not alter task IDs, assignees, or visibility.
 
 ## Staged deployment and backfill
 
@@ -49,6 +55,8 @@ existing task IDs, progress, dates, assignees, or visibility.
    directions with the link table, require zero scope mismatch, and verify that
    task dates, progress, assignees and visibility are unchanged. Repeat the
    batch to prove replay has zero changes.
+   Test a deleted-task case: archived source, tombstoned link, no replacement
+   operational task, and a fail-closed old refresh bundle.
 5. Only then mark the provenance slice complete. This does not certify all
    schedules or other Buildertrend modules as migrated.
 

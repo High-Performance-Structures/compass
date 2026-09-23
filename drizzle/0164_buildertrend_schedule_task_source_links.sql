@@ -90,14 +90,22 @@ ON buildertrend_staging_records
 WHEN EXISTS (
   SELECT 1 FROM buildertrend_schedule_task_source_links link
   WHERE link.source_record_id = OLD.id
-    AND link.schedule_task_id IS NOT NULL
     AND (
       NEW.organization_id IS NOT link.organization_id
       OR NEW.project_id IS NOT link.project_id
       OR NEW.source_record_type NOT IN ('schedule_item', 'schedule_task')
-      OR NEW.promotion_status IS NOT 'promoted'
       OR NEW.promoted_record_type IS NOT 'schedule_task'
-      OR NEW.promoted_record_id IS NOT link.schedule_task_id
+      OR NEW.promoted_record_id IS NOT link.schedule_task_id_snapshot
+      OR (
+        NEW.promotion_status IS NOT OLD.promotion_status
+        AND NOT (
+          link.schedule_task_id IS NULL
+          AND link.target_deleted_at IS NOT NULL
+          AND OLD.promotion_status = 'promoted'
+          AND NEW.promotion_status = 'archive_only'
+        )
+      )
+      OR (link.schedule_task_id IS NOT NULL AND NEW.promotion_status IS NOT 'promoted')
     )
 )
 BEGIN
@@ -134,4 +142,15 @@ BEGIN
   WHERE schedule_task_id IS NULL
     AND schedule_task_id_snapshot = OLD.id
     AND target_deleted_at IS NULL;
+  UPDATE buildertrend_staging_records
+  SET promotion_status = 'archive_only',
+      review_notes = 'Operational schedule task deleted in Compass; archived source and provenance retained.',
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE id IN (
+    SELECT source_record_id
+    FROM buildertrend_schedule_task_source_links
+    WHERE schedule_task_id_snapshot = OLD.id
+      AND target_deleted_at IS NOT NULL
+  )
+    AND promotion_status = 'promoted';
 END;
