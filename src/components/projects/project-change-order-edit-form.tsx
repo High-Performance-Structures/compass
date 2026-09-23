@@ -11,6 +11,7 @@ import {
 import {
   executeProjectChangeOrderRebaseline,
   updateProjectChangeOrder,
+  type ChangeOrderExecutedDocumentInput,
   type ProjectChangeOrderFormOptions,
   type ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
@@ -23,6 +24,7 @@ import {
   type DraftChangeOrderCostLine,
 } from "@/components/projects/project-change-order-cost-lines-editor"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -30,6 +32,7 @@ import {
   changeOrderDisplayStatus,
   changeOrderStatusLabel,
   isChangeOrderStatus,
+  isExecutedChangeOrderStatus,
 } from "@/lib/change-orders/status"
 import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
 
@@ -72,6 +75,13 @@ export function ProjectChangeOrderEditForm({
   const [replacementEstimateId, setReplacementEstimateId] = React.useState(
     item.replacementEstimate?.id ?? ""
   )
+  const [status, setStatus] = React.useState(item.status)
+  const [executedDocumentFile, setExecutedDocumentFile] =
+    React.useState<File | null>(null)
+  const [executedDocumentUrl, setExecutedDocumentUrl] = React.useState("")
+  const [executedDocumentLabel, setExecutedDocumentLabel] = React.useState("")
+  const [executedDocumentAttested, setExecutedDocumentAttested] =
+    React.useState(false)
   const [saving, startSaving] = React.useTransition()
   const currentBaseline =
     formOptions.estimates.find(
@@ -118,13 +128,39 @@ export function ProjectChangeOrderEditForm({
           })),
           ...uploaded,
         ]
-        const requestedStatus = requiredText(formData, "status")
-        const status =
-          isChangeOrderStatus(requestedStatus) &&
-          (requestedStatus === item.status ||
-            item.allowedTransitions.includes(requestedStatus))
-            ? requestedStatus
-            : item.status
+        let executedDocument: ChangeOrderExecutedDocumentInput | null = null
+        if (
+          status === "executed" &&
+          !isExecutedChangeOrderStatus(item.status)
+        ) {
+          let url = executedDocumentUrl.trim()
+          let label = executedDocumentLabel.trim()
+          if (executedDocumentFile) {
+            if (
+              executedDocumentFile.type !== "application/pdf" &&
+              !executedDocumentFile.name.toLowerCase().endsWith(".pdf")
+            ) {
+              throw new Error("The executed change order must be a PDF.")
+            }
+            if (executedDocumentFile.size > 50 * 1024 * 1024) {
+              throw new Error("The executed change-order PDF must be 50 MB or smaller.")
+            }
+            const [uploadedExecutedDocument] = await uploadChangeOrderDocuments(
+              [executedDocumentFile],
+              item.projectId
+            )
+            if (!uploadedExecutedDocument) {
+              throw new Error("The executed change-order PDF did not upload.")
+            }
+            url = uploadedExecutedDocument.url
+            label = label || uploadedExecutedDocument.label
+          }
+          executedDocument = {
+            url,
+            label,
+            attested: executedDocumentAttested,
+          }
+        }
         const result = await updateProjectChangeOrder(item.projectId, item.id, {
           title: requiredText(formData, "title"),
           scope: requiredText(formData, "scope"),
@@ -146,6 +182,7 @@ export function ProjectChangeOrderEditForm({
             internal && budgetTreatment === "baseline_replacement"
               ? replacementEstimateId || null
               : null,
+          executedDocument,
         })
         if (!result.success) throw new Error(result.error)
 
@@ -415,15 +452,85 @@ export function ProjectChangeOrderEditForm({
           )}
         </div>
       )}
+      {internal &&
+        status === "executed" &&
+        !isExecutedChangeOrderStatus(item.status) && (
+          <div className="space-y-4 border-t pt-4">
+            <div>
+              <p className="text-sm font-medium">Executed change-order PDF</p>
+              <p className="text-xs text-muted-foreground">
+                Upload the complete signed change order or paste its secure saved
+                link. Owners open this authoritative copy through Compass without
+                needing separate Google Drive permission.
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="change-order-executed-file">
+                  Upload executed PDF
+                </Label>
+                <Input
+                  id="change-order-executed-file"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(event) =>
+                    setExecutedDocumentFile(event.currentTarget.files?.[0] ?? null)
+                  }
+                />
+                <p className="text-xs text-muted-foreground">PDF, 50 MB maximum.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="change-order-executed-url">
+                  Or secure saved-document link
+                </Label>
+                <Input
+                  id="change-order-executed-url"
+                  type="url"
+                  value={executedDocumentUrl}
+                  onChange={(event) => setExecutedDocumentUrl(event.target.value)}
+                  placeholder="https://drive.google.com/..."
+                />
+              </div>
+              <div className="space-y-2 lg:col-span-2">
+                <Label htmlFor="change-order-executed-label">
+                  Document label
+                </Label>
+                <Input
+                  id="change-order-executed-label"
+                  value={executedDocumentLabel}
+                  onChange={(event) => setExecutedDocumentLabel(event.target.value)}
+                  placeholder="Executed change order.pdf"
+                  maxLength={200}
+                />
+              </div>
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                checked={executedDocumentAttested}
+                onCheckedChange={(checked) =>
+                  setExecutedDocumentAttested(checked === true)
+                }
+              />
+              <span>
+                I confirm this is the complete, fully executed change order and
+                contains the required signatures. *
+              </span>
+            </label>
+          </div>
+        )}
       <div className="grid gap-4 border-t pt-4 lg:grid-cols-[1fr_2fr_auto]">
         <div className="space-y-2">
           <Label htmlFor="change-order-edit-status">Status</Label>
           <select
             id="change-order-edit-status"
             name="status"
-            defaultValue={item.status}
+            value={status}
             disabled={readOnly}
             className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              if (isChangeOrderStatus(value)) setStatus(value)
+            }}
           >
             <option value={item.status}>
               {changeOrderDisplayStatus(item.status, item.sourceType)}
@@ -448,7 +555,14 @@ export function ProjectChangeOrderEditForm({
         <Button
           type="submit"
           className="self-end"
-          disabled={saving || readOnly}
+          disabled={
+            saving ||
+            readOnly ||
+            (status === "executed" &&
+              !isExecutedChangeOrderStatus(item.status) &&
+              (!executedDocumentAttested ||
+                (!executedDocumentFile && !executedDocumentUrl.trim())))
+          }
         >
           {saving ? "Saving…" : "Save"}
         </Button>

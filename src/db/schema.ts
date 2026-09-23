@@ -2203,6 +2203,8 @@ export const projectChangeOrders = sqliteTable(
     foxitEnvelopeId: text("foxit_envelope_id"),
     signatureRequestedAt: text("signature_requested_at"),
     executedAt: text("executed_at"),
+    executedDocumentUrl: text("executed_document_url"),
+    executedDocumentLabel: text("executed_document_label"),
     sageStatus: text("sage_status").notNull().default("not_ready"),
     sageRecordId: text("sage_record_id"),
     lastSageSyncAt: text("last_sage_sync_at"),
