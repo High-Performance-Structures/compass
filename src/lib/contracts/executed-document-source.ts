@@ -1,7 +1,9 @@
-export type ExecutedContractDocumentSource =
+export type ExecutedDocumentSource =
   | { readonly kind: "foxit"; readonly envelopeId: string }
   | { readonly kind: "google_drive"; readonly fileId: string }
   | { readonly kind: "external"; readonly url: string }
+
+export type ExecutedContractDocumentSource = ExecutedDocumentSource
 
 function decodedPathValue(value: string): string | null {
   try {
@@ -12,9 +14,9 @@ function decodedPathValue(value: string): string | null {
   }
 }
 
-export function executedContractDocumentSource(
+export function executedDocumentSource(
   value: string | null
-): ExecutedContractDocumentSource | null {
+): ExecutedDocumentSource | null {
   const cleaned = value?.trim() ?? ""
   if (!cleaned) return null
 
@@ -42,4 +44,10 @@ export function executedContractDocumentSource(
   }
 
   return { kind: "external", url: url.toString() }
+}
+
+export function executedContractDocumentSource(
+  value: string | null
+): ExecutedContractDocumentSource | null {
+  return executedDocumentSource(value)
 }
