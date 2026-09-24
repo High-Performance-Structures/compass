@@ -422,12 +422,19 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
           eq(gotoInboundEvents.status, "routing")
         )
       )
+    revalidatePath("/dashboard/office-maintenance/inbound-email")
+    revalidatePath(`/dashboard/projects/${project.id}`)
+    revalidatePath(`/dashboard/projects/${project.id}/daily-logs`)
+    revalidatePath(`/dashboard/projects/${project.id}/photos`)
     throw error
   }
 
   revalidatePath("/dashboard/office-maintenance/inbound-email")
   revalidatePath("/dashboard/activity")
   revalidatePath(`/dashboard/projects/${project.id}`)
+  revalidatePath(`/dashboard/projects/${project.id}/daily-logs`)
+  revalidatePath(`/dashboard/projects/${project.id}/photos`)
+  revalidatePath(`/dashboard/projects/${project.id}/owner-updates`)
   revalidatePath(`/dashboard/projects/${project.id}/todos`)
   revalidatePath("/dashboard/schedule")
   if (
