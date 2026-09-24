@@ -11,6 +11,39 @@ export type ProjectContactDirectoryIdentityReference = {
   readonly vendorContactId: string | null
 }
 
+export function isUnchangedProjectContactDirectorySelection(
+  existing: {
+    readonly sourceEntityType: string
+    readonly sourceEntityId: string | null
+    readonly customerId: string | null
+    readonly customerContactId: string | null
+    readonly vendorId: string | null
+    readonly vendorContactId: string | null
+    readonly internalContactId: string | null
+  } | null,
+  selected: {
+    readonly sourceType: "customer" | "vendor" | "team"
+    readonly sourceId: string
+    readonly customerContactId: string | null
+    readonly vendorContactId: string | null
+  }
+): boolean {
+  if (!existing) return false
+  if (selected.sourceType === "customer") {
+    return (existing.customerId === selected.sourceId ||
+      (existing.sourceEntityType === "customer" && existing.sourceEntityId === selected.sourceId)) &&
+      existing.customerContactId === selected.customerContactId
+  }
+  if (selected.sourceType === "vendor") {
+    return (existing.vendorId === selected.sourceId ||
+      (existing.sourceEntityType === "vendor" && existing.sourceEntityId === selected.sourceId)) &&
+      existing.vendorContactId === selected.vendorContactId
+  }
+  return existing.internalContactId === selected.sourceId ||
+    (["user", "internal_contact"].includes(existing.sourceEntityType) &&
+      existing.sourceEntityId === selected.sourceId)
+}
+
 export function isCanonicalDirectoryAssignment(input: {
   readonly sourceEntityType: string
   readonly customerId: string | null

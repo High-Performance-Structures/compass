@@ -29,7 +29,7 @@ import {
   type ContactIdentityFields,
 } from "@/lib/contact-identity-ownership"
 import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import {
   projectContactCompassAccountStatus,
@@ -41,6 +41,7 @@ import {
 import {
   isCanonicalDirectoryAssignment,
   isSameProjectContactDirectoryIdentity,
+  isUnchangedProjectContactDirectorySelection,
   resolveProjectContactIdentity,
   resolveProjectContactMutationIdentity,
 } from "@/lib/project-contact-directory-identity"
@@ -1154,6 +1155,11 @@ export async function getProjectContactDirectoryOptions(
   // The picker exposes organization-wide customer, vendor, and staff details,
   // so project read access alone is intentionally insufficient.
   const db = await verifyProjectAccess(projectId, "update")
+  const [canViewCustomers, canViewVendors, canViewInternal] = await Promise.all([
+    canFeature(user, "customers", "read"),
+    canFeature(user, "vendors", "read"),
+    canFeature(user, "internal-directory", "read"),
+  ])
 
   const existingRows = await db
     .select({
@@ -1178,7 +1184,7 @@ export async function getProjectContactDirectoryOptions(
     )
   )
   const [customerRows, customerContactRows, vendorRows, vendorContactRows, teamRows] = await Promise.all([
-    db
+    canViewCustomers ? db
       .select({
         id: customers.id,
         name: customers.name,
@@ -1188,8 +1194,8 @@ export async function getProjectContactDirectoryOptions(
         address: customers.address,
       })
       .from(customers)
-      .where(eq(customers.organizationId, orgId)),
-    db
+      .where(eq(customers.organizationId, orgId)) : [],
+    canViewCustomers ? db
       .select({
         id: customerContacts.id,
         customerId: customerContacts.customerId,
@@ -1206,8 +1212,8 @@ export async function getProjectContactDirectoryOptions(
           eq(customers.organizationId, orgId),
           eq(customerContacts.active, true)
         )
-      ),
-    db
+      ) : [],
+    canViewVendors ? db
       .select({
         id: vendors.id,
         name: vendors.name,
@@ -1222,8 +1228,8 @@ export async function getProjectContactDirectoryOptions(
           eq(vendors.organizationId, orgId),
           eq(vendors.directoryStatus, "active")
         )
-      ),
-    db
+      ) : [],
+    canViewVendors ? db
       .select({
         id: vendorContacts.id,
         vendorId: vendorContacts.vendorId,
@@ -1241,8 +1247,8 @@ export async function getProjectContactDirectoryOptions(
           eq(vendors.directoryStatus, "active"),
           eq(vendorContacts.active, true)
         )
-      ),
-    db
+      ) : [],
+    canViewInternal ? db
       .select({
         id: internalContacts.id,
         name: internalContacts.name,
@@ -1256,7 +1262,7 @@ export async function getProjectContactDirectoryOptions(
           eq(internalContacts.organizationId, orgId),
           eq(internalContacts.active, true)
         )
-      ),
+      ) : [],
   ])
   const directoryIdentityKeys = await activeDirectoryIdentityKeys({
     db,
@@ -1475,6 +1481,35 @@ export async function saveProjectContact(
     }
 
     if (input.directorySourceType && input.directorySourceId) {
+      const directoryFeature = input.directorySourceType === "customer"
+        ? "customers"
+        : input.directorySourceType === "vendor" ? "vendors" : "internal-directory"
+      const existingSelection = input.contactId ? await db.select({
+        sourceEntityType: projectContacts.sourceEntityType,
+        sourceEntityId: projectContacts.sourceEntityId,
+        customerId: projectContacts.customerId,
+        customerContactId: projectContacts.customerContactId,
+        vendorId: projectContacts.vendorId,
+        vendorContactId: projectContacts.vendorContactId,
+        internalContactId: projectContacts.internalContactId,
+      }).from(projectContacts).where(and(
+        eq(projectContacts.id, input.contactId),
+        eq(projectContacts.projectId, input.projectId)
+      )).get() : null
+      const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(
+        existingSelection ?? null,
+        {
+          sourceType: input.directorySourceType,
+          sourceId: input.directorySourceId,
+          customerContactId: input.customerContactId,
+          vendorContactId: input.vendorContactId,
+        }
+      )
+      // Existing project assignments are editable without org-wide directory
+      // browsing. Selecting or changing a directory identity still needs it.
+      if (!unchangedDirectorySelection) {
+        await requireFeaturePermission(user, directoryFeature, "read")
+      }
       sourceRecordId = input.directorySourceId
       sourceEntityId = input.directorySourceId
 
@@ -2341,6 +2376,10 @@ export async function getProjectTaskAssigneeOptions(
   await requireFeaturePermission(user, "tasks", "update")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
+  const [canViewVendors, canViewInternal] = await Promise.all([
+    canFeature(user, "vendors", "read"),
+    canFeature(user, "internal-directory", "read"),
+  ])
 
   const projectContactRows = await db
     .select()
@@ -2380,7 +2419,7 @@ export async function getProjectTaskAssigneeOptions(
       .filter((email) => email.length > 0)
   )
 
-  const organizationUserRows = await db
+  const organizationUserRows = canViewInternal ? await db
     .select({
       id: users.id,
       email: users.email,
@@ -2396,7 +2435,7 @@ export async function getProjectTaskAssigneeOptions(
         eq(users.isActive, true)
       )
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(users.displayName), asc(users.email)) : []
   const organizationUserOptions = organizationUserRows
     .map(organizationUserToTaskAssigneeOption)
     .filter(
@@ -2405,7 +2444,7 @@ export async function getProjectTaskAssigneeOptions(
         !projectEmailKeys.has(option.email?.trim().toLowerCase() ?? "")
     )
 
-  const directoryRows = await db
+  const directoryRows = canViewVendors ? await db
     .select({
       id: vendors.id,
       name: vendors.name,
@@ -2417,7 +2456,7 @@ export async function getProjectTaskAssigneeOptions(
     .where(
       and(eq(vendors.organizationId, orgId), eq(vendors.directoryStatus, "active"))
     )
-    .orderBy(asc(vendors.name))
+    .orderBy(asc(vendors.name)) : []
 
   const directoryContacts = directoryRows
     .filter(
@@ -2449,6 +2488,11 @@ export async function getScheduleTaskAssigneeOptions(
   await requireFeaturePermission(user, "schedule", "update")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
+  const [canViewCustomers, canViewVendors, canViewInternal] = await Promise.all([
+    canFeature(user, "customers", "read"),
+    canFeature(user, "vendors", "read"),
+    canFeature(user, "internal-directory", "read"),
+  ])
 
   const [
     projectContactRows,
@@ -2470,7 +2514,7 @@ export async function getScheduleTaskAssigneeOptions(
         asc(projectContacts.contactType),
         asc(projectContacts.displayName)
       ),
-    db
+    canViewCustomers ? db
       .select({
         id: customers.id,
         name: customers.name,
@@ -2480,8 +2524,8 @@ export async function getScheduleTaskAssigneeOptions(
       })
       .from(customers)
       .where(eq(customers.organizationId, orgId))
-      .orderBy(asc(customers.name)),
-    db
+      .orderBy(asc(customers.name)) : [],
+    canViewVendors ? db
       .select({
         id: vendors.id,
         name: vendors.name,
@@ -2496,8 +2540,8 @@ export async function getScheduleTaskAssigneeOptions(
           eq(vendors.directoryStatus, "active")
         )
       )
-      .orderBy(asc(vendors.name)),
-    db
+      .orderBy(asc(vendors.name)) : [],
+    canViewVendors ? db
       .select({
         id: vendorContacts.id,
         vendorName: vendors.name,
@@ -2515,8 +2559,8 @@ export async function getScheduleTaskAssigneeOptions(
           eq(vendorContacts.active, true)
         )
       )
-      .orderBy(asc(vendors.name), asc(vendorContacts.name)),
-    db
+      .orderBy(asc(vendors.name), asc(vendorContacts.name)) : [],
+    canViewInternal ? db
       .select({
         id: users.id,
         email: users.email,
@@ -2533,7 +2577,7 @@ export async function getScheduleTaskAssigneeOptions(
           eq(users.isActive, true)
         )
       )
-      .orderBy(asc(users.displayName), asc(users.email)),
+      .orderBy(asc(users.displayName), asc(users.email)) : [],
   ])
 
   const projectOptions = projectContactRows
@@ -2565,6 +2609,7 @@ export async function getProjectPurchaseOrderSiteContactOptions(
   await requireFeaturePermission(user, "purchase-orders", "read")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
+  const canViewInternal = await canFeature(user, "internal-directory", "read")
 
   const projectRows = await db
     .select()
@@ -2589,7 +2634,7 @@ export async function getProjectPurchaseOrderSiteContactOptions(
       .filter((email) => email.length > 0)
   )
 
-  const organizationRows = await db
+  const organizationRows = canViewInternal ? await db
     .select({
       id: users.id,
       email: users.email,
@@ -2606,7 +2651,7 @@ export async function getProjectPurchaseOrderSiteContactOptions(
         eq(users.isActive, true)
       )
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(users.displayName), asc(users.email)) : []
   const organizationOptions = organizationRows
     .map((row) => ({
       ...organizationUserToTaskAssigneeOption(row),
@@ -2640,7 +2685,8 @@ export async function getProjectContactMatchReview(
 
   const user = await requireAuth()
   const orgId = requireOrg(user)
-  const independentContacts = await db
+  const canViewVendors = await canFeature(user, "vendors", "read")
+  const independentContacts = canViewVendors ? await db
     .select({
       id: vendors.id,
       name: vendors.name,
@@ -2650,7 +2696,7 @@ export async function getProjectContactMatchReview(
     })
     .from(vendors)
     .where(and(eq(vendors.organizationId, orgId), eq(vendors.directoryStatus, "active")))
-    .orderBy(asc(vendors.name))
+    .orderBy(asc(vendors.name)) : []
 
   const linkRows = await db
     .select()
@@ -2704,6 +2750,7 @@ export async function addIndependentContactToProjectFromReview(
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "vendors", "read")
 
     const orgId = requireOrg(user)
     const projectId = requireStringField(formData, "projectId")
@@ -2806,6 +2853,7 @@ export async function addDirectoryContactToProjectForTask(
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "tasks", "update")
+    await requireFeaturePermission(user, "vendors", "read")
 
     const orgId = requireOrg(user)
     const db = await verifyProjectAccess(projectId, "update")

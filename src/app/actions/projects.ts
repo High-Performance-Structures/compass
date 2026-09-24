@@ -423,6 +423,8 @@ export async function getProjectIntakeAssignees(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "project", "create")
+    const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
+    await requireFeaturePermission(user, "internal-directory", "read")
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
@@ -461,6 +463,17 @@ export async function createProjectIntake(
   try {
     const user = await requireAuth()
     requirePermission(user, "project", "create")
+    const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
+    // Intake reads canonical client details and may create a new directory row.
+    // The picker permission alone is not an authorization boundary for this action.
+    await requireFeaturePermission(user, "customers", "read")
+    const selectedCustomerId = cleanText(input.existingCustomerId ?? null)
+    if (!selectedCustomerId) {
+      await requireFeaturePermission(user, "customers", "create")
+    }
+    if (cleanText(input.assignedTo)) {
+      await requireFeaturePermission(user, "internal-directory", "read")
+    }
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "D1 not available" }
@@ -585,7 +598,6 @@ export async function createProjectIntake(
       }
     }
 
-    const selectedCustomerId = cleanText(input.existingCustomerId ?? null)
     const customerEmail = cleanText(input.contactEmail)?.toLowerCase() ?? null
     const customerMatches = await db
       .select()

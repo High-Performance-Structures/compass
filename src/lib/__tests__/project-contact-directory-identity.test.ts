@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   isCanonicalDirectoryAssignment,
   isSameProjectContactDirectoryIdentity,
+  isUnchangedProjectContactDirectorySelection,
   resolveProjectContactIdentity,
   resolveProjectContactMutationIdentity,
 } from "@/lib/project-contact-directory-identity"
@@ -27,6 +28,60 @@ describe("isCanonicalDirectoryAssignment", () => {
     expect(isCanonicalDirectoryAssignment({ ...unlinked, internalContactId: "staff-1" })).toBe(true)
     expect(isCanonicalDirectoryAssignment({ ...unlinked, sourceEntityType: "vendor_contact" })).toBe(true)
     expect(isCanonicalDirectoryAssignment({ ...unlinked, sourceEntityType: "user" })).toBe(true)
+  })
+})
+
+describe("project directory selection access", () => {
+  const existing = {
+    sourceEntityType: "vendor_contact",
+    sourceEntityId: "vendor-person-1",
+    customerId: null,
+    customerContactId: null,
+    vendorId: "vendor-1",
+    vendorContactId: "vendor-person-1",
+    internalContactId: null,
+  }
+
+  it("permits project-only edits when the selected vendor person is unchanged", () => {
+    expect(isUnchangedProjectContactDirectorySelection(existing, {
+      sourceType: "vendor", sourceId: "vendor-1",
+      customerContactId: null, vendorContactId: "vendor-person-1",
+    })).toBe(true)
+  })
+
+  it("requires directory access for a new company or person selection", () => {
+    for (const selected of [
+      { sourceType: "vendor" as const, sourceId: "vendor-2", customerContactId: null, vendorContactId: null },
+      { sourceType: "vendor" as const, sourceId: "vendor-1", customerContactId: null, vendorContactId: "vendor-person-2" },
+    ]) {
+      expect(isUnchangedProjectContactDirectorySelection(existing, selected)).toBe(false)
+      expect(isUnchangedProjectContactDirectorySelection(null, selected)).toBe(false)
+    }
+  })
+
+  it("recognizes unchanged client and internal assignments", () => {
+    expect(isUnchangedProjectContactDirectorySelection({
+      ...existing, sourceEntityType: "customer_contact", sourceEntityId: "client-person-1",
+      customerId: "client-1", customerContactId: "client-person-1",
+      vendorId: null, vendorContactId: null,
+    }, {
+      sourceType: "customer", sourceId: "client-1",
+      customerContactId: "client-person-1", vendorContactId: null,
+    })).toBe(true)
+    expect(isUnchangedProjectContactDirectorySelection({
+      ...existing, sourceEntityType: "internal_contact", sourceEntityId: "staff-1",
+      vendorId: null, vendorContactId: null, internalContactId: "staff-1",
+    }, {
+      sourceType: "team", sourceId: "staff-1",
+      customerContactId: null, vendorContactId: null,
+    })).toBe(true)
+    expect(isUnchangedProjectContactDirectorySelection({
+      ...existing, sourceEntityType: "internal_contact", sourceEntityId: "staff-1",
+      vendorId: null, vendorContactId: null, internalContactId: null,
+    }, {
+      sourceType: "team", sourceId: "staff-1",
+      customerContactId: null, vendorContactId: null,
+    })).toBe(true)
   })
 })
 

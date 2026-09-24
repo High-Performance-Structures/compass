@@ -26,4 +26,36 @@ describe("contact directory permission boundaries", () => {
     expect(grant).toContain("eq(organizationMembers.organizationId, currentUser.organizationId)")
     expect(grant).toContain("getUserAvailabilityCondition(true)")
   })
+
+  it("checks client directory access inside project intake, not only its picker", () => {
+    const projects = actionSource("projects.ts")
+    const intake = projects.split("export async function createProjectIntake(")[1]
+      ?.split("export async function ")[0]
+    expect(intake).toContain('requireFeaturePermission(user, "customers", "read")')
+    expect(intake).toContain('requireFeaturePermission(user, "customers", "create")')
+    expect(intake).toContain('if (cleanText(input.assignedTo)) {')
+    expect(intake).toContain('requireFeaturePermission(user, "internal-directory", "read")')
+    expect(intake?.indexOf('requireFeaturePermission(user, "customers", "read")'))
+      .toBeLessThan(intake?.indexOf("const customerMatches =") ?? 0)
+  })
+
+  it("does not expose or assign denied directories through project contact actions", () => {
+    const contacts = actionSource("project-contacts.ts")
+    const picker = contacts.split("export async function getProjectContactDirectoryOptions(")[1]
+      ?.split("export async function ")[0]
+    for (const feature of ["customers", "vendors", "internal-directory"]) {
+      expect(picker).toContain(`canFeature(user, "${feature}", "read")`)
+    }
+    expect(picker).toContain("canViewCustomers ? db")
+    expect(picker).toContain("canViewVendors ? db")
+    expect(picker).toContain("canViewInternal ? db")
+
+    const save = contacts.split("export async function saveProjectContact(")[1]
+      ?.split("export async function ")[0]
+    expect(save).toContain("const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(")
+    expect(save).toContain("if (!unchangedDirectorySelection) {")
+    expect(save).toContain('await requireFeaturePermission(user, directoryFeature, "read")')
+    expect(save?.indexOf('await requireFeaturePermission(user, directoryFeature, "read")'))
+      .toBeLessThan(save?.indexOf("if (input.directorySourceType === \"customer\")") ?? 0)
+  })
 })
