@@ -93,16 +93,27 @@ is **not** established by these column checks.
 
 `--contact-schema-test` validated generated XML for all five record kinds and
 all mapped fields against the Sage host's installed `mbxml.xsd` without
-submitting a request. It passed. `--contact-test` then reached Sage API
-initialization but stopped at `IsApplicationAllowed` with code `-1`. The
-configured API user exists in HPS Test, belongs to the exact `API` group, and
-that group has Save permission. An earlier diagnostic against the production
-company succeeded with the same API user, so the current HPS Test denial still
-needs a license/session,
-credential, or API-configuration investigation; group membership alone does
-not prove the API session can authenticate. Neither test modified Sage data.
+submitting a request. It passed. `--contact-test` from a temporary executable
+then reached Sage API initialization but stopped at `IsApplicationAllowed`
+with code `-1`. The configured API user exists in HPS Test, belongs to the
+exact `API` group, and that group has Save permission. The same temporary
+executable failed the production-company `--diagnose` check with `-1`, while
+the **installed** production writer at its approved path passed `--diagnose`
+immediately afterward (2026-09-24). This points to the executable's
+application approval/identity, not HPS Test credentials or license capacity,
+as the explanation for the temporary binary's denial. The HPS Test API login
+itself remains unvalidated. None of these diagnostics modified Sage records.
 
-Keep contact writes disabled. After API access is restored, validate on
+Sage's application approval is bound to the installed writer identity; do not
+interpret a `-1` from a newly compiled temporary-path binary as a test-company
+authentication result. To validate HPS Test, use the guarded candidate/backup
+procedure at the approved installed filename during a maintenance window,
+temporarily holding the scheduled writer so it cannot execute the candidate.
+Restore and verify the original writer and task afterward. Do not run this
+while staff are working in Sage or without first checking the writer's queued
+production work and current task state.
+
+Keep contact writes disabled. After HPS Test API access is validated, test on
 explicitly disposable HPS Test records: modify and read back each record kind,
 verify parent/child identity and contact ordering, then check blank values and
 revision conflicts. Only then consider enabling the reviewed write queue.
