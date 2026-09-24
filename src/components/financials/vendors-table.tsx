@@ -51,6 +51,7 @@ interface VendorsTableProps {
   categories: readonly string[]
   onEdit?: (vendor: VendorDirectoryCompany) => void
   onDelete?: (id: string) => void
+  onView?: (vendor: VendorDirectoryCompany) => void
 }
 
 function vendorSourceLabel(vendor: VendorDirectoryCompany): string {
@@ -70,6 +71,7 @@ export function VendorsTable({
   categories,
   onEdit,
   onDelete,
+  onView,
 }: VendorsTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -254,7 +256,7 @@ export function VendorsTable({
     {
       id: "actions",
       cell: ({ row }) => {
-        if (!onEdit && !onDelete) return null
+        if (!onEdit && !onDelete && !onView) return null
         const vendor = row.original
         return (
           <DropdownMenu>
@@ -265,6 +267,7 @@ export function VendorsTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {onView && <DropdownMenuItem onClick={() => onView(vendor)}>View people</DropdownMenuItem>}
               {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
               {onEdit && onDelete && <DropdownMenuSeparator />}
               {onDelete && <DropdownMenuItem
@@ -281,7 +284,7 @@ export function VendorsTable({
   ]
   const visibleColumns = columns.filter((column) =>
     (developerModeEnabled || column.id !== "source") &&
-    (onEdit !== undefined || onDelete !== undefined || column.id !== "actions")
+    (onEdit !== undefined || onDelete !== undefined || onView !== undefined || column.id !== "actions")
   )
 
   const table = useReactTable({
@@ -414,7 +417,7 @@ export function VendorsTable({
                       </p>
                     )}
                   </div>
-                  {(onEdit || onDelete) && <DropdownMenu>
+                  {(onEdit || onDelete || onView) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -425,6 +428,7 @@ export function VendorsTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {onView && <DropdownMenuItem onClick={() => onView(v)}>View people</DropdownMenuItem>}
                       {onEdit && <DropdownMenuItem onClick={() => onEdit(v)}>Edit</DropdownMenuItem>}
                       {onEdit && onDelete && <DropdownMenuSeparator />}
                       {onDelete && <DropdownMenuItem

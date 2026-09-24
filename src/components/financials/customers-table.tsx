@@ -49,12 +49,14 @@ interface CustomersTableProps {
   customers: Customer[]
   onEdit?: (customer: Customer) => void
   onDelete?: (id: string) => void
+  onViewPeople?: (customer: Customer) => void
 }
 
 export function CustomersTable({
   customers,
   onEdit,
   onDelete,
+  onViewPeople,
 }: CustomersTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -244,7 +246,7 @@ export function CustomersTable({
     {
       id: "actions",
       cell: ({ row }) => {
-        if (!onEdit && !onDelete) return null
+        if (!onEdit && !onDelete && !onViewPeople) return null
         const customer = row.original
         return (
           <DropdownMenu>
@@ -255,6 +257,7 @@ export function CustomersTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(customer)}>People at this client</DropdownMenuItem>}
               {onEdit && <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>}
               {onEdit && onDelete && <DropdownMenuSeparator />}
               {onDelete && <DropdownMenuItem
@@ -271,7 +274,7 @@ export function CustomersTable({
   ]
   const visibleColumns = columns.filter((column) =>
     (developerModeEnabled || column.id !== "source") &&
-    (onEdit !== undefined || onDelete !== undefined || column.id !== "actions")
+    (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
   )
 
   const table = useReactTable({
@@ -346,7 +349,7 @@ export function CustomersTable({
                         .join(" \u00b7 ") || "No contact info"}
                     </p>
                   </div>
-                  {(onEdit || onDelete) && <DropdownMenu>
+                  {(onEdit || onDelete || onViewPeople) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -357,6 +360,7 @@ export function CustomersTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(c)}>People at this client</DropdownMenuItem>}
                       {onEdit && <DropdownMenuItem onClick={() => onEdit(c)}>Edit</DropdownMenuItem>}
                       {onEdit && onDelete && <DropdownMenuSeparator />}
                       {onDelete && <DropdownMenuItem

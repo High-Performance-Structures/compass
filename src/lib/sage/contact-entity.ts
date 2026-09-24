@@ -39,13 +39,14 @@ export async function getSageContactEntityIdentity(
       sageRecordId: customerContacts.sageContactId,
       sageRecordNumber: customerContacts.sageLineNumber,
       parentSageRecordId: customers.sageClientId,
+      linkedUserId: customerContacts.userId,
     }).from(customerContacts).innerJoin(customers, eq(customerContacts.customerId, customers.id))
       .where(and(eq(customers.organizationId, organizationId), eq(customerContacts.id, entityId))).get()
     return row ? {
       sageRecordId: row.sageRecordId,
       sageRecordNumber: row.sageRecordNumber === null ? null : String(row.sageRecordNumber),
       parentSageRecordId: row.parentSageRecordId,
-      linkedUserId: null,
+      linkedUserId: row.linkedUserId,
     } : null
   }
   if (kind === "vendor_company") {
@@ -62,13 +63,14 @@ export async function getSageContactEntityIdentity(
       sageRecordId: vendorContacts.sageContactId,
       sageRecordNumber: vendorContacts.sageLineNumber,
       parentSageRecordId: vendors.sageVendorId,
+      linkedUserId: vendorContacts.userId,
     }).from(vendorContacts).innerJoin(vendors, eq(vendorContacts.vendorId, vendors.id))
       .where(and(eq(vendors.organizationId, organizationId), eq(vendorContacts.id, entityId))).get()
     return row ? {
       sageRecordId: row.sageRecordId,
       sageRecordNumber: row.sageRecordNumber === null ? null : String(row.sageRecordNumber),
       parentSageRecordId: row.parentSageRecordId,
-      linkedUserId: null,
+      linkedUserId: row.linkedUserId,
     } : null
   }
   const row = await db.select({

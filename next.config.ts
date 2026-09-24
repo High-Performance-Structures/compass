@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
     // OpenNext sets this flag before its Next.js build. Keep the native SQLite
     // shim out of Workers without breaking production-mode local/E2E builds.
     turbopack: {
+        // Keep nested Git worktrees isolated from the parent checkout's lockfile.
+        root: process.cwd(),
         resolveAlias: {
             "@/lib/cloudflare-context":
                 process.env.NEXT_PRIVATE_STANDALONE === "true"

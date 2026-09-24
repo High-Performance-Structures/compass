@@ -123,6 +123,22 @@ describe("staff directory permissions", () => {
     })
   }
 
+  it("does not expose shared client, vendor, or internal lists to external accounts", async () => {
+    for (const role of ["client", "subcontractor", "supplier", "guest"]) {
+      for (const featureId of ["customers", "vendors", "internal-directory"]) {
+        expect(await canFeature({ ...staff, role }, featureId, "read")).toBe(false)
+      }
+    }
+    expect(mocks.getDb).not.toHaveBeenCalled()
+  })
+
+  it("fails closed for shared directories when grant storage is unavailable", async () => {
+    mocks.getCloudflareContext.mockRejectedValue(new Error("D1 unavailable"))
+    for (const featureId of ["customers", "vendors", "internal-directory"]) {
+      expect(await canFeature(staff, featureId, "read")).toBe(false)
+    }
+  })
+
   it("allows an individual staff denial of customer edits without affecting vendors", async () => {
     mockUserOverride("none")
     expect(await canFeature(staff, "customers", "update")).toBe(false)

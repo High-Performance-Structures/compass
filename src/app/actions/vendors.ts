@@ -37,6 +37,8 @@ export type InternalDirectoryContact = {
   readonly phone: string | null
   readonly sourceLabel: string
   readonly accessStatus: "active" | "invited" | "no_access"
+  readonly sageEmployeeId: string | null
+  readonly sageEmployeeNumber: string | null
 }
 
 export type VendorContactItem = {
@@ -49,6 +51,9 @@ export type VendorContactItem = {
   readonly isPrimary: boolean
   readonly active: boolean
   readonly sourceSystem: string
+  readonly userId: string | null
+  readonly sageContactId: string | null
+  readonly sageLineNumber: number | null
 }
 
 export type VendorDirectoryCompany = Vendor & {
@@ -153,6 +158,9 @@ export async function getVendors(): Promise<VendorDirectoryCompany[]> {
         isPrimary: vendorContacts.isPrimary,
         active: vendorContacts.active,
         sourceSystem: vendorContacts.sourceSystem,
+        userId: vendorContacts.userId,
+        sageContactId: vendorContacts.sageContactId,
+        sageLineNumber: vendorContacts.sageLineNumber,
       })
       .from(vendorContacts)
       .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
@@ -200,6 +208,8 @@ export async function getInternalDirectoryContacts(): Promise<
       email: internalContacts.email,
       phone: internalContacts.phone,
       sourceSystem: internalContacts.sourceSystem,
+      sageEmployeeId: internalContacts.sageEmployeeId,
+      sageEmployeeNumber: internalContacts.sageEmployeeNumber,
       userActive: users.isActive,
       userId: users.id,
       lastLoginAt: users.lastLoginAt,
@@ -231,6 +241,8 @@ export async function getInternalDirectoryContacts(): Promise<
       email: contact.email,
       phone: contact.phone,
       sourceLabel: contact.sourceSystem,
+      sageEmployeeId: contact.sageEmployeeId,
+      sageEmployeeNumber: contact.sageEmployeeNumber,
       accessStatus: contact.userId === null || contact.membershipRole === null
         ? "no_access"
         : contact.userActive
@@ -629,6 +641,9 @@ export async function createVendorContact(
       isPrimary: input.isPrimary,
       active: true,
       sourceSystem: "manual",
+      userId: null,
+      sageContactId: null,
+      sageLineNumber: null,
     }
     await db.insert(vendorContacts).values({
       ...contact,

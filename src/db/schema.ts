@@ -2822,6 +2822,7 @@ export const vendorContacts = sqliteTable(
     vendorId: text("vendor_id")
       .notNull()
       .references(() => vendors.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     title: text("title"),
     email: text("email"),
@@ -2845,6 +2846,9 @@ export const vendorContacts = sqliteTable(
     uniqueIndex("vendor_contacts_vendor_sage_contact_unique")
       .on(table.vendorId, table.sageContactId)
       .where(sql`${table.sageContactId} IS NOT NULL AND trim(${table.sageContactId}) <> ''`),
+    uniqueIndex("vendor_contacts_company_user_unique")
+      .on(table.vendorId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
   ]
 )
 
@@ -2855,6 +2859,7 @@ export const customerContacts = sqliteTable(
     customerId: text("customer_id")
       .notNull()
       .references(() => customers.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     title: text("title"),
     email: text("email"),
@@ -2882,6 +2887,9 @@ export const customerContacts = sqliteTable(
     uniqueIndex("customer_contacts_customer_sage_contact_unique")
       .on(table.customerId, table.sageContactId)
       .where(sql`${table.sageContactId} IS NOT NULL AND trim(${table.sageContactId}) <> ''`),
+    uniqueIndex("customer_contacts_company_user_unique")
+      .on(table.customerId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
   ]
 )
 
@@ -2940,6 +2948,34 @@ export const internalContactPrivateAddresses = sqliteTable(
     lastSyncedAt: text("last_synced_at"),
     updatedAt: text("updated_at").notNull(),
   }
+)
+
+export const contactAccountLinkEvents = sqliteTable(
+  "contact_account_link_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    personKind: text("person_kind").notNull(),
+    personId: text("person_id").notNull(),
+    previousUserId: text("previous_user_id"),
+    nextUserId: text("next_user_id"),
+    changedByUserId: text("changed_by_user_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    check(
+      "contact_account_link_person_kind_check",
+      sql`${table.personKind} IN ('client_person', 'vendor_person')`
+    ),
+    index("contact_account_link_events_person_idx").on(
+      table.organizationId,
+      table.personKind,
+      table.personId,
+      table.createdAt
+    ),
+  ]
 )
 
 export const sageCostCodes = sqliteTable("sage_cost_codes", {

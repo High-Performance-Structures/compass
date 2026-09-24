@@ -209,18 +209,24 @@ limited by the existing underlying account-role gate until dependency-aware,
 audited directory deletion is designed.
 
 The internal directory has an explicit `internal_contacts.user_id` link.
-Vendor and client person records do **not** yet have equivalent account
-foreign keys. Their access-manager grouping is role-based, so it must not be
-presented as a verified person-to-account match or used to sync identity by
-email. Add explicit nullable links, a reviewed backfill, and invite/activation
-link maintenance before claiming one canonical person across those views.
+Migration `0169` adds nullable `user_id` foreign keys to client and vendor
+people, with organization/role triggers and immutable link events. Contacts
+offers an explicit account-picker action to link a known person; it does not
+infer identity from email or name. A reviewed backfill and invite/activation
+link maintenance are still required before claiming that every existing
+account is connected to a canonical person. External users cannot browse the
+shared directories; self-service reads only exact linked person IDs.
 Directory-granted staff edits must not reach the legacy Sage email-fill queue
 without the existing stronger authorization; the reviewed Sage contact
 proposal/approval path remains a release gate.
 
-These navigation, permission, and project-membership changes do not alter
-project registry fields or Google Apps Script payloads. Recheck both when
-account links or Sage contact synchronization fields are introduced.
+The new person-account links and Sage proposal fields remain outside the
+Project Registry and Google Apps Script handoff contracts: those still carry
+project-level identifiers/intake values, not person or employee address IDs.
+The Tracker's single owner slot continues to project the canonical selected
+owner without changing the sheet layout. A future contact-aware handoff must
+carry an explicit canonical person ID and be reviewed as a separate contract
+change; no Apps Script payload should infer a person from a free-text name.
 
 Every proposed change needs a verified Sage company/entity ID, a field
 allowlist, a snapshot/revision, an authorized reviewer, an immutable approval
@@ -234,8 +240,11 @@ filling of a blank client email. A separate, opt-in contact mode now has
 allowlisted client/vendor/employee modifications and child-contact
 modification code and passed the guarded HPS Test write/readback check above.
 It has not been installed as the production writer. Child-contact adds,
-primary-email edits, and reviewed backfill of person-to-account links remain
-outside the enabled path. Private employee address access and approval must
+primary-email edits, blank/null updates, and reviewed linking/import of
+existing Sage people remain outside the enabled path. The Contacts UI can
+request a fresh Sage read and submit/review a proposal for an already-linked
+record; approval is refused while the production write flag is disabled.
+Private employee address access and approval must
 be individual staff permissions in Compass
 Settings > Permissions, with Executive Admin the initial default. Employees
 may propose changes to their own record but cannot approve them. No employee

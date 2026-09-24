@@ -34,6 +34,8 @@ interface CustomerDialogProps {
     notes: string
     relationshipType: CustomerRelationshipType
   }) => void
+  onManagePeople?: () => void
+  onSageEditCompany?: () => void
 }
 
 export function CustomerDialog({
@@ -41,6 +43,8 @@ export function CustomerDialog({
   onOpenChange,
   initialData,
   onSubmit,
+  onManagePeople,
+  onSageEditCompany,
 }: CustomerDialogProps) {
   const { developerModeEnabled } = useDeveloperMode()
   const [name, setName] = React.useState("")
@@ -51,6 +55,7 @@ export function CustomerDialog({
   const [notes, setNotes] = React.useState("")
   const [relationshipType, setRelationshipType] =
     React.useState<CustomerRelationshipType>("client")
+  const sageLinked = Boolean(initialData?.sageClientId || initialData?.sageClientNumber)
 
   React.useEffect(() => {
     if (initialData) {
@@ -98,7 +103,9 @@ export function CustomerDialog({
       onOpenChange={onOpenChange}
       title={initialData ? "Edit Client / Lead" : "Add Client / Lead Contact"}
       description={
-        developerModeEnabled
+        sageLinked
+          ? "Sage is the source of truth. Use a reviewed proposal to change company details."
+          : developerModeEnabled
           ? "Maintain the directory contact without granting project access or creating a Sage client."
           : "Maintain the directory contact without granting project access."
       }
@@ -117,6 +124,7 @@ export function CustomerDialog({
               onChange={(e) => setName(e.target.value)}
               required
               autoFocus
+              disabled={sageLinked}
             />
           </div>
           <div className="space-y-1.5">
@@ -159,6 +167,7 @@ export function CustomerDialog({
               className="h-9"
               placeholder="Company or organization"
               value={company}
+              disabled={sageLinked}
               onChange={(e) => setCompany(e.target.value)}
             />
           </div>
@@ -173,6 +182,7 @@ export function CustomerDialog({
                 className="h-9"
                 placeholder="email@example.com"
                 value={email}
+                disabled={sageLinked}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
@@ -185,6 +195,7 @@ export function CustomerDialog({
                 className="h-9"
                 placeholder="(555) 123-4567"
                 value={phone}
+                disabled={sageLinked}
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
@@ -198,6 +209,7 @@ export function CustomerDialog({
               className="h-9"
               placeholder="Street, city, state"
               value={address}
+              disabled={sageLinked}
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
@@ -208,6 +220,7 @@ export function CustomerDialog({
             <Textarea
               id="cust-notes"
               value={notes}
+              disabled={sageLinked}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Additional notes..."
@@ -225,12 +238,16 @@ export function CustomerDialog({
           >
             Cancel
           </Button>
-          <Button
-            type="submit"
-            className="h-9"
-          >
-            {initialData ? "Save Changes" : "Add to Contacts"}
-          </Button>
+          {initialData && onManagePeople ? (
+            <Button type="button" variant="outline" onClick={onManagePeople}>People at this client</Button>
+          ) : null}
+          {sageLinked ? (
+            <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>Propose Sage edit</Button>
+          ) : (
+            <Button type="submit" className="h-9">
+              {initialData ? "Save Changes" : "Add to Contacts"}
+            </Button>
+          )}
         </ResponsiveDialogFooter>
       </form>
     </ResponsiveDialog>

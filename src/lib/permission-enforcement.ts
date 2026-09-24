@@ -82,6 +82,13 @@ export async function getEffectivePermissionAccessLevel(
   const feature = getPermissionFeature(featureId)
   if (!feature || !user || !user.isActive) return "none"
 
+  // Shared directories include other companies' people. External accounts
+  // may edit only their explicitly linked person through the self-service
+  // Sage proposal path, never browse the full internal directory.
+  if (feature.staffAssignable && (
+    user.organizationType !== "internal" || !isInternalStaffRole(user.role)
+  )) return "none"
+
   if (feature.individualOnly) {
     if (
       !user.organizationId ||
@@ -128,7 +135,7 @@ export async function getEffectivePermissionAccessLevel(
 
   try {
     const { env } = await getCloudflareContext()
-    if (!env?.DB) return effectiveLevel
+    if (!env?.DB) return feature.staffAssignable ? "none" : effectiveLevel
 
     const db = getDb(env.DB)
 
@@ -191,7 +198,7 @@ export async function getEffectivePermissionAccessLevel(
 
     return effectiveLevel
   } catch {
-    return effectiveLevel
+    return feature.staffAssignable ? "none" : effectiveLevel
   }
 }
 
