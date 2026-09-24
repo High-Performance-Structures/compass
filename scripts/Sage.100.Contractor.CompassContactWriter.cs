@@ -113,21 +113,46 @@ namespace CompassSageClientProjectWriter
         {
             try
             {
+                ValidateContactSchema();
                 Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
                 using (SqlConnection connection = OpenContactSql(ContactTestCompany))
                 using (SqlCommand command = new SqlCommand("SELECT COUNT(*) FROM dbo.reccln", connection))
                     WriteLog("INFO", "HPS Test Sage client count=" + Convert.ToString(command.ExecuteScalar()));
                 using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"), ContactTestCompany)) { }
-                ValidateContactXml("client_company", 1, 0, new ContactChange[] {
-                    new ContactChange { field = "city", before = null, after = "Test City" }
-                }, ContactTestCompany);
-                ValidateContactXml("vendor_person", 1, 1, new ContactChange[] {
-                    new ContactChange { field = "email", before = null, after = "test@example.invalid" }
-                }, ContactTestCompany);
                 WriteLog("INFO", "CONTACT_TEST_SCHEMA_AND_ACCESS_OK; no Sage records changed.");
                 return 0;
             }
             catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
+        }
+
+        private static int RunContactSchemaTest()
+        {
+            try
+            {
+                ValidateContactSchema();
+                WriteLog("INFO", "CONTACT_SCHEMA_OK; no Sage records changed.");
+                return 0;
+            }
+            catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
+        }
+
+        private static void ValidateContactSchema()
+        {
+            foreach (string kind in new string[] { "client_company", "client_person", "vendor_company", "vendor_person", "employee" })
+            {
+                ContactField[] fields = FieldsFor(kind);
+                ContactChange[] changes = new ContactChange[fields.Length];
+                for (int index = 0; index < fields.Length; index++)
+                {
+                    string key = fields[index].Key;
+                    changes[index] = new ContactChange { field = key, before = null,
+                        after = key == "state" || key == "billingState" ? "CO" :
+                            key == "postalCode" || key == "billingPostalCode" ? "80000" :
+                            key == "email" ? "test@example.invalid" :
+                            key == "phone" || key == "cellPhone" ? "5550100" : "Test" };
+                }
+                ValidateContactXml(kind, 1, 1, changes, ContactTestCompany);
+            }
         }
 
         private static int RunContactBridge()
