@@ -171,6 +171,24 @@ export async function getEffectivePermissionAccessLevel(
       )
     }
 
+    if (feature.staffAssignable && user.organizationType === "internal" && isInternalStaffRole(user.role)) {
+      const userOverride = await db
+        .select({ accessLevel: userPermissionOverrides.accessLevel })
+        .from(userPermissionOverrides)
+        .where(
+          and(
+            eq(userPermissionOverrides.organizationId, user.organizationId),
+            eq(userPermissionOverrides.userId, user.id),
+            eq(userPermissionOverrides.featureId, featureId)
+          )
+        )
+        .get()
+      if (userOverride && isPermissionAccessLevel(userOverride.accessLevel)) {
+        // A named staff choice may explicitly deny access despite role/team defaults.
+        effectiveLevel = userOverride.accessLevel
+      }
+    }
+
     return effectiveLevel
   } catch {
     return effectiveLevel

@@ -400,8 +400,8 @@ export function ProjectContactsDirectory({
             Legacy Buildertrend contacts are retained as read-only records and
             do not represent current employment or project access. Manage the
             person in{" "}
-            <Link href="/dashboard/settings?section=team" className="underline">
-              Settings → Team
+            <Link href="/dashboard/contacts?tab=internal" className="underline">
+              Contacts → Internal
             </Link>
             , then use Add contact above to place an active team member on this
             project.

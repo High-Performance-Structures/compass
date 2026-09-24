@@ -7,7 +7,6 @@ import {
   IconPlug,
   IconRobot,
   IconShieldLock,
-  IconUsers,
 } from "@tabler/icons-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -23,7 +22,6 @@ import { cn } from "@/lib/utils"
 
 import { PreferencesTab } from "@/components/settings/preferences-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
-import { TeamTab } from "@/components/settings/team-tab"
 import { PermissionsTab } from "@/components/settings/permissions-tab"
 import { AgentTab } from "@/components/settings/agent-tab"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
@@ -39,7 +37,6 @@ import {
 const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
   { value: "appearance", label: "Theme", icon: IconPalette },
-  { value: "team", label: "Team", icon: IconUsers },
   { value: "permissions", label: "Permissions", icon: IconShieldLock },
   { value: "agent", label: "Agent", icon: IconRobot },
   { value: "integrations", label: "Integrations", icon: IconPlug },
@@ -49,7 +46,7 @@ type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "team", "permissions", "agent",
+  "appearance", "permissions", "agent",
 ])
 
 function IntegrationsSection() {
@@ -81,6 +78,10 @@ export default function SettingsPage() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const requestedSection = params.get("section")
+    if (requestedSection === "team") {
+      window.location.replace("/dashboard/contacts?tab=internal")
+      return
+    }
     const matchingSection = SETTINGS_TABS.find(
       (tab) => tab.value === requestedSection
     )
@@ -105,8 +106,6 @@ export default function SettingsPage() {
         return <PreferencesTab />
       case "appearance":
         return <AppearanceTab />
-      case "team":
-        return <TeamTab />
       case "permissions":
         return <PermissionsTab />
       case "agent":

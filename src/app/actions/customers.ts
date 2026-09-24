@@ -7,6 +7,7 @@ import { customers, projectContacts, type NewCustomer } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
@@ -45,7 +46,7 @@ export type CreateCustomerDirectoryContactInput = {
 
 export async function getCustomers() {
   const user = await requireAuth()
-  requirePermission(user, "customer", "read")
+  await requireFeaturePermission(user, "customers", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -56,7 +57,7 @@ export async function getCustomers() {
 
 export async function getCustomer(id: string) {
   const user = await requireAuth()
-  requirePermission(user, "customer", "read")
+  await requireFeaturePermission(user, "customers", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -79,7 +80,10 @@ export async function createCustomer(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    // This action enqueues Sage client creation; a directory edit grant alone
+    // must not expand who can start that separate workflow.
     requirePermission(user, "customer", "create")
+    await requireFeaturePermission(user, "customers", "create")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -167,7 +171,7 @@ export async function createCustomerDirectoryContact(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "customer", "create")
+    await requireFeaturePermission(user, "customers", "create")
     const orgId = requireOrg(user)
     const name = data.name.trim()
     if (!name) {
@@ -263,7 +267,7 @@ export async function updateCustomer(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "customer", "update")
+    await requireFeaturePermission(user, "customers", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -337,6 +341,9 @@ export async function updateCustomer(
       )
 
     if (shouldQueueSageEmailUpdate) {
+      // Until the reviewed contact-proposal queue is wired end-to-end, a
+      // directory grant cannot newly authorize this legacy Sage write path.
+      requirePermission(user, "customer", "update")
       const operationId = crypto.randomUUID()
       const payload = {
         operationType: "update_client_email" as const,
@@ -391,6 +398,7 @@ export async function deleteCustomer(id: string) {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    await requireFeaturePermission(user, "customers", "delete")
     requirePermission(user, "customer", "delete")
     const orgId = requireOrg(user)
 

@@ -39,6 +39,7 @@ export type PermissionFeature = {
   readonly description: string
   readonly resource: Resource
   readonly individualOnly?: boolean
+  readonly staffAssignable?: boolean
 }
 
 export const PERMISSION_ACCESS_LEVELS: readonly {
@@ -284,23 +285,26 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
   {
     id: "customers",
     group: "Directory",
-    label: "Customers",
-    description: "Customer directory, owner contacts, and customer records.",
+    label: "Clients / Owners",
+    description: "Client and owner directory contacts. Sage-linked edits still require reviewed synchronization.",
     resource: "customer",
+    staffAssignable: true,
   },
   {
     id: "vendors",
     group: "Directory",
     label: "Vendors / Suppliers / Subs",
-    description: "Vendor directory, categories, Sage matches, and contact records.",
+    description: "Vendor, subcontractor, and supplier contacts. Sage-linked edits still require reviewed synchronization.",
     resource: "vendor",
+    staffAssignable: true,
   },
   {
     id: "internal-directory",
     group: "Directory",
-    label: "Internal Directory",
-    description: "Internal departments and active Compass users with Compass roles.",
+    label: "Internal Team Contacts",
+    description: "Employee contact directory, separate from vendor/client records and Compass account permissions.",
     resource: "user",
+    staffAssignable: true,
   },
   {
     id: "files",

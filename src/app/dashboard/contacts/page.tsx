@@ -4,10 +4,13 @@ import * as React from "react"
 import { IconPlus, IconShieldCheck } from "@tabler/icons-react"
 import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
-import Link from "next/link"
 import { toast } from "sonner"
 import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
+import {
+  getContactDirectoryAccess,
+  type ContactDirectoryAccess,
+} from "@/app/actions/contact-directory-access"
 import {
   getCustomers,
   createCustomerDirectoryContact,
@@ -35,6 +38,14 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { TeamTab } from "@/components/settings/team-tab"
 import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
 import { VendorsTable } from "@/components/financials/vendors-table"
@@ -42,6 +53,9 @@ import { VendorDialog } from "@/components/financials/vendor-dialog"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 type Tab = "customers" | "vendors" | "internal"
+type DirectoryCapabilities = Record<Tab, ContactDirectoryAccess> & {
+  readonly canManageAccounts: boolean
+}
 
 const DEFAULT_VENDOR_CATEGORIES = [
   "Supplier",
@@ -171,7 +185,9 @@ function ContactsContent() {
   const initialTab = toContactsTab(searchParams.get("tab"))
 
   const [tab, setTab] = React.useState<Tab>(initialTab)
+  const [accessDialogOpen, setAccessDialogOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
+  const [directoryAccess, setDirectoryAccess] = React.useState<DirectoryCapabilities | null>(null)
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<
@@ -189,13 +205,19 @@ function ContactsContent() {
   const [editingVendor, setEditingVendor] =
     React.useState<VendorDirectoryCompany | null>(null)
 
-  const loadAll = async () => {
+  const loadAll = React.useCallback(async () => {
     try {
+      const access = await getContactDirectoryAccess()
       const [customers, vendors, internalContacts] = await Promise.all([
-        getCustomers(),
-        getVendors(),
-        getInternalDirectoryContacts(),
+        access.customers.read ? getCustomers() : Promise.resolve([]),
+        access.vendors.read ? getVendors() : Promise.resolve([]),
+        access.internal.read ? getInternalDirectoryContacts() : Promise.resolve([]),
       ])
+      setDirectoryAccess(access)
+      if (!access[tab].read) {
+        const firstVisible = (["customers", "vendors", "internal"] as const).find((candidate) => access[candidate].read)
+        if (firstVisible) setTab(firstVisible)
+      }
       setCustomersList(customers)
       setVendorsList(vendors)
       setInternalContactsList(internalContacts)
@@ -204,11 +226,11 @@ function ContactsContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [tab])
 
   React.useEffect(() => {
-    loadAll()
-  }, [])
+    void loadAll()
+  }, [loadAll])
 
   const openCustomer = React.useCallback(() => {
     setEditingCustomer(null)
@@ -245,11 +267,11 @@ function ContactsContent() {
   )
 
   const pageActions = React.useMemo(() => {
-    if (tab === "internal") return []
+    if (tab === "internal" || !directoryAccess?.[tab].create) return []
 
     const action = TAB_ACTIONS[tab]
     return [{ ...action, icon: Plus }]
-  }, [tab, TAB_ACTIONS])
+  }, [tab, TAB_ACTIONS, directoryAccess])
 
   useRegisterPageActions(pageActions)
 
@@ -346,6 +368,36 @@ function ContactsContent() {
     return <ContactsSkeleton />
   }
 
+  const accessManagerDialog = directoryAccess?.canManageAccounts ? (
+    <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl">
+        <DialogHeader>
+          <DialogTitle>Compass access</DialogTitle>
+          <DialogDescription>
+            Manage invitations, account roles, and project access. Contact records remain in the directories behind this dialog.
+          </DialogDescription>
+        </DialogHeader>
+        <TeamTab initialSection={tab === "customers" ? "clients" : tab} />
+      </DialogContent>
+    </Dialog>
+  ) : null
+
+  if (directoryAccess && !directoryAccess.customers.read && !directoryAccess.vendors.read && !directoryAccess.internal.read) {
+    return (
+      <>
+        <div className="space-y-3 p-6 text-sm text-muted-foreground">
+          <p>You do not have access to a contacts directory.</p>
+          {directoryAccess.canManageAccounts && (
+            <Button variant="outline" size="sm" onClick={() => setAccessDialogOpen(true)}>
+              Manage Compass access
+            </Button>
+          )}
+        </div>
+        {accessManagerDialog}
+      </>
+    )
+  }
+
   const vendorContacts = vendorsList.filter((vendor) => !isInternalVendor(vendor))
   const addLabel = tab === "customers" ? "Add Client / Lead" : "Add Vendor"
   const addHandler = tab === "customers" ? openCustomer : openVendor
@@ -371,19 +423,19 @@ function ContactsContent() {
         >
           <div className="flex items-center justify-between gap-3 shrink-0">
             <TabsList>
-              <TabsTrigger value="customers" className="text-xs sm:text-sm">
+              <TabsTrigger value="customers" disabled={!directoryAccess?.customers.read} className="text-xs sm:text-sm">
                 Clients & Leads
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {customersList.length}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="vendors" className="text-xs sm:text-sm">
+              <TabsTrigger value="vendors" disabled={!directoryAccess?.vendors.read} className="text-xs sm:text-sm">
                 Vendors
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {vendorContacts.length}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="internal" className="text-xs sm:text-sm">
+              <TabsTrigger value="internal" disabled={!directoryAccess?.internal.read} className="text-xs sm:text-sm">
                 Internal
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {internalContactsList.length}
@@ -391,22 +443,24 @@ function ContactsContent() {
               </TabsTrigger>
             </TabsList>
 
-            {tab !== "internal" ? (
-              <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
-                <IconPlus className="size-3.5" />
-                <span className="hidden sm:inline ml-1.5">{addLabel}</span>
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Button asChild variant="outline" size="sm" className="h-8">
-                  <Link href="/dashboard/settings?section=team&view=internal">Manage team access</Link>
+            <div className="flex items-center gap-2">
+              {directoryAccess?.canManageAccounts && (
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setAccessDialogOpen(true)}>
+                  Manage Compass access
                 </Button>
-                <Badge variant="outline" className="h-8 gap-1.5 px-3">
+              )}
+              {tab !== "internal" && directoryAccess?.[tab].create ? (
+                <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
+                  <IconPlus className="size-3.5" />
+                  <span className="hidden sm:inline ml-1.5">{addLabel}</span>
+                </Button>
+              ) : tab === "internal" ? (
+                <Badge variant="outline" className="hidden h-8 gap-1.5 px-3 sm:inline-flex">
                   <IconShieldCheck className="size-3.5" />
                   HPS / Nu-Tech / ORC
                 </Badge>
-              </div>
-            )}
+              ) : null}
+            </div>
           </div>
 
           <TabsContent
@@ -415,11 +469,11 @@ function ContactsContent() {
           >
             <CustomersTable
               customers={customersList}
-              onEdit={(customer) => {
+              onEdit={directoryAccess?.customers.edit ? (customer) => {
                 setEditingCustomer(customer)
                 setCustomerDialogOpen(true)
-              }}
-              onDelete={handleDeleteCustomer}
+              } : undefined}
+              onDelete={directoryAccess?.customers.delete ? handleDeleteCustomer : undefined}
             />
           </TabsContent>
 
@@ -430,11 +484,11 @@ function ContactsContent() {
             <VendorsTable
               vendors={vendorContacts}
               categories={vendorCategories}
-              onEdit={(vendor) => {
+              onEdit={directoryAccess?.vendors.edit ? (vendor) => {
                 setEditingVendor(vendor)
                 setVendorDialogOpen(true)
-              }}
-              onDelete={handleDeleteVendor}
+              } : undefined}
+              onDelete={directoryAccess?.vendors.delete ? handleDeleteVendor : undefined}
             />
           </TabsContent>
 
@@ -446,6 +500,8 @@ function ContactsContent() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {accessManagerDialog}
 
       <CustomerDialog
         open={customerDialogOpen}

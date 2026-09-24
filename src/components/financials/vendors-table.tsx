@@ -254,6 +254,7 @@ export function VendorsTable({
     {
       id: "actions",
       cell: ({ row }) => {
+        if (!onEdit && !onDelete) return null
         const vendor = row.original
         return (
           <DropdownMenu>
@@ -264,25 +265,24 @@ export function VendorsTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(vendor)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
+              {onEdit && onDelete && <DropdownMenuSeparator />}
+              {onDelete && <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => onDelete?.(vendor.id)}
+                onClick={() => onDelete(vendor.id)}
               >
                 Delete
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         )
       },
     },
   ]
-  const visibleColumns = developerModeEnabled
-    ? columns
-    : columns.filter((column) => column.id !== "source")
+  const visibleColumns = columns.filter((column) =>
+    (developerModeEnabled || column.id !== "source") &&
+    (onEdit !== undefined || onDelete !== undefined || column.id !== "actions")
+  )
 
   const table = useReactTable({
     data: [...vendors],
@@ -414,7 +414,7 @@ export function VendorsTable({
                       </p>
                     )}
                   </div>
-                  <DropdownMenu>
+                  {(onEdit || onDelete) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -425,18 +425,16 @@ export function VendorsTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(v)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      {onEdit && <DropdownMenuItem onClick={() => onEdit(v)}>Edit</DropdownMenuItem>}
+                      {onEdit && onDelete && <DropdownMenuSeparator />}
+                      {onDelete && <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => onDelete?.(v.id)}
+                        onClick={() => onDelete(v.id)}
                       >
                         Delete
-                      </DropdownMenuItem>
+                      </DropdownMenuItem>}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               )
             })}

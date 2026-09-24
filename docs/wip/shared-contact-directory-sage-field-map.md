@@ -133,6 +133,33 @@ Compass; the tracker continues to represent only the selected primary owner.
 
 ## Write safety and release gate
 
+### Contacts and Compass access boundary
+
+Contacts is the sole navigation point for Internal, Vendors, and Clients.
+Settings > Permissions controls those three directories independently, with
+role/team baselines and named-staff directory overrides. The access manager
+within Contacts is for invitations, roles, and project memberships—not a
+second contact directory. Bulk project grants use selected Compass account
+IDs and validate every account and project against the current organization;
+existing project assignments are left unchanged.
+Named-staff directory overrides stop at Create / Edit; deletion remains
+limited by the existing underlying account-role gate until dependency-aware,
+audited directory deletion is designed.
+
+The internal directory has an explicit `internal_contacts.user_id` link.
+Vendor and client person records do **not** yet have equivalent account
+foreign keys. Their access-manager grouping is role-based, so it must not be
+presented as a verified person-to-account match or used to sync identity by
+email. Add explicit nullable links, a reviewed backfill, and invite/activation
+link maintenance before claiming one canonical person across those views.
+Directory-granted staff edits must not reach the legacy Sage email-fill queue
+without the existing stronger authorization; the reviewed Sage contact
+proposal/approval path remains a release gate.
+
+These navigation, permission, and project-membership changes do not alter
+project registry fields or Google Apps Script payloads. Recheck both when
+account links or Sage contact synchronization fields are introduced.
+
 Every proposed change needs a verified Sage company/entity ID, a field
 allowlist, a snapshot/revision, an authorized reviewer, an immutable approval
 record, idempotency, and a read-back receipt. A changed Sage value between

@@ -58,7 +58,7 @@ export type UserPermissionOverrideChoice = {
   readonly id: string
   readonly userId: string
   readonly featureId: string
-  readonly accessLevel: "view" | "approve"
+  readonly accessLevel: PermissionAccessLevel
 }
 
 export type PermissionOverrideContext = {
@@ -102,8 +102,13 @@ function validateFeature(featureId: string): string | null {
 
 function validateAccessLevel(
   accessLevel: string,
-  resetValue: typeof BASELINE | typeof INHERIT
+  resetValue: typeof BASELINE | typeof INHERIT,
+  featureId: string
 ): string | null {
+  const feature = getPermissionFeature(featureId)
+  if (feature?.staffAssignable && (accessLevel === "delete" || accessLevel === "approve")) {
+    return "Directory deletion remains role-restricted; choose View or Create / Edit."
+  }
   if (accessLevel === resetValue || isPermissionAccessLevel(accessLevel)) {
     return null
   }
@@ -338,7 +343,7 @@ export async function getPermissionOverrideContext(): Promise<PermissionOverride
       left.name.localeCompare(right.name)
     ),
     userOverrides: userRows.flatMap((row) =>
-      row.accessLevel === "view" || row.accessLevel === "approve"
+      isPermissionAccessLevel(row.accessLevel)
         ? [{
             id: row.id,
             userId: row.userId,
@@ -353,14 +358,17 @@ export async function getPermissionOverrideContext(): Promise<PermissionOverride
 export async function updateUserPermissionOverride(input: {
   readonly userId: string
   readonly featureId: string
-  readonly accessLevel: "none" | "view" | "approve"
+  readonly accessLevel: PermissionAccessLevel | "inherit"
 }): Promise<PermissionOverrideResult> {
   try {
     const feature = getPermissionFeature(input.featureId)
-    if (!feature?.individualOnly) {
-      return { success: false, error: "This is not an individual permission." }
+    if (!feature || (!feature.individualOnly && !feature.staffAssignable)) {
+      return { success: false, error: "This feature has no staff permission override." }
     }
-    if (!["none", "view", "approve"].includes(input.accessLevel)) {
+    const validLevel = feature.individualOnly
+      ? ["none", "view", "approve"].includes(input.accessLevel)
+      : ["inherit", "none", "view", "edit"].includes(input.accessLevel)
+    if (!validLevel) {
       return { success: false, error: "Unknown permission level." }
     }
     const currentUser = await requirePermissionAdmin()
@@ -412,11 +420,16 @@ export async function updateUserPermissionOverride(input: {
       userId: input.userId,
       featureId: input.featureId,
       previousAccessLevel: existing?.accessLevel ?? null,
-      nextAccessLevel: input.accessLevel === "none" ? null : input.accessLevel,
+      nextAccessLevel:
+        (feature.individualOnly && input.accessLevel === "none") ||
+        (!feature.individualOnly && input.accessLevel === "inherit")
+          ? null
+          : input.accessLevel,
       changedBy: currentUser.id,
       createdAt: now,
     })
-    if (input.accessLevel === "none") {
+    if ((feature.individualOnly && input.accessLevel === "none") ||
+        (!feature.individualOnly && input.accessLevel === "inherit")) {
       await db.batch([removeExisting, audit])
     } else {
       const grant = db.insert(userPermissionOverrides).values({
@@ -457,7 +470,7 @@ export async function updateRolePermissionOverride(input: {
       return { success: false, error: featureError }
     }
 
-    const levelError = validateAccessLevel(input.accessLevel, BASELINE)
+    const levelError = validateAccessLevel(input.accessLevel, BASELINE, input.featureId)
     if (levelError) {
       return { success: false, error: levelError }
     }
@@ -548,7 +561,7 @@ export async function updateTeamPermissionOverride(input: {
       return { success: false, error: featureError }
     }
 
-    const levelError = validateAccessLevel(input.accessLevel, INHERIT)
+    const levelError = validateAccessLevel(input.accessLevel, INHERIT, input.featureId)
     if (levelError) {
       return { success: false, error: levelError }
     }

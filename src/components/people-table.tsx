@@ -17,6 +17,7 @@ import {
   type ColumnFiltersState,
   type SortingState,
   type VisibilityState,
+  type RowSelectionState,
 } from "@tanstack/react-table"
 
 import type { UserWithRelations } from "@/app/actions/users"
@@ -55,6 +56,7 @@ interface PeopleTableProps {
   onEditUser?: (user: UserWithRelations) => void
   onDeactivateUser?: (userId: string) => void
   onReinviteUser?: (user: UserWithRelations) => void
+  onSelectionChange?: (userIds: readonly string[]) => void
   /** Hides select, teams, groups, and projects columns */
   compact?: boolean
 }
@@ -64,6 +66,7 @@ export function PeopleTable({
   onEditUser,
   onDeactivateUser,
   onReinviteUser,
+  onSelectionChange,
   compact = false,
 }: PeopleTableProps) {
   const isMobile = useIsMobile()
@@ -71,7 +74,11 @@ export function PeopleTable({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
     []
   )
-  const [rowSelection, setRowSelection] = React.useState({})
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+
+  React.useEffect(() => {
+    onSelectionChange?.(Object.keys(rowSelection).filter((id) => rowSelection[id]))
+  }, [rowSelection, onSelectionChange])
 
   const columns: ColumnDef<UserWithRelations>[] = [
     {
@@ -248,6 +255,7 @@ export function PeopleTable({
 
   const table = useReactTable({
     data: users,
+    getRowId: (user) => user.id,
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,

@@ -14,6 +14,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
@@ -120,7 +121,7 @@ function normalizedContactInputs(
 
 export async function getVendors(): Promise<VendorDirectoryCompany[]> {
   const user = await requireAuth()
-  requirePermission(user, "vendor", "read")
+  await requireFeaturePermission(user, "vendors", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -181,7 +182,7 @@ export async function getInternalDirectoryContacts(): Promise<
   readonly InternalDirectoryContact[]
 > {
   const user = await requireAuth()
-  requirePermission(user, "vendor", "read")
+  await requireFeaturePermission(user, "internal-directory", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -240,7 +241,7 @@ export async function getInternalDirectoryContacts(): Promise<
 
 export async function getVendor(id: string) {
   const user = await requireAuth()
-  requirePermission(user, "vendor", "read")
+  await requireFeaturePermission(user, "vendors", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -263,7 +264,7 @@ export async function createVendor(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "vendor", "create")
+    await requireFeaturePermission(user, "vendors", "create")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -328,7 +329,7 @@ export async function updateVendor(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "vendor", "update")
+    await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -571,7 +572,7 @@ export async function createVendorContact(
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
-    requirePermission(user, "vendor", "update")
+    await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
     const name = input.name.trim()
     if (!name) return { success: false, error: "Contact name is required" }
@@ -631,6 +632,7 @@ export async function deleteVendor(id: string) {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    await requireFeaturePermission(user, "vendors", "delete")
     requirePermission(user, "vendor", "delete")
     const orgId = requireOrg(user)
 

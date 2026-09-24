@@ -99,3 +99,44 @@ describe("individual employee contact permission", () => {
     expect(mocks.getDb).not.toHaveBeenCalled()
   })
 })
+
+describe("staff directory permissions", () => {
+  beforeEach(() => {
+    mocks.getCloudflareContext.mockReset()
+    mocks.getDb.mockReset()
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+  })
+
+  function mockUserOverride(accessLevel: string | null): void {
+    let selection = 0
+    mocks.getDb.mockReturnValue({
+      select: () => {
+        selection += 1
+        const current = selection
+        return {
+          from: () => ({
+            where: () => ({ get: async () => current === 3 && accessLevel ? { accessLevel } : null }),
+            innerJoin: () => ({ where: async () => [] }),
+          }),
+        }
+      },
+    })
+  }
+
+  it("allows an individual staff denial of customer edits without affecting vendors", async () => {
+    mockUserOverride("none")
+    expect(await canFeature(staff, "customers", "update")).toBe(false)
+    mockUserOverride(null)
+    expect(await canFeature(staff, "vendors", "update")).toBe(true)
+  })
+
+  it("allows internal contacts to have a different staff edit grant", async () => {
+    mockUserOverride("edit")
+    expect(await canFeature(staff, "internal-directory", "update")).toBe(true)
+  })
+
+  it("does not carry a stored staff edit grant into an external role", async () => {
+    mockUserOverride("edit")
+    expect(await canFeature({ ...staff, role: "client" }, "internal-directory", "update")).toBe(false)
+  })
+})
