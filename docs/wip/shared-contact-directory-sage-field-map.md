@@ -60,7 +60,7 @@ API XML element name. The API elements below were checked against the installed
 | Client primary email | `clncnt` line 1 under the client, per the existing Sage-to-Square bridge | Other Addresses > Primary Email | `clncnt.e_mail` where `linnum = 1` in the existing bridge; verify current Sage UI/API binding before write |
 | Client person | `clncnt._idnum`, parent `_idref` | Contact Name, Job Title, Phone, Extension, Email, Cell | `cntnme`, `jobttl`, `phnnum`, `phnext`, `e_mail`, `cllphn` |
 | Vendor company | `actpay._idnum`, number `recnum` | Owner, Address 1/2, City, State, Zip | `ownnme`, `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde` |
-| Vendor primary email | same vendor | General Information > Primary Email | likely `prmeml`; confirm API/UI binding before write |
+| Vendor primary email | same vendor | General Information > Primary Email | `prmeml`; HPS Test API `PrimaryEmail` write/readback/restore verified |
 | Vendor person | `vndcnt._idnum`, parent `_idref` | Contact Name, Job Title, Phone, Extension, Email, Cell | `cntnme`, `jobttl`, `phnnum`, `phnext`, `e_mail`, `cllphn` |
 | Employee | `employ._idnum`, number `recnum` | Address 1/2, City, State, Zip, Phone, Cell, Email | `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde`, `phnnum`, `cllphn`, `e_mail` |
 
@@ -75,8 +75,9 @@ The existing Sage-to-Square invoice bridge explicitly reads client primary
 email from `clncnt.e_mail` on line 1 and falls back to `reccln.e_mail` for
 General Information email. It does not use `reccln.stmeml` for that purpose.
 This is a verified read-path mapping, not authorization to write or reorder
-the first contact. Vendor `actpay.prmeml` remains a candidate, not a verified
-UI/API binding.
+the first contact. A guarded HPS Test probe verified the vendor API
+`PrimaryEmail` to `actpay.prmeml` mapping. It did not independently inspect
+the vendor UI after the write.
 
 ### Installed API schema check (2026-09-23)
 
@@ -96,8 +97,8 @@ not a successful write or proof of Sage's runtime update behavior.
 The installed request list also contains `ClientQryRq`, `VendorQryRq`, and
 `EmployeeQryRq`. Sage's XML `LineID` must still be reconciled with the SQL
 child `_idnum` versus `linnum` before modifying an existing person. The XSD
-confirms a vendor `PrimaryEmail` API field, but does not establish whether the
-specific General Information UI field binds to it or to `Email`; client
+confirms a vendor `PrimaryEmail` API field; its SQL mapping was subsequently
+validated in HPS Test. The client
 Other Addresses > Primary Email likewise needs a runtime mapping check.
 A separate authorized
 non-production or carefully controlled validation must confirm request/response
@@ -170,6 +171,24 @@ code 0. The original production executable was restored by SHA-256, its
 scheduled task returned to `Ready`, and the restored executable passed
 `--diagnose`. This establishes the tested optional-field behavior only;
 primary-email mapping and child-contact adds remain separate release gates.
+
+### HPS Test primary-email probe (2026-09-24)
+
+The guarded test wrote a disposable value to vendor 2883 through the Sage API
+`VendorModRq/PrimaryEmail`, read the same value from `actpay.prmeml`, then
+restored and verified the original value. This confirms the vendor SQL/API
+mapping, now included in the reviewed proposal field allowlist. It did not
+independently inspect Sage's General Information screen.
+
+The test also wrote and restored `Email` on client 2890's only named contact,
+line 1. The child's `clncnt.e_mail` readback passed, but `reccln.stmeml`
+did **not** mirror the temporary value. The exact client Other Addresses
+primary-email UI/API binding remains unverified and is excluded from
+client-company proposals. The bridge's established invoice read path still
+uses line 1 `clncnt.e_mail`; that is not proof that `stmeml` or the UI field
+changes with it. The original production writer hash was restored, its
+scheduled task returned to Ready, and `--diagnose` passed. No production
+contact write was enabled.
 
 ## Compass storage and privacy
 
@@ -276,9 +295,11 @@ historical queued blank-email operations; new directory edits cannot enqueue
 that operation. A separate, opt-in contact mode now has
 allowlisted client/vendor/employee modifications and child-contact
 modification code and passed the guarded HPS Test write/readback check above.
-It has not been installed as the production writer. Child-contact adds,
-primary-email edits, blank/null updates, and reviewed linking/import of
-existing Sage people remain outside the enabled path. The Contacts UI can
+It has not been installed as the production writer. Vendor primary-email
+proposals are mapped but still disabled by the production write flag.
+Client-company primary-email edits, child-contact adds, and reviewed
+linking/import of existing Sage people remain outside the enabled path.
+The Contacts UI can
 request a fresh Sage read and submit/review a proposal for an already-linked
 record; approval is refused while the production write flag is disabled.
 Private employee address access and approval must

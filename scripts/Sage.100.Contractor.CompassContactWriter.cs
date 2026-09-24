@@ -77,6 +77,7 @@ namespace CompassSageClientProjectWriter
             new ContactField("city", "ctynme", "City"),
             new ContactField("state", "state_", "State"),
             new ContactField("postalCode", "zipcde", "PostalCode"),
+            new ContactField("primaryEmail", "prmeml", "PrimaryEmail"),
         };
         private static readonly ContactField[] PersonFields = {
             new ContactField("name", "cntnme", "ContactName"),

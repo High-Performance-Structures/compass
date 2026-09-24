@@ -66,6 +66,24 @@ describe("reviewed Sage contact change planning", () => {
     })).toMatchObject({ success: false, error: expect.stringContaining("No Sage read value") })
   })
 
+  it("plans verified vendor primary email without opening client company primary email", () => {
+    const vendorCompany: SageContactSnapshot = {
+      organizationId: "org-1", kind: "vendor_company",
+      sageRecordId: "vendor-4", parentSageRecordId: null,
+      revision: "sage-revision-1", fields: { primaryEmail: "old@example.com" },
+    }
+    expect(planSageContactChange({
+      snapshot: vendorCompany, proposed: { primaryEmail: "new@example.com" },
+    })).toMatchObject({
+      success: true,
+      plan: { changes: [{ field: "primaryEmail", before: "old@example.com", after: "new@example.com" }] },
+    })
+    expect(planSageContactChange({
+      snapshot: { ...vendorCompany, kind: "client_company" },
+      proposed: { primaryEmail: "new@example.com" },
+    })).toMatchObject({ success: false, error: expect.stringContaining("not approved") })
+  })
+
   it("does not make a proposal for a no-op or invalid name", () => {
     expect(planSageContactChange({
       snapshot: vendorPerson,

@@ -28,7 +28,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   state: "State", postalCode: "ZIP code",
   billingAddressLine1: "Billing address 1", billingAddressLine2: "Billing address 2",
   billingCity: "Billing city", billingState: "Billing state",
-  billingPostalCode: "Billing ZIP code", email: "Email", phone: "Phone",
+  billingPostalCode: "Billing ZIP code", primaryEmail: "Primary email",
+  email: "Email", phone: "Phone",
   phoneExtension: "Extension", cellPhone: "Cell phone",
 }
 

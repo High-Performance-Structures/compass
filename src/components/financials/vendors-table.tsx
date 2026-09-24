@@ -192,10 +192,11 @@ export function VendorsTable({
       },
     },
     {
-      accessorKey: "email",
-      header: "Company email",
+      id: "email",
+      accessorFn: (vendor) => vendor.primaryEmail || vendor.email,
+      header: "Contact email",
       cell: ({ row }) => {
-        const email = row.original.email
+        const email = row.original.primaryEmail || row.original.email
         if (!email) {
           return (
             <span className="text-muted-foreground/40">—</span>

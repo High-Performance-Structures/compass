@@ -27,7 +27,7 @@ const CLIENT_COMPANY: Readonly<Record<string, string>> = {
 const VENDOR_COMPANY: Readonly<Record<string, string>> = {
   ownerName: "owner_name", addressLine1: "address_line_1",
   addressLine2: "address_line_2", city: "city", state: "state",
-  postalCode: "postal_code",
+  postalCode: "postal_code", primaryEmail: "primary_email",
 }
 const PERSON: Readonly<Record<string, string>> = {
   name: "name", title: "title", email: "email", phone: "phone",

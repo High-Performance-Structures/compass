@@ -20,6 +20,7 @@ export type SageContactField =
   | "billingCity"
   | "billingState"
   | "billingPostalCode"
+  | "primaryEmail"
   | "email"
   | "phone"
   | "phoneExtension"
@@ -55,9 +56,9 @@ type PlanResult =
   | { readonly success: true; readonly plan: SageContactProposalPlan }
   | { readonly success: false; readonly error: string }
 
-// Primary-email writes need a verified UI/API binding: the existing client
-// read path uses child contact line 1, while the vendor mapping remains open.
-// Both are deliberately absent from this allowlist.
+// Client primary-email writes still need a verified UI/API binding. HPS Test
+// established that child contact line 1 Email does not mirror reccln.stmeml.
+// Vendor PrimaryEmail <-> actpay.prmeml passed API write/readback/restore.
 const FIELDS_BY_KIND: Readonly<Record<SageContactKind, readonly SageContactField[]>> = {
   client_company: [
     "addressLine1", "addressLine2", "city", "state", "postalCode",
@@ -65,7 +66,7 @@ const FIELDS_BY_KIND: Readonly<Record<SageContactKind, readonly SageContactField
     "billingState", "billingPostalCode",
   ],
   client_person: ["name", "title", "phone", "phoneExtension", "email", "cellPhone"],
-  vendor_company: ["ownerName", "addressLine1", "addressLine2", "city", "state", "postalCode"],
+  vendor_company: ["ownerName", "addressLine1", "addressLine2", "city", "state", "postalCode", "primaryEmail"],
   vendor_person: ["name", "title", "phone", "phoneExtension", "email", "cellPhone"],
   employee: ["addressLine1", "addressLine2", "city", "state", "postalCode", "phone", "cellPhone", "email"],
 }
@@ -76,7 +77,7 @@ const FIELD_MAX_LENGTH: Readonly<Partial<Record<SageContactField, number>>> = {
   addressLine1: 50, addressLine2: 50, city: 50, state: 2,
   billingAddressLine1: 50, billingAddressLine2: 50,
   billingCity: 50, billingState: 2,
-  email: 75, phoneExtension: 6,
+  email: 75, primaryEmail: 75, phoneExtension: 6,
 }
 
 export function sageContactProposalFields(kind: SageContactKind): readonly SageContactField[] {

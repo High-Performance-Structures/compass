@@ -16,11 +16,14 @@ const harness = readFileSync(
 )
 
 describe("HPS Test contact primary-email mapping probe", () => {
-  it("keeps the unverified vendor mapping outside the production field allowlist", () => {
+  it("allows the HPS Test-verified vendor mapping but not the client mapping", () => {
     const vendorFields = writer.split("private static readonly ContactField[] VendorCompanyFields = {")[1]
       ?.split("};")[0]
+    const clientFields = writer.split("private static readonly ContactField[] ClientCompanyFields = {")[1]
+      ?.split("};")[0]
     expect(vendorFields).toBeDefined()
-    expect(vendorFields).not.toContain("primaryEmail")
+    expect(vendorFields).toContain('new ContactField("primaryEmail", "prmeml", "PrimaryEmail")')
+    expect(clientFields).not.toContain("primaryEmail")
     expect(writer).toContain('"SELECT prmeml FROM dbo.actpay WHERE _idnum = @id"')
     expect(writer).toContain("BuildVendorPrimaryEmailTestXml")
   })

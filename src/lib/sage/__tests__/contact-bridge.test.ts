@@ -8,8 +8,9 @@ import {
 import type { SageContactFieldChange } from "@/lib/sage/contact-change-proposal"
 
 describe("Sage contact bridge contract", () => {
-  it("rejects a primary-email field whose Sage API mapping is unverified", () => {
-    expect(hasOnlySageContactFields("vendor_company", { primaryEmail: "a@example.com" })).toBe(false)
+  it("allows verified vendor primary email but rejects unverified client primary email", () => {
+    expect(hasOnlySageContactFields("vendor_company", { primaryEmail: "a@example.com" })).toBe(true)
+    expect(hasOnlySageContactFields("client_company", { primaryEmail: "a@example.com" })).toBe(false)
     expect(hasOnlySageContactFields("vendor_company", { ownerName: "Jane" })).toBe(true)
   })
 
