@@ -45,6 +45,7 @@ describe("individual employee contact permission", () => {
     })
     for (const featureId of [
       "employee-contact-private",
+      "sage-contact-review",
       "cherish-review",
       "greeting-card-approval",
       "project-archive-access",
@@ -64,7 +65,7 @@ describe("individual employee contact permission", () => {
       }),
     })
     for (const featureId of [
-      "employee-contact-private", "cherish-review",
+      "employee-contact-private", "sage-contact-review", "cherish-review",
       "greeting-card-approval", "project-archive-access",
     ]) {
       expect(await canFeature(staff, featureId, "read")).toBe(true)
@@ -81,7 +82,7 @@ describe("individual employee contact permission", () => {
       }),
     })
     for (const featureId of [
-      "employee-contact-private", "cherish-review",
+      "employee-contact-private", "sage-contact-review", "cherish-review",
       "greeting-card-approval", "project-archive-access",
     ]) {
       expect(await canFeature(staff, featureId, "read")).toBe(true)

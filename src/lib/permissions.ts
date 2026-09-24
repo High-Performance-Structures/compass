@@ -105,6 +105,15 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     individualOnly: true,
   },
   {
+    id: "sage-contact-review",
+    group: "Confidential contacts",
+    label: "Sage contact change review",
+    description:
+      "Review proposed client, vendor, and non-private employee contact changes before Sage synchronization.",
+    resource: "vendor",
+    individualOnly: true,
+  },
+  {
     id: "cherish-review",
     group: "Confidential workflows",
     label: "CHERISH review",

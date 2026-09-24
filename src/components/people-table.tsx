@@ -294,7 +294,7 @@ export function PeopleTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              {USER_ROLE_OPTIONS.map((option) => (
+              {USER_ROLE_OPTIONS.filter((option) => users.some((user) => user.role === option.value)).map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>

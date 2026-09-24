@@ -4,6 +4,7 @@ import * as React from "react"
 import { IconPlus, IconShieldCheck } from "@tabler/icons-react"
 import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
+import Link from "next/link"
 import { toast } from "sonner"
 import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
@@ -89,6 +90,7 @@ function InternalContactsTable({
             <th className="px-3 py-2 text-left font-medium">Company</th>
             <th className="px-3 py-2 text-left font-medium">Role</th>
             <th className="px-3 py-2 text-left font-medium">Contact</th>
+            <th className="px-3 py-2 text-left font-medium">Compass access</th>
             {developerModeEnabled && (
               <th className="px-3 py-2 text-left font-medium">Source</th>
             )}
@@ -119,6 +121,15 @@ function InternalContactsTable({
                     </a>
                   ) : null}
                 </div>
+              </td>
+              <td className="px-3 py-2">
+                <Badge variant="outline">
+                  {contact.accessStatus === "active"
+                    ? "Active"
+                    : contact.accessStatus === "invited"
+                      ? "Invitation pending"
+                      : "No account"}
+                </Badge>
               </td>
               {developerModeEnabled && (
                 <td className="px-3 py-2">
@@ -386,10 +397,15 @@ function ContactsContent() {
                 <span className="hidden sm:inline ml-1.5">{addLabel}</span>
               </Button>
             ) : (
-              <Badge variant="outline" className="h-8 gap-1.5 px-3">
-                <IconShieldCheck className="size-3.5" />
-                HPS / Nu-Tech / ORC
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm" className="h-8">
+                  <Link href="/dashboard/settings?section=team&view=internal">Manage team access</Link>
+                </Button>
+                <Badge variant="outline" className="h-8 gap-1.5 px-3">
+                  <IconShieldCheck className="size-3.5" />
+                  HPS / Nu-Tech / ORC
+                </Badge>
+              </div>
             )}
           </div>
 

@@ -5,6 +5,7 @@ import { eq, and, asc, desc, inArray, isNull, or } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   projectContacts,
+  internalContacts,
   organizationMembers,
   users,
   vendorContacts,
@@ -21,7 +22,6 @@ import {
   directoryIdentityManagedByActiveUser,
 } from "@/lib/contact-identity-ownership"
 import { userRoleLabel } from "@/lib/user-roles"
-import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -31,6 +31,7 @@ export type InternalDirectoryContact = {
   readonly email: string | null
   readonly phone: string | null
   readonly sourceLabel: string
+  readonly accessStatus: "active" | "invited" | "no_access"
 }
 
 export type VendorContactItem = {
@@ -186,40 +187,53 @@ export async function getInternalDirectoryContacts(): Promise<
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const teamRows = await db
+  const directoryRows = await db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      phone: users.phone,
-      role: organizationMembers.role,
+      id: internalContacts.id,
+      name: internalContacts.name,
+      jobTitle: internalContacts.jobTitle,
+      email: internalContacts.email,
+      phone: internalContacts.phone,
+      sourceSystem: internalContacts.sourceSystem,
+      userActive: users.isActive,
+      userId: users.id,
+      lastLoginAt: users.lastLoginAt,
+      membershipRole: organizationMembers.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(internalContacts)
+    .leftJoin(users, eq(users.id, internalContacts.userId))
+    .leftJoin(
+      organizationMembers,
+      and(
+        eq(organizationMembers.userId, internalContacts.userId),
+        eq(organizationMembers.organizationId, orgId)
+      )
+    )
     .where(
       and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(users.isActive, true)
+        eq(internalContacts.organizationId, orgId),
+        eq(internalContacts.active, true)
       )
     )
 
-  const contacts: InternalDirectoryContact[] = []
-  for (const member of uniqueInternalStaffMembers(teamRows)) {
-    const fullName = [member.firstName, member.lastName]
-      .filter((part): part is string => Boolean(part?.trim()))
-      .join(" ")
-    contacts.push({
-      id: member.id,
-      name: member.displayName?.trim() || fullName || member.email,
+  const contacts: InternalDirectoryContact[] = directoryRows.map((contact) => ({
+      id: contact.id,
+      name: contact.name,
       company: null,
-      role: userRoleLabel(member.role),
-      email: member.email,
-      phone: member.phone,
-      sourceLabel: "Settings team",
-    })
-  }
+      role:
+        contact.jobTitle ??
+        (contact.membershipRole ? userRoleLabel(contact.membershipRole) : null),
+      email: contact.email,
+      phone: contact.phone,
+      sourceLabel: contact.sourceSystem,
+      accessStatus: contact.userId === null || contact.membershipRole === null
+        ? "no_access"
+        : contact.userActive
+          ? "active"
+          : contact.lastLoginAt === null && !contact.userId.startsWith("user_")
+            ? "invited"
+            : "no_access",
+    }))
 
   return contacts.sort((left, right) => left.name.localeCompare(right.name))
 }
