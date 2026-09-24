@@ -154,6 +154,8 @@ namespace CompassSageClientProjectWriter
                 return RunContactBridge();
             if (args.Length > 0 && String.Equals(args[0], "--contact-test", StringComparison.OrdinalIgnoreCase))
                 return RunContactTest();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-write-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactWriteTest();
             if (args.Length > 0 && String.Equals(args[0], "--contact-schema-test", StringComparison.OrdinalIgnoreCase))
                 return RunContactSchemaTest();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);

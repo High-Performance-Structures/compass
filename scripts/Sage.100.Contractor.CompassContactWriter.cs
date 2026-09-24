@@ -125,6 +125,104 @@ namespace CompassSageClientProjectWriter
             catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
         }
 
+        // Deliberately separate from --contact-run and never used by a scheduled task.
+        // HPS Test is disposable, but the original mapped values are still restored.
+        private static int RunContactWriteTest()
+        {
+            try
+            {
+                if (!String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_TEST_WRITES_ENABLED"),
+                    "true", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("HPS Test contact writes require the explicit local test switch.");
+                ValidateContactSchema();
+                string user = Required("SAGE_API_USER");
+                string password = Required("SAGE_API_PASSWORD");
+                string[] kinds = { "client_company", "vendor_company", "client_person", "vendor_person", "employee" };
+                using (new ApiSession(user, password, ContactTestCompany))
+                {
+                    foreach (string kind in kinds)
+                    {
+                        string field = kind == "client_person" || kind == "vendor_person" ? "name" : "city";
+                        ContactTask task = FindContactTestRecord(kind, field);
+                        ContactSnapshot before = QueryContact(ContactTestCompany, task);
+                        string marker = kind == "client_person" || kind == "vendor_person"
+                            ? "Compass QA " + Guid.NewGuid().ToString("N").Substring(0, 8)
+                            : "QA" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                        bool submitted = false;
+                        try
+                        {
+                            ContactChange[] change = { new ContactChange {
+                                field = field, before = before.fields[field], after = marker
+                            } };
+                            submitted = true; // A failed response may still follow a committed Sage write.
+                            Submit(BuildContactXml(kind, Convert.ToInt32(before.sageRecordNumber),
+                                ContactParentNumber(ContactTestCompany, task), change, ContactTestCompany), password);
+                            ContactSnapshot written = QueryContact(ContactTestCompany, task);
+                            if (!String.Equals(written.fields[field], marker, StringComparison.Ordinal))
+                                throw new InvalidOperationException("HPS Test Sage API write did not read back on the exact selected record.");
+                        }
+                        finally
+                        {
+                            if (submitted)
+                            {
+                                ContactSnapshot current = QueryContact(ContactTestCompany, task);
+                                List<ContactChange> restore = ContactRestoreChanges(before, current);
+                                if (restore.Count > 0)
+                                    Submit(BuildContactXml(kind, Convert.ToInt32(before.sageRecordNumber),
+                                        ContactParentNumber(ContactTestCompany, task), restore.ToArray(), ContactTestCompany), password);
+                                ContactSnapshot restored = QueryContact(ContactTestCompany, task);
+                                if (ContactRestoreChanges(before, restored).Count > 0)
+                                    throw new InvalidOperationException("HPS Test contact restoration did not verify; inspect this record before another test.");
+                            }
+                        }
+                        WriteLog("INFO", "HPS Test contact write/readback/restore passed: " + kind);
+                    }
+                }
+                WriteLog("INFO", "CONTACT_WRITE_TEST_OK; original mapped values restored.");
+                return 0;
+            }
+            catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
+        }
+
+        private static List<ContactChange> ContactRestoreChanges(ContactSnapshot before, ContactSnapshot current)
+        {
+            List<ContactChange> changes = new List<ContactChange>();
+            foreach (KeyValuePair<string, string> field in before.fields)
+                if (!String.Equals(field.Value ?? "", current.fields[field.Key] ?? "", StringComparison.Ordinal))
+                    changes.Add(new ContactChange { field = field.Key, before = current.fields[field.Key], after = field.Value });
+            return changes;
+        }
+
+        private static ContactTask FindContactTestRecord(string kind, string fieldKey)
+        {
+            string table = kind == "client_company" ? "reccln" : kind == "vendor_company" ? "actpay" :
+                kind == "client_person" ? "clncnt" : kind == "vendor_person" ? "vndcnt" : "employ";
+            bool person = kind == "client_person" || kind == "vendor_person";
+            string numberColumn = person ? "linnum" : "recnum";
+            string column = null;
+            foreach (ContactField field in FieldsFor(kind))
+                if (field.Key == fieldKey) column = field.Sql;
+            if (column == null) throw new InvalidOperationException("Unsupported HPS Test field.");
+            // A single-contact parent prevents an ambiguous child-line write from
+            // silently changing another person during this LineID validation.
+            string query = "SELECT TOP (1) c._idnum, c." + numberColumn + ", " +
+                (person ? "c._idref" : "NULL") + " FROM dbo." + table + " c WHERE c." + numberColumn +
+                " > 0 AND NULLIF(LTRIM(RTRIM(c." + column + ")), '') IS NOT NULL" +
+                (person ? " AND (SELECT COUNT(*) FROM dbo." + table + " sibling WHERE sibling._idref = c._idref) = 1" : "") +
+                " ORDER BY c." + numberColumn;
+            using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+            using (SqlCommand command = new SqlCommand(query, connection))
+            using (SqlDataReader reader = command.ExecuteReader())
+            {
+                if (!reader.Read()) throw new InvalidOperationException("HPS Test has no eligible " + kind + " record.");
+                return new ContactTask {
+                    kind = kind, sageRecordId = Convert.ToString(reader[0]),
+                    sageRecordNumber = Convert.ToString(reader[1]),
+                    parentSageRecordId = reader.IsDBNull(2) ? null : Convert.ToString(reader[2])
+                };
+            }
+        }
+
         private static int RunContactSchemaTest()
         {
             try
