@@ -16,8 +16,8 @@ $testRecordNumbers = @{
 }
 $base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/martinevogel/contact-directory-review/scripts'
 $sources = @(
-    @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = 'f0db449db18536cf3da8145b84529af3c8e5012824c3f30396d0d9e4b7024430' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '8831887b39bd8611dde15fc2eea1677ff2b16cedd8bd52d64ded257a36f1ede2' }
+    @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '26f64a8c937f9256db3ad1aee6a99ae33a92c511177cb17075087314aaa8ac83' },
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '95e2809bbc98953c2d1e9b826a18c1a86acb04dc3e716fc24f5f47fb17dfe277' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -80,6 +80,10 @@ try {
     }
     & $installed --contact-write-test
     $testExit = $LASTEXITCODE
+    if ($testExit -eq 0) {
+        & $installed --contact-email-map-test
+        $testExit = $LASTEXITCODE
+    }
 } finally {
     [Environment]::SetEnvironmentVariable('SAGE_CONTACT_TEST_WRITES_ENABLED', $savedSwitch, 'Process')
     foreach ($name in $testRecordNumbers.Keys) {
@@ -95,7 +99,7 @@ try {
     }
 }
 Write-Host "contact_write_test_exit=$testExit"
-if ($testExit -ne 0) { throw 'HPS Test contact write/readback did not pass; contact sync remains disabled.' }
+if ($testExit -ne 0) { throw 'HPS Test contact or email mapping write/readback did not pass; contact sync remains disabled.' }
 & $installed --diagnose
 if ($LASTEXITCODE -ne 0) { throw 'Restored production writer failed read-only diagnosis.' }
 Write-Host 'HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK'

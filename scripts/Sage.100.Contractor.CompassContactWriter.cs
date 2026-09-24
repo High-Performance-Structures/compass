@@ -228,6 +228,141 @@ namespace CompassSageClientProjectWriter
             catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
         }
 
+        // This probes only disposable HPS Test records. It does not enable a
+        // production email proposal field or install the candidate writer.
+        private static int RunContactEmailMapTest()
+        {
+            try
+            {
+                if (!String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_TEST_WRITES_ENABLED"),
+                    "true", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("HPS Test email mapping requires the explicit local test switch.");
+                ValidateContactSchema();
+                string password = Required("SAGE_API_PASSWORD");
+                using (new ApiSession(Required("SAGE_API_USER"), password, ContactTestCompany))
+                {
+                    ContactTask vendor = FindContactTestRecord("vendor_company", "city");
+                    TestVendorPrimaryEmail(vendor, password);
+                    WriteLog("INFO", "HPS Test vendor PrimaryEmail/prmeml write/readback/restore passed.");
+
+                    ContactTask clientPerson = FindContactTestRecord("client_person", "name");
+                    if (!String.Equals(clientPerson.sageRecordNumber, "1", StringComparison.Ordinal))
+                        throw new InvalidOperationException("HPS Test client's only named contact must be Sage line 1 for primary-email mapping.");
+                    bool statementMirrored = TestContactEmailField(clientPerson, "email", password,
+                        delegate { return ReadClientStatementEmail(clientPerson.parentSageRecordId); });
+                    WriteLog("INFO", "HPS Test client contact line 1 Email write/readback/restore passed; " +
+                        "SQL stmeml changed with line 1=" + statementMirrored);
+                }
+                WriteLog("INFO", "CONTACT_EMAIL_MAP_TEST_OK; original mapped values restored.");
+                return 0;
+            }
+            catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
+        }
+
+        private static bool TestContactEmailField(ContactTask task, string field, string password,
+            Func<string> readSideEffect = null)
+        {
+            ContactSnapshot before = QueryContact(ContactTestCompany, task);
+            string sideBefore = readSideEffect == null ? null : readSideEffect();
+            string marker = "compass-qa-" + Guid.NewGuid().ToString("N").Substring(0, 12) + "@example.invalid";
+            bool submitted = false;
+            bool sideChanged = false;
+            try
+            {
+                submitted = true; // Sage may commit even if its response fails.
+                Submit(BuildContactXml(task.kind, Convert.ToInt32(before.sageRecordNumber),
+                    ContactParentNumber(ContactTestCompany, task), new ContactChange[] {
+                        new ContactChange { field = field, before = before.fields[field], after = marker }
+                    }, ContactTestCompany), password);
+                ContactSnapshot written = QueryContact(ContactTestCompany, task);
+                if (!String.Equals(written.fields[field], marker, StringComparison.Ordinal))
+                    throw new InvalidOperationException("HPS Test primary email did not read back from its exact SQL field.");
+                if (readSideEffect != null)
+                    sideChanged = !String.Equals(sideBefore ?? "", readSideEffect() ?? "", StringComparison.Ordinal);
+            }
+            finally
+            {
+                if (submitted)
+                {
+                    ContactSnapshot current = QueryContact(ContactTestCompany, task);
+                    List<ContactChange> restore = ContactRestoreChanges(before, current);
+                    if (restore.Count > 0)
+                        Submit(BuildContactXml(task.kind, Convert.ToInt32(current.sageRecordNumber),
+                            ContactParentNumber(ContactTestCompany, task), restore.ToArray(), ContactTestCompany), password);
+                    ContactSnapshot restored = QueryContact(ContactTestCompany, task);
+                    if (ContactRestoreChanges(before, restored).Count > 0)
+                        throw new InvalidOperationException("HPS Test email restoration did not verify; inspect this record.");
+                    if (readSideEffect != null &&
+                        !String.Equals(sideBefore ?? "", readSideEffect() ?? "", StringComparison.Ordinal))
+                        throw new InvalidOperationException("HPS Test email side effect did not restore; inspect this record.");
+                }
+            }
+            return sideChanged;
+        }
+
+        private static string ReadClientStatementEmail(string parentSageRecordId)
+        {
+            using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+            using (SqlCommand command = new SqlCommand(
+                "SELECT stmeml FROM dbo.reccln WHERE _idnum = @id", connection))
+            {
+                command.Parameters.AddWithValue("@id", parentSageRecordId ?? "");
+                object value = command.ExecuteScalar();
+                if (value == null) throw new InvalidOperationException("HPS Test client parent was not found.");
+                return value == DBNull.Value ? null : Convert.ToString(value).Trim();
+            }
+        }
+
+        private static void TestVendorPrimaryEmail(ContactTask vendor, string password)
+        {
+            string before = ReadVendorPrimaryEmail(vendor.sageRecordId);
+            string marker = "compass-qa-" + Guid.NewGuid().ToString("N").Substring(0, 12) + "@example.invalid";
+            bool submitted = false;
+            try
+            {
+                submitted = true; // Restore even if Sage committed but returned an error.
+                Submit(BuildVendorPrimaryEmailTestXml(Convert.ToInt32(vendor.sageRecordNumber), marker), password);
+                if (!String.Equals(ReadVendorPrimaryEmail(vendor.sageRecordId), marker, StringComparison.Ordinal))
+                    throw new InvalidOperationException("HPS Test vendor PrimaryEmail did not read back from prmeml.");
+            }
+            finally
+            {
+                if (submitted)
+                {
+                    if (!String.Equals(ReadVendorPrimaryEmail(vendor.sageRecordId) ?? "", before ?? "", StringComparison.Ordinal))
+                        Submit(BuildVendorPrimaryEmailTestXml(Convert.ToInt32(vendor.sageRecordNumber), before), password);
+                    if (!String.Equals(ReadVendorPrimaryEmail(vendor.sageRecordId) ?? "", before ?? "", StringComparison.Ordinal))
+                        throw new InvalidOperationException("HPS Test vendor primary email did not restore; inspect this record.");
+                }
+            }
+        }
+
+        private static string ReadVendorPrimaryEmail(string sageRecordId)
+        {
+            using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+            using (SqlCommand command = new SqlCommand(
+                "SELECT prmeml FROM dbo.actpay WHERE _idnum = @id", connection))
+            {
+                command.Parameters.AddWithValue("@id", sageRecordId ?? "");
+                object value = command.ExecuteScalar();
+                if (value == null) throw new InvalidOperationException("HPS Test vendor was not found by its exact ID.");
+                return value == DBNull.Value ? null : Convert.ToString(value).Trim();
+            }
+        }
+
+        private static string BuildVendorPrimaryEmailTestXml(int recordNumber, string email)
+        {
+            if (recordNumber < 1) throw new InvalidOperationException("HPS Test vendor number is invalid.");
+            string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" +
+                XmlEscape(ContactTestCompany) + "</Company><User>" + XmlEscape(Required("SAGE_API_USER")) +
+                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-email-map-test\" onError=\"stopOnError\"><VendorModRq requestID=\"" +
+                Guid.NewGuid().ToString() + "\"><ObjectRef><ObjectID>" + recordNumber +
+                "</ObjectID></ObjectRef><PrimaryEmail>" + XmlEscape(email ?? "") +
+                "</PrimaryEmail></VendorModRq></MBXMLMsgsRq></api:MBXML>";
+            ValidateXml(xml);
+            return xml;
+        }
+
         private static List<ContactChange> ContactRestoreChanges(ContactSnapshot before, ContactSnapshot current)
         {
             List<ContactChange> changes = new List<ContactChange>();
@@ -310,6 +445,7 @@ namespace CompassSageClientProjectWriter
                 }
                 ValidateContactXml(kind, 1, 1, changes, ContactTestCompany);
             }
+            BuildVendorPrimaryEmailTestXml(1, "test@example.invalid");
         }
 
         private static int RunContactBridge()
