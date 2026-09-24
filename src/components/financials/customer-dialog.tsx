@@ -36,6 +36,7 @@ interface CustomerDialogProps {
   }) => void
   onManagePeople?: () => void
   onSageEditCompany?: () => void
+  onSageLinkCompany?: () => void
 }
 
 export function CustomerDialog({
@@ -45,6 +46,7 @@ export function CustomerDialog({
   onSubmit,
   onManagePeople,
   onSageEditCompany,
+  onSageLinkCompany,
 }: CustomerDialogProps) {
   const { developerModeEnabled } = useDeveloperMode()
   const [name, setName] = React.useState("")
@@ -242,10 +244,13 @@ export function CustomerDialog({
           {initialData && onManagePeople ? (
             <Button type="button" variant="outline" onClick={onManagePeople}>People at this client</Button>
           ) : null}
+          {initialData && !sageVerified && onSageLinkCompany ? (
+            <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
+          ) : null}
           {sageLinked ? (
             sageVerified ? (
               <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>Propose Sage edit</Button>
-            ) : <Button type="button" disabled>Verify Sage link first</Button>
+            ) : null
           ) : (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Add to Contacts"}

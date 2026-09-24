@@ -18,13 +18,15 @@ export async function getContactDirectoryAccess(): Promise<{
   readonly canManageAccounts: boolean
   readonly canReadSageReview: boolean
   readonly canApproveSageReview: boolean
+  readonly canReadEmployeePrivate: boolean
 }> {
   const user = await requireAuth()
-  const [customers, vendors, internal, sageReview] = await Promise.all([
+  const [customers, vendors, internal, sageReview, employeePrivate] = await Promise.all([
     getEffectivePermissionAccessLevel(user, "customers"),
     getEffectivePermissionAccessLevel(user, "vendors"),
     getEffectivePermissionAccessLevel(user, "internal-directory"),
     getEffectivePermissionAccessLevel(user, "sage-contact-review"),
+    getEffectivePermissionAccessLevel(user, "employee-contact-private"),
   ])
   const toAccess = (
     featureId: string,
@@ -46,5 +48,6 @@ export async function getContactDirectoryAccess(): Promise<{
     canManageAccounts: canManageUserAccess(user),
     canReadSageReview: accessLevelToFeatureActions("sage-contact-review", sageReview).includes("read"),
     canApproveSageReview: accessLevelToFeatureActions("sage-contact-review", sageReview).includes("approve"),
+    canReadEmployeePrivate: accessLevelToFeatureActions("employee-contact-private", employeePrivate).includes("read"),
   }
 }

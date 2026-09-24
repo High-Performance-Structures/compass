@@ -81,17 +81,19 @@ export async function applySageContactSnapshotToCanonical(
   } else if (snapshot.kind === "vendor_company") {
     const patch = patchFor(snapshot.fields, VENDOR_COMPANY)
     statement = database.prepare(
-      `UPDATE vendors SET ${updateAssignments("sage_vendor_id", patch)}
+      `UPDATE vendors SET ${updateAssignments("sage_vendor_id", patch)},
+         sync_status = 'synced', last_synced_at = ?
        WHERE id = ? AND organization_id = ? AND sage_vendor_id = ?`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
+    ).bind(snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId,
       organizationId, snapshot.sageRecordId)
   } else if (snapshot.kind === "client_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = database.prepare(
-      `UPDATE customer_contacts SET ${updateAssignments("sage_contact_id", patch)}
+      `UPDATE customer_contacts SET ${updateAssignments("sage_contact_id", patch)},
+         sync_status = 'synced', last_synced_at = ?
        WHERE id = ? AND sage_contact_id = ?
          AND customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
+    ).bind(snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId,
       snapshot.sageRecordId,
       organizationId, snapshot.parentSageRecordId)
   } else if (snapshot.kind === "vendor_person") {
@@ -106,9 +108,10 @@ export async function applySageContactSnapshotToCanonical(
   } else {
     const patch = patchFor(snapshot.fields, EMPLOYEE)
     statement = database.prepare(
-      `UPDATE internal_contacts SET ${updateAssignments("sage_employee_id", patch)}
+      `UPDATE internal_contacts SET ${updateAssignments("sage_employee_id", patch)},
+         sync_status = 'synced', last_synced_at = ?
        WHERE id = ? AND organization_id = ? AND sage_employee_id = ?`
-    ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
+    ).bind(snapshot.sageRecordId, ...patch.values, now, now, snapshot.entityId,
       organizationId, snapshot.sageRecordId)
   }
   const result = await statement.run()

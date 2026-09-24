@@ -17,7 +17,7 @@ $testRecordNumbers = @{
 $base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/martinevogel/contact-directory-review/scripts'
 $sources = @(
     @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = 'bb92442145adca3c1531d16f63ddcc100f44feb6c508a18a3e13e9cb50b6f927' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '1f799d33b4afc2680c7b0b31b68802ad722f7bd96be7e1950d21d9f88a2b7232' }
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = 'be5041c44ef2588780cc625e69386a6a49e8b02cbd3a8a6d391d4395a37e7e60' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -78,8 +78,12 @@ try {
     foreach ($name in $testRecordNumbers.Keys) {
         [Environment]::SetEnvironmentVariable($name, $testRecordNumbers[$name], 'Process')
     }
-    & $installed --contact-write-test
+    & $installed --contact-test
     $testExit = $LASTEXITCODE
+    if ($testExit -eq 0) {
+        & $installed --contact-write-test
+        $testExit = $LASTEXITCODE
+    }
     if ($testExit -eq 0) {
         & $installed --contact-email-map-test
         $testExit = $LASTEXITCODE

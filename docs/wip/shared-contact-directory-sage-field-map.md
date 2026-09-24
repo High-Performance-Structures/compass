@@ -285,7 +285,14 @@ infer identity from email or name. A reviewed backfill and invite/activation
 link maintenance are still required before claiming that every existing
 account is connected to a canonical person. External users cannot browse the
 shared directories; self-service reads only exact linked person IDs.
-Directory edits no longer enqueue the legacy Sage blank-email write. The
+Directory edits no longer enqueue the legacy Sage blank-email write. A
+number-only Sage reference is now handled as a lookup candidate: the signed
+bridge reads the exact Sage number (and parent for a person), stores the
+returned stable ID and fields for review, and a different authorized staff
+member explicitly approves or rejects the link. A mismatch becomes a terminal
+conflict; names and emails never auto-link records. The approval queues a fresh
+authoritative read before any proposed edit. Existing account/person and
+project/person assignments still require deliberate reconciliation. The
 reviewed Sage contact proposal/approval path remains a release gate.
 
 The new person-account links and Sage proposal fields remain outside the
@@ -310,8 +317,9 @@ allowlisted client/vendor/employee modifications and child-contact
 modification code and passed the guarded HPS Test write/readback check above.
 It has not been installed as the production writer. Vendor primary-email
 proposals are mapped but still disabled by the production write flag.
-Client-company primary-email edits, child-contact adds, and reviewed
-linking/import of existing Sage people remain outside the enabled path.
+Client-company primary-email edits, child-contact adds, and bulk import of
+existing Sage people remain outside the enabled path. Exact-number link
+review is staged in Compass but requires the contact bridge to be installed.
 The Contacts UI can
 request a fresh Sage read and submit/review a proposal for an already-linked
 record; approval is refused while the production write flag is disabled.

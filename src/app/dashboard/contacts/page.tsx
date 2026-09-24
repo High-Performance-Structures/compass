@@ -57,6 +57,7 @@ import { CustomerPeopleDialog } from "@/components/contacts/customer-people-dial
 import { DirectoryAccountLinkDialog, type DirectoryAccountLinkTarget } from "@/components/contacts/directory-account-link-dialog"
 import { SageContactEditorDialog, type SageContactEditorTarget } from "@/components/contacts/sage-contact-editor-dialog"
 import { SageContactReviewDialog } from "@/components/contacts/sage-contact-review-dialog"
+import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 
 type Tab = "customers" | "vendors" | "internal"
@@ -64,6 +65,7 @@ type DirectoryCapabilities = Record<Tab, ContactDirectoryAccess> & {
   readonly canManageAccounts: boolean
   readonly canReadSageReview: boolean
   readonly canApproveSageReview: boolean
+  readonly canReadEmployeePrivate: boolean
 }
 
 const DEFAULT_VENDOR_CATEGORIES = [
@@ -89,9 +91,11 @@ function isInternalVendor(vendor: VendorDirectoryCompany): boolean {
 function InternalContactsTable({
   contacts,
   onSageEdit,
+  onSageLink,
 }: {
   readonly contacts: readonly InternalDirectoryContact[]
   readonly onSageEdit?: (contact: InternalDirectoryContact) => void
+  readonly onSageLink?: (contact: InternalDirectoryContact) => void
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
 
@@ -119,7 +123,7 @@ function InternalContactsTable({
             {developerModeEnabled && (
               <th className="px-3 py-2 text-left font-medium">Source</th>
             )}
-            {onSageEdit ? <th className="px-3 py-2 text-left font-medium">Actions</th> : null}
+            {onSageEdit || onSageLink ? <th className="px-3 py-2 text-left font-medium">Actions</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -162,9 +166,10 @@ function InternalContactsTable({
                   <Badge variant="outline">{contact.sourceLabel}</Badge>
                 </td>
               )}
-              {onSageEdit ? (
+              {onSageEdit || onSageLink ? (
                 <td className="px-3 py-2">
-                  {contact.sageEmployeeId ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>Propose Sage edit</Button> : null}
+                  {contact.sageEmployeeId && onSageEdit ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>Propose Sage edit</Button> : null}
+                  {!contact.sageEmployeeId && onSageLink ? <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(contact)}>Verify Sage link</Button> : null}
                 </td>
               ) : null}
             </tr>
@@ -208,6 +213,7 @@ function ContactsContent() {
   const [myContacts, setMyContacts] = React.useState<readonly MyContactRecord[]>([])
   const [myProposalStatuses, setMyProposalStatuses] = React.useState<readonly MySageContactProposalStatus[]>([])
   const [sageEditorTarget, setSageEditorTarget] = React.useState<SageContactEditorTarget | null>(null)
+  const [sageLinkTarget, setSageLinkTarget] = React.useState<SageContactLinkLookupTarget | null>(null)
   const [accountLinkTarget, setAccountLinkTarget] = React.useState<DirectoryAccountLinkTarget | null>(null)
   const [peopleCustomer, setPeopleCustomer] = React.useState<Customer | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -587,6 +593,7 @@ function ContactsContent() {
             <InternalContactsTable
               contacts={internalContactsList}
               onSageEdit={directoryAccess?.internal.edit ? (contact) => setSageEditorTarget({ kind: "employee", entityId: contact.id, name: contact.name }) : undefined}
+              onSageLink={directoryAccess?.canReadSageReview && directoryAccess.canReadEmployeePrivate && directoryAccess.internal.read ? (contact) => setSageLinkTarget({ kind: "employee", entityId: contact.id, name: contact.name, sageRecordNumber: contact.sageEmployeeNumber }) : undefined}
             />
           </TabsContent>
         </Tabs>
@@ -608,6 +615,10 @@ function ContactsContent() {
           setCustomerDialogOpen(false)
           setSageEditorTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name })
         } : undefined}
+        onSageLinkCompany={editingCustomer && directoryAccess?.canReadSageReview ? () => {
+          setCustomerDialogOpen(false)
+          setSageLinkTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name, sageRecordNumber: editingCustomer.sageClientNumber })
+        } : undefined}
       />
 
       <VendorDialog
@@ -621,9 +632,17 @@ function ContactsContent() {
           setVendorDialogOpen(false)
           setSageEditorTarget({ kind: "vendor_company", entityId: editingVendor.id, name: editingVendor.name })
         } : undefined}
+        onSageLinkCompany={editingVendor && directoryAccess?.canReadSageReview ? () => {
+          setVendorDialogOpen(false)
+          setSageLinkTarget({ kind: "vendor_company", entityId: editingVendor.id, name: editingVendor.name, sageRecordNumber: editingVendor.sageVendorNumber })
+        } : undefined}
         onSageEditContact={directoryAccess?.vendors.edit ? (contactId, name) => {
           setVendorDialogOpen(false)
           setSageEditorTarget({ kind: "vendor_person", entityId: contactId, name })
+        } : undefined}
+        onSageLinkContact={directoryAccess?.canReadSageReview ? (contactId, name, lineNumber) => {
+          setVendorDialogOpen(false)
+          setSageLinkTarget({ kind: "vendor_person", entityId: contactId, name, sageRecordNumber: lineNumber === null ? null : String(lineNumber) })
         } : undefined}
         onLinkAccount={directoryAccess?.canManageAccounts ? (contactId, name, userId) => {
           setVendorDialogOpen(false)
@@ -632,7 +651,7 @@ function ContactsContent() {
       />
       <CustomerPeopleDialog
         key={peopleCustomer?.id ?? "none"}
-        customer={peopleCustomer ? { id: peopleCustomer.id, name: peopleCustomer.name, sageLinked: Boolean(peopleCustomer.sageClientId || peopleCustomer.sageClientNumber) } : null}
+        customer={peopleCustomer ? { id: peopleCustomer.id, name: peopleCustomer.name, sageLinked: Boolean(peopleCustomer.sageClientId || peopleCustomer.sageClientNumber), sageVerified: Boolean(peopleCustomer.sageClientId) } : null}
         onOpenChange={(open) => { if (!open) setPeopleCustomer(null) }}
         canEdit={directoryAccess?.customers.edit ?? false}
         canDelete={directoryAccess?.customers.delete ?? false}
@@ -641,6 +660,10 @@ function ContactsContent() {
           setPeopleCustomer(null)
           setSageEditorTarget({ kind: "client_person", entityId: person.id, name: person.name })
         }}
+        onSageLink={directoryAccess?.canReadSageReview ? (person: CustomerDirectoryPerson) => {
+          setPeopleCustomer(null)
+          setSageLinkTarget({ kind: "client_person", entityId: person.id, name: person.name, sageRecordNumber: person.sageLineNumber === null ? null : String(person.sageLineNumber) })
+        } : undefined}
         onLinkAccount={(person: CustomerDirectoryPerson) => {
           setPeopleCustomer(null)
           setAccountLinkTarget({ kind: "client_person", personId: person.id, name: person.name, userId: person.userId })
@@ -651,6 +674,12 @@ function ContactsContent() {
         target={sageEditorTarget}
         onOpenChange={(open) => { if (!open) setSageEditorTarget(null) }}
         onSubmitted={() => { void loadAll() }}
+      />
+      <SageContactLinkLookupDialog
+        key={sageLinkTarget ? `${sageLinkTarget.kind}:${sageLinkTarget.entityId}` : "none"}
+        target={sageLinkTarget}
+        onOpenChange={(open) => { if (!open) setSageLinkTarget(null) }}
+        onRequested={() => { void loadAll() }}
       />
       <DirectoryAccountLinkDialog
         key={accountLinkTarget ? `${accountLinkTarget.kind}:${accountLinkTarget.personId}` : "none"}

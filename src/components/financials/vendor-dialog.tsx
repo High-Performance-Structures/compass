@@ -39,7 +39,9 @@ interface VendorDialogProps {
   categories: readonly string[]
   onSubmit: (data: VendorCompanyMutationInput) => void
   onSageEditContact?: (contactId: string, name: string) => void
+  onSageLinkContact?: (contactId: string, name: string, lineNumber: number | null) => void
   onSageEditCompany?: () => void
+  onSageLinkCompany?: () => void
   onLinkAccount?: (contactId: string, name: string, userId: string | null) => void
   readOnly?: boolean
 }
@@ -51,7 +53,9 @@ export function VendorDialog({
   categories,
   onSubmit,
   onSageEditContact,
+  onSageLinkContact,
   onSageEditCompany,
+  onSageLinkCompany,
   onLinkAccount,
   readOnly = false,
 }: VendorDialogProps) {
@@ -286,6 +290,11 @@ export function VendorDialog({
                             Propose Sage edit
                           </Button>
                         ) : null}
+                        {contact.id && sageVerified && !initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) && onSageLinkContact ? (
+                          <Button type="button" variant="outline" size="sm" onClick={() => onSageLinkContact(contact.id ?? "", contact.name, initialData?.contacts.find((saved) => saved.id === contact.id)?.sageLineNumber ?? null)}>
+                            Verify Sage link
+                          </Button>
+                        ) : null}
                         {contact.id && onLinkAccount ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => onLinkAccount(contact.id ?? "", contact.name, initialData?.contacts.find((saved) => saved.id === contact.id)?.userId ?? null)}>
                             Compass account
@@ -356,12 +365,15 @@ export function VendorDialog({
           >
             Cancel
           </Button>
+          {initialData && !sageVerified && onSageLinkCompany ? (
+            <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
+          ) : null}
           {sageLinked && !readOnly ? (
             sageVerified ? (
               <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>
                 Propose Sage company edit
               </Button>
-            ) : <Button type="button" disabled>Verify Sage link first</Button>
+            ) : null
           ) : !readOnly ? (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Create Vendor"}

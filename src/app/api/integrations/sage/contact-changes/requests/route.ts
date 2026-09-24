@@ -20,6 +20,7 @@ import {
   sageContactKindSchema,
   sageContactOrganizationMatches,
 } from "@/lib/sage/contact-bridge"
+import { sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 
 const CLAIM_RETRY_MS = 10 * 60 * 1000
 const NONCE_RETENTION_MS = 15 * 60 * 1000
@@ -66,10 +67,10 @@ export async function GET(request: Request): Promise<Response> {
   const reads: unknown[] = []
   for (const candidate of readCandidates) {
     if (!sageContactOrganizationMatches(env, candidate.organizationId)) continue
-    if (!candidate.sageRecordId) {
+    if (sageContactReadClaimError(candidate)) {
       await db.update(sageContactReadRequests).set({
         status: "failed",
-        errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
+        errorMessage: "Sage contact read has no verified identity or valid review candidate.",
         completedAt: nowIso,
       }).where(and(eq(sageContactReadRequests.id, candidate.id), or(
         eq(sageContactReadRequests.status, "queued"),
@@ -90,6 +91,7 @@ export async function GET(request: Request): Promise<Response> {
     reads.push({
       id: candidate.id, claimToken, organizationId: candidate.organizationId,
       kind: candidate.kind, entityId: candidate.entityId,
+      purpose: candidate.purpose,
       sageRecordId: candidate.sageRecordId,
       sageRecordNumber: candidate.sageRecordNumber,
       parentSageRecordId: candidate.parentSageRecordId,

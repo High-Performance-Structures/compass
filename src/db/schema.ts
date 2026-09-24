@@ -2846,6 +2846,9 @@ export const vendorContacts = sqliteTable(
     uniqueIndex("vendor_contacts_vendor_sage_contact_unique")
       .on(table.vendorId, table.sageContactId)
       .where(sql`${table.sageContactId} IS NOT NULL AND trim(${table.sageContactId}) <> ''`),
+    uniqueIndex("vendor_contacts_vendor_sage_line_unique")
+      .on(table.vendorId, table.sageLineNumber)
+      .where(sql`${table.sageLineNumber} IS NOT NULL`),
     uniqueIndex("vendor_contacts_company_user_unique")
       .on(table.vendorId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
@@ -2887,6 +2890,9 @@ export const customerContacts = sqliteTable(
     uniqueIndex("customer_contacts_customer_sage_contact_unique")
       .on(table.customerId, table.sageContactId)
       .where(sql`${table.sageContactId} IS NOT NULL AND trim(${table.sageContactId}) <> ''`),
+    uniqueIndex("customer_contacts_customer_sage_line_unique")
+      .on(table.customerId, table.sageLineNumber)
+      .where(sql`${table.sageLineNumber} IS NOT NULL`),
     uniqueIndex("customer_contacts_company_user_unique")
       .on(table.customerId, table.userId)
       .where(sql`${table.userId} IS NOT NULL`),
@@ -2929,6 +2935,9 @@ export const internalContacts = sqliteTable(
     uniqueIndex("internal_contacts_org_sage_employee_unique")
       .on(table.organizationId, table.sageEmployeeId)
       .where(sql`${table.sageEmployeeId} IS NOT NULL AND trim(${table.sageEmployeeId}) <> ''`),
+    uniqueIndex("internal_contacts_org_sage_employee_number_unique")
+      .on(table.organizationId, table.sageEmployeeNumber)
+      .where(sql`${table.sageEmployeeNumber} IS NOT NULL AND trim(${table.sageEmployeeNumber}) <> ''`),
   ]
 )
 

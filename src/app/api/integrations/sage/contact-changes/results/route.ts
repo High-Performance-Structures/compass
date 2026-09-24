@@ -27,6 +27,7 @@ import {
 import { applySageContactSnapshotToCanonical } from "@/lib/sage/contact-canonical"
 import { sageContactProposalFields, type SageContactFieldChange } from "@/lib/sage/contact-change-proposal"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import { sageContactLinkCandidateError, sageContactReadClaimError } from "@/lib/sage/contact-link-review"
 
 const messageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("read"), result: sageContactReadResultSchema }),
@@ -44,6 +45,33 @@ function validSnapshotFields(kind: z.infer<typeof sageContactKindSchema>, fields
 
 function accepted(status: string): Response {
   return Response.json({ success: true, status }, { status: 202 })
+}
+
+async function rejectCandidateRead(
+  database: D1Database,
+  read: { readonly id: string; readonly organizationId: string; readonly claimToken: string },
+  reason: string,
+  now: string
+): Promise<Response> {
+  const results = await database.batch([
+    database.prepare(
+      `UPDATE sage_contact_read_requests SET status = 'conflict', error_message = ?, completed_at = ?
+       WHERE id = ? AND organization_id = ? AND claim_token = ?
+         AND status = 'running' AND purpose = 'link_candidate'`
+    ).bind(reason, now, read.id, read.organizationId, read.claimToken),
+    database.prepare(
+      `INSERT INTO sage_contact_link_events
+       (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+       SELECT ?, id, organization_id, NULL, 'conflict', ?, ?
+       FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
+         AND claim_token = ? AND status = 'conflict' AND completed_at = ?`
+    ).bind(crypto.randomUUID(), JSON.stringify({ reason }), now,
+      read.id, read.organizationId, read.claimToken, now),
+  ])
+  if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
+    return Response.json({ error: "Candidate claim changed concurrently" }, { status: 409 })
+  }
+  return accepted("conflict")
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -93,7 +121,7 @@ export async function POST(request: Request): Promise<Response> {
         eq(sageContactReadRequests.claimToken, result.claimToken)))
       return accepted("failed")
     }
-    if (!read.sageRecordId) {
+    if (sageContactReadClaimError(read)) {
       await db.update(sageContactReadRequests).set({
         status: "failed",
         errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
@@ -109,10 +137,62 @@ export async function POST(request: Request): Promise<Response> {
       (read.sageRecordId !== null && read.sageRecordId !== snapshot.sageRecordId) ||
       (read.sageRecordId === null && read.sageRecordNumber !== snapshot.sageRecordNumber) ||
       read.parentSageRecordId !== snapshot.parentSageRecordId) {
+      if (read.purpose === "link_candidate") {
+        return rejectCandidateRead(env.DB, {
+          id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
+        }, "Sage read-back does not match the exact candidate identity or field map.", now)
+      }
       return Response.json({ error: "Sage read-back does not match the claimed identity or field map" }, { status: 409 })
     }
     const identity = await getSageContactEntityIdentity(db, read.organizationId, kind.data, read.entityId)
-    if (!identity) return Response.json({ error: "Directory record is missing" }, { status: 409 })
+    if (!identity) {
+      if (read.purpose === "link_candidate") {
+        return rejectCandidateRead(env.DB, {
+          id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
+        }, "Directory record no longer exists.", now)
+      }
+      return Response.json({ error: "Directory record is missing" }, { status: 409 })
+    }
+    if (read.purpose === "link_candidate") {
+      if (!read.sageRecordNumber) {
+        return rejectCandidateRead(env.DB, {
+          id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
+        }, "Sage candidate number is missing.", now)
+      }
+      const identityError = sageContactLinkCandidateError(identity, {
+        kind: kind.data, entityId: read.entityId,
+        sageRecordNumber: read.sageRecordNumber,
+        parentSageRecordId: read.parentSageRecordId,
+      }, {
+        kind: snapshot.kind, entityId: snapshot.entityId,
+        sageRecordNumber: snapshot.sageRecordNumber ?? "",
+        parentSageRecordId: snapshot.parentSageRecordId,
+        sageRecordId: snapshot.sageRecordId,
+      })
+      if (identityError) {
+        return rejectCandidateRead(env.DB, {
+          id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
+        }, identityError, now)
+      }
+      const results = await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE sage_contact_read_requests
+           SET status = 'awaiting_review', candidate_snapshot_json = ?, completed_at = ?
+           WHERE id = ? AND claim_token = ? AND status = 'running' AND purpose = 'link_candidate'`
+        ).bind(JSON.stringify(snapshot), now, read.id, result.claimToken),
+        env.DB.prepare(
+          `INSERT INTO sage_contact_link_events
+           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+           SELECT ?, id, organization_id, NULL, 'candidate_read', '{}', ?
+           FROM sage_contact_read_requests WHERE id = ? AND status = 'awaiting_review'
+             AND claim_token = ?`
+        ).bind(crypto.randomUUID(), now, read.id, result.claimToken),
+      ])
+      if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
+        return Response.json({ error: "Sage link candidate changed concurrently" }, { status: 409 })
+      }
+      return accepted("awaiting_review")
+    }
     if (!identity.sageRecordId) {
       await db.update(sageContactReadRequests).set({
         status: "failed",

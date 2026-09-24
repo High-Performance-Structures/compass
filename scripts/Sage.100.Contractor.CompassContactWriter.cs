@@ -120,6 +120,25 @@ namespace CompassSageClientProjectWriter
                 using (SqlCommand command = new SqlCommand("SELECT COUNT(*) FROM dbo.reccln", connection))
                     WriteLog("INFO", "HPS Test Sage client count=" + Convert.ToString(command.ExecuteScalar()));
                 using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"), ContactTestCompany)) { }
+                string[] kinds = { "client_company", "vendor_company", "client_person", "vendor_person", "employee" };
+                foreach (string kind in kinds)
+                {
+                    ContactTask exact = FindContactTestRecord(kind,
+                        kind == "client_person" || kind == "vendor_person" ? "name" : "city");
+                    ContactSnapshot byId = QueryContact(ContactTestCompany, exact);
+                    ContactTask byNumber = new ContactTask {
+                        kind = kind,
+                        sageRecordId = null,
+                        sageRecordNumber = exact.sageRecordNumber,
+                        parentSageRecordId = exact.parentSageRecordId
+                    };
+                    ContactSnapshot lookedUp = QueryContact(ContactTestCompany, byNumber);
+                    if (!String.Equals(byId.sageRecordId, lookedUp.sageRecordId, StringComparison.Ordinal) ||
+                        !String.Equals(byId.parentSageRecordId, lookedUp.parentSageRecordId, StringComparison.Ordinal) ||
+                        !String.Equals(byId.revision, lookedUp.revision, StringComparison.Ordinal))
+                        throw new InvalidOperationException("HPS Test number-only Sage lookup did not match the exact GUID: " + kind);
+                    WriteLog("INFO", "HPS Test exact number-to-GUID lookup passed: " + kind);
+                }
                 WriteLog("INFO", "CONTACT_TEST_SCHEMA_AND_ACCESS_OK; no Sage records changed.");
                 return 0;
             }

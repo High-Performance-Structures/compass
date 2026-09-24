@@ -8,6 +8,11 @@ import {
   reviewSageContactChange,
   type SageContactProposalListItem,
 } from "@/app/actions/sage-contact-changes"
+import {
+  listSageContactLinkCandidates,
+  reviewSageContactLinkCandidate,
+  type SageContactLinkCandidate,
+} from "@/app/actions/sage-contact-links"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,12 +33,17 @@ export function SageContactReviewDialog({
   readonly canApprove: boolean
 }): React.ReactElement {
   const [proposals, setProposals] = React.useState<readonly SageContactProposalListItem[]>([])
+  const [links, setLinks] = React.useState<readonly SageContactLinkCandidate[]>([])
   const [notes, setNotes] = React.useState<Readonly<Record<string, string>>>({})
   const [busyId, setBusyId] = React.useState<string | null>(null)
 
   const reload = React.useCallback(async () => {
     try {
-      setProposals(await listSageContactChangeProposals())
+      const [nextProposals, nextLinks] = await Promise.all([
+        listSageContactChangeProposals(), listSageContactLinkCandidates(),
+      ])
+      setProposals(nextProposals)
+      setLinks(nextLinks)
     } catch {
       toast.error("Could not load Sage contact proposals")
     }
@@ -59,14 +69,62 @@ export function SageContactReviewDialog({
     }
   }
 
+  const decideLink = async (requestId: string, decision: "link" | "reject") => {
+    setBusyId(requestId)
+    try {
+      const result = await reviewSageContactLinkCandidate(requestId, decision, notes[requestId] ?? "")
+      if (!result.success) toast.error(result.error)
+      else {
+        toast.success(decision === "link" ? "Sage identity linked; fresh read queued" : "Sage candidate rejected")
+        setNotes((current) => {
+          const next = { ...current }
+          delete next[requestId]
+          return next
+        })
+        await reload()
+      }
+    } finally { setBusyId(null) }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Sage contact review</DialogTitle>
-          <DialogDescription>Approve or reject proposed contact changes. Approved changes are queued for the Sage bridge; they do not update Sage immediately.</DialogDescription>
+          <DialogDescription>Review exact Sage identity lookups and proposed contact changes. Linking a candidate is separate from approving any write to Sage.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <h3 className="text-sm font-semibold">Sage identity links</h3>
+          {links.length === 0 ? <p className="text-sm text-muted-foreground">No Sage identity lookups yet.</p> : null}
+          {links.map((candidate) => (
+            <section key={candidate.id} className="space-y-2 border-b pb-4">
+              <div className="text-sm font-medium">{candidate.directoryName} · {candidate.kind.replaceAll("_", " ")} · {candidate.status}</div>
+              <div className="text-xs text-muted-foreground">Requested Sage number {candidate.sageRecordNumber} · {new Date(candidate.requestedAt).toLocaleString()}</div>
+              {candidate.errorMessage ? <p className="text-sm text-destructive">{candidate.errorMessage}</p> : null}
+              {candidate.status === "awaiting_review" ? (
+                <>
+                  <p className="text-xs text-muted-foreground">Compare this exact Sage number, record ID, and contact information with the intended Compass record before linking. Matching names or emails alone are not proof of identity.</p>
+                  <p className="break-all text-xs">Sage ID: {candidate.sageRecordId ?? "Unavailable"}</p>
+                  <dl className="grid gap-1 text-sm">
+                    {Object.entries(candidate.fields).map(([field, value]) => (
+                      <div key={field} className="grid grid-cols-3 gap-2">
+                        <dt className="font-medium">{field}</dt>
+                        <dd className="col-span-2 break-words">{value || "(blank)"}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {canApprove ? <Textarea value={notes[candidate.id] ?? ""}
+                    onChange={(event) => setNotes((current) => ({ ...current, [candidate.id]: event.target.value }))}
+                    placeholder="Review note (optional)" aria-label={`Review note for ${candidate.directoryName}`} /> : null}
+                  {canApprove ? <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void decideLink(candidate.id, "link")} disabled={busyId !== null}>Link exact Sage record</Button>
+                    <Button size="sm" variant="outline" onClick={() => void decideLink(candidate.id, "reject")} disabled={busyId !== null}>Reject</Button>
+                  </div> : <p className="text-xs text-muted-foreground">View-only review access.</p>}
+                </>
+              ) : null}
+            </section>
+          ))}
+          <h3 className="text-sm font-semibold">Contact change proposals</h3>
           {proposals.length === 0 ? (
             <p className="text-sm text-muted-foreground">No contact change proposals yet.</p>
           ) : proposals.map((proposal) => (

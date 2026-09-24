@@ -100,10 +100,15 @@ export const sageContactReadRequests = sqliteTable(
     sageRecordId: text("sage_record_id"),
     sageRecordNumber: text("sage_record_number"),
     parentSageRecordId: text("parent_sage_record_id"),
+    purpose: text("purpose").notNull().default("refresh"),
+    candidateSnapshotJson: text("candidate_snapshot_json"),
     status: text("status").notNull().default("queued"),
     claimToken: text("claim_token"),
     claimedAt: text("claimed_at"),
     requestedByUserId: text("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: text("reviewed_at"),
+    reviewNote: text("review_note"),
     errorMessage: text("error_message"),
     requestedAt: text("requested_at").notNull(),
     completedAt: text("completed_at"),
@@ -111,7 +116,25 @@ export const sageContactReadRequests = sqliteTable(
   (table) => [
     index("sage_contact_reads_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
     index("sage_contact_reads_entity_idx").on(table.organizationId, table.kind, table.entityId),
+    uniqueIndex("sage_contact_link_active_entity_unique")
+      .on(table.organizationId, table.kind, table.entityId)
+      .where(sql`${table.purpose} = 'link_candidate' AND ${table.status} IN ('queued', 'running', 'awaiting_review')`),
   ]
+)
+
+/** Immutable record of deliberate Sage identity link decisions. */
+export const sageContactLinkEvents = sqliteTable(
+  "sage_contact_link_events",
+  {
+    id: text("id").primaryKey(),
+    requestId: text("request_id").notNull().references(() => sageContactReadRequests.id, { onDelete: "restrict" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+    actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    detailJson: text("detail_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("sage_contact_link_events_request_idx").on(table.requestId, table.createdAt)]
 )
 
 /** Only a signed bridge result may replace the last authoritative Sage read. */

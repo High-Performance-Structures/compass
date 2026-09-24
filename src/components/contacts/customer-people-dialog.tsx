@@ -32,14 +32,16 @@ export function CustomerPeopleDialog({
   canDelete,
   canLinkAccounts,
   onSageEdit,
+  onSageLink,
   onLinkAccount,
 }: {
-  readonly customer: { readonly id: string; readonly name: string; readonly sageLinked: boolean } | null
+  readonly customer: { readonly id: string; readonly name: string; readonly sageLinked: boolean; readonly sageVerified: boolean } | null
   readonly onOpenChange: (open: boolean) => void
   readonly canEdit: boolean
   readonly canDelete: boolean
   readonly canLinkAccounts: boolean
   readonly onSageEdit: (person: CustomerDirectoryPerson) => void
+  readonly onSageLink?: (person: CustomerDirectoryPerson) => void
   readonly onLinkAccount: (person: CustomerDirectoryPerson) => void
 }): React.ReactElement {
   const [people, setPeople] = React.useState<readonly CustomerDirectoryPerson[]>([])
@@ -98,6 +100,7 @@ export function CustomerPeopleDialog({
               </div>
               <div className="flex flex-wrap gap-2">
                 {person.sageContactId && canEdit ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(person)}>Propose Sage edit</Button> : null}
+                {!person.sageContactId && customer?.sageVerified && onSageLink ? <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(person)}>Verify Sage link</Button> : null}
                 {canLinkAccounts ? <Button type="button" size="sm" variant="outline" onClick={() => onLinkAccount(person)}>Compass account</Button> : null}
                 {canEdit && !customer?.sageLinked ? <Button type="button" size="sm" variant="outline" onClick={() => edit(person)}>Edit</Button> : null}
                 {canDelete && !customer?.sageLinked ? <Button type="button" size="sm" variant="ghost" onClick={() => void remove(person)} disabled={busy}>Remove</Button> : null}
