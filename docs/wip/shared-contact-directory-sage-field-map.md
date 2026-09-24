@@ -188,6 +188,10 @@ outside that test.
 - Project assignments use typed client/company, client-person, vendor/company,
   vendor-person, or internal-person IDs. Do not deduplicate people by name or
   email; ambiguous legacy matches require review.
+- The legacy Sage client-list import no longer auto-links same-name Buildertrend
+  and Sage rows. Its number-only imports are unverified candidates, not usable
+  project-intake links until a reviewer establishes the exact Sage ID and
+  reconciles the Compass customer. Previously imported links still need audit.
 - Buildertrend import identities must resolve to these same canonical IDs using
   an organization-scoped source mapping. Buildertrend evidence remains immutable;
   neither `users` nor a copied project-contact name/email row is a substitute
@@ -245,9 +249,8 @@ infer identity from email or name. A reviewed backfill and invite/activation
 link maintenance are still required before claiming that every existing
 account is connected to a canonical person. External users cannot browse the
 shared directories; self-service reads only exact linked person IDs.
-Directory-granted staff edits must not reach the legacy Sage email-fill queue
-without the existing stronger authorization; the reviewed Sage contact
-proposal/approval path remains a release gate.
+Directory edits no longer enqueue the legacy Sage blank-email write. The
+reviewed Sage contact proposal/approval path remains a release gate.
 
 The new person-account links and Sage proposal fields remain outside the
 Project Registry and Google Apps Script handoff contracts: those still carry
@@ -264,8 +267,9 @@ proposal and approval is a conflict, never a silent overwrite. Invite status
 and project access are Compass-only and must not ride along with contact data.
 No direct SQL update is permitted.
 
-The existing production Sage writer handles client/job creation and guarded
-filling of a blank client email. A separate, opt-in contact mode now has
+The existing production Sage writer handles client/job creation and can finish
+historical queued blank-email operations; new directory edits cannot enqueue
+that operation. A separate, opt-in contact mode now has
 allowlisted client/vendor/employee modifications and child-contact
 modification code and passed the guarded HPS Test write/readback check above.
 It has not been installed as the production writer. Child-contact adds,

@@ -182,6 +182,10 @@ export function ProjectIntakeDrawer({
 
   function submitProject(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    if (selectedCustomer?.sageLinkNeedsReview) {
+      toast.error("Reconcile this client’s Sage link in Contacts before creating the project.")
+      return
+    }
     if (!sageClientStatusId || !sageJobStatusId || !sageJobType) {
       toast.error("Choose the client status, job status, and job type.")
       return
@@ -354,7 +358,9 @@ export function ProjectIntakeDrawer({
                   ...customerOptions.map((customer) => ({
                     value: customer.id,
                     label: customer.name,
-                    description: customer.company ?? undefined,
+                    description: customer.sageLinkNeedsReview
+                      ? `${customer.company ? `${customer.company} · ` : ""}Sage link needs review`
+                      : customer.company ?? undefined,
                   })),
                 ]}
                 value={customerSelection}
@@ -368,6 +374,7 @@ export function ProjectIntakeDrawer({
               />
               {customerOptionsError ? <p className="text-xs text-destructive">The client list could not load. Refresh before linking an existing client.</p> : null}
               {usingExistingCustomer ? <p className="text-xs text-muted-foreground">This project will use the selected client’s shared directory details. Edit their contact information in Contacts.</p> : null}
+              {selectedCustomer?.sageLinkNeedsReview ? <p className="text-xs text-destructive">This client’s Sage number and ID need review before it can be used for a new project.</p> : null}
             </Field>
             {usingExistingCustomer ? (
               <div className="space-y-1 text-sm">

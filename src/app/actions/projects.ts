@@ -69,6 +69,7 @@ import {
   type SageClientStatusId,
   type SageJobTypeId,
 } from "@/lib/sage/client-project-write"
+import { sageClientLinkReviewIds } from "@/lib/sage/client-link-review"
 
 export type ProjectStatusValue =
   | "OPEN"
@@ -157,6 +158,7 @@ export type ProjectIntakeCustomerOption = {
   readonly email: string | null
   readonly phone: string | null
   readonly sageClientStatusId: number | null
+  readonly sageLinkNeedsReview: boolean
 }
 
 export async function getProjectIntakeCustomerOptions(): Promise<readonly ProjectIntakeCustomerOption[]> {
@@ -167,17 +169,29 @@ export async function getProjectIntakeCustomerOptions(): Promise<readonly Projec
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-  return db.select({
+  const rows = await db.select({
     id: customers.id,
     name: customers.name,
     company: customers.company,
     email: customers.email,
     phone: customers.phone,
     sageClientStatusId: customers.sageClientStatusId,
+    sageClientId: customers.sageClientId,
+    sageClientNumber: customers.sageClientNumber,
   })
     .from(customers)
     .where(eq(customers.organizationId, organizationId))
     .orderBy(asc(customers.name))
+  const reviewIds = sageClientLinkReviewIds(rows)
+  return rows.map((customer) => ({
+    id: customer.id,
+    name: customer.name,
+    company: customer.company,
+    email: customer.email,
+    phone: customer.phone,
+    sageClientStatusId: customer.sageClientStatusId,
+    sageLinkNeedsReview: reviewIds.has(customer.id),
+  }))
 }
 
 export type CreateProjectIntakeInput = Omit<
@@ -606,10 +620,21 @@ export async function createProjectIntake(
       }
     }
     const customerMatch = selectedCustomerId ? customerMatches[0] ?? null : null
-    if (hasIncompleteSageClientLink(customerMatch)) {
+    const sameNameCustomers = customerMatch
+      ? await db.select({
+          id: customers.id,
+          name: customers.name,
+          sageClientId: customers.sageClientId,
+          sageClientNumber: customers.sageClientNumber,
+        }).from(customers).where(and(
+          eq(customers.organizationId, organizationId),
+          sql`lower(trim(${customers.name})) = ${customerMatch.name.trim().toLowerCase()}`,
+        ))
+      : []
+    if (customerMatch && sageClientLinkReviewIds(sameNameCustomers).has(customerMatch.id)) {
       return {
         success: false,
-        error: "This client has an incomplete Sage link. Reconcile its Sage ID and number in Contacts before creating the project.",
+        error: "This client has an incomplete or same-name Sage link candidate. Reconcile the exact Sage ID and number in Contacts before creating the project.",
       }
     }
     if (customerMatch?.sageClientStatusId != null && customerMatch.sageClientStatusId !== sageClientStatusId) {
