@@ -101,8 +101,9 @@ executable failed the production-company `--diagnose` check with `-1`, while
 the **installed** production writer at its approved path passed `--diagnose`
 immediately afterward (2026-09-24). This points to the executable's
 application approval/identity, not HPS Test credentials or license capacity,
-as the explanation for the temporary binary's denial. The HPS Test API login
-itself remains unvalidated. None of these diagnostics modified Sage records.
+as the explanation for the temporary binary's denial. None of these
+diagnostics modified Sage records. The subsequent installed-path validation
+below established that HPS Test API login works.
 
 Sage's application approval is bound to the installed writer identity; do not
 interpret a `-1` from a newly compiled temporary-path binary as a test-company
@@ -116,8 +117,8 @@ code 0. No Sage records were changed. Keep this guarded procedure for future
 API validation: never bypass the task pause while production client/project
 writes are enabled, and never leave a candidate executable installed.
 
-Keep contact writes disabled. After HPS Test API access is validated, test on
-explicitly disposable HPS Test records: modify and read back each record kind,
+Keep contact writes disabled. Next, test on explicitly disposable HPS Test
+records: modify and read back each record kind,
 verify parent/child identity and contact ordering, then check blank values and
 revision conflicts. Only then consider enabling the reviewed write queue.
 

@@ -7,6 +7,7 @@ function source(relativePath: string): string {
 }
 
 const customerActions = source("../../../app/actions/customers.ts")
+const contactEditGate = source("../contact-edit-gate.ts")
 const projectActions = source("../../../app/actions/projects.ts")
 const resultsRoute = source(
   "../../../app/api/integrations/sage/client-project-writes/results/route.ts"
@@ -52,16 +53,15 @@ describe("Sage customer/project creation authorization boundary", () => {
 
   it("queues a Sage client update when a missing customer email is added", () => {
     expect(customerActions).toContain(
-      "normalizedExistingEmail === null"
+      "isLegacySageClientEmailFill(existing, data)"
     )
-    expect(customerActions).toContain(
-      "normalizedNextEmail !== null"
-    )
+    expect(contactEditGate).toContain("normalized(existing.email) === null")
+    expect(contactEditGate).toContain("normalized(patch.email) !== null")
     expect(customerActions).toContain(
       'operationType: "update_client_email"'
     )
-    expect(customerActions).toContain("Boolean(existing.sageClientId)")
-    expect(customerActions).toContain("Boolean(existing.sageClientNumber)")
+    expect(contactEditGate).toContain("normalized(existing.sageClientId) !== null")
+    expect(contactEditGate).toContain("normalized(existing.sageClientNumber) !== null")
     expect(customerActions).toContain(
       "idempotencyKey: `customer:${id}:email-fill`"
     )
