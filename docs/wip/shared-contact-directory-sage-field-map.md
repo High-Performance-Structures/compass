@@ -1,7 +1,8 @@
 # Shared contact directory and Sage field map
 
-Status: implementation in progress; Sage contact-write claims are disabled and
-the queue migration has not been applied to production.
+Status: implementation in progress. A guarded HPS Test API write/readback
+validation passed on 2026-09-24. Sage contact-write claims remain disabled,
+and the queue migration has not been applied to production.
 
 ## Authority and record boundaries
 
@@ -117,10 +118,25 @@ code 0. No Sage records were changed. Keep this guarded procedure for future
 API validation: never bypass the task pause while production client/project
 writes are enabled, and never leave a candidate executable installed.
 
-Keep contact writes disabled. Next, test on explicitly disposable HPS Test
-records: modify and read back each record kind,
-verify parent/child identity and contact ordering, then check blank values and
-revision conflicts. Only then consider enabling the reviewed write queue.
+### HPS Test write/readback validation (2026-09-24)
+
+The guarded installed-path test used HPS Test client 2890, vendor 2883, and
+employee 17, with one named child contact under each company. It changed one
+safe mapped field per record kind, read each value back through the Sage API,
+and restored the original mapped value. All five paths passed:
+`client_company`, `vendor_company`, `client_person`, `vendor_person`, and
+`employee`. The test printed `CONTACT_WRITE_TEST_OK` and
+`HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK` with exit code 0. The original
+production executable was restored with the same SHA-256 hash, the scheduled
+production writer returned to `Ready`, and its read-only `--diagnose` passed.
+No production contact was edited and contact synchronization was not enabled.
+
+The test's requirement for a populated City and exactly one named child
+contact was a disposable-record selection guard, **not** a Compass or Sage
+production requirement. Optional contact fields may be blank. This test does
+not establish blank/null update semantics, revision-conflict behavior, every
+mapped field, primary-email behavior, or adding child contacts. Those remain
+separate release gates before production contact writes are enabled.
 
 ## Compass storage and privacy
 
@@ -216,11 +232,11 @@ No direct SQL update is permitted.
 The existing production Sage writer handles client/job creation and guarded
 filling of a blank client email. A separate, opt-in contact mode now has
 allowlisted client/vendor/employee modifications and child-contact
-modification code, but has not passed a write/readback test in `HPS Test` or
-been installed on the Sage host. Child-contact adds, primary-email edits,
-and reviewed backfill of person-to-account links remain outside the enabled
-path. Private employee
-address access and approval must be individual staff permissions in Compass
+modification code and passed the guarded HPS Test write/readback check above.
+It has not been installed as the production writer. Child-contact adds,
+primary-email edits, and reviewed backfill of person-to-account links remain
+outside the enabled path. Private employee address access and approval must
+be individual staff permissions in Compass
 Settings > Permissions, with Executive Admin the initial default. Employees
 may propose changes to their own record but cannot approve them. No employee
 address proposal, review, or write route is enabled by the foundation migration.
