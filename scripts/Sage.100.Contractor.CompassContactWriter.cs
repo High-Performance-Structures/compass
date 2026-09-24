@@ -21,6 +21,7 @@ namespace CompassSageClientProjectWriter
         {
             public ContactTask[] reads { get; set; }
             public ContactTask[] writes { get; set; }
+            public ContactTask[] creates { get; set; }
         }
         public sealed class ContactTask
         {
@@ -34,6 +35,8 @@ namespace CompassSageClientProjectWriter
             public string parentSageRecordId { get; set; }
             public string baseRevision { get; set; }
             public ContactChange[] changes { get; set; }
+            public string companyId { get; set; }
+            public Dictionary<string, string> fields { get; set; }
         }
         public sealed class ContactChange
         {
@@ -366,12 +369,12 @@ namespace CompassSageClientProjectWriter
             return true;
         }
 
-        private static Dictionary<string, string> ReadTestChildRows(string kind, string parentId)
+        private static Dictionary<string, string> ReadContactChildRows(string company, string kind, string parentId)
         {
             string table = kind == "client_person" ? "clncnt" : kind == "vendor_person" ? "vndcnt" : null;
             if (table == null) throw new InvalidOperationException("Unsupported HPS Test child kind.");
             Dictionary<string, string> rows = new Dictionary<string, string>(StringComparer.Ordinal);
-            using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+            using (SqlConnection connection = OpenContactSql(company))
             using (SqlCommand command = new SqlCommand(
                 "SELECT _idnum, linnum, cntnme FROM dbo." + table + " WHERE _idref = @parent", connection))
             {
@@ -382,6 +385,11 @@ namespace CompassSageClientProjectWriter
                             (reader.IsDBNull(2) ? "" : Convert.ToString(reader[2]).Trim()));
             }
             return rows;
+        }
+
+        private static Dictionary<string, string> ReadTestChildRows(string kind, string parentId)
+        {
+            return ReadContactChildRows(ContactTestCompany, kind, parentId);
         }
 
         private static ContactTask FindTestAddedChild(string kind, string parentId,
@@ -690,6 +698,12 @@ namespace CompassSageClientProjectWriter
                     throw new InvalidOperationException("Local Sage contact write switch is disabled.");
                 foreach (ContactTask write in envelope.writes ?? new ContactTask[0])
                     ProcessContactTask(write, true);
+                if (envelope.creates != null && envelope.creates.Length > 0 &&
+                    (!String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase) ||
+                     !String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("Local Sage contact create switch is disabled.");
+                foreach (ContactTask create in envelope.creates ?? new ContactTask[0])
+                    ProcessContactCreate(create);
                 return 0;
             }
             catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
@@ -743,6 +757,71 @@ namespace CompassSageClientProjectWriter
                 WriteLog("ERROR", "Contact " + task.id + " failed: " + error.Message);
                 PostContactResult(type, task, null, error.Message);
             }
+        }
+
+        private static void ProcessContactCreate(ContactTask task)
+        {
+            if (task == null || String.IsNullOrWhiteSpace(task.id) || String.IsNullOrWhiteSpace(task.claimToken) ||
+                String.IsNullOrWhiteSpace(task.parentSageRecordId) || String.IsNullOrWhiteSpace(task.companyId) ||
+                !String.Equals(task.organizationId, Required("SAGE_CONTACT_ORGANIZATION_ID"), StringComparison.Ordinal))
+                throw new InvalidOperationException("Sage child Add claim is incomplete or outside this organization.");
+            bool attempted = false;
+            try
+            {
+                if ((task.kind != "client_person" && task.kind != "vendor_person") || task.fields == null ||
+                    task.fields.Count != PersonFields.Length || !task.fields.ContainsKey("name") ||
+                    String.IsNullOrWhiteSpace(task.fields["name"]))
+                    throw new InvalidOperationException("Sage child Add requires all approved fields and a name.");
+                ContactChange[] proposed = new ContactChange[PersonFields.Length];
+                for (int index = 0; index < PersonFields.Length; index++)
+                {
+                    ContactField field = PersonFields[index];
+                    if (!task.fields.ContainsKey(field.Key))
+                        throw new InvalidOperationException("Sage child Add is missing " + field.Key + ".");
+                    proposed[index] = new ContactChange { field = field.Key, after = task.fields[field.Key] };
+                }
+                int parentNumber = ContactParentNumber(TargetCompany, task);
+                Dictionary<string, string> before = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
+                string xml = BuildContactChildAddXml(task.kind, parentNumber, proposed, TargetCompany);
+                attempted = true; // An API timeout does not prove that Sage rolled back the Add.
+                using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))
+                    Submit(xml, Required("SAGE_API_PASSWORD"));
+                Dictionary<string, string> after = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
+                if (after.Count != before.Count + 1 || !TestChildRowsPreserved(before, after))
+                    throw new InvalidOperationException("Sage child Add did not produce exactly one new child.");
+                string newId = null;
+                foreach (string id in after.Keys)
+                    if (!before.ContainsKey(id)) newId = id;
+                if (String.IsNullOrWhiteSpace(newId))
+                    throw new InvalidOperationException("Sage child Add identity could not be resolved.");
+                ContactTask added = new ContactTask {
+                    kind = task.kind, entityId = task.id, sageRecordId = newId,
+                    parentSageRecordId = task.parentSageRecordId
+                };
+                ContactSnapshot snapshot = QueryContact(TargetCompany, added);
+                foreach (ContactField field in PersonFields)
+                    if (!String.Equals(snapshot.fields[field.Key] ?? "", task.fields[field.Key] ?? "", StringComparison.Ordinal))
+                        throw new InvalidOperationException("Sage child Add read-back differs in " + field.Key + ".");
+                PostContactCreateResult(task, snapshot, null, true);
+            }
+            catch (Exception error)
+            {
+                WriteLog("ERROR", "Sage child Add " + task.id + " failed: " + error.Message);
+                PostContactCreateResult(task, null, error.Message, attempted);
+            }
+        }
+
+        private static void PostContactCreateResult(ContactTask task, ContactSnapshot snapshot, string error, bool attempted)
+        {
+            Dictionary<string, object> result = new Dictionary<string, object> {
+                { "id", task.id }, { "claimToken", task.claimToken },
+                { "outcome", error == null ? "succeeded" : "failed" }
+            };
+            if (error == null) result.Add("snapshot", snapshot);
+            else { result.Add("error", Truncate(error, 1000)); result.Add("attempted", attempted); }
+            SendContact("POST", ContactResultsTarget, Json.Serialize(new Dictionary<string, object> {
+                { "type", "create" }, { "result", result }
+            }));
         }
 
         private static SqlConnection OpenContactSql(string company)
@@ -904,6 +983,11 @@ namespace CompassSageClientProjectWriter
             request.Headers["x-compass-timestamp"] = timestamp;
             request.Headers["x-compass-request-id"] = requestId;
             request.Headers["x-compass-signature"] = "sha256=" + signature;
+            // Advertise Add support only when this installed host can actually
+            // execute it; otherwise Compass must not claim a create proposal.
+            if (String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase) &&
+                String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
+                request.Headers["x-compass-contact-bridge-version"] = "2";
             if (method == "POST")
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(body);

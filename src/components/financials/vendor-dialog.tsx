@@ -40,6 +40,7 @@ interface VendorDialogProps {
   onSubmit: (data: VendorCompanyMutationInput) => void
   onSageEditContact?: (contactId: string, name: string) => void
   onSageLinkContact?: (contactId: string, name: string, lineNumber: number | null) => void
+  onSageCreateContact?: () => void
   onSageEditCompany?: () => void
   onSageLinkCompany?: () => void
   onLinkAccount?: (contactId: string, name: string, userId: string | null) => void
@@ -54,6 +55,7 @@ export function VendorDialog({
   onSubmit,
   onSageEditContact,
   onSageLinkContact,
+  onSageCreateContact,
   onSageEditCompany,
   onSageLinkCompany,
   onLinkAccount,
@@ -264,6 +266,9 @@ export function VendorDialog({
                 <IconPlus className="size-4" />
                 Add person
               </Button>
+              {sageVerified && onSageCreateContact ? (
+                <Button type="button" variant="outline" size="sm" onClick={onSageCreateContact}>Propose Sage person</Button>
+              ) : null}
             </div>
             {contacts.length === 0 ? (
               <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">

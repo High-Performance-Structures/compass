@@ -29,19 +29,23 @@ export function CustomerPeopleDialog({
   customer,
   onOpenChange,
   canEdit,
+  canCreate,
   canDelete,
   canLinkAccounts,
   onSageEdit,
   onSageLink,
+  onSageCreate,
   onLinkAccount,
 }: {
   readonly customer: { readonly id: string; readonly name: string; readonly sageLinked: boolean; readonly sageVerified: boolean } | null
   readonly onOpenChange: (open: boolean) => void
   readonly canEdit: boolean
+  readonly canCreate: boolean
   readonly canDelete: boolean
   readonly canLinkAccounts: boolean
   readonly onSageEdit: (person: CustomerDirectoryPerson) => void
   readonly onSageLink?: (person: CustomerDirectoryPerson) => void
+  readonly onSageCreate?: () => void
   readonly onLinkAccount: (person: CustomerDirectoryPerson) => void
 }): React.ReactElement {
   const [people, setPeople] = React.useState<readonly CustomerDirectoryPerson[]>([])
@@ -123,7 +127,9 @@ export function CustomerPeopleDialog({
               <Button type="submit" disabled={busy}>{editingId ? "Save person" : "Add person"}</Button>
             </DialogFooter>
           </form>
-        ) : customer?.sageLinked ? <p className="text-sm text-muted-foreground">New people for Sage-linked clients or unverified Sage candidates require a reviewed Sage link and contact workflow.</p> : null}
+        ) : customer?.sageVerified && canCreate && onSageCreate ? (
+          <Button type="button" variant="outline" onClick={onSageCreate}>Propose new Sage person</Button>
+        ) : customer?.sageLinked ? <p className="text-sm text-muted-foreground">Verify this client's Sage identity before proposing a new person.</p> : null}
       </DialogContent>
     </Dialog>
   )

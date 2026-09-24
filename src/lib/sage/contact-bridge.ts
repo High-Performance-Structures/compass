@@ -2,6 +2,7 @@ import { z } from "zod/v4"
 
 import {
   sageContactProposalFields,
+  type SageContactCreateFields,
   type SageContactFieldChange,
   type SageContactKind,
 } from "@/lib/sage/contact-change-proposal"
@@ -79,6 +80,26 @@ export const sageContactWriteResultSchema = z.discriminatedUnion("outcome", [
     snapshot: sageContactSnapshotResultSchema,
   }),
 ])
+
+export const sageContactCreateResultSchema = z.discriminatedUnion("outcome", [
+  bridgeFailureSchema.extend({ attempted: z.boolean() }),
+  z.object({
+    outcome: z.literal("succeeded"),
+    id: z.string().uuid(),
+    claimToken: z.string().uuid(),
+    snapshot: sageContactSnapshotResultSchema,
+  }),
+])
+
+export function readbackConfirmsCreateFields(
+  proposed: SageContactCreateFields,
+  readback: Readonly<Record<string, string | null>>
+): boolean {
+  return Object.entries(proposed).every(([field, value]) =>
+    Object.prototype.hasOwnProperty.call(readback, field) &&
+    (readback[field]?.trim() || null) === value
+  )
+}
 
 export function hasOnlySageContactFields(
   kind: SageContactKind,

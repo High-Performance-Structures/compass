@@ -52,6 +52,19 @@ export type SageContactProposalPlan = {
   readonly changes: readonly SageContactFieldChange[]
 }
 
+export type SageContactCreateFields = Readonly<{
+  name: string
+  title: string | null
+  phone: string | null
+  phoneExtension: string | null
+  email: string | null
+  cellPhone: string | null
+}>
+
+type CreatePlanResult =
+  | { readonly success: true; readonly fields: SageContactCreateFields }
+  | { readonly success: false; readonly error: string }
+
 type PlanResult =
   | { readonly success: true; readonly plan: SageContactProposalPlan }
   | { readonly success: false; readonly error: string }
@@ -98,6 +111,39 @@ function isFieldName(value: string): value is SageContactField {
   return Object.values(FIELDS_BY_KIND).some((fields) =>
     fields.some((field) => field === value)
   )
+}
+
+/** Validates a new child contact before it enters independent Sage review. */
+export function planSageContactCreate(
+  kind: "client_person" | "vendor_person",
+  submitted: Readonly<Record<string, string | null>>
+): CreatePlanResult {
+  const allowed = sageContactProposalFields(kind)
+  for (const [key, value] of Object.entries(submitted)) {
+    if (!isFieldName(key) || !allowed.includes(key)) {
+      return { success: false, error: `Sage contact field ${key} is not approved for ${kind}.` }
+    }
+    if (value !== null && typeof value !== "string") {
+      return { success: false, error: `Invalid value for ${key}.` }
+    }
+    const cleaned = normalized(value)
+    if (cleaned !== null && cleaned.length > (FIELD_MAX_LENGTH[key] ?? 255)) {
+      return { success: false, error: `${key} exceeds the Sage field limit.` }
+    }
+  }
+  const name = normalized(submitted.name)
+  if (!name) return { success: false, error: "A Sage contact name is required." }
+  return {
+    success: true,
+    fields: {
+      name,
+      title: normalized(submitted.title),
+      phone: normalized(submitted.phone),
+      phoneExtension: normalized(submitted.phoneExtension),
+      email: normalized(submitted.email),
+      cellPhone: normalized(submitted.cellPhone),
+    },
+  }
 }
 
 /** Fail closed on unknown fields, missing source values, and missing Sage IDs. */

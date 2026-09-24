@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   hasOnlySageContactFields,
   readbackConfirmsChanges,
+  readbackConfirmsCreateFields,
+  sageContactCreateResultSchema,
   sageContactIdentityError,
   sageContactReadResultSchema,
 } from "@/lib/sage/contact-bridge"
@@ -55,5 +57,20 @@ describe("Sage contact bridge contract", () => {
         revision: "revision", fields: { city: "Denver" },
       },
     }).success).toBe(true)
+  })
+
+  it("requires all approved Add fields in the exact Sage read-back", () => {
+    const fields = { name: "Alex Doe", title: null, phone: "5550100",
+      phoneExtension: null, email: "alex@example.com", cellPhone: null }
+    expect(readbackConfirmsCreateFields(fields, fields)).toBe(true)
+    expect(readbackConfirmsCreateFields(fields, { ...fields, email: "different@example.com" })).toBe(false)
+    expect(sageContactCreateResultSchema.safeParse({
+      outcome: "failed", id: crypto.randomUUID(), claimToken: crypto.randomUUID(),
+      error: "No Add attempted", attempted: false,
+    }).success).toBe(true)
+    expect(sageContactCreateResultSchema.safeParse({
+      outcome: "failed", id: crypto.randomUUID(), claimToken: crypto.randomUUID(),
+      error: "Uncertain result",
+    }).success).toBe(false)
   })
 })

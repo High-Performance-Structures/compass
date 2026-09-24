@@ -56,3 +56,28 @@ describe("HPS Test child-contact add probe", () => {
     expect(writer).toContain('New HPS Test child did not match this probe marker; no delete attempted.')
   })
 })
+
+describe("production contact Add boundary", () => {
+  it("keeps contact polling sequential and disabled unless explicitly enabled", () => {
+    expect(entrypoint).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_BRIDGE_ENABLED")')
+    expect(entrypoint.indexOf("PollOnce();")).toBeLessThan(entrypoint.indexOf("RunContactBridge() != 0"))
+    expect(writer).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED")')
+    expect(writer).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED")')
+    const transport = writer.split("private static string SendContact(string method, string target, string body)")[1] ?? ""
+    expect(transport).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED")')
+    expect(transport).toContain('Environment.GetEnvironmentVariable("SAGE_CONTACT_WRITES_ENABLED")')
+    expect(transport.indexOf('Environment.GetEnvironmentVariable("SAGE_CONTACT_CREATES_ENABLED")'))
+      .toBeLessThan(transport.indexOf('request.Headers["x-compass-contact-bridge-version"] = "2"'))
+  })
+
+  it("marks an API Add attempted before submission and reads back the new child", () => {
+    const creation = writer.split("private static void ProcessContactCreate(ContactTask task)")[1]
+      ?.split("private static void PostContactCreateResult")[0] ?? ""
+    expect(creation).not.toBe("")
+    expect(creation).toContain("attempted = true; // An API timeout does not prove that Sage rolled back the Add.")
+    expect(creation.indexOf("attempted = true;")).toBeLessThan(creation.indexOf("Submit(xml,"))
+    expect(creation).toContain("ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId)")
+    expect(creation).toContain("TestChildRowsPreserved(before, after)")
+    expect(creation).toContain("QueryContact(TargetCompany, added)")
+  })
+})

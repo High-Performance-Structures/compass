@@ -20,6 +20,7 @@ import {
   hasOnlySageContactFields,
   readbackConfirmsChanges,
   sageContactKindSchema,
+  sageContactCreateResultSchema,
   sageContactOrganizationMatches,
   sageContactReadResultSchema,
   sageContactWriteResultSchema,
@@ -28,10 +29,12 @@ import { applySageContactSnapshotToCanonical } from "@/lib/sage/contact-canonica
 import { sageContactProposalFields, type SageContactFieldChange } from "@/lib/sage/contact-change-proposal"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
 import { sageContactLinkCandidateError, sageContactReadClaimError } from "@/lib/sage/contact-link-review"
+import { handleSageContactCreateResult } from "@/lib/sage/contact-create-result"
 
 const messageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("read"), result: sageContactReadResultSchema }),
   z.object({ type: z.literal("write"), result: sageContactWriteResultSchema }),
+  z.object({ type: z.literal("create"), result: sageContactCreateResultSchema }),
 ])
 const changesSchema = z.array(z.object({
   field: z.string(), before: z.string().nullable(), after: z.string().nullable(),
@@ -103,6 +106,10 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = messageSchema.safeParse(raw)
   if (!parsed.success) return Response.json({ error: "Invalid Sage contact result" }, { status: 400 })
   const message = parsed.data
+
+  if (message.type === "create") {
+    return handleSageContactCreateResult(env, env.DB, message.result, now)
+  }
 
   if (message.type === "read") {
     const result = message.result

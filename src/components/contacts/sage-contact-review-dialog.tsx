@@ -13,6 +13,11 @@ import {
   reviewSageContactLinkCandidate,
   type SageContactLinkCandidate,
 } from "@/app/actions/sage-contact-links"
+import {
+  listSageContactCreateProposals,
+  reviewSageContactCreate,
+  type SageContactCreateListItem,
+} from "@/app/actions/sage-contact-creates"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,16 +39,18 @@ export function SageContactReviewDialog({
 }): React.ReactElement {
   const [proposals, setProposals] = React.useState<readonly SageContactProposalListItem[]>([])
   const [links, setLinks] = React.useState<readonly SageContactLinkCandidate[]>([])
+  const [creates, setCreates] = React.useState<readonly SageContactCreateListItem[]>([])
   const [notes, setNotes] = React.useState<Readonly<Record<string, string>>>({})
   const [busyId, setBusyId] = React.useState<string | null>(null)
 
   const reload = React.useCallback(async () => {
     try {
-      const [nextProposals, nextLinks] = await Promise.all([
-        listSageContactChangeProposals(), listSageContactLinkCandidates(),
+      const [nextProposals, nextLinks, nextCreates] = await Promise.all([
+        listSageContactChangeProposals(), listSageContactLinkCandidates(), listSageContactCreateProposals(),
       ])
       setProposals(nextProposals)
       setLinks(nextLinks)
+      setCreates(nextCreates)
     } catch {
       toast.error("Could not load Sage contact proposals")
     }
@@ -86,12 +93,24 @@ export function SageContactReviewDialog({
     } finally { setBusyId(null) }
   }
 
+  const decideCreate = async (proposalId: string, decision: "approve" | "reject") => {
+    setBusyId(proposalId)
+    try {
+      const result = await reviewSageContactCreate(proposalId, decision, notes[proposalId] ?? "")
+      if (!result.success) toast.error(result.error)
+      else {
+        toast.success(decision === "approve" ? "New Sage person approved" : "New Sage person rejected")
+        await reload()
+      }
+    } finally { setBusyId(null) }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Sage contact review</DialogTitle>
-          <DialogDescription>Review exact Sage identity lookups and proposed contact changes. Linking a candidate is separate from approving any write to Sage.</DialogDescription>
+          <DialogDescription>Review exact Sage identities, proposed new people, and contact changes. Every Sage write requires an independent decision.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <h3 className="text-sm font-semibold">Sage identity links</h3>
@@ -124,6 +143,19 @@ export function SageContactReviewDialog({
               ) : null}
             </section>
           ))}
+          <h3 className="text-sm font-semibold">New Sage people</h3>
+          {creates.length === 0 ? <p className="text-sm text-muted-foreground">No new person proposals yet.</p> : null}
+          {creates.map((proposal) => <section key={proposal.id} className="space-y-2 border-b pb-4">
+            <div className="text-sm font-medium">{proposal.fields.name} · {proposal.companyName} · {proposal.status}</div>
+            <div className="text-xs text-muted-foreground">{proposal.kind.replaceAll("_", " ")} · Requested {new Date(proposal.requestedAt).toLocaleString()}</div>
+            {proposal.errorMessage ? <p className="text-sm text-destructive">{proposal.errorMessage}</p> : null}
+            <dl className="grid gap-1 text-sm">{Object.entries(proposal.fields).map(([field, value]) => <div key={field} className="grid grid-cols-3 gap-2"><dt className="font-medium">{field}</dt><dd className="col-span-2 break-words">{value || "(blank)"}</dd></div>)}</dl>
+            {proposal.status === "needs_reconciliation" ? <p className="text-xs text-destructive">Sage Add may have committed. Inspect the exact parent in Sage before any further addition; this will not retry automatically.</p> : null}
+            {proposal.status === "pending" && canApprove ? <>
+              <Textarea value={notes[proposal.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [proposal.id]: event.target.value }))} placeholder="Review note (optional)" aria-label={`Review note for ${proposal.fields.name}`} />
+              <div className="flex gap-2"><Button size="sm" onClick={() => void decideCreate(proposal.id, "approve")} disabled={busyId !== null}>Approve Add</Button><Button size="sm" variant="outline" onClick={() => void decideCreate(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button></div>
+            </> : null}
+          </section>)}
           <h3 className="text-sm font-semibold">Contact change proposals</h3>
           {proposals.length === 0 ? (
             <p className="text-sm text-muted-foreground">No contact change proposals yet.</p>

@@ -2,10 +2,13 @@ import { and, asc, eq, lt, or, sql } from "drizzle-orm"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
+import { customers, vendors } from "@/db/schema"
 import {
   sageBridgeRequestNonces,
   sageContactChangeEvents,
   sageContactChangeProposals,
+  sageContactCreateEvents,
+  sageContactCreateProposals,
   sageContactReadRequests,
   sageContactSnapshots,
 } from "@/db/schema-sage"
@@ -21,6 +24,7 @@ import {
   sageContactOrganizationMatches,
 } from "@/lib/sage/contact-bridge"
 import { sageContactReadClaimError } from "@/lib/sage/contact-link-review"
+import { planSageContactCreate } from "@/lib/sage/contact-change-proposal"
 
 const CLAIM_RETRY_MS = 10 * 60 * 1000
 const NONCE_RETENTION_MS = 15 * 60 * 1000
@@ -28,10 +32,18 @@ const MAX_BATCH = 5
 const changesSchema = z.array(z.object({
   field: z.string(), before: z.string().nullable(), after: z.string().nullable(),
 })).min(1)
+const createKindSchema = z.enum(["client_person", "vendor_person"])
+const createFieldsSchema = z.record(z.string(), z.string().nullable())
 
 function contactWritesEnabled(env: object): boolean {
   const value: unknown = Reflect.get(env, "SAGE_CONTACT_WRITES_ENABLED")
   return value === "true"
+}
+
+function contactCreatesEnabled(env: object, request: Request): boolean {
+  return contactWritesEnabled(env) &&
+    Reflect.get(env, "SAGE_CONTACT_CREATES_ENABLED") === "true" &&
+    request.headers.get("x-compass-contact-bridge-version") === "2"
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -165,5 +177,101 @@ export async function GET(request: Request): Promise<Response> {
       })
     }
   }
-  return Response.json({ reads, writes })
+  const creates: unknown[] = []
+  if (contactCreatesEnabled(env, request)) {
+    // Once an Add might have been sent, a timeout is never an automatic retry.
+    const stale = await db.select().from(sageContactCreateProposals).where(and(
+      eq(sageContactCreateProposals.status, "running"),
+      lt(sageContactCreateProposals.claimedAt, staleIso)
+    )).limit(MAX_BATCH)
+    for (const row of stale) {
+      if (!sageContactOrganizationMatches(env, row.organizationId)) continue
+      const finished = await db.update(sageContactCreateProposals).set({
+        status: "needs_reconciliation", completedAt: nowIso, updatedAt: nowIso,
+        errorMessage: "Sage Add outcome is uncertain. Inspect Sage before any retry.",
+      }).where(and(eq(sageContactCreateProposals.id, row.id),
+        eq(sageContactCreateProposals.status, "running"),
+        eq(sageContactCreateProposals.claimToken, row.claimToken ?? "")))
+        .returning({ id: sageContactCreateProposals.id })
+      if (finished.length === 1) {
+        await db.insert(sageContactCreateEvents).values({
+          id: crypto.randomUUID(), proposalId: row.id,
+          organizationId: row.organizationId, actorUserId: null,
+          eventType: "needs_reconciliation", detailJson: "{}", createdAt: nowIso,
+        })
+      }
+    }
+
+    const candidates = await db.select().from(sageContactCreateProposals).where(
+      eq(sageContactCreateProposals.status, "approved")
+    ).orderBy(asc(sageContactCreateProposals.requestedAt)).limit(MAX_BATCH)
+    for (const candidate of candidates) {
+      if (!sageContactOrganizationMatches(env, candidate.organizationId)) continue
+      const kind = createKindSchema.safeParse(candidate.kind)
+      let raw: unknown
+      try { raw = JSON.parse(candidate.fieldsJson) } catch { raw = null }
+      const fields = createFieldsSchema.safeParse(raw)
+      const plan = kind.success && fields.success
+        ? planSageContactCreate(kind.data, fields.data) : null
+      const company = kind.success && kind.data === "client_person" && candidate.customerId
+        ? await db.select({ sageRecordId: customers.sageClientId }).from(customers).where(and(
+          eq(customers.id, candidate.customerId), eq(customers.organizationId, candidate.organizationId))).get()
+        : kind.success && kind.data === "vendor_person" && candidate.vendorId
+          ? await db.select({ sageRecordId: vendors.sageVendorId }).from(vendors).where(and(
+            eq(vendors.id, candidate.vendorId), eq(vendors.organizationId, candidate.organizationId),
+            eq(vendors.directoryStatus, "active"))).get()
+          : null
+      if (!plan?.success || !company || company.sageRecordId !== candidate.parentSageRecordId ||
+        candidate.attemptCount !== 0) {
+        const failed = await db.update(sageContactCreateProposals).set({
+          status: "failed", completedAt: nowIso, updatedAt: nowIso,
+          errorMessage: "Stored create proposal or parent Sage link is invalid.",
+        }).where(and(eq(sageContactCreateProposals.id, candidate.id),
+          eq(sageContactCreateProposals.status, "approved")))
+          .returning({ id: sageContactCreateProposals.id })
+        if (failed.length === 1) await db.insert(sageContactCreateEvents).values({
+          id: crypto.randomUUID(), proposalId: candidate.id,
+          organizationId: candidate.organizationId, actorUserId: null,
+          eventType: "failed", detailJson: "{}", createdAt: nowIso,
+        })
+        continue
+      }
+      const claimToken = crypto.randomUUID()
+      const parentTable = kind.data === "client_person" ? "customers" : "vendors"
+      const parentIdColumn = kind.data === "client_person" ? "customer_id" : "vendor_id"
+      const parentSageColumn = kind.data === "client_person" ? "sage_client_id" : "sage_vendor_id"
+      const activeFilter = kind.data === "client_person" ? "" : "AND parent.directory_status = 'active'"
+      const claimed = await env.DB.prepare(
+        `UPDATE sage_contact_create_proposals
+         SET status = 'running', claim_token = ?, claimed_at = ?, attempt_count = attempt_count + 1,
+             updated_at = ?
+         WHERE id = ? AND organization_id = ? AND status = 'approved' AND attempt_count = 0
+           AND EXISTS (SELECT 1 FROM ${parentTable} parent
+             WHERE parent.id = sage_contact_create_proposals.${parentIdColumn}
+               AND parent.organization_id = sage_contact_create_proposals.organization_id
+               AND parent.${parentSageColumn} = sage_contact_create_proposals.parent_sage_record_id
+               ${activeFilter})
+           AND NOT EXISTS (
+             SELECT 1 FROM sage_contact_create_proposals other
+             WHERE other.organization_id = ? AND other.parent_sage_record_id = ?
+               AND other.status IN ('running', 'needs_reconciliation') AND other.id <> ?
+           )`
+      ).bind(claimToken, nowIso, nowIso, candidate.id, candidate.organizationId,
+        candidate.organizationId, candidate.parentSageRecordId, candidate.id).run()
+      if (claimed.meta.changes !== 1) continue
+      await db.insert(sageContactCreateEvents).values({
+        id: crypto.randomUUID(), proposalId: candidate.id,
+        organizationId: candidate.organizationId, actorUserId: null,
+        eventType: "claimed", detailJson: "{}", createdAt: nowIso,
+      })
+      creates.push({
+        id: candidate.id, claimToken, organizationId: candidate.organizationId,
+        kind: candidate.kind, companyId: candidate.customerId ?? candidate.vendorId,
+        parentSageRecordId: candidate.parentSageRecordId,
+        fields: plan.fields,
+      })
+      break // One Add per bridge poll; never mix two additions in one session.
+    }
+  }
+  return Response.json({ reads, writes, creates })
 }

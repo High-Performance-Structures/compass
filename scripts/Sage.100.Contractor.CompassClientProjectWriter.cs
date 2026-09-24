@@ -173,6 +173,11 @@ namespace CompassSageClientProjectWriter
                 }
                 WriteLog("INFO", "Writer run started.");
                 PollOnce();
+                // Reuse the existing scheduled writer sequentially so contact
+                // polling never needs a second Sage API session or task.
+                if (String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_BRIDGE_ENABLED"),
+                    "true", StringComparison.OrdinalIgnoreCase) && RunContactBridge() != 0)
+                    throw new InvalidOperationException("Sage contact bridge run failed.");
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }

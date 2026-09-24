@@ -16,8 +16,8 @@ $testRecordNumbers = @{
 }
 $base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/martinevogel/contact-directory-review/scripts'
 $sources = @(
-    @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = 'bb92442145adca3c1531d16f63ddcc100f44feb6c508a18a3e13e9cb50b6f927' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '7bf9d1277c8df8cb1a58b9e145c0ead5b36b1a1cf40f6c1468c52524caf1c666' }
+    @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '965525DC6343796AD081430F93297B284841326BE50FF44BD1B18387877C901D' },
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '0885473914155A2FF32F8A7E0AF5A31827FA4ABA6DFC94ED2DAF4EC7A158C6EC' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

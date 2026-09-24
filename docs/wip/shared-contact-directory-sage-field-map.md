@@ -201,6 +201,22 @@ and `HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK`. No production contact changed.
 Production child-contact creation remains disabled until the corresponding
 reviewed Compass workflow is implemented.
 
+The reviewed Compass Add path now stages a new client/vendor person without
+creating a local canonical record prematurely. A different authorized staff
+member must approve it. The contact bridge requires both server and Sage-host
+create switches; a bridge claim is single-attempt, and a timed-out or
+ambiguous Add moves to `needs_reconciliation` instead of retrying. Only an
+exact-parent, exact-field Sage readback supplies the new stable child ID and
+LineID to the canonical directory. This code path is not a production enablement:
+the expanded all-field HPS Test readback and the production bridge installation
+still require separate verification. Both create switches default to off.
+The installed client/project scheduled writer can poll the contact queue in
+the same process only when its separate local `SAGE_CONTACT_BRIDGE_ENABLED`
+switch is true. It finishes its existing client/project work first, avoiding
+a second overlapping scheduled Sage task. `SAGE_CONTACT_WRITES_ENABLED` and
+`SAGE_CONTACT_CREATES_ENABLED` remain separate, default-off write switches
+on both the Compass service and Sage host.
+
 ## Compass storage and privacy
 
 - Existing `customers` and `vendors` become canonical company records with

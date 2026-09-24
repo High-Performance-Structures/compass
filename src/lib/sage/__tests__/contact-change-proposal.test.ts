@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  planSageContactCreate,
   isPrivateEmployeeContactField,
   isSageContactProposalCurrent,
   planSageContactChange,
@@ -130,5 +131,26 @@ describe("reviewed Sage contact change planning", () => {
       expect(isPrivateEmployeeContactField(field)).toBe(true)
     }
     expect(isPrivateEmployeeContactField("email")).toBe(false)
+  })
+})
+
+describe("reviewed Sage child-contact creation", () => {
+  it("normalizes all allowed person fields without inventing a Sage ID", () => {
+    expect(planSageContactCreate("client_person", {
+      name: "  Alex Doe  ", title: "  Owner  ", phone: "5550100",
+      phoneExtension: " 123 ", email: " alex@example.com ", cellPhone: "",
+    })).toEqual({ success: true, fields: {
+      name: "Alex Doe", title: "Owner", phone: "5550100",
+      phoneExtension: "123", email: "alex@example.com", cellPhone: null,
+    } })
+  })
+
+  it("rejects missing names, unsupported fields, and overlong Sage values", () => {
+    expect(planSageContactCreate("vendor_person", { name: " " }))
+      .toMatchObject({ success: false, error: expect.stringContaining("name") })
+    expect(planSageContactCreate("vendor_person", { name: "Alex", addressLine1: "private" }))
+      .toMatchObject({ success: false, error: expect.stringContaining("not approved") })
+    expect(planSageContactCreate("client_person", { name: "x".repeat(51) }))
+      .toMatchObject({ success: false, error: expect.stringContaining("field limit") })
   })
 })

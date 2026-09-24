@@ -58,6 +58,7 @@ import { DirectoryAccountLinkDialog, type DirectoryAccountLinkTarget } from "@/c
 import { SageContactEditorDialog, type SageContactEditorTarget } from "@/components/contacts/sage-contact-editor-dialog"
 import { SageContactReviewDialog } from "@/components/contacts/sage-contact-review-dialog"
 import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
+import { SageContactCreateDialog, type SageContactCreateTarget } from "@/components/contacts/sage-contact-create-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 
 type Tab = "customers" | "vendors" | "internal"
@@ -214,6 +215,7 @@ function ContactsContent() {
   const [myProposalStatuses, setMyProposalStatuses] = React.useState<readonly MySageContactProposalStatus[]>([])
   const [sageEditorTarget, setSageEditorTarget] = React.useState<SageContactEditorTarget | null>(null)
   const [sageLinkTarget, setSageLinkTarget] = React.useState<SageContactLinkLookupTarget | null>(null)
+  const [sageCreateTarget, setSageCreateTarget] = React.useState<SageContactCreateTarget | null>(null)
   const [accountLinkTarget, setAccountLinkTarget] = React.useState<DirectoryAccountLinkTarget | null>(null)
   const [peopleCustomer, setPeopleCustomer] = React.useState<Customer | null>(null)
   const [loading, setLoading] = React.useState(true)
@@ -644,6 +646,10 @@ function ContactsContent() {
           setVendorDialogOpen(false)
           setSageLinkTarget({ kind: "vendor_person", entityId: contactId, name, sageRecordNumber: lineNumber === null ? null : String(lineNumber) })
         } : undefined}
+        onSageCreateContact={directoryAccess?.vendors.create && editingVendor?.sageVendorId ? () => {
+          setVendorDialogOpen(false)
+          setSageCreateTarget({ kind: "vendor_person", companyId: editingVendor.id, companyName: editingVendor.name })
+        } : undefined}
         onLinkAccount={directoryAccess?.canManageAccounts ? (contactId, name, userId) => {
           setVendorDialogOpen(false)
           setAccountLinkTarget({ kind: "vendor_person", personId: contactId, name, userId })
@@ -654,6 +660,7 @@ function ContactsContent() {
         customer={peopleCustomer ? { id: peopleCustomer.id, name: peopleCustomer.name, sageLinked: Boolean(peopleCustomer.sageClientId || peopleCustomer.sageClientNumber), sageVerified: Boolean(peopleCustomer.sageClientId) } : null}
         onOpenChange={(open) => { if (!open) setPeopleCustomer(null) }}
         canEdit={directoryAccess?.customers.edit ?? false}
+        canCreate={directoryAccess?.customers.create ?? false}
         canDelete={directoryAccess?.customers.delete ?? false}
         canLinkAccounts={directoryAccess?.canManageAccounts ?? false}
         onSageEdit={(person: CustomerDirectoryPerson) => {
@@ -663,6 +670,10 @@ function ContactsContent() {
         onSageLink={directoryAccess?.canReadSageReview ? (person: CustomerDirectoryPerson) => {
           setPeopleCustomer(null)
           setSageLinkTarget({ kind: "client_person", entityId: person.id, name: person.name, sageRecordNumber: person.sageLineNumber === null ? null : String(person.sageLineNumber) })
+        } : undefined}
+        onSageCreate={directoryAccess?.customers.create && peopleCustomer?.sageClientId ? () => {
+          setPeopleCustomer(null)
+          setSageCreateTarget({ kind: "client_person", companyId: peopleCustomer.id, companyName: peopleCustomer.name })
         } : undefined}
         onLinkAccount={(person: CustomerDirectoryPerson) => {
           setPeopleCustomer(null)
@@ -680,6 +691,12 @@ function ContactsContent() {
         target={sageLinkTarget}
         onOpenChange={(open) => { if (!open) setSageLinkTarget(null) }}
         onRequested={() => { void loadAll() }}
+      />
+      <SageContactCreateDialog
+        key={sageCreateTarget ? `${sageCreateTarget.kind}:${sageCreateTarget.companyId}` : "none"}
+        target={sageCreateTarget}
+        onOpenChange={(open) => { if (!open) setSageCreateTarget(null) }}
+        onSubmitted={() => { void loadAll() }}
       />
       <DirectoryAccountLinkDialog
         key={accountLinkTarget ? `${accountLinkTarget.kind}:${accountLinkTarget.personId}` : "none"}
