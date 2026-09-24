@@ -30,6 +30,12 @@ requires both the stable Sage ID and number for a previously linked client;
 ambiguous Compass directory matches fail for review. Updating a Sage-linked
 client's default mailing address from Project Information is refused and
 directed to Contacts review.
+The old direct blank-client-email queue is no longer reachable from directory
+edits; historical queued operations remain readable by the existing writer.
+Client primary-email proposals remain unavailable until their exact Sage
+UI/API binding is verified.
+Directory edits accept only contact-facing fields; Sage IDs, organization IDs,
+timestamps, and other integration keys cannot be changed through that action.
 
 Compass edits are proposals. A reviewer sees a field-level diff against the
 latest Sage read, approves it, and a narrowly scoped server-side worker sends

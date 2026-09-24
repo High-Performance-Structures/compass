@@ -47,19 +47,6 @@ export function changesSageLinkedVendorIdentity(
   return hasChangedIdentityField(existing, patch, VENDOR_IDENTITY_FIELDS)
 }
 
-/** Preserve the pre-existing guarded blank-email Sage queue, and only it. */
-export function isLegacySageClientEmailFill(
-  existing: Readonly<Record<string, unknown>>,
-  patch: Readonly<Record<string, unknown>>
-): boolean {
-  return normalized(existing.sageClientId) !== null &&
-    normalized(existing.sageClientNumber) !== null &&
-    normalized(existing.email) === null &&
-    Object.prototype.hasOwnProperty.call(patch, "email") &&
-    normalized(patch.email) !== null &&
-    !changesSageLinkedCustomerIdentity(existing, { ...patch, email: existing.email })
-}
-
 type VendorContactInput = {
   readonly id: string | null
   readonly name: string

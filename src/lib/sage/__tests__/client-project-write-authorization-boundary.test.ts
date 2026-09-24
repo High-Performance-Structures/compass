@@ -51,20 +51,10 @@ describe("Sage customer/project creation authorization boundary", () => {
     expect(resultsRoute).toContain("sage_job_number = ?")
   })
 
-  it("queues a Sage client update when a missing customer email is added", () => {
-    expect(customerActions).toContain(
-      "isLegacySageClientEmailFill(existing, data)"
-    )
-    expect(contactEditGate).toContain("normalized(existing.email) === null")
-    expect(contactEditGate).toContain("normalized(patch.email) !== null")
-    expect(customerActions).toContain(
-      'operationType: "update_client_email"'
-    )
-    expect(contactEditGate).toContain("normalized(existing.sageClientId) !== null")
-    expect(contactEditGate).toContain("normalized(existing.sageClientNumber) !== null")
-    expect(customerActions).toContain(
-      "idempotencyKey: `customer:${id}:email-fill`"
-    )
+  it("does not bypass contact review when filling a missing Sage client email", () => {
+    expect(customerActions).toContain("changesSageLinkedCustomerIdentity(existing, patch)")
+    expect(customerActions).not.toContain('operationType: "update_client_email"')
+    expect(contactEditGate).toContain('"email"')
   })
 
   it("runs one Sage API session per one-minute scheduled process", () => {

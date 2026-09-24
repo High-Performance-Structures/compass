@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest"
 import {
   changesSageLinkedCustomerIdentity,
   changesSageLinkedVendorIdentity,
-  isLegacySageClientEmailFill,
   sameSageLinkedVendorContacts,
 } from "@/lib/sage/contact-edit-gate"
 
@@ -33,18 +32,6 @@ describe("Sage-linked contact edit gate", () => {
     expect(changesSageLinkedVendorIdentity(existing, {
       ownerName: "Alex",
     })).toBe(true)
-  })
-
-  it("preserves only the guarded first-email Sage write", () => {
-    const existing = {
-      sageClientId: "101", sageClientNumber: "123", email: null,
-      name: "Acme", phone: null,
-    }
-    expect(isLegacySageClientEmailFill(existing, { email: "new@example.com", name: "Acme" })).toBe(true)
-    expect(isLegacySageClientEmailFill(existing, { email: "new@example.com", name: "Different" })).toBe(false)
-    expect(isLegacySageClientEmailFill({ ...existing, email: "old@example.com" }, {
-      email: "new@example.com",
-    })).toBe(false)
   })
 
   it("allows a category-only vendor edit when the dialog resubmits unchanged contacts", () => {
