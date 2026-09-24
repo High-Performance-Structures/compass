@@ -21,6 +21,10 @@ import {
   contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
 } from "@/lib/contact-identity-ownership"
+import {
+  changesSageLinkedCustomerIdentity,
+  isLegacySageClientEmailFill,
+} from "@/lib/sage/contact-edit-gate"
 
 export type CreateCustomerInput = {
   readonly name: string
@@ -280,6 +284,20 @@ export async function updateCustomer(
       .limit(1)
       .get()
     if (!existing) return { success: false, error: "Customer not found" }
+    const normalizedExistingEmail = existing.email?.trim() || null
+    const normalizedNextEmail = data.email === undefined
+      ? normalizedExistingEmail
+      : data.email?.trim() || null
+    const legacyEmailFillOnly = isLegacySageClientEmailFill(existing, data)
+    if (
+      (existing.sageClientId || existing.sageClientNumber) &&
+      changesSageLinkedCustomerIdentity(existing, data) && !legacyEmailFillOnly
+    ) {
+      return {
+        success: false,
+        error: "This client is linked to Sage. Contact changes need Sage review before Compass can update the directory.",
+      }
+    }
     if (
       data.relationshipType !== undefined &&
       data.relationshipType !== "client" &&
@@ -316,16 +334,7 @@ export async function updateCustomer(
       data.relationshipType === "lead"
         ? { ...data, relationshipType: "client" }
         : data
-    const normalizedExistingEmail = existing.email?.trim() || null
-    const normalizedNextEmail =
-      safeData.email === undefined
-        ? normalizedExistingEmail
-        : safeData.email?.trim() || null
-    const shouldQueueSageEmailUpdate =
-      normalizedExistingEmail === null &&
-      normalizedNextEmail !== null &&
-      Boolean(existing.sageClientId) &&
-      Boolean(existing.sageClientNumber)
+    const shouldQueueSageEmailUpdate = legacyEmailFillOnly
     const customerUpdate = db
       .update(customers)
       .set({ ...safeData, email: normalizedNextEmail, updatedAt })

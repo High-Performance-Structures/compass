@@ -89,6 +89,100 @@ export const sageClientProjectWriteOperations = sqliteTable(
   ]
 )
 
+/** Read requests are claimed by the private bridge; the browser never queries Sage. */
+export const sageContactReadRequests = sqliteTable(
+  "sage_contact_read_requests",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    entityId: text("entity_id").notNull(),
+    sageRecordId: text("sage_record_id"),
+    sageRecordNumber: text("sage_record_number"),
+    parentSageRecordId: text("parent_sage_record_id"),
+    status: text("status").notNull().default("queued"),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    errorMessage: text("error_message"),
+    requestedAt: text("requested_at").notNull(),
+    completedAt: text("completed_at"),
+  },
+  (table) => [
+    index("sage_contact_reads_claim_idx").on(table.status, table.claimedAt, table.requestedAt),
+    index("sage_contact_reads_entity_idx").on(table.organizationId, table.kind, table.entityId),
+  ]
+)
+
+/** Only a signed bridge result may replace the last authoritative Sage read. */
+export const sageContactSnapshots = sqliteTable(
+  "sage_contact_snapshots",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    entityId: text("entity_id").notNull(),
+    sageRecordId: text("sage_record_id").notNull(),
+    parentSageRecordId: text("parent_sage_record_id"),
+    revision: text("revision").notNull(),
+    fieldsJson: text("fields_json").notNull(),
+    capturedAt: text("captured_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_contact_snapshots_entity_unique").on(table.organizationId, table.kind, table.entityId),
+    index("sage_contact_snapshots_sage_idx").on(table.organizationId, table.kind, table.sageRecordId),
+  ]
+)
+
+/** The proposed diff is immutable after insertion; lifecycle fields are mutable. */
+export const sageContactChangeProposals = sqliteTable(
+  "sage_contact_change_proposals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    entityId: text("entity_id").notNull(),
+    sageRecordId: text("sage_record_id").notNull(),
+    parentSageRecordId: text("parent_sage_record_id"),
+    baseRevision: text("base_revision").notNull(),
+    changesJson: text("changes_json").notNull(),
+    status: text("status").notNull().default("pending"),
+    requestedByUserId: text("requested_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: text("reviewed_at"),
+    reviewNote: text("review_note"),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    resultRevision: text("result_revision"),
+    errorMessage: text("error_message"),
+    requestedAt: text("requested_at").notNull(),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_contact_changes_active_entity_unique")
+      .on(table.organizationId, table.kind, table.entityId)
+      .where(sql`${table.status} IN ('pending', 'approved', 'running')`),
+    index("sage_contact_changes_review_idx").on(table.organizationId, table.status, table.requestedAt),
+  ]
+)
+
+/** Append-only approval and execution trail, including reviewer identity. */
+export const sageContactChangeEvents = sqliteTable(
+  "sage_contact_change_events",
+  {
+    id: text("id").primaryKey(),
+    proposalId: text("proposal_id").notNull().references(() => sageContactChangeProposals.id, { onDelete: "restrict" }),
+    organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+    actorUserId: text("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    detailJson: text("detail_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("sage_contact_change_events_proposal_idx").on(table.proposalId, table.createdAt)]
+)
+
 export const sagePayApplicationSyncRuns = sqliteTable(
   "sage_pay_application_sync_runs",
   {

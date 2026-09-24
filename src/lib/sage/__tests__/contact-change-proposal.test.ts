@@ -77,6 +77,17 @@ describe("reviewed Sage contact change planning", () => {
     })).toMatchObject({ success: false, error: expect.stringContaining("cannot be cleared") })
   })
 
+  it("enforces installed Sage API field lengths before review", () => {
+    expect(planSageContactChange({
+      snapshot: vendorPerson,
+      proposed: { name: "x".repeat(51) },
+    })).toMatchObject({ success: false, error: expect.stringContaining("Sage field limit") })
+    expect(planSageContactChange({
+      snapshot: vendorPerson,
+      proposed: { email: "a".repeat(76) },
+    })).toMatchObject({ success: false, error: expect.stringContaining("Sage field limit") })
+  })
+
   it("rejects a stale or differently scoped Sage read before review", () => {
     const result = planSageContactChange({
       snapshot: vendorPerson,

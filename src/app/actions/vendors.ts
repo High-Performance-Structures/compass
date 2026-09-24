@@ -22,6 +22,10 @@ import {
   contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
 } from "@/lib/contact-identity-ownership"
+import {
+  changesSageLinkedVendorIdentity,
+  sameSageLinkedVendorContacts,
+} from "@/lib/sage/contact-edit-gate"
 import { userRoleLabel } from "@/lib/user-roles"
 
 export type InternalDirectoryContact = {
@@ -343,6 +347,23 @@ export async function updateVendor(
       .get()
     if (!existing) return { success: false, error: "Vendor not found" }
 
+    const contactInputs = normalizedContactInputs(data.contacts ?? [])
+    const existingContacts = data.contacts === undefined
+      ? []
+      : await db.select().from(vendorContacts)
+          .where(eq(vendorContacts.vendorId, id))
+
+    if (
+      (existing.sageVendorId || existing.sageVendorNumber) &&
+      (changesSageLinkedVendorIdentity(existing, data) ||
+        (data.contacts !== undefined && !sameSageLinkedVendorContacts(contactInputs, existingContacts)))
+    ) {
+      return {
+        success: false,
+        error: "This vendor is linked to Sage. Contact changes need Sage review before Compass can update the directory.",
+      }
+    }
+
     const name = data.name?.trim() ?? existing.name
     const category = data.category?.trim() ?? existing.category
     if (!name) return { success: false, error: "Vendor company name is required" }
@@ -378,14 +399,6 @@ export async function updateVendor(
       }
     }
 
-    const contactInputs = normalizedContactInputs(data.contacts ?? [])
-    const existingContacts =
-      data.contacts === undefined
-        ? []
-        : await db
-            .select()
-            .from(vendorContacts)
-            .where(eq(vendorContacts.vendorId, id))
     const existingById = new Map(
       existingContacts.map((contact) => [contact.id, contact])
     )
@@ -580,7 +593,7 @@ export async function createVendorContact(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const vendor = await db
-      .select({ id: vendors.id })
+      .select({ id: vendors.id, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
       .from(vendors)
       .where(
         and(
@@ -591,6 +604,12 @@ export async function createVendorContact(
       )
       .get()
     if (!vendor) return { success: false, error: "Vendor company not found" }
+    if (vendor.sageVendorId || vendor.sageVendorNumber) {
+      return {
+        success: false,
+        error: "This vendor is linked to Sage. Add its contact through the reviewed Sage workflow.",
+      }
+    }
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()

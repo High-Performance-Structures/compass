@@ -15,7 +15,7 @@ using System.Xml.Schema;
 
 namespace CompassSageClientProjectWriter
 {
-    internal static class Program
+    internal static partial class Program
     {
         private const string ApiDllPath = @"C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\Sage.100.Contractor.Api.dll";
         private const string XsdPath = @"C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\mbxml.xsd";
@@ -106,7 +106,9 @@ namespace CompassSageClientProjectWriter
         }
         private sealed class ApiSession : IDisposable
         {
-            public ApiSession(string user, string password)
+            public ApiSession(string user, string password) : this(user, password, TargetCompany) { }
+
+            public ApiSession(string user, string password, string company)
             {
                 try
                 {
@@ -126,8 +128,8 @@ namespace CompassSageClientProjectWriter
                     Invoke("EnableRequests", new object[0]);
                     object allowed = Invoke("IsApplicationAllowed", new object[] { user, password });
                     if (!(allowed is int) || (int)allowed != 0) throw new InvalidOperationException("The Sage API application is not allowed (code " + Convert.ToString(allowed) + ").");
-                    object valid = Invoke("IsValidUser", new object[] { TargetCompany, user, password });
-                    if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("jarvis.api is not a valid Sage API user for the target company.");
+                    object valid = Invoke("IsValidUser", new object[] { company, user, password });
+                    if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("The API user is not valid for the selected Sage company.");
                 }
                 catch
                 {
@@ -148,6 +150,10 @@ namespace CompassSageClientProjectWriter
         public static int Main(string[] args)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            if (args.Length > 0 && String.Equals(args[0], "--contact-run", StringComparison.OrdinalIgnoreCase))
+                return RunContactBridge();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactTest();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {

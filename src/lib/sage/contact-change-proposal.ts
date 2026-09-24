@@ -1,8 +1,4 @@
-/**
- * Contact changes are proposals against a Sage read snapshot. This module does
- * not write to Sage; API element names must be verified on the installed XSD
- * before a bridge worker can execute an approved proposal.
- */
+/** Contact changes are proposals against an authoritative Sage read snapshot. */
 export type SageContactKind =
   | "client_company"
   | "client_person"
@@ -74,11 +70,20 @@ const FIELDS_BY_KIND: Readonly<Record<SageContactKind, readonly SageContactField
   employee: ["addressLine1", "addressLine2", "city", "state", "postalCode", "phone", "cellPhone", "email"],
 }
 
+// Maximum lengths come from the installed Sage 100 Contractor mbxml.xsd.
+const FIELD_MAX_LENGTH: Readonly<Partial<Record<SageContactField, number>>> = {
+  name: 50, title: 50, ownerName: 50,
+  addressLine1: 50, addressLine2: 50, city: 50, state: 2,
+  billingAddressLine1: 50, billingAddressLine2: 50,
+  billingCity: 50, billingState: 2,
+  email: 75, phoneExtension: 6,
+}
+
 export function sageContactProposalFields(kind: SageContactKind): readonly SageContactField[] {
   return FIELDS_BY_KIND[kind]
 }
 
-export function isPrivateEmployeeContactField(field: SageContactField): boolean {
+export function isPrivateEmployeeContactField(field: string): boolean {
   return field === "addressLine1" || field === "addressLine2" ||
     field === "city" || field === "state" || field === "postalCode"
 }
@@ -122,8 +127,8 @@ export function planSageContactChange(input: {
       return { success: false, error: `Invalid value for ${key}.` }
     }
     const after = normalized(submitted)
-    if (after !== null && after.length > 255) {
-      return { success: false, error: `${key} exceeds the proposal limit.` }
+    if (after !== null && after.length > (FIELD_MAX_LENGTH[key] ?? 255)) {
+      return { success: false, error: `${key} exceeds the Sage field limit.` }
     }
     if (key === "name" && after === null) {
       return { success: false, error: "A Sage contact name cannot be cleared." }

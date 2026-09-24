@@ -1,6 +1,7 @@
 # Shared contact directory and Sage field map
 
-Status: implementation design; no Sage contact-write route or production migration is enabled.
+Status: implementation in progress; Sage contact-write claims are disabled and
+the queue migration has not been applied to production.
 
 ## Authority and record boundaries
 
@@ -25,8 +26,8 @@ The labels below were observed in the installed Sage screens. The table and
 column names were read from the installed company's SQL metadata using the
 existing read-only Sage bridge login; no contact rows were fetched. The SQL
 map identifies read-model fields, **not** permission to write a column or the
-API XML element name. API request fields must be validated against the
-installed `mbxml.xsd`; the check below is partial.
+API XML element name. The API elements below were checked against the installed
+`mbxml.xsd`; runtime behavior still needs controlled validation.
 
 | Compass record | Sage table and stable key | Fields shown in Sage | SQL columns |
 | --- | --- | --- | --- |
@@ -53,7 +54,7 @@ This is a verified read-path mapping, not authorization to write or reorder
 the first contact. Vendor `actpay.prmeml` remains a candidate, not a verified
 UI/API binding.
 
-### Installed API schema check (2026-09-22)
+### Installed API schema check (2026-09-23)
 
 Read-only inspection of the installed
 `C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\mbxml.xsd`
@@ -63,14 +64,18 @@ not a successful write or proof of Sage's runtime update behavior.
 | API type/request | Confirmed elements relevant to contact sync |
 | --- | --- |
 | `ClientModRq` / `ClientModType` | `ObjectRef` (`ClientKeyType`), `Addr1`, `Addr2`, `City`, `State`, `PostalCode`, `BillingAddr1`, `BillingAddr2`, `BillingCity`, `BillingState`, `BillingPostalCode` |
+| `ClientContactAdd` / `ClientContactMod` within `ClientModRq` | `ContactName`, `JobTitle`, `Phone`, `Extension`, `Email`, `Mobile`; modification uses `ObjectRef` (`ClientContactKeyType`) with `LineID` |
+| `VendorModRq` / `VendorModType` | `ObjectRef` (`VendorKeyType`), `OwnerName`, `Addr1`, `Addr2`, `City`, `State`, `PostalCode`, `Email`, `PrimaryEmail` |
+| `VendorContactAdd` / `VendorContactMod` within `VendorModRq` | `ContactName`, `JobTitle`, `Phone`, `Extension`, `Email`, `Mobile`; modification uses `ObjectRef` (`VendorContactKeyType`) with `LineID` |
 | `EmployeeModRq` / `EmployeeModType` | `ObjectRef` (`EmployeeKeyType`), `Addr1`, `Addr2`, `City`, `State`, `PostalCode`, `Phone`, `Mobile`, `Email` |
-| `VendorContactAddType` | `ContactName`, `JobTitle`, `Phone`, `Extension`, `Email`, `Mobile`; a vendor add sequence contains `VendorContactAdd` |
-| `VendorContactModType` | `ObjectRef` (`VendorContactKeyType`); the key type has `LineID` |
 
-The installed request list also contains `ClientQryRq`. Still to inspect in
-the installed XSD: vendor company modification fields, client child-contact
-add/modify fields, client and vendor primary-email fields, and the rest of the
-vendor child-contact modification field definitions. A separate authorized
+The installed request list also contains `ClientQryRq`, `VendorQryRq`, and
+`EmployeeQryRq`. Sage's XML `LineID` must still be reconciled with the SQL
+child `_idnum` versus `linnum` before modifying an existing person. The XSD
+confirms a vendor `PrimaryEmail` API field, but does not establish whether the
+specific General Information UI field binds to it or to `Email`; client
+Other Addresses > Primary Email likewise needs a runtime mapping check.
+A separate authorized
 non-production or carefully controlled validation must confirm request/response
 behavior, stable child IDs and ordering, blank/null semantics, conflict
 detection, and read-back before any contact-write route is enabled. No Sage
@@ -167,10 +172,13 @@ proposal and approval is a conflict, never a silent overwrite. Invite status
 and project access are Compass-only and must not ride along with contact data.
 No direct SQL update is permitted.
 
-The current Sage writer only handles client/job creation and guarded filling
-of a blank client email. General client/vendor/employee modification and child
-contact add/modify operations must be implemented and tested against the
-installed Sage API schema before this directory is deployed. Private employee
+The existing production Sage writer handles client/job creation and guarded
+filling of a blank client email. A separate, opt-in contact mode now has
+allowlisted client/vendor/employee modifications and child-contact
+modification code, but has not passed a write/readback test in `HPS Test` or
+been installed on the Sage host. Child-contact adds, primary-email edits,
+and reviewed backfill of person-to-account links remain outside the enabled
+path. Private employee
 address access and approval must be individual staff permissions in Compass
 Settings > Permissions, with Executive Admin the initial default. Employees
 may propose changes to their own record but cannot approve them. No employee
