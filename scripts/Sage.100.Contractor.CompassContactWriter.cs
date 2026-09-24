@@ -301,19 +301,29 @@ namespace CompassSageClientProjectWriter
                             throw new InvalidOperationException("HPS Test parent must begin with its one known contact.");
                         string siblingRevision = QueryContact(ContactTestCompany, existing).revision;
                         string marker = "Compass QA " + Guid.NewGuid().ToString("N").Substring(0, 12);
+                        ContactChange[] proposed = {
+                            new ContactChange { field = "name", after = marker },
+                            new ContactChange { field = "title", after = "QA contact" },
+                            new ContactChange { field = "phone", after = "5550100" },
+                            new ContactChange { field = "phoneExtension", after = "123" },
+                            new ContactChange { field = "email", after = "compass-qa@example.invalid" },
+                            new ContactChange { field = "cellPhone", after = "5550101" }
+                        };
                         bool attempted = false;
                         try
                         {
                             attempted = true; // The API can commit before an error response.
-                            Submit(BuildTestChildXml(kind, parentNumber, marker, null), password);
+                            Submit(BuildContactChildAddXml(kind, parentNumber, proposed, ContactTestCompany), password);
                             ContactTask added = FindTestAddedChild(kind, existing.parentSageRecordId, before, marker);
                             if (added == null || before.ContainsKey(added.sageRecordId) ||
                                 !String.Equals(added.parentSageRecordId, existing.parentSageRecordId, StringComparison.Ordinal))
                                 throw new InvalidOperationException("HPS Test child add did not produce one new exact-parent row.");
                             ContactSnapshot readback = QueryContact(ContactTestCompany, added);
-                            if (!String.Equals(readback.fields["name"], marker, StringComparison.Ordinal) ||
-                                !String.Equals(readback.sageRecordNumber, added.sageRecordNumber, StringComparison.Ordinal))
+                            if (!String.Equals(readback.sageRecordNumber, added.sageRecordNumber, StringComparison.Ordinal))
                                 throw new InvalidOperationException("HPS Test child LineID did not read back correctly.");
+                            foreach (ContactChange field in proposed)
+                                if (!String.Equals(readback.fields[field.field], field.after, StringComparison.Ordinal))
+                                    throw new InvalidOperationException("HPS Test child Add field did not read back: " + field.field);
                             Dictionary<string, string> afterAdd = ReadTestChildRows(kind, existing.parentSageRecordId);
                             if (afterAdd.Count != before.Count + 1 || !TestChildRowsPreserved(before, afterAdd) ||
                                 !String.Equals(QueryContact(ContactTestCompany, existing).revision,
@@ -427,6 +437,42 @@ namespace CompassSageClientProjectWriter
                 "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-child-add-test\" onError=\"stopOnError\"><" +
                 request + " requestID=\"" + Guid.NewGuid().ToString() + "\"><ObjectRef><ObjectID>" + parentNumber +
                 "</ObjectID></ObjectRef>" + operation + "</" + request + "></MBXMLMsgsRq></api:MBXML>";
+            ValidateXml(xml);
+            return xml;
+        }
+
+        private static string BuildContactChildAddXml(string kind, int parentNumber,
+            ContactChange[] fields, string company)
+        {
+            if (kind != "client_person" && kind != "vendor_person")
+                throw new InvalidOperationException("Only client and vendor people may be added through this route.");
+            if (parentNumber < 1 || fields == null || fields.Length == 0)
+                throw new InvalidOperationException("Sage child add requires an exact parent and fields.");
+            Dictionary<string, string> proposed = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (ContactChange field in fields)
+            {
+                bool known = false;
+                foreach (ContactField allowed in PersonFields) if (allowed.Key == field.field) known = true;
+                if (!known || proposed.ContainsKey(field.field))
+                    throw new InvalidOperationException("Unknown or duplicate Sage child field.");
+                proposed.Add(field.field, field.after);
+            }
+            if (!proposed.ContainsKey("name") || String.IsNullOrWhiteSpace(proposed["name"]))
+                throw new InvalidOperationException("Sage child add requires a contact name.");
+            string request = kind == "client_person" ? "ClientModRq" : "VendorModRq";
+            string child = kind == "client_person" ? "ClientContactAdd" : "VendorContactAdd";
+            StringBuilder body = new StringBuilder("<ObjectRef><ObjectID>").Append(parentNumber)
+                .Append("</ObjectID></ObjectRef><").Append(child).Append('>');
+            foreach (ContactField field in PersonFields)
+                if (proposed.ContainsKey(field.Key) && proposed[field.Key] != null)
+                    body.Append('<').Append(field.Xml).Append('>')
+                        .Append(XmlEscape(proposed[field.Key])).Append("</").Append(field.Xml).Append('>');
+            body.Append("</").Append(child).Append('>');
+            string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" +
+                XmlEscape(company) + "</Company><User>" + XmlEscape(Required("SAGE_API_USER")) +
+                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-child-add\" onError=\"stopOnError\"><" +
+                request + " requestID=\"" + Guid.NewGuid().ToString() + "\">" + body.ToString() + "</" + request +
+                "></MBXMLMsgsRq></api:MBXML>";
             ValidateXml(xml);
             return xml;
         }
