@@ -326,6 +326,14 @@ export function buildProjectRegistryRow(input: {
   readonly createdBy: string
 }): readonly string[] {
   const destination = departmentTrackingDestination(input.project.department)
+  // The registry has split-name columns, but a linked directory record may
+  // have only one canonical display name (including multiple owners).
+  const registryClientName =
+    !cellText(input.project.clientFirstName) &&
+    !cellText(input.project.clientLastName) &&
+    !cellText(input.project.companyName)
+      ? cellText(input.project.clientName)
+      : ""
   const values: Readonly<Record<string, string>> = {
     "project id": input.projectNumber,
     "project number": input.projectNumber,
@@ -333,7 +341,7 @@ export function buildProjectRegistryRow(input: {
     sequence: sequenceFromProjectNumber(input.projectNumber),
     "street number code": cellText(input.project.streetNumber),
     "street name label": cellText(input.project.streetName) || input.project.projectName,
-    "client last name": cellText(input.project.clientLastName),
+    "client last name": cellText(input.project.clientLastName) || registryClientName,
     "client first name": cellText(input.project.clientFirstName),
     "company name": cellText(input.project.companyName),
     "city state zip": cellText(input.project.cityStateZip),

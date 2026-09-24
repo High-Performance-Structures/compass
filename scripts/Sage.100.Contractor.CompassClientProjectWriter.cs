@@ -393,6 +393,20 @@ namespace CompassSageClientProjectWriter
 
         private static SageRecord FindClient(ClientPayload client)
         {
+            // A previously linked client must be resolved by the exact stable
+            // Sage identity. Name/email matching is only for an unlinked add.
+            if (!String.IsNullOrWhiteSpace(client.sageClientId) ||
+                !String.IsNullOrWhiteSpace(client.sageClientNumber))
+            {
+                int linkedNumber;
+                if (String.IsNullOrWhiteSpace(client.sageClientId) ||
+                    !Int32.TryParse(client.sageClientNumber, out linkedNumber) || linkedNumber < 1)
+                    throw new InvalidOperationException("Compass supplied an incomplete Sage client link; no write was attempted.");
+                SageRecord linked = FindClientByNumber(linkedNumber);
+                if (linked == null || !String.Equals(linked.Id, client.sageClientId, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Compass Sage client ID and number do not identify the same client; no write was attempted.");
+                return linked;
+            }
             if (String.IsNullOrWhiteSpace(client.email)) return FindClientByName(client.name);
             SageRecord emailMatch = FindClientByEmail(client.email);
             if (emailMatch != null) return emailMatch;

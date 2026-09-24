@@ -20,6 +20,8 @@ export type SageJobTypeId = (typeof SAGE_JOB_TYPE_OPTIONS)[number]["id"]
 
 export const sageClientPayloadSchema = z.object({
   compassCustomerId: z.string().min(1),
+  sageClientId: z.string().min(1).nullable().optional(),
+  sageClientNumber: z.string().min(1).nullable().optional(),
   name: z.string().min(1).max(75),
   shortName: z.string().min(1).max(30),
   company: z.string().max(75).nullable(),
@@ -32,7 +34,10 @@ export const sageClientPayloadSchema = z.object({
     expectedNumber: z.number().int().min(1).max(6),
     name: z.string().min(1).max(50),
   }),
-})
+}).refine(
+  (client) => Boolean(client.sageClientId) === Boolean(client.sageClientNumber),
+  { message: "A linked Sage client needs both its stable ID and number", path: ["sageClientId"] }
+)
 
 export const sageJobPayloadSchema = z.object({
   compassProjectId: z.string().min(1),

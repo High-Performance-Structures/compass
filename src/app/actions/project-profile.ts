@@ -994,16 +994,27 @@ export async function updateProjectInformation(input: {
 
     const linkedCustomers = input.updateClientDefaultMailingAddress
       ? await db
-        .select({ id: customers.id })
+        .select({
+          id: customers.id,
+          sageClientId: customers.sageClientId,
+          sageClientNumber: customers.sageClientNumber,
+        })
         .from(projectContacts)
         .innerJoin(customers, eq(projectContacts.sourceEntityId, customers.id))
         .where(
           and(
             eq(projectContacts.projectId, input.projectId),
             eq(projectContacts.sourceEntityType, "customer"),
+            eq(customers.organizationId, organizationId),
           ),
         )
       : []
+    if (linkedCustomers.some((customer) => customer.sageClientId || customer.sageClientNumber)) {
+      return {
+        success: false,
+        error: "This client is linked to Sage. Update its default mailing address through Contacts review, or leave the client-default option unchecked.",
+      }
+    }
     const updatedAt = nowIso()
     const legacyStatus = legacyProjectStatusAfterClientUpdate({
       currentStatus: existing.status,

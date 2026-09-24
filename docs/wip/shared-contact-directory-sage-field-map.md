@@ -21,6 +21,15 @@ Contacts and, for Sage-linked records, the reviewed proposal path. The project
 contact editor now treats any linked directory identity as canonical; it edits
 assignment metadata only and does not write identity values back to the
 directory. Legacy unlinked project snapshots remain locally editable.
+Project intake offers a searchable directory picker and requires an explicit
+existing-client ID; a matching name or email alone does not link records.
+It preserves any selected client's canonical identity instead of copying
+intake contact fields over it, including in the Project Registry and tracker.
+Incomplete Sage client links are refused before a project is created. The Sage job writer now
+requires both the stable Sage ID and number for a previously linked client;
+ambiguous Compass directory matches fail for review. Updating a Sage-linked
+client's default mailing address from Project Information is refused and
+directed to Contacts review.
 
 Compass edits are proposals. A reviewer sees a field-level diff against the
 latest Sage read, approves it, and a narrowly scoped server-side worker sends
