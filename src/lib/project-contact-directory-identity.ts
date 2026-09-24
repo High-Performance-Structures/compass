@@ -11,6 +11,22 @@ export type ProjectContactDirectoryIdentityReference = {
   readonly vendorContactId: string | null
 }
 
+export function isCanonicalDirectoryAssignment(input: {
+  readonly sourceEntityType: string
+  readonly customerId: string | null
+  readonly customerContactId: string | null
+  readonly vendorId: string | null
+  readonly vendorContactId: string | null
+  readonly internalContactId: string | null
+}): boolean {
+  return input.customerId !== null ||
+    input.customerContactId !== null ||
+    input.vendorId !== null ||
+    input.vendorContactId !== null ||
+    input.internalContactId !== null ||
+    ["customer", "customer_contact", "vendor", "vendor_contact", "internal_contact", "user"].includes(input.sourceEntityType)
+}
+
 const EMPTY_PROJECT_CONTACT_IDENTITY: ProjectContactIdentity = {
   email: null,
   phone: null,
@@ -60,17 +76,17 @@ export function resolveProjectContactIdentity(
 }
 
 /**
- * Active Compass users own their identity fields. Editing their project
- * metadata must therefore ignore identity values echoed by the contact form.
- * Existing snapshots only remain a fallback when the directory is unavailable.
+ * Shared directory records own identity fields. Editing project assignment
+ * metadata must ignore identity values echoed by the project form. Existing
+ * snapshots only remain a fallback when the directory is unavailable.
  */
 export function resolveProjectContactMutationIdentity(input: {
   readonly submittedIdentity: ProjectContactIdentity
   readonly existingIdentity: ProjectContactIdentity | null
   readonly directoryIdentity: ProjectContactIdentity | null
-  readonly managedByActiveUser: boolean
+  readonly managedByDirectory: boolean
 }): ProjectContactIdentity {
-  if (!input.managedByActiveUser) return input.submittedIdentity
+  if (!input.managedByDirectory) return input.submittedIdentity
 
   return resolveProjectContactIdentity(
     input.existingIdentity ?? EMPTY_PROJECT_CONTACT_IDENTITY,

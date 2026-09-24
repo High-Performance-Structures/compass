@@ -14,6 +14,14 @@ contact identity. A person may be assigned to many projects, and a client or
 vendor may have many people. A Compass login is optional and distinct from the
 directory person.
 
+Account Settings edits only WorkOS sign-in name/email and the local account
+identity. It no longer broadcasts login/profile values into company, person,
+invitation, or project-contact records. Phone and address changes belong in
+Contacts and, for Sage-linked records, the reviewed proposal path. The project
+contact editor now treats any linked directory identity as canonical; it edits
+assignment metadata only and does not write identity values back to the
+directory. Legacy unlinked project snapshots remain locally editable.
+
 Compass edits are proposals. A reviewer sees a field-level diff against the
 latest Sage read, approves it, and a narrowly scoped server-side worker sends
 the change with an idempotency key. The worker checks the Sage identity and

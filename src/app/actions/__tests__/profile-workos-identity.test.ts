@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
+  getDb: vi.fn(),
   getWorkOS: vi.fn(),
   requireAuth: vi.fn(),
   revalidatePath: vi.fn(),
   updateUser: vi.fn(),
+  updateLocal: vi.fn(),
+  runLocal: vi.fn(),
   withAuth: vi.fn(),
 }))
 
@@ -18,9 +21,11 @@ vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({
   getCloudflareContext: mocks.getCloudflareContext,
 }))
+vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 
 import { updateProfile } from "@/app/actions/profile"
+import { users } from "@/db/schema"
 
 describe("updateProfile WorkOS identity", () => {
   beforeEach(() => {
@@ -40,6 +45,11 @@ describe("updateProfile WorkOS identity", () => {
     })
     mocks.updateUser.mockResolvedValue({})
     mocks.getCloudflareContext.mockResolvedValue({ env: {} })
+    mocks.runLocal.mockResolvedValue(undefined)
+    mocks.updateLocal.mockReturnValue({
+      set: () => ({ where: () => ({ run: mocks.runLocal }) }),
+    })
+    mocks.getDb.mockReturnValue({ update: mocks.updateLocal })
   })
 
   it("updates the authenticated WorkOS identity while preserving the local ID", async () => {
@@ -47,8 +57,6 @@ describe("updateProfile WorkOS identity", () => {
       firstName: "Stanley",
       lastName: "Platt",
       email: "stanley@example.com",
-      phone: "",
-      address: "",
     })
 
     expect(result).toEqual({
@@ -63,5 +71,20 @@ describe("updateProfile WorkOS identity", () => {
       firstName: "Stanley",
       lastName: "Platt",
     })
+  })
+
+  it("never writes directory or project contact identity from Account Settings", async () => {
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+
+    const result = await updateProfile({
+      firstName: "Stanley",
+      lastName: "Platt",
+      email: "stanley@example.com",
+    })
+
+    expect(result.success).toBe(true)
+    expect(mocks.updateLocal).toHaveBeenCalledTimes(1)
+    expect(mocks.updateLocal).toHaveBeenCalledWith(users)
+    expect(mocks.runLocal).toHaveBeenCalledTimes(1)
   })
 })

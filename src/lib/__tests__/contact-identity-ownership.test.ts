@@ -70,7 +70,7 @@ describe("contact identity ownership", () => {
 })
 
 describe("profile identity validation", () => {
-  it("normalizes the email and permits blank optional contact fields", () => {
+  it("normalizes account email without accepting business contact fields", () => {
     const result = updateProfileSchema.safeParse({
       firstName: " Brian ",
       lastName: " Sack ",
@@ -85,8 +85,6 @@ describe("profile identity validation", () => {
       firstName: "Brian",
       lastName: "Sack",
       email: "brian@example.com",
-      phone: "",
-      address: "",
     })
   })
 

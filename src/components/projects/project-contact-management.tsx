@@ -833,7 +833,7 @@ export function ProjectContactEditor({
             <SheetTitle>{isEditing ? "Edit project contact" : "Add project contact"}</SheetTitle>
             <SheetDescription>
               {identityManagedByActiveUser
-                ? "This active Compass user manages their own phone, email, and address. Project role and visibility remain editable here."
+                ? "Contact details are managed in Contacts; Sage-linked changes require review. Project role and visibility remain editable here."
                 : selectedDirectory
                   ? "Phone, email, and address stay synchronized with the linked directory record."
                   : "Add a project contact or link an existing directory record."}

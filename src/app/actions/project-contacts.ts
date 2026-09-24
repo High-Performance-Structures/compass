@@ -25,7 +25,6 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import {
   activeDirectoryIdentityKeys,
-  contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
   type ContactIdentityFields,
 } from "@/lib/contact-identity-ownership"
@@ -40,6 +39,7 @@ import {
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
 import {
+  isCanonicalDirectoryAssignment,
   isSameProjectContactDirectoryIdentity,
   resolveProjectContactIdentity,
   resolveProjectContactMutationIdentity,
@@ -430,7 +430,9 @@ function toContactItem(
     accessStatus,
     compassAccountStatus,
     identityManagedByActiveUser:
-      accessStatus === "active" || directoryIdentityManaged,
+      accessStatus === "active" ||
+      directoryIdentityManaged ||
+      isCanonicalDirectoryAssignment(row),
   }
 }
 
@@ -1527,23 +1529,11 @@ export async function saveProjectContact(
           sourceEntityId = person.id
           canonicalDisplayName = person.name
           directoryIdentity = { ...person, address: directoryRecord.address }
-          directoryIdentityManaged =
-            await directoryIdentityManagedByActiveUser({
-              db,
-              organizationId: orgId,
-              entityType: "customer_contact",
-              entityId: person.id,
-            })
+          directoryIdentityManaged = true
         } else {
           canonicalDisplayName = directoryRecord.name
           directoryIdentity = directoryRecord
-          directoryIdentityManaged =
-            await directoryIdentityManagedByActiveUser({
-              db,
-              organizationId: orgId,
-              entityType: "customer",
-              entityId: directoryRecord.id,
-            })
+          directoryIdentityManaged = true
         }
       } else if (input.directorySourceType === "vendor") {
         customerId = null
@@ -1599,13 +1589,7 @@ export async function saveProjectContact(
           sourceEntityType = "vendor_contact"
           sourceEntityId = contactRecord.id
           directoryIdentity = { ...contactRecord, address: null }
-          directoryIdentityManaged =
-            await directoryIdentityManagedByActiveUser({
-              db,
-              organizationId: orgId,
-              entityType: "vendor_contact",
-              entityId: contactRecord.id,
-            })
+          directoryIdentityManaged = true
         } else {
           canonicalDisplayName = directoryRecord.name
           canonicalCompanyName = directoryRecord.name
@@ -1613,13 +1597,7 @@ export async function saveProjectContact(
           sourceEntityType = "vendor"
           sourceEntityId = directoryRecord.id
           directoryIdentity = directoryRecord
-          directoryIdentityManaged =
-            await directoryIdentityManagedByActiveUser({
-              db,
-              organizationId: orgId,
-              entityType: "vendor",
-              entityId: directoryRecord.id,
-            })
+          directoryIdentityManaged = true
         }
       } else {
         vendorId = null
@@ -1725,26 +1703,13 @@ export async function saveProjectContact(
       updatedAt: now,
     }
 
-    // The project form edits assignment metadata, not the Sage-owned client
-    // person. Keep its snapshot aligned with the directory until reviewed
-    // contact proposals and Sage read-back are available.
-    if (customerContactId && directoryIdentity) {
+    // Project contacts are assignments. A selected directory identity is
+    // canonical, including intentionally blank fields; never use the form's
+    // echoed values to edit the shared person or company record.
+    if (directoryIdentityManaged && directoryIdentity) {
       contactValues = {
         ...contactValues,
         ...resolveProjectContactIdentity(contactValues, directoryIdentity, true),
-      }
-    }
-
-    if (
-      !contactId &&
-      directoryIdentityManaged &&
-      directoryIdentity &&
-      contactIdentityChanged(directoryIdentity, contactValues)
-    ) {
-      return {
-        success: false,
-        error:
-          "Phone, email, and address are managed by this active Compass user. Add the directory contact without changing those fields.",
       }
     }
 
@@ -1788,6 +1753,7 @@ export async function saveProjectContact(
         customerId = existingContact.customerId
         customerContactId = existingContact.customerContactId
         internalContactId = existingContact.internalContactId
+        directoryIdentityManaged = isCanonicalDirectoryAssignment(existingContact)
       }
       const sameDirectoryIdentity = isSameProjectContactDirectoryIdentity(
         existingContact,
@@ -1799,7 +1765,7 @@ export async function saveProjectContact(
         submittedIdentity: contactValues,
         existingIdentity: sameDirectoryIdentity ? existingContact : null,
         directoryIdentity,
-        managedByActiveUser: directoryIdentityManaged,
+        managedByDirectory: directoryIdentityManaged,
       })
       contactValues = { ...contactValues, ...mutationIdentity }
       if (customerContactId) {
@@ -2048,8 +2014,8 @@ export async function saveProjectContact(
       })
     }
 
-    // Active users own their directory identity. The project snapshot may be a
-    // fallback for blank profile fields, so it must never flow back upstream.
+    // Contact identity is edited once in Contacts, never from a project
+    // assignment. Legacy unlinked snapshots may still be edited in place.
     if (
       !directoryIdentityManaged &&
       sourceEntityType === "customer" &&

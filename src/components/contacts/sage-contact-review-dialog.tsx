@@ -28,7 +28,7 @@ export function SageContactReviewDialog({
   readonly canApprove: boolean
 }): React.ReactElement {
   const [proposals, setProposals] = React.useState<readonly SageContactProposalListItem[]>([])
-  const [note, setNote] = React.useState("")
+  const [notes, setNotes] = React.useState<Readonly<Record<string, string>>>({})
   const [busyId, setBusyId] = React.useState<string | null>(null)
 
   const reload = React.useCallback(async () => {
@@ -43,11 +43,15 @@ export function SageContactReviewDialog({
   const decide = async (proposalId: string, decision: "approve" | "reject") => {
     setBusyId(proposalId)
     try {
-      const result = await reviewSageContactChange(proposalId, decision, note)
+      const result = await reviewSageContactChange(proposalId, decision, notes[proposalId] ?? "")
       if (!result.success) toast.error(result.error)
       else {
         toast.success(decision === "approve" ? "Approved for Sage processing" : "Proposal rejected")
-        setNote("")
+        setNotes((current) => {
+          const next = { ...current }
+          delete next[proposalId]
+          return next
+        })
         await reload()
       }
     } finally {
@@ -80,7 +84,7 @@ export function SageContactReviewDialog({
                   </div>
                 ))}
               </dl>
-              {proposal.status === "pending" && canApprove ? <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Review note (optional)" aria-label="Review note" /> : null}
+              {proposal.status === "pending" && canApprove ? <Textarea value={notes[proposal.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [proposal.id]: event.target.value }))} placeholder="Review note (optional)" aria-label={`Review note for ${proposal.kind.replaceAll("_", " ")} ${proposal.entityId}`} /> : null}
               {proposal.status === "pending" && canApprove ? (
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => void decide(proposal.id, "approve")} disabled={busyId !== null}>Approve</Button>

@@ -34,8 +34,6 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
   const [firstName, setFirstName] = React.useState("")
   const [lastName, setLastName] = React.useState("")
   const [email, setEmail] = React.useState("")
-  const [phone, setPhone] = React.useState("")
-  const [address, setAddress] = React.useState("")
   const [isSavingProfile, setIsSavingProfile] = React.useState(false)
 
   // Password form state
@@ -50,8 +48,6 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
       setFirstName(user.firstName ?? "")
       setLastName(user.lastName ?? "")
       setEmail(user.email)
-      setPhone(user.phone ?? "")
-      setAddress(user.address ?? "")
       // Clear password fields when opening
       setCurrentPassword("")
       setNewPassword("")
@@ -72,8 +68,6 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
         firstName,
         lastName,
         email,
-        phone,
-        address,
       })
       if (result.success) {
         if (
@@ -139,9 +133,7 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
   const hasProfileChanges =
     firstName !== (user.firstName ?? "") ||
     lastName !== (user.lastName ?? "") ||
-    email.trim().toLowerCase() !== user.email.trim().toLowerCase() ||
-    phone.trim() !== (user.phone ?? "").trim() ||
-    address.trim() !== (user.address ?? "").trim()
+    email.trim().toLowerCase() !== user.email.trim().toLowerCase()
 
   const canChangePassword =
     currentPassword.length > 0 &&
@@ -154,7 +146,7 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
         <DialogHeader className="space-y-1">
           <DialogTitle className="text-base">Account Settings</DialogTitle>
           <DialogDescription className="text-xs">
-            Manage your profile and security settings.
+            Manage your sign-in identity and security settings. Update business contact details in Contacts.
           </DialogDescription>
         </DialogHeader>
 
@@ -210,27 +202,6 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
                 A changed email must be verified. SSO-managed emails may need
                 to be changed by your identity administrator.
               </p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="phone" className="text-xs">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                className="h-9"
-                disabled={isSavingProfile}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="address" className="text-xs">Address</Label>
-              <Input
-                id="address"
-                value={address}
-                onChange={(event) => setAddress(event.target.value)}
-                className="h-9"
-                disabled={isSavingProfile}
-              />
             </div>
           </div>
 

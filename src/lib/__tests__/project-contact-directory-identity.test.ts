@@ -1,10 +1,34 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  isCanonicalDirectoryAssignment,
   isSameProjectContactDirectoryIdentity,
   resolveProjectContactIdentity,
   resolveProjectContactMutationIdentity,
 } from "@/lib/project-contact-directory-identity"
+
+describe("isCanonicalDirectoryAssignment", () => {
+  const unlinked = {
+    sourceEntityType: "manual",
+    customerId: null,
+    customerContactId: null,
+    vendorId: null,
+    vendorContactId: null,
+    internalContactId: null,
+  }
+
+  it("keeps unlinked legacy project snapshots editable", () => {
+    expect(isCanonicalDirectoryAssignment(unlinked)).toBe(false)
+  })
+
+  it("protects current and legacy shared-directory links", () => {
+    expect(isCanonicalDirectoryAssignment({ ...unlinked, vendorContactId: "person-1" })).toBe(true)
+    expect(isCanonicalDirectoryAssignment({ ...unlinked, customerId: "client-1" })).toBe(true)
+    expect(isCanonicalDirectoryAssignment({ ...unlinked, internalContactId: "staff-1" })).toBe(true)
+    expect(isCanonicalDirectoryAssignment({ ...unlinked, sourceEntityType: "vendor_contact" })).toBe(true)
+    expect(isCanonicalDirectoryAssignment({ ...unlinked, sourceEntityType: "user" })).toBe(true)
+  })
+})
 
 describe("resolveProjectContactIdentity", () => {
   it("uses linked directory identity as the canonical contact information", () => {
@@ -68,7 +92,7 @@ describe("resolveProjectContactIdentity", () => {
     })
   })
 
-  it("ignores echoed identity fields when saving active-user project metadata", () => {
+  it("ignores echoed identity fields when saving linked project metadata", () => {
     expect(
       resolveProjectContactMutationIdentity({
         submittedIdentity: {
@@ -86,7 +110,7 @@ describe("resolveProjectContactIdentity", () => {
           phone: null,
           address: null,
         },
-        managedByActiveUser: true,
+        managedByDirectory: true,
       })
     ).toEqual({
       email: "current@example.com",
@@ -111,7 +135,7 @@ describe("resolveProjectContactIdentity", () => {
           address: null,
         },
         directoryIdentity: null,
-        managedByActiveUser: false,
+        managedByDirectory: false,
       })
     ).toEqual(submittedIdentity)
   })

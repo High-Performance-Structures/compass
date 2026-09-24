@@ -101,25 +101,25 @@ export function CustomerDialog({
     <ResponsiveDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={initialData ? "Edit Client / Lead" : "Add Client / Lead Contact"}
+      title={initialData ? "Edit Client / Lead" : "Add Client / Lead"}
       description={
         sageLinked
           ? "Sage is the source of truth. Use a reviewed proposal to change company details."
           : developerModeEnabled
-          ? "Maintain the directory contact without granting project access or creating a Sage client."
-          : "Maintain the directory contact without granting project access."
+          ? "Maintain the directory record without granting project access or creating a Sage client. Add individual people separately."
+          : "Maintain the directory record without granting project access. Add individual people separately."
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
           <div className="space-y-1.5">
             <Label htmlFor="cust-name" className="text-xs">
-              Name *
+              Directory display name *
             </Label>
             <Input
               id="cust-name"
               className="h-9"
-              placeholder="Contact name"
+              placeholder="Client or lead name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
