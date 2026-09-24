@@ -225,6 +225,14 @@ switch is true. It finishes its existing client/project work first, avoiding
 a second overlapping scheduled Sage task. `SAGE_CONTACT_WRITES_ENABLED` and
 `SAGE_CONTACT_CREATES_ENABLED` remain separate, default-off write switches
 on both the Compass service and Sage host.
+The guarded installer `scripts/install_sage_contact_writer_release.ps1`
+verifies pinned source hashes, compiles and schema-checks a candidate, backs up
+the approved executable, pauses the existing scheduled task, and runs the
+installed binary's production diagnostic before resuming that task. It refuses
+to run while local contact polling is already enabled. The installer does not
+set the contact bridge credential or any write switch; read-only polling and
+reviewed writes require separate activation and verification after Compass
+migrations and deployment.
 
 ## Compass storage and privacy
 
