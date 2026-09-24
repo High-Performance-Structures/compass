@@ -106,12 +106,15 @@ itself remains unvalidated. None of these diagnostics modified Sage records.
 
 Sage's application approval is bound to the installed writer identity; do not
 interpret a `-1` from a newly compiled temporary-path binary as a test-company
-authentication result. To validate HPS Test, use the guarded candidate/backup
-procedure at the approved installed filename during a maintenance window,
-temporarily holding the scheduled writer so it cannot execute the candidate.
-Restore and verify the original writer and task afterward. Do not run this
-while staff are working in Sage or without first checking the writer's queued
-production work and current task state.
+authentication result. On 2026-09-24, an elevated maintenance session held
+the production scheduled task, backed up the approved executable, substituted
+the candidate at that filename, and ran only `--contact-test`. It returned
+`CONTACT_TEST_SCHEMA_AND_ACCESS_OK` with exit code 0 against HPS Test. The
+original executable was restored with the same SHA-256 hash, the task returned
+to Ready, and the restored production writer passed `--diagnose` with exit
+code 0. No Sage records were changed. Keep this guarded procedure for future
+API validation: never bypass the task pause while production client/project
+writes are enabled, and never leave a candidate executable installed.
 
 Keep contact writes disabled. After HPS Test API access is validated, test on
 explicitly disposable HPS Test records: modify and read back each record kind,
