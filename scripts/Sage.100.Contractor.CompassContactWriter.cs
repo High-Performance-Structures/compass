@@ -251,7 +251,7 @@ namespace CompassSageClientProjectWriter
                     bool statementMirrored = TestContactEmailField(clientPerson, "email", password,
                         delegate { return ReadClientStatementEmail(clientPerson.parentSageRecordId); });
                     WriteLog("INFO", "HPS Test client contact line 1 Email write/readback/restore passed; " +
-                        "SQL stmeml changed with line 1=" + statementMirrored);
+                        "SQL stmeml matched line 1 marker=" + statementMirrored);
                 }
                 WriteLog("INFO", "CONTACT_EMAIL_MAP_TEST_OK; original mapped values restored.");
                 return 0;
@@ -266,7 +266,7 @@ namespace CompassSageClientProjectWriter
             string sideBefore = readSideEffect == null ? null : readSideEffect();
             string marker = "compass-qa-" + Guid.NewGuid().ToString("N").Substring(0, 12) + "@example.invalid";
             bool submitted = false;
-            bool sideChanged = false;
+            bool sideMirrored = false;
             try
             {
                 submitted = true; // Sage may commit even if its response fails.
@@ -278,7 +278,7 @@ namespace CompassSageClientProjectWriter
                 if (!String.Equals(written.fields[field], marker, StringComparison.Ordinal))
                     throw new InvalidOperationException("HPS Test primary email did not read back from its exact SQL field.");
                 if (readSideEffect != null)
-                    sideChanged = !String.Equals(sideBefore ?? "", readSideEffect() ?? "", StringComparison.Ordinal);
+                    sideMirrored = String.Equals(readSideEffect(), marker, StringComparison.Ordinal);
             }
             finally
             {
@@ -297,7 +297,7 @@ namespace CompassSageClientProjectWriter
                         throw new InvalidOperationException("HPS Test email side effect did not restore; inspect this record.");
                 }
             }
-            return sideChanged;
+            return sideMirrored;
         }
 
         private static string ReadClientStatementEmail(string parentSageRecordId)
