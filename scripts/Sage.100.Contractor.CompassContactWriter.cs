@@ -176,6 +176,50 @@ namespace CompassSageClientProjectWriter
                             }
                         }
                         WriteLog("INFO", "HPS Test contact write/readback/restore passed: " + kind);
+
+                        // Optional fields must also support clearing a value.
+                        // This deliberately runs only against the disposable
+                        // HPS Test record and restores its original value.
+                        string optionalField = kind == "client_person" || kind == "vendor_person"
+                            ? "title" : "addressLine2";
+                        ContactSnapshot optionalBefore = QueryContact(ContactTestCompany, task);
+                        string optionalMarker = "Compass QA " + Guid.NewGuid().ToString("N").Substring(0, 8);
+                        bool optionalSubmitted = false;
+                        try
+                        {
+                            optionalSubmitted = true; // The API may commit before returning an error.
+                            Submit(BuildContactXml(kind, Convert.ToInt32(optionalBefore.sageRecordNumber),
+                                ContactParentNumber(ContactTestCompany, task), new ContactChange[] {
+                                    new ContactChange { field = optionalField,
+                                        before = optionalBefore.fields[optionalField], after = optionalMarker }
+                                }, ContactTestCompany), password);
+                            ContactSnapshot filled = QueryContact(ContactTestCompany, task);
+                            if (!String.Equals(filled.fields[optionalField], optionalMarker, StringComparison.Ordinal))
+                                throw new InvalidOperationException("HPS Test optional field did not read back after fill: " + kind);
+                            Submit(BuildContactXml(kind, Convert.ToInt32(filled.sageRecordNumber),
+                                ContactParentNumber(ContactTestCompany, task), new ContactChange[] {
+                                    new ContactChange { field = optionalField,
+                                        before = optionalMarker, after = "" }
+                                }, ContactTestCompany), password);
+                            ContactSnapshot cleared = QueryContact(ContactTestCompany, task);
+                            if (!String.IsNullOrEmpty(cleared.fields[optionalField]))
+                                throw new InvalidOperationException("HPS Test optional field did not clear: " + kind);
+                        }
+                        finally
+                        {
+                            if (optionalSubmitted)
+                            {
+                                ContactSnapshot current = QueryContact(ContactTestCompany, task);
+                                List<ContactChange> restore = ContactRestoreChanges(optionalBefore, current);
+                                if (restore.Count > 0)
+                                    Submit(BuildContactXml(kind, Convert.ToInt32(current.sageRecordNumber),
+                                        ContactParentNumber(ContactTestCompany, task), restore.ToArray(), ContactTestCompany), password);
+                                ContactSnapshot restored = QueryContact(ContactTestCompany, task);
+                                if (ContactRestoreChanges(optionalBefore, restored).Count > 0)
+                                    throw new InvalidOperationException("HPS Test optional field restoration did not verify: " + kind);
+                            }
+                        }
+                        WriteLog("INFO", "HPS Test blank-field write/readback/restore passed: " + kind);
                     }
                 }
                 WriteLog("INFO", "CONTACT_WRITE_TEST_OK; original mapped values restored.");

@@ -146,6 +146,12 @@ not establish blank/null update semantics, revision-conflict behavior, every
 mapped field, primary-email behavior, or adding child contacts. Those remain
 separate release gates before production contact writes are enabled.
 
+The next guarded HPS Test test now includes an optional-field fill, clear,
+readback, and restore for each of the five record kinds. It has not yet run on
+the Sage host and must not be reported as validation until its restore and
+production-writer checks pass. Primary-email and child-add behavior remain
+outside that test.
+
 ## Compass storage and privacy
 
 - Existing `customers` and `vendors` become canonical company records with
