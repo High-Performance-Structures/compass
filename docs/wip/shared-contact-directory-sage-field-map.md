@@ -81,6 +81,32 @@ behavior, stable child IDs and ordering, blank/null semantics, conflict
 detection, and read-back before any contact-write route is enabled. No Sage
 records were changed during this schema check.
 
+### HPS Test read-only validation (2026-09-24)
+
+The proposed C# contact writer compiled on the Sage host. Read-only queries
+against the **HPS Test** company confirmed that every SQL column used by its
+client-company, vendor-company, client/vendor-person, and employee mappings
+exists. Company and employee records use a `uniqueidentifier` `_idnum` plus a
+numeric `recnum`; child contact rows also have `_idref` (parent GUID),
+`linnum`, and numeric `recnum`. The runtime meaning of the XML child `LineID`
+is **not** established by these column checks.
+
+`--contact-schema-test` validated generated XML for all five record kinds and
+all mapped fields against the Sage host's installed `mbxml.xsd` without
+submitting a request. It passed. `--contact-test` then reached Sage API
+initialization but stopped at `IsApplicationAllowed` with code `-1`. The
+configured API user exists in HPS Test, belongs to the exact `API` group, and
+that group has Save permission. An earlier diagnostic against the production
+company succeeded with the same API user, so the current HPS Test denial still
+needs a license/session,
+credential, or API-configuration investigation; group membership alone does
+not prove the API session can authenticate. Neither test modified Sage data.
+
+Keep contact writes disabled. After API access is restored, validate on
+explicitly disposable HPS Test records: modify and read back each record kind,
+verify parent/child identity and contact ordering, then check blank values and
+revision conflicts. Only then consider enabling the reviewed write queue.
+
 ## Compass storage and privacy
 
 - Existing `customers` and `vendors` become canonical company records with
