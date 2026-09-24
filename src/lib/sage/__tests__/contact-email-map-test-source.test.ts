@@ -38,3 +38,21 @@ describe("HPS Test contact primary-email mapping probe", () => {
     expect(harness).toContain("production_writer_restored=$restored")
   })
 })
+
+describe("HPS Test child-contact add probe", () => {
+  it("validates add and delete XML before swapping the production writer", () => {
+    expect(entrypoint).toContain('"--contact-child-add-test"')
+    expect(writer).toContain('BuildTestChildXml("client_person", 1, "Compass QA", null)')
+    expect(writer).toContain('BuildTestChildXml("vendor_person", 1, null, 2)')
+    expect(harness).toContain("& $candidate --contact-schema-test")
+    expect(harness).toContain("& $installed --contact-child-add-test")
+  })
+
+  it("deletes only a new child of the exact test parent and verifies siblings", () => {
+    expect(writer).toContain('before.ContainsKey(added.sageRecordId)')
+    expect(writer).toContain('TestChildRowsPreserved(before, afterAdd)')
+    expect(writer).toContain('TestChildRowsPreserved(before, restored)')
+    expect(writer).toContain('More than one new HPS Test child; no delete attempted.')
+    expect(writer).toContain('New HPS Test child did not match this probe marker; no delete attempted.')
+  })
+})

@@ -158,6 +158,8 @@ namespace CompassSageClientProjectWriter
                 return RunContactWriteTest();
             if (args.Length > 0 && String.Equals(args[0], "--contact-email-map-test", StringComparison.OrdinalIgnoreCase))
                 return RunContactEmailMapTest();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-child-add-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactChildAddTest();
             if (args.Length > 0 && String.Equals(args[0], "--contact-schema-test", StringComparison.OrdinalIgnoreCase))
                 return RunContactSchemaTest();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);

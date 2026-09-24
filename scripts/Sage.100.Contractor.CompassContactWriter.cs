@@ -260,6 +260,158 @@ namespace CompassSageClientProjectWriter
             catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
         }
 
+        // HPS Test only: prove Sage's Add/Del child semantics without touching
+        // either pre-existing contact. This is not a production bridge route.
+        private static int RunContactChildAddTest()
+        {
+            try
+            {
+                if (!String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_TEST_WRITES_ENABLED"),
+                    "true", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("HPS Test child adds require the explicit local test switch.");
+                ValidateContactSchema();
+                string password = Required("SAGE_API_PASSWORD");
+                using (new ApiSession(Required("SAGE_API_USER"), password, ContactTestCompany))
+                {
+                    foreach (string kind in new string[] { "client_person", "vendor_person" })
+                    {
+                        ContactTask existing = FindContactTestRecord(kind, "name");
+                        int parentNumber = ContactParentNumber(ContactTestCompany, existing);
+                        Dictionary<string, string> before = ReadTestChildRows(kind, existing.parentSageRecordId);
+                        if (before.Count != 1 || !before.ContainsKey(existing.sageRecordId))
+                            throw new InvalidOperationException("HPS Test parent must begin with its one known contact.");
+                        string siblingRevision = QueryContact(ContactTestCompany, existing).revision;
+                        string marker = "Compass QA " + Guid.NewGuid().ToString("N").Substring(0, 12);
+                        bool attempted = false;
+                        try
+                        {
+                            attempted = true; // The API can commit before an error response.
+                            Submit(BuildTestChildXml(kind, parentNumber, marker, null), password);
+                            ContactTask added = FindTestAddedChild(kind, existing.parentSageRecordId, before, marker);
+                            if (added == null || before.ContainsKey(added.sageRecordId) ||
+                                !String.Equals(added.parentSageRecordId, existing.parentSageRecordId, StringComparison.Ordinal))
+                                throw new InvalidOperationException("HPS Test child add did not produce one new exact-parent row.");
+                            ContactSnapshot readback = QueryContact(ContactTestCompany, added);
+                            if (!String.Equals(readback.fields["name"], marker, StringComparison.Ordinal) ||
+                                !String.Equals(readback.sageRecordNumber, added.sageRecordNumber, StringComparison.Ordinal))
+                                throw new InvalidOperationException("HPS Test child LineID did not read back correctly.");
+                            Dictionary<string, string> afterAdd = ReadTestChildRows(kind, existing.parentSageRecordId);
+                            if (afterAdd.Count != before.Count + 1 || !TestChildRowsPreserved(before, afterAdd) ||
+                                !String.Equals(QueryContact(ContactTestCompany, existing).revision,
+                                    siblingRevision, StringComparison.Ordinal))
+                                throw new InvalidOperationException("HPS Test child add changed an existing sibling.");
+                        }
+                        finally
+                        {
+                            if (attempted)
+                            {
+                                ContactTask added = FindTestAddedChild(kind, existing.parentSageRecordId, before, marker);
+                                if (added != null)
+                                {
+                                    if (before.ContainsKey(added.sageRecordId))
+                                        throw new InvalidOperationException("Refusing to delete a pre-existing HPS Test child.");
+                                    Submit(BuildTestChildXml(kind, parentNumber, null,
+                                        Convert.ToInt32(added.sageRecordNumber)), password);
+                                }
+                                Dictionary<string, string> restored = ReadTestChildRows(kind, existing.parentSageRecordId);
+                                if (restored.Count != before.Count || !TestChildRowsPreserved(before, restored) ||
+                                    !String.Equals(QueryContact(ContactTestCompany, existing).revision,
+                                        siblingRevision, StringComparison.Ordinal))
+                                    throw new InvalidOperationException("HPS Test child rows did not restore; inspect the test parent.");
+                            }
+                        }
+                        WriteLog("INFO", "HPS Test child add/readback/delete/restore passed: " + kind);
+                    }
+                }
+                WriteLog("INFO", "CONTACT_CHILD_ADD_TEST_OK; original test child rows restored.");
+                return 0;
+            }
+            catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
+        }
+
+        private static bool TestChildRowsPreserved(Dictionary<string, string> before, Dictionary<string, string> after)
+        {
+            foreach (KeyValuePair<string, string> row in before)
+                if (!after.ContainsKey(row.Key) || !String.Equals(after[row.Key], row.Value, StringComparison.Ordinal))
+                    return false;
+            return true;
+        }
+
+        private static Dictionary<string, string> ReadTestChildRows(string kind, string parentId)
+        {
+            string table = kind == "client_person" ? "clncnt" : kind == "vendor_person" ? "vndcnt" : null;
+            if (table == null) throw new InvalidOperationException("Unsupported HPS Test child kind.");
+            Dictionary<string, string> rows = new Dictionary<string, string>(StringComparer.Ordinal);
+            using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+            using (SqlCommand command = new SqlCommand(
+                "SELECT _idnum, linnum, cntnme FROM dbo." + table + " WHERE _idref = @parent", connection))
+            {
+                command.Parameters.AddWithValue("@parent", parentId ?? "");
+                using (SqlDataReader reader = command.ExecuteReader())
+                    while (reader.Read())
+                        rows.Add(Convert.ToString(reader[0]), Convert.ToString(reader[1]) + ":" +
+                            (reader.IsDBNull(2) ? "" : Convert.ToString(reader[2]).Trim()));
+            }
+            return rows;
+        }
+
+        private static ContactTask FindTestAddedChild(string kind, string parentId,
+            Dictionary<string, string> before, string marker)
+        {
+            string table = kind == "client_person" ? "clncnt" : kind == "vendor_person" ? "vndcnt" : null;
+            if (table == null) throw new InvalidOperationException("Unsupported HPS Test child kind.");
+            ContactTask result = null;
+            using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+            using (SqlCommand command = new SqlCommand("SELECT _idnum, linnum, _idref, cntnme FROM dbo." + table +
+                " WHERE _idref = @parent", connection))
+            {
+                command.Parameters.AddWithValue("@parent", parentId ?? "");
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        string id = Convert.ToString(reader[0]);
+                        if (before.ContainsKey(id)) continue;
+                        if (!String.Equals(reader.IsDBNull(3) ? "" : Convert.ToString(reader[3]).Trim(),
+                            marker, StringComparison.Ordinal))
+                            throw new InvalidOperationException("New HPS Test child did not match this probe marker; no delete attempted.");
+                        if (result != null)
+                            throw new InvalidOperationException("More than one new HPS Test child; no delete attempted.");
+                        result = new ContactTask {
+                            kind = kind, sageRecordId = id,
+                            sageRecordNumber = Convert.ToString(reader[1]),
+                            parentSageRecordId = Convert.ToString(reader[2])
+                        };
+                    }
+                }
+            }
+            return result;
+        }
+
+        private static string BuildTestChildXml(string kind, int parentNumber, string addName, int? deleteLine)
+        {
+            if (parentNumber < 1 || (addName == null) == (deleteLine == null))
+                throw new InvalidOperationException("Invalid HPS Test child operation.");
+            if (deleteLine != null && deleteLine.Value < 1)
+                throw new InvalidOperationException("Invalid HPS Test child LineID.");
+            string request = kind == "client_person" ? "ClientModRq" :
+                kind == "vendor_person" ? "VendorModRq" : null;
+            string child = kind == "client_person" ? "ClientContact" :
+                kind == "vendor_person" ? "VendorContact" : null;
+            if (request == null || child == null) throw new InvalidOperationException("Unsupported HPS Test child kind.");
+            string operation = addName != null
+                ? "<" + child + "Add><ContactName>" + XmlEscape(addName) + "</ContactName></" + child + "Add>"
+                : "<" + child + "Del><ObjectRef><LineID>" + deleteLine.Value +
+                    "</LineID></ObjectRef></" + child + "Del>";
+            string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" +
+                XmlEscape(ContactTestCompany) + "</Company><User>" + XmlEscape(Required("SAGE_API_USER")) +
+                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-child-add-test\" onError=\"stopOnError\"><" +
+                request + " requestID=\"" + Guid.NewGuid().ToString() + "\"><ObjectRef><ObjectID>" + parentNumber +
+                "</ObjectID></ObjectRef>" + operation + "</" + request + "></MBXMLMsgsRq></api:MBXML>";
+            ValidateXml(xml);
+            return xml;
+        }
+
         private static bool TestContactEmailField(ContactTask task, string field, string password,
             Func<string> readSideEffect = null)
         {
@@ -447,6 +599,10 @@ namespace CompassSageClientProjectWriter
                 ValidateContactXml(kind, 1, 1, changes, ContactTestCompany);
             }
             BuildVendorPrimaryEmailTestXml(1, "test@example.invalid");
+            BuildTestChildXml("client_person", 1, "Compass QA", null);
+            BuildTestChildXml("vendor_person", 1, "Compass QA", null);
+            BuildTestChildXml("client_person", 1, null, 2);
+            BuildTestChildXml("vendor_person", 1, null, 2);
         }
 
         private static int RunContactBridge()

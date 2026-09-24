@@ -190,6 +190,15 @@ changes with it. The original production writer hash was restored, its
 scheduled task returned to Ready, and `--diagnose` passed. No production
 contact write was enabled.
 
+A guarded HPS Test-only child-contact Add/Del probe has been added to the
+one-shot harness, but has **not yet run** on the Sage host. It validates the
+generated API XML before pausing the scheduled writer. If the schema permits
+the request, it will add one marked contact beneath each exact disposable
+parent, verify the new Sage child ID and LineID and the unchanged existing
+sibling, delete only the new child, then verify the original rows were
+restored. Production child-contact creation remains disabled until this passes
+and the corresponding reviewed Compass workflow is implemented.
+
 ## Compass storage and privacy
 
 - Existing `customers` and `vendors` become canonical company records with
