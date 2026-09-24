@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-09-22"
 }
 ---
 
@@ -36,6 +36,8 @@ Use one directory record when the same company works on several projects. Use se
 4. Select **Invite contact** and review the project and welcome message before sending.
 
 For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
+
+For a supplier or subcontractor listed on several projects with the same email address, **Compass invite pending** appears in each project's Contacts list while an unexpired account invitation is pending. The badge tracks the shared invitation, not project access: inviting from one project does not grant access to the others. Once the person joins Compass, verify and grant access separately for every intended project.
 
 ## Verify Access {#verify-access}
 

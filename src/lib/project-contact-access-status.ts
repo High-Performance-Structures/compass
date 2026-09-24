@@ -30,6 +30,33 @@ export function projectContactCanInvite(
   return status === "not_invited" || status === "expired"
 }
 
+/** An account invitation follows the vendor's email across projects, but
+ * project access is still granted separately after the account is active. */
+export function vendorAccessStatusWithSharedInvite(input: {
+  readonly contactType: string
+  readonly projectStatus: ProjectContactAccessStatus
+  readonly compassAccountStatus: ProjectContactCompassAccountStatus
+  readonly sharedInvitation: ProjectContactInvitationSnapshot | null
+  readonly now?: Date
+}): ProjectContactAccessStatus {
+  if (
+    (input.contactType !== "supplier" && input.contactType !== "subcontractor") ||
+    input.projectStatus === "active" ||
+    input.projectStatus === "inactive" ||
+    input.compassAccountStatus !== "not_registered" ||
+    input.sharedInvitation === null
+  ) {
+    return input.projectStatus
+  }
+
+  const sharedStatus = projectContactAccessStatus({
+    activeProjectMember: false,
+    latestInvitation: input.sharedInvitation,
+    now: input.now,
+  })
+  return sharedStatus === "pending" ? "pending" : input.projectStatus
+}
+
 export function projectContactAccessStatus(input: {
   readonly activeProjectMember: boolean
   readonly latestInvitation: ProjectContactInvitationSnapshot | null

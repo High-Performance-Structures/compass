@@ -82,7 +82,9 @@ function accessStatusLabel(contact: ProjectContactItem): string {
     case "active":
       return "Active"
     case "pending":
-      return "Invited"
+      return contact.contactType === "supplier" || contact.contactType === "subcontractor"
+        ? "Compass invite pending"
+        : "Invited"
     case "expired":
       return "Expired"
     case "inactive":
