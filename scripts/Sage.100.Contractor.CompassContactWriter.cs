@@ -195,6 +195,12 @@ namespace CompassSageClientProjectWriter
 
         private static ContactTask FindContactTestRecord(string kind, string fieldKey)
         {
+            string numberVariable = kind == "client_company" || kind == "client_person" ?
+                "SAGE_CONTACT_TEST_CLIENT_NUMBER" : kind == "vendor_company" || kind == "vendor_person" ?
+                "SAGE_CONTACT_TEST_VENDOR_NUMBER" : "SAGE_CONTACT_TEST_EMPLOYEE_NUMBER";
+            int targetNumber;
+            if (!Int32.TryParse(Environment.GetEnvironmentVariable(numberVariable), out targetNumber) || targetNumber < 1)
+                throw new InvalidOperationException("HPS Test record number is required: " + numberVariable);
             string table = kind == "client_company" ? "reccln" : kind == "vendor_company" ? "actpay" :
                 kind == "client_person" ? "clncnt" : kind == "vendor_person" ? "vndcnt" : "employ";
             bool person = kind == "client_person" || kind == "vendor_person";
@@ -205,21 +211,30 @@ namespace CompassSageClientProjectWriter
             if (column == null) throw new InvalidOperationException("Unsupported HPS Test field.");
             // A single-contact parent prevents an ambiguous child-line write from
             // silently changing another person during this LineID validation.
+            string parentTable = kind == "client_person" ? "reccln" : "actpay";
             string query = "SELECT TOP (1) c._idnum, c." + numberColumn + ", " +
                 (person ? "c._idref" : "NULL") + " FROM dbo." + table + " c WHERE c." + numberColumn +
                 " > 0 AND NULLIF(LTRIM(RTRIM(c." + column + ")), '') IS NOT NULL" +
-                (person ? " AND (SELECT COUNT(*) FROM dbo." + table + " sibling WHERE sibling._idref = c._idref) = 1" : "") +
+                (person ? " AND EXISTS (SELECT 1 FROM dbo." + parentTable +
+                    " parent WHERE parent._idnum = c._idref AND parent.recnum = @targetNumber)" +
+                    " AND (SELECT COUNT(*) FROM dbo." + table + " sibling WHERE sibling._idref = c._idref) = 1" :
+                    " AND c.recnum = @targetNumber") +
                 " ORDER BY c." + numberColumn;
             using (SqlConnection connection = OpenContactSql(ContactTestCompany))
             using (SqlCommand command = new SqlCommand(query, connection))
-            using (SqlDataReader reader = command.ExecuteReader())
             {
-                if (!reader.Read()) throw new InvalidOperationException("HPS Test has no eligible " + kind + " record.");
-                return new ContactTask {
-                    kind = kind, sageRecordId = Convert.ToString(reader[0]),
-                    sageRecordNumber = Convert.ToString(reader[1]),
-                    parentSageRecordId = reader.IsDBNull(2) ? null : Convert.ToString(reader[2])
-                };
+                command.Parameters.AddWithValue("@targetNumber", targetNumber);
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    if (!reader.Read()) throw new InvalidOperationException("HPS Test record " + targetNumber +
+                        " is not eligible for " + kind +
+                        (person ? "; check its single contact has a name." : "; check City is populated."));
+                    return new ContactTask {
+                        kind = kind, sageRecordId = Convert.ToString(reader[0]),
+                        sageRecordNumber = Convert.ToString(reader[1]),
+                        parentSageRecordId = reader.IsDBNull(2) ? null : Convert.ToString(reader[2])
+                    };
+                }
             }
         }
 
