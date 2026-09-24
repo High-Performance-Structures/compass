@@ -56,6 +56,7 @@ export function CustomerDialog({
   const [relationshipType, setRelationshipType] =
     React.useState<CustomerRelationshipType>("client")
   const sageLinked = Boolean(initialData?.sageClientId || initialData?.sageClientNumber)
+  const sageVerified = Boolean(initialData?.sageClientId)
 
   React.useEffect(() => {
     if (initialData) {
@@ -242,7 +243,9 @@ export function CustomerDialog({
             <Button type="button" variant="outline" onClick={onManagePeople}>People at this client</Button>
           ) : null}
           {sageLinked ? (
-            <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>Propose Sage edit</Button>
+            sageVerified ? (
+              <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>Propose Sage edit</Button>
+            ) : <Button type="button" disabled>Verify Sage link first</Button>
           ) : (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Add to Contacts"}

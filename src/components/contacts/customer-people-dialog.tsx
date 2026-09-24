@@ -97,7 +97,7 @@ export function CustomerPeopleDialog({
                 <div className="text-muted-foreground">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {(person.sageContactId || person.sageLineNumber) && canEdit ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(person)}>Propose Sage edit</Button> : null}
+                {person.sageContactId && canEdit ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(person)}>Propose Sage edit</Button> : null}
                 {canLinkAccounts ? <Button type="button" size="sm" variant="outline" onClick={() => onLinkAccount(person)}>Compass account</Button> : null}
                 {canEdit && !customer?.sageLinked ? <Button type="button" size="sm" variant="outline" onClick={() => edit(person)}>Edit</Button> : null}
                 {canDelete && !customer?.sageLinked ? <Button type="button" size="sm" variant="ghost" onClick={() => void remove(person)} disabled={busy}>Remove</Button> : null}
@@ -120,7 +120,7 @@ export function CustomerPeopleDialog({
               <Button type="submit" disabled={busy}>{editingId ? "Save person" : "Add person"}</Button>
             </DialogFooter>
           </form>
-        ) : customer?.sageLinked ? <p className="text-sm text-muted-foreground">New people for Sage-linked clients must first be added through the reviewed Sage workflow.</p> : null}
+        ) : customer?.sageLinked ? <p className="text-sm text-muted-foreground">New people for Sage-linked clients or unverified Sage candidates require a reviewed Sage link and contact workflow.</p> : null}
       </DialogContent>
     </Dialog>
   )

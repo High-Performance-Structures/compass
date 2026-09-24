@@ -169,8 +169,8 @@ the blank value, and restored and verified the original value. It printed
 `CONTACT_WRITE_TEST_OK` and `HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK` with exit
 code 0. The original production executable was restored by SHA-256, its
 scheduled task returned to `Ready`, and the restored executable passed
-`--diagnose`. This establishes the tested optional-field behavior only;
-primary-email mapping and child-contact adds remain separate release gates.
+`--diagnose`. This establishes the tested optional-field behavior only; the
+primary-email and child-contact probes below establish their separate results.
 
 ### HPS Test primary-email probe (2026-09-24)
 
@@ -190,14 +190,16 @@ changes with it. The original production writer hash was restored, its
 scheduled task returned to Ready, and `--diagnose` passed. No production
 contact write was enabled.
 
-A guarded HPS Test-only child-contact Add/Del probe has been added to the
-one-shot harness, but has **not yet run** on the Sage host. It validates the
-generated API XML before pausing the scheduled writer. If the schema permits
-the request, it will add one marked contact beneath each exact disposable
-parent, verify the new Sage child ID and LineID and the unchanged existing
-sibling, delete only the new child, then verify the original rows were
-restored. Production child-contact creation remains disabled until this passes
-and the corresponding reviewed Compass workflow is implemented.
+The guarded HPS Test-only child-contact Add/Del probe passed on 2026-09-24.
+It validated generated API XML before pausing the scheduled writer, added one
+marked contact beneath each exact disposable parent, verified the new Sage
+child ID and LineID and the unchanged existing sibling, deleted only the new
+child, and verified the original rows were restored. The output included
+`CONTACT_CHILD_ADD_TEST_OK`, `production_writer_restored=True`,
+`production_task_state=Ready`, `contact_write_test_exit=0`, `DIAGNOSTIC_OK`,
+and `HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK`. No production contact changed.
+Production child-contact creation remains disabled until the corresponding
+reviewed Compass workflow is implemented.
 
 ## Compass storage and privacy
 

@@ -204,9 +204,8 @@ export function CustomersTable({
       header: "Source",
       cell: ({ row }) => {
         const customer = row.original
-        const isSageLinked = Boolean(
-          customer.sageClientId || customer.sageClientNumber
-        )
+        const isSageLinked = Boolean(customer.sageClientId)
+        const isSageCandidate = !isSageLinked && Boolean(customer.sageClientNumber)
         const isBuildertrendLinked = Boolean(customer.buildertrendContactId)
         return (
           <div className="flex flex-wrap gap-1">
@@ -218,10 +217,13 @@ export function CustomersTable({
                   : ""}
               </Badge>
             ) : null}
+            {isSageCandidate ? (
+              <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge>
+            ) : null}
             {isBuildertrendLinked ? (
               <Badge variant="outline">Buildertrend</Badge>
             ) : null}
-            {!isSageLinked && !isBuildertrendLinked ? (
+            {!isSageLinked && !isSageCandidate && !isBuildertrendLinked ? (
               <Badge variant="outline">Compass</Badge>
             ) : null}
           </div>

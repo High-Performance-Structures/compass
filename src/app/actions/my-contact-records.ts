@@ -51,15 +51,15 @@ export async function getMyContactRecords(): Promise<readonly MyContactRecord[]>
   return [
     ...(user.role === "client" ? clients : []).map((record): MyContactRecord => ({
       kind: "client_person", entityId: record.id, name: record.name,
-      companyName: record.companyName, sageLinked: Boolean(record.sageContactId || record.sageLineNumber),
+      companyName: record.companyName, sageLinked: Boolean(record.sageContactId),
     })),
     ...(["supplier", "subcontractor"].includes(user.role) ? vendorsList : []).map((record): MyContactRecord => ({
       kind: "vendor_person", entityId: record.id, name: record.name,
-      companyName: record.companyName, sageLinked: Boolean(record.sageContactId || record.sageLineNumber),
+      companyName: record.companyName, sageLinked: Boolean(record.sageContactId),
     })),
     ...(isInternalStaffRole(user.role) ? employees : []).map((record): MyContactRecord => ({
       kind: "employee", entityId: record.id, name: record.name,
-      companyName: null, sageLinked: Boolean(record.sageEmployeeId || record.sageEmployeeNumber),
+      companyName: null, sageLinked: Boolean(record.sageEmployeeId),
     })),
   ]
 }

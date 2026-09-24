@@ -62,6 +62,7 @@ export function VendorDialog({
   const [address, setAddress] = React.useState("")
   const [contacts, setContacts] = React.useState<readonly ContactDraft[]>([])
   const sageLinked = Boolean(initialData?.sageVendorId || initialData?.sageVendorNumber)
+  const sageVerified = Boolean(initialData?.sageVendorId)
   const locked = sageLinked || readOnly
 
   React.useEffect(() => {
@@ -280,7 +281,7 @@ export function VendorDialog({
                         >
                           {contact.isPrimary ? "Primary" : "Make primary"}
                         </Button>
-                        {contact.id && initialData?.contacts.some((saved) => saved.id === contact.id && (saved.sageContactId || saved.sageLineNumber)) && onSageEditContact ? (
+                        {contact.id && initialData?.contacts.some((saved) => saved.id === contact.id && saved.sageContactId) && onSageEditContact ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => onSageEditContact(contact.id ?? "", contact.name)}>
                             Propose Sage edit
                           </Button>
@@ -356,9 +357,11 @@ export function VendorDialog({
             Cancel
           </Button>
           {sageLinked && !readOnly ? (
-            <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>
-              Propose Sage company edit
-            </Button>
+            sageVerified ? (
+              <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>
+                Propose Sage company edit
+              </Button>
+            ) : <Button type="button" disabled>Verify Sage link first</Button>
           ) : !readOnly ? (
             <Button type="submit" className="h-9">
               {initialData ? "Save Changes" : "Create Vendor"}

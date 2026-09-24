@@ -164,7 +164,7 @@ function InternalContactsTable({
               )}
               {onSageEdit ? (
                 <td className="px-3 py-2">
-                  {contact.sageEmployeeId || contact.sageEmployeeNumber ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>Propose Sage edit</Button> : null}
+                  {contact.sageEmployeeId ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>Propose Sage edit</Button> : null}
                 </td>
               ) : null}
             </tr>
