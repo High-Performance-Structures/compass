@@ -201,6 +201,15 @@ and `HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK`. No production contact changed.
 Production child-contact creation remains disabled until the corresponding
 reviewed Compass workflow is implemented.
 
+The expanded HPS Test harness at source revision `ac00fd69` also completed
+successfully on 2026-09-24. Its child-contact probe submitted all six mapped
+person fields (name, title, phone, extension, email, cell), read every field
+back, deleted only the marked new child, and verified the original sibling
+rows were preserved for both client and vendor parents. The harness reported
+`contact_write_test_exit=0`, the restored production writer's `DIAGNOSTIC_OK`,
+and `HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK`. This validates the tested API
+field map and guarded restoration, not production Compass queue operation.
+
 The reviewed Compass Add path now stages a new client/vendor person without
 creating a local canonical record prematurely. A different authorized staff
 member must approve it. The contact bridge requires both server and Sage-host
@@ -208,8 +217,8 @@ create switches; a bridge claim is single-attempt, and a timed-out or
 ambiguous Add moves to `needs_reconciliation` instead of retrying. Only an
 exact-parent, exact-field Sage readback supplies the new stable child ID and
 LineID to the canonical directory. This code path is not a production enablement:
-the expanded all-field HPS Test readback and the production bridge installation
-still require separate verification. Both create switches default to off.
+the production bridge installation and end-to-end queue/readback still require
+separate verification. Both create switches default to off.
 The installed client/project scheduled writer can poll the contact queue in
 the same process only when its separate local `SAGE_CONTACT_BRIDGE_ENABLED`
 switch is true. It finishes its existing client/project work first, avoiding
