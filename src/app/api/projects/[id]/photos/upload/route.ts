@@ -22,6 +22,7 @@ import {
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,
   MAX_PHOTO_UPLOAD_FILE_BYTES,
@@ -92,18 +93,6 @@ function normalizedSchedulePhase(value: string): string | null {
     return null
   }
   return value
-}
-
-function isInternalStaffRole(role: string): boolean {
-  switch (role) {
-    case "admin":
-    case "secondary_admin":
-    case "office":
-    case "field":
-      return true
-    default:
-      return false
-  }
 }
 
 function normalizedPhotoKind(value: string): string {
