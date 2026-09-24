@@ -156,16 +156,20 @@ No production contact was edited and contact synchronization was not enabled.
 
 The test's requirement for a populated City and exactly one named child
 contact was a disposable-record selection guard, **not** a Compass or Sage
-production requirement. Optional contact fields may be blank. This test does
-not establish blank/null update semantics, revision-conflict behavior, every
-mapped field, primary-email behavior, or adding child contacts. Those remain
+production requirement. Optional contact fields may be blank. This initial
+test did not establish optional-field clearing, revision-conflict behavior,
+every mapped field, primary-email behavior, or adding child contacts. The
+later test below covers optional-field clearing only; the other gaps remain
 separate release gates before production contact writes are enabled.
 
-The next guarded HPS Test test now includes an optional-field fill, clear,
-readback, and restore for each of the five record kinds. It has not yet run on
-the Sage host and must not be reported as validation until its restore and
-production-writer checks pass. Primary-email and child-add behavior remain
-outside that test.
+The next guarded HPS Test test completed on 2026-09-24. For each of the five
+record kinds, it filled an optional field, read it back, cleared it, read back
+the blank value, and restored and verified the original value. It printed
+`CONTACT_WRITE_TEST_OK` and `HPS_TEST_CONTACT_WRITE_AND_RESTORE_OK` with exit
+code 0. The original production executable was restored by SHA-256, its
+scheduled task returned to `Ready`, and the restored executable passed
+`--diagnose`. This establishes the tested optional-field behavior only;
+primary-email mapping and child-contact adds remain separate release gates.
 
 ## Compass storage and privacy
 
