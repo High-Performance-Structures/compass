@@ -2,6 +2,7 @@ import "server-only"
 
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import { sageContactIdentityError } from "@/lib/sage/contact-bridge"
 
 type Snapshot = {
   readonly kind: SageContactKind
@@ -66,60 +67,49 @@ export async function applySageContactSnapshotToCanonical(
   identity: SageContactEntityIdentity,
   snapshot: Snapshot
 ): Promise<CanonicalUpdateResult> {
-  if (identity.sageRecordId && identity.sageRecordId !== snapshot.sageRecordId) {
-    return { success: false, error: "Sage record ID does not match the directory link." }
-  }
-  if (!identity.sageRecordId && (!identity.sageRecordNumber ||
-    identity.sageRecordNumber !== snapshot.sageRecordNumber)) {
-    return { success: false, error: "Sage record number does not match the directory link." }
-  }
-  if (identity.parentSageRecordId !== snapshot.parentSageRecordId) {
-    return { success: false, error: "Sage parent company does not match the directory link." }
-  }
+  const identityError = sageContactIdentityError(identity, snapshot)
+  if (identityError) return { success: false, error: identityError }
   const now = new Date().toISOString()
   let statement: D1PreparedStatement
   if (snapshot.kind === "client_company") {
     const patch = patchFor(snapshot.fields, CLIENT_COMPANY)
     statement = database.prepare(
       `UPDATE customers SET ${updateAssignments("sage_client_id", patch)}
-       WHERE id = ? AND organization_id = ? AND
-         (sage_client_id = ? OR (sage_client_id IS NULL AND sage_client_number = ?))`
+       WHERE id = ? AND organization_id = ? AND sage_client_id = ?`
     ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      organizationId, snapshot.sageRecordId, snapshot.sageRecordNumber)
+      organizationId, snapshot.sageRecordId)
   } else if (snapshot.kind === "vendor_company") {
     const patch = patchFor(snapshot.fields, VENDOR_COMPANY)
     statement = database.prepare(
       `UPDATE vendors SET ${updateAssignments("sage_vendor_id", patch)}
-       WHERE id = ? AND organization_id = ? AND
-         (sage_vendor_id = ? OR (sage_vendor_id IS NULL AND sage_vendor_number = ?))`
+       WHERE id = ? AND organization_id = ? AND sage_vendor_id = ?`
     ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      organizationId, snapshot.sageRecordId, snapshot.sageRecordNumber)
+      organizationId, snapshot.sageRecordId)
   } else if (snapshot.kind === "client_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = database.prepare(
       `UPDATE customer_contacts SET ${updateAssignments("sage_contact_id", patch)}
-       WHERE id = ? AND (sage_contact_id = ? OR (sage_contact_id IS NULL AND sage_line_number = ?))
+       WHERE id = ? AND sage_contact_id = ?
          AND customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)`
     ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      snapshot.sageRecordId, snapshot.sageRecordNumber,
+      snapshot.sageRecordId,
       organizationId, snapshot.parentSageRecordId)
   } else if (snapshot.kind === "vendor_person") {
     const patch = patchFor(snapshot.fields, PERSON)
     statement = database.prepare(
       `UPDATE vendor_contacts SET ${updateAssignments("sage_contact_id", patch)}
-       WHERE id = ? AND (sage_contact_id = ? OR (sage_contact_id IS NULL AND sage_line_number = ?))
+       WHERE id = ? AND sage_contact_id = ?
          AND vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)`
     ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      snapshot.sageRecordId, snapshot.sageRecordNumber,
+      snapshot.sageRecordId,
       organizationId, snapshot.parentSageRecordId)
   } else {
     const patch = patchFor(snapshot.fields, EMPLOYEE)
     statement = database.prepare(
       `UPDATE internal_contacts SET ${updateAssignments("sage_employee_id", patch)}
-       WHERE id = ? AND organization_id = ? AND
-         (sage_employee_id = ? OR (sage_employee_id IS NULL AND sage_employee_number = ?))`
+       WHERE id = ? AND organization_id = ? AND sage_employee_id = ?`
     ).bind(snapshot.sageRecordId, ...patch.values, now, snapshot.entityId,
-      organizationId, snapshot.sageRecordId, snapshot.sageRecordNumber)
+      organizationId, snapshot.sageRecordId)
   }
   const result = await statement.run()
   if (result.meta.changes !== 1) {

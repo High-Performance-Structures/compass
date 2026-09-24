@@ -93,6 +93,15 @@ export async function POST(request: Request): Promise<Response> {
         eq(sageContactReadRequests.claimToken, result.claimToken)))
       return accepted("failed")
     }
+    if (!read.sageRecordId) {
+      await db.update(sageContactReadRequests).set({
+        status: "failed",
+        errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
+        completedAt: now,
+      }).where(and(eq(sageContactReadRequests.id, read.id),
+        eq(sageContactReadRequests.claimToken, result.claimToken)))
+      return accepted("failed")
+    }
     const snapshot = result.snapshot
     const kind = sageContactKindSchema.safeParse(read.kind)
     if (!kind.success || snapshot.kind !== kind.data || snapshot.entityId !== read.entityId ||
@@ -104,6 +113,15 @@ export async function POST(request: Request): Promise<Response> {
     }
     const identity = await getSageContactEntityIdentity(db, read.organizationId, kind.data, read.entityId)
     if (!identity) return Response.json({ error: "Directory record is missing" }, { status: 409 })
+    if (!identity.sageRecordId) {
+      await db.update(sageContactReadRequests).set({
+        status: "failed",
+        errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
+        completedAt: now,
+      }).where(and(eq(sageContactReadRequests.id, read.id),
+        eq(sageContactReadRequests.claimToken, result.claimToken)))
+      return accepted("failed")
+    }
     const applied = await applySageContactSnapshotToCanonical(env.DB, read.organizationId, identity, snapshot)
     if (!applied.success) return Response.json({ error: applied.error }, { status: 409 })
     await db.insert(sageContactSnapshots).values({

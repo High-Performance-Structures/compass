@@ -224,6 +224,8 @@ and the corresponding reviewed Compass workflow is implemented.
   and Sage rows. Its number-only imports are unverified candidates, not usable
   project-intake links until a reviewer establishes the exact Sage ID and
   reconciles the Compass customer. Previously imported links still need audit.
+  The contact refresh/readback path also refuses number-only candidates; a
+  signed Sage snapshot cannot by itself choose and promote a Compass identity.
 - Buildertrend import identities must resolve to these same canonical IDs using
   an organization-scoped source mapping. Buildertrend evidence remains immutable;
   neither `users` nor a copied project-contact name/email row is a substitute

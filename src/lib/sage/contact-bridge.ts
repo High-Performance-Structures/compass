@@ -5,6 +5,31 @@ import {
   type SageContactFieldChange,
   type SageContactKind,
 } from "@/lib/sage/contact-change-proposal"
+import type { SageContactEntityIdentity } from "@/lib/sage/contact-entity"
+
+export function sageContactIdentityError(
+  identity: SageContactEntityIdentity,
+  snapshot: {
+    readonly sageRecordId: string
+    readonly sageRecordNumber: string | null
+    readonly parentSageRecordId: string | null
+  }
+): string | null {
+  // A number-only import is a candidate, not a reviewed directory link.
+  if (!identity.sageRecordId) {
+    return "Review and link the stable Sage record ID before synchronizing this contact."
+  }
+  if (identity.sageRecordId !== snapshot.sageRecordId) {
+    return "Sage record ID does not match the directory link."
+  }
+  if (identity.sageRecordNumber && identity.sageRecordNumber !== snapshot.sageRecordNumber) {
+    return "Sage record number does not match the directory link."
+  }
+  if (identity.parentSageRecordId !== snapshot.parentSageRecordId) {
+    return "Sage parent company does not match the directory link."
+  }
+  return null
+}
 
 export const sageContactKindSchema = z.enum([
   "client_company", "client_person", "vendor_company", "vendor_person", "employee",

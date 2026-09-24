@@ -3,11 +3,34 @@ import { describe, expect, it } from "vitest"
 import {
   hasOnlySageContactFields,
   readbackConfirmsChanges,
+  sageContactIdentityError,
   sageContactReadResultSchema,
 } from "@/lib/sage/contact-bridge"
 import type { SageContactFieldChange } from "@/lib/sage/contact-change-proposal"
 
 describe("Sage contact bridge contract", () => {
+  it("never promotes a number-only candidate from an unreviewed readback", () => {
+    expect(sageContactIdentityError({
+      sageRecordId: null, sageRecordNumber: "2890",
+      parentSageRecordId: null, linkedUserId: null,
+    }, {
+      sageRecordId: "sage-guid-1", sageRecordNumber: "2890", parentSageRecordId: null,
+    })).toBe("Review and link the stable Sage record ID before synchronizing this contact.")
+  })
+
+  it("checks both stable ID and number for a reviewed link", () => {
+    const identity = {
+      sageRecordId: "sage-guid-1", sageRecordNumber: "2890",
+      parentSageRecordId: null, linkedUserId: null,
+    }
+    expect(sageContactIdentityError(identity, {
+      sageRecordId: "sage-guid-1", sageRecordNumber: "2890", parentSageRecordId: null,
+    })).toBeNull()
+    expect(sageContactIdentityError(identity, {
+      sageRecordId: "sage-guid-1", sageRecordNumber: "2891", parentSageRecordId: null,
+    })).toBe("Sage record number does not match the directory link.")
+  })
+
   it("allows verified vendor primary email but rejects unverified client primary email", () => {
     expect(hasOnlySageContactFields("vendor_company", { primaryEmail: "a@example.com" })).toBe(true)
     expect(hasOnlySageContactFields("client_company", { primaryEmail: "a@example.com" })).toBe(false)

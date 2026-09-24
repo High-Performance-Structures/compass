@@ -159,7 +159,7 @@ export async function getSageContactEditorState(
     }
   }
   return {
-    linked: Boolean(identity.sageRecordId || identity.sageRecordNumber),
+    linked: Boolean(identity.sageRecordId),
     capturedAt: snapshotRow?.capturedAt ?? null,
     fresh: Boolean(snapshotRow && snapshot && isRecent(snapshotRow.capturedAt) &&
       snapshot.sageRecordId === identity.sageRecordId &&
@@ -222,8 +222,8 @@ export async function requestSageContactRefresh(
     }
     const db = getDb(env.DB)
     const identity = await getSageContactEntityIdentity(db, orgId, kind.data, entityId)
-    if (!identity || (!identity.sageRecordId && !identity.sageRecordNumber)) {
-      return { success: false, error: "This contact has no verified Sage link." }
+    if (!identity?.sageRecordId) {
+      return { success: false, error: "Review and link the stable Sage record ID before refreshing this contact." }
     }
     if ((kind.data === "client_person" || kind.data === "vendor_person") &&
       !identity.parentSageRecordId) {

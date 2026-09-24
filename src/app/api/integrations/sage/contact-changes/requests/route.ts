@@ -66,6 +66,18 @@ export async function GET(request: Request): Promise<Response> {
   const reads: unknown[] = []
   for (const candidate of readCandidates) {
     if (!sageContactOrganizationMatches(env, candidate.organizationId)) continue
+    if (!candidate.sageRecordId) {
+      await db.update(sageContactReadRequests).set({
+        status: "failed",
+        errorMessage: "Review and link the stable Sage record ID before synchronizing this contact.",
+        completedAt: nowIso,
+      }).where(and(eq(sageContactReadRequests.id, candidate.id), or(
+        eq(sageContactReadRequests.status, "queued"),
+        and(eq(sageContactReadRequests.status, "running"),
+          lt(sageContactReadRequests.claimedAt, staleIso))
+      )))
+      continue
+    }
     const claimToken = crypto.randomUUID()
     const updated = await db.update(sageContactReadRequests).set({
       status: "running", claimToken, claimedAt: nowIso,
