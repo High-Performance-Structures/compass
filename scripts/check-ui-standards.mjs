@@ -17,6 +17,8 @@ const standards = read("docs/development/ui-standards.md")
 const agents = read("AGENTS.md")
 const pullRequestTemplate = read(".github/pull_request_template.md")
 const pagination = read("src/components/data-table-pagination.tsx")
+const dialog = read("src/components/ui/dialog.tsx")
+const alertDialog = read("src/components/ui/alert-dialog.tsx")
 
 if (!/25.*50.*100/.test(standards) || !/clamp/i.test(standards)) {
   failures.push(
@@ -30,6 +32,25 @@ if (!agents.includes("docs/development/ui-standards.md")) {
 
 if (!pullRequestTemplate.includes("UI standards review")) {
   failures.push(".github/pull_request_template.md: must include the UI standards review")
+}
+
+const dialogLayoutPatterns = [
+  "fixed inset-0",
+  "m-auto",
+  "h-fit",
+  "max-h-[calc(100dvh-2rem)]",
+  "overflow-y-auto",
+]
+
+for (const [relativePath, source] of [
+  ["src/components/ui/dialog.tsx", dialog],
+  ["src/components/ui/alert-dialog.tsx", alertDialog],
+]) {
+  for (const pattern of dialogLayoutPatterns) {
+    if (!source.includes(pattern)) {
+      failures.push(`${relativePath}: shared dialog primitive is missing ${pattern}`)
+    }
+  }
 }
 
 if (

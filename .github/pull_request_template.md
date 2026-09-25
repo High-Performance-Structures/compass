@@ -25,6 +25,8 @@
       page clamping.
 - [ ] I verified loading, empty, success/error, responsive, and accessibility
       behavior for visible UI changes.
+- [ ] If this changes a dialog or alert, it remains viewport-centered,
+      dynamically viewport-bounded, and internally scrollable when needed.
 
 ## notes
 
