@@ -75,6 +75,7 @@ describe("production contact Add boundary", () => {
       ?.split("private static void PostContactCreateResult")[0] ?? ""
     expect(creation).not.toBe("")
     expect(creation).toContain("attempted = true; // An API timeout does not prove that Sage rolled back the Add.")
+    expect(creation.indexOf("using (new ApiSession(")).toBeLessThan(creation.indexOf("attempted = true;"))
     expect(creation.indexOf("attempted = true;")).toBeLessThan(creation.indexOf("Submit(xml,"))
     expect(creation).toContain("ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId)")
     expect(creation).toContain("TestChildRowsPreserved(before, after)")

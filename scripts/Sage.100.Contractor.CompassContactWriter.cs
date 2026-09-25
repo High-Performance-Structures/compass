@@ -783,9 +783,12 @@ namespace CompassSageClientProjectWriter
                 int parentNumber = ContactParentNumber(TargetCompany, task);
                 Dictionary<string, string> before = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
                 string xml = BuildContactChildAddXml(task.kind, parentNumber, proposed, TargetCompany);
-                attempted = true; // An API timeout does not prove that Sage rolled back the Add.
-                using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))
-                    Submit(xml, Required("SAGE_API_PASSWORD"));
+                string password = Required("SAGE_API_PASSWORD");
+                using (new ApiSession(Required("SAGE_API_USER"), password))
+                {
+                    attempted = true; // An API timeout does not prove that Sage rolled back the Add.
+                    Submit(xml, password);
+                }
                 Dictionary<string, string> after = ReadContactChildRows(TargetCompany, task.kind, task.parentSageRecordId);
                 if (after.Count != before.Count + 1 || !TestChildRowsPreserved(before, after))
                     throw new InvalidOperationException("Sage child Add did not produce exactly one new child.");
