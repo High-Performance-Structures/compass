@@ -89,4 +89,31 @@ describe("VendorsTable", () => {
     })
     expect(host.querySelectorAll("tbody tr")).toHaveLength(100)
   })
+
+  it("selects stable vendor IDs only when a bulk action is available", async () => {
+    const vendors = Array.from({ length: 120 }, (_, index) => vendor(index))
+    const onSelectionChange = vi.fn()
+    await act(async () => {
+      root.render(React.createElement(VendorsTable, {
+        vendors, categories: ["Supplier"], selectedIds: [], onSelectionChange,
+      }))
+    })
+
+    const first = host.querySelector<HTMLButtonElement>('button[aria-label="Select Vendor 000"]')
+    expect(first).not.toBeNull()
+    await act(async () => first?.click())
+    expect(onSelectionChange).toHaveBeenLastCalledWith(["vendor-0"])
+
+    await act(async () => {
+      root.render(React.createElement(VendorsTable, {
+        vendors, categories: ["Supplier"], selectedIds: ["vendor-0"], onSelectionChange,
+      }))
+    })
+    expect(host.querySelector('button[aria-label="Select Vendor 000"]')?.getAttribute("aria-checked")).toBe("true")
+
+    const selectPage = host.querySelector<HTMLButtonElement>('button[aria-label="Select all vendors on this page"]')
+    await act(async () => selectPage?.click())
+    expect(onSelectionChange.mock.lastCall?.[0]).toHaveLength(100)
+    expect(onSelectionChange.mock.lastCall?.[0]).not.toContain("vendor-100")
+  })
 })
