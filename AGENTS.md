@@ -89,6 +89,7 @@ bun run db:migrate:prod  # apply migrations to production D1
 testing:
 ```bash
 bun test                 # vitest run (unit + integration)
+bun run ui:check         # enforce the canonical UI standards in CI
 bun test:watch           # vitest in watch mode
 bun test:coverage        # vitest with coverage
 bun test:integration     # integration tests only (__tests__/integration/)
@@ -270,6 +271,10 @@ component conventions
 - icons: lucide-react or @tabler/icons-react
 - data tables: tanstack/react-table
 - charts: recharts
+
+UI standards are canonical in [docs/development/ui-standards.md](docs/development/ui-standards.md).
+Keep this file focused on repository and implementation guidance; update the
+canonical UI document instead of duplicating UI policy here.
 
 environment variables
 ---

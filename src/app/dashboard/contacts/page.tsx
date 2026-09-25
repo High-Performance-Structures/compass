@@ -5,6 +5,13 @@ import { IconPlus, IconShieldCheck } from "@tabler/icons-react"
 import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
+import {
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+  type ColumnDef,
+} from "@tanstack/react-table"
 import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 import {
@@ -40,6 +47,10 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
 import {
   Dialog,
   DialogContent,
@@ -102,6 +113,34 @@ function InternalContactsTable({
   readonly onSageLink?: (contact: InternalDirectoryContact) => void
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
+
+  const columns = React.useMemo<ColumnDef<InternalDirectoryContact>[]>(
+    () => [
+      { id: "name", header: "Name" },
+      { id: "company", header: "Company" },
+      { id: "role", header: "Role" },
+      { id: "contact", header: "Contact" },
+      { id: "access", header: "Compass access" },
+      ...(developerModeEnabled ? [{ id: "source", header: "Source" }] : []),
+      ...(onSageEdit || onSageLink ? [{ id: "actions", header: "Actions" }] : []),
+    ],
+    [developerModeEnabled, onSageEdit, onSageLink]
+  )
+
+  const table = useReactTable({
+    data: [...contacts],
+    columns,
+    getRowId: (contact) => contact.id,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { pagination },
+  })
 
   if (contacts.length === 0) {
     return (
@@ -115,71 +154,85 @@ function InternalContactsTable({
   }
 
   return (
-    <div className="min-h-0 overflow-auto rounded-md border">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-          <tr className="border-b">
-            <th className="px-3 py-2 text-left font-medium">Name</th>
-            <th className="px-3 py-2 text-left font-medium">Company</th>
-            <th className="px-3 py-2 text-left font-medium">Role</th>
-            <th className="px-3 py-2 text-left font-medium">Contact</th>
-            <th className="px-3 py-2 text-left font-medium">Compass access</th>
-            {developerModeEnabled && (
-              <th className="px-3 py-2 text-left font-medium">Source</th>
-            )}
-            {onSageEdit || onSageLink ? <th className="px-3 py-2 text-left font-medium">Actions</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {contacts.map((contact) => (
-            <tr key={contact.id} className="border-b last:border-b-0">
-              <td className="px-3 py-2 font-medium">{contact.name}</td>
-              <td className="px-3 py-2 text-muted-foreground">
-                {contact.company ?? "Internal"}
-              </td>
-              <td className="px-3 py-2">
-                <Badge variant="secondary">{contact.role ?? "Internal"}</Badge>
-              </td>
-              <td className="px-3 py-2 text-muted-foreground">
-                <div className="flex flex-col gap-0.5">
-                  {contact.email ? (
-                    <a href={`mailto:${contact.email}`} className="hover:underline">
-                      {contact.email}
-                    </a>
-                  ) : (
-                    <span>No email</span>
-                  )}
-                  {contact.phone ? (
-                    <a href={`tel:${contact.phone}`} className="hover:underline">
-                      {contact.phone}
-                    </a>
-                  ) : null}
-                </div>
-              </td>
-              <td className="px-3 py-2">
-                <Badge variant="outline">
-                  {contact.accessStatus === "active"
-                    ? "Active"
-                    : contact.accessStatus === "invited"
-                      ? "Invitation pending"
-                      : "No account"}
-                </Badge>
-              </td>
-              {developerModeEnabled && (
-                <td className="px-3 py-2">
-                  <Badge variant="outline">{contact.sourceLabel}</Badge>
-                </td>
-              )}
-              {onSageEdit || onSageLink ? (
-                <td className="px-3 py-2">
-                  {contact.sageEmployeeId && onSageEdit ? <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>Propose Sage edit</Button> : null}
-                  {!contact.sageEmployeeId && onSageLink ? <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(contact)}>Verify Sage link</Button> : null}
-                </td>
-              ) : null}
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
+            <tr className="border-b">
+              {table.getHeaderGroups()[0]?.headers.map((header) => (
+                <th key={header.id} className="px-3 py-2 text-left font-medium">
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => {
+              const contact = row.original
+              return (
+                <tr key={contact.id} className="border-b last:border-b-0">
+                  <td className="px-3 py-2 font-medium">{contact.name}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {contact.company ?? "Internal"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant="secondary">{contact.role ?? "Internal"}</Badge>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    <div className="flex flex-col gap-0.5">
+                      {contact.email ? (
+                        <a href={`mailto:${contact.email}`} className="hover:underline">
+                          {contact.email}
+                        </a>
+                      ) : (
+                        <span>No email</span>
+                      )}
+                      {contact.phone ? (
+                        <a href={`tel:${contact.phone}`} className="hover:underline">
+                          {contact.phone}
+                        </a>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant="outline">
+                      {contact.accessStatus === "active"
+                        ? "Active"
+                        : contact.accessStatus === "invited"
+                          ? "Invitation pending"
+                          : "No account"}
+                    </Badge>
+                  </td>
+                  {developerModeEnabled && (
+                    <td className="px-3 py-2">
+                      <Badge variant="outline">{contact.sourceLabel}</Badge>
+                    </td>
+                  )}
+                  {onSageEdit || onSageLink ? (
+                    <td className="px-3 py-2">
+                      {contact.sageEmployeeId && onSageEdit ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>
+                          Propose Sage edit
+                        </Button>
+                      ) : null}
+                      {!contact.sageEmployeeId && onSageLink ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(contact)}>
+                          Verify Sage link
+                        </Button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <DataTablePagination
+        table={table}
+        itemLabel="internal contacts"
+        id="internal-contacts-items-per-page"
+      />
     </div>
   )
 }
