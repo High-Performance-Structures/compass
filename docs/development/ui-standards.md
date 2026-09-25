@@ -42,6 +42,12 @@ conventions; this document defines the user-visible behavior and visual rules.
 
 - Responsive layouts must remain usable at narrow widths; do not merely scale
   down a desktop layout.
+- Dialogs and alert dialogs must be centered against the viewport, not offset by
+  a sidebar, page container, scroll position, or other layout region. Use the
+  shared dialog primitives instead of positioning modal content locally.
+- Dialogs must fit within the dynamic viewport with a minimum two-unit inset and
+  must scroll internally when content is taller than the available space. Footer
+  actions must remain reachable without relying on page scrolling.
 - Content containers need `min-w-0`; meaningful user-entered prose should wrap
   with `break-words` and `whitespace-pre-wrap`.
 - Truncate only when the complete value remains available through an intentional
