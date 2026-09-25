@@ -42,6 +42,11 @@ export function sageContactOrganizationMatches(env: object, organizationId: stri
     configured.trim() === organizationId
 }
 
+export function sageContactCreationEnabled(env: object): boolean {
+  return Reflect.get(env, "SAGE_CONTACT_WRITES_ENABLED") === "true" &&
+    Reflect.get(env, "SAGE_CONTACT_CREATES_ENABLED") === "true"
+}
+
 export const sageContactFieldsSchema = z.record(z.string(), z.string().nullable())
 
 export const sageContactSnapshotResultSchema = z.object({

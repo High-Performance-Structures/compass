@@ -12,7 +12,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requireOrg } from "@/lib/org-scope"
-import { sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
+import { sageContactCreationEnabled, sageContactOrganizationMatches } from "@/lib/sage/contact-bridge"
 import { planSageContactCreate, type SageContactCreateFields } from "@/lib/sage/contact-change-proposal"
 
 const kindSchema = z.enum(["client_person", "vendor_person"])
@@ -41,11 +41,6 @@ export type SageContactCreateListItem = {
 
 function directoryFeature(kind: "client_person" | "vendor_person"): "customers" | "vendors" {
   return kind === "client_person" ? "customers" : "vendors"
-}
-
-function createsEnabled(env: object): boolean {
-  return Reflect.get(env, "SAGE_CONTACT_WRITES_ENABLED") === "true" &&
-    Reflect.get(env, "SAGE_CONTACT_CREATES_ENABLED") === "true"
 }
 
 async function dedupeKey(
@@ -78,6 +73,9 @@ export async function proposeSageContactCreate(
     if (!plan.success) return plan
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
+    if (!sageContactCreationEnabled(env)) {
+      return { success: false, error: "Sage child-contact creation is not enabled yet." }
+    }
     if (!sageContactOrganizationMatches(env, orgId)) {
       return { success: false, error: "Sage contact sync is not configured for this organization." }
     }
@@ -174,7 +172,7 @@ export async function reviewSageContactCreate(
     if (!sageContactOrganizationMatches(env, orgId)) {
       return { success: false, error: "Sage contact bridge is not configured." }
     }
-    if (decision === "approve" && !createsEnabled(env)) {
+    if (decision === "approve" && !sageContactCreationEnabled(env)) {
       return { success: false, error: "Sage contact creation is paused until the guarded bridge is enabled." }
     }
     const db = getDb(env.DB)

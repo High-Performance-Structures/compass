@@ -219,6 +219,11 @@ exact-parent, exact-field Sage readback supplies the new stable child ID and
 LineID to the canonical directory. This code path is not a production enablement:
 the production bridge installation and end-to-end queue/readback still require
 separate verification. Both create switches default to off.
+While those switches are off, Compass hides the Sage-linked Add entry points
+and refuses direct Add proposals or approvals. Existing local, unlinked people
+remain editable through the directory. The first production release keeps
+Sage child creation off until a reviewed delete and uncertain-outcome
+reconciliation workflow is complete.
 The installed client/project scheduled writer can poll the contact queue in
 the same process only when its separate local `SAGE_CONTACT_BRIDGE_ENABLED`
 switch is true. It finishes its existing client/project work first, avoiding

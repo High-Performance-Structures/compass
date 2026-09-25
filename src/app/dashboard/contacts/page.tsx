@@ -67,6 +67,7 @@ type DirectoryCapabilities = Record<Tab, ContactDirectoryAccess> & {
   readonly canReadSageReview: boolean
   readonly canApproveSageReview: boolean
   readonly canReadEmployeePrivate: boolean
+  readonly canCreateSagePeople: boolean
 }
 
 const DEFAULT_VENDOR_CATEGORIES = [
@@ -646,7 +647,7 @@ function ContactsContent() {
           setVendorDialogOpen(false)
           setSageLinkTarget({ kind: "vendor_person", entityId: contactId, name, sageRecordNumber: lineNumber === null ? null : String(lineNumber) })
         } : undefined}
-        onSageCreateContact={directoryAccess?.vendors.create && editingVendor?.sageVendorId ? () => {
+        onSageCreateContact={directoryAccess?.canCreateSagePeople && directoryAccess.vendors.create && editingVendor?.sageVendorId ? () => {
           setVendorDialogOpen(false)
           setSageCreateTarget({ kind: "vendor_person", companyId: editingVendor.id, companyName: editingVendor.name })
         } : undefined}
@@ -671,7 +672,7 @@ function ContactsContent() {
           setPeopleCustomer(null)
           setSageLinkTarget({ kind: "client_person", entityId: person.id, name: person.name, sageRecordNumber: person.sageLineNumber === null ? null : String(person.sageLineNumber) })
         } : undefined}
-        onSageCreate={directoryAccess?.customers.create && peopleCustomer?.sageClientId ? () => {
+        onSageCreate={directoryAccess?.canCreateSagePeople && directoryAccess.customers.create && peopleCustomer?.sageClientId ? () => {
           setPeopleCustomer(null)
           setSageCreateTarget({ kind: "client_person", companyId: peopleCustomer.id, companyName: peopleCustomer.name })
         } : undefined}
@@ -709,6 +710,7 @@ function ContactsContent() {
           open={sageReviewOpen}
           onOpenChange={setSageReviewOpen}
           canApprove={directoryAccess.canApproveSageReview}
+          canCreateSagePeople={directoryAccess.canCreateSagePeople}
         />
       ) : null}
     </>

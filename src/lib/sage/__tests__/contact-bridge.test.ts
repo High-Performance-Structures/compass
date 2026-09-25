@@ -5,12 +5,20 @@ import {
   readbackConfirmsChanges,
   readbackConfirmsCreateFields,
   sageContactCreateResultSchema,
+  sageContactCreationEnabled,
   sageContactIdentityError,
   sageContactReadResultSchema,
 } from "@/lib/sage/contact-bridge"
 import type { SageContactFieldChange } from "@/lib/sage/contact-change-proposal"
 
 describe("Sage contact bridge contract", () => {
+  it("keeps child creation off until both independent server switches are enabled", () => {
+    expect(sageContactCreationEnabled({})).toBe(false)
+    expect(sageContactCreationEnabled({ SAGE_CONTACT_WRITES_ENABLED: "true" })).toBe(false)
+    expect(sageContactCreationEnabled({ SAGE_CONTACT_CREATES_ENABLED: "true" })).toBe(false)
+    expect(sageContactCreationEnabled({ SAGE_CONTACT_WRITES_ENABLED: "true", SAGE_CONTACT_CREATES_ENABLED: "true" })).toBe(true)
+  })
+
   it("never promotes a number-only candidate from an unreviewed readback", () => {
     expect(sageContactIdentityError({
       sageRecordId: null, sageRecordNumber: "2890",

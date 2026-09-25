@@ -32,10 +32,12 @@ export function SageContactReviewDialog({
   open,
   onOpenChange,
   canApprove,
+  canCreateSagePeople,
 }: {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
   readonly canApprove: boolean
+  readonly canCreateSagePeople: boolean
 }): React.ReactElement {
   const [proposals, setProposals] = React.useState<readonly SageContactProposalListItem[]>([])
   const [links, setLinks] = React.useState<readonly SageContactLinkCandidate[]>([])
@@ -143,8 +145,8 @@ export function SageContactReviewDialog({
               ) : null}
             </section>
           ))}
-          <h3 className="text-sm font-semibold">New Sage people</h3>
-          {creates.length === 0 ? <p className="text-sm text-muted-foreground">No new person proposals yet.</p> : null}
+          {canCreateSagePeople || creates.length > 0 ? <h3 className="text-sm font-semibold">New Sage people</h3> : null}
+          {canCreateSagePeople && creates.length === 0 ? <p className="text-sm text-muted-foreground">No new person proposals yet.</p> : null}
           {creates.map((proposal) => <section key={proposal.id} className="space-y-2 border-b pb-4">
             <div className="text-sm font-medium">{proposal.fields.name} · {proposal.companyName} · {proposal.status}</div>
             <div className="text-xs text-muted-foreground">{proposal.kind.replaceAll("_", " ")} · Requested {new Date(proposal.requestedAt).toLocaleString()}</div>
@@ -153,7 +155,7 @@ export function SageContactReviewDialog({
             {proposal.status === "needs_reconciliation" ? <p className="text-xs text-destructive">Sage Add may have committed. Inspect the exact parent in Sage before any further addition; this will not retry automatically.</p> : null}
             {proposal.status === "pending" && canApprove ? <>
               <Textarea value={notes[proposal.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [proposal.id]: event.target.value }))} placeholder="Review note (optional)" aria-label={`Review note for ${proposal.fields.name}`} />
-              <div className="flex gap-2"><Button size="sm" onClick={() => void decideCreate(proposal.id, "approve")} disabled={busyId !== null}>Approve Add</Button><Button size="sm" variant="outline" onClick={() => void decideCreate(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button></div>
+              <div className="flex gap-2"><Button size="sm" onClick={() => void decideCreate(proposal.id, "approve")} disabled={busyId !== null || !canCreateSagePeople}>Approve Add</Button><Button size="sm" variant="outline" onClick={() => void decideCreate(proposal.id, "reject")} disabled={busyId !== null}>Reject</Button></div>
             </> : null}
           </section>)}
           <h3 className="text-sm font-semibold">Contact change proposals</h3>
