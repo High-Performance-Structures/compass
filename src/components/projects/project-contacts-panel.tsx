@@ -20,7 +20,10 @@ import { ProjectContactEditor } from "@/components/projects/project-contact-mana
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
 import { Badge } from "@/components/ui/badge"
-import { projectContactCanInvite } from "@/lib/project-contact-access-status"
+import {
+  projectContactCanInvite,
+  projectContactNeedsPersonForInvitation,
+} from "@/lib/project-contact-access-status"
 import {
   buildProjectContactDisplayGroups,
   projectContactCanEdit,
@@ -72,6 +75,14 @@ function isCompanyOnlyVendor(contact: ProjectContactItem): boolean {
     (contact.contactType === "supplier" ||
       contact.contactType === "subcontractor") &&
     contact.vendorContactId === null
+  )
+}
+
+function isCompanyOnlyCustomer(contact: ProjectContactItem): boolean {
+  return (
+    contact.contactType === "owner" &&
+    contact.customerId !== null &&
+    contact.customerContactId === null
   )
 }
 
@@ -185,7 +196,7 @@ function ContactCard({
               {contact.phone}
             </span>
           )}
-          {contact.address && (
+          {contact.contactType !== "internal" && contact.address && (
             <span className="inline-flex items-center gap-1">
               <IconMapPin className="size-3" />
               {contact.address}
@@ -206,11 +217,17 @@ function ContactCard({
           a Compass invitation.
         </p>
       )}
+      {!compact && isCompanyOnlyCustomer(contact) && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Link a client contact person for shared directory updates across
+          projects. Existing project access remains available.
+        </p>
+      )}
 
       {!compact &&
         contact.active &&
         contact.email &&
-        !isCompanyOnlyVendor(contact) &&
+        !projectContactNeedsPersonForInvitation(contact) &&
         contact.compassAccountStatus !== "inactive" &&
         projectContactCanInvite(contact.accessStatus) && (
           <div className="mt-3 flex justify-end">
@@ -383,8 +400,8 @@ export function ProjectContactsDirectory({
             Legacy Buildertrend contacts are retained as read-only records and
             do not represent current employment or project access. Manage the
             person in{" "}
-            <Link href="/dashboard/settings?section=team" className="underline">
-              Settings → Team
+            <Link href="/dashboard/contacts?tab=internal" className="underline">
+              Contacts → Internal
             </Link>
             , then use Add contact above to place an active team member on this
             project.

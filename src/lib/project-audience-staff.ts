@@ -1,9 +1,10 @@
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
   organizationMembers,
   projectContacts,
+  internalContacts,
   users,
 } from "@/db/schema"
 import type { ProjectAudience } from "@/lib/project-audience-access"
@@ -57,11 +58,22 @@ export async function getProjectAudienceStaff(
       primaryContact: projectContacts.primaryContact,
     })
     .from(projectContacts)
+    .leftJoin(
+      internalContacts,
+      and(
+        eq(projectContacts.internalContactId, internalContacts.id),
+        eq(internalContacts.organizationId, input.organizationId),
+        eq(internalContacts.active, true)
+      )
+    )
     .innerJoin(
       users,
-      and(
-        eq(projectContacts.sourceEntityType, "user"),
-        eq(projectContacts.sourceEntityId, users.id)
+      or(
+        and(
+          eq(projectContacts.sourceEntityType, "user"),
+          eq(projectContacts.sourceEntityId, users.id)
+        ),
+        eq(internalContacts.userId, users.id)
       )
     )
     .innerJoin(

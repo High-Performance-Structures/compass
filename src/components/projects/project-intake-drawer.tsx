@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconBuilding,
@@ -12,9 +12,12 @@ import { toast } from "sonner"
 
 import {
   createProjectIntake,
+  getProjectIntakeCustomerOptions,
   type CreateProjectIntakeInput,
   type ProjectIntakeAssignee,
+  type ProjectIntakeCustomerOption,
 } from "@/app/actions/projects"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -109,6 +112,12 @@ export function ProjectIntakeDrawer({
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const [open, setOpen] = useState(false)
+  const [customerOptions, setCustomerOptions] = useState<readonly ProjectIntakeCustomerOption[]>([])
+  const [customerSelection, setCustomerSelection] = useState("new")
+  const usingExistingCustomer = customerSelection !== "new"
+  const selectedCustomer = customerOptions.find((customer) => customer.id === customerSelection)
+  const [clientDisplayName, setClientDisplayName] = useState("")
+  const [customerOptionsError, setCustomerOptionsError] = useState(false)
   const [department, setDepartment] = useState<ProjectIntakeDepartment>("O")
   const [sageClientStatusId, setSageClientStatusId] =
     useState<SageClientStatusId | null>(null)
@@ -119,6 +128,20 @@ export function ProjectIntakeDrawer({
     readonly candidates: readonly ProjectDuplicateCandidate[]
   } | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    if (!open) return
+    let active = true
+    void getProjectIntakeCustomerOptions().then((options) => {
+      if (active) {
+        setCustomerOptions(options)
+        setCustomerOptionsError(false)
+      }
+    }).catch(() => {
+      if (active) setCustomerOptionsError(true)
+    })
+    return () => { active = false }
+  }, [open])
 
   async function createProject(input: CreateProjectIntakeInput): Promise<void> {
     try {
@@ -141,6 +164,8 @@ export function ProjectIntakeDrawer({
         )
       }
       formRef.current?.reset()
+      setCustomerSelection("new")
+      setClientDisplayName("")
       setSageClientStatusId(null)
       setSageJobStatusId("")
       setSageJobType(null)
@@ -157,6 +182,10 @@ export function ProjectIntakeDrawer({
 
   function submitProject(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    if (selectedCustomer?.sageLinkNeedsReview) {
+      toast.error("Reconcile this client’s Sage link in Contacts before creating the project.")
+      return
+    }
     if (!sageClientStatusId || !sageJobStatusId || !sageJobType) {
       toast.error("Choose the client status, job status, and job type.")
       return
@@ -166,6 +195,7 @@ export function ProjectIntakeDrawer({
           department,
           projectName: fieldValue(formData, "projectName") ?? "",
           clientName: fieldValue(formData, "clientName"),
+          existingCustomerId: customerSelection === "new" ? null : customerSelection,
           companyName: fieldValue(formData, "companyName"),
           clientFirstName: fieldValue(formData, "clientFirstName"),
           clientLastName: fieldValue(formData, "clientLastName"),
@@ -318,9 +348,45 @@ export function ProjectIntakeDrawer({
 
           <section className="space-y-3">
             <h3 className="border-b pb-2 text-sm font-semibold">Client and contact</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Client directory">
+              <SearchableCombobox
+                ariaLabel="Choose an existing client or create a new client"
+                placeholder="Choose a client"
+                searchPlaceholder="Search clients..."
+                options={[
+                  { value: "new", label: "Create new client" },
+                  ...customerOptions.map((customer) => ({
+                    value: customer.id,
+                    label: customer.name,
+                    description: customer.sageLinkNeedsReview
+                      ? `${customer.company ? `${customer.company} · ` : ""}Sage link needs review`
+                      : customer.company ?? undefined,
+                  })),
+                ]}
+                value={customerSelection}
+                onValueChange={(value) => {
+                  setCustomerSelection(value)
+                  const selected = customerOptions.find((customer) => customer.id === value)
+                  setClientDisplayName(selected?.name ?? "")
+                  const status = SAGE_CLIENT_STATUS_OPTIONS.find((option) => option.id === selected?.sageClientStatusId)
+                  setSageClientStatusId(status?.id ?? null)
+                }}
+              />
+              {customerOptionsError ? <p className="text-xs text-destructive">The client list could not load. Refresh before linking an existing client.</p> : null}
+              {usingExistingCustomer ? <p className="text-xs text-muted-foreground">This project will use the selected client’s shared directory details. Edit their contact information in Contacts.</p> : null}
+              {selectedCustomer?.sageLinkNeedsReview ? <p className="text-xs text-destructive">This client’s Sage number and ID need review before it can be used for a new project.</p> : null}
+            </Field>
+            {usingExistingCustomer ? (
+              <div className="space-y-1 text-sm">
+                <input type="hidden" name="clientName" value={selectedCustomer?.name ?? clientDisplayName} />
+                <p className="font-medium">{selectedCustomer?.name ?? clientDisplayName}</p>
+                {selectedCustomer?.company ? <p>{selectedCustomer.company}</p> : null}
+                {selectedCustomer?.email ? <p>{selectedCustomer.email}</p> : null}
+                {selectedCustomer?.phone ? <p>{selectedCustomer.phone}</p> : null}
+              </div>
+            ) : <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Client display name" htmlFor="project-intake-client">
-                <Input id="project-intake-client" name="clientName" placeholder="Dan and Jane Mitchell" />
+                <Input id="project-intake-client" name="clientName" placeholder="Dan and Jane Mitchell" value={clientDisplayName} onChange={(event) => setClientDisplayName(event.target.value)} />
               </Field>
               <Field label="Company" htmlFor="project-intake-company">
                 <Input id="project-intake-company" name="companyName" />
@@ -337,7 +403,7 @@ export function ProjectIntakeDrawer({
               <Field label="Email" htmlFor="project-intake-email">
                 <Input id="project-intake-email" name="contactEmail" type="email" />
               </Field>
-            </div>
+            </div>}
           </section>
 
           <section className="space-y-3">

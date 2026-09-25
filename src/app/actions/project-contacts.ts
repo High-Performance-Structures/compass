@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  customerContacts,
   customers,
+  internalContacts,
   organizationMembers,
   projectAccessInvitations,
   projectContacts,
@@ -23,12 +25,11 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import {
   activeDirectoryIdentityKeys,
-  contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
   type ContactIdentityFields,
 } from "@/lib/contact-identity-ownership"
 import { requireOrg } from "@/lib/org-scope"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import {
   projectContactCompassAccountStatus,
@@ -38,13 +39,15 @@ import {
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
 import {
+  isCanonicalDirectoryAssignment,
   isSameProjectContactDirectoryIdentity,
+  isUnchangedProjectContactDirectorySelection,
   resolveProjectContactIdentity,
   resolveProjectContactMutationIdentity,
 } from "@/lib/project-contact-directory-identity"
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectContactAddress } from "@/lib/project-contact-privacy"
 
 export type ProjectContactType =
   | "owner"
@@ -61,8 +64,11 @@ export type ProjectContactItem = {
   readonly sourceRecordId: string | null
   readonly sourceEntityType: string
   readonly sourceEntityId: string | null
+  readonly customerId: string | null
+  readonly customerContactId: string | null
   readonly vendorId: string | null
   readonly vendorContactId: string | null
+  readonly internalContactId: string | null
   readonly displayName: string
   readonly companyName: string | null
   readonly role: string | null
@@ -204,10 +210,12 @@ export type ProjectContactDirectoryOption = {
   readonly address: string | null
   readonly suggestedContactType: ProjectContactType
   readonly identityManagedByActiveUser: boolean
+  readonly customerContacts: readonly ProjectDirectoryPersonOption[]
   readonly vendorContacts: readonly ProjectVendorContactOption[]
+  readonly alreadyOnProject?: boolean
 }
 
-export type ProjectVendorContactOption = {
+export type ProjectDirectoryPersonOption = {
   readonly id: string
   readonly name: string
   readonly title: string | null
@@ -216,6 +224,8 @@ export type ProjectVendorContactOption = {
   readonly isPrimary: boolean
   readonly identityManagedByActiveUser: boolean
 }
+
+export type ProjectVendorContactOption = ProjectDirectoryPersonOption
 
 export type ProjectContactDivisionOption = {
   readonly value: string
@@ -243,6 +253,7 @@ export type ProjectContactMutationInput = {
   readonly directorySourceId: string | null
   readonly vendorId: string | null
   readonly vendorContactId: string | null
+  readonly customerContactId: string | null
   readonly contactType: ProjectContactType
   readonly displayName: string
   readonly companyName: string
@@ -393,8 +404,11 @@ function toContactItem(
     sourceRecordId: row.sourceRecordId,
     sourceEntityType: row.sourceEntityType,
     sourceEntityId: row.sourceEntityId,
+    customerId: row.customerId,
+    customerContactId: row.customerContactId,
     vendorId: row.vendorId,
     vendorContactId: row.vendorContactId,
+    internalContactId: row.internalContactId,
     displayName: row.displayName,
     companyName: row.companyName,
     role: row.role,
@@ -404,7 +418,8 @@ function toContactItem(
     primaryCostCode: row.primaryCostCode,
     email: row.email,
     phone: row.phone,
-    address: row.address,
+    // Employee home addresses never belong in a project-contact response.
+    address: projectContactAddress(row.contactType, row.address),
     notes: row.notes,
     ownerPortalVisible: row.ownerPortalVisible,
     subVendorPortalVisible: row.subVendorPortalVisible,
@@ -416,7 +431,9 @@ function toContactItem(
     accessStatus,
     compassAccountStatus,
     identityManagedByActiveUser:
-      accessStatus === "active" || directoryIdentityManaged,
+      accessStatus === "active" ||
+      directoryIdentityManaged ||
+      isCanonicalDirectoryAssignment(row),
   }
 }
 
@@ -746,32 +763,58 @@ export async function getProjectContactsSummary(
     .select({
       contact: projectContacts,
       customer: {
+        name: customers.name,
+        company: customers.company,
         email: customers.email,
         phone: customers.phone,
         address: customers.address,
       },
+      customerContact: {
+        name: customerContacts.name,
+        email: customerContacts.email,
+        phone: customerContacts.phone,
+      },
       vendor: {
+        name: vendors.name,
         email: vendors.email,
         phone: vendors.phone,
         address: vendors.address,
       },
       vendorContact: {
+        name: vendorContacts.name,
         email: vendorContacts.email,
         phone: vendorContacts.phone,
       },
       teamMember: {
         email: users.email,
         phone: users.phone,
-        address: users.address,
+      },
+      internalPerson: {
+        name: internalContacts.name,
+        email: internalContacts.email,
+        phone: internalContacts.phone,
       },
     })
     .from(projectContacts)
     .leftJoin(
       customers,
       and(
-        eq(projectContacts.sourceEntityType, "customer"),
-        eq(projectContacts.sourceEntityId, customers.id),
+        or(
+          eq(projectContacts.customerId, customers.id),
+          and(
+            eq(projectContacts.sourceEntityType, "customer"),
+            eq(projectContacts.sourceEntityId, customers.id)
+          )
+        ),
         eq(customers.organizationId, organizationId)
+      )
+    )
+    .leftJoin(
+      customerContacts,
+      and(
+        eq(projectContacts.customerContactId, customerContacts.id),
+        eq(customerContacts.customerId, customers.id),
+        eq(customerContacts.active, true)
       )
     )
     .leftJoin(
@@ -807,6 +850,14 @@ export async function getProjectContactsSummary(
         )`
       )
     )
+    .leftJoin(
+      internalContacts,
+      and(
+        eq(projectContacts.internalContactId, internalContacts.id),
+        eq(internalContacts.organizationId, organizationId),
+        eq(internalContacts.active, true)
+      )
+    )
     .where(queryWhere)
     .orderBy(
       asc(projectContacts.sortOrder),
@@ -814,30 +865,73 @@ export async function getProjectContactsSummary(
       asc(projectContacts.displayName)
     )
   const rows = directoryRows.map((row) => {
-    const directoryIdentity =
-      row.contact.vendorContactId
-        ? {
-            email: row.vendorContact?.email ?? null,
-            phone: row.vendorContact?.phone ?? null,
-            address: null,
-          }
-        : row.contact.sourceEntityType === "customer"
-          ? row.customer
-          : row.contact.sourceEntityType === "vendor"
-            ? row.vendor
-            : row.contact.sourceEntityType === "user"
-              ? row.teamMember
-              : null
+    let directoryIdentity = null
+    if (row.contact.customerContactId) {
+      if (row.customerContact) {
+        directoryIdentity = {
+          email: row.customerContact.email,
+          phone: row.customerContact.phone,
+          address: row.customer?.address ?? null,
+        }
+      }
+    } else if (row.contact.vendorContactId) {
+      if (row.vendorContact) {
+        directoryIdentity = {
+          email: row.vendorContact.email,
+          phone: row.vendorContact.phone,
+          address: null,
+        }
+      }
+    } else if (row.contact.sourceEntityType === "customer") {
+      directoryIdentity = row.customer
+    } else if (row.contact.sourceEntityType === "vendor") {
+      directoryIdentity = row.vendor
+    } else if (row.contact.internalContactId) {
+      if (row.internalPerson) {
+        directoryIdentity = { ...row.internalPerson, address: null }
+      }
+    } else if (row.contact.sourceEntityType === "user" && row.teamMember) {
+      directoryIdentity = { ...row.teamMember, address: null }
+    }
+    const canonicalLink = Boolean(
+      row.contact.customerContactId ||
+      row.contact.vendorContactId ||
+      row.contact.internalContactId ||
+      row.contact.customerId ||
+      row.contact.vendorId ||
+      directoryIdentity
+    )
     const identity = resolveProjectContactIdentity(
       {
         email: row.contact.email,
         phone: row.contact.phone,
-        address: row.contact.address,
+        address: projectContactAddress(row.contact.contactType, row.contact.address),
       },
-      directoryIdentity
+      directoryIdentity,
+      canonicalLink
     )
 
-    return { ...row.contact, ...identity }
+    let displayName = row.contact.displayName
+    if (row.contact.contactType === "internal" && row.internalPerson) {
+      displayName = row.internalPerson.name
+    } else if (row.contact.customerContactId) {
+      displayName = row.customerContact?.name ?? displayName
+    } else if (row.contact.vendorContactId) {
+      displayName = row.vendorContact?.name ?? displayName
+    } else if (row.contact.vendorId && row.vendor) {
+      displayName = row.vendor.name
+    } else if (row.customer) {
+      displayName = row.customer.name
+    }
+
+    return {
+      ...row.contact,
+      ...identity,
+      displayName,
+      companyName:
+        row.vendor?.name ?? row.customer?.company ?? row.contact.companyName,
+      address: projectContactAddress(row.contact.contactType, identity.address),
+    }
   })
 
   const directoryIdentityKeys = await activeDirectoryIdentityKeys({
@@ -848,11 +942,13 @@ export async function getProjectContactsSummary(
       if (
         (row.sourceEntityType === "customer" ||
           row.sourceEntityType === "vendor" ||
+          row.sourceEntityType === "customer_contact" ||
           row.sourceEntityType === "vendor_contact") &&
         row.sourceEntityId
       ) {
         ids.push(row.sourceEntityId)
       }
+      if (row.customerContactId) ids.push(row.customerContactId)
       if (row.vendorContactId) ids.push(row.vendorContactId)
       return ids
     }),
@@ -991,7 +1087,9 @@ export async function getProjectContactsSummary(
           `${row.sourceEntityType}:${row.sourceEntityId}`
         )) ||
         (row.vendorContactId !== null &&
-          directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)),
+          directoryIdentityKeys.has(`vendor_contact:${row.vendorContactId}`)) ||
+        (row.customerContactId !== null &&
+          directoryIdentityKeys.has(`customer_contact:${row.customerContactId}`)),
       compassAccountStatus
     )
   }
@@ -1057,11 +1155,17 @@ export async function getProjectContactDirectoryOptions(
   // The picker exposes organization-wide customer, vendor, and staff details,
   // so project read access alone is intentionally insufficient.
   const db = await verifyProjectAccess(projectId, "update")
+  const [canViewCustomers, canViewVendors, canViewInternal] = await Promise.all([
+    canFeature(user, "customers", "read"),
+    canFeature(user, "vendors", "read"),
+    canFeature(user, "internal-directory", "read"),
+  ])
 
   const existingRows = await db
     .select({
       sourceEntityType: projectContacts.sourceEntityType,
       sourceEntityId: projectContacts.sourceEntityId,
+      internalContactId: projectContacts.internalContactId,
     })
     .from(projectContacts)
     .where(
@@ -1074,8 +1178,13 @@ export async function getProjectContactDirectoryOptions(
       )
       .map((row) => `${row.sourceEntityType}:${row.sourceEntityId}`)
   )
-  const [customerRows, vendorRows, vendorContactRows, teamRows] = await Promise.all([
-    db
+  const existingInternalIds = new Set(
+    existingRows.flatMap((row) =>
+      row.internalContactId ? [row.internalContactId] : []
+    )
+  )
+  const [customerRows, customerContactRows, vendorRows, vendorContactRows, teamRows] = await Promise.all([
+    canViewCustomers ? db
       .select({
         id: customers.id,
         name: customers.name,
@@ -1085,8 +1194,26 @@ export async function getProjectContactDirectoryOptions(
         address: customers.address,
       })
       .from(customers)
-      .where(eq(customers.organizationId, orgId)),
-    db
+      .where(eq(customers.organizationId, orgId)) : [],
+    canViewCustomers ? db
+      .select({
+        id: customerContacts.id,
+        customerId: customerContacts.customerId,
+        name: customerContacts.name,
+        title: customerContacts.title,
+        email: customerContacts.email,
+        phone: customerContacts.phone,
+        isPrimary: customerContacts.isPrimary,
+      })
+      .from(customerContacts)
+      .innerJoin(customers, eq(customers.id, customerContacts.customerId))
+      .where(
+        and(
+          eq(customers.organizationId, orgId),
+          eq(customerContacts.active, true)
+        )
+      ) : [],
+    canViewVendors ? db
       .select({
         id: vendors.id,
         name: vendors.name,
@@ -1101,8 +1228,8 @@ export async function getProjectContactDirectoryOptions(
           eq(vendors.organizationId, orgId),
           eq(vendors.directoryStatus, "active")
         )
-      ),
-    db
+      ) : [],
+    canViewVendors ? db
       .select({
         id: vendorContacts.id,
         vendorId: vendorContacts.vendorId,
@@ -1120,35 +1247,48 @@ export async function getProjectContactDirectoryOptions(
           eq(vendors.directoryStatus, "active"),
           eq(vendorContacts.active, true)
         )
-      ),
-    db
+      ) : [],
+    canViewInternal ? db
       .select({
-        id: users.id,
-        email: users.email,
-        displayName: users.displayName,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        phone: users.phone,
-        address: users.address,
-        role: organizationMembers.role,
+        id: internalContacts.id,
+        name: internalContacts.name,
+        email: internalContacts.email,
+        phone: internalContacts.phone,
+        userId: internalContacts.userId,
       })
-      .from(organizationMembers)
-      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .from(internalContacts)
       .where(
         and(
-          eq(organizationMembers.organizationId, orgId),
-          eq(users.isActive, true)
+          eq(internalContacts.organizationId, orgId),
+          eq(internalContacts.active, true)
         )
-      ),
+      ) : [],
   ])
   const directoryIdentityKeys = await activeDirectoryIdentityKeys({
     db,
     organizationId: orgId,
     entityIds: customerRows
       .map((row) => row.id)
+      .concat(customerContactRows.map((row) => row.id))
       .concat(vendorRows.map((row) => row.id))
       .concat(vendorContactRows.map((row) => row.id)),
   })
+  const contactsByCustomer = new Map<string, ProjectDirectoryPersonOption[]>()
+  for (const contact of customerContactRows) {
+    const current = contactsByCustomer.get(contact.customerId) ?? []
+    current.push({
+      id: contact.id,
+      name: contact.name,
+      title: contact.title,
+      email: contact.email,
+      phone: contact.phone,
+      isPrimary: contact.isPrimary,
+      identityManagedByActiveUser: directoryIdentityKeys.has(
+        `customer_contact:${contact.id}`
+      ),
+    })
+    contactsByCustomer.set(contact.customerId, current)
+  }
   const contactsByVendor = new Map<string, ProjectVendorContactOption[]>()
   for (const contact of vendorContactRows) {
     const option: ProjectVendorContactOption = {
@@ -1180,6 +1320,10 @@ export async function getProjectContactDirectoryOptions(
       identityManagedByActiveUser: directoryIdentityKeys.has(
         `customer:${row.id}`
       ),
+      customerContacts: (contactsByCustomer.get(row.id) ?? []).sort((left, right) =>
+        Number(right.isPrimary) - Number(left.isPrimary) ||
+        left.name.localeCompare(right.name)
+      ),
       vendorContacts: [],
     }))
   const vendorOptions: ProjectContactDirectoryOption[] = vendorRows
@@ -1196,32 +1340,30 @@ export async function getProjectContactDirectoryOptions(
       identityManagedByActiveUser: directoryIdentityKeys.has(
         `vendor:${row.id}`
       ),
+      customerContacts: [],
       vendorContacts: (contactsByVendor.get(row.id) ?? []).sort((left, right) =>
         Number(right.isPrimary) - Number(left.isPrimary) ||
         left.name.localeCompare(right.name)
       ),
     }))
   const teamOptions: ProjectContactDirectoryOption[] = teamRows
-    .filter(
-      (row) =>
-        isInternalStaffRole(row.role) &&
-        !existingSources.has(`user:${row.id}`)
-    )
     .map((row) => {
-      const fullName = [row.firstName, row.lastName]
-        .filter((part): part is string => part !== null && part.trim().length > 0)
-        .join(" ")
       return {
         id: row.id,
         sourceType: "team",
-        displayName: row.displayName?.trim() || fullName || row.email,
+        displayName: row.name,
         companyName: null,
         email: row.email,
         phone: row.phone,
-        address: row.address,
+        address: null,
         suggestedContactType: "internal",
         identityManagedByActiveUser: true,
+        customerContacts: [],
         vendorContacts: [],
+        alreadyOnProject:
+          existingInternalIds.has(row.id) ||
+          existingSources.has(`internal_contact:${row.id}`) ||
+          (row.userId !== null && existingSources.has(`user:${row.userId}`)),
       }
     })
 
@@ -1301,6 +1443,10 @@ export async function saveProjectContact(
     let sourceEntityId: string | null = null
     let vendorId: string | null = input.vendorId
     let vendorContactId: string | null = input.vendorContactId
+    let customerId: string | null = null
+    let customerContactId: string | null = null
+    let internalContactId: string | null = null
+    let linkedInternalUserId: string | null = null
     let syncStatus = "manual"
     let warning: string | undefined
     let directoryIdentity: ContactIdentityFields | null = null
@@ -1331,14 +1477,46 @@ export async function saveProjectContact(
       input.directorySourceType !== null &&
       input.directorySourceType !== "team"
     ) {
-      return { success: false, error: "Choose a Settings team member." }
+      return { success: false, error: "Choose an internal directory contact." }
     }
 
     if (input.directorySourceType && input.directorySourceId) {
+      const directoryFeature = input.directorySourceType === "customer"
+        ? "customers"
+        : input.directorySourceType === "vendor" ? "vendors" : "internal-directory"
+      const existingSelection = input.contactId ? await db.select({
+        sourceEntityType: projectContacts.sourceEntityType,
+        sourceEntityId: projectContacts.sourceEntityId,
+        customerId: projectContacts.customerId,
+        customerContactId: projectContacts.customerContactId,
+        vendorId: projectContacts.vendorId,
+        vendorContactId: projectContacts.vendorContactId,
+        internalContactId: projectContacts.internalContactId,
+      }).from(projectContacts).where(and(
+        eq(projectContacts.id, input.contactId),
+        eq(projectContacts.projectId, input.projectId)
+      )).get() : null
+      const unchangedDirectorySelection = isUnchangedProjectContactDirectorySelection(
+        existingSelection ?? null,
+        {
+          sourceType: input.directorySourceType,
+          sourceId: input.directorySourceId,
+          customerContactId: input.customerContactId,
+          vendorContactId: input.vendorContactId,
+        }
+      )
+      // Existing project assignments are editable without org-wide directory
+      // browsing. Selecting or changing a directory identity still needs it.
+      if (!unchangedDirectorySelection) {
+        await requireFeaturePermission(user, directoryFeature, "read")
+      }
       sourceRecordId = input.directorySourceId
       sourceEntityId = input.directorySourceId
 
       if (input.directorySourceType === "customer") {
+        vendorId = null
+        vendorContactId = null
+        customerContactId = input.customerContactId
         const [directoryRecord] = await db
           .select({
             id: customers.id,
@@ -1361,17 +1539,40 @@ export async function saveProjectContact(
         }
         sourceSystem = "customer_directory"
         sourceEntityType = "customer"
-        canonicalDisplayName = directoryRecord.name
+        customerId = directoryRecord.id
         canonicalCompanyName = directoryRecord.company
-        directoryIdentity = directoryRecord
-        directoryIdentityManaged =
-          await directoryIdentityManagedByActiveUser({
-            db,
-            organizationId: orgId,
-            entityType: "customer",
-            entityId: directoryRecord.id,
-          })
+        if (customerContactId) {
+          const person = await db
+            .select({
+              id: customerContacts.id,
+              name: customerContacts.name,
+              email: customerContacts.email,
+              phone: customerContacts.phone,
+            })
+            .from(customerContacts)
+            .where(
+              and(
+                eq(customerContacts.id, customerContactId),
+                eq(customerContacts.customerId, directoryRecord.id),
+                eq(customerContacts.active, true)
+              )
+            )
+            .get()
+          if (!person) return { success: false, error: "Client contact not found" }
+          sourceRecordId = person.id
+          sourceEntityType = "customer_contact"
+          sourceEntityId = person.id
+          canonicalDisplayName = person.name
+          directoryIdentity = { ...person, address: directoryRecord.address }
+          directoryIdentityManaged = true
+        } else {
+          canonicalDisplayName = directoryRecord.name
+          directoryIdentity = directoryRecord
+          directoryIdentityManaged = true
+        }
       } else if (input.directorySourceType === "vendor") {
+        customerId = null
+        customerContactId = null
         const [directoryRecord] = await db
           .select({
             id: vendors.id,
@@ -1423,13 +1624,7 @@ export async function saveProjectContact(
           sourceEntityType = "vendor_contact"
           sourceEntityId = contactRecord.id
           directoryIdentity = { ...contactRecord, address: null }
-          directoryIdentityManaged =
-            await directoryIdentityManagedByActiveUser({
-              db,
-              organizationId: orgId,
-              entityType: "vendor_contact",
-              entityId: contactRecord.id,
-            })
+          directoryIdentityManaged = true
         } else {
           canonicalDisplayName = directoryRecord.name
           canonicalCompanyName = directoryRecord.name
@@ -1437,38 +1632,44 @@ export async function saveProjectContact(
           sourceEntityType = "vendor"
           sourceEntityId = directoryRecord.id
           directoryIdentity = directoryRecord
-          directoryIdentityManaged =
-            await directoryIdentityManagedByActiveUser({
-              db,
-              organizationId: orgId,
-              entityType: "vendor",
-              entityId: directoryRecord.id,
-            })
+          directoryIdentityManaged = true
         }
       } else {
+        vendorId = null
+        vendorContactId = null
+        customerId = null
+        customerContactId = null
         const [directoryRecord] = await db
           .select({
-            id: users.id,
-            email: users.email,
-            phone: users.phone,
-            address: users.address,
+            id: internalContacts.id,
+            userId: internalContacts.userId,
+            name: internalContacts.name,
+            email: internalContacts.email,
+            phone: internalContacts.phone,
           })
-          .from(organizationMembers)
-          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          .from(internalContacts)
           .where(
             and(
-              eq(organizationMembers.organizationId, orgId),
-              eq(users.id, input.directorySourceId),
-              eq(users.isActive, true)
+              eq(internalContacts.organizationId, orgId),
+              or(
+                eq(internalContacts.id, input.directorySourceId),
+                eq(internalContacts.userId, input.directorySourceId)
+              ),
+              eq(internalContacts.active, true)
             )
           )
           .limit(1)
         if (!directoryRecord) {
-          return { success: false, error: "Team directory record not found" }
+          return { success: false, error: "Internal directory contact not found" }
         }
-        sourceSystem = "organization_directory"
-        sourceEntityType = "user"
-        directoryIdentity = directoryRecord
+        sourceSystem = "internal_directory"
+        sourceEntityType = "internal_contact"
+        sourceRecordId = directoryRecord.id
+        sourceEntityId = directoryRecord.id
+        internalContactId = directoryRecord.id
+        linkedInternalUserId = directoryRecord.userId
+        canonicalDisplayName = directoryRecord.name
+        directoryIdentity = { ...directoryRecord, address: null }
         directoryIdentityManaged = true
       }
 
@@ -1482,8 +1683,28 @@ export async function saveProjectContact(
         .where(
           and(
             eq(projectContacts.projectId, input.projectId),
-            eq(projectContacts.sourceEntityType, sourceEntityType),
-            eq(projectContacts.sourceEntityId, sourceEntityId)
+            or(
+              and(
+                eq(projectContacts.sourceEntityType, sourceEntityType),
+                eq(projectContacts.sourceEntityId, sourceEntityId)
+              ),
+              ...(internalContactId
+                ? [
+                    eq(projectContacts.internalContactId, internalContactId),
+                    ...(linkedInternalUserId
+                      ? [
+                          and(
+                            eq(projectContacts.sourceEntityType, "user"),
+                            eq(projectContacts.sourceEntityId, linkedInternalUserId)
+                          ),
+                        ]
+                      : []),
+                  ]
+                : []),
+              ...(customerContactId
+                ? [eq(projectContacts.customerContactId, customerContactId)]
+                : [])
+            )
           )
         )
         .limit(1)
@@ -1504,7 +1725,10 @@ export async function saveProjectContact(
       primaryCostCode: nullableInput(input.primaryCostCode),
       email: nullableInput(input.email),
       phone: nullableInput(input.phone),
-      address: nullableInput(input.address),
+      address: projectContactAddress(
+        input.contactType,
+        nullableInput(input.address)
+      ),
       notes: nullableInput(input.notes),
       ownerPortalVisible: input.ownerPortalVisible,
       subVendorPortalVisible: input.subVendorPortalVisible,
@@ -1514,16 +1738,13 @@ export async function saveProjectContact(
       updatedAt: now,
     }
 
-    if (
-      !contactId &&
-      directoryIdentityManaged &&
-      directoryIdentity &&
-      contactIdentityChanged(directoryIdentity, contactValues)
-    ) {
-      return {
-        success: false,
-        error:
-          "Phone, email, and address are managed by this active Compass user. Add the directory contact without changing those fields.",
+    // Project contacts are assignments. A selected directory identity is
+    // canonical, including intentionally blank fields; never use the form's
+    // echoed values to edit the shared person or company record.
+    if (directoryIdentityManaged && directoryIdentity) {
+      contactValues = {
+        ...contactValues,
+        ...resolveProjectContactIdentity(contactValues, directoryIdentity, true),
       }
     }
 
@@ -1541,6 +1762,9 @@ export async function saveProjectContact(
           syncStatus: projectContacts.syncStatus,
           vendorId: projectContacts.vendorId,
           vendorContactId: projectContacts.vendorContactId,
+          customerId: projectContacts.customerId,
+          customerContactId: projectContacts.customerContactId,
+          internalContactId: projectContacts.internalContactId,
         })
         .from(projectContacts)
         .where(
@@ -1561,10 +1785,14 @@ export async function saveProjectContact(
         syncStatus = existingContact.syncStatus
         vendorId = existingContact.vendorId
         vendorContactId = existingContact.vendorContactId
+        customerId = existingContact.customerId
+        customerContactId = existingContact.customerContactId
+        internalContactId = existingContact.internalContactId
+        directoryIdentityManaged = isCanonicalDirectoryAssignment(existingContact)
       }
       const sameDirectoryIdentity = isSameProjectContactDirectoryIdentity(
         existingContact,
-        { sourceEntityType, sourceEntityId, vendorContactId }
+        { sourceEntityType, sourceEntityId, customerContactId, vendorContactId }
       )
       const managedExistingIdentity =
         directoryIdentityManaged && sameDirectoryIdentity
@@ -1572,9 +1800,35 @@ export async function saveProjectContact(
         submittedIdentity: contactValues,
         existingIdentity: sameDirectoryIdentity ? existingContact : null,
         directoryIdentity,
-        managedByActiveUser: directoryIdentityManaged,
+        managedByDirectory: directoryIdentityManaged,
       })
       contactValues = { ...contactValues, ...mutationIdentity }
+      if (customerContactId) {
+        const person = await db
+          .select({
+            email: customerContacts.email,
+            phone: customerContacts.phone,
+            address: customers.address,
+          })
+          .from(customerContacts)
+          .innerJoin(customers, eq(customers.id, customerContacts.customerId))
+          .where(
+            and(
+              eq(customerContacts.id, customerContactId),
+              eq(customers.id, customerId ?? ""),
+              eq(customers.organizationId, orgId),
+              eq(customerContacts.active, true)
+            )
+          )
+          .get()
+        if (!person) {
+          return { success: false, error: "Client directory contact not found" }
+        }
+        contactValues = {
+          ...contactValues,
+          ...resolveProjectContactIdentity(contactValues, person, true),
+        }
+      }
       const existingEmail = existingContact.email?.trim().toLowerCase() ?? ""
       const updatedEmail = contactValues.email?.toLowerCase() ?? ""
       const existingPhone = existingContact.phone?.trim() ?? ""
@@ -1586,14 +1840,18 @@ export async function saveProjectContact(
         existingPhone !== updatedPhone ||
         existingAddress !== updatedAddress
       if (identityChanged) {
-        const existingDirectoryEntityType = existingContact.vendorContactId
-          ? "vendor_contact"
-          : existingContact.sourceEntityType === "customer" ||
+        const existingDirectoryEntityType = existingContact.customerContactId
+          ? "customer_contact"
+          : existingContact.vendorContactId
+            ? "vendor_contact"
+            : existingContact.sourceEntityType === "customer" ||
               existingContact.sourceEntityType === "vendor"
             ? existingContact.sourceEntityType
             : null
         const existingDirectoryEntityId =
-          existingContact.vendorContactId ?? existingContact.sourceEntityId
+          existingContact.customerContactId ??
+          existingContact.vendorContactId ??
+          existingContact.sourceEntityId
         if (
           !managedExistingIdentity &&
           existingDirectoryEntityType &&
@@ -1747,6 +2005,9 @@ export async function saveProjectContact(
           sourceEntityId,
           vendorId,
           vendorContactId,
+          customerId,
+          customerContactId,
+          internalContactId,
           syncStatus,
         })
         .where(
@@ -1777,6 +2038,9 @@ export async function saveProjectContact(
         sourceEntityId,
         vendorId,
         vendorContactId,
+        customerId,
+        customerContactId,
+        internalContactId,
         sortOrder: 800,
         syncStatus,
         lastSyncedAt: null,
@@ -1785,8 +2049,8 @@ export async function saveProjectContact(
       })
     }
 
-    // Active users own their directory identity. The project snapshot may be a
-    // fallback for blank profile fields, so it must never flow back upstream.
+    // Contact identity is edited once in Contacts, never from a project
+    // assignment. Legacy unlinked snapshots may still be edited in place.
     if (
       !directoryIdentityManaged &&
       sourceEntityType === "customer" &&
@@ -1911,6 +2175,7 @@ export async function removeProjectContact(
         id: projectContacts.id,
         sourceEntityType: projectContacts.sourceEntityType,
         sourceEntityId: projectContacts.sourceEntityId,
+        internalContactId: projectContacts.internalContactId,
         email: projectContacts.email,
       })
       .from(projectContacts)
@@ -1940,6 +2205,19 @@ export async function removeProjectContact(
     )
     if (contact.sourceEntityType === "user" && contact.sourceEntityId) {
       memberUserIds.add(contact.sourceEntityId)
+    }
+    if (contact.internalContactId) {
+      const linkedPerson = await db
+        .select({ userId: internalContacts.userId })
+        .from(internalContacts)
+        .where(
+          and(
+            eq(internalContacts.id, contact.internalContactId),
+            eq(internalContacts.organizationId, orgId)
+          )
+        )
+        .get()
+      if (linkedPerson?.userId) memberUserIds.add(linkedPerson.userId)
     }
     const organizationUsers = await db
       .select({ id: users.id, email: users.email })
@@ -2002,9 +2280,17 @@ export async function removeProjectContact(
           .select({
             sourceEntityType: projectContacts.sourceEntityType,
             sourceEntityId: projectContacts.sourceEntityId,
+            linkedUserId: internalContacts.userId,
             email: projectContacts.email,
           })
           .from(projectContacts)
+          .leftJoin(
+            internalContacts,
+            and(
+              eq(projectContacts.internalContactId, internalContacts.id),
+              eq(internalContacts.organizationId, orgId)
+            )
+          )
           .where(
             and(
               eq(projectContacts.projectId, projectId),
@@ -2022,13 +2308,15 @@ export async function removeProjectContact(
       ])
       const remainingUserIds = new Set(
         remainingContacts
-          .filter(
-            (remainingContact) =>
-              remainingContact.sourceEntityType === "user" &&
-              remainingContact.sourceEntityId !== null
-          )
-          .map((remainingContact) => remainingContact.sourceEntityId)
-          .filter((userId): userId is string => userId !== null)
+          .flatMap((remainingContact) => [
+            ...(remainingContact.sourceEntityType === "user" &&
+            remainingContact.sourceEntityId
+              ? [remainingContact.sourceEntityId]
+              : []),
+            ...(remainingContact.linkedUserId
+              ? [remainingContact.linkedUserId]
+              : []),
+          ])
       )
       const remainingEmails = new Set(
         remainingContacts
@@ -2088,6 +2376,10 @@ export async function getProjectTaskAssigneeOptions(
   await requireFeaturePermission(user, "tasks", "update")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
+  const [canViewVendors, canViewInternal] = await Promise.all([
+    canFeature(user, "vendors", "read"),
+    canFeature(user, "internal-directory", "read"),
+  ])
 
   const projectContactRows = await db
     .select()
@@ -2127,7 +2419,7 @@ export async function getProjectTaskAssigneeOptions(
       .filter((email) => email.length > 0)
   )
 
-  const organizationUserRows = await db
+  const organizationUserRows = canViewInternal ? await db
     .select({
       id: users.id,
       email: users.email,
@@ -2143,7 +2435,7 @@ export async function getProjectTaskAssigneeOptions(
         eq(users.isActive, true)
       )
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(users.displayName), asc(users.email)) : []
   const organizationUserOptions = organizationUserRows
     .map(organizationUserToTaskAssigneeOption)
     .filter(
@@ -2152,7 +2444,7 @@ export async function getProjectTaskAssigneeOptions(
         !projectEmailKeys.has(option.email?.trim().toLowerCase() ?? "")
     )
 
-  const directoryRows = await db
+  const directoryRows = canViewVendors ? await db
     .select({
       id: vendors.id,
       name: vendors.name,
@@ -2164,7 +2456,7 @@ export async function getProjectTaskAssigneeOptions(
     .where(
       and(eq(vendors.organizationId, orgId), eq(vendors.directoryStatus, "active"))
     )
-    .orderBy(asc(vendors.name))
+    .orderBy(asc(vendors.name)) : []
 
   const directoryContacts = directoryRows
     .filter(
@@ -2196,6 +2488,11 @@ export async function getScheduleTaskAssigneeOptions(
   await requireFeaturePermission(user, "schedule", "update")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
+  const [canViewCustomers, canViewVendors, canViewInternal] = await Promise.all([
+    canFeature(user, "customers", "read"),
+    canFeature(user, "vendors", "read"),
+    canFeature(user, "internal-directory", "read"),
+  ])
 
   const [
     projectContactRows,
@@ -2217,7 +2514,7 @@ export async function getScheduleTaskAssigneeOptions(
         asc(projectContacts.contactType),
         asc(projectContacts.displayName)
       ),
-    db
+    canViewCustomers ? db
       .select({
         id: customers.id,
         name: customers.name,
@@ -2227,8 +2524,8 @@ export async function getScheduleTaskAssigneeOptions(
       })
       .from(customers)
       .where(eq(customers.organizationId, orgId))
-      .orderBy(asc(customers.name)),
-    db
+      .orderBy(asc(customers.name)) : [],
+    canViewVendors ? db
       .select({
         id: vendors.id,
         name: vendors.name,
@@ -2243,8 +2540,8 @@ export async function getScheduleTaskAssigneeOptions(
           eq(vendors.directoryStatus, "active")
         )
       )
-      .orderBy(asc(vendors.name)),
-    db
+      .orderBy(asc(vendors.name)) : [],
+    canViewVendors ? db
       .select({
         id: vendorContacts.id,
         vendorName: vendors.name,
@@ -2262,8 +2559,8 @@ export async function getScheduleTaskAssigneeOptions(
           eq(vendorContacts.active, true)
         )
       )
-      .orderBy(asc(vendors.name), asc(vendorContacts.name)),
-    db
+      .orderBy(asc(vendors.name), asc(vendorContacts.name)) : [],
+    canViewInternal ? db
       .select({
         id: users.id,
         email: users.email,
@@ -2280,7 +2577,7 @@ export async function getScheduleTaskAssigneeOptions(
           eq(users.isActive, true)
         )
       )
-      .orderBy(asc(users.displayName), asc(users.email)),
+      .orderBy(asc(users.displayName), asc(users.email)) : [],
   ])
 
   const projectOptions = projectContactRows
@@ -2312,6 +2609,7 @@ export async function getProjectPurchaseOrderSiteContactOptions(
   await requireFeaturePermission(user, "purchase-orders", "read")
   const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
+  const canViewInternal = await canFeature(user, "internal-directory", "read")
 
   const projectRows = await db
     .select()
@@ -2336,7 +2634,7 @@ export async function getProjectPurchaseOrderSiteContactOptions(
       .filter((email) => email.length > 0)
   )
 
-  const organizationRows = await db
+  const organizationRows = canViewInternal ? await db
     .select({
       id: users.id,
       email: users.email,
@@ -2353,7 +2651,7 @@ export async function getProjectPurchaseOrderSiteContactOptions(
         eq(users.isActive, true)
       )
     )
-    .orderBy(asc(users.displayName), asc(users.email))
+    .orderBy(asc(users.displayName), asc(users.email)) : []
   const organizationOptions = organizationRows
     .map((row) => ({
       ...organizationUserToTaskAssigneeOption(row),
@@ -2387,7 +2685,8 @@ export async function getProjectContactMatchReview(
 
   const user = await requireAuth()
   const orgId = requireOrg(user)
-  const independentContacts = await db
+  const canViewVendors = await canFeature(user, "vendors", "read")
+  const independentContacts = canViewVendors ? await db
     .select({
       id: vendors.id,
       name: vendors.name,
@@ -2397,7 +2696,7 @@ export async function getProjectContactMatchReview(
     })
     .from(vendors)
     .where(and(eq(vendors.organizationId, orgId), eq(vendors.directoryStatus, "active")))
-    .orderBy(asc(vendors.name))
+    .orderBy(asc(vendors.name)) : []
 
   const linkRows = await db
     .select()
@@ -2451,6 +2750,7 @@ export async function addIndependentContactToProjectFromReview(
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "vendors", "read")
 
     const orgId = requireOrg(user)
     const projectId = requireStringField(formData, "projectId")
@@ -2553,6 +2853,7 @@ export async function addDirectoryContactToProjectForTask(
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
     await requireFeaturePermission(user, "tasks", "update")
+    await requireFeaturePermission(user, "vendors", "read")
 
     const orgId = requireOrg(user)
     const db = await verifyProjectAccess(projectId, "update")

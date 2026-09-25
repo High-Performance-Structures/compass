@@ -30,6 +30,16 @@ export function projectContactCanInvite(
   return status === "not_invited" || status === "expired"
 }
 
+export function projectContactNeedsPersonForInvitation(input: {
+  readonly contactType: string
+  readonly vendorContactId: string | null
+}): boolean {
+  if (input.contactType === "supplier" || input.contactType === "subcontractor") {
+    return input.vendorContactId === null
+  }
+  return false
+}
+
 export function projectContactAccessStatus(input: {
   readonly activeProjectMember: boolean
   readonly latestInvitation: ProjectContactInvitationSnapshot | null

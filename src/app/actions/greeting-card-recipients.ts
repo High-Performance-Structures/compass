@@ -18,9 +18,9 @@ import {
 } from "@/lib/greeting-cards/recipient-directory"
 import { requireOrg } from "@/lib/org-scope"
 import {
-  canApproveGreetingCards,
   canPrepareGreetingCards,
 } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type { GreetingCardRecipientOption } from "@/lib/greeting-cards/recipient-directory"
@@ -35,7 +35,7 @@ type RecipientResult =
 export async function getGreetingCardRecipientOptions(): Promise<RecipientResult> {
   try {
     const user = await requireAuth()
-    if (!canPrepareGreetingCards(user) && !canApproveGreetingCards(user)) {
+    if (!canPrepareGreetingCards(user) && !(await canFeature(user, "greeting-card-approval", "read"))) {
       return {
         success: false,
         error: "Employee greeting-card access is required.",
@@ -103,7 +103,6 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
             firstName: users.firstName,
             lastName: users.lastName,
             email: users.email,
-            address: users.address,
             role: organizationMembers.role,
           })
           .from(organizationMembers)
@@ -173,7 +172,8 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           displayName: row.displayName?.trim() || fullName || row.email,
           companyName: null,
           email: row.email,
-          address: row.address,
+          // Residential addresses require a private permissioned workflow.
+          address: null,
           recipientType: "employee",
           personName: true,
           firstName: row.firstName,

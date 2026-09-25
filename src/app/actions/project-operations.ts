@@ -1481,7 +1481,13 @@ export async function getProjectPurchaseOrders(
         email: projectContacts.email,
       })
       .from(projectContacts)
-      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))),
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true),
+          inArray(projectContacts.contactType, ["supplier", "subcontractor"])
+        )
+      ),
     db
       .select({
         address: vendors.address,
@@ -1641,7 +1647,11 @@ export async function getProjectRfqs(
       })
       .from(projectContacts)
       .where(
-        and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true),
+          inArray(projectContacts.contactType, ["supplier", "subcontractor"])
+        )
       ),
     db
       .select({

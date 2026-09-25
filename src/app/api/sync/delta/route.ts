@@ -236,7 +236,8 @@ async function fetchTableChanges(
     changes.push({
       table: tableName,
       id,
-      data,
+      // Offline user rosters must not replicate employee home addresses.
+      data: tableName === "users" ? { ...data, address: null } : data,
       vectorClock,
       deleted: false,
     })

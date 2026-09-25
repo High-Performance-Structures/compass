@@ -104,6 +104,31 @@ function openDatabase(): InstanceType<typeof Database> {
       role TEXT NOT NULL,
       joined_at TEXT NOT NULL
     );
+    CREATE TABLE organizations (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL
+    );
+    INSERT INTO organizations (id, type) VALUES ('org-1', 'internal');
+    CREATE TABLE internal_contacts (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      user_id TEXT,
+      name TEXT NOT NULL,
+      job_title TEXT,
+      email TEXT,
+      phone TEXT,
+      cell_phone TEXT,
+      sage_employee_id TEXT,
+      sage_employee_number TEXT,
+      source_system TEXT NOT NULL,
+      source_record_id TEXT,
+      active INTEGER NOT NULL,
+      sync_status TEXT NOT NULL,
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (organization_id, user_id)
+    );
   `)
   return sqlite
 }
@@ -225,6 +250,9 @@ describe("inviteUser orphan membership recovery", () => {
     expect(
       sqlite.prepare("SELECT user_id FROM organization_members").get()
     ).toEqual({ user_id: "local-sarah-id" })
+    expect(
+      sqlite.prepare("SELECT user_id, name FROM internal_contacts").get()
+    ).toEqual({ user_id: "local-sarah-id", name: "Sarah Cowman" })
   })
 
   it("does not silently cross an existing organization boundary", async () => {

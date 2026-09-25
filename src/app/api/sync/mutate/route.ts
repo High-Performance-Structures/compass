@@ -527,7 +527,8 @@ const TABLE_HANDLERS: Record<string, TableHandler> = {
         .from(users)
         .where(eq(users.id, recordId))
         .limit(1)
-      return (records[0] as Record<string, unknown>) ?? null
+      const record = records[0]
+      return record ? { ...record, address: null } : null
     },
     applyInsert: async (db, recordId, payload, now) => {
       await db.insert(users).values({

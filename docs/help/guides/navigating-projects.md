@@ -60,7 +60,7 @@ Authorized registry managers can use **Scan for duplicates** in the Project Hub,
 
 If two records truly represent the same project, select the project to keep and review the inventory of linked records before confirming **Merge projects**. Compass transfers the linked records together; if a record cannot move safely, it keeps both projects unchanged. The other registry record is archived for recovery. Do not merge merely because names or numbers look similar.
 
-**Merge or remove project** provides a manual cleanup path for authorized managers. **Remove from registry** leaves a recoverable record in **Executive Admin → Project Archive** and retires its number; it does not transfer linked work. In Project Archive, authorized users can restore a removed project. Permanent deletion is available only when no linked project records remain, and it does not make a retired number reusable.
+**Merge or remove project** provides a manual cleanup path for authorized managers. **Remove from registry** leaves a recoverable record in **Restricted Workflows → Project Archive** and retires its number; it does not transfer linked work. Staff granted Project Archive access in Settings > Permissions can view the archive; approval access permits restoration and permanent deletion. Permanent deletion is available only when no linked project records remain, and it does not make a retired number reusable.
 
 ## Wrong Project Active {#wrong-project}
 

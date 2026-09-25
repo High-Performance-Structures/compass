@@ -54,6 +54,7 @@ describe("contact identity ownership", () => {
         { entityType: "customer", entityId: "directory-10" },
         { entityType: "vendor", entityId: "directory-539" },
         { entityType: "vendor_contact", entityId: "directory-42" },
+        { entityType: "customer_contact", entityId: "directory-43" },
         { entityType: "vendor", entityId: "outside-directory" },
         { entityType: "customer", entityId: null },
       ],
@@ -63,12 +64,13 @@ describe("contact identity ownership", () => {
       "customer:directory-10",
       "vendor:directory-539",
       "vendor_contact:directory-42",
+      "customer_contact:directory-43",
     ])
   })
 })
 
 describe("profile identity validation", () => {
-  it("normalizes the email and permits blank optional contact fields", () => {
+  it("normalizes account email without accepting business contact fields", () => {
     const result = updateProfileSchema.safeParse({
       firstName: " Brian ",
       lastName: " Sack ",
@@ -83,8 +85,6 @@ describe("profile identity validation", () => {
       firstName: "Brian",
       lastName: "Sack",
       email: "brian@example.com",
-      phone: "",
-      address: "",
     })
   })
 

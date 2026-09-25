@@ -35,13 +35,13 @@ import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
 import {
   canUseAskCompass,
-  canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
   canPrepareGreetingCards,
   canManageUserAccess,
   canManageProjectRegistry,
 } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 import { getQuickAddProjects } from "@/lib/quick-add-server"
 import { QuickAddProvider } from "@/components/quick-add-menu"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -87,7 +87,10 @@ export default async function DashboardLayout({
     : false
   const canUseDirectMessages = canViewActivity
   const canManageFeedback = canManageUserAccess(authUser)
-  const canAccessExecutiveAdmin = canUseExecutiveAdmin(authUser)
+  const [canReviewCherish, canViewProjectArchive] = await Promise.all([
+    canFeature(authUser, "cherish-review", "read"),
+    canFeature(authUser, "project-archive-access", "read"),
+  ])
   const canAccessGreetingCards = canPrepareGreetingCards(authUser)
   const canUseDeveloperMode = canManageProjectRegistry(authUser)
   const quickAddProjects = await getQuickAddProjects(authUser, projectList)
@@ -145,7 +148,8 @@ export default async function DashboardLayout({
           canUseFieldDesk={canUseCompassFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
-          canUseExecutiveAdmin={canAccessExecutiveAdmin}
+          canUseExecutiveAdmin={canReviewCherish}
+          canViewProjectArchive={canViewProjectArchive}
           canPrepareGreetingCards={canAccessGreetingCards}
           canUseOfficeTalk={canUseCompassOfficeTalk}
           canUseDirectMessages={canUseDirectMessages}

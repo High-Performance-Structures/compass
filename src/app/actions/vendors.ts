@@ -5,6 +5,7 @@ import { eq, and, asc, desc, inArray, isNull, or } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   projectContacts,
+  internalContacts,
   organizationMembers,
   users,
   vendorContacts,
@@ -13,6 +14,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
@@ -20,8 +22,11 @@ import {
   contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
 } from "@/lib/contact-identity-ownership"
+import {
+  changesSageLinkedVendorIdentity,
+  sameSageLinkedVendorContacts,
+} from "@/lib/sage/contact-edit-gate"
 import { userRoleLabel } from "@/lib/user-roles"
-import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -31,6 +36,9 @@ export type InternalDirectoryContact = {
   readonly email: string | null
   readonly phone: string | null
   readonly sourceLabel: string
+  readonly accessStatus: "active" | "invited" | "no_access"
+  readonly sageEmployeeId: string | null
+  readonly sageEmployeeNumber: string | null
 }
 
 export type VendorContactItem = {
@@ -43,6 +51,9 @@ export type VendorContactItem = {
   readonly isPrimary: boolean
   readonly active: boolean
   readonly sourceSystem: string
+  readonly userId: string | null
+  readonly sageContactId: string | null
+  readonly sageLineNumber: number | null
 }
 
 export type VendorDirectoryCompany = Vendor & {
@@ -119,7 +130,7 @@ function normalizedContactInputs(
 
 export async function getVendors(): Promise<VendorDirectoryCompany[]> {
   const user = await requireAuth()
-  requirePermission(user, "vendor", "read")
+  await requireFeaturePermission(user, "vendors", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -147,6 +158,9 @@ export async function getVendors(): Promise<VendorDirectoryCompany[]> {
         isPrimary: vendorContacts.isPrimary,
         active: vendorContacts.active,
         sourceSystem: vendorContacts.sourceSystem,
+        userId: vendorContacts.userId,
+        sageContactId: vendorContacts.sageContactId,
+        sageLineNumber: vendorContacts.sageLineNumber,
       })
       .from(vendorContacts)
       .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
@@ -180,53 +194,70 @@ export async function getInternalDirectoryContacts(): Promise<
   readonly InternalDirectoryContact[]
 > {
   const user = await requireAuth()
-  requirePermission(user, "vendor", "read")
+  await requireFeaturePermission(user, "internal-directory", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const teamRows = await db
+  const directoryRows = await db
     .select({
-      id: users.id,
-      email: users.email,
-      displayName: users.displayName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      phone: users.phone,
-      role: organizationMembers.role,
+      id: internalContacts.id,
+      name: internalContacts.name,
+      jobTitle: internalContacts.jobTitle,
+      email: internalContacts.email,
+      phone: internalContacts.phone,
+      sourceSystem: internalContacts.sourceSystem,
+      sageEmployeeId: internalContacts.sageEmployeeId,
+      sageEmployeeNumber: internalContacts.sageEmployeeNumber,
+      userActive: users.isActive,
+      userId: users.id,
+      lastLoginAt: users.lastLoginAt,
+      membershipRole: organizationMembers.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(internalContacts)
+    .leftJoin(users, eq(users.id, internalContacts.userId))
+    .leftJoin(
+      organizationMembers,
+      and(
+        eq(organizationMembers.userId, internalContacts.userId),
+        eq(organizationMembers.organizationId, orgId)
+      )
+    )
     .where(
       and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(users.isActive, true)
+        eq(internalContacts.organizationId, orgId),
+        eq(internalContacts.active, true)
       )
     )
 
-  const contacts: InternalDirectoryContact[] = []
-  for (const member of uniqueInternalStaffMembers(teamRows)) {
-    const fullName = [member.firstName, member.lastName]
-      .filter((part): part is string => Boolean(part?.trim()))
-      .join(" ")
-    contacts.push({
-      id: member.id,
-      name: member.displayName?.trim() || fullName || member.email,
+  const contacts: InternalDirectoryContact[] = directoryRows.map((contact) => ({
+      id: contact.id,
+      name: contact.name,
       company: null,
-      role: userRoleLabel(member.role),
-      email: member.email,
-      phone: member.phone,
-      sourceLabel: "Settings team",
-    })
-  }
+      role:
+        contact.jobTitle ??
+        (contact.membershipRole ? userRoleLabel(contact.membershipRole) : null),
+      email: contact.email,
+      phone: contact.phone,
+      sourceLabel: contact.sourceSystem,
+      sageEmployeeId: contact.sageEmployeeId,
+      sageEmployeeNumber: contact.sageEmployeeNumber,
+      accessStatus: contact.userId === null || contact.membershipRole === null
+        ? "no_access"
+        : contact.userActive
+          ? "active"
+          : contact.lastLoginAt === null && !contact.userId.startsWith("user_")
+            ? "invited"
+            : "no_access",
+    }))
 
   return contacts.sort((left, right) => left.name.localeCompare(right.name))
 }
 
 export async function getVendor(id: string) {
   const user = await requireAuth()
-  requirePermission(user, "vendor", "read")
+  await requireFeaturePermission(user, "vendors", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -249,7 +280,7 @@ export async function createVendor(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "vendor", "create")
+    await requireFeaturePermission(user, "vendors", "create")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -314,7 +345,7 @@ export async function updateVendor(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "vendor", "update")
+    await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -327,6 +358,23 @@ export async function updateVendor(
       .limit(1)
       .get()
     if (!existing) return { success: false, error: "Vendor not found" }
+
+    const contactInputs = normalizedContactInputs(data.contacts ?? [])
+    const existingContacts = data.contacts === undefined
+      ? []
+      : await db.select().from(vendorContacts)
+          .where(eq(vendorContacts.vendorId, id))
+
+    if (
+      (existing.sageVendorId || existing.sageVendorNumber) &&
+      (changesSageLinkedVendorIdentity(existing, data) ||
+        (data.contacts !== undefined && !sameSageLinkedVendorContacts(contactInputs, existingContacts)))
+    ) {
+      return {
+        success: false,
+        error: "This vendor is linked to Sage. Contact changes need Sage review before Compass can update the directory.",
+      }
+    }
 
     const name = data.name?.trim() ?? existing.name
     const category = data.category?.trim() ?? existing.category
@@ -363,14 +411,6 @@ export async function updateVendor(
       }
     }
 
-    const contactInputs = normalizedContactInputs(data.contacts ?? [])
-    const existingContacts =
-      data.contacts === undefined
-        ? []
-        : await db
-            .select()
-            .from(vendorContacts)
-            .where(eq(vendorContacts.vendorId, id))
     const existingById = new Map(
       existingContacts.map((contact) => [contact.id, contact])
     )
@@ -557,7 +597,7 @@ export async function createVendorContact(
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
-    requirePermission(user, "vendor", "update")
+    await requireFeaturePermission(user, "vendors", "update")
     const orgId = requireOrg(user)
     const name = input.name.trim()
     if (!name) return { success: false, error: "Contact name is required" }
@@ -565,7 +605,7 @@ export async function createVendorContact(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const vendor = await db
-      .select({ id: vendors.id })
+      .select({ id: vendors.id, sageVendorId: vendors.sageVendorId, sageVendorNumber: vendors.sageVendorNumber })
       .from(vendors)
       .where(
         and(
@@ -576,6 +616,12 @@ export async function createVendorContact(
       )
       .get()
     if (!vendor) return { success: false, error: "Vendor company not found" }
+    if (vendor.sageVendorId || vendor.sageVendorNumber) {
+      return {
+        success: false,
+        error: "This vendor is linked to Sage. Add its contact through the reviewed Sage workflow.",
+      }
+    }
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -595,6 +641,9 @@ export async function createVendorContact(
       isPrimary: input.isPrimary,
       active: true,
       sourceSystem: "manual",
+      userId: null,
+      sageContactId: null,
+      sageLineNumber: null,
     }
     await db.insert(vendorContacts).values({
       ...contact,
@@ -617,6 +666,7 @@ export async function deleteVendor(id: string) {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    await requireFeaturePermission(user, "vendors", "delete")
     requirePermission(user, "vendor", "delete")
     const orgId = requireOrg(user)
 

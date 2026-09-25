@@ -20,14 +20,6 @@ export const updateProfileSchema = z.object({
     .toLowerCase()
     .email("Enter a valid email address")
     .max(320, "Email must be 320 characters or less"),
-  phone: z
-    .string()
-    .max(50, "Phone number must be 50 characters or less")
-    .trim(),
-  address: z
-    .string()
-    .max(500, "Address must be 500 characters or less")
-    .trim(),
 })
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>

@@ -7,6 +7,7 @@ function source(relativePath: string): string {
 }
 
 const customerActions = source("../../../app/actions/customers.ts")
+const contactEditGate = source("../contact-edit-gate.ts")
 const projectActions = source("../../../app/actions/projects.ts")
 const resultsRoute = source(
   "../../../app/api/integrations/sage/client-project-writes/results/route.ts"
@@ -50,21 +51,10 @@ describe("Sage customer/project creation authorization boundary", () => {
     expect(resultsRoute).toContain("sage_job_number = ?")
   })
 
-  it("queues a Sage client update when a missing customer email is added", () => {
-    expect(customerActions).toContain(
-      "normalizedExistingEmail === null"
-    )
-    expect(customerActions).toContain(
-      "normalizedNextEmail !== null"
-    )
-    expect(customerActions).toContain(
-      'operationType: "update_client_email"'
-    )
-    expect(customerActions).toContain("Boolean(existing.sageClientId)")
-    expect(customerActions).toContain("Boolean(existing.sageClientNumber)")
-    expect(customerActions).toContain(
-      "idempotencyKey: `customer:${id}:email-fill`"
-    )
+  it("does not bypass contact review when filling a missing Sage client email", () => {
+    expect(customerActions).toContain("changesSageLinkedCustomerIdentity(existing, patch)")
+    expect(customerActions).not.toContain('operationType: "update_client_email"')
+    expect(contactEditGate).toContain('"email"')
   })
 
   it("runs one Sage API session per one-minute scheduled process", () => {

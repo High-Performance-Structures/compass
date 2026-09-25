@@ -143,6 +143,13 @@ export function getSageBridgeSecret(env: object): string | null {
   return trimmed.length >= 32 ? trimmed : null
 }
 
+export function getSageContactBridgeSecret(env: object): string | null {
+  const value: unknown = Reflect.get(env, "SAGE_CONTACT_BRIDGE_SECRET")
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length >= 32 ? trimmed : null
+}
+
 export function getSagePayApplicationBridgeSecret(
   env: object
 ): string | null {

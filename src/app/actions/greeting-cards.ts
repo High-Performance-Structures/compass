@@ -42,9 +42,9 @@ import {
 } from "@/lib/handwrytten/config"
 import { requireOrg } from "@/lib/org-scope"
 import {
-  canApproveGreetingCards,
   canPrepareGreetingCards,
 } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 
 export type {
   GreetingCardCatalogItem,
@@ -66,7 +66,7 @@ export async function getGreetingCardCatalog(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canPrepareGreetingCards(user) && !canApproveGreetingCards(user)) {
+    if (!canPrepareGreetingCards(user) && !(await canFeature(user, "greeting-card-approval", "read"))) {
       return cardAccessError()
     }
 
@@ -96,13 +96,13 @@ export async function getGreetingCardRequests(): Promise<
 > {
   try {
     const user = await requireAuth()
-    const canApprove = canApproveGreetingCards(user)
-    if (!canPrepareGreetingCards(user) && !canApprove) return cardAccessError()
+    const canViewApprovalQueue = await canFeature(user, "greeting-card-approval", "read")
+    if (!canPrepareGreetingCards(user) && !canViewApprovalQueue) return cardAccessError()
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return storageError()
 
-    const visibility = canApprove
+    const visibility = canViewApprovalQueue
       ? and(
           eq(greetingCardRequests.organizationId, organizationId),
           isNull(greetingCardRequests.deletedAt),
@@ -223,7 +223,7 @@ export async function submitGreetingCardRequest(
 ): Promise<ActionResult<GreetingCardRequest>> {
   try {
     const user = await requireAuth()
-    if (!canPrepareGreetingCards(user) && !canApproveGreetingCards(user)) {
+    if (!canPrepareGreetingCards(user) && !(await canFeature(user, "greeting-card-approval", "read"))) {
       return cardAccessError()
     }
     const validated = validateGreetingCardRequest(input)
@@ -348,7 +348,7 @@ export async function approveGreetingCardRequest(
 ): Promise<ActionResult<{ readonly id: string; readonly status: "approved" }>> {
   try {
     const user = await requireAuth()
-    if (!canApproveGreetingCards(user)) return approvalAccessError()
+    if (!(await canFeature(user, "greeting-card-approval", "approve"))) return approvalAccessError()
     const id = cleanText(requestId, 100)
     if (!id) return { success: false, error: "Choose a card request to approve." }
     const organizationId = requireOrg(user)
@@ -390,7 +390,7 @@ export async function rejectGreetingCardRequest(
 ): Promise<ActionResult<{ readonly id: string; readonly status: "rejected" }>> {
   try {
     const user = await requireAuth()
-    if (!canApproveGreetingCards(user)) return approvalAccessError()
+    if (!(await canFeature(user, "greeting-card-approval", "approve"))) return approvalAccessError()
     const id = cleanText(requestId, 100)
     const approvalNote = cleanText(note, MAX_NOTE_LENGTH)
     if (!id) return { success: false, error: "Choose a card request to reject." }
@@ -434,7 +434,7 @@ export async function releaseGreetingCardRequest(
 ): Promise<ActionResult<{ readonly id: string; readonly status: GreetingCardRequestStatus }>> {
   try {
     const user = await requireAuth()
-    if (!canApproveGreetingCards(user)) return approvalAccessError()
+    if (!(await canFeature(user, "greeting-card-approval", "approve"))) return approvalAccessError()
     const id = cleanText(requestId, 100)
     if (!id) return { success: false, error: "Choose an approved card request." }
     const organizationId = requireOrg(user)
@@ -741,7 +741,7 @@ export async function cancelGreetingCardRequest(
 ): Promise<ActionResult<{ readonly id: string; readonly status: GreetingCardRequestStatus }>> {
   try {
     const user = await requireAuth()
-    if (!canApproveGreetingCards(user)) return approvalAccessError()
+    if (!(await canFeature(user, "greeting-card-approval", "approve"))) return approvalAccessError()
     const id = cleanText(requestId, 100)
     if (!id) return { success: false, error: "Choose a card order to cancel." }
     const organizationId = requireOrg(user)
@@ -962,7 +962,7 @@ export async function deleteGreetingCardRequest(
 ): Promise<ActionResult<{ readonly id: string }>> {
   try {
     const user = await requireAuth()
-    const canApprove = canApproveGreetingCards(user)
+    const canApprove = await canFeature(user, "greeting-card-approval", "approve")
     if (!canPrepareGreetingCards(user) && !canApprove) return cardAccessError()
     const id = cleanText(requestId, 100)
     if (!id) return { success: false, error: "Choose a card request to remove." }
@@ -1064,7 +1064,7 @@ function cardAccessError<T>(): ActionResult<T> {
 }
 
 function approvalAccessError<T>(): ActionResult<T> {
-  return { success: false, error: "Executive Admin approval is required." }
+  return { success: false, error: "Greeting-card approval permission is required." }
 }
 
 function storageError<T>(): ActionResult<T> {

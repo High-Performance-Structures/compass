@@ -51,6 +51,7 @@ interface VendorsTableProps {
   categories: readonly string[]
   onEdit?: (vendor: VendorDirectoryCompany) => void
   onDelete?: (id: string) => void
+  onView?: (vendor: VendorDirectoryCompany) => void
 }
 
 function vendorSourceLabel(vendor: VendorDirectoryCompany): string {
@@ -70,6 +71,7 @@ export function VendorsTable({
   categories,
   onEdit,
   onDelete,
+  onView,
 }: VendorsTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -190,10 +192,11 @@ export function VendorsTable({
       },
     },
     {
-      accessorKey: "email",
-      header: "Company email",
+      id: "email",
+      accessorFn: (vendor) => vendor.primaryEmail || vendor.email,
+      header: "Contact email",
       cell: ({ row }) => {
-        const email = row.original.email
+        const email = row.original.primaryEmail || row.original.email
         if (!email) {
           return (
             <span className="text-muted-foreground/40">—</span>
@@ -254,6 +257,7 @@ export function VendorsTable({
     {
       id: "actions",
       cell: ({ row }) => {
+        if (!onEdit && !onDelete && !onView) return null
         const vendor = row.original
         return (
           <DropdownMenu>
@@ -264,25 +268,25 @@ export function VendorsTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(vendor)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              {onView && <DropdownMenuItem onClick={() => onView(vendor)}>View people</DropdownMenuItem>}
+              {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
+              {onEdit && onDelete && <DropdownMenuSeparator />}
+              {onDelete && <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => onDelete?.(vendor.id)}
+                onClick={() => onDelete(vendor.id)}
               >
                 Delete
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         )
       },
     },
   ]
-  const visibleColumns = developerModeEnabled
-    ? columns
-    : columns.filter((column) => column.id !== "source")
+  const visibleColumns = columns.filter((column) =>
+    (developerModeEnabled || column.id !== "source") &&
+    (onEdit !== undefined || onDelete !== undefined || onView !== undefined || column.id !== "actions")
+  )
 
   const table = useReactTable({
     data: [...vendors],
@@ -414,7 +418,7 @@ export function VendorsTable({
                       </p>
                     )}
                   </div>
-                  <DropdownMenu>
+                  {(onEdit || onDelete || onView) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -425,18 +429,17 @@ export function VendorsTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(v)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      {onView && <DropdownMenuItem onClick={() => onView(v)}>View people</DropdownMenuItem>}
+                      {onEdit && <DropdownMenuItem onClick={() => onEdit(v)}>Edit</DropdownMenuItem>}
+                      {onEdit && onDelete && <DropdownMenuSeparator />}
+                      {onDelete && <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => onDelete?.(v.id)}
+                        onClick={() => onDelete(v.id)}
                       >
                         Delete
-                      </DropdownMenuItem>
+                      </DropdownMenuItem>}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               )
             })}

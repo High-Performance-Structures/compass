@@ -34,6 +34,9 @@ interface CustomerDialogProps {
     notes: string
     relationshipType: CustomerRelationshipType
   }) => void
+  onManagePeople?: () => void
+  onSageEditCompany?: () => void
+  onSageLinkCompany?: () => void
 }
 
 export function CustomerDialog({
@@ -41,6 +44,9 @@ export function CustomerDialog({
   onOpenChange,
   initialData,
   onSubmit,
+  onManagePeople,
+  onSageEditCompany,
+  onSageLinkCompany,
 }: CustomerDialogProps) {
   const { developerModeEnabled } = useDeveloperMode()
   const [name, setName] = React.useState("")
@@ -51,6 +57,8 @@ export function CustomerDialog({
   const [notes, setNotes] = React.useState("")
   const [relationshipType, setRelationshipType] =
     React.useState<CustomerRelationshipType>("client")
+  const sageLinked = Boolean(initialData?.sageClientId || initialData?.sageClientNumber)
+  const sageVerified = Boolean(initialData?.sageClientId)
 
   React.useEffect(() => {
     if (initialData) {
@@ -96,27 +104,30 @@ export function CustomerDialog({
     <ResponsiveDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={initialData ? "Edit Client / Lead" : "Add Client / Lead Contact"}
+      title={initialData ? "Edit Client / Lead" : "Add Client / Lead"}
       description={
-        developerModeEnabled
-          ? "Maintain the directory contact without granting project access or creating a Sage client."
-          : "Maintain the directory contact without granting project access."
+        sageLinked
+          ? "Sage is the source of truth. Use a reviewed proposal to change company details."
+          : developerModeEnabled
+          ? "Maintain the directory record without granting project access or creating a Sage client. Add individual people separately."
+          : "Maintain the directory record without granting project access. Add individual people separately."
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
           <div className="space-y-1.5">
             <Label htmlFor="cust-name" className="text-xs">
-              Name *
+              Directory display name *
             </Label>
             <Input
               id="cust-name"
               className="h-9"
-              placeholder="Contact name"
+              placeholder="Client or lead name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               autoFocus
+              disabled={sageLinked}
             />
           </div>
           <div className="space-y-1.5">
@@ -159,6 +170,7 @@ export function CustomerDialog({
               className="h-9"
               placeholder="Company or organization"
               value={company}
+              disabled={sageLinked}
               onChange={(e) => setCompany(e.target.value)}
             />
           </div>
@@ -173,6 +185,7 @@ export function CustomerDialog({
                 className="h-9"
                 placeholder="email@example.com"
                 value={email}
+                disabled={sageLinked}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
@@ -185,6 +198,7 @@ export function CustomerDialog({
                 className="h-9"
                 placeholder="(555) 123-4567"
                 value={phone}
+                disabled={sageLinked}
                 onChange={(e) => setPhone(e.target.value)}
               />
             </div>
@@ -198,6 +212,7 @@ export function CustomerDialog({
               className="h-9"
               placeholder="Street, city, state"
               value={address}
+              disabled={sageLinked}
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
@@ -208,6 +223,7 @@ export function CustomerDialog({
             <Textarea
               id="cust-notes"
               value={notes}
+              disabled={sageLinked}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Additional notes..."
@@ -225,12 +241,21 @@ export function CustomerDialog({
           >
             Cancel
           </Button>
-          <Button
-            type="submit"
-            className="h-9"
-          >
-            {initialData ? "Save Changes" : "Add to Contacts"}
-          </Button>
+          {initialData && onManagePeople ? (
+            <Button type="button" variant="outline" onClick={onManagePeople}>People at this client</Button>
+          ) : null}
+          {initialData && !sageVerified && onSageLinkCompany ? (
+            <Button type="button" variant="outline" onClick={onSageLinkCompany}>Verify Sage link</Button>
+          ) : null}
+          {sageLinked ? (
+            sageVerified ? (
+              <Button type="button" onClick={onSageEditCompany} disabled={!onSageEditCompany}>Propose Sage edit</Button>
+            ) : null
+          ) : (
+            <Button type="submit" className="h-9">
+              {initialData ? "Save Changes" : "Add to Contacts"}
+            </Button>
+          )}
         </ResponsiveDialogFooter>
       </form>
     </ResponsiveDialog>

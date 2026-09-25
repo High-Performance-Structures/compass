@@ -586,6 +586,37 @@ export const teamPermissionOverrides = sqliteTable(
   ]
 )
 
+export const userPermissionOverrides = sqliteTable(
+  "user_permission_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").notNull(),
+    accessLevel: text("access_level").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_permission_overrides_unique").on(
+      table.organizationId,
+      table.userId,
+      table.featureId
+    ),
+    index("user_permission_overrides_org_idx").on(table.organizationId),
+  ]
+)
+
 export const permissionAuditEvents = sqliteTable(
   "permission_audit_events",
   {
@@ -596,6 +627,9 @@ export const permissionAuditEvents = sqliteTable(
     scope: text("scope").notNull(),
     role: text("role"),
     teamId: text("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
     featureId: text("feature_id").notNull(),
@@ -622,6 +656,10 @@ export type TeamPermissionOverride =
   typeof teamPermissionOverrides.$inferSelect
 export type NewTeamPermissionOverride =
   typeof teamPermissionOverrides.$inferInsert
+export type UserPermissionOverride =
+  typeof userPermissionOverrides.$inferSelect
+export type NewUserPermissionOverride =
+  typeof userPermissionOverrides.$inferInsert
 export type PermissionAuditEvent = typeof permissionAuditEvents.$inferSelect
 export type NewPermissionAuditEvent =
   typeof permissionAuditEvents.$inferInsert
@@ -2345,6 +2383,17 @@ export const projectContacts = sqliteTable("project_contacts", {
     () => vendorContacts.id,
     { onDelete: "set null" }
   ),
+  customerId: text("customer_id").references(() => customers.id, {
+    onDelete: "set null",
+  }),
+  customerContactId: text("customer_contact_id").references(
+    () => customerContacts.id,
+    { onDelete: "set null" }
+  ),
+  internalContactId: text("internal_contact_id").references(
+    () => internalContacts.id,
+    { onDelete: "set null" }
+  ),
   displayName: text("display_name").notNull(),
   companyName: text("company_name"),
   role: text("role"),
@@ -2374,7 +2423,10 @@ export const projectContacts = sqliteTable("project_contacts", {
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-})
+}, (table) => [
+  index("project_contacts_customer_contact_idx").on(table.customerContactId),
+  index("project_contacts_internal_contact_idx").on(table.internalContactId),
+])
 
 export const projectNotes = sqliteTable(
   "project_notes",
@@ -2686,6 +2738,17 @@ export const customers = sqliteTable(
     email: text("email"),
     phone: text("phone"),
     address: text("address"),
+    addressLine1: text("address_line_1"),
+    addressLine2: text("address_line_2"),
+    city: text("city"),
+    state: text("state"),
+    postalCode: text("postal_code"),
+    billingAddressLine1: text("billing_address_line_1"),
+    billingAddressLine2: text("billing_address_line_2"),
+    billingCity: text("billing_city"),
+    billingState: text("billing_state"),
+    billingPostalCode: text("billing_postal_code"),
+    primaryEmail: text("primary_email"),
     notes: text("notes"),
     netsuiteId: text("netsuite_id"),
     sageClientId: text("sage_client_id"),
@@ -2723,6 +2786,15 @@ export const vendors = sqliteTable("vendors", {
   email: text("email"),
   phone: text("phone"),
   address: text("address"),
+  ownerName: text("owner_name"),
+  addressLine1: text("address_line_1"),
+  addressLine2: text("address_line_2"),
+  city: text("city"),
+  state: text("state"),
+  postalCode: text("postal_code"),
+  primaryEmail: text("primary_email"),
+  sageVendorId: text("sage_vendor_id"),
+  sageVendorNumber: text("sage_vendor_number"),
   netsuiteId: text("netsuite_id"),
   sourceSystem: text("source_system").notNull().default("manual"),
   sourceRecordId: text("source_record_id"),
@@ -2734,7 +2806,14 @@ export const vendors = sqliteTable("vendors", {
   organizationId: text("organization_id").references(() => organizations.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
-})
+}, (table) => [
+  uniqueIndex("vendors_org_sage_vendor_id_unique")
+    .on(table.organizationId, table.sageVendorId)
+    .where(sql`${table.sageVendorId} IS NOT NULL AND trim(${table.sageVendorId}) <> ''`),
+  uniqueIndex("vendors_org_sage_vendor_number_unique")
+    .on(table.organizationId, table.sageVendorNumber)
+    .where(sql`${table.sageVendorNumber} IS NOT NULL AND trim(${table.sageVendorNumber}) <> ''`),
+])
 
 export const vendorContacts = sqliteTable(
   "vendor_contacts",
@@ -2743,10 +2822,15 @@ export const vendorContacts = sqliteTable(
     vendorId: text("vendor_id")
       .notNull()
       .references(() => vendors.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     title: text("title"),
     email: text("email"),
     phone: text("phone"),
+    phoneExtension: text("phone_extension"),
+    cellPhone: text("cell_phone"),
+    sageContactId: text("sage_contact_id"),
+    sageLineNumber: integer("sage_line_number"),
     isPrimary: integer("is_primary", { mode: "boolean" })
       .notNull()
       .default(false),
@@ -2759,6 +2843,147 @@ export const vendorContacts = sqliteTable(
   (table) => [
     index("vendor_contacts_vendor_idx").on(table.vendorId),
     index("vendor_contacts_vendor_active_idx").on(table.vendorId, table.active),
+    uniqueIndex("vendor_contacts_vendor_sage_contact_unique")
+      .on(table.vendorId, table.sageContactId)
+      .where(sql`${table.sageContactId} IS NOT NULL AND trim(${table.sageContactId}) <> ''`),
+    uniqueIndex("vendor_contacts_vendor_sage_line_unique")
+      .on(table.vendorId, table.sageLineNumber)
+      .where(sql`${table.sageLineNumber} IS NOT NULL`),
+    uniqueIndex("vendor_contacts_company_user_unique")
+      .on(table.vendorId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+  ]
+)
+
+export const customerContacts = sqliteTable(
+  "customer_contacts",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    title: text("title"),
+    email: text("email"),
+    phone: text("phone"),
+    phoneExtension: text("phone_extension"),
+    cellPhone: text("cell_phone"),
+    sageContactId: text("sage_contact_id"),
+    sageLineNumber: integer("sage_line_number"),
+    isPrimary: integer("is_primary", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    sourceSystem: text("source_system").notNull().default("manual"),
+    sourceRecordId: text("source_record_id"),
+    syncStatus: text("sync_status").notNull().default("manual"),
+    lastSyncedAt: text("last_synced_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("customer_contacts_customer_active_idx").on(
+      table.customerId,
+      table.active
+    ),
+    uniqueIndex("customer_contacts_customer_sage_contact_unique")
+      .on(table.customerId, table.sageContactId)
+      .where(sql`${table.sageContactId} IS NOT NULL AND trim(${table.sageContactId}) <> ''`),
+    uniqueIndex("customer_contacts_customer_sage_line_unique")
+      .on(table.customerId, table.sageLineNumber)
+      .where(sql`${table.sageLineNumber} IS NOT NULL`),
+    uniqueIndex("customer_contacts_company_user_unique")
+      .on(table.customerId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+  ]
+)
+
+export const internalContacts = sqliteTable(
+  "internal_contacts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    jobTitle: text("job_title"),
+    email: text("email"),
+    phone: text("phone"),
+    cellPhone: text("cell_phone"),
+    sageEmployeeId: text("sage_employee_id"),
+    sageEmployeeNumber: text("sage_employee_number"),
+    sourceSystem: text("source_system").notNull().default("manual"),
+    sourceRecordId: text("source_record_id"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    syncStatus: text("sync_status").notNull().default("manual"),
+    lastSyncedAt: text("last_synced_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("internal_contacts_org_active_idx").on(
+      table.organizationId,
+      table.active
+    ),
+    uniqueIndex("internal_contacts_org_user_unique")
+      .on(table.organizationId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+    uniqueIndex("internal_contacts_org_sage_employee_unique")
+      .on(table.organizationId, table.sageEmployeeId)
+      .where(sql`${table.sageEmployeeId} IS NOT NULL AND trim(${table.sageEmployeeId}) <> ''`),
+    uniqueIndex("internal_contacts_org_sage_employee_number_unique")
+      .on(table.organizationId, table.sageEmployeeNumber)
+      .where(sql`${table.sageEmployeeNumber} IS NOT NULL AND trim(${table.sageEmployeeNumber}) <> ''`),
+  ]
+)
+
+// Employee residential addresses are never selected with ordinary directory
+// people or project assignments. Access requires a dedicated private action.
+export const internalContactPrivateAddresses = sqliteTable(
+  "internal_contact_private_addresses",
+  {
+    internalContactId: text("internal_contact_id")
+      .primaryKey()
+      .references(() => internalContacts.id, { onDelete: "cascade" }),
+    addressLine1: text("address_line_1"),
+    addressLine2: text("address_line_2"),
+    city: text("city"),
+    state: text("state"),
+    postalCode: text("postal_code"),
+    lastSyncedAt: text("last_synced_at"),
+    updatedAt: text("updated_at").notNull(),
+  }
+)
+
+export const contactAccountLinkEvents = sqliteTable(
+  "contact_account_link_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    personKind: text("person_kind").notNull(),
+    personId: text("person_id").notNull(),
+    previousUserId: text("previous_user_id"),
+    nextUserId: text("next_user_id"),
+    changedByUserId: text("changed_by_user_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    check(
+      "contact_account_link_person_kind_check",
+      sql`${table.personKind} IN ('client_person', 'vendor_person')`
+    ),
+    index("contact_account_link_events_person_idx").on(
+      table.organizationId,
+      table.personKind,
+      table.personId,
+      table.createdAt
+    ),
   ]
 )
 

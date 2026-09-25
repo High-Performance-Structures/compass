@@ -5,7 +5,7 @@
   "slug": "greeting-cards",
   "title": "Greeting Cards, E-Cards, and Digital Gifts",
   "summary": "Prepare, approve, release, and safely cancel mailed cards, e-cards, and optional digital gifts.",
-  "contextSummary": "Submitting a greeting-card request does not send, order, or purchase anything. Executive Admin approval and a separate release are required.",
+  "contextSummary": "Submitting a greeting-card request does not send, order, or purchase anything. An authorized staff approval and a separate release are required.",
   "category": "Company Workflows",
   "tags": ["greeting cards", "e-cards", "Handwrytten", "Giftbit", "digital gifts", "approval", "release", "cancellation"],
   "audiences": ["staff"],
@@ -26,9 +26,9 @@ Submitting creates a request. It does not place a Handwrytten order, send an ema
 
 ## Approval and Release {#approval-release}
 
-Executive Admin reviews the complete card details and recipient before choosing **Approve** or **Reject**. A rejection should include a useful correction note. The requester can remove the rejected request and prepare a corrected one.
+Staff granted greeting-card approval in Settings > Permissions review the complete card details and recipient before choosing **Approve** or **Reject**. A rejection should include a useful correction note. The requester can remove the rejected request and prepare a corrected one.
 
-Approval still does not send or purchase anything. Executive Admin must separately choose **Send e-card** or **Release for mailing**, review the provider and cost warning, and then select **Confirm and release**. Recheck the name, address or email, message, closing, card design, and optional gift immediately before release.
+Approval still does not send or purchase anything. An authorized reviewer must separately choose **Send e-card** or **Release for mailing**, review the provider and cost warning, and then select **Confirm and release**. Recheck the name, address or email, message, closing, card design, and optional gift immediately before release.
 
 ## Mailed Handwritten Cards {#mailed-cards}
 
@@ -38,7 +38,7 @@ Releasing a mailed card creates a billable Handwrytten order for writing, postag
 
 ## E-Cards and Digital Gifts {#digital-gifts}
 
-An e-card sends a private Compass link by email. An optional $5–$500 Giftbit reward is purchased only when Executive Admin releases the approved request. The recipient has 363 days to claim the reward; after it is claimed, the selected retailer's gift-card terms apply.
+An e-card sends a private Compass link by email. An optional $5–$500 Giftbit reward is purchased only when an authorized reviewer releases the approved request. The recipient has 363 days to claim the reward; after it is claimed, the selected retailer's gift-card terms apply.
 
 Cancelling an e-card disables its private card link, but cannot recall an email that has already been delivered. Compass can attempt to reclaim an included Giftbit reward only before the recipient redeems it. Confirm the final card and gift status after cancellation.
 
@@ -48,7 +48,7 @@ Use **Refresh card requests** to retrieve the current queue. **Sending**, **Rele
 
 If your Compass session expires while preparing a request, use **Sign in again in a new tab**, return to the open request, verify the details, and submit it once.
 
-The requester or Executive Admin can remove an unreleased request while it is awaiting approval or rejected. Removal clears it from the active queue but retains a recoverable audit record. A released order or sent e-card must use the appropriate cancellation workflow instead.
+The requester or an authorized reviewer can remove an unreleased request while it is awaiting approval or rejected. Removal clears it from the active queue but retains a recoverable audit record. A released order or sent e-card must use the appropriate cancellation workflow instead.
 
 ## Quick Check {#quick-check}
 

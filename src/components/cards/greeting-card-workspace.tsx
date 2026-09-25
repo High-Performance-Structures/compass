@@ -158,7 +158,7 @@ export function GreetingCardWorkspace({
           <p className="mt-1 text-sm text-muted-foreground">
             {canApprove
               ? "Approve the content and recipient first, then release the mailing, email, or optional gift separately."
-              : "Every employee can prepare cards here. Executive Admin must approve and release each delivery."}
+              : "Every employee can prepare cards here. Authorized reviewers must approve and release each delivery."}
           </p>
         </div>
         <div className="flex items-center gap-2">

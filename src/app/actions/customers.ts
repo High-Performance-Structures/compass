@@ -3,13 +3,15 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and, or, sql } from "drizzle-orm"
 import { getDb } from "@/db"
-import { customers, projectContacts, type NewCustomer } from "@/db/schema"
+import { customers, projectContacts } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { z } from "zod/v4"
 import {
   parseSageClientStatusId,
   sageClientStatusName,
@@ -20,6 +22,9 @@ import {
   contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
 } from "@/lib/contact-identity-ownership"
+import {
+  changesSageLinkedCustomerIdentity,
+} from "@/lib/sage/contact-edit-gate"
 
 export type CreateCustomerInput = {
   readonly name: string
@@ -43,9 +48,30 @@ export type CreateCustomerDirectoryContactInput = {
   readonly relationshipType: CustomerRelationshipType
 }
 
+const customerDirectoryUpdateSchema = z.strictObject({
+  name: z.string().optional(),
+  company: z.string().nullable().optional(),
+  email: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  address: z.string().nullable().optional(),
+  addressLine1: z.string().nullable().optional(),
+  addressLine2: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  state: z.string().nullable().optional(),
+  postalCode: z.string().nullable().optional(),
+  billingAddressLine1: z.string().nullable().optional(),
+  billingAddressLine2: z.string().nullable().optional(),
+  billingCity: z.string().nullable().optional(),
+  billingState: z.string().nullable().optional(),
+  billingPostalCode: z.string().nullable().optional(),
+  primaryEmail: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  relationshipType: z.enum(["client", "lead"]).optional(),
+})
+
 export async function getCustomers() {
   const user = await requireAuth()
-  requirePermission(user, "customer", "read")
+  await requireFeaturePermission(user, "customers", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -56,7 +82,7 @@ export async function getCustomers() {
 
 export async function getCustomer(id: string) {
   const user = await requireAuth()
-  requirePermission(user, "customer", "read")
+  await requireFeaturePermission(user, "customers", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -79,7 +105,10 @@ export async function createCustomer(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    // This action enqueues Sage client creation; a directory edit grant alone
+    // must not expand who can start that separate workflow.
     requirePermission(user, "customer", "create")
+    await requireFeaturePermission(user, "customers", "create")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -167,7 +196,7 @@ export async function createCustomerDirectoryContact(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "customer", "create")
+    await requireFeaturePermission(user, "customers", "create")
     const orgId = requireOrg(user)
     const name = data.name.trim()
     if (!name) {
@@ -256,15 +285,23 @@ export async function createCustomerDirectoryContact(
 
 export async function updateCustomer(
   id: string,
-  data: Partial<NewCustomer>
+  data: unknown
 ) {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "customer", "update")
+    await requireFeaturePermission(user, "customers", "update")
     const orgId = requireOrg(user)
+    const parsed = customerDirectoryUpdateSchema.safeParse(data)
+    if (!parsed.success) {
+      return { success: false, error: "Only client directory details may be edited here." }
+    }
+    const patch = parsed.data
+    if (patch.name !== undefined && !patch.name.trim()) {
+      return { success: false, error: "Client name is required." }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -276,18 +313,31 @@ export async function updateCustomer(
       .limit(1)
       .get()
     if (!existing) return { success: false, error: "Customer not found" }
+    const normalizedExistingEmail = existing.email?.trim() || null
+    const normalizedNextEmail = patch.email === undefined
+      ? normalizedExistingEmail
+      : patch.email?.trim() || null
     if (
-      data.relationshipType !== undefined &&
-      data.relationshipType !== "client" &&
-      data.relationshipType !== "lead"
+      (existing.sageClientId || existing.sageClientNumber) &&
+      changesSageLinkedCustomerIdentity(existing, patch)
+    ) {
+      return {
+        success: false,
+        error: "This client is linked to Sage. Contact changes need Sage review before Compass can update the directory.",
+      }
+    }
+    if (
+      patch.relationshipType !== undefined &&
+      patch.relationshipType !== "client" &&
+      patch.relationshipType !== "lead"
     ) {
       return { success: false, error: "Choose Client or Lead." }
     }
 
     const nextIdentity = {
-      email: data.email === undefined ? existing.email : data.email,
-      phone: data.phone === undefined ? existing.phone : data.phone,
-      address: data.address === undefined ? existing.address : data.address,
+      email: patch.email === undefined ? existing.email : patch.email,
+      phone: patch.phone === undefined ? existing.phone : patch.phone,
+      address: patch.address === undefined ? existing.address : patch.address,
     }
     const identityChanged = contactIdentityChanged(existing, nextIdentity)
     if (
@@ -309,19 +359,9 @@ export async function updateCustomer(
     const updatedAt = new Date().toISOString()
     const safeData =
       (existing.sageClientId || existing.sageClientNumber) &&
-      data.relationshipType === "lead"
-        ? { ...data, relationshipType: "client" }
-        : data
-    const normalizedExistingEmail = existing.email?.trim() || null
-    const normalizedNextEmail =
-      safeData.email === undefined
-        ? normalizedExistingEmail
-        : safeData.email?.trim() || null
-    const shouldQueueSageEmailUpdate =
-      normalizedExistingEmail === null &&
-      normalizedNextEmail !== null &&
-      Boolean(existing.sageClientId) &&
-      Boolean(existing.sageClientNumber)
+      patch.relationshipType === "lead"
+        ? { ...patch, relationshipType: "client" }
+        : patch
     const customerUpdate = db
       .update(customers)
       .set({ ...safeData, email: normalizedNextEmail, updatedAt })
@@ -336,41 +376,7 @@ export async function updateCustomer(
         )
       )
 
-    if (shouldQueueSageEmailUpdate) {
-      const operationId = crypto.randomUUID()
-      const payload = {
-        operationType: "update_client_email" as const,
-        company: "High Performance Structures Inc" as const,
-        client: {
-          compassCustomerId: id,
-          sageClientId: existing.sageClientId,
-          sageClientNumber: existing.sageClientNumber,
-          email: normalizedNextEmail,
-        },
-      }
-      await db.batch([
-        customerUpdate,
-        projectContactUpdate,
-        db.insert(sageClientProjectWriteOperations).values({
-          id: operationId,
-          organizationId: orgId,
-          customerId: id,
-          projectId: null,
-          requestedByUserId: user.id,
-          operationType: "update_client_email",
-          // A Sage client can only transition from a blank email once. Keeping
-          // this key stable prevents concurrent blank-to-known edits from
-          // enqueueing competing writes for the same client.
-          idempotencyKey: `customer:${id}:email-fill`,
-          payloadJson: JSON.stringify(payload),
-          status: "queued",
-          requestedAt: updatedAt,
-          updatedAt,
-        }),
-      ])
-    } else {
-      await db.batch([customerUpdate, projectContactUpdate])
-    }
+    await db.batch([customerUpdate, projectContactUpdate])
 
     revalidatePath("/dashboard/customers")
     revalidatePath("/dashboard/contacts")
@@ -391,6 +397,7 @@ export async function deleteCustomer(id: string) {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    await requireFeaturePermission(user, "customers", "delete")
     requirePermission(user, "customer", "delete")
     const orgId = requireOrg(user)
 

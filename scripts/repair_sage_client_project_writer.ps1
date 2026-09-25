@@ -13,8 +13,10 @@ $binaryBackup = Join-Path $installDirectory "CompassSageClientProjectWriter.befo
 $taskBackup = Join-Path $installDirectory "scheduled-task-before-repair.xml"
 $diagnosticLog = Join-Path $logsDirectory "diagnostic-task.log"
 $compiler = Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319\csc.exe"
+$contactSource = Join-Path (Split-Path $SourcePath -Parent) "Sage.100.Contractor.CompassContactWriter.cs"
 
 if (-not (Test-Path $SourcePath)) { throw "Writer source not found: $SourcePath" }
+if (-not (Test-Path $contactSource)) { throw "Contact writer source not found: $contactSource" }
 if (-not (Test-Path $binary)) { throw "Installed writer not found: $binary" }
 if (-not (Test-Path $compiler)) { throw "C# compiler not found: $compiler" }
 
@@ -39,7 +41,7 @@ try {
   }
 
   Remove-Item -Path $candidateBinary -Force -ErrorAction SilentlyContinue
-  & $compiler /nologo /optimize+ /target:exe /out:$candidateBinary /reference:System.Data.dll /reference:System.Web.Extensions.dll $SourcePath
+  & $compiler /nologo /optimize+ /target:exe /out:$candidateBinary /reference:System.Data.dll /reference:System.Web.Extensions.dll $SourcePath $contactSource
   if ($LASTEXITCODE -ne 0 -or -not (Test-Path $candidateBinary)) {
     throw "C# compilation failed."
   }
@@ -77,6 +79,7 @@ try {
   }
 
   Copy-Item -Path $SourcePath -Destination (Join-Path $installDirectory "CompassSageClientProjectWriter.cs") -Force
+  Copy-Item -Path $contactSource -Destination (Join-Path $installDirectory "CompassSageContactWriter.cs") -Force
 
   $writerAction = New-ScheduledTaskAction -Execute $binary -Argument "--once"
   $startupTrigger = New-ScheduledTaskTrigger -AtStartup

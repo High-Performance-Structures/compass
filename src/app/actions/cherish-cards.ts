@@ -17,7 +17,7 @@ import {
 } from "@/lib/handwrytten/client"
 import { getHandwryttenConfig } from "@/lib/handwrytten/config"
 import { requireOrg } from "@/lib/org-scope"
-import { canUseExecutiveAdmin } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 
 export type CherishCardCatalogItem = {
   readonly id: number
@@ -101,7 +101,7 @@ export async function getCherishCardCatalog(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) return executiveAccessError()
+    if (!(await canFeature(user, "cherish-review", "read"))) return executiveAccessError()
 
     const { env } = await getCloudflareContext()
     const config = getHandwryttenConfig(env)
@@ -130,7 +130,7 @@ export async function getCherishCardFulfillments(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) return executiveAccessError()
+    if (!(await canFeature(user, "cherish-review", "read"))) return executiveAccessError()
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return storageError()
@@ -153,7 +153,7 @@ export async function sendCherishCard(
 ): Promise<ActionResult<CherishCardFulfillment>> {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) return executiveAccessError()
+    if (!(await canFeature(user, "cherish-review", "approve"))) return executiveAccessError()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
 
     const validated = validateSendInput(input)
@@ -348,7 +348,7 @@ export async function cancelCherishCard(
 ): Promise<ActionResult<CherishCardFulfillment>> {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) return executiveAccessError()
+    if (!(await canFeature(user, "cherish-review", "approve"))) return executiveAccessError()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
 
     const id = cleanText(fulfillmentId, 100)
@@ -699,7 +699,7 @@ function existingFulfillmentMessage(status: string): string {
 function executiveAccessError<T>(): ActionResult<T> {
   return {
     success: false,
-    error: "Executive Admin access is required to manage CHERISH cards.",
+    error: "CHERISH review permission is required to manage cards.",
   }
 }
 

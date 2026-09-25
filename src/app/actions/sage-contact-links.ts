@@ -1,0 +1,354 @@
+"use server"
+
+import { and, desc, eq } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
+
+import { getDb } from "@/db"
+import { customerContacts, customers, internalContacts, vendorContacts, vendors } from "@/db/schema"
+import { sageContactLinkEvents, sageContactReadRequests } from "@/db/schema-sage"
+import { requireAuth } from "@/lib/auth"
+import { getCloudflareContext } from "@/lib/db"
+import { isDemoUser } from "@/lib/demo"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { requireOrg } from "@/lib/org-scope"
+import { getSageContactBridgeSecret } from "@/lib/sage/bridge-auth"
+import { sageContactKindSchema, sageContactOrganizationMatches, sageContactSnapshotResultSchema } from "@/lib/sage/contact-bridge"
+import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
+import { sageContactLinkCandidateError } from "@/lib/sage/contact-link-review"
+import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
+
+const CANDIDATE_MAX_AGE_MS = 15 * 60 * 1000
+
+type LinkResult =
+  | { readonly success: true; readonly id: string; readonly status: string }
+  | { readonly success: false; readonly error: string }
+
+export type SageContactLinkCandidate = {
+  readonly id: string
+  readonly kind: SageContactKind
+  readonly entityId: string
+  readonly directoryName: string
+  readonly status: string
+  readonly sageRecordNumber: string
+  readonly sageRecordId: string | null
+  readonly fields: Readonly<Record<string, string | null>>
+  readonly requestedByUserId: string | null
+  readonly requestedAt: string
+  readonly errorMessage: string | null
+}
+
+function validNumber(value: string): boolean {
+  return /^[1-9]\d{0,9}$/.test(value) && Number.isSafeInteger(Number(value))
+}
+
+function directoryFeature(kind: SageContactKind): "customers" | "vendors" | "internal-directory" {
+  return kind === "employee" ? "internal-directory"
+    : kind.startsWith("client") ? "customers" : "vendors"
+}
+
+async function directoryName(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  kind: SageContactKind,
+  entityId: string
+): Promise<string | null> {
+  if (kind === "client_company") {
+    const row = await db.select({ name: customers.name }).from(customers).where(and(
+      eq(customers.id, entityId), eq(customers.organizationId, organizationId)
+    )).get()
+    return row?.name ?? null
+  }
+  if (kind === "vendor_company") {
+    const row = await db.select({ name: vendors.name }).from(vendors).where(and(
+      eq(vendors.id, entityId), eq(vendors.organizationId, organizationId)
+    )).get()
+    return row?.name ?? null
+  }
+  if (kind === "employee") {
+    const row = await db.select({ name: internalContacts.name }).from(internalContacts).where(and(
+      eq(internalContacts.id, entityId), eq(internalContacts.organizationId, organizationId)
+    )).get()
+    return row?.name ?? null
+  }
+  if (kind === "client_person") {
+    const row = await db.select({ name: customerContacts.name }).from(customerContacts)
+      .innerJoin(customers, eq(customers.id, customerContacts.customerId))
+      .where(and(eq(customerContacts.id, entityId), eq(customers.organizationId, organizationId))).get()
+    return row?.name ?? null
+  }
+  const row = await db.select({ name: vendorContacts.name }).from(vendorContacts)
+    .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
+    .where(and(eq(vendorContacts.id, entityId), eq(vendors.organizationId, organizationId))).get()
+  return row?.name ?? null
+}
+
+/** Stage an exact Sage number read; no directory identity is changed here. */
+export async function requestSageContactLinkCandidate(
+  kindInput: string,
+  entityId: string,
+  numberInput: string
+): Promise<LinkResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "sage-contact-review", "read")
+    const kind = sageContactKindSchema.safeParse(kindInput)
+    if (!kind.success || !entityId.trim()) return { success: false, error: "Choose a valid directory contact." }
+    await requireFeaturePermission(user, directoryFeature(kind.data), "read")
+    if (kind.data === "employee") await requireFeaturePermission(user, "employee-contact-private", "read")
+    const orgId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    if (!sageContactOrganizationMatches(env, orgId) || !getSageContactBridgeSecret(env)) {
+      return { success: false, error: "Sage contact bridge is not configured for this organization." }
+    }
+    const db = getDb(env.DB)
+    const identity = await getSageContactEntityIdentity(db, orgId, kind.data, entityId)
+    if (!identity) return { success: false, error: "Directory contact was not found." }
+    if (identity.sageRecordId) return { success: false, error: "This contact already has a verified Sage ID." }
+    if ((kind.data === "client_person" || kind.data === "vendor_person") && !identity.parentSageRecordId) {
+      return { success: false, error: "Review the Sage parent company link first." }
+    }
+    const number = numberInput.trim() || identity.sageRecordNumber?.trim() || ""
+    if (!validNumber(number) || identity.sageRecordNumber && identity.sageRecordNumber !== number) {
+      return { success: false, error: "Enter the exact Sage record or contact line number." }
+    }
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    await db.batch([
+      db.insert(sageContactReadRequests).values({
+        id, organizationId: orgId, kind: kind.data, entityId,
+        sageRecordId: null, sageRecordNumber: number,
+        parentSageRecordId: identity.parentSageRecordId,
+        purpose: "link_candidate", status: "queued",
+        requestedByUserId: user.id, requestedAt: now,
+      }),
+      db.insert(sageContactLinkEvents).values({
+        id: crypto.randomUUID(), requestId: id, organizationId: orgId,
+        actorUserId: user.id, eventType: "requested",
+        detailJson: JSON.stringify({ number }), createdAt: now,
+      }),
+    ])
+    revalidatePath("/dashboard/contacts")
+    return { success: true, id, status: "queued" }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not look up Sage contact." }
+  }
+}
+
+export async function listSageContactLinkCandidates(): Promise<readonly SageContactLinkCandidate[]> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "sage-contact-review", "read")
+  const orgId = requireOrg(user)
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const canSeeEmployee = await requireFeaturePermission(user, "employee-contact-private", "read")
+    .then(() => true).catch(() => false)
+  const canSeeClients = await requireFeaturePermission(user, "customers", "read")
+    .then(() => true).catch(() => false)
+  const canSeeVendors = await requireFeaturePermission(user, "vendors", "read")
+    .then(() => true).catch(() => false)
+  const canSeeInternal = await requireFeaturePermission(user, "internal-directory", "read")
+    .then(() => true).catch(() => false)
+  const rows = await db.select().from(sageContactReadRequests).where(and(
+    eq(sageContactReadRequests.organizationId, orgId),
+    eq(sageContactReadRequests.purpose, "link_candidate")
+  )).orderBy(desc(sageContactReadRequests.requestedAt)).limit(100)
+  const result: SageContactLinkCandidate[] = []
+  for (const row of rows) {
+    if (row.kind === "employee" && !canSeeEmployee) continue
+    const kind = sageContactKindSchema.safeParse(row.kind)
+    if (!kind.success || !row.sageRecordNumber) continue
+    if (kind.data.startsWith("client") && !canSeeClients ||
+      kind.data.startsWith("vendor") && !canSeeVendors ||
+      kind.data === "employee" && !canSeeInternal) continue
+    const name = await directoryName(db, orgId, kind.data, row.entityId)
+    if (!name) continue
+    let snapshot: unknown
+    try { snapshot = row.candidateSnapshotJson ? JSON.parse(row.candidateSnapshotJson) : null } catch { snapshot = null }
+    const parsed = sageContactSnapshotResultSchema.safeParse(snapshot)
+    result.push({
+      id: row.id, kind: kind.data, entityId: row.entityId, directoryName: name,
+      status: row.status, sageRecordNumber: row.sageRecordNumber,
+      sageRecordId: parsed.success ? parsed.data.sageRecordId : null,
+      fields: parsed.success ? parsed.data.fields : {},
+      requestedByUserId: row.requestedByUserId,
+      requestedAt: row.requestedAt, errorMessage: row.errorMessage,
+    })
+  }
+  return result
+}
+
+/** The second reviewer links only the exact number/GUID returned by Sage. */
+export async function reviewSageContactLinkCandidate(
+  requestId: string,
+  decision: "link" | "reject",
+  note = ""
+): Promise<LinkResult> {
+  try {
+    if (decision !== "link" && decision !== "reject") return { success: false, error: "Invalid decision." }
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "sage-contact-review", "approve")
+    const orgId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    if (!sageContactOrganizationMatches(env, orgId)) return { success: false, error: "Sage contact bridge is not configured." }
+    const db = getDb(env.DB)
+    const row = await db.select().from(sageContactReadRequests).where(and(
+      eq(sageContactReadRequests.id, requestId),
+      eq(sageContactReadRequests.organizationId, orgId),
+      eq(sageContactReadRequests.purpose, "link_candidate"),
+      eq(sageContactReadRequests.status, "awaiting_review")
+    )).get()
+    if (!row || !row.candidateSnapshotJson || !row.sageRecordNumber) {
+      return { success: false, error: "Candidate is no longer awaiting review." }
+    }
+    if (row.requestedByUserId === user.id) return { success: false, error: "A requester cannot review their own Sage link." }
+    const kind = sageContactKindSchema.safeParse(row.kind)
+    let raw: unknown
+    try { raw = JSON.parse(row.candidateSnapshotJson) } catch { raw = null }
+    const parsed = sageContactSnapshotResultSchema.safeParse(raw)
+    if (!kind.success || !parsed.success) return { success: false, error: "Candidate read-back is invalid." }
+    const snapshot = parsed.data
+    await requireFeaturePermission(user, directoryFeature(kind.data), "update")
+    if (kind.data === "employee") await requireFeaturePermission(user, "employee-contact-private", "approve")
+    const now = new Date().toISOString()
+    const reviewNote = note.trim().slice(0, 1000)
+    if (decision === "reject") {
+      const results = await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE sage_contact_read_requests SET status = 'rejected', reviewed_by_user_id = ?,
+           reviewed_at = ?, review_note = ? WHERE id = ? AND organization_id = ?
+           AND purpose = 'link_candidate' AND status = 'awaiting_review'`
+        ).bind(user.id, now, reviewNote || null, requestId, orgId),
+        env.DB.prepare(
+          `INSERT INTO sage_contact_link_events
+           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+           SELECT ?, id, organization_id, ?, 'rejected', ?, ?
+           FROM sage_contact_read_requests WHERE id = ? AND status = 'rejected'
+             AND reviewed_by_user_id = ? AND reviewed_at = ?`
+        ).bind(crypto.randomUUID(), user.id, JSON.stringify({ note: reviewNote }), now,
+          requestId, user.id, now),
+      ])
+      if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
+        return { success: false, error: "Candidate changed during review." }
+      }
+      revalidatePath("/dashboard/contacts")
+      return { success: true, id: requestId, status: "rejected" }
+    }
+    const captured = row.completedAt ? Date.parse(row.completedAt) : Number.NaN
+    if (!Number.isFinite(captured) || Date.now() - captured > CANDIDATE_MAX_AGE_MS) {
+      return { success: false, error: "Sage candidate read is stale. Request a new lookup." }
+    }
+    const identity = await getSageContactEntityIdentity(db, orgId, kind.data, row.entityId)
+    if (!identity) return { success: false, error: "Directory record no longer exists." }
+    const identityError = sageContactLinkCandidateError(identity, {
+      kind: kind.data, entityId: row.entityId,
+      sageRecordNumber: row.sageRecordNumber,
+      parentSageRecordId: row.parentSageRecordId,
+    }, {
+      kind: snapshot.kind, entityId: snapshot.entityId,
+      sageRecordNumber: snapshot.sageRecordNumber ?? "",
+      parentSageRecordId: snapshot.parentSageRecordId,
+      sageRecordId: snapshot.sageRecordId,
+    })
+    if (identityError) return { success: false, error: identityError }
+    const reviewToken = crypto.randomUUID()
+    const number = row.sageRecordNumber
+    const id = snapshot.sageRecordId
+    const parent = row.parentSageRecordId
+    const guard = `EXISTS (SELECT 1 FROM sage_contact_read_requests
+      WHERE id = ? AND organization_id = ? AND status = 'linking' AND claim_token = ?)`
+    const linkSql = kind.data === "client_company"
+      ? `UPDATE customers SET sage_client_id = ?, sage_client_number = ?
+         WHERE id = ? AND organization_id = ? AND sage_client_id IS NULL
+           AND (sage_client_number IS NULL OR sage_client_number = ?) AND ${guard}`
+      : kind.data === "vendor_company"
+        ? `UPDATE vendors SET sage_vendor_id = ?, sage_vendor_number = ?
+           WHERE id = ? AND organization_id = ? AND sage_vendor_id IS NULL
+             AND (sage_vendor_number IS NULL OR sage_vendor_number = ?) AND ${guard}`
+        : kind.data === "employee"
+          ? `UPDATE internal_contacts SET sage_employee_id = ?, sage_employee_number = ?
+             WHERE id = ? AND organization_id = ? AND sage_employee_id IS NULL
+               AND (sage_employee_number IS NULL OR sage_employee_number = ?) AND ${guard}`
+          : kind.data === "client_person"
+            ? `UPDATE customer_contacts SET sage_contact_id = ?, sage_line_number = ?
+               WHERE id = ? AND sage_contact_id IS NULL
+                 AND (sage_line_number IS NULL OR sage_line_number = ?)
+                 AND customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)
+                 AND ${guard}`
+            : `UPDATE vendor_contacts SET sage_contact_id = ?, sage_line_number = ?
+               WHERE id = ? AND sage_contact_id IS NULL
+                 AND (sage_line_number IS NULL OR sage_line_number = ?)
+                 AND vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)
+                 AND ${guard}`
+    const linkStatement = kind.data === "client_person" || kind.data === "vendor_person"
+      ? env.DB.prepare(linkSql).bind(id, Number(number), row.entityId, Number(number), orgId,
+          parent, requestId, orgId, reviewToken)
+      : env.DB.prepare(linkSql).bind(id, number, row.entityId, orgId, number,
+          requestId, orgId, reviewToken)
+    const confirmedTable = kind.data === "client_company" ? "customers"
+      : kind.data === "vendor_company" ? "vendors"
+        : kind.data === "employee" ? "internal_contacts"
+          : kind.data === "client_person" ? "customer_contacts" : "vendor_contacts"
+    const confirmedColumn = kind.data === "client_company" ? "sage_client_id"
+      : kind.data === "vendor_company" ? "sage_vendor_id"
+        : kind.data === "employee" ? "sage_employee_id" : "sage_contact_id"
+    const confirmation = kind.data === "client_person"
+      ? ` AND customer_id IN (SELECT id FROM customers WHERE organization_id = ? AND sage_client_id = ?)`
+      : kind.data === "vendor_person"
+        ? ` AND vendor_id IN (SELECT id FROM vendors WHERE organization_id = ? AND sage_vendor_id = ?)`
+        : ` AND organization_id = ?`
+    const confirmedStatement = env.DB.prepare(
+      `UPDATE sage_contact_read_requests SET status = 'linked' WHERE id = ?
+       AND organization_id = ? AND status = 'linking' AND claim_token = ?
+       AND EXISTS (SELECT 1 FROM ${confirmedTable} WHERE id = ? AND ${confirmedColumn} = ?${confirmation})`
+    )
+    const confirmationArgs = kind.data === "client_person" || kind.data === "vendor_person"
+      ? [requestId, orgId, reviewToken, row.entityId, id, orgId, parent]
+      : [requestId, orgId, reviewToken, row.entityId, id, orgId]
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE sage_contact_read_requests SET status = 'linking', claim_token = ?,
+         reviewed_by_user_id = ?, reviewed_at = ?, review_note = ?
+         WHERE id = ? AND organization_id = ? AND purpose = 'link_candidate'
+           AND status = 'awaiting_review' AND candidate_snapshot_json = ?`
+      ).bind(reviewToken, user.id, now, reviewNote || null, requestId, orgId, row.candidateSnapshotJson),
+      linkStatement,
+      confirmedStatement.bind(...confirmationArgs),
+      env.DB.prepare(
+        `INSERT INTO sage_contact_link_events
+         (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+         SELECT ?, id, organization_id, ?, 'linked', ?, ? FROM sage_contact_read_requests
+         WHERE id = ? AND organization_id = ? AND status = 'linked'
+           AND reviewed_by_user_id = ? AND reviewed_at = ? AND claim_token = ?`
+      ).bind(crypto.randomUUID(), user.id,
+        JSON.stringify({ sageRecordId: id, sageRecordNumber: number, note: reviewNote }), now,
+        requestId, orgId, user.id, now, reviewToken),
+    ])
+    if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1 ||
+      results[2]?.meta.changes !== 1 || results[3]?.meta.changes !== 1) {
+      if (results[0]?.meta.changes === 1 && results[1]?.meta.changes !== 1) {
+        await db.batch([
+          db.update(sageContactReadRequests).set({ status: "conflict", errorMessage: "Directory link changed during review." })
+            .where(and(eq(sageContactReadRequests.id, requestId), eq(sageContactReadRequests.claimToken, reviewToken))),
+          db.insert(sageContactLinkEvents).values({
+            id: crypto.randomUUID(), requestId, organizationId: orgId,
+            actorUserId: user.id, eventType: "conflict", detailJson: "{}", createdAt: now,
+          }),
+        ])
+      }
+      return { success: false, error: "Candidate changed during review. Inspect the Sage link before retrying." }
+    }
+    await db.insert(sageContactReadRequests).values({
+      id: crypto.randomUUID(), organizationId: orgId, kind: kind.data,
+      entityId: row.entityId, sageRecordId: id,
+      sageRecordNumber: number, parentSageRecordId: parent,
+      purpose: "refresh", status: "queued", requestedByUserId: user.id,
+      requestedAt: now,
+    })
+    revalidatePath("/dashboard/contacts")
+    return { success: true, id: requestId, status: "linked" }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not review Sage link." }
+  }
+}

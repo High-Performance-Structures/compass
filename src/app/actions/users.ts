@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
   users,
+  projects,
   organizationMembers,
   projectMembers,
   teamMembers,
@@ -17,11 +18,13 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
+import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
+import { getProjects } from "@/app/actions/projects"
 import {
   getUserAvailabilityCondition,
   sortSettingsRosterUsers,
 } from "@/lib/user-availability"
-import { eq, and, getTableColumns, sql } from "drizzle-orm"
+import { eq, and, getTableColumns, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
   updateUserRoleSchema,
@@ -71,7 +74,10 @@ async function getOrganizationUsers(
 
     // Never expose users from another organization in the people directory.
     const allUsers = await db
-      .select(getTableColumns(users))
+      .select({
+        ...getTableColumns(users),
+        organizationRole: organizationMembers.role,
+      })
       .from(users)
       .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
       .where(
@@ -84,6 +90,7 @@ async function getOrganizationUsers(
     // for each user, fetch their teams, groups, and counts
     const usersWithRelations = await Promise.all(
       allUsers.map(async (user) => {
+        const { organizationRole, ...identity } = user
         const accessStatus: UserWithRelations["accessStatus"] = user.isActive
           ? "active"
           : "invited"
@@ -131,7 +138,10 @@ async function getOrganizationUsers(
           .then((r) => r.length)
 
         return {
-          ...user,
+          ...identity,
+          role: organizationRole,
+          // Rosters and collaboration search are not private employee files.
+          address: null,
           teams: userTeams,
           groups: userGroups,
           projectCount,
@@ -350,6 +360,95 @@ export async function assignUserToProject(
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
     }
+  }
+}
+
+export async function getAssignableContactProjects(): Promise<
+  readonly { readonly id: string; readonly name: string; readonly projectNumber: string | null }[]
+> {
+  const currentUser = await getCurrentUser()
+  if (!currentUser || !canManageUserAccess(currentUser) || !currentUser.organizationId) return []
+  requirePermission(currentUser, "project", "update")
+  const visibleProjects = await getProjects()
+  return visibleProjects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    projectNumber: project.projectNumber,
+  }))
+}
+
+export async function grantContactsProjectAccess(
+  userIds: readonly string[],
+  projectId: string
+): Promise<
+  | { readonly success: true; readonly added: number; readonly existing: number }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const currentUser = await getCurrentUser()
+    requirePermission(currentUser, "project", "update")
+    if (!currentUser || !canManageUserAccess(currentUser) || !currentUser.organizationId) {
+      return { success: false, error: "Only admins can assign project access" }
+    }
+    if (isDemoUser(currentUser.id) || isDemoOrg(currentUser.organizationId)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
+    const uniqueIds = Array.from(new Set(userIds))
+    if (uniqueIds.length === 0 || uniqueIds.length > 100 || !uniqueIds.every((userId) =>
+      assignUserToProjectSchema.safeParse({ userId, projectId, role: "member" }).success
+    )) {
+      return { success: false, error: "Choose 1–100 valid accounts and a project." }
+    }
+
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return { success: false, error: "Database not available" }
+    const db = getDb(env.DB)
+    const visibleProjects = await getProjects()
+    if (!visibleProjects.some((candidate) => candidate.id === projectId)) {
+      return { success: false, error: "Project is not available for assignment." }
+    }
+    const project = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, currentUser.organizationId)))
+      .get()
+    if (!project) return { success: false, error: "Project not found in this organization." }
+
+    const members = await db
+      .select({ userId: organizationMembers.userId, role: organizationMembers.role })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(and(
+        eq(organizationMembers.organizationId, currentUser.organizationId),
+        inArray(organizationMembers.userId, uniqueIds),
+        getUserAvailabilityCondition(true)
+      ))
+    if (members.length !== uniqueIds.length ||
+        new Set(members.map((member) => member.userId)).size !== uniqueIds.length) {
+      return { success: false, error: "One or more accounts are unavailable, duplicated, or outside this organization." }
+    }
+
+    const existing = await db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), inArray(projectMembers.userId, uniqueIds)))
+    const existingIds = new Set(existing.map((member) => member.userId))
+    const newMembers = members.filter((member) => !existingIds.has(member.userId))
+    if (newMembers.length > 0) {
+      await db.insert(projectMembers).values(newMembers.map((member) => ({
+        id: crypto.randomUUID(),
+        projectId,
+        userId: member.userId,
+        role: member.role,
+        assignedAt: new Date().toISOString(),
+      }))).run()
+    }
+    revalidatePath("/dashboard/contacts")
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    return { success: true, added: newMembers.length, existing: uniqueIds.length - newMembers.length }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to grant project access" }
   }
 }
 
@@ -620,6 +719,16 @@ export async function inviteUser(input: {
               })
               .run()
           }
+          if (workosUser || existing.isActive) {
+            await ensureInternalContactForStaff(db, {
+              organizationId: targetOrganizationId,
+              userId: existing.id,
+              role: validated.role,
+              name: validated.displayName || workosDisplayName || existing.displayName || normalizedEmail,
+              email: normalizedEmail,
+              phone: existing.phone,
+            })
+          }
           revalidatePath("/dashboard/settings")
           revalidatePath("/dashboard/people")
           return {
@@ -670,6 +779,15 @@ export async function inviteUser(input: {
             })
             .run()
 
+          await ensureInternalContactForStaff(db, {
+            organizationId: targetOrganizationId,
+            userId: newUser.id,
+            role: validated.role,
+            name: newUser.displayName ?? normalizedEmail,
+            email: normalizedEmail,
+            phone: null,
+          })
+
           revalidatePath("/dashboard/settings")
           revalidatePath("/dashboard/people")
           return { success: true, accessStatus: "active" }
@@ -712,7 +830,7 @@ export async function inviteUser(input: {
         console.error("WorkOS invitation error:", workosError)
         return {
           success: false,
-          error: "Failed to send invitation via WorkOS",
+          error: "Invitation or local directory setup failed. Check the user's status before retrying.",
         }
       }
     } else {
@@ -755,6 +873,16 @@ export async function inviteUser(input: {
             joinedAt: now,
           }),
         ])
+        if (existing.isActive) {
+          await ensureInternalContactForStaff(db, {
+            organizationId: targetOrganizationId,
+            userId: existing.id,
+            role: validated.role,
+            name: validated.displayName || existing.displayName || normalizedEmail,
+            email: normalizedEmail,
+            phone: existing.phone,
+          })
+        }
         revalidatePath("/dashboard/settings")
         revalidatePath("/dashboard/people")
         return {
@@ -789,6 +917,15 @@ export async function inviteUser(input: {
           joinedAt: now,
         })
         .run()
+
+      await ensureInternalContactForStaff(db, {
+        organizationId: targetOrganizationId,
+        userId: newUser.id,
+        role: validated.role,
+        name: newUser.displayName ?? normalizedEmail,
+        email: normalizedEmail,
+        phone: null,
+      })
 
       revalidatePath("/dashboard/settings")
       revalidatePath("/dashboard/people")

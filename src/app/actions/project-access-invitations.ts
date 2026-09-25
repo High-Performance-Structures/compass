@@ -6,7 +6,9 @@ import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import {
+  customerContacts,
   customers,
+  internalContacts,
   projectAccessInvitations,
   projectContacts,
   projectMembers,
@@ -24,8 +26,13 @@ import { sendCompassEmail } from "@/lib/email/compass-email"
 import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
-import { projectContactAccessStatus } from "@/lib/project-contact-access-status"
+import {
+  projectContactAccessStatus,
+  projectContactNeedsPersonForInvitation,
+} from "@/lib/project-contact-access-status"
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
+import { projectContactAddress } from "@/lib/project-contact-privacy"
+import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
 import {
   isExternalProjectRole,
   isInternalStaffRole,
@@ -196,19 +203,29 @@ export async function sendProjectAccessInvitation(
           phone: customers.phone,
           address: customers.address,
         },
+        customerContact: {
+          userId: customerContacts.userId,
+          email: customerContacts.email,
+          phone: customerContacts.phone,
+        },
         vendor: {
           email: vendors.email,
           phone: vendors.phone,
           address: vendors.address,
         },
         vendorContact: {
+          userId: vendorContacts.userId,
           email: vendorContacts.email,
           phone: vendorContacts.phone,
         },
         teamMember: {
           email: users.email,
           phone: users.phone,
-          address: users.address,
+        },
+        internalPerson: {
+          userId: internalContacts.userId,
+          email: internalContacts.email,
+          phone: internalContacts.phone,
         },
       })
       .from(projectContacts)
@@ -216,9 +233,22 @@ export async function sendProjectAccessInvitation(
       .leftJoin(
         customers,
         and(
-          eq(projectContacts.sourceEntityType, "customer"),
-          eq(projectContacts.sourceEntityId, customers.id),
+          or(
+            eq(projectContacts.customerId, customers.id),
+            and(
+              eq(projectContacts.sourceEntityType, "customer"),
+              eq(projectContacts.sourceEntityId, customers.id)
+            )
+          ),
           eq(customers.organizationId, projects.organizationId)
+        )
+      )
+      .leftJoin(
+        customerContacts,
+        and(
+          eq(projectContacts.customerContactId, customerContacts.id),
+          eq(customerContacts.customerId, customers.id),
+          eq(customerContacts.active, true)
         )
       )
       .leftJoin(
@@ -254,6 +284,14 @@ export async function sendProjectAccessInvitation(
           )`
         )
       )
+      .leftJoin(
+        internalContacts,
+        and(
+          eq(projectContacts.internalContactId, internalContacts.id),
+          eq(internalContacts.organizationId, projects.organizationId),
+          eq(internalContacts.active, true)
+        )
+      )
       .where(
         and(
           eq(projectContacts.id, parsed.data.contactId),
@@ -268,9 +306,8 @@ export async function sendProjectAccessInvitation(
       return { success: false, error: "Project contact not found." }
     }
     if (
-      (row.contact.contactType === "supplier" ||
-        row.contact.contactType === "subcontractor") &&
-      !row.contact.vendorContactId
+      row.contact.contactType !== "owner" &&
+      projectContactNeedsPersonForInvitation(row.contact)
     ) {
       return {
         success: false,
@@ -278,6 +315,27 @@ export async function sendProjectAccessInvitation(
           "Select or add a contact person for this vendor before inviting them.",
       }
     }
+    if (row.contact.customerContactId && !row.customerContact) {
+      return { success: false, error: "The linked client contact is no longer active." }
+    }
+    if (row.contact.vendorContactId && !row.vendorContact) {
+      return { success: false, error: "The linked vendor contact is no longer active." }
+    }
+    if (row.contact.internalContactId && !row.internalPerson) {
+      return { success: false, error: "The linked internal contact is no longer active." }
+    }
+
+    // A deliberate person-to-login link always outranks a coincidental email
+    // match. Deliver access mail to that login, not to a different contact email.
+    const linkedUserId = row.contact.customerContactId
+      ? row.customerContact?.userId ?? null
+      : row.contact.vendorContactId
+        ? row.vendorContact?.userId ?? null
+        : row.contact.internalContactId
+          ? row.internalPerson?.userId ?? null
+          : row.contact.sourceEntityType === "user"
+            ? row.contact.sourceEntityId
+            : null
 
     const directoryIdentity =
       row.contact.vendorContactId
@@ -286,23 +344,47 @@ export async function sendProjectAccessInvitation(
             phone: row.vendorContact?.phone ?? null,
             address: null,
           }
+        : row.contact.customerContactId
+          ? {
+              email: row.customerContact?.email ?? null,
+              phone: row.customerContact?.phone ?? null,
+              address: row.customer?.address ?? null,
+            }
         : row.contact.sourceEntityType === "customer"
         ? row.customer
         : row.contact.sourceEntityType === "vendor"
           ? row.vendor
+          : row.contact.internalContactId
+            ? row.internalPerson
+              ? { ...row.internalPerson, address: null }
+              : null
           : row.contact.sourceEntityType === "user"
             ? row.teamMember
+              ? { ...row.teamMember, address: null }
+              : null
             : null
+    const canonicalLink = Boolean(
+      row.contact.customerContactId ||
+      row.contact.vendorContactId ||
+      row.contact.internalContactId ||
+      row.contact.customerId ||
+      row.contact.vendorId ||
+      directoryIdentity
+    )
     const identity = resolveProjectContactIdentity(
       {
         email: row.contact.email,
         phone: row.contact.phone,
-        address: row.contact.address,
+        address: projectContactAddress(row.contact.contactType, row.contact.address),
       },
-      directoryIdentity
+      directoryIdentity,
+      canonicalLink
     )
-    const email = identity.email?.toLowerCase() ?? ""
-    if (!email) {
+    const target = projectContactInvitationTarget({
+      linkedUserId,
+      directoryEmail: identity.email,
+    })
+    if (!target) {
       return {
         success: false,
         error: "Add an email address before inviting this contact.",
@@ -313,24 +395,52 @@ export async function sendProjectAccessInvitation(
       return { success: false, error: "This contact type cannot be invited." }
     }
 
-    const now = new Date().toISOString()
-    await db
-      .update(projectContacts)
-      .set({ ...identity, updatedAt: now })
-      .where(eq(projectContacts.id, row.contact.id))
-      .run()
-
     const existingUser = await db
       .select({
         id: users.id,
+        email: users.email,
         role: users.role,
         isActive: users.isActive,
         phone: users.phone,
         address: users.address,
       })
       .from(users)
-      .where(sql`lower(trim(${users.email})) = ${email}`)
+      .where(
+        target.kind === "linked_user"
+          ? eq(users.id, target.userId)
+          : sql`lower(trim(${users.email})) = ${target.email}`
+      )
       .get()
+    if (target.kind === "linked_user" && !existingUser) {
+      return { success: false, error: "The linked Compass account no longer exists. Review the contact-account link." }
+    }
+    if (target.kind === "linked_user") {
+      const membership = await db
+        .select({ role: organizationMembers.role })
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.organizationId, row.organizationId),
+            eq(organizationMembers.userId, target.userId)
+          )
+        )
+        .get()
+      if (
+        !membership ||
+        (row.contact.customerContactId && membership.role !== "client") ||
+        (row.contact.vendorContactId &&
+          membership.role !== "subcontractor" &&
+          membership.role !== "supplier")
+      ) {
+        return { success: false, error: "The linked account no longer has the matching organization role. Review its contact-account link." }
+      }
+    }
+    const inviteEmail = target.kind === "linked_user"
+      ? existingUser?.email.trim().toLowerCase() ?? ""
+      : target.email
+    if (!inviteEmail) {
+      return { success: false, error: "The linked Compass account needs a sign-in email before it can be invited." }
+    }
     const activeExistingUser = existingUser?.isActive ? existingUser : null
     const pendingPlaceholder =
       existingUser !== undefined &&
@@ -343,6 +453,12 @@ export async function sendProjectAccessInvitation(
           "This Compass account is deactivated. Reactivate it in People before assigning project access.",
       }
     }
+    const now = new Date().toISOString()
+    await db
+      .update(projectContacts)
+      .set({ ...identity, updatedAt: now })
+      .where(eq(projectContacts.id, row.contact.id))
+      .run()
     const pendingInvitation = !activeExistingUser
       ? await db
           .select({
@@ -356,7 +472,7 @@ export async function sendProjectAccessInvitation(
               eq(projectAccessInvitations.status, "sent"),
               or(
                 eq(projectAccessInvitations.projectContactId, row.contact.id),
-                sql`lower(trim(${projectAccessInvitations.email})) = ${email}`
+                sql`lower(trim(${projectAccessInvitations.email})) = ${inviteEmail}`
               )
             )
           )
@@ -476,7 +592,7 @@ export async function sendProjectAccessInvitation(
       const { WorkOS } = await import("@workos-inc/node")
       const workos = new WorkOS(workosApiKey)
       const invitation = await workos.userManagement.sendInvitation({
-        email,
+        email: inviteEmail,
         expiresInDays: 14,
       })
       workosInvitationId = invitation.id
@@ -528,7 +644,7 @@ export async function sendProjectAccessInvitation(
         env,
         db,
         organizationId: row.organizationId,
-        to: [email],
+        to: [inviteEmail],
         replyTo: "compass@hps-colorado.com",
         subject: parsed.data.subject,
         text: `${parsed.data.message}\n\nOpen Compass: ${actionUrl}`,
@@ -561,7 +677,7 @@ export async function sendProjectAccessInvitation(
         organizationId: row.organizationId,
         projectId: parsed.data.projectId,
         projectContactId: row.contact.id,
-        email,
+        email: inviteEmail,
         role: membershipRole,
         status: accessStatus === "access_granted" ? "accepted" : "sent",
         workosInvitationId,

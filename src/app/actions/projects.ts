@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
   customers,
+  internalContacts,
   organizationMembers,
   projectContacts,
   projectDuplicateDecisions,
@@ -48,10 +49,6 @@ import {
 import { projectWorkspaceClients } from "@/lib/google/project-workspace"
 import { requireOrg } from "@/lib/org-scope"
 import {
-  contactIdentityChanged,
-  directoryIdentityManagedByActiveUser,
-} from "@/lib/contact-identity-ownership"
-import {
   canManageProjectRegistry,
   requirePermission,
 } from "@/lib/permissions"
@@ -72,6 +69,7 @@ import {
   type SageClientStatusId,
   type SageJobTypeId,
 } from "@/lib/sage/client-project-write"
+import { sageClientLinkReviewIds } from "@/lib/sage/client-link-review"
 
 export type ProjectStatusValue =
   | "OPEN"
@@ -153,10 +151,54 @@ export type ProjectIntakeAssignee = {
   readonly email: string
 }
 
+export type ProjectIntakeCustomerOption = {
+  readonly id: string
+  readonly name: string
+  readonly company: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly sageClientStatusId: number | null
+  readonly sageLinkNeedsReview: boolean
+}
+
+export async function getProjectIntakeCustomerOptions(): Promise<readonly ProjectIntakeCustomerOption[]> {
+  const user = await requireAuth()
+  requirePermission(user, "project", "create")
+  const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
+  await requireFeaturePermission(user, "customers", "read")
+  const organizationId = requireOrg(user)
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const rows = await db.select({
+    id: customers.id,
+    name: customers.name,
+    company: customers.company,
+    email: customers.email,
+    phone: customers.phone,
+    sageClientStatusId: customers.sageClientStatusId,
+    sageClientId: customers.sageClientId,
+    sageClientNumber: customers.sageClientNumber,
+  })
+    .from(customers)
+    .where(eq(customers.organizationId, organizationId))
+    .orderBy(asc(customers.name))
+  const reviewIds = sageClientLinkReviewIds(rows)
+  return rows.map((customer) => ({
+    id: customer.id,
+    name: customer.name,
+    company: customer.company,
+    email: customer.email,
+    phone: customer.phone,
+    sageClientStatusId: customer.sageClientStatusId,
+    sageLinkNeedsReview: reviewIds.has(customer.id),
+  }))
+}
+
 export type CreateProjectIntakeInput = Omit<
   ProjectIntakeTrackerInput,
   "intakeDate"
 > & {
+  readonly existingCustomerId?: string | null
   readonly sageClientStatusId: SageClientStatusId
   readonly sageJobStatusId: string
   readonly sageJobType: SageJobTypeId
@@ -198,6 +240,13 @@ function orderedProjectPair(
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   return trimmed.length > 0 ? trimmed : null
+}
+
+function hasIncompleteSageClientLink(customer: {
+  readonly sageClientId: string | null
+  readonly sageClientNumber: string | null
+} | null): boolean {
+  return customer !== null && Boolean(customer.sageClientId) !== Boolean(customer.sageClientNumber)
 }
 
 function requireText(value: string, label: string): string {
@@ -374,6 +423,8 @@ export async function getProjectIntakeAssignees(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "project", "create")
+    const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
+    await requireFeaturePermission(user, "internal-directory", "read")
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
@@ -412,6 +463,17 @@ export async function createProjectIntake(
   try {
     const user = await requireAuth()
     requirePermission(user, "project", "create")
+    const { requireFeaturePermission } = await import("@/lib/permission-enforcement")
+    // Intake reads canonical client details and may create a new directory row.
+    // The picker permission alone is not an authorization boundary for this action.
+    await requireFeaturePermission(user, "customers", "read")
+    const selectedCustomerId = cleanText(input.existingCustomerId ?? null)
+    if (!selectedCustomerId) {
+      await requireFeaturePermission(user, "customers", "create")
+    }
+    if (cleanText(input.assignedTo)) {
+      await requireFeaturePermission(user, "internal-directory", "read")
+    }
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "D1 not available" }
@@ -537,13 +599,15 @@ export async function createProjectIntake(
     }
 
     const customerEmail = cleanText(input.contactEmail)?.toLowerCase() ?? null
-    const customerMatch = await db
+    const customerMatches = await db
       .select()
       .from(customers)
       .where(
         and(
           eq(customers.organizationId, organizationId),
-          customerEmail
+          selectedCustomerId
+            ? eq(customers.id, selectedCustomerId)
+            : customerEmail
             ? or(
                 sql`lower(trim(${customers.email})) = ${customerEmail}`,
                 sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
@@ -551,8 +615,46 @@ export async function createProjectIntake(
             : sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
         )
       )
-      .limit(1)
-      .get()
+      .limit(2)
+    if (selectedCustomerId && customerMatches.length === 0) {
+      return { success: false, error: "The selected client is no longer in this directory. Refresh and choose it again." }
+    }
+    if (customerMatches.length > 1) {
+      return {
+        success: false,
+        error: "More than one client directory record matches this intake. Select or reconcile the exact client before creating the project.",
+      }
+    }
+    if (!selectedCustomerId && customerMatches.length > 0) {
+      return {
+        success: false,
+        error: "This client already exists in Contacts. Choose the exact client from the directory list before creating the project.",
+      }
+    }
+    const customerMatch = selectedCustomerId ? customerMatches[0] ?? null : null
+    const sameNameCustomers = customerMatch
+      ? await db.select({
+          id: customers.id,
+          name: customers.name,
+          sageClientId: customers.sageClientId,
+          sageClientNumber: customers.sageClientNumber,
+        }).from(customers).where(and(
+          eq(customers.organizationId, organizationId),
+          sql`lower(trim(${customers.name})) = ${customerMatch.name.trim().toLowerCase()}`,
+        ))
+      : []
+    if (customerMatch && sageClientLinkReviewIds(sameNameCustomers).has(customerMatch.id)) {
+      return {
+        success: false,
+        error: "This client has an incomplete or same-name Sage link candidate. Reconcile the exact Sage ID and number in Contacts before creating the project.",
+      }
+    }
+    if (customerMatch?.sageClientStatusId != null && customerMatch.sageClientStatusId !== sageClientStatusId) {
+      return {
+        success: false,
+        error: "The selected client has a different Sage status. Use its directory status or reconcile it in Contacts before creating the project.",
+      }
+    }
     const customerId = customerMatch?.id ?? crypto.randomUUID()
 
     const assignedTo = cleanText(input.assignedTo)
@@ -565,7 +667,6 @@ export async function createProjectIntake(
             lastName: users.lastName,
             email: users.email,
             phone: users.phone,
-            address: users.address,
           })
           .from(organizationMembers)
           .innerJoin(users, eq(users.id, organizationMembers.userId))
@@ -585,6 +686,30 @@ export async function createProjectIntake(
     const projectManagerName = assignee
       ? intakeAssigneeName(assignee)
       : assignedTo
+    const assigneeDirectory = assignee
+      ? await db
+          .select({
+            id: internalContacts.id,
+            name: internalContacts.name,
+            email: internalContacts.email,
+            phone: internalContacts.phone,
+            active: internalContacts.active,
+          })
+          .from(internalContacts)
+          .where(
+            and(
+              eq(internalContacts.organizationId, organizationId),
+              eq(internalContacts.userId, assignee.id)
+            )
+          )
+          .get()
+      : null
+    if (assigneeDirectory && !assigneeDirectory.active) {
+      return { success: false, error: "The assigned staff member is inactive in the internal contact directory." }
+    }
+    const assigneeDirectoryId = assignee
+      ? assigneeDirectory?.id ?? crypto.randomUUID()
+      : null
 
     const now = new Date().toISOString()
     const projectId = `proj-${slugPart(projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
@@ -597,12 +722,6 @@ export async function createProjectIntake(
     const sageLinkId = crypto.randomUUID()
     const sageOperationId = crypto.randomUUID()
     const sageWriteOperationId = crypto.randomUUID()
-    const trackerProject: ProjectIntakeTrackerInput = {
-      ...input,
-      department,
-      projectName,
-      intakeDate,
-    }
     const driveFolderName = buildProjectDriveFolderName({
       projectNumber,
       projectName,
@@ -612,35 +731,28 @@ export async function createProjectIntake(
     const customerValues = {
       id: customerId,
       organizationId,
-      name: clientName,
-      company: cleanText(input.companyName) ?? customerMatch?.company ?? null,
-      email: cleanText(input.contactEmail) ?? customerMatch?.email ?? null,
-      phone: cleanText(input.contactPhone) ?? customerMatch?.phone ?? null,
-      address:
-        cleanText(input.billingAddress) ??
-        customerMatch?.address ??
-        joinedAddress(input) ??
-        null,
-      notes: cleanText(input.notes) ?? customerMatch?.notes ?? null,
+      name: customerMatch?.name ?? clientName,
+      company: customerMatch ? customerMatch.company : cleanText(input.companyName),
+      email: customerMatch ? customerMatch.email : cleanText(input.contactEmail),
+      phone: customerMatch ? customerMatch.phone : cleanText(input.contactPhone),
+      address: customerMatch
+        ? customerMatch.address
+        : cleanText(input.billingAddress) ?? joinedAddress(input),
+      notes: customerMatch ? customerMatch.notes : cleanText(input.notes),
       sageClientStatusId,
       createdAt: now,
       updatedAt: now,
     }
-    if (
-      customerMatch &&
-      contactIdentityChanged(customerMatch, customerValues) &&
-      (await directoryIdentityManagedByActiveUser({
-        db,
-        organizationId,
-        entityType: "customer",
-        entityId: customerId,
-      }))
-    ) {
-      return {
-        success: false,
-        error:
-          "This active Compass client manages their own phone, email, and address. Use their existing directory details for this project.",
-      }
+    // Intake creates an assignment. Existing directory details remain canonical.
+    const trackerProject: ProjectIntakeTrackerInput = {
+      ...input,
+      department,
+      projectName,
+      intakeDate,
+      clientName: customerValues.name,
+      companyName: customerValues.company,
+      contactEmail: customerValues.email,
+      contactPhone: customerValues.phone,
     }
     const fullSageJobName = sageJobName(projectNumber, projectName)
     const sageWritePayload = {
@@ -648,14 +760,16 @@ export async function createProjectIntake(
       company: "High Performance Structures Inc" as const,
       client: {
         compassCustomerId: customerId,
-        name: clientName,
-        shortName: sageShortName(cleanText(input.companyName) ?? clientName),
-        company: cleanText(input.companyName),
-        email: cleanText(input.contactEmail),
-        phone: cleanText(input.contactPhone),
-        address: joinedAddress(input),
-        billingAddress: cleanText(input.billingAddress),
-        notes: cleanText(input.notes),
+        sageClientId: customerMatch?.sageClientId ?? null,
+        sageClientNumber: customerMatch?.sageClientNumber ?? null,
+        name: customerValues.name,
+        shortName: sageShortName(customerValues.company ?? customerValues.name),
+        company: customerValues.company,
+        email: customerValues.email,
+        phone: customerValues.phone,
+        address: customerValues.address,
+        billingAddress: customerMatch ? null : cleanText(input.billingAddress),
+        notes: customerValues.notes,
         status: {
           expectedNumber: sageClientStatusId,
           name: sageClientStatusName(sageClientStatusId),
@@ -682,7 +796,7 @@ export async function createProjectIntake(
           name: projectName,
           status: "OPEN",
           address: joinedAddress(input),
-          clientName: intakeClientName(input),
+          clientName: customerValues.name,
           clientStatus: "customer",
           jobStatusId: sageJobStatus.id,
           sageJobStatusName: sageJobStatus.label,
@@ -694,20 +808,30 @@ export async function createProjectIntake(
           createdAt: now,
           updatedAt: now,
         }),
-        customerMatch
-          ? db
-              .update(customers)
-              .set({
-                company: customerValues.company ?? customerMatch.company,
-                email: customerValues.email ?? customerMatch.email,
-                phone: customerValues.phone ?? customerMatch.phone,
-                address: customerValues.address ?? customerMatch.address,
-                notes: customerValues.notes ?? customerMatch.notes,
-                sageClientStatusId,
-                updatedAt: now,
-              })
-              .where(eq(customers.id, customerId))
-          : db.insert(customers).values(customerValues),
+        ...(assignee && assigneeDirectoryId && !assigneeDirectory
+          ? [db.insert(internalContacts).values({
+              id: assigneeDirectoryId,
+              organizationId,
+              userId: assignee.id,
+              name: projectManagerName ?? assignee.email,
+              email: assignee.email,
+              phone: assignee.phone,
+              sourceSystem: "compass_user",
+              sourceRecordId: assignee.id,
+              active: true,
+              syncStatus: "manual",
+              createdAt: now,
+              updatedAt: now,
+            })]
+          : []),
+        ...(!customerMatch
+          ? [db.insert(customers).values(customerValues)]
+          : customerMatch.sageClientStatusId === null &&
+            !customerMatch.sageClientId && !customerMatch.sageClientNumber
+            ? [db.update(customers)
+                .set({ sageClientStatusId, updatedAt: now })
+                .where(eq(customers.id, customerId))]
+            : []),
         db.insert(projectContacts).values({
           id: ownerContactId,
           projectId,
@@ -716,7 +840,7 @@ export async function createProjectIntake(
           sourceRecordId: customerId,
           sourceEntityType: "customer",
           sourceEntityId: customerId,
-          displayName: clientName,
+          displayName: customerValues.name,
           companyName: customerValues.company,
           role: "Owner / Client",
           email: customerValues.email,
@@ -741,17 +865,18 @@ export async function createProjectIntake(
                 projectId,
                 contactType: "internal",
                 sourceSystem: assignee
-                  ? "organization_directory"
+                  ? "internal_directory"
                   : "compass_project_intake",
-                sourceRecordId: assignee?.id ?? projectId,
-                sourceEntityType: assignee ? "user" : "manual",
-                sourceEntityId: assignee?.id ?? null,
-                displayName: projectManagerName ?? assignedTo,
+                sourceRecordId: assigneeDirectoryId ?? projectId,
+                sourceEntityType: assignee ? "internal_contact" : "manual",
+                sourceEntityId: assigneeDirectoryId,
+                internalContactId: assigneeDirectoryId,
+                displayName: assigneeDirectory?.name ?? projectManagerName ?? assignedTo,
                 companyName: null,
                 role: "Project manager",
-                email: assignee?.email ?? null,
-                phone: assignee?.phone ?? null,
-                address: assignee?.address ?? null,
+                email: assigneeDirectory?.email ?? assignee?.email ?? null,
+                phone: assigneeDirectory?.phone ?? assignee?.phone ?? null,
+                address: null,
                 notes: assignee
                   ? null
                   : "Typed project intake assignment; match this contact to an active team member when available.",
@@ -1648,7 +1773,7 @@ export async function createProjectShell(
       ? slugPart(projectNumber)
       : `${departmentPrefix(input.department)}-${slugPart(name)}`
     const id = `proj-${idBase}-${crypto.randomUUID().slice(0, 8)}`
-    const customerMatch = await db
+    const customerMatches = await db
       .select()
       .from(customers)
       .where(
@@ -1657,8 +1782,26 @@ export async function createProjectShell(
           sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
         )
       )
-      .limit(1)
-      .get()
+      .limit(2)
+    if (customerMatches.length > 1) {
+      return {
+        success: false,
+        error: "More than one client directory record matches this name. Reconcile the exact client before creating the project.",
+      }
+    }
+    const customerMatch = customerMatches[0] ?? null
+    if (hasIncompleteSageClientLink(customerMatch)) {
+      return {
+        success: false,
+        error: "This client has an incomplete Sage link. Reconcile its Sage ID and number in Contacts before creating the project.",
+      }
+    }
+    if (customerMatch?.sageClientStatusId != null && customerMatch.sageClientStatusId !== sageClientStatusId) {
+      return {
+        success: false,
+        error: "This client has a different Sage status. Reconcile it in Contacts before creating the project.",
+      }
+    }
     const customerId = customerMatch?.id ?? crypto.randomUUID()
     const address = cleanText(input.address)
     const fullSageJobName = sageJobName(projectNumber, name)
@@ -1667,13 +1810,15 @@ export async function createProjectShell(
       company: "High Performance Structures Inc" as const,
       client: {
         compassCustomerId: customerId,
-        name: clientName,
-        shortName: sageShortName(clientName),
-        company: null,
-        email: null,
-        phone: null,
-        address,
-        billingAddress: address,
+        sageClientId: customerMatch?.sageClientId ?? null,
+        sageClientNumber: customerMatch?.sageClientNumber ?? null,
+        name: customerMatch?.name ?? clientName,
+        shortName: sageShortName(customerMatch?.name ?? clientName),
+        company: customerMatch?.company ?? null,
+        email: customerMatch?.email ?? null,
+        phone: customerMatch?.phone ?? null,
+        address: customerMatch?.address ?? address,
+        billingAddress: customerMatch?.sageClientId || customerMatch?.sageClientNumber ? null : address,
         notes: null,
         status: {
           expectedNumber: sageClientStatusId,
@@ -1713,12 +1858,8 @@ export async function createProjectShell(
         createdAt: now,
         updatedAt: now,
       }),
-      customerMatch
-        ? db
-            .update(customers)
-            .set({ sageClientStatusId, updatedAt: now })
-            .where(eq(customers.id, customerId))
-        : db.insert(customers).values({
+      ...(!customerMatch
+        ? [db.insert(customers).values({
             id: customerId,
             organizationId: orgId,
             name: clientName,
@@ -1726,7 +1867,13 @@ export async function createProjectShell(
             sageClientStatusId,
             createdAt: now,
             updatedAt: now,
-          }),
+          })]
+        : customerMatch.sageClientStatusId === null &&
+          !customerMatch.sageClientId && !customerMatch.sageClientNumber
+          ? [db.update(customers)
+              .set({ sageClientStatusId, updatedAt: now })
+              .where(eq(customers.id, customerId))]
+          : []),
       db.insert(projectContacts).values({
         id: crypto.randomUUID(),
         projectId: id,

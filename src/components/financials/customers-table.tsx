@@ -49,12 +49,14 @@ interface CustomersTableProps {
   customers: Customer[]
   onEdit?: (customer: Customer) => void
   onDelete?: (id: string) => void
+  onViewPeople?: (customer: Customer) => void
 }
 
 export function CustomersTable({
   customers,
   onEdit,
   onDelete,
+  onViewPeople,
 }: CustomersTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -202,9 +204,8 @@ export function CustomersTable({
       header: "Source",
       cell: ({ row }) => {
         const customer = row.original
-        const isSageLinked = Boolean(
-          customer.sageClientId || customer.sageClientNumber
-        )
+        const isSageLinked = Boolean(customer.sageClientId)
+        const isSageCandidate = !isSageLinked && Boolean(customer.sageClientNumber)
         const isBuildertrendLinked = Boolean(customer.buildertrendContactId)
         return (
           <div className="flex flex-wrap gap-1">
@@ -216,10 +217,13 @@ export function CustomersTable({
                   : ""}
               </Badge>
             ) : null}
+            {isSageCandidate ? (
+              <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge>
+            ) : null}
             {isBuildertrendLinked ? (
               <Badge variant="outline">Buildertrend</Badge>
             ) : null}
-            {!isSageLinked && !isBuildertrendLinked ? (
+            {!isSageLinked && !isSageCandidate && !isBuildertrendLinked ? (
               <Badge variant="outline">Compass</Badge>
             ) : null}
           </div>
@@ -244,6 +248,7 @@ export function CustomersTable({
     {
       id: "actions",
       cell: ({ row }) => {
+        if (!onEdit && !onDelete && !onViewPeople) return null
         const customer = row.original
         return (
           <DropdownMenu>
@@ -254,25 +259,25 @@ export function CustomersTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(customer)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(customer)}>People at this client</DropdownMenuItem>}
+              {onEdit && <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>}
+              {onEdit && onDelete && <DropdownMenuSeparator />}
+              {onDelete && <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => onDelete?.(customer.id)}
+                onClick={() => onDelete(customer.id)}
               >
                 Delete
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         )
       },
     },
   ]
-  const visibleColumns = developerModeEnabled
-    ? columns
-    : columns.filter((column) => column.id !== "source")
+  const visibleColumns = columns.filter((column) =>
+    (developerModeEnabled || column.id !== "source") &&
+    (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
+  )
 
   const table = useReactTable({
     data: customers,
@@ -346,7 +351,7 @@ export function CustomersTable({
                         .join(" \u00b7 ") || "No contact info"}
                     </p>
                   </div>
-                  <DropdownMenu>
+                  {(onEdit || onDelete || onViewPeople) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -357,18 +362,17 @@ export function CustomersTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(c)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(c)}>People at this client</DropdownMenuItem>}
+                      {onEdit && <DropdownMenuItem onClick={() => onEdit(c)}>Edit</DropdownMenuItem>}
+                      {onEdit && onDelete && <DropdownMenuSeparator />}
+                      {onDelete && <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => onDelete?.(c.id)}
+                        onClick={() => onDelete(c.id)}
                       >
                         Delete
-                      </DropdownMenuItem>
+                      </DropdownMenuItem>}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               )
             })}
