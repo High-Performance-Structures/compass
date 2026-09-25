@@ -38,7 +38,13 @@ export function SageContactLinkLookupDialog({
     try {
       const result = await requestSageContactLinkCandidate(target.kind, target.entityId, number)
       if (!result.success) { toast.error(result.error); return }
-      toast.success("Exact Sage lookup queued for independent review")
+      toast.success(result.disposition === "existing"
+        ? result.status === "awaiting_review"
+          ? "This Sage read-back is already awaiting review"
+          : "A lookup for this Sage number is already in progress"
+        : result.disposition === "refreshed"
+          ? "Fresh Sage read-back queued"
+          : "Exact Sage lookup queued for review")
       onOpenChange(false)
       onRequested()
     } finally { setBusy(false) }
@@ -50,7 +56,7 @@ export function SageContactLinkLookupDialog({
         <DialogHeader>
           <DialogTitle>Verify Sage link</DialogTitle>
           <DialogDescription>
-            Look up the exact Sage number for {target?.name}. This does not link or overwrite the Compass contact. Another authorized reviewer must compare the Sage read-back and approve the link.
+            Look up the exact Sage number for {target?.name}. This does not link or overwrite the Compass contact. An authorized reviewer must compare the Sage read-back and approve the link.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={(event) => void request(event)} className="space-y-4">
