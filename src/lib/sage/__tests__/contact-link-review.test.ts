@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { sageContactLinkCandidateError, sageContactReadClaimError, sageEmployeeNamesMatch, sageIdentityLinkReviewError, type SageContactLinkLookup } from "@/lib/sage/contact-link-review"
+import { sageContactLinkCandidateError, sageContactReadClaimError, sageEmployeeNamesMatch, sageIdentityLinkReviewError, sageLinkReadbackRefreshReason, type SageContactLinkLookup } from "@/lib/sage/contact-link-review"
 
 const lookup: SageContactLinkLookup = {
   kind: "client_person",
@@ -19,6 +19,18 @@ const identity = {
 const readback = { ...lookup, sageRecordId: "sage-person-guid" }
 
 describe("reviewed Sage identity linking", () => {
+  it("reuses active reads and refreshes only stale or incomplete read-backs", () => {
+    const now = Date.parse("2026-09-25T06:45:00.000Z")
+    const candidate = { kind: "client_company" as const, status: "awaiting_review",
+      completedAt: "2026-09-25T06:40:00.000Z", snapshotValid: true, sageIdentityName: null }
+    expect(sageLinkReadbackRefreshReason(candidate, now)).toBeNull()
+    expect(sageLinkReadbackRefreshReason({ ...candidate, status: "queued" }, now)).toBeNull()
+    expect(sageLinkReadbackRefreshReason({ ...candidate, completedAt: "2026-09-25T06:25:00.000Z" }, now)).toBe("expired")
+    expect(sageLinkReadbackRefreshReason({ ...candidate, snapshotValid: false }, now)).toBe("invalid_readback")
+    expect(sageLinkReadbackRefreshReason({ ...candidate, kind: "employee" }, now)).toBe("missing_employee_name")
+    expect(sageLinkReadbackRefreshReason({ ...candidate, kind: "employee", sageIdentityName: "Sarah Cowman" }, now)).toBeNull()
+  })
+
   it("matches employee names without relying on optional contact details", () => {
     expect(sageEmployeeNamesMatch("Sarah Cowman", "  sarah   COWMAN ")).toBe(true)
     expect(sageEmployeeNamesMatch("Sarah Cowman", "Sarah Coleman")).toBe(false)

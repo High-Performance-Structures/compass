@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -14,13 +14,11 @@ import { requireOrg } from "@/lib/org-scope"
 import { getSageContactBridgeSecret } from "@/lib/sage/bridge-auth"
 import { sageContactKindSchema, sageContactOrganizationMatches, sageContactSnapshotResultSchema } from "@/lib/sage/contact-bridge"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
-import { sageContactLinkCandidateError, sageEmployeeNamesMatch, sageIdentityLinkReviewError } from "@/lib/sage/contact-link-review"
+import { SAGE_LINK_CANDIDATE_MAX_AGE_MS, sageContactLinkCandidateError, sageEmployeeNamesMatch, sageIdentityLinkReviewError, sageLinkReadbackRefreshReason } from "@/lib/sage/contact-link-review"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 
-const CANDIDATE_MAX_AGE_MS = 15 * 60 * 1000
-
 type LinkResult =
-  | { readonly success: true; readonly id: string; readonly status: string }
+  | { readonly success: true; readonly id: string; readonly status: string; readonly disposition?: "new" | "existing" | "refreshed" }
   | { readonly success: false; readonly error: string }
 
 export type SageContactLinkCandidate = {
@@ -118,24 +116,89 @@ export async function requestSageContactLinkCandidate(
     if (!validNumber(number) || identity.sageRecordNumber && identity.sageRecordNumber !== number) {
       return { success: false, error: "Enter the exact Sage record or contact line number." }
     }
+    const activeLookup = async (): Promise<typeof sageContactReadRequests.$inferSelect | undefined> =>
+      db.select().from(sageContactReadRequests).where(and(
+        eq(sageContactReadRequests.organizationId, orgId),
+        eq(sageContactReadRequests.kind, kind.data),
+        eq(sageContactReadRequests.entityId, entityId),
+        eq(sageContactReadRequests.purpose, "link_candidate"),
+        inArray(sageContactReadRequests.status, ["queued", "running", "awaiting_review"])
+      )).get()
+    const handleActiveLookup = async (existing: typeof sageContactReadRequests.$inferSelect): Promise<LinkResult> => {
+      if (existing.sageRecordNumber !== number || existing.parentSageRecordId !== identity.parentSageRecordId) {
+        return { success: false, error: "Another Sage number or parent identity is already pending for this contact. Reject that lookup in Sage review before choosing a different one." }
+      }
+      let snapshot: unknown
+      try { snapshot = existing.candidateSnapshotJson ? JSON.parse(existing.candidateSnapshotJson) : null }
+      catch { snapshot = null }
+      const parsed = sageContactSnapshotResultSchema.safeParse(snapshot)
+      const reason = sageLinkReadbackRefreshReason({
+        kind: kind.data, status: existing.status, completedAt: existing.completedAt,
+        snapshotValid: parsed.success, sageIdentityName: parsed.success ? parsed.data.identityName : null,
+      })
+      if (!reason) return { success: true, id: existing.id, status: existing.status, disposition: "existing" }
+
+      const refreshedAt = new Date().toISOString()
+      // Reset only the completed read-back; keep the requester and immutable audit history.
+      const results = await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE sage_contact_read_requests SET status = 'queued', claim_token = NULL,
+           claimed_at = NULL, candidate_snapshot_json = NULL, completed_at = NULL,
+           error_message = NULL, requested_at = ?
+           WHERE id = ? AND organization_id = ? AND purpose = 'link_candidate'
+             AND status = 'awaiting_review' AND sage_record_number = ?`
+        ).bind(refreshedAt, existing.id, orgId, number),
+        env.DB.prepare(
+          `INSERT INTO sage_contact_link_events
+           (id, request_id, organization_id, actor_user_id, event_type, detail_json, created_at)
+           SELECT ?, id, organization_id, ?, 'refreshed', ?, ?
+           FROM sage_contact_read_requests WHERE id = ? AND organization_id = ?
+             AND status = 'queued' AND requested_at = ?
+             AND NOT EXISTS (SELECT 1 FROM sage_contact_link_events
+               WHERE request_id = ? AND event_type = 'refreshed' AND created_at = ?)`
+        ).bind(crypto.randomUUID(), user.id, JSON.stringify({ number, reason }), refreshedAt,
+          existing.id, orgId, refreshedAt, existing.id, refreshedAt),
+      ])
+      if (results[0]?.meta.changes === 0) {
+        const current = await activeLookup()
+        if (current?.sageRecordNumber === number &&
+          current.parentSageRecordId === identity.parentSageRecordId) {
+          return { success: true, id: current.id, status: current.status, disposition: "existing" }
+        }
+      }
+      if (results[0]?.meta.changes !== 1 || results[1]?.meta.changes !== 1) {
+        return { success: false, error: "Sage lookup changed during refresh. Reopen Sage review and try again." }
+      }
+      revalidatePath("/dashboard/contacts")
+      return { success: true, id: existing.id, status: "queued", disposition: "refreshed" }
+    }
+    const existing = await activeLookup()
+    if (existing) return handleActiveLookup(existing)
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-    await db.batch([
-      db.insert(sageContactReadRequests).values({
-        id, organizationId: orgId, kind: kind.data, entityId,
-        sageRecordId: null, sageRecordNumber: number,
-        parentSageRecordId: identity.parentSageRecordId,
-        purpose: "link_candidate", status: "queued",
-        requestedByUserId: user.id, requestedAt: now,
-      }),
-      db.insert(sageContactLinkEvents).values({
-        id: crypto.randomUUID(), requestId: id, organizationId: orgId,
-        actorUserId: user.id, eventType: "requested",
-        detailJson: JSON.stringify({ number }), createdAt: now,
-      }),
-    ])
+    try {
+      await db.batch([
+        db.insert(sageContactReadRequests).values({
+          id, organizationId: orgId, kind: kind.data, entityId,
+          sageRecordId: null, sageRecordNumber: number,
+          parentSageRecordId: identity.parentSageRecordId,
+          purpose: "link_candidate", status: "queued",
+          requestedByUserId: user.id, requestedAt: now,
+        }),
+        db.insert(sageContactLinkEvents).values({
+          id: crypto.randomUUID(), requestId: id, organizationId: orgId,
+          actorUserId: user.id, eventType: "requested",
+          detailJson: JSON.stringify({ number }), createdAt: now,
+        }),
+      ])
+    } catch (error) {
+      // A concurrent click may have won the partial unique index after our first read.
+      const concurrent = await activeLookup()
+      if (concurrent) return handleActiveLookup(concurrent)
+      throw error
+    }
     revalidatePath("/dashboard/contacts")
-    return { success: true, id, status: "queued" }
+    return { success: true, id, status: "queued", disposition: "new" }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Could not look up Sage contact." }
   }
@@ -186,7 +249,7 @@ export async function listSageContactLinkCandidates(): Promise<readonly SageCont
       selfReviewAllowed: requestedByCurrentUser && kind.data === "employee" &&
         canSelfLinkEmployee && employeeNamesMatch,
       reviewExpired: row.status === "awaiting_review" &&
-        (!Number.isFinite(completedAt) || Date.now() - completedAt > CANDIDATE_MAX_AGE_MS),
+        (!Number.isFinite(completedAt) || Date.now() - completedAt > SAGE_LINK_CANDIDATE_MAX_AGE_MS),
       fields: parsed.success ? parsed.data.fields : {},
       requestedByUserId: row.requestedByUserId,
       requestedAt: row.requestedAt, completedAt: row.completedAt,
@@ -264,8 +327,9 @@ export async function reviewSageContactLinkCandidate(
     })
     if (reviewError) return { success: false, error: reviewError }
     const captured = row.completedAt ? Date.parse(row.completedAt) : Number.NaN
-    if (!Number.isFinite(captured) || Date.now() - captured > CANDIDATE_MAX_AGE_MS) {
-      return { success: false, error: "Sage candidate read is stale. Request a new lookup." }
+    if (!Number.isFinite(captured) || captured > Date.now() ||
+      Date.now() - captured > SAGE_LINK_CANDIDATE_MAX_AGE_MS) {
+      return { success: false, error: "Sage candidate read is stale. Refresh the read-back before linking." }
     }
     const identity = await getSageContactEntityIdentity(db, orgId, kind.data, row.entityId)
     if (!identity) return { success: false, error: "Directory record no longer exists." }

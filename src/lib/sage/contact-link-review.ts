@@ -12,6 +12,24 @@ export type SageContactLinkReadback = SageContactLinkLookup & {
   readonly sageRecordId: string
 }
 
+export const SAGE_LINK_CANDIDATE_MAX_AGE_MS = 15 * 60 * 1000
+
+/** A completed lookup can be re-read without discarding its review history. */
+export function sageLinkReadbackRefreshReason(input: {
+  readonly kind: SageContactKind
+  readonly status: string
+  readonly completedAt: string | null
+  readonly snapshotValid: boolean
+  readonly sageIdentityName: string | null | undefined
+}, now = Date.now()): "expired" | "invalid_readback" | "missing_employee_name" | null {
+  if (input.status !== "awaiting_review") return null
+  if (!input.snapshotValid) return "invalid_readback"
+  if (input.kind === "employee" && !input.sageIdentityName?.trim()) return "missing_employee_name"
+  const completed = input.completedAt ? Date.parse(input.completedAt) : Number.NaN
+  return !Number.isFinite(completed) || completed > now ||
+    now - completed > SAGE_LINK_CANDIDATE_MAX_AGE_MS ? "expired" : null
+}
+
 /** Self-review needs independent Sage name evidence, even when contact fields are blank. */
 export function sageEmployeeNamesMatch(compassName: string, sageName: string | null | undefined): boolean {
   const normalized = (value: string): string => value.normalize("NFKC")
@@ -30,7 +48,7 @@ export function sageIdentityLinkReviewError(input: {
   if (input.kind !== "employee") {
     return input.requesterIsReviewer ? "Self-review is limited to Sage employee identity links." : null
   }
-  if (!input.sageName?.trim()) return "The Sage employee name was not returned. Reject this lookup and request a fresh read after the bridge update."
+  if (!input.sageName?.trim()) return "The Sage employee name was not returned. Refresh the Sage read-back; if the name is still blank, check the employee record in Sage."
   if (!input.compassName) return "Compass employee was not found."
   if (input.requesterIsReviewer) {
     if (!input.selfLinkAllowed) return "Self-linking requires the individual Sage employee self-review permission."

@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/sage-contact-changes"
 import {
   listSageContactLinkCandidates,
+  requestSageContactLinkCandidate,
   reviewSageContactLinkCandidate,
   type SageContactLinkCandidate,
 } from "@/app/actions/sage-contact-links"
@@ -95,6 +96,20 @@ export function SageContactReviewDialog({
     } finally { setBusyId(null) }
   }
 
+  const refreshLink = async (candidate: SageContactLinkCandidate) => {
+    setBusyId(candidate.id)
+    try {
+      const result = await requestSageContactLinkCandidate(
+        candidate.kind, candidate.entityId, candidate.sageRecordNumber
+      )
+      if (!result.success) toast.error(result.error)
+      else {
+        toast.success("Fresh Sage read-back queued")
+        await reload()
+      }
+    } finally { setBusyId(null) }
+  }
+
   const decideCreate = async (proposalId: string, decision: "approve" | "reject") => {
     setBusyId(proposalId)
     try {
@@ -128,11 +143,16 @@ export function SageContactReviewDialog({
                     <div className="space-y-1 text-sm">
                       <p>Compass employee: <strong>{candidate.directoryName}</strong></p>
                       <p>Sage employee #{candidate.sageRecordNumber}: <strong>{candidate.sageIdentityName ?? "Name not returned"}</strong></p>
-                      {!candidate.sageIdentityName ? <p className="text-destructive">This lookup cannot be linked without a Sage employee name. Reject it and request a fresh lookup after the bridge is updated.</p>
+                      {!candidate.sageIdentityName ? <p className="text-destructive">This lookup cannot be linked without a Sage employee name. Refresh the read-back; if the name is still blank, check the employee record in Sage.</p>
                         : !candidate.employeeNamesMatch ? <p className="text-destructive">Names differ. A separate reviewer must investigate and document the difference.</p> : null}
                     </div>
                   ) : <p className="text-xs text-muted-foreground">Compare the exact Sage number and returned contact information with the intended Compass record before linking. Matching names or emails alone are not proof of identity.</p>}
-                  {candidate.reviewExpired ? <p className="text-sm text-destructive">This Sage read-back is older than 15 minutes. Reject it, then request a fresh lookup when ready to review.</p> : null}
+                  {candidate.reviewExpired ? <p className="text-sm text-destructive">This Sage read-back is older than 15 minutes. Refresh it before linking.</p> : null}
+                  {candidate.reviewExpired || !candidate.sageRecordId ||
+                    (candidate.kind === "employee" && !candidate.sageIdentityName) ? (
+                    <Button size="sm" variant="outline" onClick={() => void refreshLink(candidate)}
+                      disabled={busyId !== null}>Refresh Sage read-back</Button>
+                  ) : null}
                   <details className="text-xs text-muted-foreground"><summary>Technical Sage ID</summary><p className="break-all">{candidate.sageRecordId ?? "Unavailable"}</p></details>
                   <dl className="grid gap-1 text-sm">
                     {Object.entries(candidate.fields).map(([field, value]) => (
