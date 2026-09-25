@@ -25,6 +25,19 @@ describe("pinned Sage contact source", () => {
     const hash = createHash("sha256").update(writer.replace(/\r\n/g, "\n")).digest("hex").toUpperCase()
     expect(harness).toContain(`Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '${hash}'`)
     expect(installer).toContain(`Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '${hash}'`)
+    expect(harness).toContain("[ValidatePattern('^[0-9a-fA-F]{40}$')]")
+    expect(installer).toContain("[ValidatePattern('^[0-9a-fA-F]{40}$')]")
+    expect(harness).toContain("/$SourceCommit/scripts")
+    expect(installer).toContain("/$SourceCommit/scripts")
+  })
+
+  it("reads employee names only as identity evidence", () => {
+    expect(writer).toContain('if (task.kind == "employee") query.Append(", fstnme, lstnme")')
+    expect(writer).toContain("snapshot.identityName = fullName.Length == 0 ? null : fullName")
+    const employeeFields = writer.split("private static readonly ContactField[] EmployeeFields = {")[1]
+      ?.split("};")[0]
+    expect(employeeFields).not.toContain("fstnme")
+    expect(employeeFields).not.toContain("lstnme")
   })
 })
 

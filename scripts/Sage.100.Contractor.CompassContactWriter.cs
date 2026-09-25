@@ -51,6 +51,7 @@ namespace CompassSageClientProjectWriter
             public string sageRecordId { get; set; }
             public string sageRecordNumber { get; set; }
             public string parentSageRecordId { get; set; }
+            public string identityName { get; set; }
             public string revision { get; set; }
             public Dictionary<string, string> fields { get; set; }
         }
@@ -140,6 +141,8 @@ namespace CompassSageClientProjectWriter
                         !String.Equals(byId.parentSageRecordId, lookedUp.parentSageRecordId, StringComparison.Ordinal) ||
                         !String.Equals(byId.revision, lookedUp.revision, StringComparison.Ordinal))
                         throw new InvalidOperationException("HPS Test number-only Sage lookup did not match the exact GUID: " + kind);
+                    if (kind == "employee" && String.IsNullOrWhiteSpace(lookedUp.identityName))
+                        throw new InvalidOperationException("HPS Test employee lookup did not return a name.");
                     WriteLog("INFO", "HPS Test exact number-to-GUID lookup passed: " + kind);
                 }
                 WriteLog("INFO", "CONTACT_TEST_SCHEMA_AND_ACCESS_OK; no Sage records changed.");
@@ -858,6 +861,8 @@ namespace CompassSageClientProjectWriter
             StringBuilder query = new StringBuilder("SELECT _idnum, ").Append(idColumn).Append(", ")
                 .Append(person ? "_idref" : "NULL");
             foreach (ContactField field in fields) query.Append(", ").Append(field.Sql);
+            // Sage employee names are read-only identity evidence, not contact edits.
+            if (task.kind == "employee") query.Append(", fstnme, lstnme");
             query.Append(" FROM dbo.").Append(table)
                 .Append(" WHERE ((@id IS NOT NULL AND _idnum = @id) OR (@id IS NULL AND ")
                 .Append(idColumn).Append(" = @number))");
@@ -880,6 +885,13 @@ namespace CompassSageClientProjectWriter
                     };
                     for (int index = 0; index < fields.Length; index++)
                         snapshot.fields.Add(fields[index].Key, reader.IsDBNull(index + 3) ? null : Convert.ToString(reader[index + 3]).Trim());
+                    if (task.kind == "employee")
+                    {
+                        string first = reader.IsDBNull(fields.Length + 3) ? "" : Convert.ToString(reader[fields.Length + 3]).Trim();
+                        string last = reader.IsDBNull(fields.Length + 4) ? "" : Convert.ToString(reader[fields.Length + 4]).Trim();
+                        string fullName = (first + " " + last).Trim();
+                        snapshot.identityName = fullName.Length == 0 ? null : fullName;
+                    }
                     if (reader.Read()) throw new InvalidOperationException("Sage contact key resolved more than one row.");
                     snapshot.revision = ContactRevision(snapshot);
                     return snapshot;
@@ -895,6 +907,7 @@ namespace CompassSageClientProjectWriter
                 .Append('|').Append(snapshot.parentSageRecordId ?? "");
             foreach (string key in keys) canonical.Append('|').Append(key.Length).Append(':').Append(key)
                 .Append('=').Append(snapshot.fields[key] == null ? "<null>" : snapshot.fields[key].Length + ":" + snapshot.fields[key]);
+            if (snapshot.kind == "employee") canonical.Append("|identityName=").Append(snapshot.identityName ?? "");
             using (SHA256 sha = SHA256.Create())
             {
                 byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(canonical.ToString()));

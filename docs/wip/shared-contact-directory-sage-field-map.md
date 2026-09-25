@@ -62,7 +62,7 @@ API XML element name. The API elements below were checked against the installed
 | Vendor company | `actpay._idnum`, number `recnum` | Owner, Address 1/2, City, State, Zip | `ownnme`, `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde` |
 | Vendor primary email | same vendor | General Information > Primary Email | `prmeml`; HPS Test API `PrimaryEmail` write/readback/restore verified |
 | Vendor person | `vndcnt._idnum`, parent `_idref` | Contact Name, Job Title, Phone, Extension, Email, Cell | `cntnme`, `jobttl`, `phnnum`, `phnext`, `e_mail`, `cllphn` |
-| Employee | `employ._idnum`, number `recnum` | Address 1/2, City, State, Zip, Phone, Cell, Email | `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde`, `phnnum`, `cllphn`, `e_mail` |
+| Employee | `employ._idnum`, number `recnum` | First/last name (read-only identity evidence), Address 1/2, City, State, Zip, Phone, Cell, Email | `fstnme`, `lstnme` ([Sage field reference](https://help-sage100contractor.na.sage.com/Sage100Contractor/US/24_3/Content/Modules/13-Review_and_Reporting/Calculated_Fields.htm)), `addrs1`, `addrs2`, `ctynme`, `state_`, `zipcde`, `phnnum`, `cllphn`, `e_mail` |
 
 Aggregate metadata checks confirmed all 9 `clncnt` rows link to a `reccln`
 parent and all 579 `vndcnt` rows link to an `actpay` parent via
@@ -326,8 +326,16 @@ shared directories; self-service reads only exact linked person IDs.
 Directory edits no longer enqueue the legacy Sage blank-email write. A
 number-only Sage reference is now handled as a lookup candidate: the signed
 bridge reads the exact Sage number (and parent for a person), stores the
-returned stable ID and fields for review, and a different authorized staff
-member explicitly approves or rejects the link. A mismatch becomes a terminal
+returned stable ID and fields for review, and an authorized staff member
+explicitly approves or rejects the link. Employee lookups also return a
+read-only Sage employee name so empty contact fields do not force reviewers
+to rely on an opaque GUID. An employee requester may review their own identity
+link only with an individual `sage-employee-self-link` grant in Settings >
+Permissions and a normalized exact match between Sage and Compass employee
+names. Other identity links and all Sage contact writes retain independent
+review; employee name mismatches require a different reviewer and a note.
+The self-link grant cannot approve contact writes or create Sage records.
+A mismatch in the exact Sage key becomes a terminal
 conflict; names and emails never auto-link records. The approval queues a fresh
 authoritative read before any proposed edit. Existing account/person and
 project/person assignments still require deliberate reconciliation. The

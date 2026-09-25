@@ -1,5 +1,10 @@
 # Install the validated contact-capable binary at Sage's approved application
 # path. Contact polling and writes stay off until separately enabled.
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9a-fA-F]{40}$')]
+    [string]$SourceCommit
+)
 $ErrorActionPreference = 'Stop'
 $taskName = 'HPS Compass Sage Client Project Writer'
 $installDir = 'C:\ProgramData\HPS\CompassSageWriter'
@@ -8,10 +13,10 @@ $backup = Join-Path $installDir ('CompassSageClientProjectWriter.pre-contacts-' 
 $work = Join-Path $env:TEMP 'compass-sage-contact-release-20260924'
 $candidate = Join-Path $work 'CompassSageContactRelease.exe'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
-$base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/2dc3ba0ef05e39da648437b07ed3b948349a0112/scripts'
+$base = "https://raw.githubusercontent.com/High-Performance-Structures/compass/$SourceCommit/scripts"
 $sources = @(
     @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '965525DC6343796AD081430F93297B284841326BE50FF44BD1B18387877C901D' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '23E7EC0A7863484B433FB9156C5296E59734968204DC5CB8EA4A6D3A20A21EC4' }
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '861EE09F7C7296300624C735CAEAD5D0EBF3CAD2FC73AB67EAD03768649F08CA' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

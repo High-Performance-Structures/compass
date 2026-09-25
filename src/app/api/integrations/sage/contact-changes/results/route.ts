@@ -166,6 +166,11 @@ export async function POST(request: Request): Promise<Response> {
           id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
         }, "Sage candidate number is missing.", now)
       }
+      if (kind.data === "employee" && !snapshot.identityName?.trim()) {
+        return rejectCandidateRead(env.DB, {
+          id: read.id, organizationId: read.organizationId, claimToken: result.claimToken,
+        }, "Sage employee name was not returned for identity review.", now)
+      }
       const identityError = sageContactLinkCandidateError(identity, {
         kind: kind.data, entityId: read.entityId,
         sageRecordNumber: read.sageRecordNumber,

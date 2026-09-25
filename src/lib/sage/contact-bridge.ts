@@ -55,6 +55,8 @@ export const sageContactSnapshotResultSchema = z.object({
   sageRecordId: z.string().min(1),
   sageRecordNumber: z.string().nullable(),
   parentSageRecordId: z.string().nullable(),
+  // Read-only identity evidence. Never included in editable contact fields.
+  identityName: z.string().trim().min(1).max(150).nullable().optional(),
   revision: z.string().min(1).max(128),
   fields: sageContactFieldsSchema,
 })

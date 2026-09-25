@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { sageContactLinkCandidateError, sageContactReadClaimError, type SageContactLinkLookup } from "@/lib/sage/contact-link-review"
+import { sageContactLinkCandidateError, sageContactReadClaimError, sageEmployeeNamesMatch, sageIdentityLinkReviewError, type SageContactLinkLookup } from "@/lib/sage/contact-link-review"
 
 const lookup: SageContactLinkLookup = {
   kind: "client_person",
@@ -19,6 +19,29 @@ const identity = {
 const readback = { ...lookup, sageRecordId: "sage-person-guid" }
 
 describe("reviewed Sage identity linking", () => {
+  it("matches employee names without relying on optional contact details", () => {
+    expect(sageEmployeeNamesMatch("Sarah Cowman", "  sarah   COWMAN ")).toBe(true)
+    expect(sageEmployeeNamesMatch("Sarah Cowman", "Sarah Coleman")).toBe(false)
+    expect(sageEmployeeNamesMatch("Sarah Cowman", null)).toBe(false)
+    expect(sageEmployeeNamesMatch("Sarah Cowman", " ")).toBe(false)
+  })
+
+  it("permits employee self-linking only with an individual grant and a matching Sage name", () => {
+    const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee", requesterIsReviewer: true,
+      selfLinkAllowed: true, compassName: "Sarah Cowman", sageName: "Sarah Cowman", reviewNote: "" }
+    expect(sageIdentityLinkReviewError(input)).toBeNull()
+    expect(sageIdentityLinkReviewError({ ...input, selfLinkAllowed: false })).toMatch(/permission/)
+    expect(sageIdentityLinkReviewError({ ...input, sageName: "Another Person" })).toMatch(/do not match/)
+    expect(sageIdentityLinkReviewError({ ...input, sageName: null })).toMatch(/not returned/)
+    expect(sageIdentityLinkReviewError({ ...input, kind: "client_company" })).toMatch(/limited/)
+  })
+
+  it("requires an independent reviewer to document an employee name mismatch", () => {
+    const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee", requesterIsReviewer: false,
+      selfLinkAllowed: false, compassName: "Sarah Cowman", sageName: "Sarah Coleman", reviewNote: "" }
+    expect(sageIdentityLinkReviewError(input)).toMatch(/Document/)
+    expect(sageIdentityLinkReviewError({ ...input, reviewNote: "Verified Sage legal name" })).toBeNull()
+  })
   it("accepts a number-only bridge read only for a link candidate", () => {
     const claim = { purpose: "link_candidate", kind: "client_person", sageRecordId: null,
       sageRecordNumber: "2", parentSageRecordId: "sage-client-guid" }
