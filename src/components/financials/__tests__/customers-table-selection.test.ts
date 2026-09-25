@@ -83,7 +83,7 @@ describe("CustomersTable selection", () => {
     await act(async () => {
       host.querySelector<HTMLButtonElement>('button[aria-label="Select all clients on this page"]')?.click()
     })
-    expect(onSelectionChange.mock.lastCall?.[0]).toHaveLength(100)
-    expect(onSelectionChange.mock.lastCall?.[0]).not.toContain("customer-100")
+    expect(onSelectionChange.mock.lastCall?.[0]).toHaveLength(25)
+    expect(onSelectionChange.mock.lastCall?.[0]).not.toContain("customer-25")
   })
 })
