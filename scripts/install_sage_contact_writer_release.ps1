@@ -8,10 +8,10 @@ $backup = Join-Path $installDir ('CompassSageClientProjectWriter.pre-contacts-' 
 $work = Join-Path $env:TEMP 'compass-sage-contact-release-20260924'
 $candidate = Join-Path $work 'CompassSageContactRelease.exe'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
-$base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/ac00fd69e379db52d1afec01e110648dcd7ad4bc/scripts'
+$base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/2dc3ba0ef05e39da648437b07ed3b948349a0112/scripts'
 $sources = @(
     @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '965525DC6343796AD081430F93297B284841326BE50FF44BD1B18387877C901D' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '0885473914155A2FF32F8A7E0AF5A31827FA4ABA6DFC94ED2DAF4EC7A158C6EC' }
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '23E7EC0A7863484B433FB9156C5296E59734968204DC5CB8EA4A6D3A20A21EC4' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
