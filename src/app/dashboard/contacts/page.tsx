@@ -60,6 +60,8 @@ import { SageContactReviewDialog } from "@/components/contacts/sage-contact-revi
 import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
 import { SageContactCreateDialog, type SageContactCreateTarget } from "@/components/contacts/sage-contact-create-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
+import { addCompaniesToProject, getCompanyAssociationProjects } from "@/app/actions/contact-project-associations"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 
 type Tab = "customers" | "vendors" | "internal"
 type DirectoryCapabilities = Record<Tab, ContactDirectoryAccess> & {
@@ -221,6 +223,12 @@ function ContactsContent() {
   const [peopleCustomer, setPeopleCustomer] = React.useState<Customer | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [directoryAccess, setDirectoryAccess] = React.useState<DirectoryCapabilities | null>(null)
+  const [associationProjects, setAssociationProjects] = React.useState<readonly { readonly id: string; readonly name: string; readonly projectNumber: string | null }[]>([])
+  const [associationProjectId, setAssociationProjectId] = React.useState("")
+  const [selectedCustomers, setSelectedCustomers] = React.useState<readonly string[]>([])
+  const [selectedVendors, setSelectedVendors] = React.useState<readonly string[]>([])
+  const [associationDialogOpen, setAssociationDialogOpen] = React.useState(false)
+  const [associating, setAssociating] = React.useState(false)
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<
@@ -257,12 +265,13 @@ function ContactsContent() {
   const loadAll = React.useCallback(async () => {
     try {
       const access = await getContactDirectoryAccess()
-      const [customers, vendors, internalContacts, myRecords, myStatuses] = await Promise.all([
+      const [customers, vendors, internalContacts, myRecords, myStatuses, projects] = await Promise.all([
         access.customers.read ? getCustomers() : Promise.resolve([]),
         access.vendors.read ? getVendors() : Promise.resolve([]),
         access.internal.read ? getInternalDirectoryContacts() : Promise.resolve([]),
         getMyContactRecords(),
         listMySageContactProposalStatuses(),
+        getCompanyAssociationProjects(),
       ])
       setDirectoryAccess(access)
       setTab((currentTab) => {
@@ -274,6 +283,7 @@ function ContactsContent() {
       setInternalContactsList(internalContacts)
       setMyContacts(myRecords)
       setMyProposalStatuses(myStatuses)
+      setAssociationProjects(projects)
     } catch {
       toast.error("Failed to load contacts")
     } finally {
@@ -418,6 +428,32 @@ function ContactsContent() {
     }
   }
 
+  const selectedCompanyIds = tab === "vendors" ? selectedVendors : selectedCustomers
+  const handleAssociateCompanies = async () => {
+    if (!associationProjectId || selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || tab === "internal") return
+    setAssociating(true)
+    try {
+      const result = await addCompaniesToProject({
+        kind: tab === "vendors" ? "vendor" : "customer",
+        ids: selectedCompanyIds,
+        projectId: associationProjectId,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.warning) toast.warning(result.warning)
+      toast.success(`${result.added} added to project${result.existing > 0 ? `; ${result.existing} already associated` : ""}. No Compass access was granted.`)
+      if (tab === "vendors") setSelectedVendors([])
+      else setSelectedCustomers([])
+      setAssociationDialogOpen(false)
+    } catch {
+      toast.error("Could not complete the project association. Please refresh and check Project Contacts before retrying.")
+    } finally {
+      setAssociating(false)
+    }
+  }
+
   if (loading) {
     return <ContactsSkeleton />
   }
@@ -557,10 +593,31 @@ function ContactsContent() {
             </div>
           </div>
 
-          {tab !== "internal" && directoryAccess?.canManageAccounts ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Directory rows are records, not Compass login accounts. To grant several people project access, select their accounts in Manage Compass access.
-            </p>
+          {tab !== "internal" && associationProjects.length > 0 ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-b pb-2 text-sm">
+              <span className="text-muted-foreground">{selectedCompanyIds.length} {tab === "vendors" ? "vendors" : "clients/leads"} selected</span>
+              <SearchableCombobox
+                ariaLabel="Choose project for selected companies"
+                options={associationProjects.map((project) => ({
+                  value: project.id,
+                  label: project.projectNumber ? `${project.projectNumber} · ${project.name}` : project.name,
+                }))}
+                value={associationProjectId}
+                onValueChange={setAssociationProjectId}
+                placeholder="Choose project..."
+                searchPlaceholder="Search projects..."
+                className="w-72"
+              />
+              <Button type="button" size="sm" disabled={selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || !associationProjectId} onClick={() => setAssociationDialogOpen(true)}>
+                Add selected to project
+              </Button>
+              {selectedCompanyIds.length > 0 ? (
+                <Button type="button" size="sm" variant="ghost" onClick={() => tab === "vendors" ? setSelectedVendors([]) : setSelectedCustomers([])}>Clear selection</Button>
+              ) : null}
+              <span className="text-xs text-muted-foreground">{selectedCompanyIds.length > 100 ? "Choose at most 100 records per batch. " : ""}Associates selected client/vendor records only; choose people separately for Compass access.</span>
+            </div>
+          ) : tab !== "internal" && directoryAccess?.canManageAccounts ? (
+            <p className="mt-2 text-xs text-muted-foreground">To grant people project access, select their accounts in Manage Compass access.</p>
           ) : null}
 
           <TabsContent
@@ -575,6 +632,8 @@ function ContactsContent() {
                 setCustomerDialogOpen(true)
               } : undefined}
               onDelete={directoryAccess?.customers.delete ? handleDeleteCustomer : undefined}
+              selectedIds={selectedCustomers}
+              onSelectionChange={associationProjects.length > 0 ? setSelectedCustomers : undefined}
             />
           </TabsContent>
 
@@ -596,6 +655,8 @@ function ContactsContent() {
                 setVendorDialogOpen(true)
               } : undefined}
               onDelete={directoryAccess?.vendors.delete ? handleDeleteVendor : undefined}
+              selectedIds={selectedVendors}
+              onSelectionChange={associationProjects.length > 0 ? setSelectedVendors : undefined}
             />
           </TabsContent>
 
@@ -614,6 +675,21 @@ function ContactsContent() {
 
       {accessManagerDialog}
       {myContactsDialog}
+
+      <Dialog open={associationDialogOpen} onOpenChange={setAssociationDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add selected directory records to project?</DialogTitle>
+            <DialogDescription>
+              {selectedCompanyIds.length} directory record{selectedCompanyIds.length === 1 ? "" : "s"} will be associated internally with {associationProjects.find((project) => project.id === associationProjectId)?.name ?? "the selected project"}. This does not change the project&apos;s legal client or Sage link, invite anyone, grant login access, or make contacts visible in an external portal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" disabled={associating} onClick={() => setAssociationDialogOpen(false)}>Cancel</Button>
+            <Button type="button" disabled={associating} onClick={() => void handleAssociateCompanies()}>{associating ? "Adding..." : "Add to project"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <CustomerDialog
         open={customerDialogOpen}

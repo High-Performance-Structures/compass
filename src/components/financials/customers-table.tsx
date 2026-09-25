@@ -11,6 +11,7 @@ import {
   useReactTable,
   type ColumnDef,
   type ColumnFiltersState,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table"
 
@@ -18,6 +19,7 @@ import type { Customer } from "@/db/schema"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -49,13 +51,19 @@ interface CustomersTableProps {
   onEdit?: (customer: Customer) => void
   onDelete?: (id: string) => void
   onViewPeople?: (customer: Customer) => void
+  selectedIds?: readonly string[]
+  onSelectionChange?: (ids: readonly string[]) => void
 }
+
+const EMPTY_SELECTION: readonly string[] = []
 
 export function CustomersTable({
   customers,
   onEdit,
   onDelete,
   onViewPeople,
+  selectedIds = EMPTY_SELECTION,
+  onSelectionChange,
 }: CustomersTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -64,6 +72,10 @@ export function CustomersTable({
   ])
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
+  const rowSelection = React.useMemo<RowSelectionState>(
+    () => Object.fromEntries(selectedIds.map((id) => [id, true])),
+    [selectedIds]
+  )
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -91,6 +103,21 @@ export function CustomersTable({
   }
 
   const columns = React.useMemo<ColumnDef<Customer>[]>(() => [
+    {
+      id: "select",
+      header: ({ table }) => <Checkbox
+        checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? "indeterminate" : false}
+        onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
+        aria-label="Select all clients on this page"
+      />,
+      cell: ({ row }) => <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(checked) => row.toggleSelected(checked === true)}
+        aria-label={`Select ${row.original.name}`}
+      />,
+      enableSorting: false,
+      enableHiding: false,
+    },
     {
       accessorKey: "name",
       header: "Name",
@@ -255,20 +282,26 @@ export function CustomersTable({
   ], [onEdit, onDelete, onViewPeople])
   const visibleColumns = React.useMemo(() => columns.filter((column) =>
     (developerModeEnabled || column.id !== "source") &&
+    (onSelectionChange !== undefined || column.id !== "select") &&
     (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
-  ), [columns, developerModeEnabled, onEdit, onDelete, onViewPeople])
+  ), [columns, developerModeEnabled, onEdit, onDelete, onViewPeople, onSelectionChange])
 
   const table = useReactTable({
     data: customers,
     columns: visibleColumns,
+    getRowId: (customer) => customer.id,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    onRowSelectionChange: onSelectionChange ? (updater) => {
+      const next = typeof updater === "function" ? updater(rowSelection) : updater
+      onSelectionChange(Object.keys(next).filter((id) => next[id]))
+    } : undefined,
     initialState: { pagination: { pageSize: 100 } },
-    state: { sorting, columnFilters },
+    state: { sorting, columnFilters, rowSelection },
   })
 
   const emptyState = (
@@ -396,6 +429,7 @@ export function CustomersTable({
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="whitespace-nowrap">
@@ -421,10 +455,10 @@ export function CustomersTable({
           </Table>
         </div>
       </div>
-      {table.getPageCount() > 1 && (
+      {(table.getPageCount() > 1 || selectedIds.length > 0) && (
         <div className="flex items-center justify-between shrink-0">
           <div className="text-xs text-muted-foreground">
-            {table.getFilteredRowModel().rows.length} clients and leads
+            {selectedIds.length > 0 ? `${selectedIds.length} selected` : `${table.getFilteredRowModel().rows.length} clients and leads`}
           </div>
           {table.getPageCount() > 1 && (
             <div className="flex items-center gap-2">

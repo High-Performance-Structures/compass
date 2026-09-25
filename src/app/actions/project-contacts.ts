@@ -12,7 +12,6 @@ import {
   projectAccessInvitations,
   projectContacts,
   projectContactSourceLinks,
-  projectProfileSyncOperations,
   projectMembers,
   projects,
   sageCostCodes,
@@ -48,6 +47,8 @@ import {
 import { canViewHistoricalProjectContacts } from "@/lib/project-contact-display"
 import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
+import { queueProjectContactTrackerRefresh } from "@/lib/project-contact-tracker-refresh"
+import { isDirectoryAssignable, vendorCategoryToContactType } from "@/lib/contact-project-association"
 
 export type ProjectContactType =
   | "owner"
@@ -329,20 +330,6 @@ function validContactType(value: string): value is ProjectContactType {
   return CONTACT_TYPES.some((contactType) => contactType === value)
 }
 
-function vendorCategoryToContactType(category: string): ProjectContactType {
-  const lower = category.toLowerCase()
-  if (lower.includes("internal")) return "internal"
-  if (lower.includes("supplier") || lower.includes("miscellaneous")) {
-    return "supplier"
-  }
-  return "subcontractor"
-}
-
-function isDirectoryAssignable(category: string): boolean {
-  const lower = category.toLowerCase()
-  return !lower.includes("bank") && !lower.includes("lender")
-}
-
 async function verifyProjectAccess(
   projectId: string,
   action: "read" | "update" = "read"
@@ -507,43 +494,6 @@ function revalidateContactPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/information`)
   revalidatePath(`/dashboard/projects/${projectId}/rfis`)
   revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
-}
-
-async function queueProjectContactTrackerRefresh(input: {
-  readonly db: Awaited<ReturnType<typeof getDb>>
-  readonly organizationId: string
-  readonly projectId: string
-}): Promise<void> {
-  const [project] = await input.db
-    .select({ projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(
-      and(
-        eq(projects.id, input.projectId),
-        eq(projects.organizationId, input.organizationId),
-      ),
-    )
-    .limit(1)
-  if (!project?.projectNumber) return
-
-  const now = new Date().toISOString()
-  await input.db.insert(projectProfileSyncOperations).values({
-    id: crypto.randomUUID(),
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    operation: "tracker_row_update",
-    status: "pending",
-    payloadJson: JSON.stringify({
-      previousProjectNumber: project.projectNumber,
-      projectNumber: project.projectNumber,
-    }),
-    error: null,
-    attempts: 0,
-    attemptedAt: null,
-    completedAt: null,
-    createdAt: now,
-    updatedAt: now,
-  })
 }
 
 function sourceIdPart(value: string): string {
