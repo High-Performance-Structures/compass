@@ -195,6 +195,8 @@ export type ProjectSageSyncItemKind =
 
 export type ProjectSageSyncItem = {
   readonly id: string
+  readonly sourceSystem: string | null
+  readonly sourceRecordType: string | null
   readonly kind: ProjectSageSyncItemKind
   readonly table: "project_operations" | "project_budget_applications" | "project_budget_lines"
   readonly title: string
@@ -207,6 +209,7 @@ export type ProjectSageSyncItem = {
   readonly dueDate: string | null
   readonly updatedAt: string
   readonly detail: string | null
+  readonly companyName: string | null
 }
 
 export type ProjectSageSyncQueue = {
@@ -1251,6 +1254,8 @@ export async function getProjectSageSyncQueue(
     )
     .map((operation) => ({
       id: operation.id,
+      sourceSystem: operation.sourceSystem,
+      sourceRecordType: operation.sourceRecordType,
       kind: operationSyncKind(operation.sourceRecordType),
       table: "project_operations",
       title: operation.title,
@@ -1263,6 +1268,7 @@ export async function getProjectSageSyncQueue(
       dueDate: operation.dueDate ?? operation.startDate,
       updatedAt: operation.updatedAt,
       detail: operation.companyName ?? operation.assigneeName,
+      companyName: operation.companyName,
     }))
 
   const applicationItems: ProjectSageSyncItem[] = applicationRows
@@ -1272,6 +1278,8 @@ export async function getProjectSageSyncQueue(
     )
     .map((application) => ({
       id: application.id,
+      sourceSystem: null,
+      sourceRecordType: null,
       kind: "budget_application",
       table: "project_budget_applications",
       title: `Pay application ${application.applicationNumber}`,
@@ -1284,6 +1292,7 @@ export async function getProjectSageSyncQueue(
       dueDate: application.periodTo,
       updatedAt: application.updatedAt,
       detail: application.ownerVisible ? "Owner visible" : "Internal only",
+      companyName: null,
     }))
 
   const buildingApplicationIds = new Set(
@@ -1300,6 +1309,8 @@ export async function getProjectSageSyncQueue(
     .slice(0, 25)
     .map((line) => ({
       id: line.id,
+      sourceSystem: null,
+      sourceRecordType: null,
       kind: "budget_line",
       table: "project_budget_lines",
       title: line.description,
@@ -1312,6 +1323,7 @@ export async function getProjectSageSyncQueue(
       dueDate: null,
       updatedAt: line.updatedAt,
       detail: `${line.csiDivision} - ${line.csiDivisionName}`,
+      companyName: null,
     }))
 
   const pendingItems = [

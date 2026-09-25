@@ -16,8 +16,12 @@ import {
   type ProjectSageSyncItem,
   type ProjectSageSyncQueue,
 } from "@/app/actions/project-operations"
+import { reviewProjectHandoffClient } from "@/app/actions/project-sage-handoff-review"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { isGooglePhaseHandoffAwaitingClientReview } from "@/lib/sage/project-handoff-review"
 import { cn } from "@/lib/utils"
 
 function formatKind(kind: ProjectSageSyncItem["kind"]): string {
@@ -68,6 +72,14 @@ function canQueueItem(item: ProjectSageSyncItem): boolean {
   return item.table === "project_operations" && itemQueueState(item) === "ready"
 }
 
+function canReviewProjectHandoffClient(item: ProjectSageSyncItem): boolean {
+  return (
+    item.table === "project_operations" &&
+    item.kind === "project_handoff" &&
+    isGooglePhaseHandoffAwaitingClientReview(item)
+  )
+}
+
 function QueueStateBadge({ item }: { readonly item: ProjectSageSyncItem }): ReactElement {
   const state = itemQueueState(item)
   if (state === "ready") {
@@ -96,7 +108,11 @@ function QueueStateBadge({ item }: { readonly item: ProjectSageSyncItem }): Reac
 
 function statusText(item: ProjectSageSyncItem): string {
   if (item.syncDirection !== "write") return "Read-only from Sage"
-  if (item.sageWriteStatus === "not_ready") return "Missing Sage mapping"
+  if (item.sageWriteStatus === "not_ready") {
+    return item.kind === "project_handoff"
+      ? "Client confirmation required"
+      : "Missing Sage mapping"
+  }
   if (item.syncStatus === "queued_sage") return "Waiting for Sage bridge"
   if (item.syncStatus === "syncing") return "Bridge is processing"
   if (item.syncStatus === "failed") return "Needs retry"
@@ -114,6 +130,8 @@ export function ProjectSageSyncQueuePanel({
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [activeItemId, setActiveItemId] = useState<string | null>(null)
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [clientNameDraft, setClientNameDraft] = useState("")
   const visibleItems = useMemo(
     () => queue?.pendingItems.slice(0, 12) ?? [],
     [queue?.pendingItems]
@@ -145,6 +163,35 @@ export function ProjectSageSyncQueuePanel({
           ? `Queued ${result.updatedCount} item${result.updatedCount === 1 ? "" : "s"} for Sage.`
           : result.error
       )
+      setActiveItemId(null)
+      router.refresh()
+    })
+  }
+
+  function beginClientReview(item: ProjectSageSyncItem): void {
+    if (!canReviewProjectHandoffClient(item)) return
+    setMessage(null)
+    setEditingItemId(item.id)
+    setClientNameDraft(item.companyName ?? "")
+  }
+
+  function saveClientReview(item: ProjectSageSyncItem): void {
+    if (!canReviewProjectHandoffClient(item)) return
+    setMessage(null)
+    setActiveItemId(`review:${item.id}`)
+    startTransition(async () => {
+      const result = await reviewProjectHandoffClient(
+        projectId,
+        item.id,
+        item.updatedAt,
+        clientNameDraft,
+      )
+      setMessage(
+        result.success
+          ? "Sage client/company confirmed. The handoff is ready to queue."
+          : result.error,
+      )
+      if (result.success) setEditingItemId(null)
       setActiveItemId(null)
       router.refresh()
     })
@@ -227,7 +274,10 @@ export function ProjectSageSyncQueuePanel({
           <div className="divide-y">
             {visibleItems.map((item) => {
               const itemCanQueue = canQueueItem(item)
+              const itemCanReviewClient = canReviewProjectHandoffClient(item)
+              const isEditingClient = editingItemId === item.id
               const isActive = activeItemId === item.id || activeItemId === "batch"
+              const isSavingClient = activeItemId === `review:${item.id}`
               return (
                 <div
                   key={`${item.table}:${item.id}`}
@@ -250,6 +300,23 @@ export function ProjectSageSyncQueuePanel({
                         {item.detail}
                       </p>
                     )}
+                    {isEditingClient && (
+                      <div className="mt-3 space-y-2">
+                        <Label htmlFor={`sage-client-${item.id}`}>
+                          Sage client/company
+                        </Label>
+                        <Input
+                          id={`sage-client-${item.id}`}
+                          value={clientNameDraft}
+                          onChange={(event) => setClientNameDraft(event.target.value)}
+                          disabled={isPending}
+                          autoFocus
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Confirm the client organization, not an individual contact.
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <span>{formatMoney(item.amount)}</span>
                   <span>{formatDate(item.dueDate)}</span>
@@ -259,7 +326,38 @@ export function ProjectSageSyncQueuePanel({
                       {statusText(item)}
                     </p>
                   </div>
-                  <div className="flex justify-start sm:justify-end">
+                  <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+                    {isEditingClient ? (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => saveClientReview(item)}
+                          disabled={isPending || clientNameDraft.trim().length === 0}
+                        >
+                          {isSavingClient ? "Saving..." : "Confirm client"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingItemId(null)}
+                          disabled={isPending}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : itemCanReviewClient ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => beginClientReview(item)}
+                        disabled={isPending}
+                      >
+                        Review client
+                      </Button>
+                    ) : null}
                     <Button
                       type="button"
                       size="sm"
