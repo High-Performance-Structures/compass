@@ -14,10 +14,10 @@ $testRecordNumbers = @{
     SAGE_CONTACT_TEST_VENDOR_NUMBER = '2883'
     SAGE_CONTACT_TEST_EMPLOYEE_NUMBER = '17'
 }
-$base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/martinevogel/contact-directory-review/scripts'
+$base = 'https://raw.githubusercontent.com/High-Performance-Structures/compass/2dc3ba0ef05e39da648437b07ed3b948349a0112/scripts'
 $sources = @(
     @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '965525DC6343796AD081430F93297B284841326BE50FF44BD1B18387877C901D' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '0885473914155A2FF32F8A7E0AF5A31827FA4ABA6DFC94ED2DAF4EC7A158C6EC' }
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '23E7EC0A7863484B433FB9156C5296E59734968204DC5CB8EA4A6D3A20A21EC4' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

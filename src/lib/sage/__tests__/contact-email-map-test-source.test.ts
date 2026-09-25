@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 
 import { describe, expect, it } from "vitest"
@@ -14,6 +15,18 @@ const harness = readFileSync(
   new URL("../../../../scripts/test_sage_contacts_hps_test.ps1", import.meta.url),
   "utf8"
 )
+const installer = readFileSync(
+  new URL("../../../../scripts/install_sage_contact_writer_release.ps1", import.meta.url),
+  "utf8"
+)
+
+describe("pinned Sage contact source", () => {
+  it("keeps both guarded host scripts pinned to the current writer bytes", () => {
+    const hash = createHash("sha256").update(writer.replace(/\r\n/g, "\n")).digest("hex").toUpperCase()
+    expect(harness).toContain(`Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '${hash}'`)
+    expect(installer).toContain(`Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '${hash}'`)
+  })
+})
 
 describe("HPS Test contact primary-email mapping probe", () => {
   it("allows the HPS Test-verified vendor mapping but not the client mapping", () => {
