@@ -345,14 +345,15 @@ No direct SQL update is permitted.
 
 The existing production Sage writer handles client/job creation and can finish
 historical queued blank-email operations; new directory edits cannot enqueue
-that operation. A separate, opt-in contact mode now has
-allowlisted client/vendor/employee modifications and child-contact
-modification code and passed the guarded HPS Test write/readback check above.
-It has not been installed as the production writer. Vendor primary-email
-proposals are mapped but still disabled by the production write flag.
-Client-company primary-email edits, child-contact adds, and bulk import of
-existing Sage people remain outside the enabled path. Exact-number link
-review is staged in Compass but requires the contact bridge to be installed.
+that operation. A separate, opt-in contact mode now has allowlisted
+client/vendor/employee and child-contact modifications, plus reviewed
+client/vendor child-contact Add with exact-parent, full-field readback. The
+guarded HPS Test probes above passed, but this mode has not been installed as
+the production writer. Vendor primary-email proposals and child-contact Add
+remain disabled by separate production switches. Client-company primary-email
+edits and bulk import of existing Sage people remain outside the enabled path.
+Exact-number link review is staged in Compass but requires the contact bridge
+to be installed.
 The Contacts UI can
 request a fresh Sage read and submit/review a proposal for an already-linked
 record; approval is refused while the production write flag is disabled.
