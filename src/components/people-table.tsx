@@ -23,6 +23,10 @@ import {
 import type { UserWithRelations } from "@/app/actions/users"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
+import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -75,6 +79,10 @@ export function PeopleTable({
     []
   )
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
 
   React.useEffect(() => {
     onSelectionChange?.(Object.keys(rowSelection).filter((id) => rowSelection[id]))
@@ -257,19 +265,27 @@ export function PeopleTable({
     data: users,
     getRowId: (user) => user.id,
     columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onSortingChange: (updater) => {
+      setSorting(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
-    initialState: compact ? { pagination: { pageSize: 100 } } : undefined,
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
     state: {
       sorting,
       columnFilters,
       rowSelection,
       columnVisibility,
+      pagination,
     },
   })
 
@@ -313,6 +329,7 @@ export function PeopleTable({
       </div>
 
       {isMobile ? (
+        <>
         <div className="rounded-md border overflow-hidden divide-y">
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row) => {
@@ -374,6 +391,8 @@ export function PeopleTable({
             </div>
           )}
         </div>
+        <DataTablePagination table={table} itemLabel="users" id="people-mobile-items-per-page" />
+        </>
       ) : (
         <>
           <div className={compact ? "min-h-0 flex-1 rounded-md border overflow-y-auto" : "rounded-md border overflow-hidden"}>
@@ -427,32 +446,7 @@ export function PeopleTable({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            {!compact && (
-              <div className="text-sm text-muted-foreground">
-                {table.getFilteredSelectedRowModel().rows.length} of{" "}
-                {table.getFilteredRowModel().rows.length} row(s) selected
-              </div>
-            )}
-            <div className="flex items-center justify-center sm:justify-end space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <DataTablePagination table={table} itemLabel="users" id="people-items-per-page" />
         </>
       )}
     </div>

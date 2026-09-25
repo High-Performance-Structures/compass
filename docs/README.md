@@ -56,6 +56,7 @@ How to work on Compass.
 
 - [getting started](development/getting-started.md) -- local setup, environment variables, dev server, database, deployment
 - [conventions](development/conventions.md) -- TypeScript discipline, component patterns, file organization
+- [UI standards](development/ui-standards.md) -- canonical visual, responsive, list, accessibility, and release-review rules
 - [regression testing](development/regression-testing.md) -- pull-request, daily, native, and release regression strategy
 - [sidebar](development/sidebar.md) -- sidebar component architecture, desktop vs mobile, collapsed state, animations
 - [theming](development/theming.md) -- oklch color system, preset themes, custom theme generation, how applyTheme works

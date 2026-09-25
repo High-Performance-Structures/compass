@@ -22,6 +22,10 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -76,6 +80,10 @@ export function CustomersTable({
     () => Object.fromEntries(selectedIds.map((id) => [id, true])),
     [selectedIds]
   )
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -86,6 +94,7 @@ export function CustomersTable({
   }, [sorting])
 
   const handleSort = (value: string) => {
+    setPagination((current) => ({ ...current, pageIndex: 0 }))
     switch (value) {
       case "name-asc":
         setSorting([{ id: "name", desc: false }])
@@ -290,8 +299,14 @@ export function CustomersTable({
     data: customers,
     columns: visibleColumns,
     getRowId: (customer) => customer.id,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onSortingChange: (updater) => {
+      setSorting(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -300,8 +315,9 @@ export function CustomersTable({
       const next = typeof updater === "function" ? updater(rowSelection) : updater
       onSelectionChange(Object.keys(next).filter((id) => next[id]))
     } : undefined,
-    initialState: { pagination: { pageSize: 100 } },
-    state: { sorting, columnFilters, rowSelection },
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { sorting, columnFilters, rowSelection, pagination },
   })
 
   const emptyState = (
@@ -391,6 +407,11 @@ export function CustomersTable({
         ) : (
           emptyState
         )}
+        <DataTablePagination
+          table={table}
+          itemLabel="contacts"
+          id="customers-mobile-items-per-page"
+        />
       </div>
     )
   }
@@ -455,33 +476,11 @@ export function CustomersTable({
           </Table>
         </div>
       </div>
-      {(table.getPageCount() > 1 || selectedIds.length > 0) && (
-        <div className="flex items-center justify-between shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {selectedIds.length > 0 ? `${selectedIds.length} selected` : `${table.getFilteredRowModel().rows.length} clients and leads`}
-          </div>
-          {table.getPageCount() > 1 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                Next
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      <DataTablePagination
+        table={table}
+        itemLabel="contacts"
+        id="customers-items-per-page"
+      />
     </div>
   )
 }
