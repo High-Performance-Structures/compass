@@ -329,12 +329,29 @@ bridge reads the exact Sage number (and parent for a person), stores the
 returned stable ID and fields for review, and an authorized staff member
 explicitly approves or rejects the link. Employee lookups also return a
 read-only Sage employee name so empty contact fields do not force reviewers
-to rely on an opaque GUID. An employee requester may review their own identity
-link only with an individual `sage-employee-self-link` grant in Settings >
-Permissions and a normalized exact match between Sage and Compass employee
-names. Other identity links and all Sage contact writes retain independent
-review; employee name mismatches require a different reviewer and a note.
-The self-link grant cannot approve contact writes or create Sage records.
+to rely on an opaque GUID. A staff member with `sage-contact-review` approval
+and confidential employee-contact approval may review their own employee
+identity lookup. A name difference must be shown in an explicit confirmation,
+but a written note is optional. Client/vendor identity links and all Sage
+contact writes retain independent review. The employee identity exception
+cannot approve contact writes or create Sage records.
+The Contacts client matcher displays a fresh, read-only Sage client directory
+beside Compass clients. Sage rows are stored as snapshot evidence in their own
+organization-scoped table, never as duplicate Compass customer records.
+Selecting a pair queues the existing exact-number lookup; it does not link,
+merge, or modify either system. The final read-back now includes the Sage
+client name, and a reviewer must see it before linking. Multiple Compass
+claims on one Sage number are blocked for manual reconciliation. Legacy
+number-only Compass clients can verify their own matching number.
+
+Release order for this matcher: apply migration 0173, deploy the Compass
+Worker, compile and install the updated Windows contact writer with the
+guarded task-pause/backup procedure, then request and verify a complete
+read-only production Sage client snapshot. Do not enable contact writes or
+child-contact creates as part of the directory rollout. No Project Registry
+or Google Apps Script schema change is needed for this read-only catalog;
+project assignments continue to use the canonical Compass client ID.
+
 A mismatch in the exact Sage key becomes a terminal
 conflict; names and emails never auto-link records. The approval queues a fresh
 authoritative read before any proposed edit. Existing account/person and

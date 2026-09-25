@@ -15,6 +15,7 @@ namespace CompassSageClientProjectWriter
     {
         private const string ContactRequestsTarget = "/api/integrations/sage/contact-changes/requests";
         private const string ContactResultsTarget = "/api/integrations/sage/contact-changes/results";
+        private const string ClientDirectoryTarget = "/api/integrations/sage/client-directory";
         private const string ContactTestCompany = "HPS Test";
 
         public sealed class ContactEnvelope
@@ -22,6 +23,20 @@ namespace CompassSageClientProjectWriter
             public ContactTask[] reads { get; set; }
             public ContactTask[] writes { get; set; }
             public ContactTask[] creates { get; set; }
+        }
+        public sealed class ClientDirectoryEnvelope { public ClientDirectoryRefresh refresh { get; set; } }
+        public sealed class ClientDirectoryRefresh
+        {
+            public string id { get; set; }
+            public string claimToken { get; set; }
+            public string organizationId { get; set; }
+        }
+        public sealed class ClientDirectoryEntry
+        {
+            public string sageRecordId { get; set; }
+            public string sageClientNumber { get; set; }
+            public string name { get; set; }
+            public string email { get; set; }
         }
         public sealed class ContactTask
         {
@@ -123,6 +138,11 @@ namespace CompassSageClientProjectWriter
                 using (SqlConnection connection = OpenContactSql(ContactTestCompany))
                 using (SqlCommand command = new SqlCommand("SELECT COUNT(*) FROM dbo.reccln", connection))
                     WriteLog("INFO", "HPS Test Sage client count=" + Convert.ToString(command.ExecuteScalar()));
+                using (SqlConnection connection = OpenContactSql(ContactTestCompany))
+                using (SqlCommand command = new SqlCommand(
+                    "SELECT TOP (1) _idnum, recnum, clnnme, e_mail FROM dbo.reccln ORDER BY recnum", connection))
+                using (SqlDataReader reader = command.ExecuteReader())
+                    if (!reader.Read()) throw new InvalidOperationException("HPS Test has no client for the directory query preflight.");
                 using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"), ContactTestCompany)) { }
                 string[] kinds = { "client_company", "vendor_company", "client_person", "vendor_person", "employee" };
                 foreach (string kind in kinds)
@@ -715,9 +735,69 @@ namespace CompassSageClientProjectWriter
                     throw new InvalidOperationException("Local Sage contact create switch is disabled.");
                 foreach (ContactTask create in envelope.creates ?? new ContactTask[0])
                     ProcessContactCreate(create);
+                ClientDirectoryEnvelope directory = Json.Deserialize<ClientDirectoryEnvelope>(
+                    SendContact("GET", ClientDirectoryTarget, ""));
+                if (directory != null && directory.refresh != null)
+                    ProcessClientDirectoryRefresh(directory.refresh);
                 return 0;
             }
             catch (Exception error) { WriteLog("FATAL", error.Message); return 1; }
+        }
+
+        private static void ProcessClientDirectoryRefresh(ClientDirectoryRefresh refresh)
+        {
+            if (String.IsNullOrWhiteSpace(refresh.id) || String.IsNullOrWhiteSpace(refresh.claimToken) ||
+                !String.Equals(refresh.organizationId, Required("SAGE_CONTACT_ORGANIZATION_ID"), StringComparison.Ordinal))
+                throw new InvalidOperationException("Sage client directory claim is incomplete or targets another organization.");
+            Dictionary<string, object> result = new Dictionary<string, object> {
+                { "id", refresh.id }, { "claimToken", refresh.claimToken },
+                { "organizationId", refresh.organizationId }
+            };
+            try
+            {
+                List<ClientDirectoryEntry> entries = new List<ClientDirectoryEntry>();
+                HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                HashSet<string> numbers = new HashSet<string>(StringComparer.Ordinal);
+                using (SqlConnection connection = OpenContactSql(TargetCompany))
+                using (SqlCommand command = new SqlCommand(
+                    "SELECT _idnum, recnum, clnnme, e_mail FROM dbo.reccln ORDER BY recnum", connection))
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (entries.Count >= 5000) throw new InvalidOperationException("Sage client directory exceeds the supported snapshot size.");
+                        string id = reader.IsDBNull(0) ? "" : Convert.ToString(reader[0]).Trim();
+                        string number = reader.IsDBNull(1) ? "" : Convert.ToString(reader[1]).Trim();
+                        string name = reader.IsDBNull(2) ? "" : Convert.ToString(reader[2]).Trim();
+                        string email = reader.IsDBNull(3) ? null : Convert.ToString(reader[3]).Trim();
+                        Guid exactId;
+                        int exactNumber;
+                        if (!Guid.TryParse(id, out exactId) || !Int32.TryParse(number, out exactNumber) ||
+                            exactNumber <= 0 || String.IsNullOrWhiteSpace(name) || name.Length > 200 ||
+                            (email != null && email.Length > 255))
+                            throw new InvalidOperationException("Sage client directory contains a record without an exact ID, number, or name.");
+                        if (!ids.Add(exactId.ToString()) || !numbers.Add(exactNumber.ToString()))
+                            throw new InvalidOperationException("Sage client directory contains duplicate client IDs or numbers.");
+                        entries.Add(new ClientDirectoryEntry {
+                            sageRecordId = exactId.ToString(), sageClientNumber = exactNumber.ToString(), name = name,
+                            email = String.IsNullOrWhiteSpace(email) ? null : email
+                        });
+                    }
+                }
+                if (entries.Count == 0) throw new InvalidOperationException("Sage client directory is empty; prior snapshot was preserved.");
+                result.Add("outcome", "succeeded");
+                result.Add("entries", entries);
+            }
+            catch (Exception error)
+            {
+                result.Add("outcome", "failed");
+                result.Add("error", Truncate(error.Message, 1000));
+            }
+            // The shared serializer defaults to 2 MB; a complete 5000-row
+            // directory can be larger without containing invalid records.
+            System.Web.Script.Serialization.JavaScriptSerializer directoryJson =
+                new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = 4 * 1024 * 1024 };
+            SendContact("POST", ClientDirectoryTarget, directoryJson.Serialize(result));
         }
 
         private static void ProcessContactTask(ContactTask task, bool write)
@@ -869,8 +949,9 @@ namespace CompassSageClientProjectWriter
             StringBuilder query = new StringBuilder("SELECT _idnum, ").Append(idColumn).Append(", ")
                 .Append(person ? "_idref" : "NULL");
             foreach (ContactField field in fields) query.Append(", ").Append(field.Sql);
-            // Sage employee names are read-only identity evidence, not contact edits.
+            // Names are read-only identity evidence, not contact edits.
             if (task.kind == "employee") query.Append(", fstnme, lstnme");
+            if (task.kind == "client_company") query.Append(", clnnme");
             query.Append(" FROM dbo.").Append(table)
                 .Append(" WHERE ((@id IS NOT NULL AND _idnum = @id) OR (@id IS NULL AND ")
                 .Append(idColumn).Append(" = @number))");
@@ -900,6 +981,11 @@ namespace CompassSageClientProjectWriter
                         string fullName = (first + " " + last).Trim();
                         snapshot.identityName = fullName.Length == 0 ? null : fullName;
                     }
+                    if (task.kind == "client_company")
+                    {
+                        string clientName = reader.IsDBNull(fields.Length + 3) ? "" : Convert.ToString(reader[fields.Length + 3]).Trim();
+                        snapshot.identityName = clientName.Length == 0 ? null : clientName;
+                    }
                     if (reader.Read()) throw new InvalidOperationException("Sage contact key resolved more than one row.");
                     snapshot.revision = ContactRevision(snapshot);
                     return snapshot;
@@ -915,7 +1001,8 @@ namespace CompassSageClientProjectWriter
                 .Append('|').Append(snapshot.parentSageRecordId ?? "");
             foreach (string key in keys) canonical.Append('|').Append(key.Length).Append(':').Append(key)
                 .Append('=').Append(snapshot.fields[key] == null ? "<null>" : snapshot.fields[key].Length + ":" + snapshot.fields[key]);
-            if (snapshot.kind == "employee") canonical.Append("|identityName=").Append(snapshot.identityName ?? "");
+            if (snapshot.kind == "employee" || snapshot.kind == "client_company")
+                canonical.Append("|identityName=").Append(snapshot.identityName ?? "");
             using (SHA256 sha = SHA256.Create())
             {
                 byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(canonical.ToString()));

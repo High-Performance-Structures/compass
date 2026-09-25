@@ -21,16 +21,16 @@ export function sageLinkReadbackRefreshReason(input: {
   readonly completedAt: string | null
   readonly snapshotValid: boolean
   readonly sageIdentityName: string | null | undefined
-}, now = Date.now()): "expired" | "invalid_readback" | "missing_employee_name" | null {
+}, now = Date.now()): "expired" | "invalid_readback" | "missing_identity_name" | null {
   if (input.status !== "awaiting_review") return null
   if (!input.snapshotValid) return "invalid_readback"
-  if (input.kind === "employee" && !input.sageIdentityName?.trim()) return "missing_employee_name"
+  if ((input.kind === "employee" || input.kind === "client_company") && !input.sageIdentityName?.trim()) return "missing_identity_name"
   const completed = input.completedAt ? Date.parse(input.completedAt) : Number.NaN
   return !Number.isFinite(completed) || completed > now ||
     now - completed > SAGE_LINK_CANDIDATE_MAX_AGE_MS ? "expired" : null
 }
 
-/** Self-review needs independent Sage name evidence, even when contact fields are blank. */
+/** A Sage name is required even when optional employee contact fields are blank. */
 export function sageEmployeeNamesMatch(compassName: string, sageName: string | null | undefined): boolean {
   const normalized = (value: string): string => value.normalize("NFKC")
     .trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US")
@@ -40,23 +40,21 @@ export function sageEmployeeNamesMatch(compassName: string, sageName: string | n
 export function sageIdentityLinkReviewError(input: {
   readonly kind: SageContactKind
   readonly requesterIsReviewer: boolean
-  readonly selfLinkAllowed: boolean
   readonly compassName: string | null
   readonly sageName: string | null | undefined
   readonly reviewNote: string
 }): string | null {
   if (input.kind !== "employee") {
+    if (input.kind === "client_company" && !input.sageName?.trim()) {
+      return "The Sage client name was not returned. Refresh the Sage read-back before linking."
+    }
     return input.requesterIsReviewer ? "Self-review is limited to Sage employee identity links." : null
   }
   if (!input.sageName?.trim()) return "The Sage employee name was not returned. Refresh the Sage read-back; if the name is still blank, check the employee record in Sage."
   if (!input.compassName) return "Compass employee was not found."
-  if (input.requesterIsReviewer) {
-    if (!input.selfLinkAllowed) return "Self-linking requires the individual Sage employee self-review permission."
-    return sageEmployeeNamesMatch(input.compassName, input.sageName)
-      ? null : "Sage and Compass employee names do not match. A different reviewer must resolve the identity."
-  }
-  return sageEmployeeNamesMatch(input.compassName, input.sageName) || input.reviewNote.trim()
-    ? null : "Sage and Compass employee names differ. Document the reviewed difference before linking."
+  // A name difference is visible in the review UI and confirmed separately.
+  // A written note is optional; the exact read-back and reviewer are audited.
+  return null
 }
 
 export function sageContactReadClaimError(claim: {

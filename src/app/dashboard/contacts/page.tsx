@@ -70,6 +70,7 @@ import { SageContactEditorDialog, type SageContactEditorTarget } from "@/compone
 import { SageContactReviewDialog } from "@/components/contacts/sage-contact-review-dialog"
 import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
 import { SageContactCreateDialog, type SageContactCreateTarget } from "@/components/contacts/sage-contact-create-dialog"
+import { SageClientMatchingDialog } from "@/components/contacts/sage-client-matching-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 import { addCompaniesToProject, getCompanyAssociationProjects } from "@/app/actions/contact-project-associations"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -266,6 +267,7 @@ function ContactsContent() {
   const [tab, setTab] = React.useState<Tab>(initialTab)
   const [accessDialogOpen, setAccessDialogOpen] = React.useState(false)
   const [sageReviewOpen, setSageReviewOpen] = React.useState(false)
+  const [sageClientMatchingOpen, setSageClientMatchingOpen] = React.useState(false)
   const [myContactsOpen, setMyContactsOpen] = React.useState(false)
   const [myContacts, setMyContacts] = React.useState<readonly MyContactRecord[]>([])
   const [myProposalStatuses, setMyProposalStatuses] = React.useState<readonly MySageContactProposalStatus[]>([])
@@ -624,6 +626,9 @@ function ContactsContent() {
 
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-8" onClick={() => setMyContactsOpen(true)}>My contact information</Button>
+              {tab === "customers" && directoryAccess?.canReadSageReview ? (
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageClientMatchingOpen(true)}>Compare with Sage</Button>
+              ) : null}
               {directoryAccess?.canReadSageReview ? (
                 <Button variant="outline" size="sm" className="h-8" onClick={() => setSageReviewOpen(true)}>Sage review</Button>
               ) : null}
@@ -728,6 +733,22 @@ function ContactsContent() {
 
       {accessManagerDialog}
       {myContactsDialog}
+      {directoryAccess?.canReadSageReview && directoryAccess.customers.read ? (
+        <SageClientMatchingDialog
+          open={sageClientMatchingOpen}
+          onOpenChange={setSageClientMatchingOpen}
+          customers={customersList}
+          onVerify={(customer, sageNumber) => setSageLinkTarget({
+            kind: "client_company", entityId: customer.id, name: customer.name,
+            sageRecordNumber: sageNumber,
+          })}
+          onOpenCustomer={(customer) => {
+            setEditingCustomer(customer)
+            setCustomerDialogOpen(true)
+          }}
+          onOpenReview={() => setSageReviewOpen(true)}
+        />
+      ) : null}
 
       <Dialog open={associationDialogOpen} onOpenChange={setAssociationDialogOpen}>
         <DialogContent>

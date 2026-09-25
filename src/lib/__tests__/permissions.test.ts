@@ -315,7 +315,5 @@ describe("private employee contact permissions", () => {
       .toBe("none")
     expect(getPermissionFeatureAccessLevel("executive", "sage-contact-review"))
       .toBe("none")
-    expect(getPermissionFeatureAccessLevel("admin", "sage-employee-self-link"))
-      .toBe("none")
   })
 })

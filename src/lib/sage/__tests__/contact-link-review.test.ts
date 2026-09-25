@@ -22,12 +22,13 @@ describe("reviewed Sage identity linking", () => {
   it("reuses active reads and refreshes only stale or incomplete read-backs", () => {
     const now = Date.parse("2026-09-25T06:45:00.000Z")
     const candidate = { kind: "client_company" as const, status: "awaiting_review",
-      completedAt: "2026-09-25T06:40:00.000Z", snapshotValid: true, sageIdentityName: null }
+      completedAt: "2026-09-25T06:40:00.000Z", snapshotValid: true, sageIdentityName: "Amaroo LLC" }
     expect(sageLinkReadbackRefreshReason(candidate, now)).toBeNull()
     expect(sageLinkReadbackRefreshReason({ ...candidate, status: "queued" }, now)).toBeNull()
     expect(sageLinkReadbackRefreshReason({ ...candidate, completedAt: "2026-09-25T06:25:00.000Z" }, now)).toBe("expired")
     expect(sageLinkReadbackRefreshReason({ ...candidate, snapshotValid: false }, now)).toBe("invalid_readback")
-    expect(sageLinkReadbackRefreshReason({ ...candidate, kind: "employee" }, now)).toBe("missing_employee_name")
+    expect(sageLinkReadbackRefreshReason({ ...candidate, sageIdentityName: null }, now)).toBe("missing_identity_name")
+    expect(sageLinkReadbackRefreshReason({ ...candidate, kind: "employee", sageIdentityName: null }, now)).toBe("missing_identity_name")
     expect(sageLinkReadbackRefreshReason({ ...candidate, kind: "employee", sageIdentityName: "Sarah Cowman" }, now)).toBeNull()
   })
 
@@ -38,20 +39,22 @@ describe("reviewed Sage identity linking", () => {
     expect(sageEmployeeNamesMatch("Sarah Cowman", " ")).toBe(false)
   })
 
-  it("permits employee self-linking only with an individual grant and a matching Sage name", () => {
+  it("permits an authorized reviewer to approve their own employee lookup with an optional note", () => {
     const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee", requesterIsReviewer: true,
-      selfLinkAllowed: true, compassName: "Sarah Cowman", sageName: "Sarah Cowman", reviewNote: "" }
+      compassName: "Sarah Cowman", sageName: "Sarah Cowman", reviewNote: "" }
     expect(sageIdentityLinkReviewError(input)).toBeNull()
-    expect(sageIdentityLinkReviewError({ ...input, selfLinkAllowed: false })).toMatch(/permission/)
-    expect(sageIdentityLinkReviewError({ ...input, sageName: "Another Person" })).toMatch(/do not match/)
+    expect(sageIdentityLinkReviewError({ ...input, sageName: "Another Person" })).toBeNull()
+    expect(sageIdentityLinkReviewError({ ...input, sageName: "Another Person", reviewNote: "Verified legal name in Sage" })).toBeNull()
     expect(sageIdentityLinkReviewError({ ...input, sageName: null })).toMatch(/not returned/)
     expect(sageIdentityLinkReviewError({ ...input, kind: "client_company" })).toMatch(/limited/)
+    expect(sageIdentityLinkReviewError({ ...input, kind: "client_company", requesterIsReviewer: false, sageName: null }))
+      .toMatch(/client name was not returned/)
   })
 
-  it("requires an independent reviewer to document an employee name mismatch", () => {
+  it("does not require a written note for an employee name mismatch", () => {
     const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee", requesterIsReviewer: false,
-      selfLinkAllowed: false, compassName: "Sarah Cowman", sageName: "Sarah Coleman", reviewNote: "" }
-    expect(sageIdentityLinkReviewError(input)).toMatch(/Document/)
+      compassName: "Sarah Cowman", sageName: "Sarah Coleman", reviewNote: "" }
+    expect(sageIdentityLinkReviewError(input)).toBeNull()
     expect(sageIdentityLinkReviewError({ ...input, reviewNote: "Verified Sage legal name" })).toBeNull()
   })
   it("accepts a number-only bridge read only for a link candidate", () => {
