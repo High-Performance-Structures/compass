@@ -239,6 +239,21 @@ function ContactsContent() {
   const [editingVendor, setEditingVendor] =
     React.useState<VendorDirectoryCompany | null>(null)
 
+  const vendorContacts = React.useMemo(
+    () => vendorsList.filter((vendor) => !isInternalVendor(vendor)),
+    [vendorsList]
+  )
+  const vendorCategories = React.useMemo(() => Array.from(
+    new Set([
+      ...DEFAULT_VENDOR_CATEGORIES,
+      ...vendorContacts
+        .map((vendor) => vendor.category?.trim())
+        .filter((category): category is string => {
+          return Boolean(category) && category.toLowerCase() !== "internal"
+        }),
+    ])
+  ).sort((left, right) => left.localeCompare(right)), [vendorContacts])
+
   const loadAll = React.useCallback(async () => {
     try {
       const access = await getContactDirectoryAccess()
@@ -250,10 +265,10 @@ function ContactsContent() {
         listMySageContactProposalStatuses(),
       ])
       setDirectoryAccess(access)
-      if (!access[tab].read) {
-        const firstVisible = (["customers", "vendors", "internal"] as const).find((candidate) => access[candidate].read)
-        if (firstVisible) setTab(firstVisible)
-      }
+      setTab((currentTab) => {
+        if (access[currentTab].read) return currentTab
+        return (["customers", "vendors", "internal"] as const).find((candidate) => access[candidate].read) ?? currentTab
+      })
       setCustomersList(customers)
       setVendorsList(vendors)
       setInternalContactsList(internalContacts)
@@ -264,7 +279,7 @@ function ContactsContent() {
     } finally {
       setLoading(false)
     }
-  }, [tab])
+  }, [])
 
   React.useEffect(() => {
     void loadAll()
@@ -484,19 +499,8 @@ function ContactsContent() {
     )
   }
 
-  const vendorContacts = vendorsList.filter((vendor) => !isInternalVendor(vendor))
   const addLabel = tab === "customers" ? "Add Client / Lead" : "Add Vendor"
   const addHandler = tab === "customers" ? openCustomer : openVendor
-  const vendorCategories = Array.from(
-    new Set([
-      ...DEFAULT_VENDOR_CATEGORIES,
-      ...vendorContacts
-        .map((vendor) => vendor.category?.trim())
-        .filter((category): category is string => {
-          return Boolean(category) && category.toLowerCase() !== "internal"
-        }),
-    ])
-  ).sort((left, right) => left.localeCompare(right))
 
   return (
     <>
@@ -552,6 +556,12 @@ function ContactsContent() {
               ) : null}
             </div>
           </div>
+
+          {tab !== "internal" && directoryAccess?.canManageAccounts ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Directory rows are records, not Compass login accounts. To grant several people project access, select their accounts in Manage Compass access.
+            </p>
+          ) : null}
 
           <TabsContent
             value="customers"
