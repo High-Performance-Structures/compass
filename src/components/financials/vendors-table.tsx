@@ -19,7 +19,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,8 +79,9 @@ export function VendorsTable({
   ])
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
-  const [rowSelection, setRowSelection] = React.useState({})
   const [columnVisibility] = React.useState({ category: false })
+  // TanStack Table must receive stable data/column references across local state updates.
+  const tableData = React.useMemo(() => [...vendors], [vendors])
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -108,26 +108,7 @@ export function VendorsTable({
     }
   }
 
-  const columns: ColumnDef<VendorDirectoryCompany>[] = [
-    {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    },
+  const columns = React.useMemo<ColumnDef<VendorDirectoryCompany>[]>(() => [
     {
       accessorKey: "name",
       header: "Name",
@@ -282,14 +263,14 @@ export function VendorsTable({
         )
       },
     },
-  ]
-  const visibleColumns = columns.filter((column) =>
+  ], [onEdit, onDelete, onView])
+  const visibleColumns = React.useMemo(() => columns.filter((column) =>
     (developerModeEnabled || column.id !== "source") &&
     (onEdit !== undefined || onDelete !== undefined || onView !== undefined || column.id !== "actions")
-  )
+  ), [columns, developerModeEnabled, onEdit, onDelete, onView])
 
   const table = useReactTable({
-    data: [...vendors],
+    data: tableData,
     columns: visibleColumns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -297,9 +278,8 @@ export function VendorsTable({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
     initialState: { pagination: { pageSize: 100 } },
-    state: { sorting, columnFilters, rowSelection, columnVisibility },
+    state: { sorting, columnFilters, columnVisibility },
   })
 
   const emptyState = (
@@ -488,7 +468,6 @@ export function VendorsTable({
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="whitespace-nowrap">
@@ -514,13 +493,10 @@ export function VendorsTable({
           </Table>
         </div>
       </div>
-      {(table.getPageCount() > 1 ||
-        table.getFilteredSelectedRowModel().rows.length > 0) && (
+      {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between shrink-0">
           <div className="text-xs text-muted-foreground">
-            {table.getFilteredSelectedRowModel().rows.length > 0
-              ? `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} selected`
-              : `${table.getFilteredRowModel().rows.length} contacts`}
+            {table.getFilteredRowModel().rows.length} vendors
           </div>
           {table.getPageCount() > 1 && (
             <div className="flex items-center gap-2">

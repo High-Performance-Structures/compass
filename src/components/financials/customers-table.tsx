@@ -19,7 +19,6 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,7 +64,6 @@ export function CustomersTable({
   ])
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
-  const [rowSelection, setRowSelection] = React.useState({})
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -92,26 +90,7 @@ export function CustomersTable({
     }
   }
 
-  const columns: ColumnDef<Customer>[] = [
-    {
-      id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    },
+  const columns = React.useMemo<ColumnDef<Customer>[]>(() => [
     {
       accessorKey: "name",
       header: "Name",
@@ -273,11 +252,11 @@ export function CustomersTable({
         )
       },
     },
-  ]
-  const visibleColumns = columns.filter((column) =>
+  ], [onEdit, onDelete, onViewPeople])
+  const visibleColumns = React.useMemo(() => columns.filter((column) =>
     (developerModeEnabled || column.id !== "source") &&
     (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
-  )
+  ), [columns, developerModeEnabled, onEdit, onDelete, onViewPeople])
 
   const table = useReactTable({
     data: customers,
@@ -288,9 +267,8 @@ export function CustomersTable({
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
     initialState: { pagination: { pageSize: 100 } },
-    state: { sorting, columnFilters, rowSelection },
+    state: { sorting, columnFilters },
   })
 
   const emptyState = (
@@ -418,7 +396,6 @@ export function CustomersTable({
                 table.getRowModel().rows.map((row) => (
                   <TableRow
                     key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id} className="whitespace-nowrap">
@@ -444,13 +421,10 @@ export function CustomersTable({
           </Table>
         </div>
       </div>
-      {(table.getPageCount() > 1 ||
-        table.getFilteredSelectedRowModel().rows.length > 0) && (
+      {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between shrink-0">
           <div className="text-xs text-muted-foreground">
-            {table.getFilteredSelectedRowModel().rows.length > 0
-              ? `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} selected`
-              : `${table.getFilteredRowModel().rows.length} contacts`}
+            {table.getFilteredRowModel().rows.length} clients and leads
           </div>
           {table.getPageCount() > 1 && (
             <div className="flex items-center gap-2">
