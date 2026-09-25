@@ -6,7 +6,10 @@ import { getDb } from "@/db"
 import { projectMembers, projects } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
 import { notFound, redirect } from "next/navigation"
-import { getSchedule, getScheduleProjects } from "@/app/actions/schedule"
+import {
+  getSchedule,
+  getScheduleProjectSwitcherProjects,
+} from "@/app/actions/schedule"
 import { getBaselines } from "@/app/actions/baselines"
 import type { ProjectListItem } from "@/app/actions/projects"
 import {
@@ -108,12 +111,21 @@ export default async function SchedulePage({
     projectName = project.projectNumber ?? project.name
     ownerScheduleView =
       project.ownerScheduleView === "phases" ? "phases" : "items"
-    ;[schedule, baselines, allProjects, publicationStatus] = await Promise.all([
+    const [
+      loadedSchedule,
+      loadedBaselines,
+      loadedProjects,
+      loadedPublicationStatus,
+    ] = await Promise.all([
       getSchedule(id),
       getBaselines(id),
-      getScheduleProjects(),
+      getScheduleProjectSwitcherProjects(id),
       getSchedulePublicationStatus(id),
     ])
+    schedule = loadedSchedule
+    baselines = loadedBaselines
+    allProjects = loadedProjects
+    publicationStatus = loadedPublicationStatus
   } catch (e: unknown) {
     if (e && typeof e === "object" && "digest" in e && e.digest === "NEXT_NOT_FOUND") throw e
     console.warn("D1 unavailable in dev mode, using empty data")
