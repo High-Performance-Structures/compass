@@ -45,6 +45,17 @@ describe("pinned Sage contact source", () => {
     expect(harness).toContain("(Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $originalHash")
     expect(harness).not.toContain("$priorBackup")
   })
+
+  it("allows blank HPS Test contact fields when selecting exact records", () => {
+    const selection = writer.split("private static ContactTask FindContactTestRecord")[1]
+      ?.split("private static int RunContactSchemaTest")[0] ?? ""
+    expect(selection).toContain('" > 0" + eligibility +')
+    expect(selection).toContain('string eligibility = person ?')
+    expect(selection).toContain('kind == "employee" ?')
+    expect(selection).toContain('c.fstnme')
+    expect(selection).toContain('c.lstnme')
+    expect(selection).not.toContain("check City is populated")
+  })
 })
 
 describe("HPS Test contact primary-email mapping probe", () => {

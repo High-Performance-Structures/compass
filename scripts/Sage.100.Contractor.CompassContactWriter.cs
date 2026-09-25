@@ -620,9 +620,16 @@ namespace CompassSageClientProjectWriter
             // A single-contact parent prevents an ambiguous child-line write from
             // silently changing another person during this LineID validation.
             string parentTable = kind == "client_person" ? "reccln" : "actpay";
+            // Contact values can legitimately be blank before Compass sync.
+            // Only a person's or employee's name is needed to identify the test row.
+            string eligibility = person ?
+                " AND NULLIF(LTRIM(RTRIM(c." + column + ")), '') IS NOT NULL" :
+                kind == "employee" ?
+                " AND (NULLIF(LTRIM(RTRIM(c.fstnme)), '') IS NOT NULL OR " +
+                    "NULLIF(LTRIM(RTRIM(c.lstnme)), '') IS NOT NULL)" : "";
             string query = "SELECT TOP (1) c._idnum, c." + numberColumn + ", " +
                 (person ? "c._idref" : "NULL") + " FROM dbo." + table + " c WHERE c." + numberColumn +
-                " > 0 AND NULLIF(LTRIM(RTRIM(c." + column + ")), '') IS NOT NULL" +
+                " > 0" + eligibility +
                 (person ? " AND EXISTS (SELECT 1 FROM dbo." + parentTable +
                     " parent WHERE parent._idnum = c._idref AND parent.recnum = @targetNumber)" +
                     " AND (SELECT COUNT(*) FROM dbo." + table + " sibling WHERE sibling._idref = c._idref) = 1" :
@@ -636,7 +643,8 @@ namespace CompassSageClientProjectWriter
                 {
                     if (!reader.Read()) throw new InvalidOperationException("HPS Test record " + targetNumber +
                         " is not eligible for " + kind +
-                        (person ? "; check its single contact has a name." : "; check City is populated."));
+                        (person ? "; check its single contact has a name." :
+                            kind == "employee" ? "; check its Sage employee name." : "; check its Sage number."));
                     return new ContactTask {
                         kind = kind, sageRecordId = Convert.ToString(reader[0]),
                         sageRecordNumber = Convert.ToString(reader[1]),
