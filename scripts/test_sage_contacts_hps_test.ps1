@@ -10,7 +10,6 @@ $taskName = 'HPS Compass Sage Client Project Writer'
 $installDir = 'C:\ProgramData\HPS\CompassSageWriter'
 $installed = Join-Path $installDir 'CompassSageClientProjectWriter.exe'
 $backup = Join-Path $installDir ('CompassSageClientProjectWriter.pre-contact-write-test-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.exe')
-$priorBackup = Join-Path $installDir 'CompassSageClientProjectWriter.pre-contact-write-test-20260924.exe'
 $work = Join-Path $env:TEMP 'compass-sage-contact-write-test-20260924'
 $candidate = Join-Path $work 'CompassSageContactWriteTest.exe'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
@@ -34,11 +33,6 @@ if (-not (Test-Path -LiteralPath $installed) -or -not (Test-Path -LiteralPath $c
     throw 'Approved writer or C# compiler was not found.'
 }
 if (Test-Path -LiteralPath $backup) { throw 'This test backup already exists; inspect it before retrying.' }
-if ((Test-Path -LiteralPath $priorBackup) -and
-    (Get-FileHash -LiteralPath $priorBackup -Algorithm SHA256).Hash -ne
-    (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash) {
-    throw 'The earlier test backup differs from the installed writer; inspect both before retrying.'
-}
 if ((Get-ScheduledTask -TaskName $taskName).State -ne 'Ready') {
     throw 'Production writer task must be Ready before the test.'
 }

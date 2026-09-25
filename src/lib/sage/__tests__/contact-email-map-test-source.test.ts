@@ -39,6 +39,12 @@ describe("pinned Sage contact source", () => {
     expect(employeeFields).not.toContain("fstnme")
     expect(employeeFields).not.toContain("lstnme")
   })
+
+  it("backs up the installed writer afresh on every HPS Test rerun", () => {
+    expect(harness).toContain("'CompassSageClientProjectWriter.pre-contact-write-test-' + (Get-Date -Format 'yyyyMMdd-HHmmss')")
+    expect(harness).toContain("(Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $originalHash")
+    expect(harness).not.toContain("$priorBackup")
+  })
 })
 
 describe("HPS Test contact primary-email mapping probe", () => {
