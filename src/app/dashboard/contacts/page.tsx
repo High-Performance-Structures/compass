@@ -627,7 +627,7 @@ function ContactsContent() {
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-8" onClick={() => setMyContactsOpen(true)}>My contact information</Button>
               {tab === "customers" && directoryAccess?.canReadSageReview ? (
-                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageClientMatchingOpen(true)}>Compare with Sage</Button>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageClientMatchingOpen(true)}>Match with Sage</Button>
               ) : null}
               {directoryAccess?.canReadSageReview ? (
                 <Button variant="outline" size="sm" className="h-8" onClick={() => setSageReviewOpen(true)}>Sage review</Button>
