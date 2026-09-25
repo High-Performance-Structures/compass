@@ -20,6 +20,7 @@ import {
   type SageContactCreateListItem,
 } from "@/app/actions/sage-contact-creates"
 import { Button } from "@/components/ui/button"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,7 @@ export function SageContactReviewDialog({
   const [creates, setCreates] = React.useState<readonly SageContactCreateListItem[]>([])
   const [notes, setNotes] = React.useState<Readonly<Record<string, string>>>({})
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  const [confirmMismatch, setConfirmMismatch] = React.useState<SageContactLinkCandidate | null>(null)
 
   const reload = React.useCallback(async () => {
     try {
@@ -79,18 +81,13 @@ export function SageContactReviewDialog({
     }
   }
 
-  const decideLink = async (requestId: string, decision: "link" | "reject") => {
+  const decideLink = async (requestId: string, decision: "link" | "reject", confirmDifferentName = false) => {
     setBusyId(requestId)
     try {
-      const result = await reviewSageContactLinkCandidate(requestId, decision, notes[requestId] ?? "")
+      const result = await reviewSageContactLinkCandidate(requestId, decision, "", confirmDifferentName)
       if (!result.success) toast.error(result.error)
       else {
         toast.success(decision === "link" ? "Sage identity linked; fresh read queued" : "Sage candidate rejected")
-        setNotes((current) => {
-          const next = { ...current }
-          delete next[requestId]
-          return next
-        })
         await reload()
       }
     } finally { setBusyId(null) }
@@ -144,12 +141,17 @@ export function SageContactReviewDialog({
                       <p>Compass employee: <strong>{candidate.directoryName}</strong></p>
                       <p>Sage employee #{candidate.sageRecordNumber}: <strong>{candidate.sageIdentityName ?? "Name not returned"}</strong></p>
                       {!candidate.sageIdentityName ? <p className="text-destructive">This lookup cannot be linked without a Sage employee name. Refresh the read-back; if the name is still blank, check the employee record in Sage.</p>
-                        : !candidate.employeeNamesMatch ? <p className="text-destructive">Names differ. A separate reviewer must investigate and document the difference.</p> : null}
+                        : !candidate.employeeNamesMatch ? <p className="text-destructive">Names differ. Confirm the exact Sage employee number and both names before linking.</p> : null}
                     </div>
-                  ) : <p className="text-xs text-muted-foreground">Compare the exact Sage number and returned contact information with the intended Compass record before linking. Matching names or emails alone are not proof of identity.</p>}
+                  ) : candidate.kind === "client_company" ? <div className="space-y-1 text-sm">
+                    <p>Compass client: <strong>{candidate.directoryName}</strong></p>
+                    <p>Sage client #{candidate.sageRecordNumber}: <strong>{candidate.sageIdentityName ?? "Name not returned"}</strong></p>
+                    {!candidate.sageIdentityName ? <p className="text-destructive">Refresh the Sage read-back to see the exact client name before linking.</p> : null}
+                    <p className="text-xs text-muted-foreground">Confirm these are the same legal client. A name match alone is not proof of identity.</p>
+                  </div> : <p className="text-xs text-muted-foreground">Compare the exact Sage number and returned contact information with the intended Compass record before linking. Matching names or emails alone are not proof of identity.</p>}
                   {candidate.reviewExpired ? <p className="text-sm text-destructive">This Sage read-back is older than 15 minutes. Refresh it before linking.</p> : null}
                   {candidate.reviewExpired || !candidate.sageRecordId ||
-                    (candidate.kind === "employee" && !candidate.sageIdentityName) ? (
+                    ((candidate.kind === "employee" || candidate.kind === "client_company") && !candidate.sageIdentityName) ? (
                     <Button size="sm" variant="outline" onClick={() => void refreshLink(candidate)}
                       disabled={busyId !== null}>Refresh Sage read-back</Button>
                   ) : null}
@@ -162,18 +164,17 @@ export function SageContactReviewDialog({
                       </div>
                     ))}
                   </dl>
-                  {canApprove ? <Textarea value={notes[candidate.id] ?? ""}
-                    onChange={(event) => setNotes((current) => ({ ...current, [candidate.id]: event.target.value }))}
-                    placeholder="Review note (optional)" aria-label={`Review note for ${candidate.directoryName}`} /> : null}
                   {canApprove ? <div className="flex gap-2">
-                    <Button size="sm" onClick={() => void decideLink(candidate.id, "link")}
+                    <Button size="sm" onClick={() => {
+                      if (candidate.kind === "employee" && !candidate.employeeNamesMatch) setConfirmMismatch(candidate)
+                      else void decideLink(candidate.id, "link")
+                    }}
                       disabled={busyId !== null || candidate.reviewExpired ||
-                        (candidate.kind === "employee" && (!candidate.sageIdentityName ||
-                          (!candidate.employeeNamesMatch && (candidate.requestedByCurrentUser || !(notes[candidate.id] ?? "").trim())))) ||
+                        ((candidate.kind === "employee" || candidate.kind === "client_company") && !candidate.sageIdentityName) ||
                         (candidate.requestedByCurrentUser && !candidate.selfReviewAllowed)}>Link exact Sage record</Button>
                     <Button size="sm" variant="outline" onClick={() => void decideLink(candidate.id, "reject")} disabled={busyId !== null}>Reject</Button>
                   </div> : <p className="text-xs text-muted-foreground">View-only review access.</p>}
-                  {canApprove && candidate.requestedByCurrentUser && !candidate.selfReviewAllowed ? <p className="text-xs text-muted-foreground">Self-linking requires the individual Sage employee self-review permission and matching names. You can reject your own lookup.</p> : null}
+                  {canApprove && candidate.requestedByCurrentUser && !candidate.selfReviewAllowed ? <p className="text-xs text-muted-foreground">Client and vendor identity links still require a separate reviewer. You can reject your own lookup.</p> : null}
                 </>
               ) : null}
             </section>
@@ -219,6 +220,25 @@ export function SageContactReviewDialog({
             </section>
           ))}
         </div>
+        <AlertDialog open={confirmMismatch !== null} onOpenChange={(nextOpen) => { if (!nextOpen) setConfirmMismatch(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm different employee names</AlertDialogTitle>
+              <AlertDialogDescription>
+                Compass: {confirmMismatch?.directoryName}. Sage employee #{confirmMismatch?.sageRecordNumber}: {confirmMismatch?.sageIdentityName}.
+                Confirm these are the same person before linking. This decision is recorded.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction disabled={busyId !== null} onClick={() => {
+                const candidate = confirmMismatch
+                setConfirmMismatch(null)
+                if (candidate) void decideLink(candidate.id, "link", true)
+              }}>Confirm exact employee</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   )

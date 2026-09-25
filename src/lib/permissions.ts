@@ -115,15 +115,6 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     individualOnly: true,
   },
   {
-    id: "sage-employee-self-link",
-    group: "Confidential contacts",
-    label: "Self-review Sage employee identity",
-    description:
-      "Allow this staff member to link their own employee identity lookup when Sage and Compass names match. Does not approve Sage writes.",
-    resource: "user",
-    individualOnly: true,
-  },
-  {
     id: "cherish-review",
     group: "Confidential workflows",
     label: "CHERISH review",

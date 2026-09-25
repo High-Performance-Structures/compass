@@ -122,6 +122,36 @@ export const sageContactReadRequests = sqliteTable(
   ]
 )
 
+/** Read-only Sage client catalog, independent of Compass customer identities. */
+export const sageClientDirectoryRefreshes = sqliteTable("sage_client_directory_refreshes", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("queued"),
+  claimToken: text("claim_token"),
+  claimedAt: text("claimed_at"),
+  requestedByUserId: text("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  requestedAt: text("requested_at").notNull(),
+  completedAt: text("completed_at"),
+  errorMessage: text("error_message"),
+}, (table) => [
+  index("sage_client_directory_refresh_org_status_idx").on(table.organizationId, table.status, table.requestedAt),
+  uniqueIndex("sage_client_directory_active_org_unique").on(table.organizationId)
+    .where(sql`${table.status} IN ('queued', 'running')`),
+])
+
+export const sageClientDirectoryEntries = sqliteTable("sage_client_directory_entries", {
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  sageRecordId: text("sage_record_id").notNull(),
+  sageClientNumber: text("sage_client_number").notNull(),
+  name: text("name").notNull(),
+  email: text("email"),
+  capturedAt: text("captured_at").notNull(),
+}, (table) => [
+  uniqueIndex("sage_client_directory_org_id_unique").on(table.organizationId, table.sageRecordId),
+  uniqueIndex("sage_client_directory_org_number_unique").on(table.organizationId, table.sageClientNumber),
+  index("sage_client_directory_org_name_idx").on(table.organizationId, table.name),
+])
+
 /** Immutable record of deliberate Sage identity link decisions. */
 export const sageContactLinkEvents = sqliteTable(
   "sage_contact_link_events",

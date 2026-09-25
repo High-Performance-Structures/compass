@@ -21,7 +21,7 @@ $testRecordNumbers = @{
 $base = "https://raw.githubusercontent.com/High-Performance-Structures/compass/$SourceCommit/scripts"
 $sources = @(
     @{ Name = 'Sage.100.Contractor.CompassClientProjectWriter.cs'; Hash = '965525DC6343796AD081430F93297B284841326BE50FF44BD1B18387877C901D' },
-    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '1B7F76F6BB5467BC883A76A1A1BFDD4E71D153BB12B4465ECEBED49B38E2E6C9' }
+    @{ Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = 'A983197B4E1B2133DF044CA7A27A0165512180ADE9F2C04E576D8BA750E6F636' }
 )
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()

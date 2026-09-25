@@ -104,7 +104,8 @@ export async function verifySageBridgeRequest(
 }
 
 export async function readBoundedSageBridgeBody(
-  request: Request
+  request: Request,
+  maxBytes = MAX_SAGE_BRIDGE_BODY_BYTES
 ): Promise<
   | { readonly success: true; readonly rawBody: string }
   | { readonly success: false; readonly error: string }
@@ -112,7 +113,7 @@ export async function readBoundedSageBridgeBody(
   const declaredLength = Number(request.headers.get("content-length") ?? "0")
   if (
     Number.isFinite(declaredLength) &&
-    declaredLength > MAX_SAGE_BRIDGE_BODY_BYTES
+    declaredLength > maxBytes
   ) {
     return { success: false, error: "Request body is too large" }
   }
@@ -126,7 +127,7 @@ export async function readBoundedSageBridgeBody(
     const next = await reader.read()
     if (next.done) break
     totalBytes += next.value.byteLength
-    if (totalBytes > MAX_SAGE_BRIDGE_BODY_BYTES) {
+    if (totalBytes > maxBytes) {
       await reader.cancel()
       return { success: false, error: "Request body is too large" }
     }
