@@ -37,13 +37,32 @@ type SchedulePortfolioProject = {
   readonly jobStatusLabel: string
 }
 
+function isSchedulePortfolioProject(
+  project: SchedulePortfolioProject,
+): boolean {
+  const status = projectJobStatusBucket(project)
+  return status === "active" || status === "warranty"
+}
+
 export function schedulePortfolioProjects<
   Project extends SchedulePortfolioProject,
 >(projects: readonly Project[]): Project[] {
-  return projects.filter((project) => {
-    const status = projectJobStatusBucket(project)
-    return status === "active" || status === "warranty"
-  })
+  return projects.filter(isSchedulePortfolioProject)
+}
+
+/**
+ * Keep the company schedule portfolio focused on active work, while retaining
+ * the project currently being viewed. Historical projects still have valid
+ * schedules and must not be cleared by the project switcher on mount.
+ */
+export function scheduleProjectSwitcherProjects<
+  Project extends SchedulePortfolioProject & { readonly id: string },
+>(projects: readonly Project[], currentProjectId: string): Project[] {
+  return projects.filter(
+    (project) =>
+      project.id === currentProjectId ||
+      isSchedulePortfolioProject(project),
+  )
 }
 
 export type ScheduleScope =

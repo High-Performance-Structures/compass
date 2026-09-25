@@ -41,6 +41,7 @@ import { projectDepartment } from "@/lib/project-branding"
 import {
   projectScheduleColor,
   schedulePortfolioProjects,
+  scheduleProjectSwitcherProjects,
 } from "@/lib/schedule/project-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -340,7 +341,11 @@ export async function getSchedule(projectId: string): Promise<ScheduleData> {
     return { tasks: [], dependencies: [], exceptions: [] }
   }
   const orgId = requireOrg(user)
-  const accessibleProjects = await getScheduleProjects()
+  // Project routes may intentionally open completed or inactive historical
+  // schedules. Portfolio status filtering is navigation policy, not access
+  // control, so retain the current route when checking the accessible list.
+  const accessibleProjects =
+    await getScheduleProjectSwitcherProjects(projectId)
   if (!accessibleProjects.some((project) => project.id === projectId)) {
     throw new Error("Project not found or access denied")
   }
@@ -623,6 +628,12 @@ export async function getScopedSchedule(
 
 export async function getScheduleProjects(): Promise<ProjectListItem[]> {
   return schedulePortfolioProjects(await getProjects())
+}
+
+export async function getScheduleProjectSwitcherProjects(
+  currentProjectId: string,
+): Promise<ProjectListItem[]> {
+  return scheduleProjectSwitcherProjects(await getProjects(), currentProjectId)
 }
 
 export async function importScheduleTemplateItems(
