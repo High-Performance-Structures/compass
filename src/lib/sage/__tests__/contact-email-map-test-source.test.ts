@@ -25,6 +25,36 @@ describe("pinned Sage contact source", () => {
     const hash = createHash("sha256").update(writer.replace(/\r\n/g, "\n")).digest("hex").toUpperCase()
     expect(harness).toContain(`Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '${hash}'`)
     expect(installer).toContain(`Name = 'Sage.100.Contractor.CompassContactWriter.cs'; Hash = '${hash}'`)
+    expect(harness).toContain("[ValidatePattern('^[0-9a-fA-F]{40}$')]")
+    expect(installer).toContain("[ValidatePattern('^[0-9a-fA-F]{40}$')]")
+    expect(harness).toContain("/$SourceCommit/scripts")
+    expect(installer).toContain("/$SourceCommit/scripts")
+  })
+
+  it("reads employee names only as identity evidence", () => {
+    expect(writer).toContain('if (task.kind == "employee") query.Append(", fstnme, lstnme")')
+    expect(writer).toContain("snapshot.identityName = fullName.Length == 0 ? null : fullName")
+    const employeeFields = writer.split("private static readonly ContactField[] EmployeeFields = {")[1]
+      ?.split("};")[0]
+    expect(employeeFields).not.toContain("fstnme")
+    expect(employeeFields).not.toContain("lstnme")
+  })
+
+  it("backs up the installed writer afresh on every HPS Test rerun", () => {
+    expect(harness).toContain("'CompassSageClientProjectWriter.pre-contact-write-test-' + (Get-Date -Format 'yyyyMMdd-HHmmss')")
+    expect(harness).toContain("(Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash -ne $originalHash")
+    expect(harness).not.toContain("$priorBackup")
+  })
+
+  it("allows blank HPS Test contact fields when selecting exact records", () => {
+    const selection = writer.split("private static ContactTask FindContactTestRecord")[1]
+      ?.split("private static int RunContactSchemaTest")[0] ?? ""
+    expect(selection).toContain('" > 0" + eligibility +')
+    expect(selection).toContain('string eligibility = person ?')
+    expect(selection).toContain('kind == "employee" ?')
+    expect(selection).toContain('c.fstnme')
+    expect(selection).toContain('c.lstnme')
+    expect(selection).not.toContain("check City is populated")
   })
 })
 

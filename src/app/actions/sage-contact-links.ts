@@ -14,7 +14,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { getSageContactBridgeSecret } from "@/lib/sage/bridge-auth"
 import { sageContactKindSchema, sageContactOrganizationMatches, sageContactSnapshotResultSchema } from "@/lib/sage/contact-bridge"
 import { getSageContactEntityIdentity } from "@/lib/sage/contact-entity"
-import { sageContactLinkCandidateError } from "@/lib/sage/contact-link-review"
+import { sageContactLinkCandidateError, sageEmployeeNamesMatch, sageIdentityLinkReviewError } from "@/lib/sage/contact-link-review"
 import type { SageContactKind } from "@/lib/sage/contact-change-proposal"
 
 const CANDIDATE_MAX_AGE_MS = 15 * 60 * 1000
@@ -31,9 +31,15 @@ export type SageContactLinkCandidate = {
   readonly status: string
   readonly sageRecordNumber: string
   readonly sageRecordId: string | null
+  readonly sageIdentityName: string | null
+  readonly employeeNamesMatch: boolean
+  readonly requestedByCurrentUser: boolean
+  readonly selfReviewAllowed: boolean
+  readonly reviewExpired: boolean
   readonly fields: Readonly<Record<string, string | null>>
   readonly requestedByUserId: string | null
   readonly requestedAt: string
+  readonly completedAt: string | null
   readonly errorMessage: string | null
 }
 
@@ -149,6 +155,8 @@ export async function listSageContactLinkCandidates(): Promise<readonly SageCont
     .then(() => true).catch(() => false)
   const canSeeInternal = await requireFeaturePermission(user, "internal-directory", "read")
     .then(() => true).catch(() => false)
+  const canSelfLinkEmployee = await requireFeaturePermission(user, "sage-employee-self-link", "approve")
+    .then(() => true).catch(() => false)
   const rows = await db.select().from(sageContactReadRequests).where(and(
     eq(sageContactReadRequests.organizationId, orgId),
     eq(sageContactReadRequests.purpose, "link_candidate")
@@ -166,13 +174,23 @@ export async function listSageContactLinkCandidates(): Promise<readonly SageCont
     let snapshot: unknown
     try { snapshot = row.candidateSnapshotJson ? JSON.parse(row.candidateSnapshotJson) : null } catch { snapshot = null }
     const parsed = sageContactSnapshotResultSchema.safeParse(snapshot)
+    const sageIdentityName = parsed.success ? parsed.data.identityName?.trim() || null : null
+    const employeeNamesMatch = kind.data === "employee" && sageEmployeeNamesMatch(name, sageIdentityName)
+    const requestedByCurrentUser = row.requestedByUserId === user.id
+    const completedAt = row.completedAt ? Date.parse(row.completedAt) : Number.NaN
     result.push({
       id: row.id, kind: kind.data, entityId: row.entityId, directoryName: name,
       status: row.status, sageRecordNumber: row.sageRecordNumber,
       sageRecordId: parsed.success ? parsed.data.sageRecordId : null,
+      sageIdentityName, employeeNamesMatch, requestedByCurrentUser,
+      selfReviewAllowed: requestedByCurrentUser && kind.data === "employee" &&
+        canSelfLinkEmployee && employeeNamesMatch,
+      reviewExpired: row.status === "awaiting_review" &&
+        (!Number.isFinite(completedAt) || Date.now() - completedAt > CANDIDATE_MAX_AGE_MS),
       fields: parsed.success ? parsed.data.fields : {},
       requestedByUserId: row.requestedByUserId,
-      requestedAt: row.requestedAt, errorMessage: row.errorMessage,
+      requestedAt: row.requestedAt, completedAt: row.completedAt,
+      errorMessage: row.errorMessage,
     })
   }
   return result
@@ -202,7 +220,6 @@ export async function reviewSageContactLinkCandidate(
     if (!row || !row.candidateSnapshotJson || !row.sageRecordNumber) {
       return { success: false, error: "Candidate is no longer awaiting review." }
     }
-    if (row.requestedByUserId === user.id) return { success: false, error: "A requester cannot review their own Sage link." }
     const kind = sageContactKindSchema.safeParse(row.kind)
     let raw: unknown
     try { raw = JSON.parse(row.candidateSnapshotJson) } catch { raw = null }
@@ -235,6 +252,17 @@ export async function reviewSageContactLinkCandidate(
       revalidatePath("/dashboard/contacts")
       return { success: true, id: requestId, status: "rejected" }
     }
+    const selfLinkAllowed = kind.data === "employee" && row.requestedByUserId === user.id &&
+      await requireFeaturePermission(user, "sage-employee-self-link", "approve")
+        .then(() => true).catch(() => false)
+    const name = kind.data === "employee"
+      ? await directoryName(db, orgId, kind.data, row.entityId) : null
+    const reviewError = sageIdentityLinkReviewError({
+      kind: kind.data, requesterIsReviewer: row.requestedByUserId === user.id,
+      selfLinkAllowed, compassName: name, sageName: snapshot.identityName,
+      reviewNote,
+    })
+    if (reviewError) return { success: false, error: reviewError }
     const captured = row.completedAt ? Date.parse(row.completedAt) : Number.NaN
     if (!Number.isFinite(captured) || Date.now() - captured > CANDIDATE_MAX_AGE_MS) {
       return { success: false, error: "Sage candidate read is stale. Request a new lookup." }

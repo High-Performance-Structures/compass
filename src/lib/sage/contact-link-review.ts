@@ -12,6 +12,35 @@ export type SageContactLinkReadback = SageContactLinkLookup & {
   readonly sageRecordId: string
 }
 
+/** Self-review needs independent Sage name evidence, even when contact fields are blank. */
+export function sageEmployeeNamesMatch(compassName: string, sageName: string | null | undefined): boolean {
+  const normalized = (value: string): string => value.normalize("NFKC")
+    .trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US")
+  return Boolean(sageName?.trim()) && normalized(compassName) === normalized(sageName ?? "")
+}
+
+export function sageIdentityLinkReviewError(input: {
+  readonly kind: SageContactKind
+  readonly requesterIsReviewer: boolean
+  readonly selfLinkAllowed: boolean
+  readonly compassName: string | null
+  readonly sageName: string | null | undefined
+  readonly reviewNote: string
+}): string | null {
+  if (input.kind !== "employee") {
+    return input.requesterIsReviewer ? "Self-review is limited to Sage employee identity links." : null
+  }
+  if (!input.sageName?.trim()) return "The Sage employee name was not returned. Reject this lookup and request a fresh read after the bridge update."
+  if (!input.compassName) return "Compass employee was not found."
+  if (input.requesterIsReviewer) {
+    if (!input.selfLinkAllowed) return "Self-linking requires the individual Sage employee self-review permission."
+    return sageEmployeeNamesMatch(input.compassName, input.sageName)
+      ? null : "Sage and Compass employee names do not match. A different reviewer must resolve the identity."
+  }
+  return sageEmployeeNamesMatch(input.compassName, input.sageName) || input.reviewNote.trim()
+    ? null : "Sage and Compass employee names differ. Document the reviewed difference before linking."
+}
+
 export function sageContactReadClaimError(claim: {
   readonly purpose: string
   readonly kind: string
