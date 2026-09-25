@@ -15,7 +15,8 @@ const migration = readFileSync(new URL("../../../../../../drizzle/0173_sage_clie
 const base = "https://compass.example.invalid/api/integrations/sage/client-directory"
 const secret = "test-only-contact-bridge-secret-12345"
 const refreshId = "11111111-1111-4111-8111-111111111111"
-const sageId = "22222222-2222-4222-8222-222222222222"
+// Sage SQL record IDs can use GUID versions outside Zod's RFC UUID range.
+const sageId = "22222222-2222-f222-8222-222222222222"
 const claimSchema = z.object({ refresh: z.object({
   id: z.string(), claimToken: z.string(), organizationId: z.string(),
 }).nullable() })

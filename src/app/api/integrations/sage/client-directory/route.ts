@@ -15,7 +15,7 @@ const NONCE_RETENTION_MS = 15 * 60 * 1000
 const MAX_DIRECTORY_RESULT_BYTES = 4 * 1024 * 1024
 const DIRECTORY_INSERT_CHUNK = 500
 const entrySchema = z.strictObject({
-  sageRecordId: z.uuid(),
+  sageRecordId: z.guid(),
   sageClientNumber: z.string().regex(/^[1-9]\d{0,9}$/),
   name: z.string().trim().min(1).max(200),
   email: z.string().max(255).nullable(),
