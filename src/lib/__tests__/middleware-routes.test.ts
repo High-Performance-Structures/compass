@@ -58,6 +58,12 @@ describe("middleware public routes", () => {
       isPublicPath("/api/integrations/sage/client-project-writes/results")
     ).toBe(true)
     expect(
+      isPublicPath("/api/integrations/sage/contact-changes/requests")
+    ).toBe(true)
+    expect(
+      isPublicPath("/api/integrations/sage/contact-changes/results")
+    ).toBe(true)
+    expect(
       isPublicPath("/api/integrations/sage/square-payments/requests")
     ).toBe(true)
     expect(
@@ -66,6 +72,12 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/api/integrations/sage/admin")).toBe(false)
     expect(
       isPublicPath("/api/integrations/sage/pay-applications/requests/extra")
+    ).toBe(false)
+    expect(
+      isPublicPath("/api/integrations/sage/contact-changes/requests/extra")
+    ).toBe(false)
+    expect(
+      isPublicPath("/api/integrations/sage/contact-changes/results/extra")
     ).toBe(false)
   })
 
