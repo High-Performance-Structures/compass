@@ -1,5 +1,16 @@
 export type GanttScrollAxis = "horizontal" | "vertical"
 
+export function scheduleScrollStorageKey(projectId: string | null): string {
+  return `compass:schedule-scroll:${projectId ?? "unified"}`
+}
+
+export function shouldRestoreGanttScroll(
+  projectId: string | null,
+  restoredProjectId: string | null | undefined
+): boolean {
+  return restoredProjectId !== projectId
+}
+
 interface WheelDelta {
   readonly deltaX: number
   readonly deltaY: number
@@ -10,10 +21,32 @@ export interface GanttWheelIntent {
   readonly delta: number
 }
 
+interface GanttScrollStorage {
+  readonly setItem: (key: string, value: string) => void
+}
+
 interface MutableGanttScrollTarget {
   scrollLeft: number
   scrollTop: number
   dispatchEvent(event: Event): boolean
+}
+
+interface PersistedGanttScrollPosition {
+  readonly left: number
+  readonly top: number
+  readonly anchorDate?: string
+}
+
+export function persistGanttScrollPosition(
+  storage: GanttScrollStorage,
+  key: string,
+  position: PersistedGanttScrollPosition
+): void {
+  try {
+    storage.setItem(key, JSON.stringify(position))
+  } catch {
+    // Scroll persistence is optional when storage is unavailable.
+  }
 }
 
 interface ScheduleRowDateRange {
