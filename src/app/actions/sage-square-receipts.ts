@@ -12,6 +12,7 @@ import { requirePermission } from "@/lib/permissions"
 import {
   hydrateLegacySageSquarePaymentScopes,
   sageSquareOrganizationId,
+  sageSquarePaymentPayloadSchema,
 } from "@/lib/sage/square-payment"
 
 export type SquareReceiptListItem = {
@@ -27,6 +28,7 @@ export type SquareReceiptListItem = {
   readonly squareInvoiceId: string
   readonly department: string
   readonly amountCents: number
+  readonly clientPaidFeeCents: number
   readonly feeCents: number
   readonly currency: string
   readonly depositAccountNumber: number
@@ -78,6 +80,7 @@ export async function getSageSquareReceipts(
       squareInvoiceId: sageSquarePaymentOperations.squareInvoiceId,
       department: sageSquarePaymentOperations.department,
       amountCents: sageSquarePaymentOperations.amountCents,
+      payloadJson: sageSquarePaymentOperations.payloadJson,
       currency: sageSquarePaymentOperations.currency,
       depositAccountNumber: sageSquarePaymentOperations.depositAccountNumber,
       merchantFeeAccountNumber:
@@ -137,8 +140,22 @@ export async function getSageSquareReceipts(
 
   return receipts.map((receipt) => {
     const fee = feesByPayment.get(receipt.squarePaymentId)
+    const { payloadJson, ...publicReceipt } = receipt
+    let payload: unknown
+    try {
+      payload = JSON.parse(payloadJson)
+    } catch {
+      payload = null
+    }
+    const parsedPayload = sageSquarePaymentPayloadSchema.safeParse(payload)
+    const clientPaidFeeCents =
+      parsedPayload.success &&
+      parsedPayload.data.operationType === "post_square_receipt"
+        ? parsedPayload.data.clientPaidFeeCents
+        : 0
     return {
-      ...receipt,
+      ...publicReceipt,
+      clientPaidFeeCents,
       feeCents: fee?.amountCents ?? 0,
       feeStatus: combinedFeeStatus(fee?.statuses ?? []),
     }

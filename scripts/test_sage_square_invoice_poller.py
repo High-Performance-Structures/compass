@@ -24,7 +24,8 @@ class SageSquareInvoicePollerTests(unittest.TestCase):
         )
         self.assertEqual(open_invoice_ids(connection, 1627, 2), (1627, 1628))
         self.assertEqual(
-            connection.cursor_value.params, (2, 1627, "SQUARE:READY")
+            connection.cursor_value.params,
+            (2, 1627, "SQUARE:CREDIT", "SQUARE:DEBIT", "SQUARE:ACH"),
         )
 
     def test_preview_never_creates_a_missing_customer(self) -> None:
@@ -73,12 +74,14 @@ class SageSquareInvoicePollerTests(unittest.TestCase):
         self.assertEqual(square.writes, [])
 
     def test_square_ready_requires_the_exact_sage_status(self) -> None:
-        self.assertTrue(is_square_ready(ready_invoice()))
+        for route in ("CREDIT", "DEBIT", "ACH"):
+            with self.subTest(route=route):
+                self.assertTrue(is_square_ready(ready_invoice(route)))
         self.assertFalse(
             is_square_ready(replace(example_invoice(), square_status="SquareReady"))
         )
         self.assertFalse(
-            is_square_ready(replace(example_invoice(), square_status="SQUARE:HOLD"))
+            is_square_ready(replace(example_invoice(), square_status="SQUARE:READY"))
         )
 
     def test_primary_email_allows_processing_when_general_email_is_blank(self) -> None:
@@ -107,13 +110,15 @@ def square_invoice(status: str) -> dict[str, object]:
         "invoice_number": invoice.invoice_number[:20],
         "primary_recipient": {"customer_id": "customer-1"},
         "payment_requests": [
-            {"computed_amount_money": {"amount": 690200, "currency": "USD"}}
+            {"computed_amount_money": {"amount": 704004, "currency": "USD"}}
         ],
+        "accepted_payment_methods": {"card": True, "bank_account": False},
+        "description": "Source record 1625. Payment route CREDIT.",
     }
 
 
-def ready_invoice():
-    return replace(example_invoice(), square_status="SQUARE:READY")
+def ready_invoice(route: str = "CREDIT"):
+    return replace(example_invoice(), square_status=f"SQUARE:{route}")
 
 
 class RecordingCursor:
@@ -177,7 +182,11 @@ class RecordingSquare:
         return self.customer
 
     def create_draft(
-        self, invoice: object, location_id: str, customer_id: str
+        self,
+        invoice: object,
+        location_id: str,
+        customer_id: str,
+        payment_route: str,
     ) -> dict[str, object]:
         self.writes.append("draft")
         self.existing = square_invoice("DRAFT")

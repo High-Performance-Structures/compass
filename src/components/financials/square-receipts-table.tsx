@@ -77,7 +77,8 @@ export function SquareReceiptsTable({
                 <TableHead>Project / client</TableHead>
                 <TableHead>Sage invoice</TableHead>
                 <TableHead>Square payment</TableHead>
-                <TableHead className="text-right">Received</TableHead>
+                <TableHead className="text-right">Sage receipt</TableHead>
+                <TableHead className="text-right">Client card fee</TableHead>
                 <TableHead className="text-right">Square fee</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -119,6 +120,14 @@ export function SquareReceiptsTable({
                   </TableCell>
                   <TableCell className="text-right font-medium">
                     {dollars(receipt.amountCents)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {dollars(receipt.clientPaidFeeCents)}
+                    {receipt.clientPaidFeeCents > 0 ? (
+                      <div className="text-xs text-muted-foreground">
+                        Credit {receipt.merchantFeeAccountNumber}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-right">
                     {dollars(receipt.feeCents)}

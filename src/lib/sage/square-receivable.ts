@@ -14,6 +14,8 @@ type SquareOwnerReceivableInput = {
   readonly invoiceTaxCents: number;
   readonly paymentCompletedAt: string;
   readonly paymentAmountCents: number;
+  readonly ownerPaymentCents: number;
+  readonly clientPaidFeeCents: number;
   readonly processingFeeCents: number;
 };
 
@@ -67,6 +69,12 @@ export async function upsertSquareOwnerReceivable(
   const invoiceTotalCents = cents(input.invoiceTotalCents, "Invoice total");
   const invoiceTaxCents = cents(input.invoiceTaxCents, "Invoice tax", true);
   const paymentAmountCents = cents(input.paymentAmountCents, "Payment amount");
+  const ownerPaymentCents = cents(input.ownerPaymentCents, "Owner payment");
+  const clientPaidFeeCents = cents(
+    input.clientPaidFeeCents,
+    "Client-paid fee",
+    true,
+  );
   const processingFeeCents = cents(
     input.processingFeeCents,
     "Processing fee",
@@ -77,6 +85,14 @@ export async function upsertSquareOwnerReceivable(
   }
   if (processingFeeCents > paymentAmountCents) {
     throw new Error("Square processing fee exceeds the payment");
+  }
+  if (ownerPaymentCents + clientPaidFeeCents !== paymentAmountCents) {
+    throw new Error(
+      "Square payment does not equal the Sage receipt plus client-paid fee",
+    );
+  }
+  if (ownerPaymentCents > invoiceTotalCents) {
+    throw new Error("Sage receipt exceeds the invoice total");
   }
 
   const generatedIds = squareOwnerReceivableIds(
@@ -250,7 +266,9 @@ export async function upsertSquareOwnerReceivable(
       netAmountCents,
       paymentDate,
       input.squarePaymentId,
-      `Square payment for Sage invoice ${input.sageInvoiceNumber}.`,
+      clientPaidFeeCents > 0
+        ? `Square payment for Sage invoice ${input.sageInvoiceNumber}; includes $${dollars(clientPaidFeeCents).toFixed(2)} client-paid credit card fee.`
+        : `Square payment for Sage invoice ${input.sageInvoiceNumber}.`,
       now,
       now,
     ),
@@ -267,7 +285,7 @@ export async function upsertSquareOwnerReceivable(
       input.projectId,
       ids.invoiceId,
       ids.paymentId,
-      paymentAmountCents,
+      ownerPaymentCents,
       now,
     ),
     env.DB.prepare(
@@ -335,7 +353,7 @@ export async function upsertSquareOwnerReceivable(
       `Received in Square and awaiting the supported Sage receipt posting step.`,
       input.customerName,
       paymentDate,
-      paymentAmount,
+      dollars(ownerPaymentCents),
       input.sageJobShortName,
       now,
       now,

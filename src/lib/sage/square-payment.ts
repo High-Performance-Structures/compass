@@ -35,6 +35,11 @@ const processingFeeSchema = z.object({
   amount_money: moneySchema,
 })
 
+const cardSchema = z.object({
+  card_type: z.enum(["CREDIT", "DEBIT", "UNKNOWN_CARD_TYPE"]),
+  prepaid_type: z.string().optional(),
+})
+
 const paymentSchema = z.object({
   id: z.string().min(1),
   order_id: z.string().min(1),
@@ -42,11 +47,13 @@ const paymentSchema = z.object({
   status: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
+  source_type: z.string().optional(),
   amount_money: moneySchema,
   total_money: moneySchema,
   tip_money: moneySchema.optional(),
   processing_fee: z.array(processingFeeSchema).optional(),
   refunded_money: moneySchema.optional(),
+  card_details: z.object({ card: cardSchema }).optional(),
 })
 
 const tenderSchema = z.object({
@@ -62,6 +69,21 @@ const orderSchema = z.object({
   reference_id: z.string().min(1),
   total_money: moneySchema,
   total_tax_money: moneySchema.optional(),
+  service_charges: z
+    .array(
+      z.object({
+        uid: z.string(),
+        name: z.string(),
+        percentage: z.string().optional(),
+        calculation_phase: z.string().optional(),
+        taxable: z.boolean().optional(),
+        scope: z.string().optional(),
+        applied_money: moneySchema.optional(),
+        total_money: moneySchema.optional(),
+        total_tax_money: moneySchema.optional(),
+      })
+    )
+    .optional(),
   tenders: z.array(tenderSchema).optional(),
 })
 
@@ -77,6 +99,12 @@ const invoiceSchema = z.object({
   sale_or_service_date: z.string().optional(),
   payment_requests: z
     .array(z.object({ due_date: z.string().optional() }))
+    .optional(),
+  accepted_payment_methods: z
+    .object({
+      card: z.boolean().optional(),
+      bank_account: z.boolean().optional(),
+    })
     .optional(),
   custom_fields: z
     .array(
@@ -184,6 +212,8 @@ export class SageSquarePaymentAttentionError extends Error {
 
 type WebhookBeginResult = "process" | "duplicate"
 
+export type SquareBridgePaymentRoute = "CREDIT" | "DEBIT" | "ACH" | "LEGACY"
+
 type BridgeInvoice = {
   readonly id: string
   readonly orderId: string
@@ -192,6 +222,7 @@ type BridgeInvoice = {
   readonly sageInvoiceId: string
   readonly sageJobShortName: string
   readonly department: "HPS" | "ORC" | "Nu-Tech"
+  readonly paymentRoute: SquareBridgePaymentRoute
 }
 
 type CompassProject = {
@@ -359,6 +390,9 @@ function bridgeInvoiceFromSquareInvoice(
     sageJobShortName ?? invoice.title ?? ""
   )
   if (!sageInvoiceId || !department || !sageJobShortName) return null
+  const routeMatch = /(?:^|\s)Payment route (CREDIT|DEBIT|ACH)\./.exec(
+    invoice.description ?? ""
+  )
   return {
     id: invoice.id,
     orderId: invoice.order_id,
@@ -367,7 +401,148 @@ function bridgeInvoiceFromSquareInvoice(
     sageInvoiceId,
     sageJobShortName,
     department,
+    paymentRoute:
+      routeMatch?.[1] === "CREDIT" ||
+      routeMatch?.[1] === "DEBIT" ||
+      routeMatch?.[1] === "ACH"
+        ? routeMatch[1]
+        : "LEGACY",
   }
+}
+
+type SquareBridgeOrderAmounts = {
+  readonly ownerPaymentCents: number
+  readonly clientPaidFeeCents: number
+}
+
+function roundRatioHalfEven(numerator: number, denominator: number): number {
+  const quotient = Math.floor(numerator / denominator)
+  const remainder = numerator % denominator
+  const doubledRemainder = remainder * 2
+  if (doubledRemainder > denominator) return quotient + 1
+  if (doubledRemainder < denominator) return quotient
+  return quotient % 2 === 0 ? quotient : quotient + 1
+}
+
+function bridgeOrderAmounts(
+  order: z.infer<typeof orderSchema>,
+  route: SquareBridgePaymentRoute
+): SquareBridgeOrderAmounts {
+  const charges = order.service_charges ?? []
+  if (route !== "CREDIT") {
+    if (charges.length > 0) {
+      throw new SageSquarePaymentAttentionError(
+        "Square non-credit route unexpectedly contains a service charge"
+      )
+    }
+    return {
+      ownerPaymentCents: order.total_money.amount,
+      clientPaidFeeCents: 0,
+    }
+  }
+  if (charges.length !== 1) {
+    throw new SageSquarePaymentAttentionError(
+      "Square credit route does not contain exactly one card fee"
+    )
+  }
+  const charge = charges[0]
+  const applied = charge?.applied_money
+  const total = charge?.total_money
+  if (
+    !charge ||
+    charge.uid !== "hps-credit-card-fee" ||
+    charge.name !== "Credit card fee (2%)" ||
+    Number(charge.percentage) !== 2 ||
+    charge.calculation_phase !== "TOTAL_PHASE" ||
+    charge.taxable !== false ||
+    charge.scope !== "ORDER" ||
+    !applied ||
+    !total ||
+    applied.currency !== "USD" ||
+    total.currency !== "USD" ||
+    applied.amount !== total.amount ||
+    (charge.total_tax_money?.amount ?? 0) !== 0
+  ) {
+    throw new SageSquarePaymentAttentionError(
+      "Square credit route card fee does not match the approved 2% fee"
+    )
+  }
+  const ownerPaymentCents = order.total_money.amount - total.amount
+  if (
+    ownerPaymentCents <= 0 ||
+    total.amount !== roundRatioHalfEven(ownerPaymentCents * 2, 100)
+  ) {
+    throw new SageSquarePaymentAttentionError(
+      "Square credit route card fee is not exactly 2% of the Sage invoice"
+    )
+  }
+  return { ownerPaymentCents, clientPaidFeeCents: total.amount }
+}
+
+export function squareBridgeOrderAmounts(
+  value: unknown,
+  route: SquareBridgePaymentRoute
+): SquareBridgeOrderAmounts {
+  return bridgeOrderAmounts(orderSchema.parse(value), route)
+}
+
+function validateInvoicePaymentRoute(
+  invoice: z.infer<typeof invoiceSchema>,
+  bridgeInvoice: BridgeInvoice
+): void {
+  if (bridgeInvoice.paymentRoute === "LEGACY") return
+  const methods = invoice.accepted_payment_methods
+  const cardExpected =
+    bridgeInvoice.paymentRoute === "CREDIT" ||
+    bridgeInvoice.paymentRoute === "DEBIT"
+  if (
+    !methods ||
+    methods.card !== cardExpected ||
+    methods.bank_account !== (bridgeInvoice.paymentRoute === "ACH")
+  ) {
+    throw new SageSquarePaymentAttentionError(
+      "Square invoice payment methods do not match its Sage route"
+    )
+  }
+}
+
+function validatePaymentFundingType(
+  payment: z.infer<typeof paymentSchema>,
+  route: SquareBridgePaymentRoute
+): void {
+  if (route === "LEGACY") return
+  if (route === "ACH") {
+    if (payment.source_type !== "BANK_ACCOUNT") {
+      throw new SageSquarePaymentAttentionError(
+        "Square ACH route was paid with a different payment method"
+      )
+    }
+    return
+  }
+  const card = payment.card_details?.card
+  if (!card) {
+    throw new SageSquarePaymentAttentionError(
+      "Square card route is missing its funding type"
+    )
+  }
+  const prepaid = card.prepaid_type === "PREPAID"
+  if (route === "CREDIT" && (card.card_type !== "CREDIT" || prepaid)) {
+    throw new SageSquarePaymentAttentionError(
+      "Square credit route was paid with a debit or prepaid card; refund the 2% fee and review"
+    )
+  }
+  if (route === "DEBIT" && (card.card_type !== "DEBIT" || prepaid)) {
+    throw new SageSquarePaymentAttentionError(
+      "Square debit route was paid with a credit, prepaid, or unknown card; review before posting"
+    )
+  }
+}
+
+export function validateSquarePaymentFundingType(
+  value: unknown,
+  route: SquareBridgePaymentRoute
+): void {
+  validatePaymentFundingType(paymentSchema.parse(value), route)
 }
 
 function bridgeInvoiceFromEvent(
@@ -585,6 +760,8 @@ async function queueReceipt(
   payment: z.infer<typeof paymentSchema>,
   invoice: BridgeInvoice,
   project: CompassProject,
+  ownerPaymentCents: number,
+  clientPaidFeeCents: number,
   now: string
 ): Promise<{ readonly context: OperationContext; readonly operationId: string }> {
   const context: OperationContext = {
@@ -604,8 +781,8 @@ async function queueReceipt(
     operationType: "post_square_receipt",
     company: "High Performance Structures Inc",
     ...context,
-    ownerPaymentCents: payment.amount_money.amount,
-    clientPaidFeeCents: 0,
+    ownerPaymentCents,
+    clientPaidFeeCents,
     currency: "USD",
     depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
     merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
@@ -615,7 +792,7 @@ async function queueReceipt(
     "post_square_receipt",
     `square-payment:${payment.id}:receipt:v1`,
     context,
-    payment.amount_money.amount,
+    ownerPaymentCents,
     payload,
     now
   )
@@ -684,6 +861,7 @@ async function processBridgeInvoicePayment(
       "Square bridge invoice does not contain exactly one Sage payment request"
     )
   }
+  validateInvoicePaymentRoute(squareInvoice, invoice)
   const project = await resolveCompassProject(env, invoice.sageJobShortName)
   const scope = {
     organizationId: project.organizationId,
@@ -712,6 +890,7 @@ async function processBridgeInvoicePayment(
         "Square invoice total must be positive"
       )
     }
+    const orderAmounts = bridgeOrderAmounts(order, invoice.paymentRoute)
     const locationName = await retrieveLocationName(env, invoice.locationId)
     if (locationName !== invoice.department) {
       throw new SageSquarePaymentAttentionError(
@@ -730,6 +909,7 @@ async function processBridgeInvoicePayment(
     )
     for (const { tender, payment } of payments) {
       validatePayment(payment, invoice, order, cutoff)
+      validatePaymentFundingType(payment, invoice.paymentRoute)
       if (
         tender.location_id !== invoice.locationId ||
         tender.amount_money.currency !== "USD" ||
@@ -749,8 +929,32 @@ async function processBridgeInvoicePayment(
         "Square payments exceed the matching Sage invoice total"
       )
     }
+    if (
+      invoice.paymentRoute !== "LEGACY" &&
+      (payments.length !== 1 || totalPaidCents !== order.total_money.amount)
+    ) {
+      throw new SageSquarePaymentAttentionError(
+        "Square routed invoice was not paid in one exact payment"
+      )
+    }
     for (const { payment } of payments) {
-      const receipt = await queueReceipt(env, payment, invoice, project, now)
+      const ownerPaymentCents =
+        invoice.paymentRoute === "LEGACY"
+          ? payment.amount_money.amount
+          : orderAmounts.ownerPaymentCents
+      const clientPaidFeeCents =
+        invoice.paymentRoute === "LEGACY"
+          ? 0
+          : orderAmounts.clientPaidFeeCents
+      const receipt = await queueReceipt(
+        env,
+        payment,
+        invoice,
+        project,
+        ownerPaymentCents,
+        clientPaidFeeCents,
+        now
+      )
       try {
         const processingFeeCents = squareProcessingFeeExpenseCents(
           payment.processing_fee ?? []
@@ -769,10 +973,12 @@ async function processBridgeInvoicePayment(
             squarePaymentId: payment.id,
             invoiceIssueDate: squareInvoice.sale_or_service_date,
             invoiceDueDate: paymentRequests[0]?.due_date ?? null,
-            invoiceTotalCents: order.total_money.amount,
+            invoiceTotalCents: orderAmounts.ownerPaymentCents,
             invoiceTaxCents: order.total_tax_money?.amount ?? 0,
             paymentCompletedAt: payment.updated_at,
             paymentAmountCents: payment.amount_money.amount,
+            ownerPaymentCents,
+            clientPaidFeeCents,
             processingFeeCents,
           },
           now
@@ -784,7 +990,8 @@ async function processBridgeInvoicePayment(
           squarePaymentId: payment.id,
           sageInvoiceNumber: invoice.invoiceNumber,
           department: invoice.department,
-          ownerPaymentCents: payment.amount_money.amount,
+          ownerPaymentCents,
+          clientPaidFeeCents,
           depositAccountNumber: SAGE_SQUARE_DEPOSIT_ACCOUNT_NUMBER,
           merchantFeeAccountNumber: SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
         })
@@ -862,6 +1069,19 @@ function contextFromReceipt(
     sageJobShortName: operation.sageJobShortName,
     paymentCompletedAt: operation.paymentCompletedAt,
   }
+}
+
+function clientPaidFeeFromReceipt(
+  operation: typeof sageSquarePaymentOperations.$inferSelect
+): number {
+  let value: unknown
+  try {
+    value = JSON.parse(operation.payloadJson)
+  } catch {
+    return 0
+  }
+  const parsed = receiptPayloadSchema.safeParse(value)
+  return parsed.success ? parsed.data.clientPaidFeeCents : 0
 }
 
 async function contextFromReceiptWithLegacyHydration(
@@ -988,6 +1208,7 @@ export async function reconcileSageSquareManualReceipts(
       sageInvoiceNumber: context.sageInvoiceNumber,
       department: context.department,
       ownerPaymentCents: receipt.amountCents,
+      clientPaidFeeCents: clientPaidFeeFromReceipt(receipt),
       depositAccountNumber: receipt.depositAccountNumber,
       merchantFeeAccountNumber: receipt.merchantFeeAccountNumber,
     })
