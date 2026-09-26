@@ -58,6 +58,10 @@ import {
   serializeOwnerUpdateDraftBackup,
   type OwnerUpdateDraftEdit,
 } from "@/lib/owner-updates/draft-recovery"
+import {
+  synchronizeOwnerUpdateDraft,
+  type OwnerUpdateDraftSyncVersion,
+} from "@/lib/owner-updates/draft-sync"
 
 type DraftStatus =
   | { readonly kind: "idle" }
@@ -214,6 +218,15 @@ export function OwnerUpdateDraftEditor({
     [document]
   )
   const initialServerDraftJson = React.useRef(JSON.stringify(serverDraft))
+  const initialServerDraftRef = React.useRef(serverDraft)
+  const serverVersion = React.useMemo<OwnerUpdateDraftSyncVersion>(
+    () => ({
+      revision: document.update.revision,
+      updatedAt: document.update.updatedAt,
+    }),
+    [document.update.revision, document.update.updatedAt]
+  )
+  const synchronizedServerVersionRef = React.useRef(serverVersion)
   const currentDraft = React.useMemo<OwnerUpdateDraftEdit>(
     () => ({
       title,
@@ -252,6 +265,41 @@ export function OwnerUpdateDraftEditor({
   const buildertrendPhotoCount = document.availablePhotos.filter((photo) =>
     photo.sourceSystem.toLowerCase().includes("buildertrend")
   ).length
+
+  function applyDraft(draft: OwnerUpdateDraftEdit): void {
+    setTitle(draft.title)
+    setUpdateDate(draft.updateDate)
+    setPeriodStart(draft.periodStart)
+    setPeriodEnd(draft.periodEnd)
+    setSummary(draft.summary)
+    setSourceDailyLogIds(draft.sourceDailyLogIds)
+    setSelectedPhotoIds(draft.selectedPhotoIds)
+    setSelectedDocumentIds(draft.selectedDocumentIds)
+    setCompletedScheduleItems(draft.completedScheduleItems)
+    setLookAheadScheduleItems(draft.lookAheadScheduleItems)
+    setTodos(draft.todos)
+  }
+
+  React.useEffect(() => {
+    const synchronization = synchronizeOwnerUpdateDraft({
+      baselineDraft: initialServerDraftRef.current,
+      localDraft: currentDraft,
+      serverDraft,
+      previousServerVersion: synchronizedServerVersionRef.current,
+      serverVersion,
+    })
+
+    if (synchronization.kind === "unchanged") return
+
+    synchronizedServerVersionRef.current = serverVersion
+    initialServerDraftRef.current = synchronization.draft
+    initialServerDraftJson.current = JSON.stringify(synchronization.draft)
+    applyDraft(synchronization.draft)
+    setDraftRecoveryReady(false)
+    if (synchronization.kind === "conflict") {
+      setStatus({ kind: "error", message: synchronization.message })
+    }
+  }, [currentDraft, serverDraft, serverVersion])
 
   React.useEffect(() => {
     try {
@@ -431,6 +479,18 @@ export function OwnerUpdateDraftEditor({
   async function saveDraft(
     intent: "save" | "publish" = "save"
   ): Promise<boolean> {
+    if (
+      synchronizedServerVersionRef.current.revision !== serverVersion.revision ||
+      synchronizedServerVersionRef.current.updatedAt !== serverVersion.updatedAt
+    ) {
+      setStatus({
+        kind: "error",
+        message:
+          "This draft is refreshing with a newer server version. Review it before saving again.",
+      })
+      return false
+    }
+
     setStatus({
       kind: "saving",
       message:
@@ -473,6 +533,7 @@ export function OwnerUpdateDraftEditor({
       }
 
       initialServerDraftJson.current = JSON.stringify(currentDraft)
+      initialServerDraftRef.current = currentDraft
       setDraftRecoveryReady(false)
       setStatus({
         kind: "saved",

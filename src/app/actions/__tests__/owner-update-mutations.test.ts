@@ -43,11 +43,20 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
 
 const {
   createManualOwnerProjectUpdateDraft,
+  createProjectDailyLog,
   deleteOwnerProjectUpdateDraft,
   draftOwnerProjectUpdateWithJarvis,
   draftOwnerUpdateFromDailyLogs,
+  getOwnerUpdateProjectHeader,
+  getOwnerProjectUpdateDocument,
+  getProjectFieldSummary,
+  getProjectDailyLogWorkspace,
+  getProjectOwnerUpdates,
+  getProjectWeatherSnapshot,
   publishOwnerProjectUpdate,
   recallOwnerProjectUpdate,
+  updateDailyLogReview,
+  updateProjectDailyLog,
   updateOwnerProjectUpdateDraft,
 } = await import("@/app/actions/project-field")
 
@@ -417,6 +426,109 @@ describe("owner update mutation authorization and fencing", () => {
     ])
     expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
     expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+  })
+
+  it("denies every external owner-update projection before loading provider fields", async () => {
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      role: "client",
+    })
+    mocks.getCloudflareContext.mockImplementation(() => {
+      throw new Error("provider-bearing projection reached database access")
+    })
+
+    const denial = "Permission denied: internal staff access is required"
+    await expect(getProjectOwnerUpdates("project-1")).rejects.toThrow(denial)
+    await expect(getOwnerUpdateProjectHeader("project-1")).rejects.toThrow(denial)
+    await expect(
+      getOwnerProjectUpdateDocument("project-1", "update-1")
+    ).rejects.toThrow(denial)
+    await expect(getProjectFieldSummary("project-1")).rejects.toThrow(denial)
+    await expect(getProjectDailyLogWorkspace("project-1")).rejects.toThrow(denial)
+    await expect(
+      getProjectWeatherSnapshot("project-1")
+    ).resolves.toEqual({ success: false, error: denial })
+    await expect(
+      updateDailyLogReview("project-1", {
+        dailyLogId: "log-1",
+        reviewStatus: "approved",
+        isClientVisible: true,
+      })
+    ).resolves.toEqual({ success: false, error: denial })
+    await expect(
+      createProjectDailyLog("project-1", {
+        logDate: "2026-07-28",
+        weatherTempF: null,
+        weatherConditions: "",
+        weatherPrecipitation: "",
+        workCompleted: "Work completed",
+        issues: "",
+        materialsUsed: "",
+        crewPresent: "",
+        hoursWorked: null,
+        safetyIncidents: "",
+        visitorLog: "",
+        notes: "",
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: denial,
+    })
+    await expect(
+      updateProjectDailyLog("project-1", {
+        dailyLogId: "log-1",
+        targetProjectId: "project-1",
+        logDate: "2026-07-28",
+        weatherTempF: null,
+        weatherConditions: "",
+        weatherPrecipitation: "",
+        workCompleted: "Work completed",
+        issues: "",
+        materialsUsed: "",
+        crewPresent: "",
+        hoursWorked: null,
+        safetyIncidents: "",
+        visitorLog: "",
+        notes: "",
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: denial,
+    })
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
+    expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+  })
+
+  it("denies a staff role attached to an external organization before daily-log mutation access", async () => {
+    mocks.requireAuth.mockResolvedValue({
+      ...internalUser,
+      organizationType: "client",
+    })
+    mocks.getCloudflareContext.mockImplementation(() => {
+      throw new Error("external organization reached daily-log database access")
+    })
+
+    await expect(
+      createProjectDailyLog("project-1", {
+        logDate: "2026-07-28",
+        weatherTempF: null,
+        weatherConditions: "",
+        weatherPrecipitation: "",
+        workCompleted: "Work completed",
+        issues: "",
+        materialsUsed: "",
+        crewPresent: "",
+        hoursWorked: null,
+        safetyIncidents: "",
+        visitorLog: "",
+        notes: "",
+      })
+    ).resolves.toEqual({
+      success: false,
+      error: "Permission denied: internal staff access is required",
+    })
+    expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
   })
 
   it("denies every owner-update mutation sibling when the internal organization is inactive", async () => {

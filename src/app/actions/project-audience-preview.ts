@@ -43,6 +43,8 @@ import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-c
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { shouldIncludeOwnerUpdateHistory } from "@/lib/project-audience-preview-policy"
+
 import {
   isPortalVisiblePurchaseOrderStatus,
   parsePortalPurchaseOrderPayload,
@@ -438,6 +440,7 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
+  await requireAuth()
   const { db, env, organizationId, viewerIsInternal, viewer } =
     await verifyProjectAccess(projectId, audience)
 
@@ -744,7 +747,7 @@ export async function getProjectAudiencePreview(
   )
 
   const ownerUpdateRows =
-    audience === "owner"
+    shouldIncludeOwnerUpdateHistory(viewerIsInternal, audience)
       ? await db
           .select({
             id: ownerProjectUpdates.id,
