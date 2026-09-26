@@ -30,6 +30,7 @@ import { getSageBridgeStatus } from "@/lib/sage/config"
 import { isSageBridgeHeartbeatOnline } from "@/lib/sage/bridge-health"
 import { dateKeyInTimeZone, isValidTimeZone } from "@/lib/work-calendar"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { assertOwnerUpdateRouteAccess } from "@/lib/owner-updates/access"
 
 type DashboardTask = {
   readonly id: string
@@ -257,6 +258,7 @@ function currentWeekStartIso(now = new Date()): string {
 export async function getDashboardOverview(): Promise<DashboardOverview> {
   try {
     const user = await requireAuth()
+    await assertOwnerUpdateRouteAccess(user)
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
