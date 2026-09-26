@@ -9,7 +9,6 @@ import {
   dailyLogTaskLinks,
   ownerProjectUpdates,
   projectExternalLinks,
-  projectMembers,
   projectOperations,
   scheduleTasks,
   projects,
@@ -50,7 +49,6 @@ import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
@@ -598,54 +596,14 @@ function numberValue(
   return typeof child === "number" && Number.isFinite(child) ? child : null
 }
 
-async function verifyProjectAccess(
-  projectId: string,
-  featureId: string = "daily-logs"
-): Promise<ReturnType<typeof getDb>> {
-  const user = await requireAuth()
-  await requireFeaturePermission(user, featureId, "read")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
-  return db
-}
-
 async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly viewer: Awaited<ReturnType<typeof requireAuth>>
 }> {
   const viewer = await requireAuth()
+  const db = await assertOwnerUpdateRouteAccess(viewer)
   await requireFeaturePermission(viewer, "owner-updates", "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
   await assertProjectAccess(db, viewer, projectId)
-  if (!isInternalStaffRole(viewer.role)) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, viewer.id)
-        )
-      )
-      .get()
-    if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
-      throw new Error("Project not found")
-    }
-  }
   return { db, viewer }
 }
 
@@ -661,21 +619,9 @@ async function verifyProjectMutationAccess(
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
+  const db = await assertOwnerUpdateRouteAccess(user)
   await requireFeaturePermission(user, featureId, "update")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
+  await assertProjectAccess(db, user, projectId)
 
   return { db, userId: user.id, user }
 }
@@ -714,24 +660,9 @@ async function verifyDailyLogStaffMutationAccess(
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
-  if (!user.isActive || !isInternalStaffRole(user.role)) {
-    throw new Error("Permission denied: staff access is required for daily logs")
-  }
+  const db = await assertOwnerUpdateRouteAccess(user)
   await requireFeaturePermission(user, "daily-logs", "update")
-  const orgId = requireOrg(user)
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
+  await assertProjectAccess(db, user, projectId)
 
   return { db, userId: user.id }
 }
@@ -1106,7 +1037,8 @@ export async function getProjectFieldSummary(
   projectId: string
 ): Promise<ProjectFieldSummary> {
   const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId)
+  const db = await assertOwnerUpdateRouteAccess(viewer)
+  await assertProjectAccess(db, viewer, projectId)
   const today = new Date().toISOString().slice(0, 10)
 
   const logRows = await db
@@ -1365,7 +1297,8 @@ export async function getProjectDailyLogWorkspace(
 ): Promise<ProjectDailyLogWorkspace> {
   const viewer = await requireAuth()
   const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
-  const db = await verifyProjectAccess(projectId)
+  const db = await assertOwnerUpdateRouteAccess(viewer)
+  await assertProjectAccess(db, viewer, projectId)
 
   const [project] = await db
     .select({
@@ -1869,7 +1802,9 @@ export async function getProjectWeatherSnapshot(
   input?: { readonly logDate?: string }
 ): Promise<ProjectWeatherSnapshotResult> {
   try {
-    const db = await verifyProjectAccess(projectId)
+    const viewer = await requireAuth()
+    const db = await assertOwnerUpdateRouteAccess(viewer)
+    await assertProjectAccess(db, viewer, projectId)
     const [project] = await db
       .select({
         address: projects.address,
