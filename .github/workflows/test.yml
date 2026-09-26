@@ -66,11 +66,14 @@ jobs:
           retention-days: 7
 
   # Fast Electron smoke on pull requests so lifecycle/runtime issues are caught
-  # before merge. The full cross-platform matrix remains a main-branch check.
+  # before merge. The full cross-platform matrix also runs at the PR head.
   e2e-desktop-pr:
     name: E2E Desktop (PR smoke)
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      LOCAL_DB_PATH: .e2e/compass.db
+      COMPASS_E2E: "true"
 
     steps:
       - uses: actions/checkout@v4
@@ -79,6 +82,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Prepare deterministic E2E database
+        run: bun run test:e2e:prepare
+
+      - name: Install Playwright ffmpeg
+        run: bunx playwright install ffmpeg
 
       - name: Install Electron runtime dependencies
         run: |
@@ -100,11 +109,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Desktop E2E tests (Electron) - only on main branch
+  # Desktop E2E tests: the full matrix proves every exact candidate.
   e2e-desktop:
     name: E2E Desktop
     runs-on: ${{ matrix.os }}
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    env:
+      LOCAL_DB_PATH: .e2e/compass.db
+      COMPASS_E2E: "true"
     strategy:
       fail-fast: false
       matrix:
@@ -117,6 +129,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Prepare deterministic E2E database
+        run: bun run test:e2e:prepare
 
       - name: Install Playwright browsers
         run: bunx playwright install chromium
@@ -141,6 +156,16 @@ jobs:
         run: bun run test:e2e:desktop
         env:
           ELECTRON: "true"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-desktop-${{ matrix.os }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: error
+          retention-days: 7
 
   # Coverage report
   coverage:

@@ -8,7 +8,7 @@ const isElectron = () => {
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL
 const baseURL = externalBaseUrl ?? "http://127.0.0.1:3000"
 const localServerCommand = process.env.CI && !isElectron()
-  ? "COMPASS_E2E=true node node_modules/next/dist/bin/next start"
+  ? "node node_modules/next/dist/bin/next start"
   : "node node_modules/next/dist/bin/next dev --webpack"
 
 // Web-specific projects
@@ -80,5 +80,10 @@ export default defineConfig({
         url: baseURL,
         timeout: 120000,
         reuseExistingServer: !process.env.CI,
+        env: {
+          COMPASS_E2E: "true",
+          WORKOS_API_KEY: "placeholder-e2e",
+          WORKOS_CLIENT_ID: "placeholder-e2e",
+        },
       },
 })
