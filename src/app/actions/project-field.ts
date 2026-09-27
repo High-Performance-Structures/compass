@@ -1038,6 +1038,7 @@ export async function getProjectFieldSummary(
 ): Promise<ProjectFieldSummary> {
   const viewer = await requireAuth()
   const db = await assertOwnerUpdateRouteAccess(viewer)
+  await requireFeaturePermission(viewer, "daily-logs", "read")
   await assertProjectAccess(db, viewer, projectId)
   const today = new Date().toISOString().slice(0, 10)
 
@@ -1298,6 +1299,7 @@ export async function getProjectDailyLogWorkspace(
   const viewer = await requireAuth()
   const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
   const db = await assertOwnerUpdateRouteAccess(viewer)
+  await requireFeaturePermission(viewer, "daily-logs", "read")
   await assertProjectAccess(db, viewer, projectId)
 
   const [project] = await db
@@ -1804,6 +1806,7 @@ export async function getProjectWeatherSnapshot(
   try {
     const viewer = await requireAuth()
     const db = await assertOwnerUpdateRouteAccess(viewer)
+    await requireFeaturePermission(viewer, "daily-logs", "read")
     await assertProjectAccess(db, viewer, projectId)
     const [project] = await db
       .select({
