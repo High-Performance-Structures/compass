@@ -3,14 +3,14 @@
   "id": "financials",
   "featureId": "financials",
   "slug": "financial-workflows",
-  "title": "Estimates, Budgets, Pay Applications, and Sage",
-  "summary": "Understand estimates, client report phases, budgets, G703 views, pay applications, and Sage synchronization.",
+  "title": "Estimates, Contracts, Budgets, Pay Applications, and Sage",
+  "summary": "Understand estimates, client report phases, contract packets, budgets, pay applications, and Sage synchronization.",
   "contextSummary": "Use custom report phases to control an estimate's client-facing presentation without changing CSI codes or costs. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "assemblies", "customer report", "client report", "report phases", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "sync", "accounting"],
+  "tags": ["estimates", "assemblies", "customer report", "client report", "report phases", "cost breakdown", "rate book", "accepted rates", "contract packets", "executed contracts", "budget", "G703", "pay applications", "Sage", "sync", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
-  "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
+  "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/contracts", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
   "lastReviewed": "2026-10-16"
 }
@@ -74,6 +74,14 @@ The contract budget then rebuilds with the change added. The contract estimate i
 When you create a contract packet on the **Contracts** page, choose the estimate, then tick the documents to include. The agreement (CA00) and the construction estimate (CA22) are always included, because the packet can't be signed without them. Every other document is optional. After the packet is created you can still **Add document** or **Remove** one while it's being prepared.
 
 Admins can tick **Use this selection as the default for new contract packets** to make the current choice the company default. New packets then start with the same documents ticked.
+
+## Contract Packets and Executed Copies {#contract-packets}
+
+Create a full construction contract packet from the exact estimate revision that will become CA22. Review the packet number and version, contractor entity, dates, project and owner information, deposit and payment terms, signers, and included document versions. Preview the combined PDF before preparing it for Foxit or marking it sent for signatures outside Compass. A sent packet is frozen; duplicate it to revise the terms or document set.
+
+Compass locks the packet as executed only after all required signers finish or an authorized user records a complete manually signed copy. Confirm the executed PDF contains every required owner and company representative signature before attesting. Executed owner contract packets appear in the owner's **Plans & Documents** area.
+
+Use **Replace active contract document** only when the active archival copy is unavailable or needs a corrected presentation copy. The replacement must be the same complete, fully executed agreement. Enter a reason and attest that no signed terms or signature content changed. Compass preserves the prior link and records the replacement in activity history; the execution date, signature references, and contract status remain unchanged.
 
 ## Budget and G703 {#budget-g703}
 

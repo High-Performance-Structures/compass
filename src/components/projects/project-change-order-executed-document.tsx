@@ -10,6 +10,7 @@ import { replaceExecutedProjectChangeOrderDocument } from "@/app/actions/project
 import { uploadChangeOrderDocuments } from "@/components/projects/project-change-order-document-upload"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
@@ -91,7 +92,10 @@ export function ProjectChangeOrderExecutedDocument({
     <section className="border-y bg-background p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Executed change-order document</h2>
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-sm font-semibold">Executed change-order document</h2>
+            <ContextualHelpBeacon topicId="change.orders.executed-documents" />
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {available
               ? label ?? "The authoritative fully executed change order."
