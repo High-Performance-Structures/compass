@@ -43,6 +43,28 @@ describe("Jarvis canonical help context", () => {
     )
   })
 
+  it("grounds the executed change-order workflow in its current canonical section", () => {
+    const guide = HELP_GUIDES.find((candidate) => candidate.id === "change.orders")
+    expect(guide).toBeDefined()
+    if (!guide) return
+
+    const context = resolveJarvisHelpContext({
+      currentPage: "/dashboard/projects/project-123/change-orders/change-456",
+      requestedTopicId: "change.orders.executed-documents",
+      messages: [{ role: "user", content: "What document belongs here?" }],
+      allowedGuideIds: [guide.id],
+    })
+
+    expect(context?.references).toEqual([
+      expect.objectContaining({
+        topicId: "change.orders.executed-documents",
+        href: "/dashboard/help/change-orders-and-executed-documents#executed-documents",
+      }),
+    ])
+    expect(context?.prompt).toContain("complete signed PDF")
+    expect(context?.prompt).toContain("50 MB or smaller")
+  })
+
   it("never injects help that the user cannot read", () => {
     const topicId = HELP_GUIDES[0]?.sections[0]?.topicId
     expect(topicId).toBeDefined()

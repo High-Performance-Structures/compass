@@ -7,12 +7,12 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays"],
+  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "publish", "move to draft"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-12"
 }
 ---
 
@@ -46,6 +46,8 @@ The first **Publish schedule** makes selected visible items available in owner a
 
 Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
 
+Use audience preview after publishing or moving to draft to verify what external users can see.
+
 ## Workday Exceptions {#workday-exceptions}
 
 Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
@@ -68,5 +70,6 @@ Ask Jarvis to read the project's tasks, dependencies, workday exceptions, overal
 - [ ] Dependencies and lag represent the real sequence.
 - [ ] I reviewed downstream dates after changes.
 - [ ] Published schedule revisions include a change reason.
+- [ ] I verified audience visibility after publishing or moving to draft.
 - [ ] Workday exceptions have a reason.
 - [ ] Completed work retains accurate history.
