@@ -7,7 +7,7 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "templates", "weather", "forecast", "concrete pour"],
+  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "publish", "move to draft", "templates", "weather", "forecast", "concrete pour"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
@@ -53,6 +53,8 @@ A schedule that has never been published is a draft: edit dates, predecessors, a
 
 Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
 
+Use audience preview after publishing or moving to draft to verify what external users can see.
+
 ## Workday Exceptions {#workday-exceptions}
 
 Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Once the schedule has been published, add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
@@ -86,4 +88,5 @@ Ask Jarvis to read the project's tasks, dependencies, workday exceptions, overal
 - [ ] I reviewed downstream dates after changes.
 - [ ] Published schedule revisions include a change reason.
 - [ ] On a published schedule, workday exceptions have a reason.
+- [ ] I verified audience visibility after publishing or moving to draft.
 - [ ] Completed work retains accurate history.
