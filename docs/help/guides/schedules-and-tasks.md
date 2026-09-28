@@ -7,12 +7,12 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays"],
+  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "publish", "move to draft"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-09-14"
+  "lastReviewed": "2026-09-28"
 }
 ---
 
@@ -42,7 +42,9 @@ Do not force a dependent item to an incompatible date until you know whether its
 
 ## Publish a Schedule {#publish-schedule}
 
-The first publication makes the working schedule active for owner and trade-partner workspaces and does not require a change reason. After a schedule has been published, enter a concise reason when publishing another revision so the internal activity history explains what changed.
+The first publication makes the current visible schedule items active for owner and trade-partner workspaces and does not require a change reason. Later internal edits remain hidden while viewers continue to see the last published version. Choose **Publish changes** and enter a concise reason when the revised schedule is ready so the internal activity history explains what changed.
+
+Choose **Move to draft** when the entire schedule must disappear from owner and trade-partner workspaces immediately. This preserves the internal schedule and publication history; it does not delete activities or reverse edits. Publish again when the schedule is ready. Use audience preview after publishing or moving to draft to verify what external users can see.
 
 ## Workday Exceptions {#workday-exceptions}
 
@@ -62,5 +64,6 @@ A useful task has a clear action, project context, assignee, due date, source-re
 - [ ] Dependencies and lag represent the real sequence.
 - [ ] I reviewed downstream dates after changes.
 - [ ] Published schedule revisions include a change reason.
+- [ ] I verified audience visibility after publishing or moving to draft.
 - [ ] Workday exceptions have a reason.
 - [ ] Completed work retains accurate history.

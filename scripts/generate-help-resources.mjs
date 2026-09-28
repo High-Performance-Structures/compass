@@ -40,6 +40,7 @@ const VALID_FEATURE_IDS = new Set([
   "owner-updates",
   "financials",
   "conversations",
+  "change-orders",
   "help-resources",
 ])
 const VALID_RESOURCES = new Set([

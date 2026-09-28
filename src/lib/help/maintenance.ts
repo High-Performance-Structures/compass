@@ -21,6 +21,8 @@ export const MONITORED_HELP_WORKFLOW_ROUTES: readonly string[] = [
   "/dashboard/projects/[id]/purchase-orders",
   "/dashboard/projects/[id]/selections",
   "/dashboard/projects/[id]/estimate",
+  "/dashboard/projects/[id]/contracts",
+  "/dashboard/projects/[id]/change-orders",
   "/dashboard/projects/[id]/financials",
   "/dashboard/projects/[id]/conversations",
   "/preview/projects/[id]/owner",

@@ -7,12 +7,12 @@
   "summary": "Manage directory contacts, project assignments, invitations, and access verification.",
   "contextSummary": "A contact record, a project assignment, and a Compass login are separate. Search first, assign the correct project, then invite and verify access.",
   "category": "Start Here",
-  "tags": ["contacts", "access", "permissions", "invitations", "users"],
+  "tags": ["contacts", "access", "permissions", "invitations", "users", "Sage comparison", "client matching"],
   "audiences": ["staff"],
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-24"
+  "lastReviewed": "2026-09-28"
 }
 ---
 
@@ -33,6 +33,12 @@ Clients, vendors, and internal people are separate Contacts views. A client or v
 For a Sage-linked record, choose **Propose Sage edit** rather than directly changing its contact fields. Request a current Sage refresh first; the read must be recent. The proposal appears in **Sage review** for an authorized reviewer other than the proposer. When Sage contact sync is enabled, approval queues a Sage update, and Compass updates the contact only after the bridge reads it back. Approval is unavailable while writes are paused. If Sage changed in the meantime, the proposal is held as a conflict. Employee home addresses are never shown in project contact lists and require a separate confidential-contact permission for staff review.
 
 For an unlinked contact, **Verify Sage link** looks up the exact Sage number without changing the directory record. Only one lookup can be active for a contact: selecting the same number again reuses a pending lookup, while a different number requires rejecting the existing candidate in **Sage review** first. If a read-back is older than 15 minutes or an employee name was not returned, use **Refresh Sage read-back** in the review. This requests a new read of the same number and retains the review history; it does not link the contact or write to Sage. Compare the fresh Sage evidence before linking. An employee may review their own matching-name link only when individually granted **Self-review Sage employee identity** under **Settings > Permissions**; other identity links require a separate reviewer.
+
+## Compare Clients with Sage {#compare-clients-with-sage}
+
+Authorized reviewers can open the **Clients & Leads** view and choose **Compare with Sage**. Use **Request fresh list** when the displayed Sage capture is missing or outdated, then search the Compass and read-only Sage lists side by side. Select one record from each list and compare the legal name, exact Sage number, email, and any existing Compass claim.
+
+Selecting a pair does not link, merge, or transfer anything. **Look up selected pair in Sage** starts the normal verification workflow, which still requires a fresh read-back and approval in **Sage review**. Stop and investigate when a Sage number is already claimed, several Compass records claim it, or the Compass client already has a different Sage identity. Never resolve a possible duplicate by choosing the closest name alone.
 
 ## Add and Invite a Contact {#add-and-invite}
 

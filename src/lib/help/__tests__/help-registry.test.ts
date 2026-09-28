@@ -23,13 +23,14 @@ describe("help registry", () => {
   })
 
   it("provides the initial canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(15)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(15)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(15)
+    expect(HELP_GUIDES).toHaveLength(16)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(16)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(16)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
         "audience.trade",
+        "change.orders",
         "greeting.cards",
       ])
     )
@@ -53,6 +54,12 @@ describe("help registry", () => {
     )
     expect(getHelpTopic("financials.client-report-phases")?.href).toBe(
       "/dashboard/help/financial-workflows#client-report-phases"
+    )
+    expect(getHelpTopic("change.orders.executed-documents")?.href).toBe(
+      "/dashboard/help/change-orders-and-executed-documents#executed-documents"
+    )
+    expect(getHelpTopic("contacts.access.compare-clients-with-sage")?.href).toBe(
+      "/dashboard/help/contacts-project-access-invitations#compare-clients-with-sage"
     )
     expect(getHelpTopic("not-a-topic")).toBeNull()
   })
@@ -86,6 +93,16 @@ describe("help registry", () => {
         "/dashboard/projects/project-123/owner-updates/update-456?preview=1"
       ).map((guide) => guide.id)
     ).toContain("owner.updates")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/change-orders/change-456"
+      ).map((guide) => guide.id)
+    ).toContain("change.orders")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/contracts"
+      ).map((guide) => guide.id)
+    ).toContain("financials")
     expect(
       getHelpGuidesForRoute(
         "/preview/projects/project-123/owner/updates/update-456"
@@ -190,6 +207,25 @@ describe("help registry", () => {
     expect(financialGuide?.content).toContain("returns its lines to their default CSI grouping")
     expect(searchHelpGuides("custom report phase client costs")[0]?.guide.id)
       .toBe("financials")
+  })
+
+  it("documents current publication, Sage comparison, and executed-document workflows", () => {
+    const scheduleGuide = getHelpGuide("schedules-and-tasks")
+    const contactsGuide = getHelpGuide("contacts-project-access-invitations")
+    const contractsGuide = getHelpGuide("financial-workflows")
+    const changeOrdersGuide = getHelpGuide("change-orders-and-executed-documents")
+    const ownerGuide = getHelpGuide("owner-workspace")
+
+    expect(scheduleGuide?.content).toContain("**Move to draft**")
+    expect(scheduleGuide?.content).toContain("last published version")
+    expect(contactsGuide?.content).toContain("**Compare with Sage**")
+    expect(contactsGuide?.content).toContain("does not link, merge, or transfer")
+    expect(contractsGuide?.content).toContain("**Replace active contract document**")
+    expect(changeOrdersGuide?.content).toContain("**Replace active executed document**")
+    expect(ownerGuide?.content).toContain("**Open executed change order**")
+    expect(ownerGuide?.content).toContain("**Open contract**")
+    expect(searchHelpGuides("replace executed signed change order")[0]?.guide.id)
+      .toBe("change.orders")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {
