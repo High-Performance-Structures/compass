@@ -44,6 +44,7 @@ export type ContactMergePreview = {
   readonly destinationEmail: string | null
   readonly peopleCount: number
   readonly projectContactCount: number
+  readonly retainedIdentityNotice: string | null
   readonly blockers: readonly string[]
 }
 type PreviewResult =
@@ -132,20 +133,29 @@ async function inspect(input: MergeInput): Promise<{
   }
   if (sourcePerson && (!sourcePerson.active || sourcePerson.mergedIntoPersonId)) blockers.push("The record to archive is already inactive or merged.")
   if (destinationPerson && (!destinationPerson.active || destinationPerson.mergedIntoPersonId)) blockers.push("The record to keep is inactive or merged.")
-  if (sourcePerson && (sourcePerson.userId || sourcePerson.sageContactId || sourcePerson.sageLineNumber !== null || sourcePerson.sourceRecordId)) {
-    blockers.push("Keep the person with the Compass account or external identity; that record cannot be archived.")
+  if (sourcePerson && (sourcePerson.userId || sourcePerson.sageContactId || sourcePerson.sageLineNumber !== null)) {
+    blockers.push("Keep the person with the Compass account or Sage identity; that record cannot be archived.")
   }
   if (sourceCompany && customer && "mergedIntoCustomerId" in sourceCompany && sourceCompany.mergedIntoCustomerId) blockers.push("The source client is already merged.")
   if (destinationCompany && customer && "mergedIntoCustomerId" in destinationCompany && destinationCompany.mergedIntoCustomerId) blockers.push("The destination client is already merged.")
   if (sourceCompany && !customer && "directoryStatus" in sourceCompany && sourceCompany.directoryStatus !== "active") blockers.push("The source vendor is not active.")
   if (destinationCompany && !customer && "directoryStatus" in destinationCompany && destinationCompany.directoryStatus !== "active") blockers.push("The destination vendor is not active.")
+  // Imported directory IDs stay on the archived row, whose merge pointer preserves
+  // their provenance. Accounting IDs cannot use that path: active Sage/NetSuite
+  // workflows still address the company row directly.
   if (sourceCompany && customer && "sageClientId" in sourceCompany &&
-    (sourceCompany.sageClientId || sourceCompany.sageClientNumber || sourceCompany.buildertrendContactId || sourceCompany.netsuiteId)) {
-    blockers.push("Keep the client with the Sage, Buildertrend, or NetSuite identity; it cannot be archived.")
+    (sourceCompany.sageClientId || sourceCompany.sageClientNumber)) {
+    blockers.push("Keep the client with the Sage identity. If both clients have different Sage numbers, reconcile those accounting records before merging in Compass.")
+  }
+  if (sourceCompany && customer && "netsuiteId" in sourceCompany && sourceCompany.netsuiteId) {
+    blockers.push("Keep the client with the NetSuite identity; this merge does not transfer accounting links.")
   }
   if (sourceCompany && !customer && "sageVendorId" in sourceCompany &&
-    (sourceCompany.sageVendorId || sourceCompany.sageVendorNumber || sourceCompany.netsuiteId || sourceCompany.sourceRecordId)) {
-    blockers.push("Keep the vendor with the Sage or imported identity; it cannot be archived.")
+    (sourceCompany.sageVendorId || sourceCompany.sageVendorNumber)) {
+    blockers.push("Keep the vendor with the Sage identity. If both vendors have different Sage numbers, reconcile those accounting records before merging in Compass.")
+  }
+  if (sourceCompany && !customer && "netsuiteId" in sourceCompany && sourceCompany.netsuiteId) {
+    blockers.push("Keep the vendor with the NetSuite identity; this merge does not transfer accounting links.")
   }
   if (company && customer && sourceCompany && destinationCompany &&
     "relationshipType" in sourceCompany && "relationshipType" in destinationCompany &&
@@ -163,8 +173,8 @@ async function inspect(input: MergeInput): Promise<{
       ? await db.select().from(customerContacts).where(eq(customerContacts.customerId, input.sourceId))
       : await db.select().from(vendorContacts).where(eq(vendorContacts.vendorId, input.sourceId))
     : []
-  if (children.some((person) => person.userId || person.sageContactId || person.sageLineNumber !== null || person.sourceRecordId)) {
-    blockers.push("A person at the source company has a Compass account or external identity. Merge that identity separately first.")
+  if (children.some((person) => person.userId || person.sageContactId || person.sageLineNumber !== null)) {
+    blockers.push("A person at the source company has a Compass account or Sage identity. Merge that identity separately first.")
   }
   const destinationChildren = company
     ? customer
@@ -242,7 +252,15 @@ async function inspect(input: MergeInput): Promise<{
   return {
     preview: {
       kind: input.kind, sourceName, destinationName, sourceEmail, destinationEmail,
-      peopleCount: children.length, projectContactCount: projectRows.length, blockers,
+      peopleCount: children.length, projectContactCount: projectRows.length,
+      retainedIdentityNotice: sourceCompany && "buildertrendContactId" in sourceCompany && sourceCompany.buildertrendContactId
+        ? `Buildertrend contact #${sourceCompany.buildertrendContactId} remains on the archived record, which points to the survivor. This does not merge the two Buildertrend records.`
+        : sourceCompany && "sourceRecordId" in sourceCompany && sourceCompany.sourceRecordId
+          ? "The imported source ID remains on the archived record, which points to the survivor. This does not merge records in the source system."
+          : sourcePerson?.sourceRecordId
+            ? "The imported person ID remains on the archived record, which points to the survivor. This does not merge records in the source system."
+            : null,
+      blockers,
     },
     sourceSnapshot: JSON.stringify(source),
     destinationSnapshot: JSON.stringify(destination),
