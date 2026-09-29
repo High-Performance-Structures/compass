@@ -54,7 +54,7 @@ export async function POST(
 ): Promise<NextResponse<UploadResult>> {
   try {
     const user = await requireAuth()
-    if (isDemoUser(user.id)) {
+    if (user.organizationType === "demo" || isDemoUser(user.id)) {
       return NextResponse.json(
         { success: false, error: "Demo mode is read-only." },
         { status: 403 }

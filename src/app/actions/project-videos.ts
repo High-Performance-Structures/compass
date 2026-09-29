@@ -93,7 +93,10 @@ async function projectVideoDb(
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
   assertActiveInternalStaff(user)
-  if (action === "update" && isDemoUser(user.id)) {
+  if (
+    action === "update" &&
+    (user.organizationType === "demo" || isDemoUser(user.id))
+  ) {
     throw new Error("Demo mode is read-only")
   }
   const organizationId = requireOrg(user)
