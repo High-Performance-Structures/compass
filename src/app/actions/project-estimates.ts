@@ -39,6 +39,7 @@ import {
 import { googleAuth } from "@/db/schema-google"
 import { projectDocuments } from "@/db/schema-documents"
 import { contractPackets } from "@/db/schema-contracts"
+import { projectFamilyPhases } from "@/db/schema-project-families"
 import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
@@ -1536,7 +1537,11 @@ export async function deleteProjectEstimateDraft(
 
 export async function duplicateProjectEstimate(
   projectId: string,
-  sourceEstimateId: string
+  sourceEstimateId: string,
+  destination?: {
+    readonly destinationPhaseId: string | null
+    readonly versionNumber: number | null
+  }
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
@@ -1555,23 +1560,178 @@ export async function duplicateProjectEstimate(
       throw new Error("Estimate version not found.")
     }
 
+    let destinationProjectId = projectId
+    if (destination?.destinationPhaseId) {
+      const [sourcePhase] = await access.db
+        .select({ familyId: projectFamilyPhases.familyId })
+        .from(projectFamilyPhases)
+        .where(eq(projectFamilyPhases.projectId, projectId))
+        .limit(1)
+      const [destinationPhase] = await access.db
+        .select({
+          familyId: projectFamilyPhases.familyId,
+          projectId: projectFamilyPhases.projectId,
+        })
+        .from(projectFamilyPhases)
+        .where(eq(projectFamilyPhases.id, destination.destinationPhaseId))
+        .limit(1)
+      if (!sourcePhase || destinationPhase?.familyId !== sourcePhase.familyId) {
+        throw new Error("Choose a phase in this project family.")
+      }
+      if (!destinationPhase.projectId) {
+        throw new Error(
+          "Activate the destination phase before copying an estimate."
+        )
+      }
+      destinationProjectId = destinationPhase.projectId
+    }
+    const changingPhase = destinationProjectId !== projectId
+    const destinationAccess = changingPhase
+      ? await estimateAccess(destinationProjectId, true)
+      : access
+    const estimateNumber = changingPhase
+      ? `${destinationAccess.projectNumber ?? "PROJECT"}-00`
+      : source.estimateNumber
     const priorVersions = await access.db
       .select({ versionNumber: projectEstimates.versionNumber })
       .from(projectEstimates)
       .where(
         and(
-          eq(projectEstimates.projectId, projectId),
-          eq(projectEstimates.estimateNumber, source.estimateNumber)
+          eq(projectEstimates.projectId, destinationProjectId),
+          eq(projectEstimates.estimateNumber, estimateNumber)
         )
       )
       .orderBy(desc(projectEstimates.versionNumber))
       .limit(1)
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
-    const versionNumber = (priorVersions[0]?.versionNumber ?? 0) + 1
+    const latestVersion = priorVersions[0]?.versionNumber ?? 0
+    if (latestVersion >= 9999) {
+      throw new Error(
+        "This project phase has reached the maximum estimate version number."
+      )
+    }
+    const versionNumber = destination?.versionNumber ?? latestVersion + 1
+    if (
+      !Number.isSafeInteger(versionNumber) ||
+      versionNumber <= latestVersion ||
+      versionNumber > 9999
+    ) {
+      throw new Error(
+        `Choose a version number between ${latestVersion + 1} and 9999.`
+      )
+    }
+    const destinationContacts = changingPhase
+      ? await access.db
+          .select()
+          .from(projectContacts)
+          .where(
+            and(
+              eq(projectContacts.projectId, destinationProjectId),
+              eq(projectContacts.active, true)
+            )
+          )
+          .orderBy(
+            desc(projectContacts.primaryContact),
+            asc(projectContacts.sortOrder)
+          )
+      : []
+    const clientSigners = destinationContacts
+      .filter((contact) => contact.contactType === "owner")
+      .map((contact) => ({
+        contactId: contact.id,
+        name: contact.displayName,
+        title: contact.role ?? "",
+        email: contact.email ?? "",
+        initials: signerInitials(contact.displayName),
+      }))
+    const clientSigner = clientSigners[0]
+    const companySigner = destinationContacts.find(
+      (contact) => contact.contactType === "internal"
+    )
+    const companySignerInitials = companySigner
+      ? signerInitials(companySigner.displayName)
+      : null
     const sourcePhases = await access.db.select().from(projectEstimateReportPhases)
       .where(and(eq(projectEstimateReportPhases.estimateId, sourceEstimateId), eq(projectEstimateReportPhases.projectId, projectId)))
     const phaseCopies = sourcePhases.map((phase) => ({ phase, id: crypto.randomUUID() }))
+    const header = access.db.insert(projectEstimates).values({
+      ...source,
+      id,
+      projectId: destinationProjectId,
+      estimateNumber,
+      versionNumber,
+      status: "draft",
+      estimateDate: now.slice(0, 10),
+      clientName: changingPhase
+        ? destinationAccess.projectClientName
+        : source.clientName,
+      clientMailingAddress: changingPhase
+        ? destinationAccess.projectMailingAddress
+        : source.clientMailingAddress,
+      clientSignerContactId: changingPhase
+        ? clientSigner?.contactId ?? null
+        : source.clientSignerContactId,
+      clientSignerName: changingPhase
+        ? clientSigner?.name ?? null
+        : source.clientSignerName,
+      clientSignerTitle: changingPhase
+        ? clientSigner?.title ?? null
+        : source.clientSignerTitle,
+      clientSignerEmail: changingPhase
+        ? clientSigner?.email ?? null
+        : source.clientSignerEmail,
+      clientSignersJson: changingPhase
+        ? JSON.stringify(clientSigners)
+        : source.clientSignersJson,
+      companySignerContactId: changingPhase
+        ? companySigner?.id ?? null
+        : source.companySignerContactId,
+      companySignerName: changingPhase
+        ? companySigner?.displayName ?? null
+        : source.companySignerName,
+      companySignerTitle: changingPhase
+        ? companySigner?.role ?? null
+        : source.companySignerTitle,
+      companySignerEmail: changingPhase
+        ? companySigner?.email ?? null
+        : source.companySignerEmail,
+      companySignerInitials: changingPhase
+        ? companySignerInitials
+        : source.companySignerInitials,
+      sourceSystem: "compass_revision",
+      sourceWorkbookId: changingPhase ? null : source.sourceWorkbookId,
+      sourceWorkbookUrl: changingPhase ? null : source.sourceWorkbookUrl,
+      sourceRevision:
+        `Duplicated from ${source.estimateNumber} version ${source.versionNumber}` +
+        ` on ${now.slice(0, 10)}`,
+      templateVersionId: changingPhase ? null : source.templateVersionId,
+      templateApplicationId: changingPhase ? null : source.templateApplicationId,
+      termsTemplateId: changingPhase ? null : source.termsTemplateId,
+      introductionTemplateId: changingPhase ? null : source.introductionTemplateId,
+      closingTemplateId: changingPhase ? null : source.closingTemplateId,
+      foxitStatus: "not_started",
+      foxitEnvelopeId: null,
+      foxitEmbeddedSessionUrl: null,
+      foxitPreparedSourceHash: null,
+      foxitPreparedAt: null,
+      signaturePackageUrl: null,
+      signatureRequestedAt: null,
+      signedAt: null,
+      acceptanceMethod: null,
+      acceptanceNote: null,
+      acceptanceEvidenceLabel: null,
+      acceptanceRecordedByName: null,
+      acceptedAt: null,
+      acceptedBy: null,
+      sageStatus: "not_ready",
+      sageRecordId: null,
+      lastSageSyncAt: null,
+      sourceHash: null,
+      createdBy: access.user.id,
+      createdAt: now,
+      updatedAt: now,
+    }).toSQL()
     const copyStatements: D1PreparedStatement[] = [
       access.rawDb
         .prepare(
@@ -1580,73 +1740,13 @@ export async function duplicateProjectEstimate(
            WHERE project_id = ? AND estimate_number = ?
              AND status IN ('draft', 'internal_review', 'signature_pending')`
         )
-        .bind(now, projectId, source.estimateNumber),
-      access.rawDb
-        .prepare(
-          `INSERT INTO project_estimates (
-             id, project_id, estimate_number, version_number, title, status,
-             estimate_date, client_name, client_mailing_address,
-             client_signer_contact_id,
-             client_signer_name, client_signer_title, client_signer_email,
-             client_signers_json,
-             company_signer_contact_id, company_signer_name,
-             company_signer_title, company_signer_email,
-             company_signer_initials,
-             source_system, source_workbook_id,
-             source_workbook_url, source_revision, template_version_id,
-             template_application_id, default_tax_entity_id, default_tax_code,
-             default_tax_name, default_tax_rate_basis_points, terms_template_id,
-             contract_terms, introduction_template_id, introduction_text,
-             closing_template_id, closing_text, client_report_mode,
-             direct_cost_cents, markup_cents, tax_cents,
-             builder_fee_base_cents, overhead_rate_basis_points,
-             overhead_cents, margin_rate_basis_points, margin_cents,
-             contingency_rate_basis_points, contingency_cents,
-             builder_fee_cents, estimate_total_cents,
-             foxit_status, foxit_envelope_id, signature_package_url,
-             signature_requested_at, signed_at, accepted_at, accepted_by,
-             sage_status, sage_record_id, last_sage_sync_at, source_hash,
-             created_by, created_at, updated_at
-           )
-           SELECT ?, project_id, estimate_number, ?, title, 'draft', ?,
-             client_name, client_mailing_address, client_signer_contact_id,
-             client_signer_name,
-             client_signer_title, client_signer_email, client_signers_json,
-             company_signer_contact_id, company_signer_name,
-             company_signer_title, company_signer_email,
-             company_signer_initials,
-             'compass_revision', source_workbook_id,
-             source_workbook_url, ?, template_version_id,
-             template_application_id, default_tax_entity_id, default_tax_code,
-             default_tax_name, default_tax_rate_basis_points, terms_template_id,
-             contract_terms, introduction_template_id, introduction_text,
-             closing_template_id, closing_text, client_report_mode,
-             direct_cost_cents, markup_cents, tax_cents,
-             builder_fee_base_cents, overhead_rate_basis_points,
-             overhead_cents, margin_rate_basis_points, margin_cents,
-             contingency_rate_basis_points, contingency_cents,
-             builder_fee_cents, estimate_total_cents,
-             'not_started', NULL, NULL, NULL, NULL, NULL, NULL,
-             'not_ready', NULL, NULL, NULL, ?, ?, ?
-           FROM project_estimates
-           WHERE id = ? AND project_id = ?`
-        )
-        .bind(
-          id,
-          versionNumber,
-          now.slice(0, 10),
-          `Duplicated from version ${source.versionNumber} on ${now.slice(0, 10)}`,
-          access.user.id,
-          now,
-          now,
-          sourceEstimateId,
-          projectId
-        ),
+        .bind(now, destinationProjectId, estimateNumber),
+      access.rawDb.prepare(header.sql).bind(...header.params),
       ...phaseCopies.map((copy) => access.rawDb.prepare(
         `INSERT INTO project_estimate_report_phases
          (id, project_id, estimate_id, division_code, name, description, itemize, sort_order, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).bind(copy.id, projectId, id, copy.phase.divisionCode, copy.phase.name, copy.phase.description, copy.phase.itemize ? 1 : 0, copy.phase.sortOrder, now, now)),
+      ).bind(copy.id, destinationProjectId, id, copy.phase.divisionCode, copy.phase.name, copy.phase.description, copy.phase.itemize ? 1 : 0, copy.phase.sortOrder, now, now)),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_lines (
@@ -1658,7 +1758,7 @@ export async function duplicateProjectEstimate(
              line_total_cents, owner_visible, include_in_builder_fee,
              sort_order, created_at, updated_at
            )
-           SELECT lower(hex(randomblob(16))), project_id, ?, template_line_id,
+           SELECT lower(hex(randomblob(16))), ?, ?, ${changingPhase ? "NULL" : "template_line_id"},
              report_phase_id,
              division_code, division_name, cost_code, cost_code_name,
              description, specifications, quantity, unit, unit_cost_cents,
@@ -1669,13 +1769,13 @@ export async function duplicateProjectEstimate(
            FROM project_estimate_lines
            WHERE estimate_id = ? AND project_id = ?`
         )
-        .bind(id, now, now, sourceEstimateId, projectId),
+        .bind(destinationProjectId, id, now, now, sourceEstimateId, projectId),
       // Remap atomically with fixed-size statements; phase count does not
       // consume D1's per-statement parameter budget.
       ...phaseCopies.map((copy) => access.rawDb.prepare(
         `UPDATE project_estimate_lines SET report_phase_id = ?
          WHERE estimate_id = ? AND project_id = ? AND report_phase_id = ?`
-      ).bind(copy.id, id, projectId, copy.phase.id)),
+      ).bind(copy.id, id, destinationProjectId, copy.phase.id)),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_line_cost_items (
@@ -1686,7 +1786,7 @@ export async function duplicateProjectEstimate(
              tax_code, tax_name, tax_rate_basis_points, tax_cents,
              line_total_cents, total_cost_cents, sort_order, created_at, updated_at
            )
-           SELECT lower(hex(randomblob(16))), cost_item.project_id, ?,
+           SELECT lower(hex(randomblob(16))), ?, ?,
              copied_line.id, cost_item.division_code, cost_item.division_name,
              cost_item.cost_code, cost_item.cost_code_name,
              cost_item.description, cost_item.quantity, cost_item.unit,
@@ -1708,7 +1808,7 @@ export async function duplicateProjectEstimate(
            WHERE cost_item.estimate_id = ? AND cost_item.project_id = ?
              AND cost_item.deleted_at IS NULL`
         )
-        .bind(id, now, now, id, sourceEstimateId, projectId),
+        .bind(destinationProjectId, id, now, now, id, sourceEstimateId, projectId),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_basis_documents (
@@ -1717,44 +1817,46 @@ export async function duplicateProjectEstimate(
              revision, drive_file_id, drive_url, notes, sort_order, created_at,
              updated_at
            )
-           SELECT lower(hex(randomblob(16))), project_id, ?, project_document_id,
-             document_type, title, document_date, revision, drive_file_id,
-             drive_url, notes, sort_order, ?, ?
+           SELECT lower(hex(randomblob(16))), ?, ?, ${changingPhase ? "NULL" : "project_document_id"},
+             document_type, title, document_date, revision,
+             ${changingPhase ? "NULL" : "drive_file_id"},
+             ${changingPhase ? "NULL" : "drive_url"}, notes, sort_order, ?, ?
            FROM project_estimate_basis_documents
            WHERE estimate_id = ? AND project_id = ?`
         )
-        .bind(id, now, now, sourceEstimateId, projectId),
+        .bind(destinationProjectId, id, now, now, sourceEstimateId, projectId),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_phase_descriptions (
              id, project_id, estimate_id, division_code, description,
              created_at, updated_at
            )
-           SELECT lower(hex(randomblob(16))), project_id, ?, division_code,
+           SELECT lower(hex(randomblob(16))), ?, ?, division_code,
              description, ?, ?
            FROM project_estimate_phase_descriptions
            WHERE estimate_id = ? AND project_id = ?`
         )
-        .bind(id, now, now, sourceEstimateId, projectId),
+        .bind(destinationProjectId, id, now, now, sourceEstimateId, projectId),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_acknowledgements (
              id, project_id, estimate_id, template_id, title, body,
              source_document_id, source_url, sort_order, created_at, updated_at
            )
-           SELECT lower(hex(randomblob(16))), project_id, ?, template_id, title,
-             body, source_document_id, source_url, sort_order, ?, ?
+           SELECT lower(hex(randomblob(16))), ?, ?, template_id, title,
+             body, ${changingPhase ? "NULL" : "source_document_id"},
+             ${changingPhase ? "NULL" : "source_url"}, sort_order, ?, ?
            FROM project_estimate_acknowledgements
            WHERE estimate_id = ? AND project_id = ?`
         )
-        .bind(id, now, now, sourceEstimateId, projectId),
+        .bind(destinationProjectId, id, now, now, sourceEstimateId, projectId),
     ]
     const copyResults = await access.rawDb.batch(copyStatements)
     if (copyResults.some((result) => !result.success)) {
       throw new Error("The estimate version copy did not complete.")
     }
 
-    revalidateEstimate(projectId)
+    revalidateEstimate(destinationProjectId)
     return { success: true, id }
   } catch (error) {
     return {
@@ -1762,7 +1864,7 @@ export async function duplicateProjectEstimate(
       error:
         error instanceof Error
           ? error.message
-          : "Unable to create the next estimate version.",
+          : "Unable to duplicate the estimate.",
     }
   }
 }

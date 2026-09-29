@@ -26,6 +26,7 @@ import {
   createProjectEstimateFromTemplate,
   type EstimateTemplateOption,
 } from "@/app/actions/estimate-templates"
+import type { ProjectFamilySummary } from "@/app/actions/project-families"
 
 import {
   addProjectEstimateBasisDocument,
@@ -189,10 +190,12 @@ export function ProjectEstimateWorkspacePanel({
   projectId,
   workspace,
   estimateTemplates,
+  family,
 }: {
   readonly projectId: string
   readonly workspace: ProjectEstimateWorkspace
   readonly estimateTemplates: readonly EstimateTemplateOption[]
+  readonly family: ProjectFamilySummary | null
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
@@ -836,6 +839,7 @@ export function ProjectEstimateWorkspacePanel({
               activeEstimate={estimate}
               canEdit={workspace.canEdit}
               canDelete={workspace.canDelete}
+              family={family}
             />
             <Button variant="outline" asChild>
               <Link
