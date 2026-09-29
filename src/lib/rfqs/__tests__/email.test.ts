@@ -29,12 +29,14 @@ describe("RFQ email", () => {
   it("includes RFQ scope and document links without requiring the portal", () => {
     const text = rfqEmailText(input)
     expect(text).toContain("Exterior walls")
+    expect(text).toContain("Division 10")
     expect(text).toContain("https://drive.google.com/file/d/abcdefghijk/view")
     expect(text).not.toContain("/preview/projects/")
   })
 
   it("escapes RFQ content in HTML", () => {
     const html = rfqEmailHtml(input)
+    expect(html).toContain("<th>Division</th>")
     expect(html).toContain("Framing &lt;scope&gt;")
     expect(html).toContain("Plan set")
     expect(html).toContain("href=\"https://drive.google.com/file/d/abcdefghijk/view\"")

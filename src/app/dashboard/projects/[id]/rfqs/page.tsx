@@ -14,7 +14,9 @@ import {
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import {
+  getProjectRfqCostCodeOptions,
   getProjectRfqs,
+  type ProjectRfqCostCodeOption,
   type ProjectRfqItem,
 } from "@/app/actions/project-operations"
 import {
@@ -122,7 +124,7 @@ function projectDisplayLabel(
 function rfqTaskDescription(rfq: ProjectRfqItem): string {
   const scopeLines = rfq.scopeItems.map((line) => {
     const coding = [
-      line.phaseCode ? `Phase: ${line.phaseCode}` : null,
+      line.phaseCode ? `Division: ${line.phaseCode}` : null,
       line.costCode ? `Cost code: ${line.costCode}` : null,
     ]
       .filter((value) => value !== null)
@@ -169,6 +171,7 @@ function RfqCard({
   taskAssigneeOptions,
   selectionOptions,
   selectionsSummary,
+  costCodeOptions,
   developerModeEnabled,
   bidWorkflow,
   canApproveBids,
@@ -185,6 +188,7 @@ function RfqCard({
   readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
+  readonly costCodeOptions: readonly ProjectRfqCostCodeOption[]
   readonly developerModeEnabled: boolean
   readonly bidWorkflow: ProjectRfqBidWorkflowItem | null
   readonly canApproveBids: boolean
@@ -232,6 +236,7 @@ function RfqCard({
               rfq={rfq}
               selectionOptions={selectionOptions}
               selectionsSummary={selectionsSummary}
+              costCodeOptions={costCodeOptions}
             />
           )}
           <ProjectRfqDuplicateDialog
@@ -395,17 +400,17 @@ function RfqCard({
 
       {rfq.scopeItems.length > 0 && (
         <div className="mt-3 overflow-hidden border bg-muted/10">
-          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_5rem_6rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_10rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
             <span>#</span>
             <span>Scope</span>
-            <span>Phase</span>
+            <span>Division</span>
             <span>Cost code</span>
             <span>Notes</span>
           </div>
           {rfq.scopeItems.map((line) => (
             <div
               key={`${rfq.id}-${line.lineNumber}`}
-              className="grid grid-cols-[2.5rem_minmax(0,1fr)_5rem_6rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs last:border-b-0"
+              className="grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_10rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs last:border-b-0"
             >
               <span className="font-medium">{line.lineNumber}</span>
               <span>{line.description}</span>
@@ -489,6 +494,7 @@ export default async function ProjectRfqsPage({
     taskAssigneeOptions,
     selectionsSummary,
     selectionOptions,
+    costCodeOptions,
     bidWorkspace,
     historicalWorkspace,
     emailDeliveries,
@@ -499,6 +505,7 @@ export default async function ProjectRfqsPage({
     getProjectTaskAssigneeOptions(id),
     getProjectSelections(id),
     getProjectSelectionOptions(id),
+    getProjectRfqCostCodeOptions(id),
     getProjectRfqBidWorkspace(id),
     showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
     getProjectRfqEmailDeliveries(id),
@@ -580,6 +587,7 @@ export default async function ProjectRfqsPage({
             recipientOptions={taskAssignees}
             selectionOptions={selectionOptions}
             selectionsSummary={selectionsSummary}
+            costCodeOptions={costCodeOptions}
           />
         </div>
 
@@ -620,6 +628,7 @@ export default async function ProjectRfqsPage({
               taskAssigneeOptions={taskAssignees}
               selectionOptions={selectionOptions}
               selectionsSummary={selectionsSummary}
+              costCodeOptions={costCodeOptions}
               developerModeEnabled={developerModeEnabled}
               bidWorkflow={
                 bidWorkspace.workflows.find(
