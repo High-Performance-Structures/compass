@@ -105,6 +105,7 @@ export function ContactMergeDialog({
                   <p><span className="font-medium">Archive:</span> {preview.sourceName}{preview.sourceEmail ? ` · ${preview.sourceEmail}` : ""}</p>
                   <p>{preview.peopleCount} people and {preview.projectContactCount} project contacts will be relinked.</p>
                   <p className="text-muted-foreground">Review any different phone, email, or address details before continuing; the survivor&apos;s fields stay unchanged.</p>
+                  {preview.retainedIdentityNotice ? <p className="text-muted-foreground">{preview.retainedIdentityNotice}</p> : null}
                 </div>
                 {preview.blockers.length > 0 ? (
                   <div className="space-y-1 text-destructive">

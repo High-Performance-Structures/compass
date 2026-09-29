@@ -37,6 +37,14 @@ function company(id: string, sageClientId: string | null = null): RecordRow {
   }
 }
 
+function vendor(id: string, sourceRecordId: string | null): RecordRow {
+  return {
+    id, name: "Imported vendor", email: null, category: "Subcontractor",
+    directoryStatus: "active", mergedIntoVendorId: null,
+    sageVendorId: null, sageVendorNumber: null, netsuiteId: null, sourceRecordId,
+  }
+}
+
 describe("contact duplicate merging", () => {
   const queues = new Map<string, RecordRow[][]>()
   const sql: string[] = []
@@ -118,6 +126,48 @@ describe("contact duplicate merging", () => {
     expect(rawDb.batch).not.toHaveBeenCalled()
   })
 
+  it("merges two Buildertrend-imported clients while retaining the archived ID", async () => {
+    setQueues(
+      { ...company("source"), buildertrendContactId: "34632719" },
+      { ...company("keep"), buildertrendContactId: "34632698" }
+    )
+    const preview = await previewContactMerge({
+      kind: "customer_company", sourceId: "source", destinationId: "keep",
+    })
+    expect(preview).toMatchObject({
+      success: true,
+      preview: {
+        blockers: [],
+        retainedIdentityNotice: expect.stringContaining("34632719"),
+      },
+    })
+    setQueues(
+      { ...company("source"), buildertrendContactId: "34632719" },
+      { ...company("keep"), buildertrendContactId: "34632698" }
+    )
+    const result = await mergeDuplicateContacts({
+      kind: "customer_company", sourceId: "source", destinationId: "keep",
+    })
+    expect(result).toEqual({ success: true, keptId: "keep" })
+    // The merge only archives the source; its Buildertrend ID stays in that row.
+    expect(sql.some((statement) => statement.includes("buildertrend_contact_id"))).toBe(false)
+  })
+
+  it("allows an imported vendor alias to be archived without discarding its source ID", async () => {
+    queues.set("vendors", [[vendor("source", "legacy-101")], [vendor("keep", "legacy-202")]])
+    queues.set("vendor_contacts", [[], []])
+    queues.set("project_contacts", [[], []])
+    queues.set("sage_contact_read_requests", [[]])
+    queues.set("sage_contact_change_proposals", [[]])
+    queues.set("sage_contact_create_proposals", [[]])
+    queues.set("sage_contact_snapshots", [[]])
+    const result = await mergeDuplicateContacts({
+      kind: "vendor_company", sourceId: "source", destinationId: "keep",
+    })
+    expect(result).toEqual({ success: true, keptId: "keep" })
+    expect(sql.some((statement) => statement.includes("source_record_id = NULL"))).toBe(false)
+  })
+
   it("archives the source, relinks people/projects, and records an immutable audit snapshot atomically", async () => {
     setQueues(company("source"), company("keep", "sage-guid"))
     queues.set("customer_contacts", [[{
@@ -166,6 +216,29 @@ describe("contact duplicate merging", () => {
     }
     expect(mocks.queueProjectContactTrackerRefresh).toHaveBeenCalledWith({
       db, organizationId: "org-1", projectId: "project-2",
+    })
+  })
+
+  it("allows a non-Sage imported person to merge within the same company", async () => {
+    queues.set("customer_contacts", [
+      [{ person: {
+        id: "source-person", name: "Chris", email: null, customerId: "company-1",
+        active: true, mergedIntoPersonId: null, userId: null, sageContactId: null,
+        sageLineNumber: null, sourceRecordId: "buildertrend-person-1",
+      }, company: { id: "company-1", mergedIntoCustomerId: null } }],
+      [{ person: {
+        id: "keep-person", name: "Chris Squires", email: null, customerId: "company-1",
+        active: true, mergedIntoPersonId: null, userId: null, sageContactId: null,
+        sageLineNumber: null, sourceRecordId: "buildertrend-person-2",
+      }, company: { id: "company-1", mergedIntoCustomerId: null } }],
+    ])
+    queues.set("project_contacts", [[], []])
+    const result = await previewContactMerge({
+      kind: "customer_person", sourceId: "source-person", destinationId: "keep-person",
+    })
+    expect(result).toMatchObject({
+      success: true,
+      preview: { blockers: [], retainedIdentityNotice: expect.stringContaining("imported person ID") },
     })
   })
 
