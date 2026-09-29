@@ -33,7 +33,8 @@ export async function assertActiveInternalOrganization(
 ): Promise<void> {
   if (
     !user.isActive ||
-    user.organizationType !== "internal" ||
+    (user.organizationType !== "internal" &&
+      user.organizationType !== "demo") ||
     !user.organizationId
   ) {
     throw new Error("Active internal organization is required")
@@ -71,7 +72,10 @@ export async function getProjectAccessRecord(
     .get()
   if (!organization) return null
 
-  if (isInternalStaffRole(user.role) && user.organizationType === "internal") {
+  if (
+    isInternalStaffRole(user.role) &&
+    (user.organizationType === "internal" || user.organizationType === "demo")
+  ) {
     const project = await db
       .select({
         id: projects.id,

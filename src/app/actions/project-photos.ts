@@ -80,7 +80,8 @@ async function verifyProjectAccess(
   const user = await requireAuth()
   if (
     !user.isActive ||
-    user.organizationType !== "internal" ||
+    (user.organizationType !== "internal" &&
+      user.organizationType !== "demo") ||
     !isInternalStaffRole(user.role)
   ) {
     throw new Error("Project photo access requires active internal staff")

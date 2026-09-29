@@ -82,7 +82,8 @@ export async function GET(
     }
 
     const viewerIsInternal =
-      user.organizationType === "internal" && isInternalStaffRole(user.role)
+      (user.organizationType === "internal" || user.organizationType === "demo") &&
+      isInternalStaffRole(user.role)
     if (!viewerIsInternal) {
       if (audience === null) {
         return new Response("Photo not found", { status: 404 })

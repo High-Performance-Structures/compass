@@ -49,7 +49,8 @@ export async function GET(
       return new Response("Video not found", { status: 404 })
     }
     const internal =
-      user.organizationType === "internal" && isInternalStaffRole(user.role)
+      (user.organizationType === "internal" || user.organizationType === "demo") &&
+      isInternalStaffRole(user.role)
     if (!internal) {
       if (!requestedAudience) {
         return new Response("Video not found", { status: 404 })

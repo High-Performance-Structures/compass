@@ -38,7 +38,8 @@ type AuthenticatedUser = Awaited<ReturnType<typeof requireAuth>>
 function assertActiveInternalStaff(user: AuthenticatedUser): void {
   if (
     !user.isActive ||
-    user.organizationType !== "internal" ||
+    (user.organizationType !== "internal" &&
+      user.organizationType !== "demo") ||
     !isInternalStaffRole(user.role)
   ) {
     throw new Error("Project video access requires active internal staff")

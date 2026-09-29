@@ -97,7 +97,8 @@ export async function POST(
       )
     }
     const viewerIsInternal =
-      user.organizationType === "internal" && isInternalStaffRole(user.role)
+      (user.organizationType === "internal" || user.organizationType === "demo") &&
+      isInternalStaffRole(user.role)
     if (viewerIsInternal) {
       await requireFeaturePermission(user, "warranty-claims", "update")
     }

@@ -337,7 +337,7 @@ export async function getProjectAudienceOptions(
   const user = await requireAuth()
   requirePermission(user, "project", "read")
   if (
-    user.organizationType === "internal" &&
+    (user.organizationType === "internal" || user.organizationType === "demo") &&
     isInternalStaffRole(user.role)
   ) {
     return []
@@ -393,7 +393,8 @@ async function verifyProjectAccess(
     throw new Error("Project organization is missing")
   }
   const viewerIsInternal =
-    user.organizationType === "internal" && isInternalStaffRole(user.role)
+    (user.organizationType === "internal" || user.organizationType === "demo") &&
+    isInternalStaffRole(user.role)
   if (!viewerIsInternal) {
     const membership = await db
       .select({ role: projectMembers.role })
