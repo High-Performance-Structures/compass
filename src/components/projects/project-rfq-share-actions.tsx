@@ -134,7 +134,7 @@ function printHtml({
             <tr>
               <th>#</th>
               <th>Description</th>
-              <th>Phase</th>
+              <th>Division</th>
               <th>Cost code</th>
               <th>Notes</th>
             </tr>

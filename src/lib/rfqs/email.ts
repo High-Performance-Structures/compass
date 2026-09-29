@@ -49,7 +49,7 @@ export function rfqEmailText(input: RfqEmailInput): string {
     ...input.lines.map((line) =>
       [
         `${line.lineNumber}. ${line.description}`,
-        line.phaseCode ? `Phase ${line.phaseCode}` : null,
+        line.phaseCode ? `Division ${line.phaseCode}` : null,
         line.costCode ? `Cost code ${line.costCode}` : null,
         line.notes,
       ].filter(Boolean).join(" · ")
@@ -91,7 +91,7 @@ export function rfqEmailHtml(input: RfqEmailInput): string {
       ${input.scope ? `<p>${escapeHtml(input.scope).replaceAll("\n", "<br>")}</p>` : ""}
       <h3>Requested scope</h3>
       <table style="border-collapse:collapse;width:100%;" border="1" cellpadding="6">
-        <thead><tr><th>#</th><th>Description</th><th>Phase</th><th>Cost code</th><th>Notes</th></tr></thead>
+        <thead><tr><th>#</th><th>Description</th><th>Division</th><th>Cost code</th><th>Notes</th></tr></thead>
         <tbody>${scopeRows}</tbody>
       </table>
       <h3>Plans and specifications · viewer links</h3>
