@@ -86,6 +86,9 @@ async function verifyProjectAccess(
   ) {
     throw new Error("Project photo access requires active internal staff")
   }
+  if (action === "update" && isDemoUser(user.id)) {
+    throw new Error("Demo mode is read-only")
+  }
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   await assertActiveInternalOrganization(db, user)

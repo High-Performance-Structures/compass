@@ -14,6 +14,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { isDemoUser } from "@/lib/demo"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
 import {
   getYoutubeOAuthConfig,
@@ -92,6 +93,9 @@ async function projectVideoDb(
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
   assertActiveInternalStaff(user)
+  if (action === "update" && isDemoUser(user.id)) {
+    throw new Error("Demo mode is read-only")
+  }
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
