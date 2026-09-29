@@ -3,9 +3,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { getDb } from "@/db"
-import { projects, users } from "@/db/schema"
+import { organizations, projects, users } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { decrypt } from "@/lib/crypto"
 import {
   getGoogleConfig,
@@ -34,6 +34,9 @@ export async function GET(
     // External users must use project-specific download routes that verify
     // membership and record visibility before resolving a storage ID.
     if (
+      !user.isActive ||
+      user.organizationType !== "internal" ||
+      !user.organizationId ||
       !isInternalStaffRole(user.role) ||
       !can(user, "document", "read")
     ) {
@@ -49,9 +52,25 @@ export async function GET(
     const config = getGoogleConfig(envRecord)
     const db = getDb(env.DB)
 
+    const organization = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(
+        and(
+          eq(organizations.id, user.organizationId),
+          eq(organizations.isActive, true)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!organization) {
+      return new Response("File not found", { status: 404 })
+    }
+
     const auth = await db
       .select()
       .from(googleAuth)
+      .where(eq(googleAuth.organizationId, user.organizationId))
       .limit(1)
       .then(rows => rows[0] ?? null)
     if (!auth) {
