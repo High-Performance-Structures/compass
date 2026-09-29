@@ -48,7 +48,8 @@ export async function GET(
     if (!project.organizationId) {
       return new Response("Video not found", { status: 404 })
     }
-    const internal = isInternalStaffRole(user.role)
+    const internal =
+      user.organizationType === "internal" && isInternalStaffRole(user.role)
     if (!internal) {
       if (!requestedAudience) {
         return new Response("Video not found", { status: 404 })
@@ -95,6 +96,7 @@ export async function GET(
     // Keep this authenticated Compass URL stable so existing Daily Log links
     // also benefit from the compatible playback copy.
     if (
+      internal &&
       video.publishStatus === "published" &&
       video.youtubeUrl &&
       video.audience !== "staff" &&

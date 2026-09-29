@@ -46,7 +46,7 @@ export async function getProjectAccessRecord(
     .get()
   if (!organization) return null
 
-  if (isInternalStaffRole(user.role)) {
+  if (isInternalStaffRole(user.role) && user.organizationType === "internal") {
     const project = await db
       .select({
         id: projects.id,

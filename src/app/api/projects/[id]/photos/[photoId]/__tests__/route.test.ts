@@ -47,6 +47,8 @@ import { GET } from "../route"
 const baseUser = {
   id: "viewer-1",
   email: "viewer@example.com",
+  isActive: true,
+  organizationType: "internal",
   role: "client",
 } as const
 

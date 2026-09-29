@@ -261,7 +261,11 @@ export async function POST(
         { status: 403 }
       )
     }
-    if (!user.isActive || !isInternalStaffRole(user.role)) {
+    if (
+      !user.isActive ||
+      user.organizationType !== "internal" ||
+      !isInternalStaffRole(user.role)
+    ) {
       return NextResponse.json(
         { success: false, error: "Staff access is required to upload files." },
         { status: 403 }

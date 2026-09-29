@@ -17,6 +17,7 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
+  organizations,
   ownerProjectUpdates,
   projectContacts,
   projectMembers,
@@ -335,14 +336,33 @@ export async function getProjectAudienceOptions(
 ): Promise<readonly AudienceProjectOption[]> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
-  if (isInternalStaffRole(user.role)) return []
+  if (
+    user.organizationType === "internal" &&
+    isInternalStaffRole(user.role)
+  ) {
+    return []
+  }
+  if (!user.isActive || !user.organizationId) return []
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const [organization] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+  if (!organization) return []
+
   return loadAudienceProjectOptions({
     db,
     userId: user.id,
     audience,
+    organizationId: user.organizationId,
   })
 }
 
