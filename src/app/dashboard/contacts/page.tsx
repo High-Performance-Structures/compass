@@ -889,6 +889,13 @@ function ContactsContent() {
           setPeopleCustomer(null)
           setSageCreateTarget({ kind: "client_person", companyId: peopleCustomer.id, companyName: peopleCustomer.name })
         } : undefined}
+        onVerifySageCompany={directoryAccess?.canReadSageReview && peopleCustomer && !peopleCustomer.sageClientId ? () => {
+          setPeopleCustomer(null)
+          setSageLinkTarget({
+            kind: "client_company", entityId: peopleCustomer.id, name: peopleCustomer.name,
+            sageRecordNumber: peopleCustomer.sageClientNumber,
+          })
+        } : undefined}
         onLinkAccount={(person: CustomerDirectoryPerson) => {
           setPeopleCustomer(null)
           setAccountLinkTarget({ kind: "client_person", personId: person.id, name: person.name, userId: person.userId })
