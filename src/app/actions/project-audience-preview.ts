@@ -392,7 +392,8 @@ async function verifyProjectAccess(
   if (!project.organizationId) {
     throw new Error("Project organization is missing")
   }
-  const viewerIsInternal = isInternalStaffRole(user.role)
+  const viewerIsInternal =
+    user.organizationType === "internal" && isInternalStaffRole(user.role)
   if (!viewerIsInternal) {
     const membership = await db
       .select({ role: projectMembers.role })
