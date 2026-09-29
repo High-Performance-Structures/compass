@@ -75,6 +75,13 @@ async function verifyProjectAccess(
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
+  if (
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    !isInternalStaffRole(user.role)
+  ) {
+    throw new Error("Project photo access requires active internal staff")
+  }
   await requireFeaturePermission(user, "project-photos", action)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

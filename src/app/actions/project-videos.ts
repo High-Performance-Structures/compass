@@ -25,6 +25,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
@@ -74,6 +75,13 @@ async function projectVideoDb(
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
+  if (
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    !isInternalStaffRole(user.role)
+  ) {
+    throw new Error("Project video access requires active internal staff")
+  }
   await requireFeaturePermission(user, "project-photos", action)
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
