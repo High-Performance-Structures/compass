@@ -23,6 +23,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { assertActiveInternalOrganization } from "@/lib/project-access"
 import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,
   MAX_PHOTO_UPLOAD_FILE_BYTES,
@@ -287,6 +288,7 @@ export async function POST(
     })
     const config = getGoogleConfig(envRecord)
     const db = getDb(env.DB)
+    await assertActiveInternalOrganization(db, user)
 
     const [project] = await db
       .select({

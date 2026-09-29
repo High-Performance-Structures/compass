@@ -10,7 +10,10 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
-import { assertProjectAccess } from "@/lib/project-access"
+import {
+  assertActiveInternalOrganization,
+  assertProjectAccess,
+} from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -82,9 +85,10 @@ async function verifyProjectAccess(
   ) {
     throw new Error("Project photo access requires active internal staff")
   }
-  await requireFeaturePermission(user, "project-photos", action)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  await assertActiveInternalOrganization(db, user)
+  await requireFeaturePermission(user, "project-photos", action)
 
   await assertProjectAccess(db, user, projectId)
 

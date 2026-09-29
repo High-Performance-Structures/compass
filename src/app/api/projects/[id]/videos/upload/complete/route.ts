@@ -15,6 +15,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { assertActiveInternalOrganization } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import {
@@ -59,6 +60,9 @@ export async function POST(
     ) {
       throw new Error("Project video upload requires active internal staff")
     }
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    await assertActiveInternalOrganization(db, user)
     await requireFeaturePermission(user, "project-photos", "update")
     const body: unknown = await request.json()
     if (!isRecord(body)) {
@@ -117,8 +121,6 @@ export async function POST(
     if (!projectId) {
       return NextResponse.json({ success: false, error: "Project not found." }, { status: 404 })
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const [project] = await db
       .select({
         id: projects.id,

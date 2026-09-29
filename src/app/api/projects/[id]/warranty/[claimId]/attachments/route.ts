@@ -96,7 +96,8 @@ export async function POST(
         { status: 404 }
       )
     }
-    const viewerIsInternal = isInternalStaffRole(user.role)
+    const viewerIsInternal =
+      user.organizationType === "internal" && isInternalStaffRole(user.role)
     if (viewerIsInternal) {
       await requireFeaturePermission(user, "warranty-claims", "update")
     }

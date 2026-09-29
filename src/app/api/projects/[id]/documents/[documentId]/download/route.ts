@@ -38,7 +38,8 @@ export async function GET(
     const db = getDb(env.DB)
     await assertProjectAccess(db, user, projectId)
 
-    const viewerIsInternal = isInternalStaffRole(user.role)
+    const viewerIsInternal =
+      user.organizationType === "internal" && isInternalStaffRole(user.role)
     if (!viewerIsInternal) {
       const membership = await db
         .select({ role: projectMembers.role })

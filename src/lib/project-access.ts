@@ -27,6 +27,31 @@ export function usesOrganizationProjectScope(
   )
 }
 
+export async function assertActiveInternalOrganization(
+  db: Db,
+  user: AuthUser
+): Promise<void> {
+  if (
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    !user.organizationId
+  ) {
+    throw new Error("Active internal organization is required")
+  }
+  const organization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) throw new Error("Active internal organization is required")
+}
+
 export async function getProjectAccessRecord(
   db: Db,
   user: AuthUser,

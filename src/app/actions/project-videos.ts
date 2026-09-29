@@ -24,7 +24,10 @@ import {
 } from "@/lib/google/youtube"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+import {
+  assertActiveInternalOrganization,
+  assertProjectAccess,
+} from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
@@ -88,10 +91,11 @@ async function projectVideoDb(
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
   assertActiveInternalStaff(user)
-  await requireFeaturePermission(user, "project-photos", action)
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  await assertActiveInternalOrganization(db, user)
+  await requireFeaturePermission(user, "project-photos", action)
   await assertProjectAccess(db, user, projectId)
   const [project] = await db
     .select({ id: projects.id })
