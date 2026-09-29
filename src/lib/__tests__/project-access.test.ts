@@ -86,6 +86,20 @@ describe("project access organization boundaries", () => {
     sqlite.close()
   })
 
+  it("rejects an active same-organization user without project membership", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAccessRecord(getDb(), baseUser, "project-a")
+
+    expect(access).toBeNull()
+    sqlite.close()
+  })
+
   it("rejects membership in an inactive organization", async () => {
     const sqlite = openDatabase()
     sqlite.exec(`

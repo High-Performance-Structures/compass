@@ -93,6 +93,19 @@ export async function getProjectAccessRecord(
     return targetOrganization ? project : null
   }
 
+  const membership = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, user.id)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!membership) return null
+
   const project = await db
     .select({
       id: projects.id,
