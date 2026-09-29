@@ -3,16 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   assertOwnerUpdateRouteAccess: vi.fn(),
-  assertProjectAccess: vi.fn(),
+  assertOwnerUpdateProjectAccess: vi.fn(),
   requireFeaturePermission: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/owner-updates/access", () => ({
+  assertOwnerUpdateProjectAccess: mocks.assertOwnerUpdateProjectAccess,
   assertOwnerUpdateRouteAccess: mocks.assertOwnerUpdateRouteAccess,
-}))
-vi.mock("@/lib/project-access", () => ({
-  assertProjectAccess: mocks.assertProjectAccess,
 }))
 vi.mock("@/lib/permission-enforcement", () => ({
   requireFeaturePermission: mocks.requireFeaturePermission,
@@ -103,7 +101,7 @@ function createQueryDatabase(): QueryDatabase {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.assertOwnerUpdateRouteAccess.mockResolvedValue({})
-  mocks.assertProjectAccess.mockResolvedValue({
+  mocks.assertOwnerUpdateProjectAccess.mockResolvedValue({
     id: "project-1",
     organizationId: "org-1",
     projectNumber: "P-001",
@@ -149,7 +147,7 @@ describe("project field read authorization", () => {
       "daily-logs",
       "read"
     )
-    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.assertOwnerUpdateProjectAccess).not.toHaveBeenCalled()
     expect(database.select).not.toHaveBeenCalled()
   })
 
@@ -174,7 +172,7 @@ describe("project field read authorization", () => {
         "daily-logs",
         "read"
       )
-      expect(mocks.assertProjectAccess).toHaveBeenCalledWith(
+      expect(mocks.assertOwnerUpdateProjectAccess).toHaveBeenCalledWith(
         database,
         { ...internalUser, role },
         "project-1"

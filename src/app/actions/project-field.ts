@@ -43,12 +43,15 @@ import {
   ownerUpdateTodoTiming,
 } from "@/lib/owner-updates/composer"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
-import { assertOwnerUpdateRouteAccess } from "@/lib/owner-updates/access"
+import {
+  assertOwnerUpdateProjectAccess,
+  assertOwnerUpdateRouteAccess,
+} from "@/lib/owner-updates/access"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+
 import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
@@ -603,7 +606,7 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   const viewer = await requireAuth()
   const db = await assertOwnerUpdateRouteAccess(viewer)
   await requireFeaturePermission(viewer, "owner-updates", "read")
-  await assertProjectAccess(db, viewer, projectId)
+  await assertOwnerUpdateProjectAccess(db, viewer, projectId)
   return { db, viewer }
 }
 
@@ -621,7 +624,7 @@ async function verifyProjectMutationAccess(
   }
   const db = await assertOwnerUpdateRouteAccess(user)
   await requireFeaturePermission(user, featureId, "update")
-  await assertProjectAccess(db, user, projectId)
+  await assertOwnerUpdateProjectAccess(db, user, projectId)
 
   return { db, userId: user.id, user }
 }
@@ -662,7 +665,7 @@ async function verifyDailyLogStaffMutationAccess(
   }
   const db = await assertOwnerUpdateRouteAccess(user)
   await requireFeaturePermission(user, "daily-logs", "update")
-  await assertProjectAccess(db, user, projectId)
+  await assertOwnerUpdateProjectAccess(db, user, projectId)
 
   return { db, userId: user.id }
 }
@@ -1039,7 +1042,7 @@ export async function getProjectFieldSummary(
   const viewer = await requireAuth()
   const db = await assertOwnerUpdateRouteAccess(viewer)
   await requireFeaturePermission(viewer, "daily-logs", "read")
-  await assertProjectAccess(db, viewer, projectId)
+  await assertOwnerUpdateProjectAccess(db, viewer, projectId)
   const today = new Date().toISOString().slice(0, 10)
 
   const logRows = await db
@@ -1302,7 +1305,7 @@ export async function getProjectDailyLogWorkspace(
     allowDeveloperRead: true,
   })
   await requireFeaturePermission(viewer, "daily-logs", "read")
-  await assertProjectAccess(db, viewer, projectId)
+  await assertOwnerUpdateProjectAccess(db, viewer, projectId)
 
   const [project] = await db
     .select({
@@ -1809,7 +1812,7 @@ export async function getProjectWeatherSnapshot(
     const viewer = await requireAuth()
     const db = await assertOwnerUpdateRouteAccess(viewer)
     await requireFeaturePermission(viewer, "daily-logs", "read")
-    await assertProjectAccess(db, viewer, projectId)
+    await assertOwnerUpdateProjectAccess(db, viewer, projectId)
     const [project] = await db
       .select({
         address: projects.address,

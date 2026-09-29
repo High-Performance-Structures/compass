@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { organizations } from "@/db/schema"
+import { organizations, projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import type { ProjectAccessRecord } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 type OwnerUpdateRouteAccessOptions = {
@@ -48,4 +49,35 @@ export async function assertOwnerUpdateRouteAccess(
   }
 
   return db
+}
+
+export async function assertOwnerUpdateProjectAccess(
+  db: ReturnType<typeof getDb>,
+  user: AuthUser,
+  projectId: string
+): Promise<ProjectAccessRecord> {
+  if (!user.organizationId) {
+    throw new Error("Project not found")
+  }
+
+  const [project] = await db
+    .select({
+      id: projects.id,
+      organizationId: projects.organizationId,
+      projectNumber: projects.projectNumber,
+    })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.organizationId, user.organizationId)
+      )
+    )
+    .limit(1)
+
+  if (!project) {
+    throw new Error("Project not found")
+  }
+
+  return project
 }

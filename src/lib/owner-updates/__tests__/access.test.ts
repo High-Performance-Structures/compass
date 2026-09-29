@@ -32,7 +32,10 @@ type Database = {
   readonly select: ReturnType<typeof vi.fn>
 }
 
-const { assertOwnerUpdateRouteAccess } = await import("@/lib/owner-updates/access")
+const {
+  assertOwnerUpdateProjectAccess,
+  assertOwnerUpdateRouteAccess,
+} = await import("@/lib/owner-updates/access")
 
 const developerUser = {
   id: "developer-1",
@@ -52,13 +55,14 @@ const developerUser = {
   updatedAt: "2026-09-28T00:00:00.000Z",
 }
 
-function createDatabase(): Database {
+function createDatabase(
+  rows: readonly OrganizationRow[] = [{ id: "org-1" }]
+): Database {
   const query: Query = {
     from: () => query,
     where: () => query,
     limit: () => query,
-    then: (onfulfilled, onrejected) =>
-      Promise.resolve([{ id: "org-1" }]).then(onfulfilled, onrejected),
+    then: (onfulfilled, onrejected) => Promise.resolve(rows).then(onfulfilled, onrejected),
   }
   return { select: vi.fn(() => query) }
 }
@@ -69,6 +73,15 @@ beforeEach(() => {
 })
 
 describe("owner update route access", () => {
+  it("requires the requested project to belong to the active organization", async () => {
+    const database = createDatabase([])
+    mocks.getDb.mockReturnValue(database)
+
+    await expect(
+      assertOwnerUpdateProjectAccess(mocks.getDb(), developerUser, "project-2")
+    ).rejects.toThrow("Project not found")
+  })
+
   it("allows a developer only for the explicit daily-log read contract", async () => {
     const database = createDatabase()
     mocks.getDb.mockReturnValue(database)

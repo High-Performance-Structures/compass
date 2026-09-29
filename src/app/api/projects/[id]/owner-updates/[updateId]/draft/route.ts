@@ -4,7 +4,10 @@ import {
   updateOwnerProjectUpdateDraft,
 } from "@/app/actions/project-field"
 import { requireAuth } from "@/lib/auth"
-import { assertOwnerUpdateRouteAccess } from "@/lib/owner-updates/access"
+import {
+  assertOwnerUpdateProjectAccess,
+  assertOwnerUpdateRouteAccess,
+} from "@/lib/owner-updates/access"
 import { parseOwnerUpdateDraftWrite } from "@/lib/owner-updates/draft-recovery"
 import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
@@ -29,8 +32,9 @@ export async function PUT(
     )
   }
 
+  let db: Awaited<ReturnType<typeof assertOwnerUpdateRouteAccess>>
   try {
-    await assertOwnerUpdateRouteAccess(user)
+    db = await assertOwnerUpdateRouteAccess(user)
   } catch (error) {
     return Response.json(
       {
@@ -65,6 +69,17 @@ export async function PUT(
   const { id: rawProjectId, updateId } = await params
   const id = await resolveProjectRouteId(rawProjectId)
   if (!id) return Response.json({ success: false, error: "Project not found." }, { status: 404 })
+  try {
+    await assertOwnerUpdateProjectAccess(db, user, id)
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Project not found.",
+      },
+      { status: 403 }
+    )
+  }
   const intent =
     new URL(request.url).searchParams.get("intent") === "publish"
       ? "publish"

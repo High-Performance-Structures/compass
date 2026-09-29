@@ -221,6 +221,12 @@ function createDatabase(): {
       name TEXT NOT NULL,
       project_number TEXT
     );
+    CREATE TABLE project_members (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL
+    );
     CREATE TABLE owner_project_updates (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
@@ -570,6 +576,14 @@ describe("owner update mutation authorization and fencing", () => {
       "Project Two",
       "P-002"
     )
+    run(
+      sqlite,
+      "INSERT INTO project_members (id, project_id, user_id, role) VALUES (?, ?, ?, ?)",
+      "membership-2",
+      "project-2",
+      "staff-1",
+      "office"
+    )
 
     const results = await Promise.all([
       draftOwnerUpdateFromDailyLogs("project-2", { dailyLogIds: ["log-1"] }),
@@ -586,6 +600,12 @@ describe("owner update mutation authorization and fencing", () => {
       { success: false, error: "Project not found" },
       { success: false, error: "Project not found" },
     ])
+    await expect(getProjectOwnerUpdates("project-2")).rejects.toThrow(
+      "Project not found"
+    )
+    await expect(getOwnerUpdateProjectHeader("project-2")).rejects.toThrow(
+      "Project not found"
+    )
     expect(mocks.relayAgentRequest).not.toHaveBeenCalled()
   })
 

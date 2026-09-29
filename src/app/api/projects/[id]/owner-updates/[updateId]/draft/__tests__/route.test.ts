@@ -20,6 +20,7 @@ type PersistInput = {
 const mocks = {
   requireAuth: vi.fn(),
   assertOwnerUpdateRouteAccess: vi.fn(),
+  assertOwnerUpdateProjectAccess: vi.fn(),
   resolveProjectRouteId: vi.fn(),
   persistOwnerUpdateDraft: vi.fn(),
   publishOwnerProjectUpdate: vi.fn(),
@@ -28,6 +29,7 @@ const mocks = {
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/owner-updates/access", () => ({
+  assertOwnerUpdateProjectAccess: mocks.assertOwnerUpdateProjectAccess,
   assertOwnerUpdateRouteAccess: mocks.assertOwnerUpdateRouteAccess,
 }))
 vi.mock("@/lib/project-route-id", () => ({
@@ -61,7 +63,8 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuth.mockResolvedValue({ id: "user-1" })
-    mocks.assertOwnerUpdateRouteAccess.mockResolvedValue(undefined)
+    mocks.assertOwnerUpdateRouteAccess.mockResolvedValue("database")
+    mocks.assertOwnerUpdateProjectAccess.mockResolvedValue(undefined)
     mocks.resolveProjectRouteId.mockResolvedValue("project-1")
     mocks.updateOwnerProjectUpdateDraft.mockResolvedValue({
       success: true,
@@ -136,6 +139,28 @@ describe("PUT /api/projects/[id]/owner-updates/[updateId]/draft", () => {
 
     expect(response.status).toBe(403)
     expect(mocks.resolveProjectRouteId).not.toHaveBeenCalled()
+    expect(mocks.persistOwnerUpdateDraft).not.toHaveBeenCalled()
+  })
+
+  it("denies a project outside the active organization before persistence", async () => {
+    mocks.assertOwnerUpdateProjectAccess.mockRejectedValue(
+      new Error("Project not found")
+    )
+
+    const response = await PUT(
+      new Request(
+        "https://compass.example/api/projects/project-1/owner-updates/update-1/draft",
+        { method: "PUT", body: JSON.stringify(versionedLegacyDraft) }
+      ),
+      { params: Promise.resolve({ id: "project-1", updateId: "update-1" }) }
+    )
+
+    expect(response.status).toBe(403)
+    expect(mocks.assertOwnerUpdateProjectAccess).toHaveBeenCalledWith(
+      "database",
+      { id: "user-1" },
+      "project-1"
+    )
     expect(mocks.persistOwnerUpdateDraft).not.toHaveBeenCalled()
   })
 
