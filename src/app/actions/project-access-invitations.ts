@@ -23,6 +23,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { sendCompassEmail } from "@/lib/email/compass-email"
+import { sendOrResendProjectWorkOSInvitation } from "@/lib/workos-invitations"
 import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
@@ -562,11 +563,9 @@ export async function sendProjectAccessInvitation(
       if (!workosApiKey || workosApiKey.includes("placeholder")) {
         return { success: false, error: "WorkOS invitations are not configured." }
       }
-      const { WorkOS } = await import("@workos-inc/node")
-      const workos = new WorkOS(workosApiKey)
-      const invitation = await workos.userManagement.sendInvitation({
+      const invitation = await sendOrResendProjectWorkOSInvitation({
+        apiKey: workosApiKey,
         email: inviteEmail,
-        expiresInDays: 14,
       })
       workosInvitationId = invitation.id
       workosExpiresAt = invitation.expiresAt
