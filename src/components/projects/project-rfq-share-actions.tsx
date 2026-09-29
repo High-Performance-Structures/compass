@@ -324,7 +324,7 @@ export function ProjectRfqShareActions({
         ) : (
           <IconCopy className="size-4" />
         )}
-        Link
+        Copy portal link
       </Button>
       <Button type="button" variant="outline" size="sm" onClick={copyEmail} disabled={requiresTemplateReview}>
         {copied === "email" ? (
@@ -332,7 +332,7 @@ export function ProjectRfqShareActions({
         ) : (
           <IconMail className="size-4" />
         )}
-        Email
+        Copy email
       </Button>
       <Button type="button" variant="outline" size="sm" onClick={copyHtmlEmail} disabled={requiresTemplateReview}>
         {copied === "html" ? (
@@ -340,7 +340,7 @@ export function ProjectRfqShareActions({
         ) : (
           <IconSparkles className="size-4" />
         )}
-        HTML
+        Copy HTML
       </Button>
       {shareError && (
         <span role="alert" className="basis-full text-xs text-destructive">
