@@ -15,6 +15,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import {
   isProjectVideoFile,
@@ -50,6 +51,15 @@ export async function POST(
   { params }: { readonly params: Promise<{ readonly id: string }> }
 ): Promise<Response> {
   try {
+    const user = await requireAuth()
+    if (
+      !user.isActive ||
+      user.organizationType !== "internal" ||
+      !isInternalStaffRole(user.role)
+    ) {
+      throw new Error("Project video upload requires active internal staff")
+    }
+    await requireFeaturePermission(user, "project-photos", "update")
     const body: unknown = await request.json()
     if (!isRecord(body)) {
       return NextResponse.json(
@@ -101,8 +111,6 @@ export async function POST(
       )
     }
 
-    const user = await requireAuth()
-    await requireFeaturePermission(user, "project-photos", "update")
     const organizationId = requireOrg(user)
     const { id: rawProjectId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
