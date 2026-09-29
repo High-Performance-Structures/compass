@@ -24,6 +24,7 @@ import {
 } from "@/lib/google/youtube"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { assertProjectAccess } from "@/lib/project-access"
 import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
@@ -77,6 +78,7 @@ async function projectVideoDb(
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  await assertProjectAccess(db, user, projectId)
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)

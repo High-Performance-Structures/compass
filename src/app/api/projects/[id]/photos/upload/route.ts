@@ -302,7 +302,11 @@ export async function POST(
       )
     }
 
-    const [auth] = await db.select().from(googleAuth).limit(1)
+    const [auth] = await db
+      .select()
+      .from(googleAuth)
+      .where(eq(googleAuth.organizationId, organizationId))
+      .limit(1)
     if (!auth) {
       return NextResponse.json(
         { success: false, error: "Google Drive is not connected." },

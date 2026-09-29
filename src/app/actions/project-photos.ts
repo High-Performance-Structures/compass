@@ -11,6 +11,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -76,20 +77,10 @@ async function verifyProjectAccess(
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
   await requireFeaturePermission(user, "project-photos", action)
-  const orgId = requireOrg(user)
-
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
+  await assertProjectAccess(db, user, projectId)
 
   return db
 }
