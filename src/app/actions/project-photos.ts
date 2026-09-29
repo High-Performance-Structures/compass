@@ -278,23 +278,7 @@ export async function updateProjectPhotoPhase(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    await requireFeaturePermission(user, "project-photos", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
+    const db = await verifyProjectAccess(projectId, "update")
 
     const normalizedPhase = phase.trim() === "unassigned" ? "" : phase.trim()
 
@@ -333,23 +317,7 @@ export async function updateProjectPhotoPermissions(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    await requireFeaturePermission(user, "project-photos", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
+    const db = await verifyProjectAccess(projectId, "update")
 
     const photoIds = [...new Set(input.photoIds)].filter(
       (id) => id.trim().length > 0
