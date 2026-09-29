@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-14"
+  "lastReviewed": "2026-09-29"
 }
 ---
 
@@ -53,6 +53,11 @@ the existing number to the canonical family phase number, the old number is
 retained as a historical alias and the Drive/tracker update workflow is queued.
 Only use this path when the existing project is genuinely a separately funded
 scope within the same overall project family.
+
+From an estimate, use **Duplicate estimate** to copy it into another activated
+phase in the same family. Leave the new version number blank to use the next
+available version. Planned phases need a Compass project before they can hold
+an estimate.
 
 ## Review Duplicate Projects and Registry Cleanup {#duplicate-projects}
 
