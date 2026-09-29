@@ -15,7 +15,9 @@ import {
   createCustomerDirectoryContact,
   type CustomerRelationshipType,
 } from "@/app/actions/customers"
+import { saveCustomerDirectoryPerson } from "@/app/actions/customer-people"
 import {
+  getProjectContactDirectoryOptions,
   removeProjectContact,
   saveProjectContact,
   type ProjectContactCostCodeOption,
@@ -74,6 +76,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { PROJECT_WORKFLOW_ROLE_LENSES } from "@/lib/project-workflow-roles"
+import { findExistingNamedPerson } from "@/lib/customer-person-match"
 import { cn } from "@/lib/utils"
 
 const CUSTOM_PROJECT_ROLE_VALUE = "custom-project-role"
@@ -230,7 +233,7 @@ function DirectoryPicker({
                 {group.options.map((option) => (
                   <CommandItem
                     key={`${option.sourceType}:${option.id}`}
-                    value={`${option.displayName} ${option.companyName ?? ""} ${option.email ?? ""}`}
+                    value={`${option.displayName} ${option.companyName ?? ""} ${option.email ?? ""} ${option.customerContacts.map((person) => `${person.name} ${person.email ?? ""}`).join(" ")}`}
                     disabled={option.alreadyOnProject}
                     onSelect={() => {
                       onSelect(option)
@@ -393,6 +396,11 @@ export function ProjectContactEditor({
   )
   const [input, setInput] = useState(() => initialInput(projectId, contact))
   const [showNewCustomer, setShowNewCustomer] = useState(false)
+  const [showNewCustomerPerson, setShowNewCustomerPerson] = useState(false)
+  const [newCustomerPersonName, setNewCustomerPersonName] = useState("")
+  const [newCustomerPersonEmail, setNewCustomerPersonEmail] = useState("")
+  const [newCustomerPersonPhone, setNewCustomerPersonPhone] = useState("")
+  const [directoryLoading, setDirectoryLoading] = useState(false)
   const [newCustomerName, setNewCustomerName] = useState("")
   const [newCustomerCompany, setNewCustomerCompany] = useState("")
   const [newCustomerEmail, setNewCustomerEmail] = useState("")
@@ -468,6 +476,10 @@ export function ProjectContactEditor({
       setAvailableDirectoryOptions(directoryOptions)
       setDirectoryOpenKey(null)
       setShowNewCustomer(false)
+      setShowNewCustomerPerson(false)
+      setNewCustomerPersonName("")
+      setNewCustomerPersonEmail("")
+      setNewCustomerPersonPhone("")
       setNewCustomerName("")
       setNewCustomerCompany("")
       setNewCustomerEmail("")
@@ -483,6 +495,18 @@ export function ProjectContactEditor({
       setCustomRoleSelected(
         Boolean(contact?.role && !isPresetProjectRole(contact.role))
       )
+      void refreshDirectory()
+    }
+  }
+
+  async function refreshDirectory(): Promise<void> {
+    setDirectoryLoading(true)
+    try {
+      setAvailableDirectoryOptions(await getProjectContactDirectoryOptions(projectId))
+    } catch {
+      toast.error("Could not refresh the contact directory. The saved list is still available.")
+    } finally {
+      setDirectoryLoading(false)
     }
   }
 
@@ -695,6 +719,58 @@ export function ProjectContactEditor({
           ? "Existing client/lead contact selected."
           : "Client/lead contact added to Contacts and selected."
       )
+    })
+  }
+
+  function addCustomerPerson(): void {
+    if (!selectedCustomer || !newCustomerPersonName.trim()) return
+    const name = newCustomerPersonName.trim()
+    const email = newCustomerPersonEmail.trim().toLowerCase()
+    const existing = findExistingNamedPerson(selectedCustomer.customerContacts, name)
+    if (existing) {
+      applyCustomerContact(existing.id)
+      setShowNewCustomerPerson(false)
+      toast.info("This person already exists and was selected.")
+      return
+    }
+    startTransition(async () => {
+      const result = await saveCustomerDirectoryPerson(selectedCustomer.id, null, {
+        name,
+        title: "",
+        email,
+        phone: newCustomerPersonPhone,
+        isPrimary: selectedCustomer.customerContacts.length === 0,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      const person = {
+        id: result.id,
+        name,
+        title: null,
+        email: email || null,
+        phone: newCustomerPersonPhone.trim() || null,
+        isPrimary: selectedCustomer.customerContacts.length === 0,
+        identityManagedByActiveUser: false,
+      }
+      setAvailableDirectoryOptions((current) => current.map((option) =>
+        option.sourceType === "customer" && option.id === selectedCustomer.id
+          ? { ...option, customerContacts: [...option.customerContacts, person] }
+          : option
+      ))
+      setInput((current) => ({
+        ...current,
+        customerContactId: person.id,
+        displayName: person.name,
+        email: person.email ?? "",
+        phone: person.phone ?? "",
+      }))
+      setNewCustomerPersonName("")
+      setNewCustomerPersonEmail("")
+      setNewCustomerPersonPhone("")
+      setShowNewCustomerPerson(false)
+      toast.success("Person saved in Contacts and selected for this project.")
     })
   }
 
@@ -1052,9 +1128,11 @@ export function ProjectContactEditor({
                     searchPlaceholder="Search client and lead contacts..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Choose from {customerOptions.length} client and lead contacts.
-                    Selection does not grant project access.
+                    Choose the client company, then a named person. Selection does not grant project access.
                   </p>
+                  <Button type="button" size="sm" variant="ghost" className="w-fit" disabled={directoryLoading} onClick={() => void refreshDirectory()}>
+                    {directoryLoading ? "Refreshing…" : "Refresh directory"}
+                  </Button>
                 </div>
                 {selectedCustomer && (
                   <div className="grid gap-2 border-t pt-4">
@@ -1085,6 +1163,17 @@ export function ProjectContactEditor({
                       owner contact. Existing company-linked invitation behavior
                       remains available until legacy contacts are reconciled.
                     </p>
+                    {showNewCustomerPerson ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input value={newCustomerPersonName} onChange={(event) => setNewCustomerPersonName(event.target.value)} placeholder="Person name" aria-label="Person name" />
+                        <Input type="email" value={newCustomerPersonEmail} onChange={(event) => setNewCustomerPersonEmail(event.target.value)} placeholder="Email" aria-label="Person email" />
+                        <Input type="tel" value={newCustomerPersonPhone} onChange={(event) => setNewCustomerPersonPhone(event.target.value)} placeholder="Phone" aria-label="Person phone" />
+                        <div className="flex gap-2">
+                          <Button type="button" disabled={isPending || !newCustomerPersonName.trim()} onClick={addCustomerPerson}>Add person</Button>
+                          <Button type="button" variant="ghost" onClick={() => setShowNewCustomerPerson(false)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : <Button type="button" variant="outline" className="w-fit" onClick={() => setShowNewCustomerPerson(true)}><IconPlus className="size-4" />Add person at this client</Button>}
                   </div>
                 )}
                 {showNewCustomer ? (
@@ -1134,7 +1223,7 @@ export function ProjectContactEditor({
                         onClick={addCustomerContact}
                         disabled={isPending || !newCustomerName.trim()}
                       >
-                        Add client
+                        Add client company
                       </Button>
                       <Button
                         type="button"
@@ -1153,7 +1242,7 @@ export function ProjectContactEditor({
                     onClick={() => setShowNewCustomer(true)}
                   >
                     <IconPlus className="size-4" />
-                    Add new client contact
+                    Add new client company
                   </Button>
                 )}
               </div>

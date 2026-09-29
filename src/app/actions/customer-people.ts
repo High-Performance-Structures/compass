@@ -84,15 +84,24 @@ export async function saveCustomerDirectoryPerson(
     if (!value.name) return { success: false, error: "Contact name is required." }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const company = await db.select({ sageClientId: customers.sageClientId, sageClientNumber: customers.sageClientNumber })
+    const company = await db.select({ id: customers.id })
       .from(customers).where(and(eq(customers.id, customerId), eq(customers.organizationId, orgId),
         isNull(customers.mergedIntoCustomerId))).get()
     if (!company) return { success: false, error: "Client was not found." }
-    if (company.sageClientId || company.sageClientNumber) {
-      return { success: false, error: "Use the reviewed Sage workflow for contacts at this client." }
-    }
+    // A named Compass contact is not a Sage write. Sage child creation still
+    // requires its separate reviewed proposal, even for a verified client.
     const now = new Date().toISOString()
     const id = personId ?? crypto.randomUUID()
+    const existingName = await db.select({ id: customerContacts.id })
+      .from(customerContacts).where(and(
+        eq(customerContacts.customerId, customerId),
+        eq(customerContacts.active, true),
+        sql`lower(trim(${customerContacts.name})) = ${value.name.toLowerCase()}`,
+        sql`${customerContacts.id} <> ${id}`
+      )).limit(1).get()
+    if (existingName) {
+      return { success: false, error: "This person is already listed for this client. Select the existing name instead." }
+    }
     if (personId) {
       const existing = await db.select({ sageContactId: customerContacts.sageContactId })
         .from(customerContacts).where(and(
