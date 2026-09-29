@@ -33,6 +33,7 @@ import {
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
 import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
+import { projectContactInvitationDirectorySelection } from "@/lib/project-contact-invitation-select"
 import {
   isExternalProjectRole,
   isInternalStaffRole,
@@ -198,35 +199,7 @@ export async function sendProjectAccessInvitation(
         projectName: projects.name,
         projectNumber: projects.projectNumber,
         organizationId: projects.organizationId,
-        customer: {
-          email: customers.email,
-          phone: customers.phone,
-          address: customers.address,
-        },
-        customerContact: {
-          userId: customerContacts.userId,
-          email: customerContacts.email,
-          phone: customerContacts.phone,
-        },
-        vendor: {
-          email: vendors.email,
-          phone: vendors.phone,
-          address: vendors.address,
-        },
-        vendorContact: {
-          userId: vendorContacts.userId,
-          email: vendorContacts.email,
-          phone: vendorContacts.phone,
-        },
-        teamMember: {
-          email: users.email,
-          phone: users.phone,
-        },
-        internalPerson: {
-          userId: internalContacts.userId,
-          email: internalContacts.email,
-          phone: internalContacts.phone,
-        },
+        ...projectContactInvitationDirectorySelection,
       })
       .from(projectContacts)
       .innerJoin(projects, eq(projects.id, projectContacts.projectId))
