@@ -242,3 +242,20 @@ export function withPortalRfqVendorResponse(
     vendorResponse: response,
   })
 }
+
+export function withPortalRfqRecipientEmail(
+  value: string | null,
+  recipientEmail: string
+): string {
+  return JSON.stringify({
+    ...parseRecord(value),
+    recipientEmail,
+  })
+}
+
+export function rfqNeedsTemplateReview(value: string | null): boolean {
+  const review = parseRecord(value).templateReview
+  if (!isRecord(review)) return false
+  return review.requiresDocumentPackage === true ||
+    (Array.isArray(review.unresolvedPlaceholders) && review.unresolvedPlaceholders.length > 0)
+}

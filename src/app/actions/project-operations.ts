@@ -57,6 +57,7 @@ import {
   parsePortalRfqPayload,
   type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
@@ -2597,6 +2598,23 @@ export async function deleteRfqRequest(
       return {
         success: false,
         error: "Only an unsent RFQ draft can be deleted. Close or void a shared RFQ instead.",
+      }
+    }
+
+    const [delivery, manualResponse] = await Promise.all([
+      db.select({ id: projectRfqEmailDeliveries.id })
+        .from(projectRfqEmailDeliveries)
+        .where(eq(projectRfqEmailDeliveries.rfqOperationId, rfqId))
+        .limit(1).then((rows) => rows[0] ?? null),
+      db.select({ id: projectRfqManualResponseEvents.id })
+        .from(projectRfqManualResponseEvents)
+        .where(eq(projectRfqManualResponseEvents.rfqOperationId, rfqId))
+        .limit(1).then((rows) => rows[0] ?? null),
+    ])
+    if (delivery || manualResponse) {
+      return {
+        success: false,
+        error: "This RFQ has delivery or response history. Void it to preserve that record.",
       }
     }
 

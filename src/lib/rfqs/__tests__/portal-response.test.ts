@@ -4,6 +4,8 @@ import {
   isPortalVisibleRfqStatus,
   parsePortalRfqPayload,
   portalRfqMatchesRecipient,
+  rfqNeedsTemplateReview,
+  withPortalRfqRecipientEmail,
   withPortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
 
@@ -92,5 +94,22 @@ describe("sub/vendor RFQ portal", () => {
       { lineNumber: 1, amount: 10_000, notes: "Base scope" },
       { lineNumber: 2, amount: 2_500, notes: null },
     ])
+  })
+
+  it("sets the email recipient without dropping the document package", () => {
+    const original = JSON.stringify({
+      documentLinks: [{ label: "Plan set", url: "https://drive.google.com/file/d/abcdefghijk/view" }],
+      scopeItems: [{ lineNumber: 1, description: "Frame walls" }],
+    })
+    const updated = parsePortalRfqPayload(withPortalRfqRecipientEmail(original, "outside@example.com"))
+    expect(updated.recipientEmail).toBe("outside@example.com")
+    expect(updated.documentLinks).toHaveLength(1)
+    expect(updated.scopeItems).toHaveLength(1)
+  })
+
+  it("keeps template review as a server-side send guard", () => {
+    expect(rfqNeedsTemplateReview(JSON.stringify({ templateReview: { requiresDocumentPackage: true } }))).toBe(true)
+    expect(rfqNeedsTemplateReview(JSON.stringify({ templateReview: { unresolvedPlaceholders: ["trade"] } }))).toBe(true)
+    expect(rfqNeedsTemplateReview(JSON.stringify({ templateReview: null }))).toBe(false)
   })
 })

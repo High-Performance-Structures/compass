@@ -22,6 +22,14 @@ import {
   type ProjectRfqBidWorkflowItem,
 } from "@/app/actions/project-rfq-bids"
 import {
+  getProjectRfqEmailDeliveries,
+  type RfqEmailDeliveryItem,
+} from "@/app/actions/project-rfq-email"
+import {
+  getProjectRfqManualResponseEvents,
+  type ManualRfqResponseEventItem,
+} from "@/app/actions/project-rfq-manual-response"
+import {
   getProjectSelectionOptions,
   getProjectSelections,
   type ProjectSelectionOptions,
@@ -35,6 +43,8 @@ import { ProjectRfqBidActions } from "@/components/projects/project-rfq-bid-acti
 import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
 import { ProjectRfqDuplicateDialog } from "@/components/projects/project-rfq-duplicate-dialog"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
+import { ProjectRfqEmailButton, ProjectRfqEmailHistory } from "@/components/projects/project-rfq-email-button"
+import { ProjectRfqManualResponse } from "@/components/projects/project-rfq-manual-response"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -164,6 +174,8 @@ function RfqCard({
   canApproveBids,
   canImportBids,
   editableEstimates,
+  emailDeliveries,
+  manualResponseEvents,
 }: {
   readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
@@ -181,6 +193,8 @@ function RfqCard({
     readonly id: string
     readonly label: string
   }[]
+  readonly emailDeliveries: readonly RfqEmailDeliveryItem[]
+  readonly manualResponseEvents: readonly ManualRfqResponseEventItem[]
 }): React.ReactElement {
   return (
     <article
@@ -225,6 +239,17 @@ function RfqCard({
             rfqId={rfq.id}
             rfqNumber={rfq.sourceRecordNumber}
             recipientOptions={taskAssigneeOptions}
+          />
+          <ProjectRfqEmailButton
+            projectId={projectId}
+            projectLabel={projectLabel}
+            rfq={rfq}
+          />
+          <ProjectRfqManualResponse
+            projectId={projectId}
+            rfq={rfq}
+            approved={bidWorkflow !== null}
+            events={manualResponseEvents}
           />
           <ProjectRfqShareActions
             brand={brand}
@@ -366,6 +391,8 @@ function RfqCard({
         <span>Response needed by {formatDate(rfq.dueDate)}</span>
       </div>
 
+      <ProjectRfqEmailHistory deliveries={emailDeliveries} />
+
       {rfq.scopeItems.length > 0 && (
         <div className="mt-3 overflow-hidden border bg-muted/10">
           <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_5rem_6rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -464,6 +491,8 @@ export default async function ProjectRfqsPage({
     selectionOptions,
     bidWorkspace,
     historicalWorkspace,
+    emailDeliveries,
+    manualResponseEvents,
   ] = await Promise.all([
     getProjects(),
     getProjectRfqs(id),
@@ -472,6 +501,8 @@ export default async function ProjectRfqsPage({
     getProjectSelectionOptions(id),
     getProjectRfqBidWorkspace(id),
     showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
+    getProjectRfqEmailDeliveries(id),
+    getProjectRfqManualResponseEvents(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -598,6 +629,8 @@ export default async function ProjectRfqsPage({
               canApproveBids={bidWorkspace.canApprove}
               canImportBids={bidWorkspace.canImport}
               editableEstimates={bidWorkspace.editableEstimates}
+              emailDeliveries={emailDeliveries.filter((delivery) => delivery.rfqOperationId === rfq.id)}
+              manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
             />
           ))
         ) : (
