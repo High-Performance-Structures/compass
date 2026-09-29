@@ -110,7 +110,7 @@ export function SageClientMatchingDialog({ open, onOpenChange, customers, onVeri
                 <button key={row.sageRecordId} type="button" role="option" aria-selected={sageId === row.sageRecordId}
                   className={`flex w-full items-start justify-between gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted/70 ${sageId === row.sageRecordId ? "bg-muted" : ""}`}
                   onClick={() => setSageId(row.sageRecordId)}>
-                  <span className="min-w-0"><span className="block truncate font-medium">{row.name}</span><span className="block truncate text-xs text-muted-foreground">{row.email || "No Sage email"} · {row.claimCount > 1 ? "Multiple Compass claims" : row.claimedBy ? `Compass: ${row.claimedBy.name}` : "No Compass link"}</span></span>
+                  <span className="min-w-0"><span className="block truncate font-medium">{row.name}</span><span className="block truncate text-xs text-muted-foreground">{row.email || "No Sage email"} · {row.claimCount > 1 ? "Multiple Compass claims" : row.claimedBy ? `${row.claimedBy.verified ? "Verified Compass link" : "Number assigned; identity not verified"}: ${row.claimedBy.name}` : "No Compass link"}</span></span>
                   <Badge variant="outline" className="shrink-0">#{row.sageClientNumber}</Badge>
                 </button>
               ))}
@@ -119,11 +119,12 @@ export function SageClientMatchingDialog({ open, onOpenChange, customers, onVeri
         </div>
         <div className="space-y-2 border-t pt-3 text-sm">
           <div className="grid gap-2 md:grid-cols-2"><p><span className="text-muted-foreground">Compass:</span> {compass?.name ?? "Choose a client"}{compass ? ` · ${compass.primaryEmail || compass.email || "No email"}` : ""}</p><p><span className="text-muted-foreground">Sage:</span> {sage ? `${sage.name} · #${sage.sageClientNumber} · ${sage.email || "No email"}` : "Choose a Sage client"}</p></div>
-          {numberClaimedElsewhere ? <p className="text-destructive">Sage #{sage?.sageClientNumber} is already assigned to “{sage?.claimedBy?.name}” in Compass. Review that record before reconciling a duplicate; this view does not transfer projects or people.</p> : null}
+          {numberClaimedElsewhere ? <p className="text-destructive">Sage #{sage?.sageClientNumber} is already assigned to “{sage?.claimedBy?.name}” in Compass{sage?.claimedBy?.verified ? " and its identity is verified" : ", but its identity has not been verified"}. Review that record before reconciling a duplicate; this view does not transfer projects or people.</p> : null}
           {numberHasMultipleOwners ? <p className="text-destructive">Multiple Compass clients claim Sage #{sage?.sageClientNumber}. Reconcile those directory records before linking; this view will not choose one automatically.</p> : null}
           {compassAlreadyLinkedElsewhere || compassNumberDiffers ? <p className="text-destructive">This Compass client already has a different Sage identity or number. Review its existing link before choosing another.</p> : null}
           <div className="flex flex-wrap gap-2">
             {canVerifyPair && compass && sage ? <Button size="sm" onClick={() => { onOpenChange(false); onVerify(compass, sage.sageClientNumber) }}>Look up selected pair in Sage</Button> : null}
+            {numberOwner && sage && !numberOwner.sageClientId && !sage.claimedBy?.verified && sage.claimCount === 1 ? <Button size="sm" onClick={() => { onOpenChange(false); onVerify(numberOwner, sage.sageClientNumber) }}>Verify number owner in Sage</Button> : null}
             {numberOwner ? <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); onOpenCustomer(numberOwner) }}>Open number owner</Button> : null}
             <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); onOpenReview() }}>Open Sage review</Button>
           </div>

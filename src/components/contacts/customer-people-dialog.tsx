@@ -35,6 +35,7 @@ export function CustomerPeopleDialog({
   onSageEdit,
   onSageLink,
   onSageCreate,
+  onVerifySageCompany,
   onLinkAccount,
   onMergePeople,
 }: {
@@ -47,6 +48,7 @@ export function CustomerPeopleDialog({
   readonly onSageEdit: (person: CustomerDirectoryPerson) => void
   readonly onSageLink?: (person: CustomerDirectoryPerson) => void
   readonly onSageCreate?: () => void
+  readonly onVerifySageCompany?: () => void
   readonly onLinkAccount: (person: CustomerDirectoryPerson) => void
   readonly onMergePeople?: (people: readonly [CustomerDirectoryPerson, CustomerDirectoryPerson]) => void
 }): React.ReactElement {
@@ -142,7 +144,11 @@ export function CustomerPeopleDialog({
           </form>
         ) : customer?.sageVerified && canCreate && onSageCreate ? (
           <Button type="button" variant="outline" onClick={onSageCreate}>Propose new Sage person</Button>
-        ) : customer?.sageLinked ? <p className="text-sm text-muted-foreground">Verify this client's Sage identity before proposing a new person.</p> : null}
+        ) : customer?.sageVerified ? <p className="text-sm text-muted-foreground">This client's Sage identity is verified. Your account cannot propose a new Sage person here.</p>
+        : customer?.sageLinked ? <div className="space-y-2 text-sm text-muted-foreground">
+          <p>This client has a Sage number, but its exact Sage identity has not been verified. Look up the existing client link, then have an authorized reviewer approve it before proposing a new person.</p>
+          {onVerifySageCompany ? <Button type="button" variant="outline" onClick={onVerifySageCompany}>Verify Sage client link</Button> : null}
+        </div> : null}
       </DialogContent>
     </Dialog>
   )
