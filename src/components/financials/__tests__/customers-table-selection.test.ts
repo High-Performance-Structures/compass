@@ -44,6 +44,7 @@ function customer(index: number): Customer {
     sageClientStatusId: null,
     buildertrendContactId: null,
     relationshipType: "client",
+    mergedIntoCustomerId: null,
     organizationId: "org-1",
     createdAt: "2026-09-24T00:00:00.000Z",
     updatedAt: null,

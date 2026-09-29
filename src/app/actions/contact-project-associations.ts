@@ -90,7 +90,7 @@ export async function addCompaniesToProject(input: {
           id: customers.id, name: customers.name, company: customers.company,
           email: customers.email, phone: customers.phone, address: customers.address,
         }).from(customers).where(and(
-          eq(customers.organizationId, orgId), inArray(customers.id, ids)
+          eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId), inArray(customers.id, ids)
         ))).map((customer) => ({
           ...customer, contactType: "owner" as const, assignable: true,
           syncStatus: "manual", lastSyncedAt: null,

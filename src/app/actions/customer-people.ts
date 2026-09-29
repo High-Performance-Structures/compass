@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, sql } from "drizzle-orm"
+import { and, asc, eq, isNull, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -85,7 +85,8 @@ export async function saveCustomerDirectoryPerson(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const company = await db.select({ sageClientId: customers.sageClientId, sageClientNumber: customers.sageClientNumber })
-      .from(customers).where(and(eq(customers.id, customerId), eq(customers.organizationId, orgId))).get()
+      .from(customers).where(and(eq(customers.id, customerId), eq(customers.organizationId, orgId),
+        isNull(customers.mergedIntoCustomerId))).get()
     if (!company) return { success: false, error: "Client was not found." }
     if (company.sageClientId || company.sageClientNumber) {
       return { success: false, error: "Use the reviewed Sage workflow for contacts at this client." }

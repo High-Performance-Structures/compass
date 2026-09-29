@@ -378,15 +378,30 @@ historical queued blank-email operations; new directory edits cannot enqueue
 that operation. A separate, opt-in contact mode now has allowlisted
 client/vendor/employee and child-contact modifications, plus reviewed
 client/vendor child-contact Add with exact-parent, full-field readback. The
-guarded HPS Test probes above passed, but this mode has not been installed as
-the production writer. Vendor primary-email proposals and child-contact Add
-remain disabled by separate production switches. Client-company primary-email
-edits and bulk import of existing Sage people remain outside the enabled path.
-Exact-number link review is staged in Compass but requires the contact bridge
-to be installed.
+guarded HPS Test probes above passed. The contact-capable writer is installed
+and the scheduled production read-only poll is healthy. As of 2026-09-29,
+the host's contact poll switch is on, while both contact writes and
+child-contact creates remain off. Vendor primary-email proposals are mapped;
+child-contact Add remains gated by separate production switches.
+Client-company primary-email edits and bulk import of existing Sage people
+remain outside the enabled path.
 The Contacts UI can
 request a fresh Sage read and submit/review a proposal for an already-linked
 record; approval is refused while the production write flag is disabled.
+The duplicate-merge UI under Contacts is a Compass-directory operation, not
+a Sage merge. Select two client/vendor companies in the list or two people
+inside one company, then choose the survivor. The source is archived with an
+immutable before/after audit snapshot, people and project-contact foreign
+keys are relinked atomically, and affected project Tracker refreshes are
+queued. The source with a Sage, Buildertrend, NetSuite, imported person, or
+Compass account identity cannot be archived. Active Sage work, overlapping
+project associations, and conflicting primary people block the merge for
+manual resolution. Internal staff and login accounts are deliberately outside
+this merge action. Project Registry and Google Apps Script payload shapes do
+not change; the existing project-contact Tracker refresh is used.
+
+Child-contact creation remains gated until an uncertain-Add reconciliation
+and reviewed child-delete workflow are complete and verified in HPS Test.
 Private employee address access and approval must
 be individual staff permissions in Compass
 Settings > Permissions, with Executive Admin the initial default. Employees

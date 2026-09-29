@@ -36,6 +36,7 @@ export function CustomerPeopleDialog({
   onSageLink,
   onSageCreate,
   onLinkAccount,
+  onMergePeople,
 }: {
   readonly customer: { readonly id: string; readonly name: string; readonly sageLinked: boolean; readonly sageVerified: boolean } | null
   readonly onOpenChange: (open: boolean) => void
@@ -47,11 +48,13 @@ export function CustomerPeopleDialog({
   readonly onSageLink?: (person: CustomerDirectoryPerson) => void
   readonly onSageCreate?: () => void
   readonly onLinkAccount: (person: CustomerDirectoryPerson) => void
+  readonly onMergePeople?: (people: readonly [CustomerDirectoryPerson, CustomerDirectoryPerson]) => void
 }): React.ReactElement {
   const [people, setPeople] = React.useState<readonly CustomerDirectoryPerson[]>([])
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [draft, setDraft] = React.useState<CustomerPersonInput>(EMPTY)
   const [busy, setBusy] = React.useState(false)
+  const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
 
   const reload = React.useCallback(async () => {
     if (!customer) return
@@ -98,6 +101,12 @@ export function CustomerPeopleDialog({
           {people.length === 0 ? <p className="py-4 text-sm text-muted-foreground">No people recorded for this client.</p> : null}
           {people.map((person) => (
             <div key={person.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              {onMergePeople ? <Checkbox
+                aria-label={`Select ${person.name} for duplicate merge`}
+                checked={selectedIds.includes(person.id)}
+                onCheckedChange={(checked) => setSelectedIds((current) =>
+                  checked === true ? [...current, person.id] : current.filter((id) => id !== person.id))}
+              /> : null}
               <div>
                 <div className="font-medium">{person.name}{person.isPrimary ? " · Primary" : ""}</div>
                 <div className="text-muted-foreground">{[person.title, person.email, person.phone].filter(Boolean).join(" · ")}</div>
@@ -112,6 +121,10 @@ export function CustomerPeopleDialog({
             </div>
           ))}
         </div>
+        {onMergePeople ? <Button type="button" size="sm" variant="outline" disabled={selectedIds.length !== 2 || busy} onClick={() => {
+          const selected = people.filter((person) => selectedIds.includes(person.id))
+          if (selected[0] && selected[1]) onMergePeople([selected[0], selected[1]])
+        }}>Merge 2 people</Button> : null}
         {canEdit && !customer?.sageLinked ? (
           <form onSubmit={(event) => void save(event)} className="space-y-3">
             <p className="text-sm font-medium">{editingId ? "Edit person" : "Add person"}</p>

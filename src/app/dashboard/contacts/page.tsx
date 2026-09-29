@@ -71,6 +71,7 @@ import { SageContactReviewDialog } from "@/components/contacts/sage-contact-revi
 import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
 import { SageContactCreateDialog, type SageContactCreateTarget } from "@/components/contacts/sage-contact-create-dialog"
 import { SageClientMatchingDialog } from "@/components/contacts/sage-client-matching-dialog"
+import { ContactMergeDialog } from "@/components/contacts/contact-merge-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 import { addCompaniesToProject, getCompanyAssociationProjects } from "@/app/actions/contact-project-associations"
 import { SearchableCombobox } from "@/components/searchable-combobox"
@@ -284,6 +285,13 @@ function ContactsContent() {
   const [selectedVendors, setSelectedVendors] = React.useState<readonly string[]>([])
   const [associationDialogOpen, setAssociationDialogOpen] = React.useState(false)
   const [associating, setAssociating] = React.useState(false)
+  const [mergeSelection, setMergeSelection] = React.useState<{
+    readonly kind: "customer_company" | "vendor_company" | "customer_person" | "vendor_person"
+    readonly choices: readonly [
+      { readonly id: string; readonly name: string; readonly email: string | null },
+      { readonly id: string; readonly name: string; readonly email: string | null },
+    ]
+  } | null>(null)
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<
@@ -484,6 +492,22 @@ function ContactsContent() {
   }
 
   const selectedCompanyIds = tab === "vendors" ? selectedVendors : selectedCustomers
+  const openCompanyMerge = () => {
+    if (selectedCompanyIds.length !== 2 || tab === "internal") return
+    const selected = tab === "vendors"
+      ? vendorContacts.filter((vendor) => selectedCompanyIds.includes(vendor.id))
+      : customersList.filter((customer) => selectedCompanyIds.includes(customer.id))
+    const first = selected[0]
+    const second = selected[1]
+    if (!first || !second) return
+    setMergeSelection({
+      kind: tab === "vendors" ? "vendor_company" : "customer_company",
+      choices: [
+        { id: first.id, name: first.name, email: first.email },
+        { id: second.id, name: second.name, email: second.email },
+      ],
+    })
+  }
   const handleAssociateCompanies = async () => {
     if (!associationProjectId || selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || tab === "internal") return
     setAssociating(true)
@@ -627,7 +651,7 @@ function ContactsContent() {
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-8" onClick={() => setMyContactsOpen(true)}>My contact information</Button>
               {tab === "customers" && directoryAccess?.canReadSageReview ? (
-                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageClientMatchingOpen(true)}>Compare with Sage</Button>
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageClientMatchingOpen(true)}>Match with Sage</Button>
               ) : null}
               {directoryAccess?.canReadSageReview ? (
                 <Button variant="outline" size="sm" className="h-8" onClick={() => setSageReviewOpen(true)}>Sage review</Button>
@@ -651,10 +675,10 @@ function ContactsContent() {
             </div>
           </div>
 
-          {tab !== "internal" && associationProjects.length > 0 ? (
+          {tab !== "internal" && (associationProjects.length > 0 || (directoryAccess?.[tab].edit && directoryAccess?.[tab].delete)) ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 border-b pb-2 text-sm">
               <span className="text-muted-foreground">{selectedCompanyIds.length} {tab === "vendors" ? "vendors" : "clients/leads"} selected</span>
-              <SearchableCombobox
+              {associationProjects.length > 0 ? <SearchableCombobox
                 ariaLabel="Choose project for selected companies"
                 options={associationProjects.map((project) => ({
                   value: project.id,
@@ -665,14 +689,19 @@ function ContactsContent() {
                 placeholder="Choose project..."
                 searchPlaceholder="Search projects..."
                 className="w-72"
-              />
-              <Button type="button" size="sm" disabled={selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || !associationProjectId} onClick={() => setAssociationDialogOpen(true)}>
+              /> : null}
+              {associationProjects.length > 0 ? <Button type="button" size="sm" disabled={selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || !associationProjectId} onClick={() => setAssociationDialogOpen(true)}>
                 Add selected to project
-              </Button>
+              </Button> : null}
+              {directoryAccess?.[tab].edit && directoryAccess?.[tab].delete ? (
+                <Button type="button" size="sm" variant="outline" disabled={selectedCompanyIds.length !== 2} onClick={openCompanyMerge}>
+                  Merge 2 duplicates
+                </Button>
+              ) : null}
               {selectedCompanyIds.length > 0 ? (
                 <Button type="button" size="sm" variant="ghost" onClick={() => tab === "vendors" ? setSelectedVendors([]) : setSelectedCustomers([])}>Clear selection</Button>
               ) : null}
-              <span className="text-xs text-muted-foreground">{selectedCompanyIds.length > 100 ? "Choose at most 100 records per batch. " : ""}Associates selected client/vendor records only; choose people separately for Compass access.</span>
+              <span className="text-xs text-muted-foreground">{selectedCompanyIds.length > 100 ? "Choose at most 100 records per batch. " : ""}Project association and duplicate merging never grant Compass access.</span>
             </div>
           ) : tab !== "internal" && directoryAccess?.canManageAccounts ? (
             <p className="mt-2 text-xs text-muted-foreground">To grant people project access, select their accounts in Manage Compass access.</p>
@@ -691,7 +720,7 @@ function ContactsContent() {
               } : undefined}
               onDelete={directoryAccess?.customers.delete ? handleDeleteCustomer : undefined}
               selectedIds={selectedCustomers}
-              onSelectionChange={associationProjects.length > 0 ? setSelectedCustomers : undefined}
+              onSelectionChange={associationProjects.length > 0 || (directoryAccess?.customers.edit && directoryAccess.customers.delete) ? setSelectedCustomers : undefined}
             />
           </TabsContent>
 
@@ -714,7 +743,7 @@ function ContactsContent() {
               } : undefined}
               onDelete={directoryAccess?.vendors.delete ? handleDeleteVendor : undefined}
               selectedIds={selectedVendors}
-              onSelectionChange={associationProjects.length > 0 ? setSelectedVendors : undefined}
+              onSelectionChange={associationProjects.length > 0 || (directoryAccess?.vendors.edit && directoryAccess.vendors.delete) ? setSelectedVendors : undefined}
             />
           </TabsContent>
 
@@ -733,6 +762,20 @@ function ContactsContent() {
 
       {accessManagerDialog}
       {myContactsDialog}
+      {mergeSelection ? (
+        <ContactMergeDialog
+          kind={mergeSelection.kind}
+          choices={mergeSelection.choices}
+          onOpenChange={(open) => { if (!open) setMergeSelection(null) }}
+          onMerged={() => {
+            setSelectedCustomers([])
+            setSelectedVendors([])
+            setPeopleCustomer(null)
+            setVendorDialogOpen(false)
+            void loadAll()
+          }}
+        />
+      ) : null}
       {directoryAccess?.canReadSageReview && directoryAccess.customers.read ? (
         <SageClientMatchingDialog
           open={sageClientMatchingOpen}
@@ -815,6 +858,16 @@ function ContactsContent() {
           setVendorDialogOpen(false)
           setAccountLinkTarget({ kind: "vendor_person", personId: contactId, name, userId })
         } : undefined}
+        onMergePeople={directoryAccess?.vendors.edit && directoryAccess.vendors.delete ? (people) => {
+          setVendorDialogOpen(false)
+          setMergeSelection({
+            kind: "vendor_person",
+            choices: [
+              { id: people[0].id, name: people[0].name, email: people[0].email },
+              { id: people[1].id, name: people[1].name, email: people[1].email },
+            ],
+          })
+        } : undefined}
       />
       <CustomerPeopleDialog
         key={peopleCustomer?.id ?? "none"}
@@ -840,6 +893,16 @@ function ContactsContent() {
           setPeopleCustomer(null)
           setAccountLinkTarget({ kind: "client_person", personId: person.id, name: person.name, userId: person.userId })
         }}
+        onMergePeople={directoryAccess?.customers.edit && directoryAccess.customers.delete ? (people) => {
+          setPeopleCustomer(null)
+          setMergeSelection({
+            kind: "customer_person",
+            choices: [
+              { id: people[0].id, name: people[0].name, email: people[0].email },
+              { id: people[1].id, name: people[1].name, email: people[1].email },
+            ],
+          })
+        } : undefined}
       />
       <SageContactEditorDialog
         key={sageEditorTarget ? `${sageEditorTarget.kind}:${sageEditorTarget.entityId}` : "none"}

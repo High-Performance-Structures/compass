@@ -1144,7 +1144,7 @@ export async function getProjectContactDirectoryOptions(
         address: customers.address,
       })
       .from(customers)
-      .where(eq(customers.organizationId, orgId)) : [],
+      .where(and(eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId))) : [],
     canViewCustomers ? db
       .select({
         id: customerContacts.id,
@@ -1160,6 +1160,7 @@ export async function getProjectContactDirectoryOptions(
       .where(
         and(
           eq(customers.organizationId, orgId),
+          isNull(customers.mergedIntoCustomerId),
           eq(customerContacts.active, true)
         )
       ) : [],
@@ -1480,7 +1481,8 @@ export async function saveProjectContact(
           .where(
             and(
               eq(customers.id, input.directorySourceId),
-              eq(customers.organizationId, orgId)
+              eq(customers.organizationId, orgId),
+              isNull(customers.mergedIntoCustomerId)
             )
           )
           .limit(1)
@@ -2018,7 +2020,8 @@ export async function saveProjectContact(
           .where(
             and(
               eq(customers.id, sourceEntityId),
-              eq(customers.organizationId, orgId)
+              eq(customers.organizationId, orgId),
+              isNull(customers.mergedIntoCustomerId)
             )
           ),
         db
@@ -2473,7 +2476,7 @@ export async function getScheduleTaskAssigneeOptions(
         phone: customers.phone,
       })
       .from(customers)
-      .where(eq(customers.organizationId, orgId))
+      .where(and(eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId)))
       .orderBy(asc(customers.name)) : [],
     canViewVendors ? db
       .select({

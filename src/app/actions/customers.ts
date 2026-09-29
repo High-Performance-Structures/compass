@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, or, sql } from "drizzle-orm"
+import { eq, and, or, sql, isNull } from "drizzle-orm"
 import { getDb } from "@/db"
 import { customers, projectContacts } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
@@ -77,7 +77,7 @@ export async function getCustomers() {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  return db.select().from(customers).where(eq(customers.organizationId, orgId))
+  return db.select().from(customers).where(and(eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId)))
 }
 
 export async function getCustomer(id: string) {
@@ -226,7 +226,7 @@ export async function createCustomerDirectoryContact(
     const existingMatches = await db
       .select()
       .from(customers)
-      .where(and(eq(customers.organizationId, orgId), identityMatch))
+      .where(and(eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId), identityMatch))
       .limit(2)
     if (existingMatches.length > 1) {
       return {
@@ -270,6 +270,7 @@ export async function createCustomerDirectoryContact(
         sageClientNumber: null,
         sageClientStatusId: null,
         buildertrendContactId: null,
+        mergedIntoCustomerId: null,
       },
     }
   } catch (err) {
@@ -313,6 +314,7 @@ export async function updateCustomer(
       .limit(1)
       .get()
     if (!existing) return { success: false, error: "Customer not found" }
+    if (existing.mergedIntoCustomerId) return { success: false, error: "This client was merged. Edit the surviving directory record instead." }
     const normalizedExistingEmail = existing.email?.trim() || null
     const normalizedNextEmail = patch.email === undefined
       ? normalizedExistingEmail
@@ -365,7 +367,7 @@ export async function updateCustomer(
     const customerUpdate = db
       .update(customers)
       .set({ ...safeData, email: normalizedNextEmail, updatedAt })
-      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
+      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId), isNull(customers.mergedIntoCustomerId)))
     const projectContactUpdate = db
       .update(projectContacts)
       .set({ ...nextIdentity, email: normalizedNextEmail, updatedAt })
@@ -404,6 +406,10 @@ export async function deleteCustomer(id: string) {
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
+    const existing = await db.select({ mergedIntoCustomerId: customers.mergedIntoCustomerId })
+      .from(customers).where(and(eq(customers.id, id), eq(customers.organizationId, orgId))).get()
+    if (!existing) return { success: false, error: "Client not found." }
+    if (existing.mergedIntoCustomerId) return { success: false, error: "Merged client records are retained for audit and cannot be deleted." }
     await db
       .delete(customers)
       .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
