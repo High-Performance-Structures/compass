@@ -30,6 +30,18 @@ import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
 
+type AuthenticatedUser = Awaited<ReturnType<typeof requireAuth>>
+
+function assertActiveInternalStaff(user: AuthenticatedUser): void {
+  if (
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    !isInternalStaffRole(user.role)
+  ) {
+    throw new Error("Project video access requires active internal staff")
+  }
+}
+
 export type ProjectVideoItem = {
   readonly id: string
   readonly title: string
@@ -75,13 +87,7 @@ async function projectVideoDb(
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  if (
-    !user.isActive ||
-    user.organizationType !== "internal" ||
-    !isInternalStaffRole(user.role)
-  ) {
-    throw new Error("Project video access requires active internal staff")
-  }
+  assertActiveInternalStaff(user)
   await requireFeaturePermission(user, "project-photos", action)
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
@@ -267,6 +273,7 @@ export async function disconnectYoutubeChannel(input: {
 > {
   try {
     const user = await requireAuth()
+    assertActiveInternalStaff(user)
     const organizationId = requireOrg(user)
     const db = await projectVideoDb(input.projectId, "update")
     const channelKey = youtubeChannelKey(input.channelKey)
@@ -419,6 +426,7 @@ export async function publishProjectVideo(input: {
   readonly confirmPublic: boolean
 }): Promise<VideoActionResult> {
   const user = await requireAuth()
+  assertActiveInternalStaff(user)
   const organizationId = requireOrg(user)
   let db: Awaited<ReturnType<typeof projectVideoDb>> | null = null
   try {
