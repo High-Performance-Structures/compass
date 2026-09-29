@@ -330,11 +330,11 @@ returned stable ID and fields for review, and an authorized staff member
 explicitly approves or rejects the link. Employee lookups also return a
 read-only Sage employee name so empty contact fields do not force reviewers
 to rely on an opaque GUID. A staff member with `sage-contact-review` approval
-and confidential employee-contact approval may review their own employee
-identity lookup. A name difference must be shown in an explicit confirmation,
-but a written note is optional. Client/vendor identity links and all Sage
-contact writes retain independent review. The employee identity exception
-cannot approve contact writes or create Sage records.
+may review their own client/vendor identity lookup; employee links also require
+confidential employee-contact approval. A name difference must be shown in an
+explicit confirmation, but a written note is optional. Sage contact writes and
+creates retain independent review; identity-link approval cannot itself write
+or create a Sage record.
 The Contacts client matcher displays a fresh, read-only Sage client directory
 beside Compass clients. Sage rows are stored as snapshot evidence in their own
 organization-scoped table, never as duplicate Compass customer records.
