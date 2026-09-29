@@ -41,6 +41,7 @@ function vendor(index: number): VendorDirectoryCompany {
     sourceRecordNumber: null,
     sourceMetadata: null,
     directoryStatus: "active",
+    mergedIntoVendorId: null,
     syncStatus: "manual",
     lastSyncedAt: null,
     organizationId: "org-1",

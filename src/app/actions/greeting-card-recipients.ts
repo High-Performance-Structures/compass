@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -62,7 +62,7 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
             address: customers.address,
           })
           .from(customers)
-          .where(eq(customers.organizationId, organizationId)),
+          .where(and(eq(customers.organizationId, organizationId), isNull(customers.mergedIntoCustomerId))),
         db
           .select({
             id: vendors.id,

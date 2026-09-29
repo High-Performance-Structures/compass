@@ -47,6 +47,7 @@ describe("contact directory permission boundaries", () => {
       expect(picker).toContain(`canFeature(user, "${feature}", "read")`)
     }
     expect(picker).toContain("canViewCustomers ? db")
+    expect(picker).toContain("isNull(customers.mergedIntoCustomerId)")
     expect(picker).toContain("canViewVendors ? db")
     expect(picker).toContain("canViewInternal ? db")
 
@@ -57,5 +58,11 @@ describe("contact directory permission boundaries", () => {
     expect(save).toContain('await requireFeaturePermission(user, directoryFeature, "read")')
     expect(save?.indexOf('await requireFeaturePermission(user, directoryFeature, "read")'))
       .toBeLessThan(save?.indexOf("if (input.directorySourceType === \"customer\")") ?? 0)
+    expect(save).toContain("isNull(customers.mergedIntoCustomerId)")
+  })
+
+  it("excludes archived merge sources from project association and project intake", () => {
+    expect(actionSource("contact-project-associations.ts")).toContain("isNull(customers.mergedIntoCustomerId)")
+    expect(actionSource("projects.ts")).toContain("isNull(customers.mergedIntoCustomerId)")
   })
 })
