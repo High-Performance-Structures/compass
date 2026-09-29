@@ -1298,7 +1298,9 @@ export async function getProjectDailyLogWorkspace(
 ): Promise<ProjectDailyLogWorkspace> {
   const viewer = await requireAuth()
   const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
-  const db = await assertOwnerUpdateRouteAccess(viewer)
+  const db = await assertOwnerUpdateRouteAccess(viewer, {
+    allowDeveloperRead: true,
+  })
   await requireFeaturePermission(viewer, "daily-logs", "read")
   await assertProjectAccess(db, viewer, projectId)
 

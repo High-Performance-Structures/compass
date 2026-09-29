@@ -7,15 +7,22 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
+type OwnerUpdateRouteAccessOptions = {
+  readonly allowDeveloperRead?: boolean
+}
+
 export async function assertOwnerUpdateRouteAccess(
-  user: AuthUser
+  user: AuthUser,
+  options: OwnerUpdateRouteAccessOptions = {}
 ): Promise<ReturnType<typeof getDb>> {
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
+  const isAllowedDeveloperRead =
+    options.allowDeveloperRead === true && user.role === "developer"
   if (
     !user.isActive ||
-    !isInternalStaffRole(user.role) ||
+    (!isInternalStaffRole(user.role) && !isAllowedDeveloperRead) ||
     user.organizationType !== "internal" ||
     !user.organizationId
   ) {

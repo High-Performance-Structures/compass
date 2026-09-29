@@ -179,6 +179,10 @@ describe("project field read authorization", () => {
         { ...internalUser, role },
         "project-1"
       )
+      expect(mocks.assertOwnerUpdateRouteAccess).toHaveBeenCalledWith(
+        { ...internalUser, role },
+        { allowDeveloperRead: true }
+      )
     }
   )
 })
