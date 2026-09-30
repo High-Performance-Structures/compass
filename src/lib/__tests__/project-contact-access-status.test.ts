@@ -107,10 +107,10 @@ describe("projectContactAccessStatus", () => {
 })
 
 describe("projectContactCanInvite", () => {
-  it("allows new and expired invitations without duplicating current access", () => {
+  it("allows new, expired, and pending invitations without duplicating active access", () => {
     expect(projectContactCanInvite("not_invited")).toBe(true)
     expect(projectContactCanInvite("expired")).toBe(true)
-    expect(projectContactCanInvite("pending")).toBe(false)
+    expect(projectContactCanInvite("pending")).toBe(true)
     expect(projectContactCanInvite("active")).toBe(false)
     expect(projectContactCanInvite("inactive")).toBe(false)
   })

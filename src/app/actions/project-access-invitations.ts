@@ -463,20 +463,15 @@ export async function sendProjectAccessInvitation(
         },
         now: new Date(now),
       })
-      if (pendingStatus === "pending") {
-        revalidatePath(`/dashboard/projects/${parsed.data.projectId}/contacts`)
-        return {
-          success: true,
-          accessStatus: "invited",
-          warning: "This contact already has a current invitation.",
-        }
+      // A pending invite may be lost in the recipient's inbox. Keep its send
+      // history, then let WorkOS resend the current account invitation below.
+      if (pendingStatus === "expired") {
+        await db
+          .update(projectAccessInvitations)
+          .set({ status: "expired", updatedAt: now })
+          .where(eq(projectAccessInvitations.id, pendingInvitation.id))
+          .run()
       }
-
-      await db
-        .update(projectAccessInvitations)
-        .set({ status: "expired", updatedAt: now })
-        .where(eq(projectAccessInvitations.id, pendingInvitation.id))
-        .run()
     }
     const internalMembership = activeExistingUser
       ? await db

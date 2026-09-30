@@ -239,6 +239,7 @@ function ContactCard({
               contactEmail={contact.email}
               contactType={contact.contactType}
               compassAccountStatus={contact.compassAccountStatus}
+              accessStatus={contact.accessStatus}
             />
           </div>
         )}
