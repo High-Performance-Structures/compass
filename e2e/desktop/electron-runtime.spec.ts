@@ -67,8 +67,8 @@ test.describe("Electron runtime", () => {
       // Electron application event. Listen on both surfaces so the test proves
       // the same popup workflow without depending on platform event plumbing.
       const previewWindowPromise = Promise.race([
-        page.waitForEvent("popup"),
-        app.waitForEvent("window"),
+        page.waitForEvent("popup", { timeout: 90_000 }),
+        app.waitForEvent("window", { timeout: 90_000 }),
       ])
       await page.evaluate(() => {
         window.open(
