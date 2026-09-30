@@ -82,6 +82,7 @@ function configureDb(
     itemize: false,
     sortOrder: 0,
   }]
+  const assemblies = [{ id: "assembly-1", name: "Foundation package", description: "Across divisions", sortOrder: 0 }]
   const rows: readonly (readonly unknown[])[] = changingPhase
     ? [
         [{ name: "Source", organizationId: "org-1", clientName: "Source client", mailingAddress: "Source address" }],
@@ -92,12 +93,14 @@ function configureDb(
         latestVersion ? [{ versionNumber: latestVersion }] : [],
         [{ id: "destination-contact", contactType: "owner", displayName: "Destination signer", role: "Owner", email: "destination@example.com" }],
         reportPhases,
+        assemblies,
       ]
     : [
         [{ name: "Source", organizationId: "org-1", clientName: "Source client", mailingAddress: "Source address" }],
         [source],
         [{ versionNumber: latestVersion }],
         reportPhases,
+        assemblies,
       ]
   let selectIndex = 0
   const select = vi.fn(() => {
@@ -112,7 +115,8 @@ function configureDb(
       limit: vi.fn(),
     }
     query.from.mockReturnValue(query)
-    if (selectingReportPhases) {
+    const selectingAssemblies = selectIndex === (changingPhase ? 9 : 5)
+    if (selectingReportPhases || selectingAssemblies) {
       query.where.mockResolvedValue(selectedRows)
     } else {
       query.where.mockReturnValue(query)
@@ -187,7 +191,9 @@ describe("duplicateProjectEstimate", () => {
     expect(statements?.[2]?.params).toEqual(expect.arrayContaining(["destination-project"]))
     expect(statements?.[3]?.params).toEqual(expect.arrayContaining(["destination-project", "source-project"]))
     expect(statements?.[4]?.params).toEqual(expect.arrayContaining(["destination-project", "report-phase-1"]))
-    expect(statements?.[6]?.sql).toContain("NULL")
+    expect(statements?.find((statement: { readonly sql: string }) => statement.sql.includes("INSERT INTO project_estimate_basis_documents"))?.sql).toContain("NULL")
+    expect(statements?.[3]?.sql).toContain("report_phase_id, assembly_id")
+    expect(statements?.find((statement: { readonly sql: string }) => statement.sql.includes("SET assembly_id"))?.params).toEqual(expect.arrayContaining(["destination-project", "assembly-1"]))
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/dashboard/projects/destination-project/estimate")
   })
 
