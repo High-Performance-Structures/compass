@@ -2,6 +2,7 @@ import { z } from "zod/v4"
 
 export function parseCorrespondenceSend(value: unknown): { readonly success: true; readonly data: import("./types").SendCorrespondenceInput } | { readonly success: false; readonly error: string } {
   const schema = z.object({
+    draft: z.object({ id: z.string().min(1).max(200), version: z.number().int().positive() }).strict().optional(),
     projectId: z.string().min(1).max(200),
     conversationId: z.string().min(1).max(200).nullable(),
     subject: z.string().trim().min(1).max(200),

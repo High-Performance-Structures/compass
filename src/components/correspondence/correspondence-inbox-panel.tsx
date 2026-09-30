@@ -21,6 +21,8 @@ import type {
   CorrespondenceInboxFilter,
 } from "@/lib/correspondence/types"
 import { filterConversations } from "./correspondence-workspace-utils"
+import { ProjectDraftList } from "./project-draft-list"
+import type { ProjectDraft } from "@/lib/correspondence/types"
 import { ConversationTags } from "./correspondence-workspace-parts"
 
 type SearchHit = {
@@ -33,6 +35,8 @@ type SearchHit = {
   readonly sourceSentAt?: string | null
 }
 export function CorrespondenceInboxPanel(props: {
+  readonly drafts: readonly ProjectDraft[]
+  readonly onOpenDraft: (draft: ProjectDraft) => Promise<void>
   readonly projectId: string
   readonly inbox: CorrespondenceInbox
   readonly activeId: string | null
@@ -169,7 +173,7 @@ export function CorrespondenceInboxPanel(props: {
           role="group"
           aria-label="Conversation filters"
         >
-          {(["inbox", "unread", "follow-up", "saved", "archived"] as const).map(
+          {(["inbox", "drafts", "sent", "unread", "follow-up", "saved", "archived"] as const).map(
             (filter) => (
               <Button
                 key={filter}
@@ -187,6 +191,7 @@ export function CorrespondenceInboxPanel(props: {
                 {filter === "follow-up"
                   ? "Needs reply"
                   : filter[0].toUpperCase() + filter.slice(1)}
+                {filter === "drafts" && ` (${props.drafts.length})`}
                 {filter === "unread" &&
                   ` (${props.inbox.conversations.filter((c) => c.unread && !c.archived).length})`}
               </Button>
@@ -199,6 +204,7 @@ export function CorrespondenceInboxPanel(props: {
           )}
         </div>
       </div>
+      {props.filter === "drafts" ? <ProjectDraftList drafts={props.drafts} query={props.query} busy={locked} onOpen={props.onOpenDraft} /> : <>
       <div className="border-b px-4 py-2">
         <label className="flex items-center gap-2 text-xs">
           <Checkbox
@@ -338,7 +344,7 @@ export function CorrespondenceInboxPanel(props: {
                     >
                       {conversation.lastActivityDisplay
                         ? `Source time: ${conversation.lastActivityDisplay}`
-                        : formatTime(conversation.lastActivityAt)}
+                        : formatTime(props.filter === "sent" ? conversation.lastSentAt ?? conversation.lastActivityAt : conversation.lastActivityAt)}
                     </span>
                   </div>
                   <div className="mt-1 flex items-center gap-2">
@@ -366,7 +372,7 @@ export function CorrespondenceInboxPanel(props: {
                           : "text-muted-foreground",
                       )}
                     >
-                      {conversation.excerpt}
+                      {props.filter === "sent" ? conversation.lastSentExcerpt ?? conversation.excerpt : conversation.excerpt}
                     </p>
                   )}
                 </button>
@@ -409,6 +415,7 @@ export function CorrespondenceInboxPanel(props: {
           </p>
         )}
       </div>
+      </>}
     </aside>
   )
 }

@@ -31,7 +31,7 @@ export function ProjectEmailAttachments(props: {
   }
   async function remove(file: StagedAttachment): Promise<void> {
     if (disabled) return
-    if (file.attachment) {
+    if (file.attachment?.available) {
       busyRef.current = true; props.onBusyChange(true)
       try {
         const result = await removeCorrespondenceAttachment(props.projectId, file.attachment.id)

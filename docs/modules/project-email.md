@@ -32,8 +32,7 @@ up to 10 attachments totaling 18 MB to leave room for MIME encoding. Wait until
 all files are ready before sending. Remove an unsent attachment with its remove
 button; failed email deliveries retry the same saved content and files. An
 unknown delivery outcome must be reviewed instead of resent. Sent attachments
-are subject to message access and retraction checks. Staged attachments are kept
-in the current browser session, so reattach after reloading.
+are subject to message access and retraction checks. Ready attachments are saved with private drafts and restored when reopened.
 
 Storage uses the existing private correspondence Drive folder configured through
 `COMPASS_CORRESPONDENCE_DRIVE_USER` and the per-organization
@@ -44,3 +43,28 @@ is not met, attachment staging fails with an actionable error.
 
 Email replies containing new inbound files continue to require manual review;
 this change covers attachments composed and sent from Compass.
+
+
+## Drafts and Sent
+
+**Drafts** lists your private new messages, emails, and replies for this project.
+New messages and emails support multiple saved drafts. Changes autosave after a
+short pause; **Save draft** saves immediately. Ready uploaded files and project
+file snapshots stay with the draft across reloads. Wait for files to finish
+uploading before leaving. Drafts never grant recipients access or send emails.
+Concurrent edits from another tab or device are rejected instead of overwriting
+newer content. Discard a new composition from its composer and use **Undo discard**
+to restore it before leaving. Existing reply drafts retain their discard confirmation.
+
+**Sent** shows conversations containing your Compass messages or outgoing project
+emails, including archived conversations. The list shows your latest outgoing
+text and timestamp; opening it focuses that message. Failed deliveries stay in
+project history with their delivery status and retry control. Unknown email
+outcomes are shown for review and must not be resent as a new email. A draft is
+removed atomically when its message is recorded, so losing a send response cannot
+leave a sendable duplicate draft. Pending requests retain their original send
+identity and content until resolved.
+
+Bell links open their target independently of read-status updates. Project email
+reply links select and focus the matching reply even when the project messages
+page is already open.

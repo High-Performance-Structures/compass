@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 
 import { context, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "./helpers/correspondence-core"
 import { retryFailedProjectEmail, sendProjectEmail } from "@/app/actions/project-email"
+import { saveProjectComposition } from "@/app/actions/correspondence-saved-drafts"
 
 const mocks = vi.hoisted(() => ({
   context: vi.fn(),
@@ -21,7 +22,6 @@ function setup(): CorrespondenceTestDatabase {
   const db = openCorrespondenceTestDatabase()
   database = db
   db.sqlite.exec(readFileSync("drizzle/0053_email_reply_threads.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
-  db.sqlite.exec(readFileSync("drizzle/0176_project_email_campaigns.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   mocks.context.mockResolvedValue(context(db, "staff-a", "project-a"))
   mocks.contacts.mockResolvedValue([{ userId: "revoked-a", name: "Staff Colleague", email: "revoked-a@example.test", role: "staff", delivery: "compass" }])
   return db
@@ -36,6 +36,45 @@ const email = {
 }
 
 describe("project email send", () => {
+  it.each(["text","audience"])("rejects changed %s under a reserved email draft", async (change) => {
+    const db = setup()
+    await saveProjectComposition("project-a","draft",0,{kind:"email",subject:email.subject,body:email.body,to:email.to,cc:email.cc,bcc:email.bcc,attachmentIds:[],requestId:email.requestId})
+    const changed = change === "text" ? {...email,body:"Different body"} : {...email,to:["different@example.com"]}
+    expect((await sendProjectEmail({...changed,draft:{id:"draft",version:1}})).success).toBe(false)
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS n FROM project_email_campaigns").get()).toEqual({n:0})
+  })
+  it("rejects old files that were never retained by the supplied draft", async () => {
+    const db = setup()
+    db.sqlite.prepare("INSERT INTO correspondence_attachments(id,organization_id,project_id,owner_user_id,name,content_type,size,drive_file_id,created_at) VALUES ('old-file','org-a','project-a','staff-a','File','text/plain',3,'drive-file','2000-01-01')").run()
+    await saveProjectComposition("project-a","draft",0,{kind:"email",subject:email.subject,body:email.body,to:email.to,cc:email.cc,bcc:email.bcc,attachmentIds:[],requestId:email.requestId})
+    expect((await sendProjectEmail({...email,attachmentIds:["old-file"],draft:{id:"draft",version:1}})).success).toBe(false)
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS n FROM project_email_campaigns").get()).toEqual({n:0})
+  })
+  it("releases a saved draft after a rejected file without dispatching, allowing correction", async () => {
+    const db = setup()
+    db.sqlite.prepare("INSERT INTO correspondence_attachments(id,organization_id,project_id,owner_user_id,name,content_type,size,drive_file_id,created_at) VALUES ('file','org-a','project-a','staff-a','File','text/plain',3,'drive-file','2026-09-01')").run()
+    const content = {kind:"email",subject:email.subject,body:email.body,to:email.to,cc:email.cc,bcc:email.bcc,attachmentIds:["file"],requestId:email.requestId}
+    expect((await saveProjectComposition("project-a","draft",0,content)).success).toBe(true)
+    db.sqlite.prepare("UPDATE correspondence_attachments SET retired_at='2026-09-30' WHERE id='file'").run()
+    expect(await sendProjectEmail({...email,attachmentIds:["file"],draft:{id:"draft",version:1}})).toMatchObject({success:false,draftVersion:2})
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect((await saveProjectComposition("project-a","draft",2,{...content,attachmentIds:[],requestId:null})).success).toBe(true)
+  })
+  it("keeps an already recorded campaign immutable when an old draft request changes", async () => {
+    const db = setup()
+    const content = {kind:"email",subject:email.subject,body:email.body,to:email.to,cc:email.cc,bcc:email.bcc,attachmentIds:[],requestId:email.requestId}
+    await saveProjectComposition("project-a","draft",0,content)
+    mocks.sendEmail.mockResolvedValue({status:"sent",provider:"gmail",providerMessageId:"sent",error:null})
+    const input = {...email,draft:{id:"draft",version:1}}
+    expect(await sendProjectEmail(input)).toMatchObject({success:true,status:"sent"})
+    const changed = await sendProjectEmail({...input,body:"Different email"})
+    expect(changed.success).toBe(false)
+    expect(changed).not.toHaveProperty("draftVersion")
+    expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+    expect(db.sqlite.prepare("SELECT retired_at FROM correspondence_saved_drafts WHERE id='draft'").get()).toEqual({retired_at:expect.any(String)})
+  })
   it("emails distinct To/Cc/Bcc audiences and saves a staff-only conversation once", async () => {
     const db = setup()
     mocks.sendEmail.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })

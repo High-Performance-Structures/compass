@@ -9,6 +9,7 @@ import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-proje
 import { correspondenceContacts, correspondenceContext } from "@/lib/correspondence/access"
 import type { CorrespondenceContext } from "@/lib/correspondence/access"
 import { validateProjectEmailAttachments, emailAttachmentGuard, loadProjectEmailAttachments } from "@/lib/correspondence/email-attachments"
+import { releaseRejectedComposition, savedDraftGuard, retireSentComposition } from "@/lib/correspondence/saved-drafts"
 import { correspondenceHash } from "@/lib/correspondence/send"
 import { clearCorrespondenceWriteGuard, correspondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import { sendCompassEmail } from "@/lib/email/compass-email"
@@ -19,7 +20,7 @@ import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientCate
 
 type RecipientScope = "project" | "directory"
 type SearchResult = { readonly success: true; readonly data: readonly EmailRecipientOption[] } | { readonly success: false; readonly error: string }
-type SendResult = { readonly success: true; readonly conversationId: string; readonly status: "sent" | "failed" | "unknown"; readonly error: string | null } | { readonly success: false; readonly error: string }
+type SendResult = { readonly success: true; readonly conversationId: string; readonly status: "sent" | "failed" | "unknown"; readonly error: string | null } | { readonly success: false; readonly error: string; readonly draftVersion?: number }
 type Campaign = typeof projectEmailCampaigns.$inferSelect
 
 function safeFailure(error: unknown, fallback = "Project email is temporarily unavailable. Check project messages before trying again."): { readonly success: false; readonly error: string } {
@@ -69,6 +70,7 @@ export async function searchProjectEmailRecipients(projectId: string, scope: Rec
 }
 
 export type ProjectEmailInput = ProjectEmailAudience & {
+  readonly draft?: { readonly id: string; readonly version: number }
   readonly projectId: string
   readonly subject: string
   readonly body: string
@@ -110,6 +112,18 @@ async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign
 }
 
 export async function sendProjectEmail(input: ProjectEmailInput): Promise<SendResult> {
+  const result = await sendProjectEmailRequest(input)
+  if (result.success || !input.draft) return result
+  try {
+    const ctx = await correspondenceContext(input.projectId)
+    if (ctx.workspace !== "staff") return result
+    const campaignId = `project-email-${await correspondenceHash(JSON.stringify([ctx.organizationId, ctx.user.id, input.requestId]))}`
+    const draftVersion = await releaseRejectedComposition(ctx, input.draft, input.requestId, campaignId, "email")
+    return draftVersion === null ? result : { ...result, draftVersion }
+  } catch { return result }
+}
+
+async function sendProjectEmailRequest(input: ProjectEmailInput): Promise<SendResult> {
   let savedConversationId: string | null = null
   try {
     const ctx = await correspondenceContext(input.projectId)
@@ -128,7 +142,7 @@ export async function sendProjectEmail(input: ProjectEmailInput): Promise<SendRe
     if (campaign && campaign.requestHash !== requestHash) return { success: false, error: "This send request was already used for different content. Start a new email." }
     if (!campaign) {
       let attachments: Awaited<ReturnType<typeof validateProjectEmailAttachments>>
-      try { attachments = await validateProjectEmailAttachments(ctx, attachmentIds) } catch (error) {
+      try { attachments = await validateProjectEmailAttachments(ctx, attachmentIds, input.draft !== undefined) } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : "Review email attachments before sending." }
       }
       const now = new Date().toISOString()
@@ -150,7 +164,7 @@ export async function sendProjectEmail(input: ProjectEmailInput): Promise<SendRe
       ]
       try {
         await ctx.db.batch([
-        correspondenceWriteGuard(ctx, { id: guardId, conversationId: null, participantVersion: null, people, extra: emailAttachmentGuard(ctx, attachmentIds) }),
+        correspondenceWriteGuard(ctx, { id: guardId, conversationId: null, participantVersion: null, people, extra: and(emailAttachmentGuard(ctx, attachmentIds), savedDraftGuard(ctx, input.draft, {kind:"email",subject,body:input.body,...audience.data,attachmentIds,requestId:input.requestId})) }),
         ctx.db.insert(correspondence).values({ id: conversationId, organizationId: ctx.organizationId, projectId: input.projectId, subject, createdAt: now }),
         ...people.map((person) => ctx.db.insert(correspondenceParticipants).values({ id: crypto.randomUUID(), conversationId, userId: person.userId, name: person.name, email: person.email, role: person.role })),
         ctx.db.insert(correspondenceMessages).values({ id: messageId, conversationId, authorUserId: ctx.user.id, authorName: senderName, source: "email", body: input.body, sentAt: now, requestHash }),
@@ -160,6 +174,7 @@ export async function sendProjectEmail(input: ProjectEmailInput): Promise<SendRe
         ctx.db.insert(emailReplyThreads).values({ id: replyThreadId, token, organizationId: ctx.organizationId, projectId: input.projectId, channelId: null, sourceType: "project_correspondence", sourceId: conversationId, sourceNumber: null, replyToAddress: trackedReplyAddress({ env: ctx.env, token }), subject, status: "active", createdBy: ctx.user.id, lastInboundAt: null, createdAt: now, updatedAt: now }),
         ctx.db.insert(projectEmailCampaigns).values({ id: campaignId, organizationId: ctx.organizationId, projectId: input.projectId, conversationId, messageId, senderUserId: ctx.user.id, requestHash, replyThreadId, status: "queued", createdAt: now, updatedAt: now }),
         ...members.map((member) => ctx.db.insert(projectEmailRecipients).values({ id: crypto.randomUUID(), campaignId, email: member.email, kind: member.kind })),
+        ...(input.draft ? [retireSentComposition(ctx, input.draft)] : []),
         clearCorrespondenceWriteGuard(ctx, guardId),
         ])
         savedConversationId = conversationId

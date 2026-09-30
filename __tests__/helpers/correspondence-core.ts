@@ -176,6 +176,8 @@ function createBaseSchema(sqlite: Sqlite): void {
   `)
   const migration = readFileSync(resolve(process.cwd(), "drizzle/0151_project_correspondence.sql"), "utf8")
   sqlite.exec(migration.replaceAll("--> statement-breakpoint", ""))
+  sqlite.exec(readFileSync(resolve(process.cwd(), "drizzle/0176_project_email_campaigns.sql"), "utf8"))
+  sqlite.exec(readFileSync(resolve(process.cwd(), "drizzle/0178_correspondence_saved_drafts.sql"), "utf8"))
 }
 
 function seedBase(sqlite: Sqlite): void {
