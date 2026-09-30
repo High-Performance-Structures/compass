@@ -25,6 +25,7 @@ import {
 } from "./correspondence-workspace-parts"
 import { MessageCard } from "./correspondence-message-card"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
+import { ProjectEmailComposer } from "./project-email-composer"
 import {
   earliestSequence,
   applyMessageRevision,
@@ -37,9 +38,10 @@ import {
 } from "./correspondence-workspace-utils"
 import type { CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+import { retryFailedProjectEmail } from "@/app/actions/project-email"
 type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean }
 type InboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"
-type ComposeMode = { readonly kind: "reply" } | { readonly kind: "new"; readonly subject: string; readonly recipientIds: readonly string[] }
+type ComposeMode = { readonly kind: "reply" } | { readonly kind: "new"; readonly subject: string; readonly recipientIds: readonly string[] } | { readonly kind: "email" }
 type NewDraft = { readonly subject: string; readonly recipientIds: readonly string[]; readonly body: string; readonly version: number }
 type PendingSend = { readonly input: SendCorrespondenceInput }
 type SearchHit = { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }
@@ -287,6 +289,17 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setMobileDetail(true)
     setStatus(null)
   }
+  async function startProjectEmail(): Promise<void> {
+    if (inbox.workspace !== "staff") return
+    if (composeRef.current?.kind === "email") { setMobileDetail(true); return }
+    if (blockComposerTransition("starting a project email")) return
+    if (!await flushComposerBeforeNavigation()) return
+    const nextCompose = { kind: "email" as const }
+    composeRef.current = nextCompose
+    setCompose(nextCompose)
+    setMobileDetail(true)
+    setStatus(null)
+  }
   useQuickAddEntry("message", () => { void startNewMessage() })
   async function applyState(next: CorrespondenceStateInput): Promise<void> {
     if (activeSummary === null) return
@@ -355,6 +368,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setIsLoadingDetail(true)
   }
   async function flushComposerBeforeNavigation(): Promise<boolean> {
+    if (composeRef.current?.kind === "email") return window.confirm("Leave this project email? Any unsent text will be lost.")
     if (composeRef.current?.kind === "new") {
       if (!newDraftDirty.current) return true
       navigationInProgress.current = true
@@ -600,6 +614,25 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     else setStatus(result.error)
     setPendingRetraction(null)
   }
+  async function retryEmail(message: CorrespondenceMessage): Promise<void> {
+    if (isWorkspaceLocked() || message.emailDeliveryStatus !== "failed") return
+    const currentDetail = detailForConversation(detailRef.current, activeId)
+    if (!currentDetail || !currentDetail.messages.some((item) => item.id === message.id)) return
+    if (!window.confirm("Retry sending this exact email to its original recipients?")) return
+    sendInProgress.current = true
+    setIsSending(true)
+    try {
+      const result = await retryFailedProjectEmail(projectId, currentDetail.conversation.id)
+      setStatus(result.success ? result.status === "sent" ? "Project email sent." : result.error ?? "Delivery outcome needs review." : result.error)
+      await refreshInbox()
+      await loadDetail(currentDetail.conversation.id)
+    } catch {
+      setStatus("Retry outcome is unknown. Check project messages before attempting another send.")
+    } finally {
+      sendInProgress.current = false
+      setIsSending(false)
+    }
+  }
   function patchRevision(conversationId: string, messageId: string, body: string | null): void {
     const revisedAt = new Date().toISOString()
     const current = detailRef.current
@@ -647,6 +680,24 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       setIsNavigating(false)
     }
   }
+  async function backFromEmailCompose(): Promise<void> {
+    if (blockComposerTransition("returning to messages")) return
+    if (!await flushComposerBeforeNavigation()) return
+    composeRef.current = null
+    setCompose(null)
+    setMobileDetail(false)
+    setStatus(null)
+  }
+  async function projectEmailSent(conversationId: string, delivery: "sent" | "unknown", message: string | null): Promise<void> {
+    composeRef.current = null
+    setCompose(null)
+    if (detailRef.current?.conversation.id !== conversationId) invalidateDetail()
+    setActiveId(conversationId)
+    setMobileDetail(true)
+    setStatus(delivery === "sent" ? "Project email sent and saved in Compass." : message ?? "Delivery outcome needs review; do not resend this message.")
+    await refreshInbox()
+    await loadDetail(conversationId)
+  }
   async function backFromConversation(): Promise<void> {
     if (blockComposerTransition("returning to messages")) return
     if (!await flushComposerBeforeNavigation()) return
@@ -660,11 +711,14 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setReplyBody(body)
   }
   const composingNew = compose?.kind === "new"
+  const composingEmail = compose?.kind === "email"
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden bg-background" aria-label="Project messages">
-      <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} onFilter={setFilter} onNewMessage={startNewMessage} onOpen={openConversation} onRefresh={refreshInbox} />
+      <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} onFilter={setFilter} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
       <main className={cn("min-w-0 flex-1 overflow-y-auto", !mobileDetail && "hidden md:block")}>
-        {composingNew ? (
+        {composingEmail ? (
+          <ProjectEmailComposer projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
+        ) : composingNew ? (
           <NewMessagePanel
             inbox={inbox}
             compose={compose}
@@ -724,6 +778,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
             onSaveRevision={saveRevision}
             onCancelRevision={cancelRevision}
             onRetract={(message) => { if (!isWorkspaceLocked()) setPendingRetraction(message) }}
+            onRetryEmail={retryEmail}
             onDiscard={() => setDiscardDraftOpen(true)}
             onVisibleMessages={markOpened}
             onTargetHandled={() => setFocusMessageId(undefined)}
@@ -774,6 +829,7 @@ function ConversationDetail(props: {
   readonly onSaveRevision: () => Promise<void>
   readonly onCancelRevision: () => void
   readonly onRetract: (message: CorrespondenceMessage) => void
+  readonly onRetryEmail: (message: CorrespondenceMessage) => Promise<void>
   readonly onDiscard: () => void
   readonly onVisibleMessages: (conversationId: string, messages: readonly { readonly id: string; readonly editedAt: string | null }[]) => Promise<void>
   readonly onTargetHandled: () => void
@@ -852,7 +908,7 @@ function ConversationDetail(props: {
       {props.isLoading && detail === null ? <div className="flex flex-1 items-center justify-center"><LoaderCircle className="animate-spin text-muted-foreground" /></div> : detail === null ? <p className="p-6 text-sm text-muted-foreground">This conversation is unavailable.</p> : <>
         <div ref={streamRef} className="flex-1 space-y-5 p-4 md:p-6">
           {detail.hasEarlier && <Button variant="outline" className="mx-auto flex" onClick={() => void props.onLoadEarlier()}>Load earlier messages</Button>}
-          {detail.messages.map((message) => <MessageCard key={message.id} projectId={activeSummary.projectId} message={message} viewerId={props.viewerId} editDisabled={props.hasPendingSend || props.editingMessage !== null} onEdit={props.onEdit} onRetract={props.onRetract} />)}
+          {detail.messages.map((message) => <MessageCard key={message.id} projectId={activeSummary.projectId} message={message} viewerId={props.viewerId} editDisabled={props.hasPendingSend || props.editingMessage !== null} onEdit={props.onEdit} onRetract={props.onRetract} onRetryEmail={props.onRetryEmail} />)}
         </div>
         {props.status !== null && <p className="mx-4 border px-3 py-2 text-sm md:mx-6" role="status">{props.status}</p>}
         {props.compose !== null && <>

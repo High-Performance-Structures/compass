@@ -21,6 +21,7 @@ export type CompassEmailInput = {
   readonly organizationId: string | null
   readonly to: readonly string[]
   readonly cc?: readonly string[]
+  readonly bcc?: readonly string[]
   readonly replyTo?: string
   readonly headers?: readonly {
     readonly name: string
@@ -99,6 +100,7 @@ function buildMimeMessage(input: {
   readonly from: string
   readonly to: readonly string[]
   readonly cc: readonly string[]
+  readonly bcc: readonly string[]
   readonly replyTo: string | null
   readonly headers: readonly {
     readonly name: string
@@ -118,6 +120,7 @@ function buildMimeMessage(input: {
     `From: ${escapeHeader(input.from)}`,
     `To: ${input.to.map(escapeHeader).join(", ")}`,
     input.cc.length > 0 ? `Cc: ${input.cc.map(escapeHeader).join(", ")}` : null,
+    input.bcc.length > 0 ? `Bcc: ${input.bcc.map(escapeHeader).join(", ")}` : null,
     input.replyTo ? `Reply-To: ${escapeHeader(input.replyTo)}` : null,
     `Subject: ${escapeHeader(input.subject)}`,
     ...customHeaders,
@@ -248,6 +251,7 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
       from,
       to: input.to,
       cc: input.cc ?? [],
+      bcc: input.bcc ?? [],
       replyTo: input.replyTo ?? null,
       headers: input.headers ?? [],
       subject: input.subject,
@@ -305,6 +309,7 @@ async function sendResend(
   }
   if (input.html) requestBody.html = input.html
   if (input.cc && input.cc.length > 0) requestBody.cc = input.cc
+  if (input.bcc && input.bcc.length > 0) requestBody.bcc = input.bcc
   if (input.replyTo) requestBody.reply_to = input.replyTo
   if (input.headers && input.headers.length > 0) {
     const headers: Record<string, string> = {}

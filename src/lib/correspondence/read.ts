@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm"
 import { correspondence, correspondenceAttachments, correspondenceDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceState } from "@/db/schema-correspondence"
 import { correspondenceSourceMessages, correspondenceSourceRecipients } from "@/db/schema-correspondence-source"
+import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-project-email"
 import { authorizedConversation, authorizedProjectConversation, currentParticipants, type CorrespondenceContext } from "./access"
 import type { CorrespondenceDetail, CorrespondenceMessage, CorrespondenceSummary } from "./types"
 
@@ -108,12 +109,23 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
     .orderBy(desc(correspondenceMessages.sentAt), desc(correspondenceMessages.sequence)).limit(51)
   const visible = rows.slice(0, 50).reverse()
   const ids = visible.map(({ message }) => message.id)
+  const emailCampaigns = visible.some(({ message }) => message.source === "email" && message.authorUserId !== null)
+    ? await ctx.db.select().from(projectEmailCampaigns).where(and(eq(projectEmailCampaigns.organizationId, ctx.organizationId), eq(projectEmailCampaigns.projectId, ctx.projectId), inArray(projectEmailCampaigns.messageId, ids)))
+    : []
+  const emailRecipients = emailCampaigns.length
+    ? await ctx.db.select().from(projectEmailRecipients).where(inArray(projectEmailRecipients.campaignId, emailCampaigns.map((campaign) => campaign.id)))
+    : []
+  const campaignByMessage = new Map(emailCampaigns.map((campaign) => [campaign.messageId, campaign]))
   const recipients = ids.length ? await ctx.db.select().from(correspondenceRecipients).where(inArray(correspondenceRecipients.messageId, ids)) : []
   const sourceHeadersByMessage = await sourceHeaders(ctx, conversationId, ids)
   const attachments = ids.length ? await ctx.db.select().from(correspondenceAttachments).where(and(eq(correspondenceAttachments.projectId, ctx.projectId), eq(correspondenceAttachments.organizationId, ctx.organizationId), inArray(correspondenceAttachments.messageId, ids))) : []
   const receiptStates = await ctx.db.select().from(correspondenceState).where(eq(correspondenceState.conversationId, conversationId))
   const draft = projectHistory ? null : await ctx.db.select().from(correspondenceDrafts).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id))).get()
   const messages: CorrespondenceMessage[] = visible.map(({ message }) => ({
+    emailDeliveryStatus: campaignByMessage.get(message.id)?.status ?? null,
+    emailBcc: campaignByMessage.get(message.id)?.senderUserId === ctx.user.id
+      ? emailRecipients.filter((recipient) => recipient.campaignId === campaignByMessage.get(message.id)?.id && recipient.kind === "bcc").map((recipient) => recipient.email)
+      : [],
     ...((): Pick<CorrespondenceMessage, "sourceSentDisplay" | "sourceSentAt" | "sourceAttachmentReadiness"> => {
       const source = sourceHeadersByMessage.get(message.id)
       const linkedDriveIds = new Set(attachments.filter((attachment) => attachment.messageId === message.id && attachment.retiredAt === null && attachment.driveFileId !== null).map((attachment) => attachment.driveFileId))
@@ -131,7 +143,9 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
     })(),
     id: message.id, sequence: message.sequence, source: message.source, authorName: message.authorName,
     authorUserId: message.authorUserId, sentAt: message.sentAt, body: message.retractedAt ? "" : message.body,
-    recipients: sourceHeadersByMessage.get(message.id)?.recipients ?? recipients.filter((r) => r.messageId === message.id && r.kind !== "author").map((r) => ({ name: r.name, kind: r.kind === "cc" ? "cc" : "to" })),
+    recipients: campaignByMessage.has(message.id)
+      ? emailRecipients.filter((recipient) => recipient.campaignId === campaignByMessage.get(message.id)?.id && recipient.kind !== "bcc").map((recipient) => ({ name: recipient.email, kind: recipient.kind === "cc" ? "cc" as const : "to" as const }))
+      : sourceHeadersByMessage.get(message.id)?.recipients ?? recipients.filter((r) => r.messageId === message.id && r.kind !== "author").map((r) => ({ name: r.name, kind: r.kind === "cc" ? "cc" : "to" })),
     attachments: message.retractedAt ? [] : attachments.filter((a) => a.messageId === message.id).map((a) => ({ id: a.id, name: a.name, size: a.size, contentType: a.contentType, available: a.retiredAt === null && a.driveFileId !== null })),
     editedAt: message.editedAt, retractedAt: message.retractedAt, delivery: message.source === "buildertrend" ? "imported" : "saved",
     readReceipts: recipients.filter((r) => r.messageId === message.id && r.kind !== "author").map((r) => {
