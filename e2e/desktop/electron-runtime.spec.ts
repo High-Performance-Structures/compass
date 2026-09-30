@@ -1,23 +1,56 @@
-import { expect, test, _electron as electron } from "@playwright/test"
+import {
+  expect,
+  test,
+  _electron as electron,
+  type Video,
+} from "@playwright/test"
 
 function isElectron(): boolean {
   return process.env.ELECTRON === "true" || process.env.ELECTRON_TEST === "true"
 }
 
+type AttemptResult =
+  | { readonly success: true }
+  | { readonly success: false; readonly error: unknown }
+
+async function attempt(action: () => Promise<void>): Promise<AttemptResult> {
+  try {
+    await action()
+    return { success: true }
+  } catch (error) {
+    return { success: false, error }
+  }
+}
+
 test.describe("Electron runtime", () => {
   test.skip(!isElectron(), "Desktop only")
 
-  test("loads the app with the desktop preload bridge", async () => {
+  test("loads the app with the desktop preload bridge", async ({}, testInfo) => {
+    const videoDir = testInfo.outputPath("videos")
+    const appUrl = new URL(
+      "/demo",
+      process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
+    ).toString()
+    let mainVideo: Video | null = null
+    let previewVideo: Video | null = null
+    let testFailure: unknown = null
     const app = await electron.launch({
       args: ["dist-electron/electron/main.js"],
+      recordVideo: {
+        dir: videoDir,
+        size: { width: 1180, height: 800 },
+        showActions: { position: "top-right" },
+      },
       env: {
         ...process.env,
-        ELECTRON_DEV_SERVER_URL: "http://127.0.0.1:3000",
+        ELECTRON_DEV_SERVER_URL: appUrl,
       },
     })
 
     try {
       const page = await app.firstWindow()
+      mainVideo = page.video()
+      await page.waitForURL(/\/dashboard/)
       await page.waitForLoadState("domcontentloaded")
 
       await expect
@@ -26,30 +59,100 @@ test.describe("Electron runtime", () => {
         )
         .toBe(true)
 
-      await expect
-        .poll(async () =>
-          page.evaluate(() => window.compassDesktop?.window.isFocused()),
-        )
-        .toBe(true)
-
-      const previewWindowPromise = app.waitForEvent("window")
+      const previewWindowPromise = page.waitForEvent("popup")
       await page.evaluate(() => {
         window.open(
-          `${window.location.origin}/preview/projects/desktop-preview-test/owner`,
+          `${window.location.origin}/preview/projects/e2e-project-001/owner`,
           "compass-project-audience-preview",
           "popup=yes,width=1180,height=800"
         )
       })
       const previewWindow = await previewWindowPromise
+      previewVideo = previewWindow.video()
+      await expect(previewWindow).toHaveURL(
+        /\/preview\/projects\/e2e-project-001\/owner$/,
+      )
+      await expect(previewWindow.locator("body")).not.toContainText(
+        /This page could not be found|Application error|Internal Server Error|404/i,
+      )
+      await expect(
+        previewWindow
+          .getByLabel("Owner dashboard")
+          .getByText("Owner workspace", { exact: true }),
+      ).toBeVisible()
+      await expect(
+        previewWindow.getByRole("link", {
+          name: "H-E2E-001 · Regression Test Project",
+        }),
+      ).toBeVisible()
+      await expect(
+        previewWindow.getByText(
+          "Preview mode — external users see this same guarded workspace.",
+          { exact: true },
+        ),
+      ).toBeVisible()
+      const previewScreenshot = testInfo.outputPath("preview-window.png")
+      await previewWindow.screenshot({ path: previewScreenshot, fullPage: true })
+      await testInfo.attach("preview-window", {
+        path: previewScreenshot,
+        contentType: "image/png",
+      })
+      const focusRequestSwitch = "compass-e2e-main-focus-requested"
+      await app.evaluate(
+        ({ app: electronApp, BrowserWindow }, switchName) => {
+          const mainWindow = BrowserWindow.getAllWindows().find(
+            (candidate) => !candidate.webContents.getURL().includes("/preview/"),
+          )
+          if (!mainWindow) throw new Error("Main Electron window not found")
+
+          // Headless CI desktops may refuse OS focus. Observe the native focus
+          // request while still forwarding it to verify Compass restores focus.
+          const focusMainWindow = mainWindow.focus.bind(mainWindow)
+          mainWindow.focus = () => {
+            electronApp.commandLine.appendSwitch(switchName)
+            focusMainWindow()
+          }
+        },
+        focusRequestSwitch,
+      )
       await previewWindow.close()
 
       await expect
-        .poll(async () =>
-          page.evaluate(() => window.compassDesktop?.window.isFocused())
+        .poll(() =>
+          app.evaluate(
+            ({ app: electronApp }, switchName) =>
+              electronApp.commandLine.hasSwitch(switchName),
+            focusRequestSwitch,
+          ),
         )
         .toBe(true)
-    } finally {
-      await app.close()
+    } catch (error) {
+      testFailure = error
     }
+
+    async function preserveFirstFailure(action: () => Promise<void>): Promise<void> {
+      const result = await attempt(action)
+      if (!result.success && testFailure === null) testFailure = result.error
+    }
+
+    await preserveFirstFailure(() => app.close())
+    if (mainVideo) {
+      await preserveFirstFailure(async () => {
+        await testInfo.attach("desktop-main-window-recording", {
+          path: await mainVideo.path(),
+          contentType: "video/webm",
+        })
+      })
+    }
+    if (previewVideo) {
+      await preserveFirstFailure(async () => {
+        await testInfo.attach("desktop-preview-window-recording", {
+          path: await previewVideo.path(),
+          contentType: "video/webm",
+        })
+      })
+    }
+
+    if (testFailure !== null) throw testFailure
   })
 })
