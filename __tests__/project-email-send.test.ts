@@ -40,6 +40,10 @@ describe("project email send", () => {
     const first = await sendProjectEmail(email)
     expect(first).toMatchObject({ success: true, status: "sent" })
     expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: ["bidder@example.com"], cc: ["architect@example.com"], bcc: ["quiet@example.com"] }))
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      replyTo: expect.stringMatching(/^"project-a - Project Messages" <jarvis\+cmp-[a-z0-9]{18}@hps-colorado\.com>$/),
+      text: expect.stringContaining("Project email: jarvis+project-project-a@hps-colorado.com"),
+    }))
     expect(db.sqlite.prepare("SELECT source,body FROM correspondence_messages").get()).toEqual({ source: "email", body: "Our permit has arrived." })
     expect(db.sqlite.prepare("SELECT user_id FROM correspondence_participants ORDER BY user_id").all()).toEqual([{ user_id: "revoked-a" }, { user_id: "staff-a" }])
     expect(db.sqlite.prepare("SELECT email,kind FROM project_email_recipients ORDER BY kind,email").all()).toEqual([
