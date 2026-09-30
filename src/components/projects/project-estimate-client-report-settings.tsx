@@ -17,6 +17,8 @@ import {
   isEstimateClientReportMode,
   type EstimateClientReportMode,
 } from "@/lib/estimates/client-report"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import { ESTIMATE_CLIENT_REPORT_MODES } from "@/lib/estimates/client-report"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -35,6 +37,8 @@ import { ProjectEstimateReportPhaseEditor } from "@/components/projects/project-
 function reportModeLabel(mode: EstimateClientReportMode): string {
   if (mode === "division_summary") return "Division subtotals + grand total"
   if (mode === "phase_summary") return "Phase subtotals + grand total"
+  if (mode === "assembly_summary") return "Assembly totals"
+  if (mode === "assembly_items") return "Assembly cost code detail"
   return "Line items + division totals"
 }
 
@@ -186,29 +190,8 @@ export function ProjectEstimateClientReportSettings({
 
       <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
         <div className="space-y-1.5">
-          <Label htmlFor="client-report-view">Default client report detail (unassigned CSI groups)</Label>
-          <Select
-            value={reportMode}
-            onValueChange={(value) => {
-              if (isEstimateClientReportMode(value)) setReportMode(value)
-            }}
-            disabled={!editable}
-          >
-            <SelectTrigger id="client-report-view">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="division_summary">
-                Division subtotals and grand total
-              </SelectItem>
-              <SelectItem value="phase_summary">
-                Phase descriptions, subtotals, and grand total
-              </SelectItem>
-              <SelectItem value="line_items">
-                Individual line items with division totals
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <Label htmlFor="client-report-view">Client report view</Label>
+          <SearchableCombobox id="client-report-view" ariaLabel="Client report presentation" placeholder="Choose report view" value={reportMode} options={ESTIMATE_CLIENT_REPORT_MODES.map((mode) => ({ value: mode, label: reportModeLabel(mode) }))} onValueChange={(value) => { if (isEstimateClientReportMode(value)) setReportMode(value) }} disabled={!editable} />
         </div>
         {editable && (
           <Button

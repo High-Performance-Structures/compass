@@ -18,11 +18,12 @@ function TaxNote({ line }: { readonly line: ClientEstimateLine }): React.ReactEl
   return <p className="mt-1 text-xs font-normal italic text-muted-foreground">Includes {money(line.taxCents)} sales tax{context ? ` · ${context}` : ""}</p>
 }
 
-function CostRow({ item }: { readonly item: ClientEstimateLine | ClientEstimateLineCostItem }): React.ReactElement {
+function CostRow({ item, sourceDivision }: { readonly item: ClientEstimateLine | ClientEstimateLineCostItem; readonly sourceDivision?: string }): React.ReactElement {
   return (
     <tr className="break-inside-avoid border-b">
       <td className="py-2 pr-2 align-top font-medium">
         <p>{item.costCode} · {item.costCodeName}</p>
+        {sourceDivision && <p className="mt-1 text-xs font-normal text-muted-foreground">{sourceDivision}</p>}
         {item.description.trim() !== item.costCodeName.trim() && <p className="mt-1 font-normal text-muted-foreground">{item.description}</p>}
         {"ownerVisible" in item ? <>
           <TaxNote line={item} />
@@ -82,10 +83,11 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
   readonly phases: readonly ClientEstimatePhase[]
   readonly reportMode: EstimateClientReportMode
 }): React.ReactElement {
+  const assemblyReport = reportMode === "assembly_summary" || reportMode === "assembly_items"
   // Preserve the existing compact report when no custom phase is in use.
-  if (phases.every((phase) => !phase.custom)) return <DefaultCsiReport phases={phases} reportMode={reportMode} />
+  if (!assemblyReport && phases.every((phase) => !phase.custom)) return <DefaultCsiReport phases={phases} reportMode={reportMode} />
   return (
-    <section className="mt-6" aria-label="Project work by phase">
+    <section className="mt-6" aria-label={assemblyReport ? "Project work by assembly" : "Project work by phase"}>
       {phases.map((phase) => {
         const title = phase.custom ? phase.name : reportMode === "division_summary" ? phase.divisionName : phase.description
         return (
@@ -94,7 +96,7 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
               <div>
                 <p className="font-semibold">{title}</p>
                 {phase.custom && phase.description && <p className="mt-1 whitespace-pre-wrap font-normal leading-5">{phase.description}</p>}
-                <p className="mt-1 text-xs text-muted-foreground">{phase.custom ? "Source CSI division" : reportMode === "phase_summary" ? "Phase" : "Division"} {phase.divisionCode}{phase.custom ? ` · ${phase.itemize ? "Itemized" : "Lump sum"}` : ""}</p>
+                {!assemblyReport && <p className="mt-1 text-xs text-muted-foreground">{phase.custom ? "Source CSI division" : reportMode === "phase_summary" ? "Phase" : "Division"} {phase.divisionCode}{phase.custom ? ` · ${phase.itemize ? "Itemized" : "Lump sum"}` : ""}</p>}
                 {!phase.itemize && phase.taxCents > 0 && <p className="mt-1 text-xs italic text-muted-foreground">Includes {money(phase.taxCents)} sales tax</p>}
               </div>
               {!phase.itemize && <span className="text-right font-semibold">{money(phase.subtotalCents)}</span>}
@@ -110,7 +112,7 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
               <tbody>
                 {phase.lines.map((line) => phase.custom && line.costItems.length > 0 ? (
                   <Fragment key={line.id}>
-                    <tr className="break-inside-avoid border-b"><td colSpan={5} className="py-2 font-medium">{line.costCode} · {line.description}</td></tr>
+                    <tr className="break-inside-avoid border-b"><td colSpan={5} className="py-2 font-medium">{line.costCode} · {line.description}{assemblyReport && <p className="text-xs font-normal text-muted-foreground">{line.divisionCode} · {line.divisionName}</p>}</td></tr>
                     {line.costItems.map((item) => <CostRow key={item.id} item={item} />)}
                     <tr className="break-inside-avoid border-b"><td colSpan={4} className="py-2">
                       Assembly subtotal: {line.description}
@@ -118,7 +120,7 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
                       {!line.includeInBuilderFee && <p className="mt-1 text-xs italic text-muted-foreground">Included in project cost; excluded from builder-fee calculation.</p>}
                     </td><td className="py-2 text-right">{money(line.lineTotalCents)}</td></tr>
                   </Fragment>
-                ) : <CostRow key={line.id} item={line} />)}
+                ) : <CostRow key={line.id} item={line} sourceDivision={assemblyReport ? `${line.divisionCode} · ${line.divisionName}` : undefined} />)}
                 <tr className="break-inside-avoid border-b-2 font-semibold">
                   <td className="py-2" colSpan={4}>Total: {title}</td>
                   <td className="py-2 text-right">{money(phase.subtotalCents)}</td>

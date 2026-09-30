@@ -18,7 +18,7 @@ import { cookies } from "next/headers"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
-import { getDb } from "@/db"
+import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess } from "@/lib/estimates/access"
 import {
   projectBudgetLines,
   projectContacts,
@@ -27,6 +27,7 @@ import {
 } from "@/db/schema"
 import {
   estimateTermsTemplates,
+  projectEstimateAssemblies,
   projectEstimateAcknowledgements,
   projectEstimateBasisDocuments,
   projectEstimateLineCostItems,
@@ -44,7 +45,8 @@ import {
   projectEstimateRfqBidImportLines,
   projectEstimateRfqBidImports,
 } from "@/db/schema-rfqs"
-import { requireAuth, type AuthUser } from "@/lib/auth"
+import type { EstimateAssembly } from "@/lib/estimates/assemblies"
+import { estimateAssemblyRevisionStatements } from "@/lib/estimates/assembly-revision"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
@@ -53,7 +55,6 @@ import {
   calculateEstimateLine,
   calculateEstimateLineBreakdownRollup,
   calculateEstimateTotals,
-  estimateCanBeEdited,
   estimateSourceHash,
   isEstimateStatus,
   type EstimateLedgerLine,
@@ -98,9 +99,7 @@ import {
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import { can, requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
-  projectDepartment,
   type ProjectDepartment,
 } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -177,6 +176,7 @@ export type ProjectEstimateSigner = {
 }
 
 export type ProjectEstimateLineItem = {
+  readonly assemblyId: string | null
   readonly id: string
   readonly reportPhaseId: string | null
   readonly divisionCode: string
@@ -312,6 +312,7 @@ export type ProjectEstimateWorkspace = {
   readonly reportMode: EstimateClientReportMode
   readonly estimates: readonly ProjectEstimateSummary[]
   readonly activeEstimate: ProjectEstimateSummary | null
+  readonly assemblies: readonly EstimateAssembly[]
   readonly lines: readonly ProjectEstimateLineItem[]
   readonly basisDocuments: readonly ProjectEstimateBasisItem[]
   readonly projectDocumentOptions: readonly ProjectEstimateDocumentOption[]
@@ -377,6 +378,7 @@ export type ProjectEstimateHeaderInput = {
 }
 
 export type ProjectEstimateLineInput = {
+  readonly assemblyId: string | null
   readonly reportPhaseId: string | null
   readonly costCode: string | null
   readonly description: string | null
@@ -471,66 +473,6 @@ export type ProjectEstimatePlanSwiftImportResult =
   | { readonly success: false; readonly error: string }
 
 const PROJECT_TOTALS_RANGE = "Project Totals!A1:AA506"
-
-type CompassDb = ReturnType<typeof getDb>
-
-type EstimateAccess = {
-  readonly db: CompassDb
-  readonly rawDb: D1Database
-  readonly user: AuthUser
-  readonly projectNumber: string | null
-  readonly projectName: string
-  readonly projectAddress: string | null
-  readonly projectMailingAddress: string | null
-  readonly projectClientName: string | null
-  readonly organizationId: string | null
-  readonly department: ProjectDepartment
-  readonly canEdit: boolean
-}
-
-async function estimateAccess(
-  projectId: string,
-  update: boolean
-): Promise<EstimateAccess> {
-  const user = await requireAuth()
-  requirePermission(user, "budget", update ? "update" : "read")
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const access = await assertProjectAccess(db, user, projectId)
-  const projectRows = await db
-    .select({
-      name: projects.name,
-      address: projects.address,
-      mailingAddress: projects.mailingAddress,
-      clientName: projects.clientName,
-      organizationId: projects.organizationId,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1)
-  const project = projectRows[0]
-  if (!project) throw new Error("Project not found")
-  const canEdit = update && isInternalStaffRole(user.role)
-  if (update && !canEdit) {
-    throw new Error("Only authorized internal staff can edit estimates.")
-  }
-  return {
-    db,
-    rawDb: env.DB,
-    user,
-    projectNumber: access.projectNumber,
-    projectName: project.name,
-    projectAddress: project.address,
-    projectMailingAddress: project.mailingAddress,
-    projectClientName: project.clientName,
-    organizationId: project.organizationId,
-    department: projectDepartment({
-      projectId,
-      projectNumber: access.projectNumber,
-    }),
-    canEdit,
-  }
-}
 
 function cleanText(value: string | null): string | null {
   const cleaned = value?.trim() ?? ""
@@ -780,6 +722,7 @@ function estimateLineItem(
   costItems: readonly (typeof projectEstimateLineCostItems.$inferSelect)[]
 ): ProjectEstimateLineItem {
   return {
+    assemblyId: row.assemblyId,
     id: row.id,
     reportPhaseId: row.reportPhaseId,
     divisionCode: row.divisionCode,
@@ -894,56 +837,6 @@ function activeEstimate(
     estimates[0] ??
     null
   )
-}
-
-function revalidateEstimate(projectId: string): void {
-  revalidatePath(`/dashboard/projects/${projectId}/estimate`)
-  revalidatePath(`/dashboard/projects/${projectId}/estimate/compare`)
-  revalidatePath(`/print/projects/${projectId}/estimate`)
-  revalidatePath(`/print/projects/${projectId}/estimate/compare`)
-  revalidatePath(`/dashboard/projects/${projectId}/budget`)
-  revalidatePath(`/dashboard/projects/${projectId}/financials`)
-  revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
-}
-
-async function requireEditableEstimate(
-  db: CompassDb,
-  projectId: string,
-  estimateId: string
-): Promise<typeof projectEstimates.$inferSelect> {
-  const rows = await db
-    .select()
-    .from(projectEstimates)
-    .where(
-      and(
-        eq(projectEstimates.id, estimateId),
-        eq(projectEstimates.projectId, projectId)
-      )
-    )
-    .limit(1)
-  const estimate = rows[0]
-  if (!estimate || !isEstimateStatus(estimate.status)) {
-    throw new Error("Estimate not found.")
-  }
-  if (!estimateCanBeEdited(estimate.status)) {
-    throw new Error(
-      "This estimate is locked. Create a revision instead of changing accepted contract values."
-    )
-  }
-  if (estimate.foxitStatus === "preparing") {
-    await db
-      .update(projectEstimates)
-      .set({
-        foxitStatus: "not_started",
-        foxitEnvelopeId: null,
-        foxitEmbeddedSessionUrl: null,
-        foxitPreparedSourceHash: null,
-        foxitPreparedAt: null,
-      })
-      .where(eq(projectEstimates.id, estimateId))
-      .run()
-  }
-  return estimate
 }
 
 async function refreshEstimateTotals(
@@ -1086,6 +979,7 @@ export async function getProjectEstimateWorkspace(
     acknowledgementRows,
     signerContactRows,
     projectDocumentRows,
+    assemblyRows,
   ] =
     await Promise.all([
       selected
@@ -1210,6 +1104,11 @@ export async function getProjectEstimateWorkspace(
           desc(projectDocuments.documentDate),
           asc(projectDocuments.title)
         ),
+      selected
+        ? access.db.select().from(projectEstimateAssemblies)
+            .where(eq(projectEstimateAssemblies.estimateId, selected.id))
+            .orderBy(asc(projectEstimateAssemblies.sortOrder))
+        : Promise.resolve([]),
     ])
 
   const costItemsByLine = new Map<
@@ -1267,6 +1166,7 @@ export async function getProjectEstimateWorkspace(
       selected?.clientReportMode ?? estimateClientReportMode(access.department),
     estimates,
     activeEstimate: selected,
+    assemblies: assemblyRows.map(({ id, name, description, sortOrder }) => ({ id, name, description, sortOrder })),
     lines: lineRows.map((row) =>
       estimateLineItem(row, costItemsByLine.get(row.id) ?? [])
     ),
@@ -1654,6 +1554,8 @@ export async function duplicateProjectEstimate(
       : null
     const sourcePhases = await access.db.select().from(projectEstimateReportPhases)
       .where(and(eq(projectEstimateReportPhases.estimateId, sourceEstimateId), eq(projectEstimateReportPhases.projectId, projectId)))
+    const sourceAssemblies = await access.db.select().from(projectEstimateAssemblies)
+      .where(eq(projectEstimateAssemblies.estimateId, sourceEstimateId))
     const phaseCopies = sourcePhases.map((phase) => ({ phase, id: crypto.randomUUID() }))
     const header = access.db.insert(projectEstimates).values({
       ...source,
@@ -1750,7 +1652,7 @@ export async function duplicateProjectEstimate(
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_lines (
-             id, project_id, estimate_id, template_line_id, report_phase_id, division_code,
+             id, project_id, estimate_id, template_line_id, report_phase_id, assembly_id, division_code,
              division_name, cost_code, cost_code_name, description,
              specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
              markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
@@ -1759,7 +1661,7 @@ export async function duplicateProjectEstimate(
              sort_order, created_at, updated_at
            )
            SELECT lower(hex(randomblob(16))), ?, ?, ${changingPhase ? "NULL" : "template_line_id"},
-             report_phase_id,
+             report_phase_id, assembly_id,
              division_code, division_name, cost_code, cost_code_name,
              description, specifications, quantity, unit, unit_cost_cents,
              direct_cost_cents, markup_rate_basis_points, markup_cents, taxable,
@@ -1776,6 +1678,7 @@ export async function duplicateProjectEstimate(
         `UPDATE project_estimate_lines SET report_phase_id = ?
          WHERE estimate_id = ? AND project_id = ? AND report_phase_id = ?`
       ).bind(copy.id, id, destinationProjectId, copy.phase.id)),
+      ...estimateAssemblyRevisionStatements({ db: access.rawDb, projectId: destinationProjectId, estimateId: id, now, assemblies: sourceAssemblies }),
       access.rawDb
         .prepare(
           `INSERT INTO project_estimate_line_cost_items (
@@ -2593,7 +2496,8 @@ export async function importPlanSwiftEstimateLines(
         projectId,
         estimateId,
         templateLineId: null,
-        reportPhaseId: null,
+        assemblyId: null,
+      reportPhaseId: null,
         divisionCode: cost.divisionCode,
         divisionName: cost.divisionDescription,
         costCode: cost.code,
@@ -2698,6 +2602,13 @@ export async function saveProjectEstimateLine(
       projectId,
       estimateId
     )
+    if (input.assemblyId) {
+      const assembly = await access.db.select({ id: projectEstimateAssemblies.id })
+        .from(projectEstimateAssemblies).where(and(
+          eq(projectEstimateAssemblies.id, input.assemblyId),
+          eq(projectEstimateAssemblies.estimateId, estimateId))).limit(1)
+      if (!assembly[0]) throw new Error("Choose an assembly from this estimate.")
+    }
     const costCode = requiredText(input.costCode, "Cost code")
     const costRows = await loadProjectEstimateCostCodes(access.db)
     const cost = costRows.find((row) => row.code === costCode)
@@ -2804,6 +2715,7 @@ export async function saveProjectEstimateLine(
           .where(eq(projectEstimateLines.estimateId, estimateId))
           .orderBy(desc(projectEstimateLines.sortOrder))
     const values = {
+      assemblyId: input.assemblyId,
       reportPhaseId,
       divisionCode: cost.divisionCode,
       divisionName: cost.divisionDescription,
@@ -3657,6 +3569,7 @@ export async function prepareProjectEstimateForClientSignature(
       phaseDescriptions,
       reportPhases,
       acknowledgements,
+      assemblies,
     ] =
       await Promise.all([
         access.db
@@ -3695,6 +3608,9 @@ export async function prepareProjectEstimateForClientSignature(
           .from(projectEstimateAcknowledgements)
           .where(eq(projectEstimateAcknowledgements.estimateId, estimateId))
           .orderBy(asc(projectEstimateAcknowledgements.sortOrder)),
+        access.db.select().from(projectEstimateAssemblies)
+          .where(eq(projectEstimateAssemblies.estimateId, estimateId))
+          .orderBy(asc(projectEstimateAssemblies.sortOrder)),
       ])
     if (lines.length === 0) throw new Error("Add estimate lines before signature.")
     if (!cleanText(estimate.estimateDate)) {
@@ -3754,6 +3670,7 @@ export async function prepareProjectEstimateForClientSignature(
       costItemsByLineId.set(item.estimateLineId, current)
     }
     const sourceHash = await estimateSourceHash({
+      assemblies: assemblies.map(({ id, name, description, sortOrder }) => ({ id, name, description, sortOrder })),
       estimateId,
       versionNumber: estimate.versionNumber,
       title: reportTitle,
@@ -3794,6 +3711,7 @@ export async function prepareProjectEstimateForClientSignature(
         specifications: line.specifications,
         quantity: line.quantity,
         unit: line.unit,
+        assemblyId: line.assemblyId,
         unitCostCents: line.unitCostCents,
         markupRateBasisPoints: line.markupRateBasisPoints,
         taxable: line.taxable,

@@ -10,7 +10,7 @@ import { ProjectEstimateReportActions } from "@/components/projects/project-esti
 import { ProjectEstimateReportPhases } from "@/components/projects/project-estimate-report-phases"
 import {
   clientEstimateBuilderFeeExclusionSummary,
-  clientEstimatePhases,
+  clientEstimateReportGroups,
   clientEstimateTaxSummary,
 } from "@/lib/estimates/client-report"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
@@ -71,7 +71,9 @@ export default async function ProjectEstimatePrintPage({
       item.description,
     ])
   )
-  const phases = clientEstimatePhases({
+  const phases = clientEstimateReportGroups({
+    mode: workspace.reportMode,
+    assemblies: workspace.assemblies,
     lines: workspace.lines,
     phaseDescriptions,
     reportPhases: workspace.reportPhases,
