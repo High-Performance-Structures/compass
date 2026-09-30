@@ -3,6 +3,7 @@ import { correspondence, correspondenceAttachments, correspondenceDrafts, corres
 import { correspondenceSourceMessages, correspondenceSourceRecipients } from "@/db/schema-correspondence-source"
 import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-project-email"
 import { authorizedConversation, authorizedProjectConversation, currentParticipants, type CorrespondenceContext } from "./access"
+import { draftAttachments } from "./saved-drafts"
 import { projectEmailPrivacy, visibleProjectEmailPeople } from "@/lib/email/project-email-privacy"
 import type { CorrespondenceDetail, CorrespondenceMessage, CorrespondenceSummary } from "./types"
 
@@ -87,7 +88,13 @@ export async function listCorrespondence(ctx: CorrespondenceContext, conversatio
       .where(and(eq(correspondenceMessages.conversationId, conversation.id), or(isNull(correspondenceMessages.authorUserId), ne(correspondenceMessages.authorUserId, ctx.user.id)),
         isNull(correspondenceMessages.retractedAt), eq(correspondenceRecipients.baseline, false), isNull(correspondenceRecipients.openedAt))).limit(1).get()
     const state = await ctx.db.select().from(correspondenceState).where(and(eq(correspondenceState.conversationId, conversation.id), eq(correspondenceState.userId, ctx.user.id))).get()
+    const sent = await ctx.db.select({ sentAt: correspondenceMessages.sentAt, body: correspondenceMessages.body, id: correspondenceMessages.id }).from(correspondenceMessages)
+      .where(and(eq(correspondenceMessages.conversationId, conversation.id), eq(correspondenceMessages.authorUserId, ctx.user.id), isNull(correspondenceMessages.retractedAt),
+        sql`EXISTS(SELECT 1 FROM correspondence_recipients WHERE message_id=${correspondenceMessages.id} AND user_id=${ctx.user.id})`,
+        or(eq(correspondenceMessages.source, "compass"), sql`EXISTS(SELECT 1 FROM project_email_campaigns WHERE message_id=${correspondenceMessages.id} AND sender_user_id=${ctx.user.id} AND status IN ('sent','unknown'))`)))
+      .orderBy(desc(correspondenceMessages.sentAt)).limit(1).get()
     return {
+      lastSentAt: sent?.sentAt ?? null, lastSentExcerpt: sent?.body.slice(0, 180) ?? null, lastSentMessageId: sent?.id ?? null,
       id: conversation.id, projectId: ctx.projectId, subject: conversation.subject,
       excerpt: last.message.retractedAt ? "Message retracted" : last.message.body.slice(0, 180), lastActivityAt: last.message.sentAt,
       lastActivityDisplay: lastActivitySourceLocal ? lastSource?.sourceSentDisplay ?? null : null,
@@ -160,5 +167,5 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
     canEdit: !projectHistory && message.source === "compass" && message.authorUserId === ctx.user.id && !message.retractedAt,
   }))
   const replyAudience = privacy?.blindUserIds.has(ctx.user.id) ? "private_staff" : privacy && ctx.workspace === "staff" ? "shared_email" : null
-  return { replyAudience, conversation: summary, participantVersion: conversation.participantVersion, messages, hasEarlier: rows.length > 50, draft: draft ? { body: draft.body, version: draft.version } : null }
+  return { replyAudience, conversation: summary, participantVersion: conversation.participantVersion, messages, hasEarlier: rows.length > 50, draft: draft ? { body: draft.body, version: draft.version, attachments: await draftAttachments(ctx, draft.attachmentIds) } : null }
 }

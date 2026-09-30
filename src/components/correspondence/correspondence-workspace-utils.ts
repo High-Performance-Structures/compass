@@ -33,13 +33,13 @@ export function composerTransitionBlock(input: {
   return null
 }
 
-export function filterConversations(conversations: readonly CorrespondenceSummary[], filter: "inbox" | "unread" | "follow-up" | "saved" | "archived", query: string): readonly CorrespondenceSummary[] {
+export function filterConversations(conversations: readonly CorrespondenceSummary[], filter: import("@/lib/correspondence/types").CorrespondenceInboxFilter, query: string): readonly CorrespondenceSummary[] {
   const normalized = query.trim().toLocaleLowerCase()
   return conversations.filter((conversation) => {
-    const filterMatch = filter === "archived" ? conversation.archived : !conversation.archived && (filter === "inbox" || filter === "unread" && conversation.unread || filter === "follow-up" && conversation.followUp || filter === "saved" && conversation.saved)
-    const searchMatch = !normalized || [conversation.subject, conversation.excerpt, ...conversation.people.map((person) => person.name)].join(" ").toLocaleLowerCase().includes(normalized)
+    const filterMatch = filter === "sent" ? Boolean(conversation.lastSentAt) : filter === "archived" ? conversation.archived : !conversation.archived && (filter === "inbox" || filter === "unread" && conversation.unread || filter === "follow-up" && conversation.followUp || filter === "saved" && conversation.saved)
+    const searchMatch = !normalized || [conversation.subject, filter === "sent" ? conversation.lastSentExcerpt ?? conversation.excerpt : conversation.excerpt, ...conversation.people.map((person) => person.name)].join(" ").toLocaleLowerCase().includes(normalized)
     return filterMatch && searchMatch
-  })
+  }).sort((a, b) => filter === "sent" ? (b.lastSentAt ?? "").localeCompare(a.lastSentAt ?? "") : 0)
 }
 
 export function earliestSequence(messages: readonly CorrespondenceMessage[]): number | undefined { return messages[0]?.sequence }

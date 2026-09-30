@@ -7,11 +7,11 @@ import { boundedAttachmentBytes, MAX_CORRESPONDENCE_ATTACHMENTS, MAX_PROJECT_EMA
 
 type Attachment = typeof correspondenceAttachments.$inferSelect
 
-export async function validateProjectEmailAttachments(ctx: CorrespondenceContext, ids: readonly string[]): Promise<readonly Attachment[]> {
+export async function validateProjectEmailAttachments(ctx: CorrespondenceContext, ids: readonly string[], retainedDraft = false): Promise<readonly Attachment[]> {
   if (!Array.isArray(ids) || ids.length > MAX_CORRESPONDENCE_ATTACHMENTS || ids.some((id) => typeof id !== "string" || id.length > 200) || new Set(ids).size !== ids.length) throw new Error("Choose no more than 10 distinct attachments.")
   const files = ids.length ? await ctx.db.select().from(correspondenceAttachments).where(and(inArray(correspondenceAttachments.id, [...ids]), eq(correspondenceAttachments.organizationId, ctx.organizationId), eq(correspondenceAttachments.projectId, ctx.projectId), eq(correspondenceAttachments.ownerUserId, ctx.user.id), isNull(correspondenceAttachments.messageId), isNull(correspondenceAttachments.retiredAt))) : []
   const expiry = new Date(Date.now() - 7 * 86400000).toISOString()
-  if (files.length !== ids.length || files.some((file) => !file.driveFileId || file.createdAt < expiry || file.size < 0) || files.reduce((n, file) => n + file.size, 0) > MAX_PROJECT_EMAIL_ATTACHMENT_BYTES) throw new Error("An attachment is unavailable or exceeds the 18 MB email attachment limit.")
+  if (files.length !== ids.length || files.some((file) => !file.driveFileId || file.createdAt < expiry && !retainedDraft || file.size < 0) || files.reduce((n, file) => n + file.size, 0) > MAX_PROJECT_EMAIL_ATTACHMENT_BYTES) throw new Error("An attachment is unavailable or exceeds the 18 MB email attachment limit.")
   return files
 }
 

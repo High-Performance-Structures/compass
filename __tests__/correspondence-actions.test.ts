@@ -116,7 +116,7 @@ describe("correspondence actions against SQLite", () => {
     expect((await discardCorrespondenceDraft("project-a", "thread", 1)).success).toBe(true)
     expect((await saveCorrespondenceDraft("project-a", "thread", "Delayed autosave", 1)).success).toBe(false)
     const result = await getCorrespondenceDetail("project-a", "thread")
-    expect(result.success && result.data.draft).toEqual({ body: "", version: 2 })
+    expect(result.success && result.data.draft).toEqual({ body: "", version: 2, attachments: [] })
   })
   it("marks only observed messages, and does not certify a newer edit", async () => {
     expect((await markCorrespondenceOpened("project-a", "thread", [{ id: "seen", editedAt: null }])).success).toBe(true)

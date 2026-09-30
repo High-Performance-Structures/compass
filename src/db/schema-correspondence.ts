@@ -62,6 +62,7 @@ export const correspondenceDrafts = sqliteTable("correspondence_drafts", {
   conversationId: text("conversation_id").notNull().references(() => correspondence.id),
   userId: text("user_id").notNull().references(() => users.id),
   body: text("body").notNull(),
+  attachmentIds: text("attachment_ids", { mode: "json" }).$type<readonly string[]>().notNull().default([]),
   version: integer("version").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (t) => [uniqueIndex("correspondence_draft_unique").on(t.conversationId, t.userId)])
@@ -115,3 +116,15 @@ export const correspondenceCompositionDrafts = sqliteTable("correspondence_compo
   version: integer("version").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (t) => [uniqueIndex("correspondence_composition_draft_unique").on(t.projectId, t.userId)])
+
+// Private, independently versioned compositions; tombstones prevent stale autosaves resurrecting drafts.
+export const correspondenceSavedDrafts = sqliteTable("correspondence_saved_drafts", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  content: text("content", { mode: "json" }).$type<import("@/lib/correspondence/types").CompositionContent>().notNull(),
+  version: integer("version").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  retiredAt: text("retired_at"),
+}, (t) => [index("correspondence_saved_drafts_owner_idx").on(t.organizationId, t.projectId, t.userId)])

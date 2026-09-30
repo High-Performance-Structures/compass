@@ -17,7 +17,6 @@ function setup(): CorrespondenceTestDatabase {
   db.sqlite.exec(readFileSync("drizzle/0048_notification_channels.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   db.sqlite.exec(readFileSync("drizzle/0049_sms_consent.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   db.sqlite.exec(readFileSync("drizzle/0053_email_reply_threads.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
-  db.sqlite.exec(readFileSync("drizzle/0176_project_email_campaigns.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   db.sqlite.exec(`
     INSERT INTO project_correspondence (id,organization_id,project_id,subject,created_at) VALUES ('conversation-email','org-a','project-a','Permit update','2026-09-30T12:00:00Z');
     INSERT INTO correspondence_messages (id,conversation_id,author_user_id,author_name,source,body,sent_at,request_hash) VALUES ('message-project-email-test','conversation-email','staff-a','Staff A','email','Permit approved','2026-09-30T12:00:00Z','request');
