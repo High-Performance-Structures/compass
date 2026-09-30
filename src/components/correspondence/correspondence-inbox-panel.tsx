@@ -45,6 +45,7 @@ export function CorrespondenceInboxPanel(props: {
   readonly onQuery: (query: string) => void
   readonly onFilter: (filter: CorrespondenceInboxFilter) => void
   readonly onNewMessage: () => Promise<void>
+  readonly onNewEmail: () => Promise<void>
   readonly onOpen: (id: string, messageId?: string) => Promise<void>
   readonly onRefresh: () => Promise<CorrespondenceInbox | null>
 }): React.ReactElement {
@@ -141,9 +142,10 @@ export function CorrespondenceInboxPanel(props: {
           <h1 className="truncate text-lg font-semibold">
             {props.inbox.projectName}
           </h1>
-          <Button size="sm" onClick={() => void props.onNewMessage()}>
-            New message
-          </Button>
+          <div className="flex shrink-0 gap-1">
+            <Button size="sm" variant="outline" onClick={() => void props.onNewMessage()}>New message</Button>
+            {props.inbox.workspace === "staff" && <Button size="sm" onClick={() => void props.onNewEmail()}>New email</Button>}
+          </div>
         </div>
         <label className="relative mt-4 block">
           <Search

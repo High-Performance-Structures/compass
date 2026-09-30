@@ -52,6 +52,8 @@ export type CorrespondenceMessage = {
   } | null
   readonly body: string
   readonly recipients: readonly { readonly name: string; readonly kind: "to" | "cc" }[]
+  readonly emailBcc: readonly string[]
+  readonly emailDeliveryStatus: "queued" | "dispatching" | "sent" | "failed" | "unknown" | null
   readonly attachments: readonly CorrespondenceAttachment[]
   readonly editedAt: string | null
   readonly retractedAt: string | null

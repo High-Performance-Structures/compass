@@ -33,6 +33,7 @@ import {
 import { replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
 import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
+import { routeProjectEmailReply } from "@/lib/email/project-email-replies"
 import { canonicalRfiStatus } from "@/lib/rfis/status"
 
 type Db = ReturnType<typeof getDb>
@@ -340,6 +341,27 @@ async function importCandidate(input: {
     isReplyMessage(input.candidate)
   if (duplicate && !retryMisclassifiedReply) return "duplicate"
 
+  const replyThread = input.candidate.token
+    ? await input.db.select().from(emailReplyThreads).where(eq(emailReplyThreads.token, input.candidate.token)).get()
+    : null
+  if (replyThread?.sourceType === "project_correspondence") {
+    if (replyThread.organizationId !== input.organizationId) return "other_org"
+    const outcome = isReplyMessage(input.candidate)
+      ? await routeProjectEmailReply({ db: input.db, organizationId: input.organizationId, replyThread, candidate: input.candidate })
+      : { status: "ignored_outbound" as const, messageId: null }
+    await insertInboundAudit({
+      db: input.db,
+      organizationId: input.organizationId,
+      projectId: replyThread.projectId,
+      replyThreadId: replyThread.id,
+      candidate: input.candidate,
+      matchedStatus: outcome.status === "duplicate" ? "posted" : outcome.status,
+      postedMessageId: outcome.messageId,
+      importedAt: new Date().toISOString(),
+    })
+    return outcome.status
+  }
+
   const projectRoute = await routeProjectInboundEmail({
     env: input.env,
     db: input.db,
@@ -374,14 +396,6 @@ async function importCandidate(input: {
     return "posted"
   }
 
-  const replyThread = input.candidate.token
-    ? await input.db
-        .select()
-        .from(emailReplyThreads)
-        .where(eq(emailReplyThreads.token, input.candidate.token))
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
-    : null
   const now = new Date().toISOString()
 
   if (replyThread && replyThread.organizationId !== input.organizationId) {
