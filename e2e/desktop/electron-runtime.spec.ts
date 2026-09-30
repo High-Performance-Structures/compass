@@ -59,7 +59,14 @@ test.describe("Electron runtime", () => {
         )
         .toBe(true)
 
-      const previewWindowPromise = page.waitForEvent("popup")
+      // Electron exposes a window.open popup as a Page event on Linux, while
+      // macOS and Windows can surface the same native window through the
+      // Electron application event. Listen on both surfaces so the test proves
+      // the same popup workflow without depending on platform event plumbing.
+      const previewWindowPromise = Promise.race([
+        page.waitForEvent("popup"),
+        app.waitForEvent("window"),
+      ])
       await page.evaluate(() => {
         window.open(
           `${window.location.origin}/preview/projects/e2e-project-001/owner`,
