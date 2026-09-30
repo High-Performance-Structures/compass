@@ -4,10 +4,11 @@ import { and, eq, isNull, or, sql, type AnyColumn } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { customerContacts, customers, emailReplyThreads, internalContacts, projectContacts, vendors, vendorContacts } from "@/db/schema"
-import { correspondence, correspondenceMessages, correspondenceOutbox, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
+import { correspondence, correspondenceAttachments, correspondenceMessages, correspondenceOutbox, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
 import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-project-email"
 import { correspondenceContacts, correspondenceContext } from "@/lib/correspondence/access"
 import type { CorrespondenceContext } from "@/lib/correspondence/access"
+import { validateProjectEmailAttachments, emailAttachmentGuard, loadProjectEmailAttachments } from "@/lib/correspondence/email-attachments"
 import { correspondenceHash } from "@/lib/correspondence/send"
 import { clearCorrespondenceWriteGuard, correspondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import { sendCompassEmail } from "@/lib/email/compass-email"
@@ -72,12 +73,18 @@ export type ProjectEmailInput = ProjectEmailAudience & {
   readonly subject: string
   readonly body: string
   readonly requestId: string
+  readonly attachmentIds?: readonly string[]
 }
 
 async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign: Campaign, subject: string, body: string, audience: ProjectEmailAudience): Promise<SendResult> {
   const conversationId = campaign.conversationId
   if (campaign.status === "sent") return { success: true, conversationId, status: "sent", error: null }
   if (campaign.status === "dispatching" || campaign.status === "unknown") return { success: true, conversationId, status: "unknown", error: "Delivery outcome needs review; do not resend this message." }
+  let attachments: Awaited<ReturnType<typeof loadProjectEmailAttachments>>
+  try { attachments = await loadProjectEmailAttachments(ctx, campaign.messageId) } catch {
+    await ctx.db.update(projectEmailCampaigns).set({ status: "failed", error: "An email attachment could not be loaded.", updatedAt: new Date().toISOString() }).where(and(eq(projectEmailCampaigns.id, campaign.id), or(eq(projectEmailCampaigns.status, "queued"), eq(projectEmailCampaigns.status, "failed"))))
+    return { success: true, conversationId, status: "failed", error: "An email attachment could not be loaded. Check the files before retrying." }
+  }
   const claimed = await ctx.db.update(projectEmailCampaigns).set({ status: "dispatching", updatedAt: new Date().toISOString() })
     .where(and(eq(projectEmailCampaigns.id, campaign.id), or(eq(projectEmailCampaigns.status, "queued"), eq(projectEmailCampaigns.status, "failed"))))
     .returning({ id: projectEmailCampaigns.id })
@@ -92,7 +99,7 @@ async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign
     const replyName = `${ctx.projectName} - Project Messages`.replace(/[\r\n"\\]/g, " ")
     const replyTo = thread.replyToAddress.replace(/^Compass (?=<)/, () => `"${replyName}" `)
     const text = `Project: ${ctx.projectName}\nFrom: ${ctx.user.displayName ?? ctx.user.email}\n\n${body}\n\nReply to this email to respond in this project conversation.\nProject email: ${projectAddress}\nFor a new conversation, email the project address with [MESSAGE] at the start of the subject.`
-    delivery = await sendCompassEmail({ env: ctx.env, db: ctx.db, organizationId: ctx.organizationId, to: audience.to, cc: audience.cc, bcc: audience.bcc, replyTo, headers: [{ name: "X-Compass-Reply-Token", value: thread.token }], subject, text })
+    delivery = await sendCompassEmail({ env: ctx.env, db: ctx.db, organizationId: ctx.organizationId, to: audience.to, cc: audience.cc, bcc: audience.bcc, replyTo, headers: [{ name: "X-Compass-Reply-Token", value: thread.token }], subject, text, attachments })
   } catch {
     delivery = { status: "unknown", provider: "unknown", providerMessageId: null, error: "Email provider outcome is unknown." }
   }
@@ -115,17 +122,26 @@ export async function sendProjectEmail(input: ProjectEmailInput): Promise<SendRe
     const campaignId = `project-email-${await correspondenceHash(JSON.stringify([ctx.organizationId, ctx.user.id, input.requestId]))}`
     const conversationId = `conversation-${campaignId}`
     const messageId = `message-${campaignId}`
-    const requestHash = await correspondenceHash(JSON.stringify([input.projectId, subject, input.body, audience.data]))
+    const attachmentIds = input.attachmentIds ?? []
+    const requestHash = await correspondenceHash(JSON.stringify([input.projectId, subject, input.body, audience.data, [...attachmentIds].sort()]))
     let campaign = await ctx.db.select().from(projectEmailCampaigns).where(eq(projectEmailCampaigns.id, campaignId)).get()
     if (campaign && campaign.requestHash !== requestHash) return { success: false, error: "This send request was already used for different content. Start a new email." }
     if (!campaign) {
+      let attachments: Awaited<ReturnType<typeof validateProjectEmailAttachments>>
+      try { attachments = await validateProjectEmailAttachments(ctx, attachmentIds) } catch (error) {
+        return { success: false, error: error instanceof Error ? error.message : "Review email attachments before sending." }
+      }
       const now = new Date().toISOString()
       const replyThreadId = crypto.randomUUID()
       const token = createReplyToken()
       const senderName = ctx.user.displayName ?? ctx.user.email
-      const staff = (await correspondenceContacts(ctx)).filter((person) => person.role === "staff" && person.userId !== ctx.user.id)
+      const contacts = await correspondenceContacts(ctx)
+      const addressedEmails = new Set([...audience.data.to, ...audience.data.cc, ...audience.data.bcc])
+      const staff = contacts.filter((person) => person.role === "staff" && person.userId !== ctx.user.id)
+      // Email matching never creates project membership. Blind grants stay private.
+      const external = contacts.filter((person) => person.role !== "staff" && person.userId !== ctx.user.id && addressedEmails.has(normalizeRecipientEmail(person.email)))
       const sender = { userId: ctx.user.id, name: senderName, email: ctx.user.email, role: "staff" as const, delivery: "compass" as const }
-      const people = [sender, ...staff]
+      const people = [sender, ...staff, ...external]
       const guardId = crypto.randomUUID()
       const members = [
         ...audience.data.to.map((email) => ({ email, kind: "to" as const })),
@@ -134,12 +150,13 @@ export async function sendProjectEmail(input: ProjectEmailInput): Promise<SendRe
       ]
       try {
         await ctx.db.batch([
-        correspondenceWriteGuard(ctx, { id: guardId, conversationId: null, participantVersion: null, people }),
+        correspondenceWriteGuard(ctx, { id: guardId, conversationId: null, participantVersion: null, people, extra: emailAttachmentGuard(ctx, attachmentIds) }),
         ctx.db.insert(correspondence).values({ id: conversationId, organizationId: ctx.organizationId, projectId: input.projectId, subject, createdAt: now }),
-        ...people.map((person) => ctx.db.insert(correspondenceParticipants).values({ id: crypto.randomUUID(), conversationId, userId: person.userId, name: person.name, email: person.email, role: "staff" })),
+        ...people.map((person) => ctx.db.insert(correspondenceParticipants).values({ id: crypto.randomUUID(), conversationId, userId: person.userId, name: person.name, email: person.email, role: person.role })),
         ctx.db.insert(correspondenceMessages).values({ id: messageId, conversationId, authorUserId: ctx.user.id, authorName: senderName, source: "email", body: input.body, sentAt: now, requestHash }),
         ...people.map((person) => ctx.db.insert(correspondenceRecipients).values({ id: crypto.randomUUID(), messageId, userId: person.userId, name: person.name, kind: person.userId === ctx.user.id ? "author" : "to", openedAt: person.userId === ctx.user.id ? now : null })),
-        ...staff.map((person) => ctx.db.insert(correspondenceOutbox).values({ id: crypto.randomUUID(), messageId, recipientUserId: person.userId, transport: "compass", status: "available", createdAt: now })),
+        ...people.filter((person) => person.userId !== ctx.user.id).map((person) => ctx.db.insert(correspondenceOutbox).values({ id: crypto.randomUUID(), messageId, recipientUserId: person.userId, transport: "compass", status: "available", createdAt: now })),
+        ...attachments.map((file) => ctx.db.update(correspondenceAttachments).set({ messageId }).where(and(eq(correspondenceAttachments.id, file.id), isNull(correspondenceAttachments.messageId), isNull(correspondenceAttachments.retiredAt)))),
         ctx.db.insert(emailReplyThreads).values({ id: replyThreadId, token, organizationId: ctx.organizationId, projectId: input.projectId, channelId: null, sourceType: "project_correspondence", sourceId: conversationId, sourceNumber: null, replyToAddress: trackedReplyAddress({ env: ctx.env, token }), subject, status: "active", createdBy: ctx.user.id, lastInboundAt: null, createdAt: now, updatedAt: now }),
         ctx.db.insert(projectEmailCampaigns).values({ id: campaignId, organizationId: ctx.organizationId, projectId: input.projectId, conversationId, messageId, senderUserId: ctx.user.id, requestHash, replyThreadId, status: "queued", createdAt: now, updatedAt: now }),
         ...members.map((member) => ctx.db.insert(projectEmailRecipients).values({ id: crypto.randomUUID(), campaignId, email: member.email, kind: member.kind })),

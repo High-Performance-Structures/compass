@@ -1,5 +1,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { correspondence, correspondenceAttachments, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceOutbox, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
+import { privateProjectEmailReplyPeople, projectEmailPrivacy, visibleProjectEmailPeople } from "@/lib/email/project-email-privacy"
+import { projectEmailCampaigns } from "@/db/schema-project-email"
 import { authorizedConversation, correspondenceContacts, currentParticipants, type CorrespondenceContext } from "./access"
 import { clearCorrespondenceWriteGuard, correspondenceWriteGuard } from "./write-guard"
 import type { CorrespondencePerson, SendCorrespondenceInput } from "./types"
@@ -16,7 +18,8 @@ export function validateCorrespondenceSend(input: SendCorrespondenceInput): stri
   if (!input.body.trim() || input.body.length > 50000) return "Write a message of at most 50,000 characters."
   if (!input.subject.trim() || input.subject.trim().length > 200) return "Enter a subject of at most 200 characters."
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(input.idempotencyKey)) return "Invalid send request. Reload and try again."
-  if (input.recipientUserIds.length < 1 || input.recipientUserIds.length > 30 || new Set(input.recipientUserIds).size !== input.recipientUserIds.length) return "Choose between 1 and 30 distinct recipients."
+  const recipientLimit = input.conversationId ? 100 : 30
+  if (input.recipientUserIds.length < 1 || input.recipientUserIds.length > recipientLimit || new Set(input.recipientUserIds).size !== input.recipientUserIds.length) return `Choose between 1 and ${recipientLimit} distinct recipients.`
   if (input.attachmentIds.length > 10 || new Set(input.attachmentIds).size !== input.attachmentIds.length) return "Choose no more than 10 distinct attachments."
   return null
 }
@@ -35,13 +38,22 @@ export async function persistCorrespondence(ctx: CorrespondenceContext, input: S
   }
   const own: CorrespondencePerson = { userId: ctx.user.id, name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email, role: ctx.workspace, delivery: "compass" }
   let people: readonly CorrespondencePerson[]
+  let allowEmailAudience = false
   if (input.conversationId) {
     const conversation = await authorizedConversation(ctx, input.conversationId)
     if (input.participantVersion !== conversation.participantVersion) throw new RejectedCorrespondenceSendError("The audience changed. Review the recipients before sending.")
     const current = await currentParticipants(ctx, input.conversationId)
-    const expected = current.filter((p) => p.userId !== ctx.user.id).map((p) => p.userId).sort()
+    const privacy = await projectEmailPrivacy(ctx.db, ctx.organizationId, ctx.projectId, input.conversationId)
+    const visible = visibleProjectEmailPeople(current, privacy, ctx.user.id)
+    const expected = visible.filter((p) => p.userId !== ctx.user.id).map((p) => p.userId).sort()
     if (expected.join("|") !== [...input.recipientUserIds].sort().join("|")) throw new RejectedCorrespondenceSendError("The audience changed. Reload and review the recipients.")
-    people = current
+    // Only staff may broadcast to the full email audience. External senders
+    // must never silently send to blind recipients hidden from their view.
+    people = privacy?.blindUserIds.has(ctx.user.id)
+      ? privateProjectEmailReplyPeople(current, privacy, ctx.user.id)
+      : ctx.workspace === "staff" ? current : visible
+    const originalEmail = await ctx.db.select({ id: correspondenceMessages.id }).from(correspondenceMessages).where(and(eq(correspondenceMessages.conversationId, input.conversationId), eq(correspondenceMessages.source, "email"), sql`${correspondenceMessages.authorUserId} IS NOT NULL`)).get()
+    if (originalEmail) allowEmailAudience = Boolean(await ctx.db.select({ id: projectEmailCampaigns.id }).from(projectEmailCampaigns).where(and(eq(projectEmailCampaigns.conversationId, input.conversationId), eq(projectEmailCampaigns.organizationId, ctx.organizationId), eq(projectEmailCampaigns.projectId, ctx.projectId))).get())
   } else {
     const contacts = await correspondenceContacts(ctx)
     const recipients = contacts.filter((p) => input.recipientUserIds.includes(p.userId) && p.userId !== ctx.user.id)
@@ -55,7 +67,7 @@ export async function persistCorrespondence(ctx: CorrespondenceContext, input: S
   const guardId = crypto.randomUUID()
   const now = new Date().toISOString()
   const attachmentGuard = input.attachmentIds.length ? sql`(SELECT COUNT(*) FROM correspondence_attachments WHERE id IN (${sql.join(input.attachmentIds.map((id) => sql`${id}`), sql`,`)}) AND organization_id=${ctx.organizationId} AND project_id=${ctx.projectId} AND owner_user_id=${ctx.user.id} AND message_id IS NULL AND retired_at IS NULL AND drive_file_id IS NOT NULL)=${input.attachmentIds.length}` : undefined
-  const guard = correspondenceWriteGuard(ctx, { id: guardId, conversationId: input.conversationId, participantVersion: input.participantVersion, people, extra: attachmentGuard })
+  const guard = correspondenceWriteGuard(ctx, { id: guardId, conversationId: input.conversationId, participantVersion: input.participantVersion, people, allowEmailAudience, extra: attachmentGuard })
   const insertConversation = ctx.db.insert(correspondence).values({ id: conversationId, organizationId: ctx.organizationId, projectId: ctx.projectId, subject: input.subject.trim(), createdAt: now }).onConflictDoNothing()
   const insertMessage = ctx.db.insert(correspondenceMessages).values({ id: messageId, conversationId, authorUserId: ctx.user.id, authorName: own.name, source: "compass", body: input.body, sentAt: now, requestHash })
   const insertParticipants = people.map((person) => ctx.db.insert(correspondenceParticipants).values([person].map((p) => ({ id: crypto.randomUUID(), conversationId, userId: p.userId, name: p.name, email: p.email, role: p.role }))).onConflictDoNothing())

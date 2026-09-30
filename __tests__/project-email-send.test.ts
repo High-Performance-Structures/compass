@@ -8,10 +8,12 @@ const mocks = vi.hoisted(() => ({
   context: vi.fn(),
   contacts: vi.fn(),
   sendEmail: vi.fn(),
+  download: vi.fn(),
 }))
 vi.mock("server-only", () => ({}))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/correspondence/access", () => ({ correspondenceContext: mocks.context, correspondenceContacts: mocks.contacts }))
+vi.mock("@/lib/correspondence/attachment-storage", () => ({ downloadCorrespondenceAttachment: mocks.download }))
 vi.mock("@/lib/email/compass-email", () => ({ sendCompassEmail: mocks.sendEmail }))
 
 let database: CorrespondenceTestDatabase | undefined
@@ -51,6 +53,72 @@ describe("project email send", () => {
     ])
     expect(await sendProjectEmail(email)).toEqual(first)
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it("grants To/Cc active project users, keeps Bcc hidden, and grants no outsiders", async () => {
+    const db = setup()
+    mocks.contacts.mockResolvedValue([
+      { userId: "owner-a", name: "Owner A", email: "Owner-A@Example.test", role: "owner", delivery: "compass" },
+      { userId: "revoked-a", name: "Staff A", email: "revoked-a@example.test", role: "staff", delivery: "compass" },
+    ])
+    mocks.sendEmail.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })
+    const result = await sendProjectEmail({ ...email, cc: ["owner-a@example.test"] })
+    expect(result).toMatchObject({ success: true, status: "sent" })
+    expect(db.sqlite.prepare("SELECT role FROM correspondence_participants WHERE user_id='owner-a'").get()).toEqual({ role: "owner" })
+    expect(db.sqlite.prepare("SELECT kind FROM correspondence_recipients WHERE user_id='owner-a'").get()).toEqual({ kind: "to" })
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_participants").get()).toEqual({ count: 3 })
+  })
+
+  it("grants a project vendor only when they are addressed and assigned to the project", async () => {
+    const db = setup()
+    db.sqlite.exec("UPDATE project_members SET role='supplier' WHERE user_id='owner-a'; UPDATE organization_members SET role='supplier' WHERE user_id='owner-a'")
+    mocks.contacts.mockResolvedValue([{ userId: "owner-a", name: "Vendor A", email: "owner-a@example.test", role: "sub_vendor", delivery: "compass" }])
+    mocks.sendEmail.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })
+    expect(await sendProjectEmail({ ...email, to: ["owner-a@example.test"] })).toMatchObject({ success: true, status: "sent" })
+    expect(db.sqlite.prepare("SELECT role FROM correspondence_participants WHERE user_id='owner-a'").get()).toEqual({ role: "sub_vendor" })
+  })
+
+  it("grants an active owner addressed only in Bcc for their private Compass view", async () => {
+    const db = setup()
+    mocks.contacts.mockResolvedValue([{ userId: "owner-a", name: "Owner A", email: "owner-a@example.test", role: "owner", delivery: "compass" }])
+    mocks.sendEmail.mockResolvedValue({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })
+    await sendProjectEmail({ ...email, bcc: ["owner-a@example.test"] })
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_participants WHERE user_id='owner-a'").get()).toEqual({ count: 1 })
+  })
+
+  it("rolls back if project access is removed during the write", async () => {
+    const db = setup()
+    mocks.contacts.mockResolvedValue([{ userId: "owner-a", name: "Owner A", email: "owner-a@example.test", role: "owner", delivery: "compass" }])
+    db.failures.setBeforeBatchHook((sqlite) => sqlite.exec("DELETE FROM project_members WHERE user_id='owner-a'"))
+    expect((await sendProjectEmail({ ...email, to: ["owner-a@example.test"] })).success).toBe(false)
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM project_correspondence").get()).toEqual({ count: 0 })
+  })
+
+  it("saves attachments atomically, sends their bytes, and retries the same files", async () => {
+    const db = setup()
+    const now = new Date().toISOString()
+    db.sqlite.prepare("INSERT INTO correspondence_attachments (id,organization_id,project_id,owner_user_id,name,content_type,size,drive_file_id,created_at) VALUES ('file-1','org-a','project-a','staff-a','Plan.pdf','application/pdf',4,'drive-1',?)").run(now)
+    mocks.download.mockImplementation(async () => ({ body: new Response(new Uint8Array([0, 255, 1, 2])), name: "Plan.pdf", contentType: "application/pdf" }))
+    mocks.sendEmail.mockResolvedValueOnce({ status: "failed", provider: "gmail", providerMessageId: null, error: "rejected" }).mockResolvedValueOnce({ status: "sent", provider: "gmail", providerMessageId: "gmail-1", error: null })
+    const result = await sendProjectEmail({ ...email, attachmentIds: ["file-1"] })
+    if (!result.success) throw new Error("Expected saved campaign")
+    expect(result.status).toBe("failed")
+    expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ attachments: [{ filename: "Plan.pdf", contentType: "application/pdf", content: new Uint8Array([0, 255, 1, 2]) }] }))
+    expect(db.sqlite.prepare("SELECT message_id FROM correspondence_attachments WHERE id='file-1'").get()).toEqual({ message_id: `message-${result.conversationId.replace("conversation-", "")}` })
+    expect((await retryFailedProjectEmail(email.projectId, result.conversationId))).toMatchObject({ success: true, status: "sent" })
+    expect(mocks.download).toHaveBeenCalledTimes(2)
+  })
+
+  it("rejects another user's attachment and oversize files before saving or sending", async () => {
+    const db = setup()
+    const now = new Date().toISOString()
+    db.sqlite.prepare("INSERT INTO correspondence_attachments (id,organization_id,project_id,owner_user_id,name,content_type,size,drive_file_id,created_at) VALUES ('file-other','org-a','project-a','owner-a','Other.pdf','application/pdf',4,'drive-other',?)").run(now)
+    db.sqlite.prepare("INSERT INTO correspondence_attachments (id,organization_id,project_id,owner_user_id,name,content_type,size,drive_file_id,created_at) VALUES ('file-large','org-a','project-a','staff-a','Large.pdf','application/pdf',20000000,'drive-large',?)").run(now)
+    expect((await sendProjectEmail({ ...email, attachmentIds: ["file-other"] })).success).toBe(false)
+    expect((await sendProjectEmail({ ...email, attachmentIds: ["file-large"] })).success).toBe(false)
+    expect(mocks.sendEmail).not.toHaveBeenCalled()
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM project_correspondence").get()).toEqual({ count: 0 })
   })
 
   it("retries only a definite failure with the original saved audience", async () => {

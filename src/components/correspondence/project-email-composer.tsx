@@ -15,6 +15,11 @@ import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientOpti
 import { validateProjectEmailAudience } from "@/lib/email/project-email-validation"
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 
+import { removeCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
+import { ProjectEmailAttachments } from "./project-email-attachments"
+import type { StagedAttachment } from "./correspondence-workspace-utils"
+import { MAX_PROJECT_EMAIL_ATTACHMENT_BYTES } from "@/lib/correspondence/attachment-limits"
+
 type AudienceKind = "to" | "cc" | "bcc"
 type Audience = Readonly<Record<AudienceKind, readonly string[]>>
 
@@ -24,6 +29,8 @@ export function ProjectEmailComposer(props: {
   readonly onBusyChange: (busy: boolean) => void
   readonly onSent: (conversationId: string, status: "sent" | "unknown", message: string | null) => Promise<void>
 }): React.ReactElement {
+  const [files, setFiles] = React.useState<readonly StagedAttachment[]>([])
+  const [attachmentBusy, setAttachmentBusy] = React.useState(false)
   const [audience, setAudience] = React.useState<Audience>({ to: [], cc: [], bcc: [] })
   const [projectOptions, setProjectOptions] = React.useState<readonly EmailRecipientOption[]>([])
   const [subject, setSubject] = React.useState("")
@@ -35,6 +42,12 @@ export function ProjectEmailComposer(props: {
   const [confirmOpen, setConfirmOpen] = React.useState(false)
   const requestId = React.useRef<string | null>(null)
   const sendingRef = React.useRef(false)
+  const filesRef = React.useRef(files)
+  React.useEffect(() => { filesRef.current = files }, [files])
+  React.useEffect(() => () => {
+    // Sent files are immutable: the action only removes this user's unsent files.
+    for (const file of filesRef.current) if (file.attachment) void removeCorrespondenceAttachment(props.projectId, file.attachment.id).catch(() => undefined)
+  }, [props.projectId])
 
   React.useEffect(() => {
     let active = true
@@ -53,7 +66,7 @@ export function ProjectEmailComposer(props: {
   }
 
   async function send(): Promise<void> {
-    if (sendingRef.current) return
+    if (sendingRef.current || attachmentBusy || files.some((file) => file.state !== "ready") || files.reduce((n, file) => n + (file.attachment?.size ?? 0), 0) > MAX_PROJECT_EMAIL_ATTACHMENT_BYTES) return
     const validated = validateProjectEmailAudience(audience)
     if (!validated.success) { setStatus(validated.error); return }
     if (!subject.trim() || subject.trim().length > 200 || !body.trim() || body.length > 50000) {
@@ -67,7 +80,7 @@ export function ProjectEmailComposer(props: {
     setConfirmOpen(false)
     requestId.current ??= crypto.randomUUID().replace(/-/g, "")
     try {
-      const result = await sendProjectEmail({ projectId: props.projectId, subject, body, ...validated.data, requestId: requestId.current })
+      const result = await sendProjectEmail({ projectId: props.projectId, subject, body, attachmentIds: files.flatMap((file) => file.attachment ? [file.attachment.id] : []), ...validated.data, requestId: requestId.current })
       if (!result.success) {
         setStatus(`${result.error} Retry keeps the same recipients and message.`)
         return
@@ -88,12 +101,13 @@ export function ProjectEmailComposer(props: {
   }
 
   const recipientCount = audience.to.length + audience.cc.length + audience.bcc.length
-  const canEdit = !sending && !frozen
+  const canEdit = !sending && !frozen && !attachmentBusy
+  const attachmentsReady = !attachmentBusy && files.every((file) => file.state === "ready") && files.reduce((n, file) => n + (file.attachment?.size ?? 0), 0) <= MAX_PROJECT_EMAIL_ATTACHMENT_BYTES
   return (
     <div className="mx-auto min-h-full max-w-3xl p-4 md:p-6">
-      <Button variant="ghost" size="sm" disabled={sending} onClick={props.onBack}><ArrowLeft />Back to messages</Button>
+      <Button variant="ghost" size="sm" disabled={sending || attachmentBusy} onClick={props.onBack}><ArrowLeft />Back to messages</Button>
       <h2 className="mt-4 text-xl font-semibold">New project email</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Send to project contacts, people in the directory, or any valid email address. The message is saved in Compass, and replies return to this project conversation. Email recipients do not receive Compass access.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Send to project contacts, people in the directory, or any valid email address. The message is saved in Compass, and replies return to this project conversation. Recipients with active Compass access to this project can also read and reply here. Other recipients use email.</p>
       <div className="mt-6 grid gap-5">
         {(["to", "cc", "bcc"] as const).map((kind) => (
           <ProjectEmailAddressPicker
@@ -108,7 +122,7 @@ export function ProjectEmailComposer(props: {
             onChange={(emails) => changeAudience(kind, emails)}
           />
         ))}
-        <p className="text-xs text-muted-foreground">To and Cc addresses are visible to email recipients. Bcc addresses are hidden from other recipients.</p>
+        <p className="text-xs text-muted-foreground">To and Cc addresses are visible to email recipients. Bcc recipients have a private Compass view; their addresses and replies are hidden from other external recipients.</p>
         <p className="break-all text-xs text-muted-foreground">Project email: {projectInboundEmailAddress(props.projectId)}. Replies to this email return to this conversation.</p>
         <label className="grid gap-2 text-sm font-medium">Subject
           <Input value={subject} maxLength={200} disabled={!canEdit} onChange={(event) => { setSubject(event.target.value); setStatus(null) }} placeholder="What is this project update about?" />
@@ -116,9 +130,10 @@ export function ProjectEmailComposer(props: {
         <label className="grid gap-2 text-sm font-medium">Message
           <Textarea value={body} maxLength={50000} disabled={!canEdit} onChange={(event) => { setBody(event.target.value); setStatus(null) }} rows={9} placeholder="Write your message…" />
         </label>
+        <ProjectEmailAttachments projectId={props.projectId} files={files} onChange={setFiles} locked={sending || frozen} onError={setStatus} onBusyChange={(busy) => { setAttachmentBusy(busy); props.onBusyChange(busy) }} />
         <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <span className="text-sm text-muted-foreground">{recipientCount} {recipientCount === 1 ? "recipient" : "recipients"} · maximum 50</span>
-          <Button disabled={sending || uncertain || recipientCount === 0 || !subject.trim() || !body.trim()} onClick={() => setConfirmOpen(true)}>
+          <Button disabled={sending || uncertain || !attachmentsReady || recipientCount === 0 || !subject.trim() || !body.trim()} onClick={() => setConfirmOpen(true)}>
             {sending ? <LoaderCircle className="animate-spin" /> : <SendHorizontal />}{frozen ? "Retry same email" : "Review and send"}
           </Button>
         </div>
@@ -126,7 +141,7 @@ export function ProjectEmailComposer(props: {
       </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Send this project email?</AlertDialogTitle><AlertDialogDescription>Compass will email {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"} ({audience.to.length} To, {audience.cc.length} Cc, {audience.bcc.length} Bcc) and save the message in project history. External recipients will not receive Compass access.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>Send this project email?</AlertDialogTitle><AlertDialogDescription>Compass will email {recipientCount} {recipientCount === 1 ? "recipient" : "recipients"} ({audience.to.length} To, {audience.cc.length} Cc, {audience.bcc.length} Bcc) with {files.length} {files.length === 1 ? "attachment" : "attachments"} and save the message in project history. Active project users can also see it in Compass. Bcc recipients remain hidden and their replies are private to project staff. No new account or project access is created.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => void send()}>Send email</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

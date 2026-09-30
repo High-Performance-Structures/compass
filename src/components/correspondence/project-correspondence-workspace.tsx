@@ -36,8 +36,9 @@ import {
   uploadStagedAttachment,
   type StagedAttachment,
 } from "./correspondence-workspace-utils"
-import type { CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
+import type { CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+import { removeCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
 import { retryFailedProjectEmail } from "@/app/actions/project-email"
 type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean }
 type InboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"
@@ -408,38 +409,55 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setNewDraft(nextDraft)
   }
   async function stageFiles(files: FileList | null): Promise<void> {
-    if (files === null || isWorkspaceLocked()) return
-    const candidates = Array.from(files).map((file) => ({
+    if (files === null || isWorkspaceLocked() || editingMessageRef.current !== null) return
+    const selected = Array.from(files)
+    const total = stagedAttachments.reduce((n, item) => n + (item.attachment?.size ?? item.file?.size ?? 0), 0)
+    if (stagedAttachments.length + selected.length > 10 || selected.some((file) => file.size > 25 * 1024 * 1024) || total + selected.reduce((n, file) => n + file.size, 0) > 50 * 1024 * 1024) { setStatus("Choose up to 10 files, at most 25 MB each and 50 MB total."); return }
+    attachmentBusy(true)
+    const candidates = selected.map((file) => ({
       localId: crypto.randomUUID(),
       file,
       state: "uploading" as const,
       attachment: null,
     }))
     setStagedAttachments((current) => [...current, ...candidates])
-    await Promise.all(candidates.map((candidate) => uploadStagedAttachment(projectId, candidate, setStagedAttachments)))
+    try { for (const candidate of candidates) await uploadStagedAttachment(projectId, candidate, setStagedAttachments) } finally { attachmentBusy(false) }
+  }
+  function projectAttachment(attachment: CorrespondenceAttachment): void {
+    const total = stagedAttachments.reduce((n, item) => n + (item.attachment?.size ?? item.file?.size ?? 0), 0)
+    if (stagedAttachments.length >= 10 || total + attachment.size > 50 * 1024 * 1024) {
+      setStatus("Choose up to 10 files, at most 50 MB total.")
+      void removeCorrespondenceAttachment(projectId, attachment.id).catch(() => undefined)
+      return
+    }
+    setStagedAttachments((current) => [...current, { localId: crypto.randomUUID(), file: null, state: "ready", attachment }])
+  }
+  function attachmentBusy(busy: boolean): void {
+    sendInProgress.current = busy
+    setIsSending(busy)
   }
   async function retryUpload(localId: string): Promise<void> {
     if (isWorkspaceLocked()) return
     const item = stagedAttachments.find((attachment) => attachment.localId === localId)
-    if (!item) return
+    if (!item || item.file === null) return
     setStagedAttachments((current) =>
       current.map((attachment) => attachment.localId === localId ? { ...attachment, state: "uploading", attachment: null } : attachment),
     )
-    await uploadStagedAttachment(projectId, item, setStagedAttachments)
+    attachmentBusy(true)
+    try { await uploadStagedAttachment(projectId, item, setStagedAttachments) } finally { attachmentBusy(false) }
   }
   function removeStagedAttachment(localId: string): void {
     if (isWorkspaceLocked()) return
     const item = stagedAttachments.find((attachment) => attachment.localId === localId)
     setStagedAttachments((items) => items.filter((attachment) => attachment.localId !== localId))
     if (item?.attachment) {
-      const path = `/api/correspondence/attachments/${encodeURIComponent(item.attachment.id)}?projectId=${encodeURIComponent(projectId)}`
-      void fetch(path, { method: "DELETE" })
+      void removeCorrespondenceAttachment(projectId, item.attachment.id).catch(() => undefined)
     }
   }
   async function clearStagedAttachments(): Promise<void> {
     const attachments = stagedAttachments.flatMap((item) => item.attachment ? [item.attachment] : [])
     setStagedAttachments([])
-    await Promise.all(attachments.map((attachment) => fetch(`/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}`, { method: "DELETE" })))
+    await Promise.all(attachments.map((attachment) => removeCorrespondenceAttachment(projectId, attachment.id)))
   }
   async function send(): Promise<void> {
     if (sendInProgress.current || navigationInProgress.current) return
@@ -720,6 +738,9 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
           <ProjectEmailComposer projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
         ) : composingNew ? (
           <NewMessagePanel
+            projectId={projectId}
+            onProjectAttachment={projectAttachment}
+            onAttachmentBusy={attachmentBusy}
             inbox={inbox}
             compose={compose}
             body={replyBody}
@@ -741,6 +762,8 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
           <EmptyDetail />
         ) : (
           <ConversationDetail
+            onProjectAttachment={projectAttachment}
+            onAttachmentBusy={attachmentBusy}
             detail={activeDetail}
             activeSummary={activeSummary}
             viewerId={inbox.viewerId}
@@ -801,6 +824,8 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   )
 }
 function ConversationDetail(props: {
+  readonly onProjectAttachment: (attachment: CorrespondenceAttachment) => void
+  readonly onAttachmentBusy: (busy: boolean) => void
   readonly detail: CorrespondenceDetail | null
   readonly activeSummary: CorrespondenceSummary
   readonly viewerId: string
@@ -912,8 +937,9 @@ function ConversationDetail(props: {
         </div>
         {props.status !== null && <p className="mx-4 border px-3 py-2 text-sm md:mx-6" role="status">{props.status}</p>}
         {props.compose !== null && <>
+          {props.editingMessage === null && detail.replyAudience && <p className="mx-4 border-x border-t px-3 py-2 text-sm text-muted-foreground md:mx-6">{detail.replyAudience === "private_staff" ? "Your reply is private to you and project staff." : "Replies here are shared with all active Compass recipients of this email. Use New email to send a private reply."}</p>}
           {props.editingMessage !== null && <p className="mx-4 border-x border-t px-3 py-2 text-sm text-muted-foreground md:mx-6">Editing your message from {formatDate(props.editingMessage.sentAt)}</p>}
-          <Composer body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.editingMessage === null ? props.onSend : props.onSaveRevision} onDiscard={props.editingMessage === null ? props.onDiscard : props.onCancelRevision} submitLabel={props.editingMessage === null ? "Send" : "Save edit"} />
+          <Composer projectId={activeSummary.projectId} onProjectAttachment={props.onProjectAttachment} onAttachmentBusy={props.onAttachmentBusy} body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.editingMessage === null ? props.onSend : props.onSaveRevision} onDiscard={props.editingMessage === null ? props.onDiscard : props.onCancelRevision} submitLabel={props.editingMessage === null ? "Send" : "Save edit"} />
         </>}
         {props.compose === null && <div className="border-t p-4 md:p-6"><Button onClick={props.onCompose}>Reply</Button></div>}
       </>}

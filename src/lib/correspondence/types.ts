@@ -62,6 +62,7 @@ export type CorrespondenceMessage = {
   readonly readReceipts: readonly { readonly userId: string; readonly name: string; readonly status: "opened" | "not_opened" | "unavailable"; readonly openedAt: string | null }[]
 }
 export type CorrespondenceDetail = {
+  readonly replyAudience?: "private_staff" | "shared_email" | null
   readonly conversation: CorrespondenceSummary
   readonly participantVersion: number
   readonly messages: readonly CorrespondenceMessage[]
