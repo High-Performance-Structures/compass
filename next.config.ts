@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
     },
     transpilePackages: ["agent-core"],
     experimental: {
+        serverActions: { bodySizeLimit: "26mb" },
         proxyClientMaxBodySize: "100mb",
         optimizePackageImports: [
             "@tabler/icons-react",

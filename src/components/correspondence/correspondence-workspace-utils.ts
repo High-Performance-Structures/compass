@@ -1,5 +1,6 @@
 import * as React from "react"
 
+import { uploadCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
 import { getCorrespondenceDetail, saveCorrespondenceDraft } from "@/app/actions/project-correspondence"
 import type {
   CorrespondenceAttachment,
@@ -10,7 +11,7 @@ import type {
 
 export type StagedAttachment = {
   readonly localId: string
-  readonly file: File
+  readonly file: File | null
   readonly state: "uploading" | "ready" | "failed"
   readonly attachment: CorrespondenceAttachment | null
 }
@@ -86,21 +87,13 @@ export async function uploadStagedAttachment(projectId: string, candidate: Stage
   try {
     const form = new FormData()
     form.append("projectId", projectId)
+    if (candidate.file === null) return
     form.append("file", candidate.file)
-    const response = await fetch("/api/correspondence/attachments", { method: "POST", body: form })
-    const payload: unknown = await response.json()
-    const attachment = attachmentFromResponse(payload)
-    if (!response.ok || attachment === null) throw new Error("Upload failed")
+    const result = await uploadCorrespondenceAttachment(projectId, form)
+    if (!result.success) throw new Error(result.error)
+    const attachment: CorrespondenceAttachment = { ...result.data, available: true }
     setStagedAttachments((items) => items.map((item) => item.localId === candidate.localId ? { ...item, state: "ready", attachment } : item))
   } catch {
     setStagedAttachments((items) => items.map((item) => item.localId === candidate.localId ? { ...item, state: "failed" } : item))
   }
-}
-
-function attachmentFromResponse(payload: unknown): CorrespondenceAttachment | null {
-  if (typeof payload !== "object" || payload === null || !("success" in payload) || payload.success !== true || !("data" in payload)) return null
-  const data = payload.data
-  if (typeof data !== "object" || data === null || !("id" in data) || !("name" in data) || !("size" in data) || !("contentType" in data)) return null
-  if (typeof data.id !== "string" || typeof data.name !== "string" || typeof data.size !== "number" || typeof data.contentType !== "string") return null
-  return { id: data.id, name: data.name, size: data.size, contentType: data.contentType, available: true }
 }

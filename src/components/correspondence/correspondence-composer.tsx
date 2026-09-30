@@ -4,12 +4,16 @@ import { ArrowLeft, FileText, LoaderCircle, Paperclip, SendHorizontal, X } from 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import type { CorrespondenceInbox } from "@/lib/correspondence/types"
+import { ProjectFileAttachmentPicker } from "./project-file-attachment-picker"
+import type { CorrespondenceAttachment, CorrespondenceInbox } from "@/lib/correspondence/types"
 import type { StagedAttachment } from "./correspondence-workspace-utils"
 
 type NewCompose = { readonly subject: string; readonly recipientIds: readonly string[] }
 
 export function NewMessagePanel(props: {
+  readonly projectId: string
+  readonly onProjectAttachment: (attachment: CorrespondenceAttachment) => void
+  readonly onAttachmentBusy: (busy: boolean) => void
   readonly inbox: CorrespondenceInbox
   readonly compose: NewCompose
   readonly body: string
@@ -38,7 +42,7 @@ export function NewMessagePanel(props: {
       </div></fieldset>
       {selected.length > 0 && <div className="border px-3 py-2 text-sm"><span className="font-medium">Visible to: </span>{selected.map((person) => person.name).join(", ")}. Sent messages are also available to internal staff with access to this project. No earlier correspondence is shared with new recipients.</div>}
       <label className="grid gap-2 text-sm font-medium">Subject<Input disabled={props.hasPendingSend} value={props.compose.subject} onChange={(event) => props.onChange({ subject: event.target.value })} placeholder="What is this conversation about?" /></label>
-      <Composer body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.onSend} onDiscard={() => { void props.onDiscard() }} />
+      <Composer projectId={props.projectId} onProjectAttachment={props.onProjectAttachment} onAttachmentBusy={props.onAttachmentBusy} body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.onSend} onDiscard={() => { void props.onDiscard() }} />
       <Button variant="outline" size="sm" disabled={props.hasPendingSend} onClick={() => void props.onSaveDraft()}>Save draft</Button>
       {props.stagedAttachments.length > 0 && <p className="text-xs text-muted-foreground">Attachments stay in this browser session. Reattach them after reloading.</p>}
       {props.status !== null && <p className="border px-3 py-2 text-sm" role="status">{props.status}</p>}
@@ -46,7 +50,10 @@ export function NewMessagePanel(props: {
   </div>
 }
 
-export function Composer({ body, stagedAttachments, isSending, locked, onBodyChange, onFiles, onRetryUpload, onRemoveAttachment, onSend, onDiscard, submitLabel = "Send" }: {
+export function Composer({ projectId, onProjectAttachment, onAttachmentBusy, body, stagedAttachments, isSending, locked, onBodyChange, onFiles, onRetryUpload, onRemoveAttachment, onSend, onDiscard, submitLabel = "Send" }: {
+  readonly projectId: string
+  readonly onProjectAttachment: (attachment: CorrespondenceAttachment) => void
+  readonly onAttachmentBusy: (busy: boolean) => void
   readonly body: string
   readonly stagedAttachments: readonly StagedAttachment[]
   readonly isSending: boolean
@@ -60,10 +67,11 @@ export function Composer({ body, stagedAttachments, isSending, locked, onBodyCha
   readonly submitLabel?: string
 }): React.ReactElement {
   const inputId = React.useId()
+  const attachmentsLocked = locked || submitLabel !== "Send"
   return <div className="border-t p-4 md:p-6">
     <Textarea disabled={locked} value={body} onChange={(event) => onBodyChange(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void onSend() } }} placeholder="Write your message…" aria-label="Message body" />
-    {stagedAttachments.length > 0 && <ul className="mt-3 grid gap-2">{stagedAttachments.map((attachment) => <li key={attachment.localId} className="flex items-center gap-2 border px-3 py-2 text-sm"><FileText className="size-4" /><span className="min-w-0 flex-1 truncate">{attachment.file.name}</span><span className="text-xs text-muted-foreground">{attachment.state === "uploading" ? "Uploading…" : attachment.state === "ready" ? "Ready" : "Upload failed"}</span>{attachment.state === "failed" && <Button size="xs" variant="outline" disabled={locked} onClick={() => void onRetryUpload(attachment.localId)}>Retry</Button>}<Button size="icon-xs" variant="ghost" disabled={locked} onClick={() => onRemoveAttachment(attachment.localId)} aria-label={`Remove ${attachment.file.name}`}><X /></Button></li>)}</ul>}
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><label htmlFor={inputId} className="inline-flex h-8 cursor-pointer items-center gap-1.5 border px-3 text-sm font-medium hover:bg-accent"><Paperclip className="size-4" />Attach file</label><input id={inputId} className="sr-only" disabled={locked} type="file" multiple onChange={(event) => { void onFiles(event.target.files); event.currentTarget.value = "" }} /><span className="text-xs text-muted-foreground">Enter adds a line · Ctrl/Cmd + Enter sends</span></div><div className="flex gap-2"><Button variant="ghost" size="sm" disabled={locked} onClick={onDiscard}>{submitLabel === "Send" ? "Discard draft" : "Cancel edit"}</Button><Button size="sm" disabled={!body.trim() || isSending || stagedAttachments.some((attachment) => attachment.state !== "ready")} onClick={() => void onSend()}>{isSending ? <LoaderCircle className="animate-spin" /> : <SendHorizontal />}{submitLabel}</Button></div></div>
+    {stagedAttachments.length > 0 && <ul className="mt-3 grid gap-2">{stagedAttachments.map((attachment) => <li key={attachment.localId} className="flex items-center gap-2 border px-3 py-2 text-sm"><FileText className="size-4" /><span className="min-w-0 flex-1 truncate">{attachment.file?.name ?? attachment.attachment?.name ?? "Attachment"}</span><span className="text-xs text-muted-foreground">{attachment.state === "uploading" ? "Uploading…" : attachment.state === "ready" ? "Ready" : "Upload failed"}</span>{attachment.state === "failed" && <Button size="xs" variant="outline" disabled={locked} onClick={() => void onRetryUpload(attachment.localId)}>Retry</Button>}<Button size="icon-xs" variant="ghost" disabled={locked} onClick={() => onRemoveAttachment(attachment.localId)} aria-label={`Remove ${attachment.file?.name ?? attachment.attachment?.name ?? "Attachment"}`}><X /></Button></li>)}</ul>}
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2"><label htmlFor={inputId} className={`inline-flex h-8 items-center gap-1.5 border px-3 text-sm font-medium ${attachmentsLocked ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-accent"}`}><Paperclip className="size-4" />Upload files</label><input id={inputId} className="sr-only" disabled={attachmentsLocked} type="file" multiple onChange={(event) => { void onFiles(event.target.files); event.currentTarget.value = "" }} /><ProjectFileAttachmentPicker projectId={projectId} disabled={attachmentsLocked || stagedAttachments.length >= 10} onAttached={onProjectAttachment} onBusyChange={onAttachmentBusy} /><span className="text-xs text-muted-foreground">Enter adds a line · Ctrl/Cmd + Enter sends</span></div><div className="flex gap-2"><Button variant="ghost" size="sm" disabled={locked} onClick={onDiscard}>{submitLabel === "Send" ? "Discard draft" : "Cancel edit"}</Button><Button size="sm" disabled={locked || !body.trim() || isSending || stagedAttachments.some((attachment) => attachment.state !== "ready")} onClick={() => void onSend()}>{isSending ? <LoaderCircle className="animate-spin" /> : <SendHorizontal />}{submitLabel}</Button></div></div>
   </div>
 }
 

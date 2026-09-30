@@ -1,6 +1,8 @@
 import "server-only"
 
 import { eq } from "drizzle-orm"
+import { Buffer } from "node:buffer"
+import { buildCompassMimeMessage, type CompassEmailAttachment } from "./mime-message"
 
 import { getDb } from "@/db"
 import { googleAuth } from "@/db/schema-google"
@@ -30,6 +32,7 @@ export type CompassEmailInput = {
   readonly subject: string
   readonly text: string
   readonly html?: string
+  readonly attachments?: readonly CompassEmailAttachment[]
 }
 
 export type CompassEmailDeliveryResult = {
@@ -69,10 +72,6 @@ function googleConfigEnv(env: unknown): Record<string, string | undefined> {
   return values
 }
 
-function escapeHeader(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").trim()
-}
-
 function safeHeaderName(value: string): string | null {
   const name = value.trim()
   return /^[A-Za-z0-9-]+$/.test(name) ? name : null
@@ -84,77 +83,7 @@ function extractEmailAddress(value: string): string {
 }
 
 function base64urlString(value: string): string {
-  const bytes = new TextEncoder().encode(value)
-  let binary = ""
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
-}
-
-function mimeBoundary(): string {
-  return `compass-${crypto.randomUUID()}`
-}
-
-function buildMimeMessage(input: {
-  readonly from: string
-  readonly to: readonly string[]
-  readonly cc: readonly string[]
-  readonly bcc: readonly string[]
-  readonly replyTo: string | null
-  readonly headers: readonly {
-    readonly name: string
-    readonly value: string
-  }[]
-  readonly subject: string
-  readonly text: string
-  readonly html: string | null
-}): string {
-  const customHeaders = input.headers
-    .map((header) => {
-      const name = safeHeaderName(header.name)
-      return name ? `${name}: ${escapeHeader(header.value)}` : null
-    })
-    .filter((line): line is string => line !== null)
-  const headers = [
-    `From: ${escapeHeader(input.from)}`,
-    `To: ${input.to.map(escapeHeader).join(", ")}`,
-    input.cc.length > 0 ? `Cc: ${input.cc.map(escapeHeader).join(", ")}` : null,
-    input.bcc.length > 0 ? `Bcc: ${input.bcc.map(escapeHeader).join(", ")}` : null,
-    input.replyTo ? `Reply-To: ${escapeHeader(input.replyTo)}` : null,
-    `Subject: ${escapeHeader(input.subject)}`,
-    ...customHeaders,
-    "MIME-Version: 1.0",
-  ].filter((line): line is string => line !== null)
-
-  if (!input.html) {
-    return [
-      ...headers,
-      'Content-Type: text/plain; charset="UTF-8"',
-      "Content-Transfer-Encoding: 8bit",
-      "",
-      input.text,
-    ].join("\r\n")
-  }
-
-  const boundary = mimeBoundary()
-  return [
-    ...headers,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    "",
-    `--${boundary}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
-    "",
-    input.text,
-    `--${boundary}`,
-    'Content-Type: text/html; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
-    "",
-    input.html,
-    `--${boundary}--`,
-    "",
-  ].join("\r\n")
+  return Buffer.from(value, "utf8").toString("base64url")
 }
 
 function providerMessageId(value: unknown): string | null {
@@ -247,7 +176,7 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
   const from =
     envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
   const raw = base64urlString(
-    buildMimeMessage({
+    buildCompassMimeMessage({
       from,
       to: input.to,
       cc: input.cc ?? [],
@@ -257,6 +186,7 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
       subject: input.subject,
       text: input.text,
       html: input.html ?? null,
+      attachments: input.attachments ?? [],
     })
   )
 
@@ -307,6 +237,7 @@ async function sendResend(
     subject: input.subject,
     text: input.text,
   }
+  if (input.attachments?.length) requestBody.attachments = input.attachments.map((file) => ({ filename: file.filename, content_type: file.contentType, content: Buffer.from(file.content).toString("base64") }))
   if (input.html) requestBody.html = input.html
   if (input.cc && input.cc.length > 0) requestBody.cc = input.cc
   if (input.bcc && input.bcc.length > 0) requestBody.bcc = input.bcc

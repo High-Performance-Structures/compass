@@ -26,10 +26,12 @@ export type ProjectDocumentDriveContext = {
 export async function getProjectDocumentDriveContext(input: {
   readonly db: ProjectDocumentDb
   readonly env: unknown
+  readonly organizationId?: string
 }): Promise<ProjectDocumentDriveContext> {
   const auth = await input.db
     .select()
     .from(googleAuth)
+    .where(input.organizationId ? eq(googleAuth.organizationId, input.organizationId) : undefined)
     .limit(1)
     .then((rows) => rows[0] ?? null)
   if (!auth) throw new Error("Google Drive is not connected.")

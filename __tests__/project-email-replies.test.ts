@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 
 import { context, openCorrespondenceTestDatabase, type CorrespondenceTestDatabase } from "./helpers/correspondence-core"
 import { routeProjectEmailReply } from "@/lib/email/project-email-replies"
+import { persistCorrespondence } from "@/lib/correspondence/send"
 import { readCorrespondence } from "@/lib/correspondence/read"
 import type { InboundCandidate } from "@/lib/email/gmail-message-parser"
 
@@ -55,6 +56,24 @@ describe("external project email replies", () => {
     expect((await routeProjectEmailReply(input)).status).toBe("duplicate")
   })
 
+  it("shares replies with active project owners and allows them to respond in Compass", async () => {
+    const db = setup()
+    db.sqlite.exec("INSERT INTO correspondence_participants (id,conversation_id,user_id,name,email,role) VALUES ('owner-participant','conversation-email','owner-a','Owner A','owner-a@example.test','owner')")
+    db.sqlite.exec("INSERT INTO correspondence_recipients (id,message_id,user_id,name,kind) VALUES ('owner-grant','message-project-email-test','owner-a','Owner A','to')")
+    const replyThread = await db.db.query.emailReplyThreads.findFirst()
+    if (!replyThread) throw new Error("Missing reply thread")
+    const result = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate() })
+    expect(result.status).toBe("posted")
+    const ownerCtx = context(db, "owner-a", "project-a")
+    expect((await readCorrespondence(ownerCtx, "conversation-email")).messages.map((message) => message.body)).toContain("Thanks for the update.")
+    const sent = await persistCorrespondence(ownerCtx, { projectId: "project-a", conversationId: "conversation-email", subject: "Permit update", body: "Acknowledged in Compass.", recipientUserIds: ["staff-a", "revoked-a"], attachmentIds: [], idempotencyKey: "owner-email-reply-request", participantVersion: 1 })
+    expect(sent.conversationId).toBe("conversation-email")
+    db.sqlite.exec("DELETE FROM project_members WHERE user_id='owner-a'")
+    await expect(readCorrespondence(ownerCtx, "conversation-email")).rejects.toThrow("Conversation not found")
+    const next = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate({ gmailMessageId: "reply-after-revocation" }) })
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_recipients WHERE message_id=? AND user_id='owner-a'").get(next.messageId)).toEqual({ count: 0 })
+  })
+
   it("accepts Bcc replies but rejects strangers and tokens absent from the destination", async () => {
     const db = setup()
     const replyThread = await db.db.query.emailReplyThreads.findFirst()
@@ -73,6 +92,71 @@ describe("external project email replies", () => {
     expect(sender.messages[0]?.emailBcc).toEqual(["quiet@example.com"])
     expect(colleague.messages[0]?.emailBcc).toEqual([])
     expect(colleague.messages[0]?.recipients).toEqual([{ name: "bidder@example.com", kind: "to" }])
+  })
+
+  it("gives each Bcc user a private view and isolates their email and Compass replies", async () => {
+    const db = setup()
+    db.sqlite.exec(`
+      INSERT INTO organization_members (id,organization_id,user_id,role,joined_at) VALUES ('om-owner-b-a','org-a','owner-b','client','2026-09-30');
+      INSERT INTO project_members (id,project_id,user_id,role,assigned_at) VALUES ('pm-owner-b-a','project-a','owner-b','owner','2026-09-30');
+      INSERT INTO correspondence_participants (id,conversation_id,user_id,name,email,role) VALUES ('owner-p','conversation-email','owner-a','Owner A','owner-a@example.test','owner'),('owner-b-p','conversation-email','owner-b','Owner B','owner-b@example.test','owner');
+      INSERT INTO correspondence_recipients (id,message_id,user_id,name,kind) VALUES ('owner-g','message-project-email-test','owner-a','Owner A','to'),('owner-b-g','message-project-email-test','owner-b','Owner B','to');
+      INSERT INTO project_email_recipients (id,campaign_id,email,kind) VALUES ('blind-a','campaign','owner-a@example.test','bcc'),('blind-b','campaign','owner-b@example.test','bcc');
+    `)
+    const ownerCtx = context(db, "owner-a", "project-a")
+    const otherCtx = context(db, "owner-b", "project-a")
+    const detail = await readCorrespondence(ownerCtx, "conversation-email")
+    expect(detail.replyAudience).toBe("private_staff")
+    expect(detail.conversation.people.map((person) => person.userId).sort()).toEqual(["owner-a", "revoked-a", "staff-a"])
+    expect(JSON.stringify(detail)).not.toContain("owner-b")
+    expect(JSON.stringify(await readCorrespondence(otherCtx, "conversation-email"))).not.toContain("owner-a")
+    const replyThread = await db.db.query.emailReplyThreads.findFirst()
+    if (!replyThread) throw new Error("Missing reply thread")
+    const reply = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate({ fromAddress: "owner-a@example.test", fromName: "Owner A", textBody: "Private email reply" }) })
+    expect(reply.status).toBe("posted")
+    expect((await readCorrespondence(ownerCtx, "conversation-email")).messages.map((message) => message.body)).toContain("Private email reply")
+    expect((await readCorrespondence(otherCtx, "conversation-email")).messages.map((message) => message.body)).not.toContain("Private email reply")
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM notification_recipients WHERE user_id='owner-b'").get()).toEqual({ count: 0 })
+    const sent = await persistCorrespondence(ownerCtx, { projectId: "project-a", conversationId: "conversation-email", subject: "Permit update", body: "Private Compass reply", recipientUserIds: ["staff-a", "revoked-a"], attachmentIds: [], idempotencyKey: "blind-compass-reply-request", participantVersion: 1 })
+    expect(db.sqlite.prepare("SELECT user_id FROM correspondence_recipients WHERE message_id=? ORDER BY user_id").all(sent.messageId)).toEqual([{ user_id: "owner-a" }, { user_id: "revoked-a" }, { user_id: "staff-a" }])
+    expect((await readCorrespondence(otherCtx, "conversation-email")).messages.map((message) => message.body)).not.toContain("Private Compass reply")
+    // An account email change must not remove the original blind classification.
+    db.sqlite.exec("UPDATE users SET email='new-owner@example.test' WHERE id='owner-a'")
+    expect(JSON.stringify(await readCorrespondence(otherCtx, "conversation-email"))).not.toContain("new-owner")
+    const afterEmailChange = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate({ gmailMessageId: "reply-from-original-blind-address", fromAddress: "owner-a@example.test", fromName: "Owner A", textBody: "Reply from original mailbox" }) })
+    expect(db.sqlite.prepare("SELECT user_id FROM correspondence_recipients WHERE message_id=? ORDER BY user_id").all(afterEmailChange.messageId)).toEqual([{ user_id: "owner-a" }, { user_id: "revoked-a" }, { user_id: "staff-a" }])
+    expect((await readCorrespondence(ownerCtx, "conversation-email")).messages.map((message) => message.body)).toContain("Reply from original mailbox")
+    const staff = context(db, "revoked-a", "project-a")
+    const staffDetail = await readCorrespondence(staff, "conversation-email")
+    expect(staffDetail.replyAudience).toBe("shared_email")
+    expect(staffDetail.conversation.people.map((person) => person.userId).sort()).toEqual(["revoked-a", "staff-a"])
+    const publicReply = await persistCorrespondence(staff, { projectId: "project-a", conversationId: "conversation-email", subject: "Permit update", body: "General project update", recipientUserIds: ["staff-a"], attachmentIds: [], idempotencyKey: "staff-mass-email-reply-request", participantVersion: 1 })
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_recipients WHERE message_id=?").get(publicReply.messageId)).toEqual({ count: 4 })
+    const after = await readCorrespondence(otherCtx, "conversation-email")
+    expect(after.messages.map((message) => message.body)).toContain("General project update")
+    expect(JSON.stringify(after)).not.toContain("owner-a")
+  })
+
+  it("does not silently share To/Cc recipients' replies with hidden Bcc users", async () => {
+    const db = setup()
+    db.sqlite.exec(`
+      INSERT INTO organization_members (id,organization_id,user_id,role,joined_at) VALUES ('om-owner-b-a','org-a','owner-b','client','2026-09-30');
+      INSERT INTO project_members (id,project_id,user_id,role,assigned_at) VALUES ('pm-owner-b-a','project-a','owner-b','owner','2026-09-30');
+      INSERT INTO correspondence_participants (id,conversation_id,user_id,name,email,role) VALUES ('owner-p','conversation-email','owner-a','Owner A','owner-a@example.test','owner'),('owner-b-p','conversation-email','owner-b','Owner B','owner-b@example.test','owner');
+      INSERT INTO correspondence_recipients (id,message_id,user_id,name,kind) VALUES ('owner-g','message-project-email-test','owner-a','Owner A','to'),('owner-b-g','message-project-email-test','owner-b','Owner B','to');
+      INSERT INTO project_email_recipients (id,campaign_id,email,kind) VALUES ('blind-a','campaign','owner-a@example.test','bcc'),('visible-b','campaign','owner-b@example.test','to');
+    `)
+    const visibleCtx = context(db, "owner-b", "project-a")
+    const detail = await readCorrespondence(visibleCtx, "conversation-email")
+    expect(detail.conversation.people.map((person) => person.userId)).not.toContain("owner-a")
+    const sent = await persistCorrespondence(visibleCtx, { projectId: "project-a", conversationId: "conversation-email", subject: "Permit update", body: "Reply to my visible audience", recipientUserIds: ["staff-a", "revoked-a"], attachmentIds: [], idempotencyKey: "visible-compass-reply-request", participantVersion: 1 })
+    expect(db.sqlite.prepare("SELECT user_id FROM correspondence_recipients WHERE message_id=? ORDER BY user_id").all(sent.messageId)).toEqual([{ user_id: "owner-b" }, { user_id: "revoked-a" }, { user_id: "staff-a" }])
+    const replyThread = await db.db.query.emailReplyThreads.findFirst()
+    if (!replyThread) throw new Error("Missing reply thread")
+    const emailReply = await routeProjectEmailReply({ db: db.db, organizationId: "org-a", replyThread, candidate: candidate({ fromAddress: "owner-b@example.test", fromName: "Owner B", textBody: "Normal email reply" }) })
+    expect(db.sqlite.prepare("SELECT user_id FROM correspondence_recipients WHERE message_id=? ORDER BY user_id").all(emailReply.messageId)).toEqual([{ user_id: "owner-b" }, { user_id: "revoked-a" }, { user_id: "staff-a" }])
+    expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM notification_recipients r JOIN notification_events e ON e.id=r.event_id WHERE e.source_id=? AND r.user_id='owner-a'").get(emailReply.messageId)).toEqual({ count: 0 })
+    expect((await readCorrespondence(context(db, "owner-a", "project-a"), "conversation-email")).messages).toHaveLength(1)
   })
 
   it("keeps reply text visible while marking attachments for manual review", async () => {

@@ -9,6 +9,7 @@ export function correspondenceWriteGuard(ctx: CorrespondenceContext, input: {
   readonly conversationId: string | null
   readonly participantVersion: number | null
   readonly people: readonly CorrespondencePerson[]
+  readonly allowEmailAudience?: boolean
   readonly extra?: SQL
 }): ReturnType<typeof createGuard> {
   return createGuard(ctx, input)
@@ -19,6 +20,7 @@ function createGuard(ctx: CorrespondenceContext, input: {
   readonly conversationId: string | null
   readonly participantVersion: number | null
   readonly people: readonly CorrespondencePerson[]
+  readonly allowEmailAudience?: boolean
   readonly extra?: SQL
 }) {
   const peopleJson = JSON.stringify(input.people.map((person) => ({ userId: person.userId, role: person.role })))
@@ -40,7 +42,9 @@ function createGuard(ctx: CorrespondenceContext, input: {
     SELECT 1 FROM correspondence_participants cp WHERE cp.conversation_id=${input.conversationId}
     AND cp.user_id=json_extract(person.value,'$.userId') AND cp.revoked_at IS NULL))`)
   if (ctx.workspace !== "staff") {
-    checks.push(sql`NOT EXISTS(SELECT 1 FROM json_each(${peopleJson}) person WHERE json_extract(person.value,'$.role')='staff' AND NOT EXISTS(
+    // Existing project email participants were explicitly addressed by staff.
+    const explicitEmailAudience = input.allowEmailAudience ? sql`NOT EXISTS(SELECT 1 FROM project_email_campaigns campaign WHERE campaign.conversation_id=${input.conversationId} AND campaign.organization_id=${ctx.organizationId} AND campaign.project_id=${ctx.projectId}) AND` : sql``
+    checks.push(sql`NOT EXISTS(SELECT 1 FROM json_each(${peopleJson}) person WHERE json_extract(person.value,'$.role')='staff' AND ${explicitEmailAudience} NOT EXISTS(
       SELECT 1 FROM project_contacts pc WHERE pc.project_id=${ctx.projectId} AND pc.source_entity_type='user'
       AND pc.source_entity_id=json_extract(person.value,'$.userId') AND pc.contact_type='internal' AND pc.active=1
       AND ${ctx.workspace === "owner" ? sql`pc.owner_portal_visible=1` : sql`pc.sub_vendor_portal_visible=1`}))`)
