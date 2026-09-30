@@ -13,6 +13,7 @@ import { clearCorrespondenceWriteGuard, correspondenceWriteGuard } from "@/lib/c
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { validateProjectEmailAudience, type ProjectEmailAudience } from "@/lib/email/project-email-validation"
 import { createReplyToken, trackedReplyAddress } from "@/lib/email/reply-tracking"
+import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientCategory, type EmailRecipientOption } from "@/lib/email/recipient-options"
 
 type RecipientScope = "project" | "directory"
@@ -85,8 +86,13 @@ async function dispatchProjectEmailCampaign(ctx: CorrespondenceContext, campaign
   if (!thread || thread.status !== "active" || thread.projectId !== ctx.projectId || thread.organizationId !== ctx.organizationId) return { success: true, conversationId, status: "unknown", error: "The reply route is unavailable; delivery needs review." }
   let delivery: Awaited<ReturnType<typeof sendCompassEmail>>
   try {
-    const text = `Project: ${ctx.projectName}\nFrom: ${ctx.user.displayName ?? ctx.user.email}\n\n${body}\n\nReply to this email to respond in the project conversation.`
-    delivery = await sendCompassEmail({ env: ctx.env, db: ctx.db, organizationId: ctx.organizationId, to: audience.to, cc: audience.cc, bcc: audience.bcc, replyTo: thread.replyToAddress, headers: [{ name: "X-Compass-Reply-Token", value: thread.token }], subject, text })
+    const projectAddress = projectInboundEmailAddress(ctx.projectId)
+    // Change only the display name: the saved tracking address keeps replies
+    // attached to this conversation, including retries of older messages.
+    const replyName = `${ctx.projectName} - Project Messages`.replace(/[\r\n"\\]/g, " ")
+    const replyTo = thread.replyToAddress.replace(/^Compass (?=<)/, () => `"${replyName}" `)
+    const text = `Project: ${ctx.projectName}\nFrom: ${ctx.user.displayName ?? ctx.user.email}\n\n${body}\n\nReply to this email to respond in this project conversation.\nProject email: ${projectAddress}\nFor a new conversation, email the project address with [MESSAGE] at the start of the subject.`
+    delivery = await sendCompassEmail({ env: ctx.env, db: ctx.db, organizationId: ctx.organizationId, to: audience.to, cc: audience.cc, bcc: audience.bcc, replyTo, headers: [{ name: "X-Compass-Reply-Token", value: thread.token }], subject, text })
   } catch {
     delivery = { status: "unknown", provider: "unknown", providerMessageId: null, error: "Email provider outcome is unknown." }
   }

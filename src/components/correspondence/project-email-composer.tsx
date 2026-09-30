@@ -13,6 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea"
 import { isValidRecipientEmail, normalizeRecipientEmail, type EmailRecipientOption } from "@/lib/email/recipient-options"
 import { validateProjectEmailAudience } from "@/lib/email/project-email-validation"
+import { projectInboundEmailAddress } from "@/lib/email/project-address"
 
 type AudienceKind = "to" | "cc" | "bcc"
 type Audience = Readonly<Record<AudienceKind, readonly string[]>>
@@ -108,6 +109,7 @@ export function ProjectEmailComposer(props: {
           />
         ))}
         <p className="text-xs text-muted-foreground">To and Cc addresses are visible to email recipients. Bcc addresses are hidden from other recipients.</p>
+        <p className="break-all text-xs text-muted-foreground">Project email: {projectInboundEmailAddress(props.projectId)}. Replies to this email return to this conversation.</p>
         <label className="grid gap-2 text-sm font-medium">Subject
           <Input value={subject} maxLength={200} disabled={!canEdit} onChange={(event) => { setSubject(event.target.value); setStatus(null) }} placeholder="What is this project update about?" />
         </label>
