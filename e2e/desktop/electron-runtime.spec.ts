@@ -26,6 +26,9 @@ test.describe("Electron runtime", () => {
   test.skip(!isElectron(), "Desktop only")
 
   test("loads the app with the desktop preload bridge", async ({}, testInfo) => {
+    // macOS runners can spend longer preparing the bundled Electron process
+    // than Playwright's default 30-second window-event timeout.
+    test.setTimeout(120_000)
     const videoDir = testInfo.outputPath("videos")
     const appUrl = new URL(
       "/demo",
@@ -48,7 +51,7 @@ test.describe("Electron runtime", () => {
     })
 
     try {
-      const page = await app.firstWindow()
+      const page = await app.firstWindow({ timeout: 90_000 })
       mainVideo = page.video()
       await page.waitForURL(/\/dashboard/)
       await page.waitForLoadState("domcontentloaded")
