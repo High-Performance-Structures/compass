@@ -51,6 +51,8 @@ import {
   isEstimateWorkSection,
   type EstimateWorkSection,
 } from "@/lib/estimates/workspace-sections"
+import { ProjectEstimateLineOrder } from "@/components/projects/project-estimate-line-order"
+import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
@@ -274,7 +276,19 @@ export function ProjectEstimateWorkspacePanel({
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
 
+  const lastLoadedHeader = useRef<string | null>(null)
+  const persistedHeader = JSON.stringify([
+    estimate?.id, estimate?.defaultTaxEntityId, estimate?.termsTemplateId,
+    estimate?.contractTerms, estimate?.introductionTemplateId, estimate?.introductionText,
+    estimate?.closingTemplateId, estimate?.closingText, estimate?.clientSigners,
+    estimate?.companySignerContactId, estimate?.companySignerName, estimate?.companySignerTitle,
+    estimate?.companySignerEmail, estimate?.companySignerInitials,
+  ])
   useEffect(() => {
+    // Line-order saves refresh the workspace. Equivalent signer arrays from the
+    // server must not reset unfinished header fields in another input area.
+    if (lastLoadedHeader.current === persistedHeader) return
+    lastLoadedHeader.current = persistedHeader
     setDefaultTaxEntityId(estimate?.defaultTaxEntityId ?? "")
     setTermsTemplateId(estimate?.termsTemplateId ?? "")
     setContractTerms(estimate?.contractTerms ?? "")
@@ -291,6 +305,7 @@ export function ProjectEstimateWorkspacePanel({
     })
     setCompanySignerInitials(estimate?.companySignerInitials ?? "")
   }, [
+    persistedHeader,
     estimate?.id,
     estimate?.defaultTaxEntityId,
     estimate?.termsTemplateId,
@@ -371,7 +386,7 @@ export function ProjectEstimateWorkspacePanel({
       groups.set(item.divisionCode, current)
     }
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([divisionCode, items]) => ({
-      key: divisionCode, assemblyId: null, name: `${divisionCode} · ${items[0]?.divisionName}`, description: null, items,
+      key: divisionCode, assemblyId: null, name: `${divisionCode} · ${items[0]?.divisionName}`, description: null, items: items.sort(compareEstimateLineOrder),
     }))
   }, [workspace.lines, workspace.assemblies, buildView])
   const selectedStartTemplate = estimateTemplates.find(
@@ -1603,9 +1618,18 @@ export function ProjectEstimateWorkspacePanel({
                         )}
                       </div>
                     </div>
-                    <div className="divide-y">
-                      {items.map((item) => (
-                        <div key={item.id} className="py-3 pl-6 pr-3">
+                    <ProjectEstimateLineOrder
+                      projectId={projectId}
+                      estimateId={estimate.id}
+                      updatedAt={estimate.updatedAt}
+                      group={buildView === "assembly"
+                        ? { type: "assembly", assemblyId: group.assemblyId }
+                        : { type: "division", divisionCode: group.key }}
+                      groupName={group.name}
+                      items={items}
+                      editable={editable && !isPending}
+                      renderItem={(item) => (
+                        <div className="py-3 pl-3 pr-3">
                           <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
                             <div>
                               <p className="text-sm font-medium">
@@ -1639,7 +1663,7 @@ export function ProjectEstimateWorkspacePanel({
                                 : `${item.quantity} ${item.unit} × ${money(item.unitCostCents)} · markup ${percent(item.markupRateBasisPoints)}${item.taxable ? ` · ${item.taxCode ?? "tax"} ${percent(item.taxRateBasisPoints)}` : " · non-taxable"}`}
                             </p>
                             </div>
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                             <span className="font-medium">{money(item.lineTotalCents)}</span>
                             {editable && (
                               <>
@@ -1695,8 +1719,8 @@ export function ProjectEstimateWorkspacePanel({
                           editable={editable}
                         />
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    />
                   </div>
                 )
               })}
