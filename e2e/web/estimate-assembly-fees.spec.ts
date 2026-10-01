@@ -19,6 +19,7 @@ test("assembly reports optionally show builder-fee subtotals without changing pr
     const editor = "/dashboard/projects/e2e-project-001/estimate?estimateId=" + id
     const report = "/print/projects/e2e-project-001/estimate?estimateId=" + id
     const preview = await page.context().newPage()
+    await page.bringToFront()
     await page.goto(editor)
     const setting = page.getByRole("checkbox", { name: /Show builder-fee subtotal for each assembly/ })
     await expect(setting).not.toBeChecked()
@@ -31,6 +32,7 @@ test("assembly reports optionally show builder-fee subtotals without changing pr
 
     for (const mode of ["Assembly totals", "Assembly cost code detail"]) {
       if (mode === "Assembly cost code detail") {
+        await page.bringToFront()
         await page.getByRole("combobox", { name: "Client report presentation" }).click()
         await page.getByRole("option", { name: mode, exact: true }).click()
         await page.getByRole("button", { name: "Save report view", exact: true }).click()
@@ -47,6 +49,7 @@ test("assembly reports optionally show builder-fee subtotals without changing pr
       await expect(preview.getByText(/these fees are charged once/)).toBeVisible()
     }
 
+    await page.bringToFront()
     await expect(setting).toBeEnabled()
     await setting.uncheck()
     await page.getByRole("button", { name: "Save report view", exact: true }).click()
