@@ -1,6 +1,6 @@
 import "server-only"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -30,7 +30,8 @@ export async function getSageContactEntityIdentity(
       sageRecordId: customers.sageClientId,
       sageRecordNumber: customers.sageClientNumber,
     }).from(customers).where(and(
-      eq(customers.organizationId, organizationId), eq(customers.id, entityId)
+      eq(customers.organizationId, organizationId), eq(customers.id, entityId),
+      isNull(customers.mergedIntoCustomerId)
     )).get()
     return row ? { ...row, parentSageRecordId: null, linkedUserId: null } : null
   }
@@ -41,7 +42,8 @@ export async function getSageContactEntityIdentity(
       parentSageRecordId: customers.sageClientId,
       linkedUserId: customerContacts.userId,
     }).from(customerContacts).innerJoin(customers, eq(customerContacts.customerId, customers.id))
-      .where(and(eq(customers.organizationId, organizationId), eq(customerContacts.id, entityId))).get()
+      .where(and(eq(customers.organizationId, organizationId), eq(customerContacts.id, entityId),
+        isNull(customers.mergedIntoCustomerId), eq(customerContacts.active, true))).get()
     return row ? {
       sageRecordId: row.sageRecordId,
       sageRecordNumber: row.sageRecordNumber === null ? null : String(row.sageRecordNumber),
@@ -54,7 +56,8 @@ export async function getSageContactEntityIdentity(
       sageRecordId: vendors.sageVendorId,
       sageRecordNumber: vendors.sageVendorNumber,
     }).from(vendors).where(and(
-      eq(vendors.organizationId, organizationId), eq(vendors.id, entityId)
+      eq(vendors.organizationId, organizationId), eq(vendors.id, entityId),
+      eq(vendors.directoryStatus, "active")
     )).get()
     return row ? { ...row, parentSageRecordId: null, linkedUserId: null } : null
   }
@@ -65,7 +68,8 @@ export async function getSageContactEntityIdentity(
       parentSageRecordId: vendors.sageVendorId,
       linkedUserId: vendorContacts.userId,
     }).from(vendorContacts).innerJoin(vendors, eq(vendorContacts.vendorId, vendors.id))
-      .where(and(eq(vendors.organizationId, organizationId), eq(vendorContacts.id, entityId))).get()
+      .where(and(eq(vendors.organizationId, organizationId), eq(vendorContacts.id, entityId),
+        eq(vendors.directoryStatus, "active"), eq(vendorContacts.active, true))).get()
     return row ? {
       sageRecordId: row.sageRecordId,
       sageRecordNumber: row.sageRecordNumber === null ? null : String(row.sageRecordNumber),

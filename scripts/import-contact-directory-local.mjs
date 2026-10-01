@@ -616,6 +616,7 @@ function upsertDirectory(db, organizationId, rows) {
       last_synced_at = excluded.last_synced_at,
       organization_id = excluded.organization_id,
       updated_at = excluded.updated_at
+    WHERE vendors.directory_status <> 'merged'
   `)
 
   const tx = db.transaction((items) => {

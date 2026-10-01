@@ -39,7 +39,6 @@ export function sageEmployeeNamesMatch(compassName: string, sageName: string | n
 
 export function sageIdentityLinkReviewError(input: {
   readonly kind: SageContactKind
-  readonly requesterIsReviewer: boolean
   readonly compassName: string | null
   readonly sageName: string | null | undefined
   readonly reviewNote: string
@@ -48,7 +47,7 @@ export function sageIdentityLinkReviewError(input: {
     if (input.kind === "client_company" && !input.sageName?.trim()) {
       return "The Sage client name was not returned. Refresh the Sage read-back before linking."
     }
-    return input.requesterIsReviewer ? "Self-review is limited to Sage employee identity links." : null
+    return null
   }
   if (!input.sageName?.trim()) return "The Sage employee name was not returned. Refresh the Sage read-back; if the name is still blank, check the employee record in Sage."
   if (!input.compassName) return "Compass employee was not found."
@@ -76,7 +75,7 @@ export function sageContactReadClaimError(claim: {
   return null
 }
 
-/** A lookup by number is only a candidate until an independent review. */
+/** A lookup by number is only a candidate until an authorized review. */
 export function sageContactLinkCandidateError(
   identity: SageContactEntityIdentity,
   lookup: SageContactLinkLookup,

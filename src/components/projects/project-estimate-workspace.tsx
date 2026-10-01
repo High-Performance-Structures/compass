@@ -26,6 +26,7 @@ import {
   createProjectEstimateFromTemplate,
   type EstimateTemplateOption,
 } from "@/app/actions/estimate-templates"
+import type { ProjectFamilySummary } from "@/app/actions/project-families"
 
 import {
   addProjectEstimateBasisDocument,
@@ -45,6 +46,8 @@ import {
   type ProjectEstimateTermsOption,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
+import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
+import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -133,6 +136,7 @@ function selectedTemplateBody(
 }
 
 type LineDraft = {
+  readonly assemblyId: string | null
   readonly id: string | null
   readonly reportPhaseId: string
   readonly divisionCode: string
@@ -150,6 +154,7 @@ type LineDraft = {
 }
 
 const EMPTY_LINE: LineDraft = {
+  assemblyId: null,
   id: null,
   reportPhaseId: "",
   divisionCode: "",
@@ -168,6 +173,7 @@ const EMPTY_LINE: LineDraft = {
 
 function lineDraft(line: ProjectEstimateLineItem): LineDraft {
   return {
+    assemblyId: line.assemblyId,
     id: line.id,
     reportPhaseId: line.reportPhaseId ?? "",
     divisionCode: line.divisionCode,
@@ -189,10 +195,12 @@ export function ProjectEstimateWorkspacePanel({
   projectId,
   workspace,
   estimateTemplates,
+  family,
 }: {
   readonly projectId: string
   readonly workspace: ProjectEstimateWorkspace
   readonly estimateTemplates: readonly EstimateTemplateOption[]
+  readonly family: ProjectFamilySummary | null
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
@@ -208,6 +216,7 @@ export function ProjectEstimateWorkspacePanel({
   const [signatureMessage, setSignatureMessage] = useState<string | null>(null)
   const [manualAcceptanceAttested, setManualAcceptanceAttested] =
     useState(false)
+  const [buildView, setBuildView] = useState<"division" | "assembly">("division")
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
   const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(null)
   const lineEditorRef = useRef<HTMLFormElement>(null)
@@ -337,16 +346,19 @@ export function ProjectEstimateWorkspacePanel({
     taxRateBasisPoints: effectiveLineTaxEntity?.rateBasisPoints ?? 0,
   })
   const groupedLines = useMemo(() => {
+    if (buildView === "assembly") return groupEstimateAssemblies(workspace.assemblies, workspace.lines).map((group) => ({
+      key: group.id ?? "unassigned", assemblyId: group.id, name: group.name, description: group.description, items: group.lines,
+    }))
     const groups = new Map<string, ProjectEstimateLineItem[]>()
     for (const item of workspace.lines) {
       const current = groups.get(item.divisionCode) ?? []
       current.push(item)
       groups.set(item.divisionCode, current)
     }
-    return [...groups.entries()].sort((left, right) =>
-      left[0].localeCompare(right[0])
-    )
-  }, [workspace.lines])
+    return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([divisionCode, items]) => ({
+      key: divisionCode, assemblyId: null, name: `${divisionCode} · ${items[0]?.divisionName}`, description: null, items,
+    }))
+  }, [workspace.lines, workspace.assemblies, buildView])
   const selectedStartTemplate = estimateTemplates.find(
     (template) => template.id === startTemplateId
   )
@@ -442,6 +454,7 @@ export function ProjectEstimateWorkspacePanel({
           taxEntityId: line.taxEntityId || null,
           ownerVisible: line.ownerVisible,
           includeInBuilderFee: line.includeInBuilderFee,
+          assemblyId: line.assemblyId,
           insertAfterLineId,
         }
       )
@@ -836,6 +849,7 @@ export function ProjectEstimateWorkspacePanel({
               activeEstimate={estimate}
               canEdit={workspace.canEdit}
               canDelete={workspace.canDelete}
+              family={family}
             />
             <Button variant="outline" asChild>
               <Link
@@ -1271,10 +1285,11 @@ export function ProjectEstimateWorkspacePanel({
       <section className="clarity-panel-strong p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-semibold">CSI estimate</h2>
+            <h2 className="font-semibold">{buildView === "assembly" ? "Assembly estimate" : "CSI estimate"}</h2>
             <p className="text-xs text-muted-foreground">
-              Select a division first, then add the cost codes needed within
-              it. Each division subtotal updates from its lines.
+              {buildView === "assembly"
+                ? "Build named assemblies using cost codes from any division. Each assembly subtotal updates from its items."
+                : "Select a division first, then add the cost codes needed within it. Each division subtotal updates from its lines."}
             </p>
           </div>
           {editable && (
@@ -1308,6 +1323,14 @@ export function ProjectEstimateWorkspacePanel({
               )}
             </div>
           )}
+        </div>
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="estimate-build-view">Build by</Label>
+            <SearchableCombobox id="estimate-build-view" className="w-full sm:w-56" ariaLabel="Build estimate by" placeholder="Choose build view" value={buildView} options={[{ value: "division", label: "Division / cost code" }, { value: "assembly", label: "Assembly" }]} onValueChange={(value) => { if (value === "division" || value === "assembly") setBuildView(value) }} />
+          </div>
+          {editable && <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={null} assemblies={workspace.assemblies} lines={workspace.lines} />}
+          <p className="text-xs text-muted-foreground">Both views edit the same estimate. Choose the report format separately.</p>
         </div>
         <p className="mb-4 text-xs text-muted-foreground">
           Overhead, margin, and contingency are builder-fee percentages applied
@@ -1376,23 +1399,31 @@ export function ProjectEstimateWorkspacePanel({
           <p className="text-sm text-muted-foreground">No estimate lines yet.</p>
         ) : (
           <div className="space-y-4">
-            {groupedLines.map(([divisionCode, items]) => {
+            {groupedLines.map((group) => {
+              const { items } = group
               const subtotal = items.reduce(
                 (sum, item) => sum + item.lineTotalCents,
                 0
               )
               return (
-                <div key={divisionCode} className="border-l-2 border-l-primary pl-4">
-                  <div className="flex items-center justify-between gap-3 border-b pb-2">
-                    <div>
-                      <h3 className="text-sm font-semibold">
-                        {divisionCode} · {items[0]?.divisionName}
+                <div key={group.key} className="border-l-2 border-l-primary pl-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-2">
+                    <div className="min-w-0 flex-1 break-words">
+                      <h3 className="break-words text-sm font-semibold">
+                        {group.name}
                       </h3>
                       <p className="text-xs text-muted-foreground">
                         {items.length} cost-code {items.length === 1 ? "line" : "lines"}
+                        {group.description && ` · ${group.description}`}
                       </p>
                     </div>
-                    <p className="font-semibold">{money(subtotal)}</p>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <p className="font-semibold">{buildView === "assembly" && <span className="text-xs font-normal text-muted-foreground">Subtotal </span>}{money(subtotal)}</p>
+                      {editable && buildView === "assembly" && <>
+                        {group.assemblyId && <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={workspace.assemblies.find((assembly) => assembly.id === group.assemblyId) ?? null} assemblies={workspace.assemblies} lines={workspace.lines} />}
+                        <Button type="button" size="sm" variant="outline" onClick={() => openLineEditor({ ...EMPTY_LINE, assemblyId: group.assemblyId })}>Add item</Button>
+                      </>}
+                    </div>
                   </div>
                   <div className="divide-y">
                     {items.map((item) => (
@@ -1448,6 +1479,7 @@ export function ProjectEstimateWorkspacePanel({
                                       {
                                         ...EMPTY_LINE,
                                         divisionCode: item.divisionCode,
+                                        assemblyId: item.assemblyId,
                                         reportPhaseId: item.reportPhaseId ?? "",
                                       },
                                       item.id
@@ -1517,6 +1549,10 @@ export function ProjectEstimateWorkspacePanel({
                   ? "Insert estimate line"
                   : "Add estimate line"}
             </h3>
+            <div className="mb-3 max-w-sm space-y-1.5">
+              <Label htmlFor="estimate-line-assembly">Assembly</Label>
+              <SearchableCombobox id="estimate-line-assembly" ariaLabel="Assembly" placeholder="Choose assembly" value={line.assemblyId ?? "none"} options={[{ value: "none", label: "Other work (no assembly)" }, ...workspace.assemblies.map((assembly) => ({ value: assembly.id, label: assembly.name, description: assembly.description ?? undefined }))]} onValueChange={(value) => setLine({ ...line, assemblyId: value === "none" ? null : value })} />
+            </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1.5">
                 <Label>CSI division</Label>

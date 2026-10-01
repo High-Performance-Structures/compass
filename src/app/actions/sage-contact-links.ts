@@ -31,8 +31,6 @@ export type SageContactLinkCandidate = {
   readonly sageRecordId: string | null
   readonly sageIdentityName: string | null
   readonly employeeNamesMatch: boolean
-  readonly requestedByCurrentUser: boolean
-  readonly selfReviewAllowed: boolean
   readonly reviewExpired: boolean
   readonly fields: Readonly<Record<string, string | null>>
   readonly requestedByUserId: string | null
@@ -237,14 +235,12 @@ export async function listSageContactLinkCandidates(): Promise<readonly SageCont
     const parsed = sageContactSnapshotResultSchema.safeParse(snapshot)
     const sageIdentityName = parsed.success ? parsed.data.identityName?.trim() || null : null
     const employeeNamesMatch = kind.data === "employee" && sageEmployeeNamesMatch(name, sageIdentityName)
-    const requestedByCurrentUser = row.requestedByUserId === user.id
     const completedAt = row.completedAt ? Date.parse(row.completedAt) : Number.NaN
     result.push({
       id: row.id, kind: kind.data, entityId: row.entityId, directoryName: name,
       status: row.status, sageRecordNumber: row.sageRecordNumber,
       sageRecordId: parsed.success ? parsed.data.sageRecordId : null,
-      sageIdentityName, employeeNamesMatch, requestedByCurrentUser,
-      selfReviewAllowed: requestedByCurrentUser && kind.data === "employee",
+      sageIdentityName, employeeNamesMatch,
       reviewExpired: row.status === "awaiting_review" &&
         (!Number.isFinite(completedAt) || Date.now() - completedAt > SAGE_LINK_CANDIDATE_MAX_AGE_MS),
       fields: parsed.success ? parsed.data.fields : {},
@@ -316,7 +312,7 @@ export async function reviewSageContactLinkCandidate(
     const name = kind.data === "employee"
       ? await directoryName(db, orgId, kind.data, row.entityId) : null
     const reviewError = sageIdentityLinkReviewError({
-      kind: kind.data, requesterIsReviewer: row.requestedByUserId === user.id,
+      kind: kind.data,
       compassName: name, sageName: snapshot.identityName,
       reviewNote,
     })

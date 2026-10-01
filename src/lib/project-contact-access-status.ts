@@ -27,7 +27,7 @@ export type ProjectContactInvitationSnapshot = {
 export function projectContactCanInvite(
   status: ProjectContactAccessStatus
 ): boolean {
-  return status === "not_invited" || status === "expired"
+  return status === "not_invited" || status === "expired" || status === "pending"
 }
 
 export function projectContactNeedsPersonForInvitation(input: {

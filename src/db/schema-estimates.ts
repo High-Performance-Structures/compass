@@ -279,6 +279,20 @@ export const projectEstimateReportPhases = sqliteTable(
   (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder)]
 )
 
+export const projectEstimateAssemblies = sqliteTable(
+  "project_estimate_assemblies",
+  {
+    id: text("id").primaryKey(),
+    estimateId: text("estimate_id").notNull().references(() => projectEstimates.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder)]
+)
+
 export const projectEstimateLines = sqliteTable(
   "project_estimate_lines",
   {
@@ -293,6 +307,7 @@ export const projectEstimateLines = sqliteTable(
       () => estimateTemplateLines.id,
       { onDelete: "set null" }
     ),
+    assemblyId: text("assembly_id").references(() => projectEstimateAssemblies.id, { onDelete: "set null" }),
     reportPhaseId: text("report_phase_id").references(() => projectEstimateReportPhases.id, { onDelete: "set null" }),
     divisionCode: text("division_code").notNull(),
     divisionName: text("division_name").notNull(),

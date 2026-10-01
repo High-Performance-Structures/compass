@@ -9,6 +9,7 @@ import {
   type MouseEvent,
 } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   IconAlertCircle,
   IconBell,
@@ -152,6 +153,7 @@ export function NotificationsPopover({
   const conversationPanel = useConversationPanelOptional()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
   const [notifications, setNotifications] = useState<
     readonly NotificationCenterItem[]
   >([])
@@ -273,9 +275,11 @@ export function NotificationsPopover({
       !event.shiftKey &&
       !event.altKey
 
-    if (channelId && isPlainClick) {
+    if (isPlainClick) {
+      // Route before closing the popover removes its Link. Reading status is independent of navigation.
       event.preventDefault()
-      conversationPanel?.open(channelId)
+      if (channelId) conversationPanel?.open(channelId)
+      else router.push(item.href)
     }
 
     setOpen(false)
@@ -287,7 +291,7 @@ export function NotificationsPopover({
           : candidate
       )
     )
-    await markNotificationRead(item.id, notificationScope)
+    await markNotificationRead(item.id, notificationScope).catch(() => undefined)
   }
 
   const trigger = (

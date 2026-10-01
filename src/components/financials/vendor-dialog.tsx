@@ -5,8 +5,10 @@ import { IconPlus, IconTrash } from "@tabler/icons-react"
 import type {
   VendorCompanyMutationInput,
   VendorDirectoryCompany,
+  VendorContactItem,
 } from "@/app/actions/vendors"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   ResponsiveDialog,
   ResponsiveDialogBody,
@@ -44,6 +46,7 @@ interface VendorDialogProps {
   onSageEditCompany?: () => void
   onSageLinkCompany?: () => void
   onLinkAccount?: (contactId: string, name: string, userId: string | null) => void
+  onMergePeople?: (people: readonly [VendorContactItem, VendorContactItem]) => void
   readOnly?: boolean
 }
 
@@ -59,6 +62,7 @@ export function VendorDialog({
   onSageEditCompany,
   onSageLinkCompany,
   onLinkAccount,
+  onMergePeople,
   readOnly = false,
 }: VendorDialogProps) {
   const [name, setName] = React.useState("")
@@ -67,11 +71,13 @@ export function VendorDialog({
   const [phone, setPhone] = React.useState("")
   const [address, setAddress] = React.useState("")
   const [contacts, setContacts] = React.useState<readonly ContactDraft[]>([])
+  const [selectedPeopleIds, setSelectedPeopleIds] = React.useState<readonly string[]>([])
   const sageLinked = Boolean(initialData?.sageVendorId || initialData?.sageVendorNumber)
   const sageVerified = Boolean(initialData?.sageVendorId)
   const locked = sageLinked || readOnly
 
   React.useEffect(() => {
+    setSelectedPeopleIds([])
     if (initialData) {
       setName(initialData.name)
       setCategory(initialData.category)
@@ -269,6 +275,10 @@ export function VendorDialog({
               {sageVerified && onSageCreateContact ? (
                 <Button type="button" variant="outline" size="sm" onClick={onSageCreateContact}>Propose Sage person</Button>
               ) : null}
+              {onMergePeople && initialData ? <Button type="button" variant="outline" size="sm" disabled={selectedPeopleIds.length !== 2} onClick={() => {
+                const selected = initialData.contacts.filter((person) => selectedPeopleIds.includes(person.id))
+                if (selected[0] && selected[1]) onMergePeople([selected[0], selected[1]])
+              }}>Merge 2 people</Button> : null}
             </div>
             {contacts.length === 0 ? (
               <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
@@ -279,6 +289,12 @@ export function VendorDialog({
                 {contacts.map((contact, index) => (
                   <div key={contact.key} className="grid gap-3 rounded-md border p-3">
                     <div className="flex items-center justify-between gap-3">
+                      {onMergePeople && contact.id ? <Checkbox
+                        aria-label={`Select ${contact.name} for duplicate merge`}
+                        checked={selectedPeopleIds.includes(contact.id)}
+                        onCheckedChange={(checked) => setSelectedPeopleIds((current) =>
+                          checked === true ? [...current, contact.id ?? ""] : current.filter((id) => id !== contact.id))}
+                      /> : null}
                       <p className="text-sm font-medium">Contact {index + 1}</p>
                       <div className="flex items-center gap-2">
                         <Button
