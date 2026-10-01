@@ -89,6 +89,13 @@ describe("customer report readability and optional cost breakdowns", () => {
       expect(shown).toContain("pl-10")
     }
   })
+  it("does not repeat automatic assembly scopes above itemized cost codes", () => {
+    const phases = clientEstimateReportGroups({ mode: "assembly_items", assemblies: [{ id: "a", name: "Foundation phase", description: "", sortOrder: 0 }], lines: [{ ...line("forms", null), assemblyId: "a" }], phaseDescriptions: {} })
+    const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode: "assembly_items" }))
+    expect(html.match(/forms assembly/g)).toHaveLength(1)
+    expect(html).toContain("Total: Foundation phase")
+  })
+
   it("shows saved descriptions and only totals in summary views even with breakdowns enabled", () => {
     for (const reportMode of ["division_summary", "assembly_summary"] as const) {
       const phases = clientEstimateReportGroups({ mode: reportMode, assemblies: [{ id: "a", name: "Foundation phase", description: "Complete foundation scope", sortOrder: 0 }], lines: [{ ...line("forms", null), assemblyId: "a" }], phaseDescriptions: { "03": "Concrete footings and foundation walls" } })
