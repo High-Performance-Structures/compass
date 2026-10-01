@@ -79,9 +79,10 @@ function DefaultCsiReport({ phases, reportMode }: {
   </section>
 }
 
-export function ProjectEstimateReportPhases({ phases, reportMode }: {
+export function ProjectEstimateReportPhases({ phases, reportMode, assemblyBuilderFees }: {
   readonly phases: readonly ClientEstimatePhase[]
   readonly reportMode: EstimateClientReportMode
+  readonly assemblyBuilderFees?: ReadonlyMap<string, number>
 }): React.ReactElement {
   const assemblyReport = reportMode === "assembly_summary" || reportMode === "assembly_items"
   // Preserve the existing compact report when no custom phase is in use.
@@ -89,6 +90,7 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
   return (
     <section className="mt-6" aria-label={assemblyReport ? "Project work by assembly" : "Project work by phase"}>
       {phases.map((phase) => {
+        const builderFeeCents = assemblyReport ? assemblyBuilderFees?.get(phase.id) : undefined
         const title = phase.custom ? phase.name : reportMode === "division_summary" ? phase.divisionName : phase.description
         return (
           <div key={phase.id} className="mb-5">
@@ -99,7 +101,7 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
                 {!assemblyReport && <p className="mt-1 text-xs text-muted-foreground">{phase.custom ? "Source CSI division" : reportMode === "phase_summary" ? "Phase" : "Division"} {phase.divisionCode}{phase.custom ? ` · ${phase.itemize ? "Itemized" : "Lump sum"}` : ""}</p>}
                 {!phase.itemize && phase.taxCents > 0 && <p className="mt-1 text-xs italic text-muted-foreground">Includes {money(phase.taxCents)} sales tax</p>}
               </div>
-              {!phase.itemize && <span className="text-right font-semibold">{money(phase.subtotalCents)}</span>}
+              {!phase.itemize && builderFeeCents === undefined && <span className="text-right font-semibold">{money(phase.subtotalCents)}</span>}
             </div>
             {phase.itemize && <table className="w-full border-collapse text-sm">
               <thead><tr className="border-b text-left text-xs font-semibold uppercase tracking-wide">
@@ -122,11 +124,23 @@ export function ProjectEstimateReportPhases({ phases, reportMode }: {
                   </Fragment>
                 ) : <CostRow key={line.id} item={line} sourceDivision={assemblyReport ? `${line.divisionCode} · ${line.divisionName}` : undefined} />)}
                 <tr className="break-inside-avoid border-b-2 font-semibold">
-                  <td className="py-2" colSpan={4}>Total: {title}</td>
+                  <td className="py-2" colSpan={4}>{builderFeeCents === undefined ? "Total" : "Work subtotal"}: {title}</td>
                   <td className="py-2 text-right">{money(phase.subtotalCents)}</td>
                 </tr>
               </tbody>
             </table>}
+            {builderFeeCents !== undefined && <div className="break-inside-avoid text-sm">
+              {!phase.itemize && <div className="grid grid-cols-[1fr_1.2in] gap-3 border-b py-2">
+                <span>Work subtotal</span><span className="text-right">{money(phase.subtotalCents)}</span>
+              </div>}
+              <div className="grid grid-cols-[1fr_1.2in] gap-3 border-b py-2">
+                <div><p>Builder-fee subtotal</p><p className="text-xs text-muted-foreground">Overhead, margin, and contingency</p></div>
+                <span className="text-right">{money(builderFeeCents)}</span>
+              </div>
+              <div className="grid grid-cols-[1fr_1.2in] gap-3 border-b-2 py-2 font-semibold">
+                <span>Assembly total including builder fee</span><span className="text-right">{money(phase.subtotalCents + builderFeeCents)}</span>
+              </div>
+            </div>}
           </div>
         )
       })}

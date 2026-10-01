@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react"
 import Link from "next/link"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod/v4"
 import { useRouter } from "next/navigation"
 import { IconExternalLink, IconFileDescription } from "@tabler/icons-react"
 
@@ -34,6 +37,11 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { ProjectEstimateReportPhaseEditor } from "@/components/projects/project-estimate-report-phase-editor"
 
+const reportSettingsSchema = z.object({
+  reportMode: z.enum(ESTIMATE_CLIENT_REPORT_MODES),
+  showAssemblyBuilderFee: z.boolean(),
+})
+
 function reportModeLabel(mode: EstimateClientReportMode): string {
   if (mode === "division_summary") return "Division subtotals + grand total"
   if (mode === "phase_summary") return "Phase subtotals + grand total"
@@ -56,13 +64,19 @@ export function ProjectEstimateClientReportSettings({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
-  const [reportMode, setReportMode] = useState(workspace.reportMode)
+  const reportForm = useForm<z.infer<typeof reportSettingsSchema>>({
+    resolver: zodResolver(reportSettingsSchema),
+    defaultValues: { reportMode: workspace.reportMode, showAssemblyBuilderFee: estimate.showAssemblyBuilderFee },
+  })
+  const reportMode = reportForm.watch("reportMode")
+  const showAssemblyBuilderFee = reportForm.watch("showAssemblyBuilderFee")
+  const assemblyReport = reportMode === "assembly_summary" || reportMode === "assembly_items"
   const [acknowledgementIds, setAcknowledgementIds] = useState<readonly string[]>(
     workspace.selectedAcknowledgements.map((item) => item.templateId)
   )
   useEffect(() => {
-    setReportMode(workspace.reportMode)
-  }, [workspace.reportMode])
+    reportForm.reset({ reportMode: workspace.reportMode, showAssemblyBuilderFee: estimate.showAssemblyBuilderFee })
+  }, [workspace.reportMode, estimate.id, estimate.showAssemblyBuilderFee, reportForm])
   const phases = useMemo(() => {
     const groups = new Map<string, string>()
     for (const line of workspace.lines) {
@@ -110,7 +124,8 @@ export function ProjectEstimateClientReportSettings({
       const result = await setProjectEstimateClientReportMode(
         projectId,
         estimate.id,
-        reportMode
+        reportMode,
+        showAssemblyBuilderFee
       )
       setMessage(result.success ? "Client report view saved." : result.error)
       if (result.success) router.refresh()
@@ -188,22 +203,30 @@ export function ProjectEstimateClientReportSettings({
         </p>
       )}
 
-      <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+      <form onSubmit={reportForm.handleSubmit(saveReportMode)} className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
         <div className="space-y-1.5">
           <Label htmlFor="client-report-view">Client report view</Label>
-          <SearchableCombobox id="client-report-view" ariaLabel="Client report presentation" placeholder="Choose report view" value={reportMode} options={ESTIMATE_CLIENT_REPORT_MODES.map((mode) => ({ value: mode, label: reportModeLabel(mode) }))} onValueChange={(value) => { if (isEstimateClientReportMode(value)) setReportMode(value) }} disabled={!editable} />
+          <SearchableCombobox id="client-report-view" ariaLabel="Client report presentation" placeholder="Choose report view" value={reportMode} options={ESTIMATE_CLIENT_REPORT_MODES.map((mode) => ({ value: mode, label: reportModeLabel(mode) }))} onValueChange={(value) => { if (isEstimateClientReportMode(value)) reportForm.setValue("reportMode", value) }} disabled={!editable} />
         </div>
         {editable && (
           <Button
-            type="button"
+            type="submit"
             variant="outline"
-            disabled={isPending || reportMode === workspace.reportMode}
-            onClick={saveReportMode}
+            disabled={isPending || (reportMode === workspace.reportMode && showAssemblyBuilderFee === estimate.showAssemblyBuilderFee)}
           >
             Save report view
           </Button>
         )}
-      </div>
+        {assemblyReport && <div className="md:col-span-2">
+          <label className="flex items-start gap-3 text-sm">
+            <Checkbox className="mt-0.5" checked={showAssemblyBuilderFee} onCheckedChange={(checked) => reportForm.setValue("showAssemblyBuilderFee", checked === true)} disabled={!editable || isPending} />
+            <span>
+              <span className="font-medium">Show builder-fee subtotal for each assembly</span>
+              <span className="mt-1 block text-xs text-muted-foreground">Show combined overhead, margin, and contingency plus each assembly’s total including its fee. Items excluded from builder fees remain excluded.</span>
+            </span>
+          </label>
+        </div>}
+      </form>
 
       <ProjectEstimateReportPhaseEditor projectId={projectId} estimateId={estimate.id} workspace={workspace} editable={editable} key={estimate.id} />
 

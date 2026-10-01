@@ -358,6 +358,8 @@ describe("estimate ledger", () => {
       acknowledgements: [],
     }
     const original = await estimateSourceHash(input)
+    expect(await estimateSourceHash({ ...input, showAssemblyBuilderFee: false })).toBe(original)
+    expect(await estimateSourceHash({ ...input, showAssemblyBuilderFee: true })).not.toBe(original)
     const phase = { id: "fox", divisionCode: "03", name: "Fox Blocks", description: "ICF walls", itemize: true, sortOrder: 1 }
     const withPhases = { ...input, reportPhases: [phase] }
     const phaseHash = await estimateSourceHash(withPhases)

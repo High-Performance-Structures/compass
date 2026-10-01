@@ -13,6 +13,7 @@ import {
   clientEstimateReportGroups,
   clientEstimateTaxSummary,
 } from "@/lib/estimates/client-report"
+import { assemblyBuilderFeeAllocation } from "@/lib/estimates/assembly-builder-fee"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
@@ -79,6 +80,9 @@ export default async function ProjectEstimatePrintPage({
     reportPhases: workspace.reportPhases,
     defaultItemize: workspace.reportMode === "line_items",
   })
+  const assemblyFees = estimate.showAssemblyBuilderFee && (workspace.reportMode === "assembly_summary" || workspace.reportMode === "assembly_items")
+    ? assemblyBuilderFeeAllocation({ groups: phases, lines: workspace.lines, builderFeeCents: estimate.builderFeeCents })
+    : null
   const clientSubtotalCents = phases.reduce(
     (total, phase) => total + phase.subtotalCents,
     0
@@ -173,7 +177,8 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        <ProjectEstimateReportPhases phases={phases} reportMode={workspace.reportMode} />
+        <ProjectEstimateReportPhases phases={phases} reportMode={workspace.reportMode} assemblyBuilderFees={assemblyFees?.byGroup} />
+        {assemblyFees && <p className="mt-3 text-xs text-muted-foreground">The project builder-fee summary below recaps the fees included in assembly totals; these fees are charged once.</p>}
 
         <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
           {taxSummary.taxCents > 0 ? (
@@ -250,6 +255,9 @@ export default async function ProjectEstimatePrintPage({
               </div>
             </>
           )}
+          {assemblyFees && assemblyFees.unallocatedCents !== 0 && <div className="flex justify-between border-t py-2">
+            <span>Builder fee outside displayed assemblies</span><span>{money(assemblyFees.unallocatedCents)}</span>
+          </div>}
           <div className="flex justify-between border-y-2 border-black py-2 text-base font-bold">
             <span>Project Total:</span>
             <span>{money(clientTotalCents)}</span>

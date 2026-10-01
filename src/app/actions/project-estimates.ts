@@ -139,6 +139,7 @@ export type ProjectEstimateSummary = {
   readonly introductionText: string | null
   readonly closingTemplateId: string | null
   readonly closingText: string | null
+  readonly showAssemblyBuilderFee: boolean
   readonly clientReportMode: EstimateClientReportMode
   readonly directCostCents: number
   readonly markupCents: number
@@ -684,6 +685,7 @@ function estimateSummary(
     introductionText: row.introductionText,
     closingTemplateId: row.closingTemplateId,
     closingText: row.closingText,
+    showAssemblyBuilderFee: row.showAssemblyBuilderFee ?? false,
     clientReportMode: isEstimateClientReportMode(row.clientReportMode)
       ? row.clientReportMode
       : estimateClientReportMode(department),
@@ -1996,7 +1998,8 @@ export async function updateProjectEstimateHeader(
 export async function setProjectEstimateClientReportMode(
   projectId: string,
   estimateId: string,
-  mode: string
+  mode: string,
+  showAssemblyBuilderFee?: boolean
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
@@ -2004,9 +2007,12 @@ export async function setProjectEstimateClientReportMode(
     if (!isEstimateClientReportMode(mode)) {
       throw new Error("Choose an available client report view.")
     }
+    if (showAssemblyBuilderFee !== undefined && typeof showAssemblyBuilderFee !== "boolean") {
+      throw new Error("Choose whether to show assembly builder fees.")
+    }
     await access.db
       .update(projectEstimates)
-      .set({ clientReportMode: mode, updatedAt: new Date().toISOString() })
+      .set({ clientReportMode: mode, showAssemblyBuilderFee, updatedAt: new Date().toISOString() })
       .where(eq(projectEstimates.id, estimateId))
       .run()
     revalidateEstimate(projectId)
@@ -3674,6 +3680,7 @@ export async function prepareProjectEstimateForClientSignature(
       estimateId,
       versionNumber: estimate.versionNumber,
       title: reportTitle,
+      showAssemblyBuilderFee: estimate.showAssemblyBuilderFee,
       reportMode: isEstimateClientReportMode(estimate.clientReportMode)
         ? estimate.clientReportMode
         : estimateClientReportMode(access.department),
