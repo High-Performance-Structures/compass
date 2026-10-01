@@ -54,6 +54,21 @@ describe("assembly fee report preference", () => {
     const db = configureDb()
     expect((await setProjectEstimateClientReportMode("project-1", "estimate-1", "line_items")).success).toBe(true)
     expect(db.set.mock.calls[0]?.[0].showAssemblyBuilderFee).toBeUndefined()
+    expect(db.set.mock.calls[0]?.[0].showCostBreakdowns).toBeUndefined()
+  })
+  it("saves cost breakdowns with every report view and rejects invalid flags", async () => {
+    const db = configureDb()
+    for (const mode of ["assembly_items", "assembly_summary", "line_items", "division_summary", "phase_summary"]) {
+      for (const enabled of [true, false]) {
+        expect((await setProjectEstimateClientReportMode("project-1", "estimate-1", mode, false, enabled)).success).toBe(true)
+        expect(db.set).toHaveBeenLastCalledWith(expect.objectContaining({ clientReportMode: mode, showCostBreakdowns: enabled }))
+      }
+    }
+    db.run.mockClear()
+    for (const value of ["true", 1, null]) {
+      expect(await Reflect.apply(setProjectEstimateClientReportMode, null, ["project-1", "estimate-1", "line_items", false, value])).toEqual({ success: false, error: "Choose whether to show cost breakdowns." })
+    }
+    expect(db.run).not.toHaveBeenCalled()
   })
   it("blocks locked or missing estimates and invalid report views", async () => {
     for (const status of ["accepted", "signature_pending", "superseded"]) {

@@ -29,11 +29,11 @@ describe("mixed-detail customer estimate report", () => {
         { id: "fox", divisionCode: "03", name: "Fox Blocks", description: "ICF wall scope", itemize: true, sortOrder: 1 },
         { id: "concrete", divisionCode: "03", name: "Structural concrete", description: "Footings and slabs", itemize: false, sortOrder: 2 },
       ], lines: [line("forms", "fox"), line("slabs", "concrete"), { ...line("private", "fox"), ownerVisible: false }] })
-      const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode }))
+      const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode, showCostBreakdowns: true }))
       expect(html).toContain("Fox Blocks")
       expect(html).toContain("ICF wall scope")
       expect(html).toContain("forms detailed scope")
-      expect(html).toContain("Assembly subtotal: forms assembly")
+      expect(html).toContain("Cost breakdown · included in the cost code amount above")
       expect(html).toContain("Total: Fox Blocks")
       expect(html).toContain("Structural concrete")
       expect(html).not.toContain("slabs assembly")
@@ -67,6 +67,46 @@ describe("optional assembly builder-fee presentation", () => {
       const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode, assemblyBuilderFees: new Map([[phases[0]?.id ?? "", 2469]]) }))
       expect(html).not.toContain("Builder-fee subtotal")
       expect(html).not.toContain("$148.14")
+    }
+  })
+})
+
+describe("customer report readability and optional cost breakdowns", () => {
+  it("keeps underlying costs hidden by default in both itemized report modes", () => {
+    for (const reportMode of ["line_items", "assembly_items"] as const) {
+      const phases = clientEstimateReportGroups({ mode: reportMode, assemblies: [{ id: "a", name: "Foundation phase", description: "Footings and walls", sortOrder: 0 }], lines: [{ ...line("forms", null), assemblyId: "a" }, { ...line("private", null), assemblyId: "a", ownerVisible: false }], phaseDescriptions: {}, defaultItemize: true })
+      const hidden = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode }))
+      const shown = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode, showCostBreakdowns: true }))
+      expect(hidden).toContain("forms assembly")
+      expect(hidden).not.toContain("forms detailed scope")
+      expect(shown).toContain("forms detailed scope")
+      expect(shown).toContain("included in the cost code amount above")
+      expect(shown).not.toContain("private")
+      expect(phases[0]?.subtotalCents).toBe(12345)
+      expect(hidden).toContain("bg-report-total")
+      expect(hidden).toContain("bg-report-heading")
+      expect(hidden).toContain("pl-6")
+      expect(shown).toContain("pl-10")
+    }
+  })
+  it("shows saved descriptions and only totals in summary views even with breakdowns enabled", () => {
+    for (const reportMode of ["division_summary", "assembly_summary"] as const) {
+      const phases = clientEstimateReportGroups({ mode: reportMode, assemblies: [{ id: "a", name: "Foundation phase", description: "Complete foundation scope", sortOrder: 0 }], lines: [{ ...line("forms", null), assemblyId: "a" }], phaseDescriptions: { "03": "Concrete footings and foundation walls" } })
+      const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode, showCostBreakdowns: true }))
+      expect(html).toContain(reportMode === "assembly_summary" ? "Complete foundation scope" : "Concrete footings and foundation walls")
+      expect(html).not.toContain("forms assembly")
+      expect(html).not.toContain("forms detailed scope")
+      expect(html).not.toContain("<table")
+      expect(html).toContain("$123.45")
+    }
+  })
+  it("uses only visible parent scopes when a summary has no saved description", () => {
+    for (const reportMode of ["division_summary", "assembly_summary"] as const) {
+      const phases = clientEstimateReportGroups({ mode: reportMode, assemblies: [{ id: "a", name: "Foundation phase", description: "", sortOrder: 0 }], lines: [{ ...line("forms", null), assemblyId: "a" }, { ...line("private", null), assemblyId: "a", ownerVisible: false }], phaseDescriptions: {} })
+      const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode }))
+      expect(html).toContain("forms assembly")
+      expect(html).not.toContain("forms detailed scope")
+      expect(html).not.toContain("private")
     }
   })
 })

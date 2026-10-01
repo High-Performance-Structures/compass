@@ -139,6 +139,7 @@ export type ProjectEstimateSummary = {
   readonly introductionText: string | null
   readonly closingTemplateId: string | null
   readonly closingText: string | null
+  readonly showCostBreakdowns: boolean
   readonly showAssemblyBuilderFee: boolean
   readonly clientReportMode: EstimateClientReportMode
   readonly directCostCents: number
@@ -685,6 +686,7 @@ function estimateSummary(
     introductionText: row.introductionText,
     closingTemplateId: row.closingTemplateId,
     closingText: row.closingText,
+    showCostBreakdowns: row.showCostBreakdowns ?? false,
     showAssemblyBuilderFee: row.showAssemblyBuilderFee ?? false,
     clientReportMode: isEstimateClientReportMode(row.clientReportMode)
       ? row.clientReportMode
@@ -1999,7 +2001,8 @@ export async function setProjectEstimateClientReportMode(
   projectId: string,
   estimateId: string,
   mode: string,
-  showAssemblyBuilderFee?: boolean
+  showAssemblyBuilderFee?: boolean,
+  showCostBreakdowns?: boolean
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
@@ -2010,9 +2013,12 @@ export async function setProjectEstimateClientReportMode(
     if (showAssemblyBuilderFee !== undefined && typeof showAssemblyBuilderFee !== "boolean") {
       throw new Error("Choose whether to show assembly builder fees.")
     }
+    if (showCostBreakdowns !== undefined && typeof showCostBreakdowns !== "boolean") {
+      throw new Error("Choose whether to show cost breakdowns.")
+    }
     await access.db
       .update(projectEstimates)
-      .set({ clientReportMode: mode, showAssemblyBuilderFee, updatedAt: new Date().toISOString() })
+      .set({ clientReportMode: mode, showAssemblyBuilderFee, showCostBreakdowns, updatedAt: new Date().toISOString() })
       .where(eq(projectEstimates.id, estimateId))
       .run()
     revalidateEstimate(projectId)
@@ -3681,6 +3687,7 @@ export async function prepareProjectEstimateForClientSignature(
       versionNumber: estimate.versionNumber,
       title: reportTitle,
       showAssemblyBuilderFee: estimate.showAssemblyBuilderFee,
+      showCostBreakdowns: estimate.showCostBreakdowns,
       reportMode: isEstimateClientReportMode(estimate.clientReportMode)
         ? estimate.clientReportMode
         : estimateClientReportMode(access.department),

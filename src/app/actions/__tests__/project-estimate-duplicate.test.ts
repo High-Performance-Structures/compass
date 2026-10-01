@@ -48,6 +48,7 @@ const source = {
   clientSignerEmail: "source@example.com",
   clientSignersJson: "[]",
   showAssemblyBuilderFee: true,
+  showCostBreakdowns: true,
   companySignerContactId: null,
   companySignerName: null,
   companySignerTitle: null,
@@ -207,6 +208,7 @@ describe("duplicateProjectEstimate", () => {
     expect(db.inserted).toHaveBeenCalledWith(expect.objectContaining({
       projectId: "source-project",
       showAssemblyBuilderFee: true,
+  showCostBreakdowns: true,
       estimateNumber: "SOURCE-00",
       versionNumber: 3,
       clientSignerContactId: "source-contact",
