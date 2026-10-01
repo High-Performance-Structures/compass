@@ -151,6 +151,8 @@ function scopeDescription(phase: ClientEstimatePhase): string {
     (phase.custom || description !== phase.divisionName.trim())
   )
     return description
+  // Itemized groups already show their scopes beneath each cost code.
+  if (phase.itemize) return ""
   // Summarize only customer-visible parent scopes when no group description was saved.
   return [
     ...new Set(
