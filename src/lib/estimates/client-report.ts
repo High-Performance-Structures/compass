@@ -1,3 +1,4 @@
+import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { groupEstimateAssemblies, type EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
@@ -332,11 +333,7 @@ export function clientEstimatePhases(input: {
       return left[0].localeCompare(right[0])
     })
     .map(([key, sourceLines]) => {
-      const lines = [...sourceLines].sort((left, right) => {
-        const sortOrder = left.sortOrder - right.sortOrder
-        if (sortOrder !== 0) return sortOrder
-        return left.costCode.localeCompare(right.costCode)
-      })
+      const lines = [...sourceLines].sort(compareEstimateLineOrder)
       const divisionCode = lines[0]?.divisionCode ?? ""
       const divisionName = lines[0]?.divisionName ?? `Phase ${divisionCode}`
       const customDescription = input.phaseDescriptions[divisionCode]?.trim()
