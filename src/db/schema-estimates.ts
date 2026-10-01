@@ -140,6 +140,9 @@ export const projectEstimates = sqliteTable(
     ),
     closingText: text("closing_text"),
     clientReportMode: text("client_report_mode"),
+    showCostBreakdowns: integer("show_cost_breakdowns", { mode: "boolean" })
+      .notNull()
+      .default(false),
     showAssemblyBuilderFee: integer("show_assembly_builder_fee", { mode: "boolean" })
       .notNull()
       .default(false),

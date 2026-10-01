@@ -51,6 +51,7 @@ function estimate(
     closingText: null,
     clientReportMode: "line_items",
     showAssemblyBuilderFee: false,
+    showCostBreakdowns: false,
     directCostCents: versionNumber === 1 ? 10_000 : 12_500,
     markupCents: 0,
     taxCents: 0,
