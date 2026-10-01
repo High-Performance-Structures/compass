@@ -10,9 +10,9 @@
   "tags": ["conversations", "messages", "sms", "texting", "announcements", "mentions", "notifications", "channels"],
   "audiences": ["staff"],
   "permissions": ["help:read", "channels:read"],
-  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/settings"],
+  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-19"
+  "lastReviewed": "2026-09-30"
 }
 ---
 
@@ -25,6 +25,12 @@ Use a project channel for communication the project team should find with the jo
 Open the correct channel, confirm its name and project context, write the message, mention only people whose attention is required, attach permitted files, and send. Include searchable context such as the project number, subject, company, or scope.
 
 Mentions may trigger in-app, email, push, or text notifications according to the recipient's preferences and configured services.
+
+## Email People Outside Compass {#project-email}
+
+In a project's **Messages** workspace, staff can choose **New email** to send a project update to people who do not have Compass accounts. Add recipients from active project contacts, search the owner/vendor/internal directory, or enter an email address directly. Use **To**, **Cc**, and **Bcc** according to who should see the address list, then review the recipient counts before sending.
+
+The email is saved in the project's message history. Replies to its tracked address appear in that project conversation and notify the internal team. Recipients do not gain Compass access. A reply written inside Compass stays internal; use **New email** for another external update. If delivery fails, the original sender can retry the saved email. When delivery is uncertain, check its status before sending again.
 
 ## Attachments {#attachments}
 

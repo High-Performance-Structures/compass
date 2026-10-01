@@ -9,12 +9,13 @@ import {
   reviseCorrespondenceMessage,
   searchCorrespondence,
   saveCorrespondenceDraft,
-  saveCorrespondenceCompositionDraft,
   sendCorrespondence,
   setCorrespondenceClosed,
   setCorrespondenceReceiptPreference,
   setCorrespondenceState,
 } from "@/app/actions/project-correspondence"
+import { getProjectDrafts, saveProjectComposition, setProjectDraftDiscarded } from "@/app/actions/correspondence-saved-drafts"
+import type { CompositionDraftHandle } from "./use-composition-draft"
 import { Button } from "@/components/ui/button"
 import { CorrespondenceInboxPanel } from "./correspondence-inbox-panel"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -25,6 +26,7 @@ import {
 } from "./correspondence-workspace-parts"
 import { MessageCard } from "./correspondence-message-card"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
+import { ProjectEmailComposer } from "./project-email-composer"
 import {
   earliestSequence,
   applyMessageRevision,
@@ -35,17 +37,28 @@ import {
   uploadStagedAttachment,
   type StagedAttachment,
 } from "./correspondence-workspace-utils"
-import type { CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
+import type { ProjectDraft, SavedComposition, CorrespondenceInboxFilter, CorrespondenceAttachment, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceMessage, CorrespondencePerson, CorrespondenceStateInput, CorrespondenceSummary, SendCorrespondenceInput } from "@/lib/correspondence/types"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
+import { removeCorrespondenceAttachment } from "@/app/actions/correspondence-attachments"
+import { retryFailedProjectEmail } from "@/app/actions/project-email"
 type ProjectCorrespondenceWorkspaceProps = { readonly projectId: string; readonly initialInbox: CorrespondenceInbox; readonly initialConversationId?: string; readonly initialMessageId?: string; readonly initialNewMessage?: boolean }
-type InboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"
-type ComposeMode = { readonly kind: "reply" } | { readonly kind: "new"; readonly subject: string; readonly recipientIds: readonly string[] }
-type NewDraft = { readonly subject: string; readonly recipientIds: readonly string[]; readonly body: string; readonly version: number }
+type InboxFilter = CorrespondenceInboxFilter
+type ComposeMode = { readonly kind: "reply" } | { readonly kind: "new"; readonly subject: string; readonly recipientIds: readonly string[] } | { readonly kind: "email" }
+type NewDraft = { readonly subject: string; readonly recipientIds: readonly string[]; readonly body: string; readonly version: number; readonly id: string; readonly attachmentIds: readonly string[]; readonly requestId: string | null }
 type PendingSend = { readonly input: SendCorrespondenceInput }
 type SearchHit = { readonly conversationId: string; readonly messageId: string; readonly subject: string; readonly excerpt: string; readonly sentAt: string }
 const POLL_INTERVAL_MS = 20_000
 export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initialConversationId, initialMessageId, initialNewMessage = false }: ProjectCorrespondenceWorkspaceProps): React.ReactElement {
-  const initialCompositionDraft = compositionDraft(initialInbox)
+  const [initialCompositionDraft] = React.useState(() => compositionDraft())
+  const [discardedComposition, setDiscardedComposition] = React.useState<{ readonly id: string; readonly version: number } | null>(null)
+  const [drafts, setDrafts] = React.useState<readonly ProjectDraft[]>([])
+  const [emailDraft, setEmailDraft] = React.useState<SavedComposition | null>(null)
+  const [emailKey, setEmailKey] = React.useState("initial-email")
+  const emailHandle = React.useRef<CompositionDraftHandle | null>(null)
+  const attachmentRef = React.useRef<readonly StagedAttachment[]>([])
+  const replyToOpen = React.useRef<string | null>(null)
+  const openRoute = React.useRef<(id: string, messageId?: string) => Promise<void>>(async () => undefined)
+  const previousRoute = React.useRef(`${initialConversationId ?? ""}:${initialMessageId ?? ""}`)
   const [inbox, setInbox] = React.useState(initialInbox)
   const [activeId, setActiveId] = React.useState<string | null>(
     initialConversationId ?? null,
@@ -104,6 +117,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   React.useEffect(() => { newDraftRef.current = newDraft }, [newDraft])
   React.useEffect(() => {
     const trimmed = query.trim()
+    if (filter === "drafts") { setSearchHits([]); setSearchHasMore(false); return }
     if (trimmed.length < 2) {
       setSearchHits([])
       setSearchHasMore(false)
@@ -127,21 +141,31 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setInbox(result.data)
     return result.data
   }, [projectId])
+  const refreshDrafts = React.useCallback(async (): Promise<void> => {
+    const result = await getProjectDrafts(projectId)
+    if (result.success) setDrafts(result.data)
+  }, [projectId])
+  React.useEffect(() => { void refreshDrafts() }, [refreshDrafts])
+  React.useEffect(() => {
+    const timer = window.setInterval(() => { void refreshDrafts() }, POLL_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [refreshDrafts])
   const saveCompositionDraft = React.useCallback(async (draft: NewDraft): Promise<boolean> => {
     const queued = compositionSave.current.catch(() => false).then(async (): Promise<boolean> => {
-      let result: Awaited<ReturnType<typeof saveCorrespondenceCompositionDraft>>
+      let result: Awaited<ReturnType<typeof saveProjectComposition>>
       try {
-        result = await saveCorrespondenceCompositionDraft(projectId, {
+        result = await saveProjectComposition(projectId, draft.id, compositionVersion.current, {
+          kind: "message", attachmentIds: draft.attachmentIds, requestId: draft.requestId,
           subject: draft.subject,
           body: draft.body,
           recipientUserIds: draft.recipientIds,
-          version: compositionVersion.current,
         })
       } catch {
         setStatus("The new-message draft could not be saved. Your text is still here.")
         return false
       }
       if (!result.success) { setStatus(result.error); return false }
+      void refreshDrafts()
       compositionVersion.current = result.data.version
       if (compositionKey(newDraftRef.current) === compositionKey(draft)) {
         newDraftDirty.current = false
@@ -152,29 +176,30 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     })
     compositionSave.current = queued
     return queued
-  }, [projectId])
+  }, [projectId, refreshDrafts])
   const saveReplyDraft = React.useCallback(async (conversationId: string, body: string): Promise<boolean> => {
     const queued = replySave.current.catch(() => false).then(async (): Promise<boolean> => {
       let result: Awaited<ReturnType<typeof saveCorrespondenceDraft>>
       try {
-        result = await saveCorrespondenceDraft(projectId, conversationId, body, replyDraftVersion.current)
+        result = await saveCorrespondenceDraft(projectId, conversationId, body, replyDraftVersion.current, readyAttachmentIds(attachmentRef.current))
       } catch {
         setStatus("This draft could not be saved. Your text is still here.")
         return false
       }
       if (!result.success) { setStatus(result.error); return false }
+      void refreshDrafts()
       replyDraftVersion.current = result.data.version
       const currentDetail = detailRef.current
       if (currentDetail?.conversation.id === conversationId) {
-        detailRef.current = { ...currentDetail, draft: { body, version: result.data.version } }
+        detailRef.current = { ...currentDetail, draft: { body, version: result.data.version, attachments: attachmentRef.current.flatMap((file) => file.attachment ? [file.attachment] : []) } }
       }
-      setDetail((current) => current?.conversation.id === conversationId ? { ...current, draft: { body, version: result.data.version } } : current)
+      setDetail((current) => current?.conversation.id === conversationId ? { ...current, draft: { body, version: result.data.version, attachments: attachmentRef.current.flatMap((file) => file.attachment ? [file.attachment] : []) } } : current)
       if (replyBodyRef.current === body) replyDirty.current = false
       return true
     })
     replySave.current = queued
     return queued
-  }, [projectId])
+  }, [projectId, refreshDrafts])
   const markOpened = React.useCallback(async (conversationId: string, messages: readonly { readonly id: string; readonly editedAt: string | null }[]): Promise<void> => {
     if (conversationId !== activeId || document.visibilityState !== "visible" || !document.hasFocus()) return
     const unopened = messages.filter((message) => !openedMessageIds.current.has(`${message.id}:${message.editedAt ?? ""}`))
@@ -217,6 +242,14 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       if (request !== detailRequest.current) return
       detailRef.current = nextDetail
       setDetail(nextDetail)
+      if (replyToOpen.current === conversationId) {
+        replyToOpen.current = null
+        composeRef.current = { kind: "reply" }
+        setCompose({ kind: "reply" })
+        replyDraftVersion.current = nextDetail.draft?.version ?? 0
+        replaceReplyBody(nextDetail.draft?.body ?? "")
+        setStagedAttachments(restoredAttachments(nextDetail.draft?.attachments ?? []))
+      }
       if (composeRef.current === null) {
         replyDraftVersion.current = nextDetail.draft?.version ?? 0
         replaceReplyBody(nextDetail.draft?.body ?? "")
@@ -242,14 +275,14 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   }, [activeId, loadDetail, refreshInbox])
   React.useEffect(() => {
     if (compose?.kind !== "reply" || activeDetail === null || editingMessage !== null) return
-    if (activeDetail.draft?.body === replyBody || activeDetail.draft === null && replyBody === "") return
+    if (!replyDirty.current) return
     const timer = window.setTimeout(() => {
       if (!sendInProgress.current && pendingSend.current === null && !navigationInProgress.current) {
         void saveReplyDraft(activeDetail.conversation.id, replyBody)
       }
     }, 700)
     return () => window.clearTimeout(timer)
-  }, [activeDetail, compose?.kind, editingMessage, replyBody, saveReplyDraft])
+  }, [activeDetail, compose?.kind, editingMessage, replyBody, stagedAttachments, saveReplyDraft])
   React.useEffect(() => {
     if (compose?.kind !== "new" || !newDraftDirty.current || sendInProgress.current || pendingSend.current !== null || navigationInProgress.current) return
     const timer = window.setTimeout(() => {
@@ -266,6 +299,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     editingMessageRef.current = null
     setEditingMessage(null)
     setFocusMessageId(messageId)
+    setStagedAttachments([])
     if (conversationId !== activeId) invalidateDetail()
     setActiveId(conversationId)
     composeRef.current = null
@@ -273,6 +307,59 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setMobileDetail(true)
     setStatus(null)
   }
+  React.useEffect(() => { openRoute.current = openConversation })
+  React.useEffect(() => {
+    const route = `${initialConversationId ?? ""}:${initialMessageId ?? ""}`
+    if (route === previousRoute.current) return
+    previousRoute.current = route
+    if (initialConversationId) void openRoute.current(initialConversationId, initialMessageId)
+  }, [initialConversationId, initialMessageId])
+  async function openDraft(draft: ProjectDraft): Promise<void> {
+    if (blockComposerTransition("opening a draft") || !await flushComposerBeforeNavigation()) return
+    if (!("content" in draft)) {
+      replyToOpen.current = draft.conversationId
+      await openConversation(draft.conversationId)
+      if (draft.conversationId === activeId) void loadDetail(draft.conversationId)
+      return
+    }
+    editingMessageRef.current = null
+    setEditingMessage(null)
+    setMobileDetail(true)
+    setStatus(null)
+    if (draft.content.kind === "email") {
+      setStagedAttachments([])
+      setEmailDraft(draft)
+      setEmailKey(draft.id)
+      composeRef.current = { kind: "email" }
+      setCompose({ kind: "email" })
+      return
+    }
+    const nextDraft = { ...draft.content, id: draft.id, recipientIds: draft.content.recipientUserIds, version: draft.version }
+    newDraftRef.current = nextDraft
+    newDraftDirty.current = false
+    compositionVersion.current = draft.version
+    setNewDraft(nextDraft)
+    composeRef.current = { kind: "new", subject: nextDraft.subject, recipientIds: nextDraft.recipientIds }
+    setCompose(composeRef.current)
+    replaceReplyBody(nextDraft.body)
+    setStagedAttachments(restoredAttachments(draft.attachments))
+    if (draft.content.requestId) {
+      pendingSend.current = { input: { projectId, conversationId: null, subject: draft.content.subject.trim(), body: draft.content.body.trim(), recipientUserIds: draft.content.recipientUserIds, attachmentIds: draft.content.attachmentIds, idempotencyKey: draft.content.requestId, participantVersion: null, draft: { id: draft.id, version: draft.version } } }
+      setHasPendingSend(true)
+      setStatus("This draft has a reserved send. Resolve the same send before editing.")
+    }
+  }
+  React.useEffect(() => {
+    attachmentRef.current = stagedAttachments
+    if (composeRef.current?.kind === "new") {
+      const ids = readyAttachmentIds(stagedAttachments)
+      if (JSON.stringify(newDraftRef.current.attachmentIds) === JSON.stringify(ids)) return
+      newDraftDirty.current = true
+      const next = { ...newDraftRef.current, attachmentIds: ids }
+      newDraftRef.current = next
+      setNewDraft(next)
+    } else if (composeRef.current?.kind === "reply" && editingMessageRef.current === null) replyDirty.current = true
+  }, [stagedAttachments])
   async function startNewMessage(): Promise<void> {
     if (composeRef.current?.kind === "new") { setMobileDetail(true); return }
     if (blockComposerTransition("starting another message")) return
@@ -280,10 +367,30 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     replyDirty.current = false
     editingMessageRef.current = null
     setEditingMessage(null)
-    const nextCompose = { kind: "new" as const, subject: newDraft.subject, recipientIds: newDraft.recipientIds }
+    const fresh = compositionDraft()
+    newDraftRef.current = fresh
+    newDraftDirty.current = false
+    compositionVersion.current = 0
+    setNewDraft(fresh)
+    setStagedAttachments([])
+    const nextCompose = { kind: "new" as const, subject: fresh.subject, recipientIds: fresh.recipientIds }
     composeRef.current = nextCompose
     setCompose(nextCompose)
-    replaceReplyBody(newDraft.body)
+    replaceReplyBody(fresh.body)
+    setMobileDetail(true)
+    setStatus(null)
+  }
+  async function startProjectEmail(): Promise<void> {
+    if (inbox.workspace !== "staff") return
+    if (composeRef.current?.kind === "email") { setMobileDetail(true); return }
+    if (blockComposerTransition("starting a project email")) return
+    if (!await flushComposerBeforeNavigation()) return
+    setEmailDraft(null)
+    setStagedAttachments([])
+    setEmailKey(crypto.randomUUID())
+    const nextCompose = { kind: "email" as const }
+    composeRef.current = nextCompose
+    setCompose(nextCompose)
     setMobileDetail(true)
     setStatus(null)
   }
@@ -328,7 +435,8 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setNewDraft(nextDraft)
   }
   function hydrateCompositionDraft(refreshed: CorrespondenceInbox): void {
-    const draft = compositionDraft(refreshed)
+    const draft = compositionDraft()
+    void refreshed
     compositionVersion.current = draft.version
     newDraftRef.current = draft
     newDraftDirty.current = false
@@ -340,7 +448,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     const block = composerTransitionBlock({
       busy: isWorkspaceLocked(),
       editing: editingMessageRef.current !== null,
-      attachmentCount: stagedAttachments.length,
+      attachmentCount: stagedAttachments.some((file) => file.state !== "ready") ? 1 : 0,
     })
     if (block === null) return false
     if (block === "editing") setStatus(`Save or cancel the current edit before ${action}.`)
@@ -355,6 +463,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setIsLoadingDetail(true)
   }
   async function flushComposerBeforeNavigation(): Promise<boolean> {
+    if (composeRef.current?.kind === "email") return await emailHandle.current?.flush() ?? false
     if (composeRef.current?.kind === "new") {
       if (!newDraftDirty.current) return true
       navigationInProgress.current = true
@@ -372,7 +481,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     const currentDetail = detailForConversation(detailRef.current, activeId)
     if (currentDetail === null) { setStatus("Wait for this conversation to finish loading."); return false }
     const body = replyBodyRef.current
-    if (!replyDirty.current && currentDetail.draft?.body === body) return true
+    if (!replyDirty.current && currentDetail.draft?.body === body && JSON.stringify(currentDetail.draft?.attachments?.map((file) => file.id) ?? []) === JSON.stringify(readyAttachmentIds(attachmentRef.current))) return true
     navigationInProgress.current = true
     setIsNavigating(true)
     const saved = await saveReplyDraft(currentDetail.conversation.id, body)
@@ -394,38 +503,59 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     setNewDraft(nextDraft)
   }
   async function stageFiles(files: FileList | null): Promise<void> {
-    if (files === null || isWorkspaceLocked()) return
-    const candidates = Array.from(files).map((file) => ({
+    if (files === null || isWorkspaceLocked() || editingMessageRef.current !== null) return
+    const selected = Array.from(files)
+    const total = stagedAttachments.reduce((n, item) => n + (item.attachment?.size ?? item.file?.size ?? 0), 0)
+    if (stagedAttachments.length + selected.length > 10 || selected.some((file) => file.size > 25 * 1024 * 1024) || total + selected.reduce((n, file) => n + file.size, 0) > 50 * 1024 * 1024) { setStatus("Choose up to 10 files, at most 25 MB each and 50 MB total."); return }
+    attachmentBusy(true)
+    const candidates = selected.map((file) => ({
       localId: crypto.randomUUID(),
       file,
       state: "uploading" as const,
       attachment: null,
     }))
     setStagedAttachments((current) => [...current, ...candidates])
-    await Promise.all(candidates.map((candidate) => uploadStagedAttachment(projectId, candidate, setStagedAttachments)))
+    try { for (const candidate of candidates) await uploadStagedAttachment(projectId, candidate, setStagedAttachments) } finally { attachmentBusy(false) }
+  }
+  function projectAttachment(attachment: CorrespondenceAttachment): void {
+    const total = stagedAttachments.reduce((n, item) => n + (item.attachment?.size ?? item.file?.size ?? 0), 0)
+    if (stagedAttachments.length >= 10 || total + attachment.size > 50 * 1024 * 1024) {
+      setStatus("Choose up to 10 files, at most 50 MB total.")
+      void removeCorrespondenceAttachment(projectId, attachment.id).catch(() => undefined)
+      return
+    }
+    setStagedAttachments((current) => [...current, { localId: crypto.randomUUID(), file: null, state: "ready", attachment }])
+  }
+  function attachmentBusy(busy: boolean): void {
+    sendInProgress.current = busy
+    setIsSending(busy)
   }
   async function retryUpload(localId: string): Promise<void> {
     if (isWorkspaceLocked()) return
     const item = stagedAttachments.find((attachment) => attachment.localId === localId)
-    if (!item) return
+    if (!item || item.file === null) return
     setStagedAttachments((current) =>
       current.map((attachment) => attachment.localId === localId ? { ...attachment, state: "uploading", attachment: null } : attachment),
     )
-    await uploadStagedAttachment(projectId, item, setStagedAttachments)
+    attachmentBusy(true)
+    try { await uploadStagedAttachment(projectId, item, setStagedAttachments) } finally { attachmentBusy(false) }
   }
-  function removeStagedAttachment(localId: string): void {
+  async function removeStagedAttachment(localId: string): Promise<void> {
     if (isWorkspaceLocked()) return
     const item = stagedAttachments.find((attachment) => attachment.localId === localId)
-    setStagedAttachments((items) => items.filter((attachment) => attachment.localId !== localId))
-    if (item?.attachment) {
-      const path = `/api/correspondence/attachments/${encodeURIComponent(item.attachment.id)}?projectId=${encodeURIComponent(projectId)}`
-      void fetch(path, { method: "DELETE" })
+    if (item?.attachment?.available) {
+      attachmentBusy(true)
+      try {
+        const result = await removeCorrespondenceAttachment(projectId, item.attachment.id)
+        if (!result.success) { setStatus(result.error); return }
+      } finally { attachmentBusy(false) }
     }
+    setStagedAttachments((items) => items.filter((attachment) => attachment.localId !== localId))
   }
   async function clearStagedAttachments(): Promise<void> {
     const attachments = stagedAttachments.flatMap((item) => item.attachment ? [item.attachment] : [])
     setStagedAttachments([])
-    await Promise.all(attachments.map((attachment) => fetch(`/api/correspondence/attachments/${encodeURIComponent(attachment.id)}?projectId=${encodeURIComponent(projectId)}`, { method: "DELETE" })))
+    await Promise.all(attachments.map((attachment) => removeCorrespondenceAttachment(projectId, attachment.id)))
   }
   async function send(): Promise<void> {
     if (sendInProgress.current || navigationInProgress.current) return
@@ -444,6 +574,11 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       if (stagedAttachments.some((attachment) => attachment.state !== "ready")) { setStatus("Finish or remove every attachment before sending."); return }
       sendInProgress.current = true
       setIsSending(true)
+      if (newCompose !== null) {
+        const reserved = { ...newDraftRef.current, requestId: newDraftRef.current.requestId ?? crypto.randomUUID() }
+        newDraftRef.current = reserved
+        setNewDraft(reserved)
+      }
       const persisted = newCompose !== null
         ? await saveCompositionDraft(newDraftRef.current)
         : currentDetail !== null && (replyDirty.current || currentDetail.draft?.body !== replyBodyRef.current)
@@ -456,7 +591,8 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       }
       input = {
         projectId, conversationId: newCompose ? null : currentDetail?.conversation.id ?? null, subject, recipientUserIds, body,
-        idempotencyKey: crypto.randomUUID(), participantVersion: newCompose ? null : currentDetail?.participantVersion ?? null,
+        ...(newCompose ? { draft: { id: newDraftRef.current.id, version: compositionVersion.current } } : {}),
+        idempotencyKey: newCompose ? newDraftRef.current.requestId ?? crypto.randomUUID() : crypto.randomUUID(), participantVersion: newCompose ? null : currentDetail?.participantVersion ?? null,
         attachmentIds: stagedAttachments.flatMap((attachment) => attachment.attachment?.id ?? []),
       }
       sentNewCompose = newCompose !== null
@@ -478,6 +614,12 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     }
     if (!result.success) {
       if (result.retry === "edit") {
+        if (result.draftVersion !== undefined) {
+          compositionVersion.current = result.draftVersion
+          const released = { ...newDraftRef.current, requestId: null, version: result.draftVersion }
+          newDraftRef.current = released
+          setNewDraft(released)
+        }
         pendingSend.current = null
         setHasPendingSend(false)
         setStatus(result.error)
@@ -498,6 +640,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     replyDirty.current = false
     const refreshedInbox = await refreshInbox()
     if (sentNewCompose && refreshedInbox !== null) hydrateCompositionDraft(refreshedInbox)
+    void refreshDrafts()
     await loadDetail(result.data.conversationId)
   }
   async function discardDraft(): Promise<void> {
@@ -600,6 +743,25 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     else setStatus(result.error)
     setPendingRetraction(null)
   }
+  async function retryEmail(message: CorrespondenceMessage): Promise<void> {
+    if (isWorkspaceLocked() || message.emailDeliveryStatus !== "failed") return
+    const currentDetail = detailForConversation(detailRef.current, activeId)
+    if (!currentDetail || !currentDetail.messages.some((item) => item.id === message.id)) return
+    if (!window.confirm("Retry sending this exact email to its original recipients?")) return
+    sendInProgress.current = true
+    setIsSending(true)
+    try {
+      const result = await retryFailedProjectEmail(projectId, currentDetail.conversation.id)
+      setStatus(result.success ? result.status === "sent" ? "Project email sent." : result.error ?? "Delivery outcome needs review." : result.error)
+      await refreshInbox()
+      await loadDetail(currentDetail.conversation.id)
+    } catch {
+      setStatus("Retry outcome is unknown. Check project messages before attempting another send.")
+    } finally {
+      sendInProgress.current = false
+      setIsSending(false)
+    }
+  }
   function patchRevision(conversationId: string, messageId: string, body: string | null): void {
     const revisedAt = new Date().toISOString()
     const current = detailRef.current
@@ -613,16 +775,20 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     navigationInProgress.current = true
     setIsNavigating(true)
     try {
-      const cleared = await saveCompositionDraft({ subject: "", recipientIds: [], body: "", version: newDraftRef.current.version })
-      if (!cleared) return
+      if (!await saveCompositionDraft(newDraftRef.current)) return
+      const result = await setProjectDraftDiscarded(projectId, newDraftRef.current.id, compositionVersion.current, true)
+      if (!result.success) { setStatus(result.error); return }
+      setDiscardedComposition({ id: newDraftRef.current.id, version: result.data.version })
       newDraftDirty.current = false
-      const empty = { ...newDraftRef.current, subject: "", recipientIds: [], body: "", version: compositionVersion.current }
+      const empty = compositionDraft()
       newDraftRef.current = empty
+      compositionVersion.current = 0
       setNewDraft(empty)
       replaceReplyBody("")
       composeRef.current = null
       setCompose(null)
-      await clearStagedAttachments()
+      setStagedAttachments([])
+      void refreshDrafts()
       setMobileDetail(false)
     } finally {
       navigationInProgress.current = false
@@ -631,7 +797,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   }
   async function saveNewDraft(): Promise<void> {
     if (isWorkspaceLocked()) return
-    await saveCompositionDraft(newDraftRef.current)
+    if (await saveCompositionDraft(newDraftRef.current)) setStatus("Draft saved. Only you can see it.")
   }
   async function backFromNewCompose(): Promise<void> {
     if (blockComposerTransition("returning to messages")) return
@@ -642,10 +808,30 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       composeRef.current = null
       setCompose(null)
       setMobileDetail(false)
+      setStagedAttachments([])
     } finally {
       navigationInProgress.current = false
       setIsNavigating(false)
     }
+  }
+  async function backFromEmailCompose(): Promise<void> {
+    if (blockComposerTransition("returning to messages")) return
+    if (!await flushComposerBeforeNavigation()) return
+    composeRef.current = null
+    setCompose(null)
+    setMobileDetail(false)
+    setStatus(null)
+  }
+  async function projectEmailSent(conversationId: string, delivery: "sent" | "failed" | "unknown", message: string | null): Promise<void> {
+    composeRef.current = null
+    setCompose(null)
+    if (detailRef.current?.conversation.id !== conversationId) invalidateDetail()
+    setActiveId(conversationId)
+    setMobileDetail(true)
+    setStatus(delivery === "sent" ? "Project email sent and saved in Compass." : message ?? "Delivery outcome needs review; do not resend this message.")
+    await refreshInbox()
+    void refreshDrafts()
+    await loadDetail(conversationId)
   }
   async function backFromConversation(): Promise<void> {
     if (blockComposerTransition("returning to messages")) return
@@ -659,19 +845,32 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     replyBodyRef.current = body
     setReplyBody(body)
   }
+  React.useEffect(() => {
+    const protect = (event: BeforeUnloadEvent): void => {
+      if (newDraftDirty.current || replyDirty.current || sendInProgress.current || pendingSend.current) { event.preventDefault(); event.returnValue = "" }
+    }
+    window.addEventListener("beforeunload", protect)
+    return () => window.removeEventListener("beforeunload", protect)
+  }, [])
   const composingNew = compose?.kind === "new"
+  const composingEmail = compose?.kind === "email"
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden bg-background" aria-label="Project messages">
-      <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} onFilter={setFilter} onNewMessage={startNewMessage} onOpen={openConversation} onRefresh={refreshInbox} />
+      <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
       <main className={cn("min-w-0 flex-1 overflow-y-auto", !mobileDetail && "hidden md:block")}>
-        {composingNew ? (
+        {composingEmail ? (
+          <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
+        ) : composingNew ? (
           <NewMessagePanel
+            projectId={projectId}
+            onProjectAttachment={projectAttachment}
+            onAttachmentBusy={attachmentBusy}
             inbox={inbox}
             compose={compose}
             body={replyBody}
             stagedAttachments={stagedAttachments}
             isSending={isSending || isNavigating}
-            hasPendingSend={hasPendingSend || isSending || isNavigating}
+            hasPendingSend={hasPendingSend || Boolean(newDraft.requestId) || isSending || isNavigating}
             status={status}
             onBack={backFromNewCompose}
             onChange={updateNewCompose}
@@ -687,6 +886,8 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
           <EmptyDetail />
         ) : (
           <ConversationDetail
+            onProjectAttachment={projectAttachment}
+            onAttachmentBusy={attachmentBusy}
             detail={activeDetail}
             activeSummary={activeSummary}
             viewerId={inbox.viewerId}
@@ -697,7 +898,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
             editingMessage={editingMessage}
             stagedAttachments={stagedAttachments}
             isSending={isSending || isNavigating}
-            hasPendingSend={hasPendingSend || isSending || isNavigating}
+            hasPendingSend={hasPendingSend || Boolean(newDraft.requestId) || isSending || isNavigating}
             status={status}
             targetMessageId={focusMessageId}
             onBack={backFromConversation}
@@ -709,6 +910,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
               composeRef.current = { kind: "reply" }
               setCompose({ kind: "reply" })
               replaceReplyBody(currentDetail.draft?.body ?? "")
+              setStagedAttachments(restoredAttachments(currentDetail.draft?.attachments ?? []))
               setStatus(null)
             }}
             onBodyChange={updateReplyBody}
@@ -724,12 +926,14 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
             onSaveRevision={saveRevision}
             onCancelRevision={cancelRevision}
             onRetract={(message) => { if (!isWorkspaceLocked()) setPendingRetraction(message) }}
+            onRetryEmail={retryEmail}
             onDiscard={() => setDiscardDraftOpen(true)}
             onVisibleMessages={markOpened}
             onTargetHandled={() => setFocusMessageId(undefined)}
           />
         )}
       </main>
+      {discardedComposition && <div className="absolute bottom-4 right-4 flex items-center gap-3 border bg-background p-3 text-sm" role="status">Draft discarded.<Button size="sm" variant="outline" onClick={() => void setProjectDraftDiscarded(projectId, discardedComposition.id, discardedComposition.version, false).then((result) => { if (result.success) { setDiscardedComposition(null); void refreshDrafts() } else setStatus(result.error) })}>Undo discard</Button></div>}
       <AlertDialog open={discardDraftOpen} onOpenChange={setDiscardDraftOpen}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Discard this draft?</AlertDialogTitle><AlertDialogDescription>This removes the saved draft for this conversation. It cannot be recovered.</AlertDialogDescription></AlertDialogHeader>
@@ -746,6 +950,8 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   )
 }
 function ConversationDetail(props: {
+  readonly onProjectAttachment: (attachment: CorrespondenceAttachment) => void
+  readonly onAttachmentBusy: (busy: boolean) => void
   readonly detail: CorrespondenceDetail | null
   readonly activeSummary: CorrespondenceSummary
   readonly viewerId: string
@@ -774,6 +980,7 @@ function ConversationDetail(props: {
   readonly onSaveRevision: () => Promise<void>
   readonly onCancelRevision: () => void
   readonly onRetract: (message: CorrespondenceMessage) => void
+  readonly onRetryEmail: (message: CorrespondenceMessage) => Promise<void>
   readonly onDiscard: () => void
   readonly onVisibleMessages: (conversationId: string, messages: readonly { readonly id: string; readonly editedAt: string | null }[]) => Promise<void>
   readonly onTargetHandled: () => void
@@ -852,12 +1059,13 @@ function ConversationDetail(props: {
       {props.isLoading && detail === null ? <div className="flex flex-1 items-center justify-center"><LoaderCircle className="animate-spin text-muted-foreground" /></div> : detail === null ? <p className="p-6 text-sm text-muted-foreground">This conversation is unavailable.</p> : <>
         <div ref={streamRef} className="flex-1 space-y-5 p-4 md:p-6">
           {detail.hasEarlier && <Button variant="outline" className="mx-auto flex" onClick={() => void props.onLoadEarlier()}>Load earlier messages</Button>}
-          {detail.messages.map((message) => <MessageCard key={message.id} projectId={activeSummary.projectId} message={message} viewerId={props.viewerId} editDisabled={props.hasPendingSend || props.editingMessage !== null} onEdit={props.onEdit} onRetract={props.onRetract} />)}
+          {detail.messages.map((message) => <MessageCard key={message.id} projectId={activeSummary.projectId} message={message} viewerId={props.viewerId} editDisabled={props.hasPendingSend || props.editingMessage !== null} onEdit={props.onEdit} onRetract={props.onRetract} onRetryEmail={props.onRetryEmail} />)}
         </div>
         {props.status !== null && <p className="mx-4 border px-3 py-2 text-sm md:mx-6" role="status">{props.status}</p>}
         {props.compose !== null && <>
+          {props.editingMessage === null && detail.replyAudience && <p className="mx-4 border-x border-t px-3 py-2 text-sm text-muted-foreground md:mx-6">{detail.replyAudience === "private_staff" ? "Your reply is private to you and project staff." : "Replies here are shared with all active Compass recipients of this email. Use New email to send a private reply."}</p>}
           {props.editingMessage !== null && <p className="mx-4 border-x border-t px-3 py-2 text-sm text-muted-foreground md:mx-6">Editing your message from {formatDate(props.editingMessage.sentAt)}</p>}
-          <Composer body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.editingMessage === null ? props.onSend : props.onSaveRevision} onDiscard={props.editingMessage === null ? props.onDiscard : props.onCancelRevision} submitLabel={props.editingMessage === null ? "Send" : "Save edit"} />
+          <Composer projectId={activeSummary.projectId} onProjectAttachment={props.onProjectAttachment} onAttachmentBusy={props.onAttachmentBusy} body={props.body} stagedAttachments={props.stagedAttachments} isSending={props.isSending} locked={props.hasPendingSend} onBodyChange={props.onBodyChange} onFiles={props.onFiles} onRetryUpload={props.onRetryUpload} onRemoveAttachment={props.onRemoveAttachment} onSend={props.editingMessage === null ? props.onSend : props.onSaveRevision} onDiscard={props.editingMessage === null ? props.onDiscard : props.onCancelRevision} submitLabel={props.editingMessage === null ? props.hasPendingSend ? "Resolve saved send" : "Send" : "Save edit"} />
         </>}
         {props.compose === null && <div className="border-t p-4 md:p-6"><Button onClick={props.onCompose}>Reply</Button></div>}
       </>}
@@ -866,8 +1074,8 @@ function ConversationDetail(props: {
 }
 function roleName(role: CorrespondencePerson["role"]): string { return role === "sub_vendor" ? "Sub/Vendor" : role[0].toUpperCase() + role.slice(1) }
 function formatDate(value: string): string { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) }
-function compositionDraft(inbox: CorrespondenceInbox): NewDraft {
-  const draft = inbox.compositionDraft
-  return draft === null ? { subject: "", body: "", recipientIds: [], version: 0 } : { subject: draft.subject, body: draft.body, recipientIds: draft.recipientUserIds, version: draft.version }
-}
-function compositionKey(draft: NewDraft): string { return `${draft.subject}\u0000${draft.body}\u0000${draft.recipientIds.join("\u0001")}` }
+function compositionDraft(): NewDraft { return { id: crypto.randomUUID(), subject: "", body: "", recipientIds: [], attachmentIds: [], requestId: null, version: 0 } }
+function readyAttachmentIds(files: readonly StagedAttachment[]): readonly string[] { return files.flatMap((file) => file.state === "ready" && file.attachment ? [file.attachment.id] : []) }
+function restoredAttachments(files: readonly CorrespondenceAttachment[]): readonly StagedAttachment[] { return files.map((file) => ({ localId: file.id, file: null, state: file.available ? "ready" : "failed", attachment: file })) }
+
+function compositionKey(draft: NewDraft): string { return `${draft.subject}\u0000${draft.body}\u0000${draft.recipientIds.join("\u0001")}\u0000${draft.attachmentIds.join("\u0001")}\u0000${draft.requestId ?? ""}` }

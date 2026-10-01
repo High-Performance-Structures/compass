@@ -70,6 +70,19 @@ describe("candidateFromMessage attachments", () => {
     )
   })
 
+  it("keeps a tracked reply address when forwarding rewrites X-Original-To", () => {
+    const result = candidateFromMessage({
+      id: "tracked-reply",
+      payload: { headers: [
+        { name: "X-Original-To", value: "jarvis@hps-colorado.com" },
+        { name: "To", value: "jarvis+cmp-0123456789abcdef12@hps-colorado.com" },
+        { name: "Subject", value: "Re: Project update" },
+      ] },
+    })
+    expect(result.token).toBe("cmp-0123456789abcdef12")
+    expect(result.toAddress).toBe("jarvis+cmp-0123456789abcdef12@hps-colorado.com")
+  })
+
   it("captures a Gmail attachment reference for later download", () => {
     const result = candidateFromMessage({
       id: "message-with-photo",

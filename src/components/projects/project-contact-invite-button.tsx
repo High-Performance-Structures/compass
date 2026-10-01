@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { projectAccessWelcomeTemplate } from "@/lib/email/project-access-welcome"
-import type { ProjectContactCompassAccountStatus } from "@/lib/project-contact-access-status"
+import type { ProjectContactAccessStatus, ProjectContactCompassAccountStatus } from "@/lib/project-contact-access-status"
 
 type InvitableContactType = "owner" | "subcontractor" | "supplier" | "internal"
 
@@ -38,6 +38,7 @@ export function ProjectContactInviteButton({
   contactEmail,
   contactType,
   compassAccountStatus,
+  accessStatus,
 }: {
   readonly projectId: string
   readonly projectLabel: string
@@ -46,6 +47,7 @@ export function ProjectContactInviteButton({
   readonly contactEmail: string
   readonly contactType: InvitableContactType
   readonly compassAccountStatus: ProjectContactCompassAccountStatus
+  readonly accessStatus: ProjectContactAccessStatus
 }): React.ReactElement {
   const router = useRouter()
   const template = projectAccessWelcomeTemplate({
@@ -57,6 +59,12 @@ export function ProjectContactInviteButton({
   const [message, setMessage] = React.useState(template.message)
   const [sending, setSending] = React.useState(false)
   const grantsExistingAccount = compassAccountStatus === "active"
+  const resendsPendingInvitation = accessStatus === "pending" && !grantsExistingAccount
+  const actionLabel = grantsExistingAccount
+    ? "Grant project access"
+    : resendsPendingInvitation
+      ? "Resend invitation"
+      : "Invite to Compass"
 
   const handleOpenChange = (nextOpen: boolean): void => {
     setOpen(nextOpen)
@@ -88,7 +96,9 @@ export function ProjectContactInviteButton({
       else if (result.accessStatus === "access_granted") {
         toast.success("Project access granted and welcome email sent")
       } else {
-        toast.success("Compass invitation and welcome email sent")
+        toast.success(resendsPendingInvitation
+          ? "Compass invitation and welcome email resent"
+          : "Compass invitation and welcome email sent")
       }
       setOpen(false)
       router.refresh()
@@ -109,19 +119,21 @@ export function ProjectContactInviteButton({
         onClick={() => setOpen(true)}
       >
         <IconMailForward className="size-3.5" />
-        {grantsExistingAccount ? "Grant project access" : "Invite to Compass"}
+        {actionLabel}
       </Button>
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent className="flex w-full flex-col overflow-y-auto sm:max-w-xl">
           <SheetHeader className="border-b pb-4 text-left">
             <SheetTitle>
-              {grantsExistingAccount ? "Grant project access" : "Invite to Compass"}
+              {actionLabel}
             </SheetTitle>
             <SheetDescription>
               {grantsExistingAccount
                 ? "Assign this existing Compass account to this project and send an editable welcome email."
-                : "Send project-specific access and an editable welcome email."}
+                : resendsPendingInvitation
+                  ? "Send the current account invitation again with an editable project welcome email."
+                  : "Send project-specific access and an editable welcome email."}
             </SheetDescription>
           </SheetHeader>
 
@@ -175,7 +187,9 @@ export function ProjectContactInviteButton({
             <p className="border-t pt-4 text-xs text-muted-foreground">
               {grantsExistingAccount
                 ? "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
-                : "New users receive a secure WorkOS account invitation. No other project access is added."}
+                : resendsPendingInvitation
+                  ? "The current account invitation will be resent. No other project access is added."
+                  : "New users receive a secure WorkOS account invitation. No other project access is added."}
             </p>
           </div>
 
@@ -197,7 +211,9 @@ export function ProjectContactInviteButton({
                 ? "Sending..."
                 : grantsExistingAccount
                   ? "Send Welcome and Grant Access"
-                  : "Send Welcome and Access"}
+                  : resendsPendingInvitation
+                    ? "Resend Invitation and Welcome"
+                    : "Send Welcome and Access"}
             </Button>
           </SheetFooter>
         </SheetContent>

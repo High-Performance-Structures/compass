@@ -299,6 +299,7 @@ export function ProjectMessageHistory({
                         editDisabled
                         onEdit={async () => undefined}
                         onRetract={() => undefined}
+                        onRetryEmail={async () => undefined}
                       />
                     ))}
                   </div>

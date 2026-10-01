@@ -170,11 +170,9 @@ export function SageContactReviewDialog({
                       else void decideLink(candidate.id, "link")
                     }}
                       disabled={busyId !== null || candidate.reviewExpired ||
-                        ((candidate.kind === "employee" || candidate.kind === "client_company") && !candidate.sageIdentityName) ||
-                        (candidate.requestedByCurrentUser && !candidate.selfReviewAllowed)}>Link exact Sage record</Button>
+                        ((candidate.kind === "employee" || candidate.kind === "client_company") && !candidate.sageIdentityName)}>Link exact Sage record</Button>
                     <Button size="sm" variant="outline" onClick={() => void decideLink(candidate.id, "reject")} disabled={busyId !== null}>Reject</Button>
                   </div> : <p className="text-xs text-muted-foreground">View-only review access.</p>}
-                  {canApprove && candidate.requestedByCurrentUser && !candidate.selfReviewAllowed ? <p className="text-xs text-muted-foreground">Client and vendor identity links still require a separate reviewer. You can reject your own lookup.</p> : null}
                 </>
               ) : null}
             </section>

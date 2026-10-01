@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-09-30"
 }
 ---
 
@@ -27,6 +27,14 @@ Saving, approving, or queuing a Compass record does not necessarily mean it post
 The project Estimate area may include a working Compass estimate, synchronized workbook information, bid backup, historical imports, and authorized print views. Use approved cost codes, enter quantities and costs carefully, and reconcile calculated totals. Historical files remain references unless an explicit approved workflow makes them current.
 
 Before synchronizing an approved estimate workbook, verify the project, source tab, formulas, and totals. Compare the resulting Compass values with the source and report discrepancies before sharing or accounting handoff.
+
+### Build and report by assembly
+
+Use **Build estimate by** to switch between **Division / cost code** and **Assembly**. Both views edit the same estimate items and prices. **Create assembly** lets you name a group and select items from any division, including a whole division. Each item belongs to one assembly and retains its original division and cost code. The assembly editor and working estimate show subtotals. Items outside an assembly appear under **Other work**.
+
+Use **Edit assembly** to rename it or change its items. Selecting items from another assembly moves them into the current assembly. **Delete assembly** requires confirmation and retains its estimate items and costs under Other work. Locked estimates require a revision; revisions copy assembly names and item assignments.
+
+Under **Client report presentation**, choose **Assembly totals**, **Assembly cost code detail**, **Division subtotals + grand total**, or **Line items + division totals**, then select **Save report view**. The existing **Phase subtotals + grand total** choice and custom report phases are also available. Assembly detail shows individual cost code items and an assembly subtotal; assembly totals show each assembly's amount. Report selection is independent of the build view. Client reports continue to exclude internal-only items and include the estimate's existing tax and builder-fee presentation.
 
 ## Budget and G703 {#budget-g703}
 

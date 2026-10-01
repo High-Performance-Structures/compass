@@ -1,4 +1,5 @@
 import type { ProjectBrand } from "@/lib/project-branding"
+import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 
 export type PurchaseOrderEmailLine = {
@@ -31,15 +32,6 @@ export type PurchaseOrderEmailInput = {
   }
 }
 
-function formatMoney(value: number | null): string {
-  if (value === null) return "Amount TBD"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value)
-}
-
 function formatEmailDate(value: string | null): string {
   if (!value) return "Not specified"
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -67,8 +59,8 @@ export function purchaseOrderEmailText(
       `Phase: ${line.phaseCode ?? "-"}`,
       `Cost Code: ${line.costCode ?? "-"}`,
       `Qty: ${line.quantity} ${line.unit ?? ""}`.trim(),
-      `Unit Cost: ${formatMoney(line.unitCost)}`,
-      `Amount: ${formatMoney(line.amount)}`,
+      `Unit Cost: ${formatPurchaseOrderMoney(line.unitCost)}`,
+      `Amount: ${formatPurchaseOrderMoney(line.amount)}`,
     ].join(" | ")
   )
 
@@ -90,7 +82,7 @@ export function purchaseOrderEmailText(
     "Line Items",
     ...lines,
     "",
-    `Total: ${formatMoney(input.order.amount)}`,
+    `Total: ${formatPurchaseOrderMoney(input.order.amount)}`,
     "",
     input.brand.companyName,
     ...input.brand.contactLines,
@@ -116,8 +108,8 @@ export function purchaseOrderEmailHtml(
           <td>${escapeHtml(line.costCode ?? "-")}</td>
           <td style="text-align:right;">${line.quantity}</td>
           <td>${escapeHtml(line.unit ?? "-")}</td>
-          <td style="text-align:right;">${formatMoney(line.unitCost)}</td>
-          <td style="text-align:right;font-weight:600;">${formatMoney(line.amount)}</td>
+          <td style="text-align:right;">${formatPurchaseOrderMoney(line.unitCost)}</td>
+          <td style="text-align:right;font-weight:600;">${formatPurchaseOrderMoney(line.amount)}</td>
         </tr>`
     )
     .join("")
@@ -156,7 +148,7 @@ export function purchaseOrderEmailHtml(
         <tfoot>
           <tr>
             <td colspan="7" style="border:1px solid #111827;padding:6px;text-align:right;font-weight:700;">Total</td>
-            <td style="border:1px solid #111827;padding:6px;text-align:right;font-weight:700;">${formatMoney(input.order.amount)}</td>
+            <td style="border:1px solid #111827;padding:6px;text-align:right;font-weight:700;">${formatPurchaseOrderMoney(input.order.amount)}</td>
           </tr>
         </tfoot>
       </table>

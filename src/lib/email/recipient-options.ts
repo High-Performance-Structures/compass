@@ -26,7 +26,15 @@ export function normalizeRecipientEmail(value: string): string {
 }
 
 export function isValidRecipientEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeRecipientEmail(value))
+  const email = normalizeRecipientEmail(value)
+  if (email.length > 254 || /\.\./.test(email)) return false
+  const parts = email.split("@")
+  if (parts.length !== 2) return false
+  const [local, domain] = parts
+  if (!local || !domain || local.length > 64 || local.startsWith(".") || local.endsWith(".")) return false
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(local)) return false
+  const labels = domain.split(".")
+  return labels.length >= 2 && labels.every((label) => label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))
 }
 
 function recipientCategory(

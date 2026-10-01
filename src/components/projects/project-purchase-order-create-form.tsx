@@ -57,6 +57,7 @@ import {
   purchaseOrderSiteContactOptions,
   purchaseOrderVendorOptions,
 } from "@/lib/purchase-orders/form-options"
+import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import {
   initialPurchaseOrderShipToState,
   purchaseOrderShipToValue,
@@ -266,14 +267,6 @@ function numberFromText(value: string): number | null {
 function cleanText(value: string): string | null {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
-}
-
-function money(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value)
 }
 
 function lineAmount(line: DraftPurchaseOrderLine): number {
@@ -561,7 +554,7 @@ function ProjectPurchaseOrderForm(
         <div className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
           <span className="font-medium">Draft totals</span>
           <span className="text-muted-foreground">
-            {money(total)} total · {codedLineCount}/{lines.length} lines coded
+            {formatPurchaseOrderMoney(total)} total · {codedLineCount}/{lines.length} lines coded
           </span>
         </div>
         <div className="space-y-3">
@@ -854,7 +847,7 @@ function ProjectPurchaseOrderForm(
           <div className="grid grid-cols-1 gap-x-5 gap-y-3 text-sm sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">PO total</p>
-              <p className="font-semibold">{money(total)}</p>
+              <p className="font-semibold">{formatPurchaseOrderMoney(total)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Accounting coding</p>

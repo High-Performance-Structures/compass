@@ -1,5 +1,8 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { correspondence, correspondenceAttachments, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceOutbox, correspondenceParticipants, correspondenceRecipients } from "@/db/schema-correspondence"
+import { savedDraftGuard, retireSentComposition } from "./saved-drafts"
+import { privateProjectEmailReplyPeople, projectEmailPrivacy, visibleProjectEmailPeople } from "@/lib/email/project-email-privacy"
+import { projectEmailCampaigns } from "@/db/schema-project-email"
 import { authorizedConversation, correspondenceContacts, currentParticipants, type CorrespondenceContext } from "./access"
 import { clearCorrespondenceWriteGuard, correspondenceWriteGuard } from "./write-guard"
 import type { CorrespondencePerson, SendCorrespondenceInput } from "./types"
@@ -16,7 +19,8 @@ export function validateCorrespondenceSend(input: SendCorrespondenceInput): stri
   if (!input.body.trim() || input.body.length > 50000) return "Write a message of at most 50,000 characters."
   if (!input.subject.trim() || input.subject.trim().length > 200) return "Enter a subject of at most 200 characters."
   if (!/^[a-zA-Z0-9_-]{16,100}$/.test(input.idempotencyKey)) return "Invalid send request. Reload and try again."
-  if (input.recipientUserIds.length < 1 || input.recipientUserIds.length > 30 || new Set(input.recipientUserIds).size !== input.recipientUserIds.length) return "Choose between 1 and 30 distinct recipients."
+  const recipientLimit = input.conversationId ? 100 : 30
+  if (input.recipientUserIds.length < 1 || input.recipientUserIds.length > recipientLimit || new Set(input.recipientUserIds).size !== input.recipientUserIds.length) return `Choose between 1 and ${recipientLimit} distinct recipients.`
   if (input.attachmentIds.length > 10 || new Set(input.attachmentIds).size !== input.attachmentIds.length) return "Choose no more than 10 distinct attachments."
   return null
 }
@@ -35,13 +39,22 @@ export async function persistCorrespondence(ctx: CorrespondenceContext, input: S
   }
   const own: CorrespondencePerson = { userId: ctx.user.id, name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email, role: ctx.workspace, delivery: "compass" }
   let people: readonly CorrespondencePerson[]
+  let allowEmailAudience = false
   if (input.conversationId) {
     const conversation = await authorizedConversation(ctx, input.conversationId)
     if (input.participantVersion !== conversation.participantVersion) throw new RejectedCorrespondenceSendError("The audience changed. Review the recipients before sending.")
     const current = await currentParticipants(ctx, input.conversationId)
-    const expected = current.filter((p) => p.userId !== ctx.user.id).map((p) => p.userId).sort()
+    const privacy = await projectEmailPrivacy(ctx.db, ctx.organizationId, ctx.projectId, input.conversationId)
+    const visible = visibleProjectEmailPeople(current, privacy, ctx.user.id)
+    const expected = visible.filter((p) => p.userId !== ctx.user.id).map((p) => p.userId).sort()
     if (expected.join("|") !== [...input.recipientUserIds].sort().join("|")) throw new RejectedCorrespondenceSendError("The audience changed. Reload and review the recipients.")
-    people = current
+    // Only staff may broadcast to the full email audience. External senders
+    // must never silently send to blind recipients hidden from their view.
+    people = privacy?.blindUserIds.has(ctx.user.id)
+      ? privateProjectEmailReplyPeople(current, privacy, ctx.user.id)
+      : ctx.workspace === "staff" ? current : visible
+    const originalEmail = await ctx.db.select({ id: correspondenceMessages.id }).from(correspondenceMessages).where(and(eq(correspondenceMessages.conversationId, input.conversationId), eq(correspondenceMessages.source, "email"), sql`${correspondenceMessages.authorUserId} IS NOT NULL`)).get()
+    if (originalEmail) allowEmailAudience = Boolean(await ctx.db.select({ id: projectEmailCampaigns.id }).from(projectEmailCampaigns).where(and(eq(projectEmailCampaigns.conversationId, input.conversationId), eq(projectEmailCampaigns.organizationId, ctx.organizationId), eq(projectEmailCampaigns.projectId, ctx.projectId))).get())
   } else {
     const contacts = await correspondenceContacts(ctx)
     const recipients = contacts.filter((p) => input.recipientUserIds.includes(p.userId) && p.userId !== ctx.user.id)
@@ -50,12 +63,14 @@ export async function persistCorrespondence(ctx: CorrespondenceContext, input: S
   }
   if (!people.some((p) => p.userId === ctx.user.id)) throw new RejectedCorrespondenceSendError("Conversation not found.")
   const attachments = input.attachmentIds.length ? await ctx.db.select().from(correspondenceAttachments).where(and(inArray(correspondenceAttachments.id, [...input.attachmentIds]), eq(correspondenceAttachments.organizationId, ctx.organizationId), eq(correspondenceAttachments.projectId, ctx.projectId), eq(correspondenceAttachments.ownerUserId, ctx.user.id), isNull(correspondenceAttachments.messageId), isNull(correspondenceAttachments.retiredAt))) : []
+  const replyDraft = input.conversationId ? await ctx.db.select({ attachmentIds: correspondenceDrafts.attachmentIds }).from(correspondenceDrafts).where(and(eq(correspondenceDrafts.conversationId, input.conversationId), eq(correspondenceDrafts.userId, ctx.user.id))).get() : null
+  const retainedIds = new Set(input.draft ? input.attachmentIds : replyDraft?.attachmentIds ?? [])
   const expiry = new Date(Date.now() - 7 * 86400000).toISOString()
-  if (attachments.length !== input.attachmentIds.length || attachments.some((a) => !a.driveFileId || a.size > 25 * 1024 * 1024 || a.createdAt < expiry) || attachments.reduce((n, a) => n + a.size, 0) > 50 * 1024 * 1024) throw new RejectedCorrespondenceSendError("An attachment is unavailable or exceeds the upload limits. Review files before sending.")
+  if (attachments.length !== input.attachmentIds.length || attachments.some((a) => !a.driveFileId || a.size > 25 * 1024 * 1024 || a.createdAt < expiry && !retainedIds.has(a.id)) || attachments.reduce((n, a) => n + a.size, 0) > 50 * 1024 * 1024) throw new RejectedCorrespondenceSendError("An attachment is unavailable or exceeds the upload limits. Review files before sending.")
   const guardId = crypto.randomUUID()
   const now = new Date().toISOString()
   const attachmentGuard = input.attachmentIds.length ? sql`(SELECT COUNT(*) FROM correspondence_attachments WHERE id IN (${sql.join(input.attachmentIds.map((id) => sql`${id}`), sql`,`)}) AND organization_id=${ctx.organizationId} AND project_id=${ctx.projectId} AND owner_user_id=${ctx.user.id} AND message_id IS NULL AND retired_at IS NULL AND drive_file_id IS NOT NULL)=${input.attachmentIds.length}` : undefined
-  const guard = correspondenceWriteGuard(ctx, { id: guardId, conversationId: input.conversationId, participantVersion: input.participantVersion, people, extra: attachmentGuard })
+  const guard = correspondenceWriteGuard(ctx, { id: guardId, conversationId: input.conversationId, participantVersion: input.participantVersion, people, allowEmailAudience, extra: and(attachmentGuard, savedDraftGuard(ctx, input.draft, {kind:"message",subject:input.subject,body:input.body,recipientUserIds:input.recipientUserIds,attachmentIds:input.attachmentIds,requestId:input.idempotencyKey})) })
   const insertConversation = ctx.db.insert(correspondence).values({ id: conversationId, organizationId: ctx.organizationId, projectId: ctx.projectId, subject: input.subject.trim(), createdAt: now }).onConflictDoNothing()
   const insertMessage = ctx.db.insert(correspondenceMessages).values({ id: messageId, conversationId, authorUserId: ctx.user.id, authorName: own.name, source: "compass", body: input.body, sentAt: now, requestHash })
   const insertParticipants = people.map((person) => ctx.db.insert(correspondenceParticipants).values([person].map((p) => ({ id: crypto.randomUUID(), conversationId, userId: p.userId, name: p.name, email: p.email, role: p.role }))).onConflictDoNothing())
@@ -65,13 +80,13 @@ export async function persistCorrespondence(ctx: CorrespondenceContext, input: S
   // SQLite's default trim removes only spaces; match JavaScript trim used by the composer.
   const trimCharacters = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
   const clearSentDraft = input.conversationId
-    ? ctx.db.update(correspondenceDrafts).set({ body: "", version: sql`${correspondenceDrafts.version} + 1`, updatedAt: now })
+    ? ctx.db.update(correspondenceDrafts).set({ body: "", attachmentIds: [], version: sql`${correspondenceDrafts.version} + 1`, updatedAt: now })
       .where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id), sql`trim(${correspondenceDrafts.body}, ${trimCharacters})=${input.body.trim()}`))
     : ctx.db.update(correspondenceCompositionDrafts).set({ body: "", subject: "", recipientUserIds: [], version: sql`${correspondenceCompositionDrafts.version} + 1`, updatedAt: now })
       .where(and(eq(correspondenceCompositionDrafts.organizationId, ctx.organizationId), eq(correspondenceCompositionDrafts.projectId, ctx.projectId), eq(correspondenceCompositionDrafts.userId, ctx.user.id),
         sql`trim(${correspondenceCompositionDrafts.body}, ${trimCharacters})=${input.body.trim()}`, sql`trim(${correspondenceCompositionDrafts.subject}, ${trimCharacters})=${input.subject.trim()}`, eq(correspondenceCompositionDrafts.recipientUserIds, [...input.recipientUserIds])))
   try {
-    await ctx.db.batch([guard, insertConversation, ...insertParticipants, insertMessage, ...insertRecipients, ...insertOutbox, ...attach, clearSentDraft, ctx.db.update(correspondence).set({ closed: false }).where(eq(correspondence.id, conversationId)), clearCorrespondenceWriteGuard(ctx, guardId)])
+    await ctx.db.batch([guard, insertConversation, ...insertParticipants, insertMessage, ...insertRecipients, ...insertOutbox, ...attach, clearSentDraft, ...(input.draft ? [retireSentComposition(ctx, input.draft)] : []), ctx.db.update(correspondence).set({ closed: false }).where(eq(correspondence.id, conversationId)), clearCorrespondenceWriteGuard(ctx, guardId)])
   } catch {
     // A simultaneous identical retry may have committed first. Do not re-send its outbox.
     const winner = await ctx.db.select().from(correspondenceMessages).where(eq(correspondenceMessages.id, messageId)).get()

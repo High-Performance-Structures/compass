@@ -23,6 +23,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { sendCompassEmail } from "@/lib/email/compass-email"
+import { sendOrResendProjectWorkOSInvitation } from "@/lib/workos-invitations"
 import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
@@ -33,6 +34,7 @@ import {
 import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
 import { projectContactAddress } from "@/lib/project-contact-privacy"
 import { projectContactInvitationTarget } from "@/lib/project-contact-invitation-target"
+import { projectContactInvitationDirectorySelection } from "@/lib/project-contact-invitation-select"
 import {
   isExternalProjectRole,
   isInternalStaffRole,
@@ -198,35 +200,7 @@ export async function sendProjectAccessInvitation(
         projectName: projects.name,
         projectNumber: projects.projectNumber,
         organizationId: projects.organizationId,
-        customer: {
-          email: customers.email,
-          phone: customers.phone,
-          address: customers.address,
-        },
-        customerContact: {
-          userId: customerContacts.userId,
-          email: customerContacts.email,
-          phone: customerContacts.phone,
-        },
-        vendor: {
-          email: vendors.email,
-          phone: vendors.phone,
-          address: vendors.address,
-        },
-        vendorContact: {
-          userId: vendorContacts.userId,
-          email: vendorContacts.email,
-          phone: vendorContacts.phone,
-        },
-        teamMember: {
-          email: users.email,
-          phone: users.phone,
-        },
-        internalPerson: {
-          userId: internalContacts.userId,
-          email: internalContacts.email,
-          phone: internalContacts.phone,
-        },
+        ...projectContactInvitationDirectorySelection,
       })
       .from(projectContacts)
       .innerJoin(projects, eq(projects.id, projectContacts.projectId))
@@ -489,20 +463,15 @@ export async function sendProjectAccessInvitation(
         },
         now: new Date(now),
       })
-      if (pendingStatus === "pending") {
-        revalidatePath(`/dashboard/projects/${parsed.data.projectId}/contacts`)
-        return {
-          success: true,
-          accessStatus: "invited",
-          warning: "This contact already has a current invitation.",
-        }
+      // A pending invite may be lost in the recipient's inbox. Keep its send
+      // history, then let WorkOS resend the current account invitation below.
+      if (pendingStatus === "expired") {
+        await db
+          .update(projectAccessInvitations)
+          .set({ status: "expired", updatedAt: now })
+          .where(eq(projectAccessInvitations.id, pendingInvitation.id))
+          .run()
       }
-
-      await db
-        .update(projectAccessInvitations)
-        .set({ status: "expired", updatedAt: now })
-        .where(eq(projectAccessInvitations.id, pendingInvitation.id))
-        .run()
     }
     const internalMembership = activeExistingUser
       ? await db
@@ -589,11 +558,9 @@ export async function sendProjectAccessInvitation(
       if (!workosApiKey || workosApiKey.includes("placeholder")) {
         return { success: false, error: "WorkOS invitations are not configured." }
       }
-      const { WorkOS } = await import("@workos-inc/node")
-      const workos = new WorkOS(workosApiKey)
-      const invitation = await workos.userManagement.sendInvitation({
+      const invitation = await sendOrResendProjectWorkOSInvitation({
+        apiKey: workosApiKey,
         email: inviteEmail,
-        expiresInDays: 14,
       })
       workosInvitationId = invitation.id
       workosExpiresAt = invitation.expiresAt

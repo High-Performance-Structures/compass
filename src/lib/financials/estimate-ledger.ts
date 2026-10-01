@@ -405,6 +405,12 @@ export async function contractBudgetSourceHash(input: {
 }
 
 export async function estimateSourceHash(input: {
+  readonly assemblies: readonly {
+    readonly id: string
+    readonly name: string
+    readonly description: string | null
+    readonly sortOrder: number
+  }[]
   readonly estimateId: string
   readonly versionNumber: number
   readonly title: string
@@ -434,6 +440,7 @@ export async function estimateSourceHash(input: {
   readonly marginRateBasisPoints: number
   readonly contingencyRateBasisPoints: number
   readonly lines: readonly {
+    readonly assemblyId: string | null
     readonly id: string
     readonly reportPhaseId: string | null
     readonly divisionCode: string
@@ -545,6 +552,7 @@ export async function estimateSourceHash(input: {
       marginRateBasisPoints: input.marginRateBasisPoints,
       contingencyRateBasisPoints: input.contingencyRateBasisPoints,
       lines,
+      assemblies: [...input.assemblies].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)),
       basisDocuments,
       phaseDescriptions,
       reportPhases,

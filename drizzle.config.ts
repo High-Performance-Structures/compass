@@ -5,6 +5,7 @@ export default defineConfig({
     "./src/db/schema-selection-decisions.ts",
     "./src/db/schema-correspondence.ts",
     "./src/db/schema-correspondence-email.ts",
+    "./src/db/schema-project-email.ts",
     "./src/db/schema.ts",
     "./src/db/schema-netsuite.ts",
     "./src/db/schema-plugins.ts",
