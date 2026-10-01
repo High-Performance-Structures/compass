@@ -11,6 +11,9 @@ from typing import Any, Mapping, Sequence
 
 from sage_square_invoice_bridge import (
     BridgeError,
+    SQUARE_ACH_STATUS,
+    SQUARE_CREDIT_STATUS,
+    SQUARE_DEBIT_STATUS,
     SQUARE_PRODUCTION_ORIGIN,
     SQUARE_SANDBOX_ORIGIN,
     SageInvoice,
@@ -18,6 +21,7 @@ from sage_square_invoice_bridge import (
     connect_sage,
     load_sage_invoice,
     public_summary,
+    payment_route_for_status,
     recipient_email,
     route_square_location,
     text,
@@ -26,7 +30,11 @@ from sage_square_invoice_bridge import (
 
 
 PUBLISHED_STATUSES = {"SCHEDULED", "UNPAID", "PARTIALLY_PAID", "PAID"}
-SQUARE_READY_STATUS = "SQUARE:READY"
+SQUARE_READY_STATUSES = (
+    SQUARE_CREDIT_STATUS,
+    SQUARE_DEBIT_STATUS,
+    SQUARE_ACH_STATUS,
+)
 
 
 def open_invoice_ids(
@@ -40,10 +48,10 @@ def open_invoice_ids(
         WHERE recnum >= %s
           AND status = 1
           AND invbal > 0
-          AND LTRIM(RTRIM(usrdf1)) = %s
+          AND LTRIM(RTRIM(usrdf1)) IN (%s, %s, %s)
         ORDER BY recnum
         """,
-        (limit, minimum_sage_invoice_id, SQUARE_READY_STATUS),
+        (limit, minimum_sage_invoice_id, *SQUARE_READY_STATUSES),
     )
     values: list[int] = []
     for row in cursor.fetchall():
@@ -70,7 +78,7 @@ def invoice_context(invoice: SageInvoice) -> dict[str, Any]:
 
 
 def is_square_ready(invoice: SageInvoice) -> bool:
-    return text(invoice.square_status) == SQUARE_READY_STATUS
+    return text(invoice.square_status) in SQUARE_READY_STATUSES
 
 
 def existing_invoice_customer(
@@ -94,6 +102,7 @@ def process_invoice(
     # Check it before even reading Square so another status has no external effect.
     if not is_square_ready(invoice):
         return {**invoice_context(invoice), "action": "skipped_not_square_ready"}
+    payment_route = payment_route_for_status(invoice.square_status)
 
     prefix, location_name = route_square_location(
         invoice.job_short_name, invoice.job_name, invoice.sage_department
@@ -135,15 +144,19 @@ def process_invoice(
         raise BridgeError("Square customer is missing its ID")
 
     if existing is not None:
-        validate_existing_square_invoice(existing, invoice, location_id, customer_id)
+        validate_existing_square_invoice(
+            existing, invoice, location_id, customer_id, payment_route
+        )
 
     action = "preview"
     result = existing
     if auto_publish:
         if existing is None:
-            result = square.create_draft(invoice, location_id, customer_id)
+            result = square.create_draft(
+                invoice, location_id, customer_id, payment_route
+            )
             validate_existing_square_invoice(
-                result, invoice, location_id, customer_id
+                result, invoice, location_id, customer_id, payment_route
             )
             existing = result
         status = existing.get("status")
@@ -166,6 +179,7 @@ def process_invoice(
         customer_created,
         result,
         action,
+        payment_route,
     )
 
 
@@ -241,7 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "mode": "auto_publish" if args.auto_publish else "preview",
-                "requiredSquareStatus": SQUARE_READY_STATUS,
+                "requiredSquareStatuses": SQUARE_READY_STATUSES,
                 "minimumSageInvoiceId": args.minimum_sage_invoice_id,
                 "candidateCount": len(invoice_ids),
                 "results": results,
