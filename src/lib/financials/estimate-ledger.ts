@@ -414,6 +414,7 @@ export async function estimateSourceHash(input: {
   readonly estimateId: string
   readonly versionNumber: number
   readonly title: string
+  readonly showAssemblyBuilderFee?: boolean
   readonly reportMode: string
   readonly projectName: string
   readonly projectAddress: string | null
@@ -540,6 +541,7 @@ export async function estimateSourceHash(input: {
       versionNumber: input.versionNumber,
       title: input.title,
       reportMode: input.reportMode,
+      ...(input.showAssemblyBuilderFee ? { showAssemblyBuilderFee: true } : {}),
       projectName: input.projectName,
       projectAddress: input.projectAddress,
       clientName: input.clientName,

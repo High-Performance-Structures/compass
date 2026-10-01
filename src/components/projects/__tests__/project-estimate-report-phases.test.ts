@@ -2,7 +2,7 @@ import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { describe, expect, it } from "vitest"
 import { ProjectEstimateReportPhases } from "@/components/projects/project-estimate-report-phases"
-import { clientEstimatePhases, estimateClientReportMode, type ClientEstimateLine } from "@/lib/estimates/client-report"
+import { clientEstimatePhases, clientEstimateReportGroups, estimateClientReportMode, type ClientEstimateLine } from "@/lib/estimates/client-report"
 
 function line(id: string, reportPhaseId: string | null): ClientEstimateLine {
   return { id, reportPhaseId, divisionCode: "03", divisionName: "Concrete", costCode: "03 11 19", costCodeName: "Concrete forming", description: `${id} assembly`, specifications: null, quantity: 1, unit: "LS", unitCostCents: 12345, taxCode: null, taxName: null, taxRateBasisPoints: 0, taxCents: 0, lineTotalCents: 12345, ownerVisible: true, includeInBuilderFee: true, sortOrder: 1, costItems: [{ id: `${id}-detail`, costCode: "03 20 00", costCodeName: "Rebar", description: `${id} detailed scope`, quantity: 1, unit: "LS", unitCostCents: 12345, taxCode: null, taxName: null, taxRateBasisPoints: 0, taxCents: 0, lineTotalCents: 12345 }] }
@@ -40,6 +40,33 @@ describe("mixed-detail customer estimate report", () => {
       expect(html).not.toContain("slabs detailed scope")
       expect(html).not.toContain("private")
       expect(phases.reduce((sum, phase) => sum + phase.subtotalCents, 0)).toBe(24690)
+    }
+  })
+})
+
+
+describe("optional assembly builder-fee presentation", () => {
+  it("shows work, combined fee, and fee-inclusive totals in both assembly modes only", () => {
+    for (const reportMode of ["assembly_summary", "assembly_items"] as const) {
+      const phases = clientEstimateReportGroups({ mode: reportMode, assemblies: [{ id: "phase-a", name: "Foundation phase", description: "Foundation work", sortOrder: 0 }], lines: [{ ...line("forms", null), assemblyId: "phase-a" }], phaseDescriptions: {} })
+      const assemblyBuilderFees = new Map([["phase-a", 2469]])
+      const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode, assemblyBuilderFees }))
+      expect(html).toContain("Builder-fee subtotal")
+      expect(html).toContain("Overhead, margin, and contingency")
+      expect(html).toContain("$24.69")
+      expect(html).toContain("$148.14")
+      expect(html).toContain("Work subtotal")
+      const disabled = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode }))
+      expect(disabled).not.toContain("Builder-fee subtotal")
+      expect(disabled).not.toContain("$148.14")
+    }
+  })
+  it("keeps the optional fee presentation out of division and custom phase reports", () => {
+    const phases = clientEstimatePhases({ lines: [line("forms", null)], phaseDescriptions: {} })
+    for (const reportMode of ["division_summary", "phase_summary", "line_items"] as const) {
+      const html = renderToStaticMarkup(createElement(ProjectEstimateReportPhases, { phases, reportMode, assemblyBuilderFees: new Map([[phases[0]?.id ?? "", 2469]]) }))
+      expect(html).not.toContain("Builder-fee subtotal")
+      expect(html).not.toContain("$148.14")
     }
   })
 })
