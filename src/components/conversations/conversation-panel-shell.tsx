@@ -278,6 +278,7 @@ function ConversationPanelContent() {
               channelId={data.channel.id}
               initialMessages={data.messages}
               showThreadActions={false}
+              currentUserId={data.currentUserId}
             />
             {data.channel.archivedAt ? (
               <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
