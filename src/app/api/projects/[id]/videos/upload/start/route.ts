@@ -9,7 +9,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { initiateProjectVideoWebsiteUpload } from "@/lib/email/project-video-attachments"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertActiveInternalOrganization } from "@/lib/project-access"
+import { assertActiveStaffOrganization } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   isProjectVideoFile,
@@ -38,14 +38,13 @@ export async function POST(
     const user = await requireAuth()
     if (
       !user.isActive ||
-      user.organizationType !== "internal" ||
       !isInternalStaffRole(user.role)
     ) {
       throw new Error("Project video upload requires active internal staff")
     }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await assertActiveInternalOrganization(db, user)
+    await assertActiveStaffOrganization(db, user)
     await requireFeaturePermission(user, "project-photos", "update")
     const body: unknown = await request.json()
     if (!isRecord(body)) {
@@ -124,6 +123,11 @@ export async function POST(
     )
   } catch (error) {
     console.error("Project video upload session failed", error)
+    const status =
+      error instanceof Error &&
+      error.message === "Active internal organization is required"
+        ? 403
+        : 500
     return NextResponse.json(
       {
         success: false,
@@ -132,7 +136,7 @@ export async function POST(
             ? error.message
             : "Compass could not start the video upload.",
       },
-      { status: 500 }
+      { status }
     )
   }
 }

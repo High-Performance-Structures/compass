@@ -11,7 +11,10 @@ import {
   getExportMimeType,
   isGoogleNativeFile,
 } from "@/lib/google/mapper"
-import { assertProjectAccess } from "@/lib/project-access"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
@@ -36,11 +39,14 @@ export async function GET(
     if (!projectId) return new Response("Document not found", { status: 404 })
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await assertProjectAccess(db, user, projectId)
-
+    const organization = await getActiveOrganization(db, user)
     const viewerIsInternal =
-      (user.organizationType === "internal" || user.organizationType === "demo") &&
+      (organization?.type === "internal" || organization?.type === "demo") &&
       isInternalStaffRole(user.role)
+    if (!organization) {
+      return new Response("Document not found", { status: 404 })
+    }
+    await assertProjectAccess(db, user, projectId)
     if (!viewerIsInternal) {
       const membership = await db
         .select({ role: projectMembers.role })

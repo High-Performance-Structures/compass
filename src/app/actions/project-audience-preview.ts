@@ -335,16 +335,12 @@ export async function getProjectAudienceOptions(
   audience: ProjectAudience
 ): Promise<readonly AudienceProjectOption[]> {
   const user = await requireAuth()
-  if (isInternalStaffRole(user.role) || user.role === "developer") {
-    return []
-  }
   if (!user.isActive || !user.organizationId) return []
-  requirePermission(user, "project", "read")
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const [organization] = await db
-    .select({ id: organizations.id })
+    .select({ id: organizations.id, type: organizations.type })
     .from(organizations)
     .where(
       and(
@@ -354,6 +350,9 @@ export async function getProjectAudienceOptions(
     )
     .limit(1)
   if (!organization) return []
+  if (organization.type !== "client") return []
+  if (isInternalStaffRole(user.role) || user.role === "developer") return []
+  requirePermission(user, "project", "read")
 
   return loadAudienceProjectOptions({
     db,
@@ -380,14 +379,31 @@ async function verifyProjectAccess(
   }
 }> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  if (!user.isActive || !user.organizationId) {
+    throw new Error("Project not found")
+  }
+  const [organization] = await db
+    .select({ id: organizations.id, type: organizations.type })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+  if (!organization) throw new Error("Project not found")
 
   const viewerIsInternal =
-    (user.organizationType === "internal" || user.organizationType === "demo") &&
+    (organization.type === "internal" || organization.type === "demo") &&
     isInternalStaffRole(user.role)
+  if (!viewerIsInternal && organization.type !== "client") {
+    throw new Error("Project not found")
+  }
+  requirePermission(user, "project", "read")
   const project = viewerIsInternal
     ? await assertProjectAccess(db, user, projectId)
     : await getProjectAudienceAccessRecord(db, user, projectId, audience)

@@ -15,7 +15,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
-import { assertActiveInternalOrganization } from "@/lib/project-access"
+import { assertActiveStaffOrganization } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import {
@@ -55,14 +55,13 @@ export async function POST(
     const user = await requireAuth()
     if (
       !user.isActive ||
-      user.organizationType !== "internal" ||
       !isInternalStaffRole(user.role)
     ) {
       throw new Error("Project video upload requires active internal staff")
     }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await assertActiveInternalOrganization(db, user)
+    await assertActiveStaffOrganization(db, user)
     await requireFeaturePermission(user, "project-photos", "update")
     const body: unknown = await request.json()
     if (!isRecord(body)) {
@@ -285,6 +284,11 @@ export async function POST(
     return NextResponse.json({ success: true, videoId })
   } catch (error) {
     console.error("Project video upload completion failed", error)
+    const status =
+      error instanceof Error &&
+      error.message === "Active internal organization is required"
+        ? 403
+        : 500
     return NextResponse.json(
       {
         success: false,
@@ -293,7 +297,7 @@ export async function POST(
             ? error.message
             : "Compass could not save the uploaded video.",
       },
-      { status: 500 }
+      { status }
     )
   }
 }

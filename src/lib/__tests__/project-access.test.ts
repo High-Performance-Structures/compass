@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import {
   assertActiveInternalOrganization,
+  assertActiveStaffOrganization,
   getProjectAudienceAccessRecord,
   getProjectAccessRecord,
 } from "@/lib/project-access"
@@ -216,6 +217,42 @@ describe("project access organization boundaries", () => {
     ).rejects.toThrow("Active internal organization is required")
     sqlite.close()
   })
+
+  it("accepts an authoritative internal organization when the auth DTO is stale", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(
+      `INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'internal', 1, '2026-09-01', '2026-09-01');`
+    )
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    await expect(
+      assertActiveInternalOrganization(getDb(), {
+        ...baseUser,
+        role: "admin",
+        organizationType: "client",
+      })
+    ).resolves.toBeUndefined()
+    sqlite.close()
+  })
+
+
+  it("rejects a demo organization from staff-only provider access", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(
+      `INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'demo', 1, '2026-09-01', '2026-09-01');`
+    )
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    await expect(
+      assertActiveStaffOrganization(getDb(), {
+        ...baseUser,
+        role: "admin",
+        organizationType: "internal",
+      })
+    ).rejects.toThrow("Active internal organization is required")
+    sqlite.close()
+  })
+
 
   it("requires an exact active client audience grant before media metadata", async () => {
     const sqlite = openDatabase()

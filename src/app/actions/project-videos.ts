@@ -26,7 +26,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
-  assertActiveInternalOrganization,
+  getActiveOrganization,
   assertProjectAccess,
 } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -39,8 +39,6 @@ type AuthenticatedUser = Awaited<ReturnType<typeof requireAuth>>
 function assertActiveInternalStaff(user: AuthenticatedUser): void {
   if (
     !user.isActive ||
-    (user.organizationType !== "internal" &&
-      user.organizationType !== "demo") ||
     !isInternalStaffRole(user.role)
   ) {
     throw new Error("Project video access requires active internal staff")
@@ -93,16 +91,19 @@ async function projectVideoDb(
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
   assertActiveInternalStaff(user)
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const organization = await getActiveOrganization(db, user)
   if (
-    action === "update" &&
-    (user.organizationType === "demo" || isDemoUser(user.id))
+    !organization ||
+    (organization.type !== "internal" && organization.type !== "demo")
   ) {
+    throw new Error("Project video access requires active internal staff")
+  }
+  if (action === "update" && (organization.type === "demo" || isDemoUser(user.id))) {
     throw new Error("Demo mode is read-only")
   }
   const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  await assertActiveInternalOrganization(db, user)
   await requireFeaturePermission(user, "project-photos", action)
   await assertProjectAccess(db, user, projectId)
   const [project] = await db

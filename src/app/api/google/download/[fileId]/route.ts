@@ -3,9 +3,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { getDb } from "@/db"
-import { organizations, projects, users } from "@/db/schema"
+import { projects, users } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
-import { and, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { decrypt } from "@/lib/crypto"
 import {
   getGoogleConfig,
@@ -19,7 +19,10 @@ import {
   getExportExtension,
 } from "@/lib/google/mapper"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import { assertProjectAccess } from "@/lib/project-access"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 
 export async function GET(
@@ -31,11 +34,16 @@ export async function GET(
     if (!user) {
       return new Response("Unauthorized", { status: 401 })
     }
+    const { env } = await getCloudflareContext()
+    const envRecord = env as unknown as Record<string, string>
+    const db = getDb(env.DB)
+    const organization = await getActiveOrganization(db, user)
     // External users must use project-specific download routes that verify
-    // membership and record visibility before resolving a storage ID.
+    // membership and record visibility before resolving a storage ID. The
+    // organization row is authoritative; the auth DTO can be stale.
     if (
-      !user.isActive ||
-      user.organizationType !== "internal" ||
+      !organization ||
+      organization.type !== "internal" ||
       !user.organizationId ||
       !isInternalStaffRole(user.role) ||
       !can(user, "document", "read")
@@ -47,25 +55,7 @@ export async function GET(
     const projectId = request.nextUrl.searchParams.get("projectId")
     let allowedParentId: string | null = null
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
-
-    const organization = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(
-        and(
-          eq(organizations.id, user.organizationId),
-          eq(organizations.isActive, true)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!organization) {
-      return new Response("File not found", { status: 404 })
-    }
 
     const auth = await db
       .select()

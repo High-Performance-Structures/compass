@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   requireFeaturePermission: vi.fn(),
   assertProjectAccess: vi.fn(),
+  getActiveOrganization: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
@@ -16,6 +17,7 @@ vi.mock("@/lib/permission-enforcement", () => ({
 }))
 vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
+  getActiveOrganization: mocks.getActiveOrganization,
 }))
 vi.mock("@/lib/demo", () => ({ isDemoUser: vi.fn(() => false) }))
 vi.mock("@/lib/email/project-video-attachments", () => ({
@@ -62,6 +64,7 @@ describe("project media Server Action boundaries", () => {
     ["inactive staff", { ...baseUser, role: "admin", organizationType: "internal", isActive: false }],
   ])("denies %s before permission, organization, or DB work", async (_label, user) => {
     mocks.requireAuth.mockResolvedValue(user)
+    mocks.getActiveOrganization.mockResolvedValue({ id: "org-a", type: "internal" })
 
     await expect(getProjectPhotoLibrary("project-a")).rejects.toThrow(
       "Project photo access requires active internal staff"

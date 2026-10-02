@@ -23,7 +23,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import { assertActiveInternalOrganization } from "@/lib/project-access"
+import { assertActiveStaffOrganization } from "@/lib/project-access"
 import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,
   MAX_PHOTO_UPLOAD_FILE_BYTES,
@@ -264,11 +264,20 @@ export async function POST(
     }
     if (
       !user.isActive ||
-      user.organizationType !== "internal" ||
       !isInternalStaffRole(user.role)
     ) {
       return NextResponse.json(
         { success: false, error: "Staff access is required to upload files." },
+        { status: 403 }
+      )
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    await assertActiveStaffOrganization(db, user)
+    if (isDemoUser(user.id)) {
+      return NextResponse.json(
+        { success: false, error: "Demo mode is read-only." },
         { status: 403 }
       )
     }
@@ -278,8 +287,6 @@ export async function POST(
     if (!projectId) {
       return NextResponse.json({ success: false, error: "Project not found." }, { status: 404 })
     }
-
-    const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const googleEmail = resolveGoogleUploadEmail({
       userEmail: user.email,
@@ -287,8 +294,6 @@ export async function POST(
       env: envRecord,
     })
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
-    await assertActiveInternalOrganization(db, user)
 
     const [project] = await db
       .select({

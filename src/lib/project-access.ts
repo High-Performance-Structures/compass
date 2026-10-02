@@ -28,31 +28,56 @@ export function usesOrganizationProjectScope(
   )
 }
 
-export async function assertActiveInternalOrganization(
+export type ActiveOrganizationRecord = {
+  readonly id: string
+  readonly type: string
+}
+
+export async function getActiveOrganization(
   db: Db,
   user: AuthUser
-): Promise<void> {
-  if (
-    !user.isActive ||
-    (user.organizationType !== "internal" &&
-      user.organizationType !== "demo") ||
-    !user.organizationId
-  ) {
-    throw new Error("Active internal organization is required")
-  }
-  const organization = await db
-    .select({ id: organizations.id })
+): Promise<ActiveOrganizationRecord | null> {
+  if (!user.isActive || !user.organizationId) return null
+  return (await db
+    .select({ id: organizations.id, type: organizations.type })
     .from(organizations)
     .where(
       and(
         eq(organizations.id, user.organizationId),
-        inArray(organizations.type, ["internal", "demo"]),
         eq(organizations.isActive, true)
       )
     )
     .limit(1)
-    .get()
-  if (!organization) throw new Error("Active internal organization is required")
+    .get()) ?? null
+}
+
+export async function assertActiveInternalOrganization(
+  db: Db,
+  user: AuthUser
+): Promise<void> {
+  if (!user.isActive || !user.organizationId) {
+    throw new Error("Active internal organization is required")
+  }
+  const organization = await getActiveOrganization(db, user)
+  if (
+    !organization ||
+    (organization.type !== "internal" && organization.type !== "demo")
+  ) {
+    throw new Error("Active internal organization is required")
+  }
+}
+
+export async function assertActiveStaffOrganization(
+  db: Db,
+  user: AuthUser
+): Promise<void> {
+  if (!user.isActive || !user.organizationId) {
+    throw new Error("Active internal organization is required")
+  }
+  const organization = await getActiveOrganization(db, user)
+  if (!organization || organization.type !== "internal") {
+    throw new Error("Active internal organization is required")
+  }
 }
 
 export async function getProjectAccessRecord(

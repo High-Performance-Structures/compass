@@ -11,7 +11,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import {
-  assertActiveInternalOrganization,
+  getActiveOrganization,
   assertProjectAccess,
 } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -80,8 +80,6 @@ async function verifyProjectAccess(
   const user = await requireAuth()
   if (
     !user.isActive ||
-    (user.organizationType !== "internal" &&
-      user.organizationType !== "demo") ||
     !isInternalStaffRole(user.role)
   ) {
     throw new Error("Project photo access requires active internal staff")
@@ -94,7 +92,13 @@ async function verifyProjectAccess(
   }
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-  await assertActiveInternalOrganization(db, user)
+  const organization = await getActiveOrganization(db, user)
+  if (
+    !organization ||
+    (organization.type !== "internal" && organization.type !== "demo")
+  ) {
+    throw new Error("Project photo access requires active internal staff")
+  }
   await requireFeaturePermission(user, "project-photos", action)
 
   await assertProjectAccess(db, user, projectId)
