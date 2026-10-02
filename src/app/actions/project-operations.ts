@@ -461,7 +461,6 @@ async function verifyProjectAccess(
   if (internalStaffOnly || featureId === "purchase-orders") {
     ensureActiveInternalPurchaseOrderStaff(user)
   }
-  await requireFeaturePermission(user, featureId, "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -470,6 +469,7 @@ async function verifyProjectAccess(
   if (internalStaffOnly || featureId === "purchase-orders") {
     await ensureActiveInternalPurchaseOrderOrganization(db, orgId)
   }
+  await requireFeaturePermission(user, featureId, "read")
 
   const existing = await db
     .select({ id: projects.id })
@@ -501,7 +501,6 @@ async function verifyProjectUpdateAccessWithActor(
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
-  await requireFeaturePermission(user, featureId, "update")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -510,6 +509,7 @@ async function verifyProjectUpdateAccessWithActor(
   if (internalStaffOnly || featureId === "purchase-orders") {
     await ensureActiveInternalPurchaseOrderOrganization(db, orgId)
   }
+  await requireFeaturePermission(user, featureId, "update")
 
   const existing = await db
     .select({ id: projects.id })
@@ -3857,11 +3857,11 @@ export async function sendPurchaseOrderEmail(
   try {
     const user = await requireAuth()
     ensureActiveInternalPurchaseOrderStaff(user)
-    await requireFeaturePermission(user, "purchase-orders", "update")
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await ensureActiveInternalPurchaseOrderOrganization(db, orgId)
+    await requireFeaturePermission(user, "purchase-orders", "update")
     const to = parseEmailList(input.to)
     const cc = parseEmailList(input.cc)
     const subject = requireText(input.subject, "Subject")

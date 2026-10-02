@@ -228,7 +228,6 @@ async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
     throw new Error("Purchase orders are limited to active internal staff.")
   }
   if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-  await requireFeaturePermission(user, "nutech-orders", "update")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -247,6 +246,7 @@ async function nuTechItemAccess(projectId: string): Promise<NuTechItemAccess> {
   if (!organization) {
     throw new Error("Purchase orders require an active internal organization.")
   }
+  await requireFeaturePermission(user, "nutech-orders", "update")
   const project = await db
     .select({
       id: projects.id,

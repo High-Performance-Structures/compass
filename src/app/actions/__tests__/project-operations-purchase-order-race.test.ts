@@ -801,7 +801,7 @@ describe("purchase-order action authorization boundary", () => {
         success: false,
         error: "Purchase orders require an active internal organization.",
       })
-      expect(mocks.requireFeaturePermission).toHaveBeenCalledTimes(1)
+      expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
       expect(mocks.getDb).toHaveBeenCalledTimes(1)
       sqlite.close()
     }
@@ -865,11 +865,199 @@ describe("purchase-order action authorization boundary", () => {
         success: false,
         error: "Purchase orders require an active internal organization.",
       })
+      expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
       expect(mocks.getDb).toHaveBeenCalledTimes(1)
       expect(mocks.fetch).not.toHaveBeenCalled()
       sqlite.close()
     }
   )
+
+  it.each([
+    ["client", 1],
+    ["internal", 0],
+  ] as const)(
+    "denies a Nu-Tech dashboard read from a %s/inactive organization before permission work",
+    async (organizationType, isActive) => {
+      const sqlite = new Database(":memory:")
+      createSchema(sqlite)
+      seedDraft(sqlite, FIXED_NOW)
+      sqlite
+        .prepare("UPDATE organizations SET type = ?, is_active = ? WHERE id = ?")
+        .run(organizationType, isActive, "org-1")
+      // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+      const actionDb = drizzle(createD1(sqlite), { schema: { organizations } })
+      mocks.requireAuth.mockResolvedValue({
+        id: "staff-1",
+        role: "project_manager",
+        isActive: true,
+      })
+      mocks.isInternalStaffRole.mockReturnValue(true)
+      mocks.getDb.mockReturnValue(actionDb)
+
+      await expect(getNuTechOrderDashboard()).rejects.toThrow(
+        "Purchase orders require an active internal organization."
+      )
+      expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+      expect(mocks.getDb).toHaveBeenCalledTimes(1)
+      sqlite.close()
+    }
+  )
+
+  it.each([
+    ["client", 1],
+    ["internal", 0],
+  ] as const)(
+    "denies a Nu-Tech item save from a %s/inactive organization before permission work",
+    async (organizationType, isActive) => {
+      const sqlite = new Database(":memory:")
+      createSchema(sqlite)
+      seedDraft(sqlite, FIXED_NOW)
+      sqlite
+        .prepare("UPDATE organizations SET type = ?, is_active = ? WHERE id = ?")
+        .run(organizationType, isActive, "org-1")
+      // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+      const actionDb = drizzle(createD1(sqlite), { schema: { organizations } })
+      mocks.requireAuth.mockResolvedValue({
+        id: "staff-1",
+        role: "project_manager",
+        isActive: true,
+      })
+      mocks.isInternalStaffRole.mockReturnValue(true)
+      mocks.getDb.mockReturnValue(actionDb)
+
+      await expect(
+        saveNuTechOrderItem("project-1", { productId: "product-1", quantity: 1 })
+      ).resolves.toEqual({
+        success: false,
+        error: "Purchase orders require an active internal organization.",
+      })
+      expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+      expect(mocks.getDb).toHaveBeenCalledTimes(1)
+      sqlite.close()
+    }
+  )
+})
+
+describe("Nu-Tech child repricing compare-and-swap", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(FIXED_NOW))
+    vi.clearAllMocks()
+    mocks.requireAuth.mockResolvedValue({
+      id: "staff-1",
+      role: "project_manager",
+      isActive: true,
+    })
+    mocks.isInternalStaffRole.mockReturnValue(true)
+    mocks.requireFeaturePermission.mockResolvedValue(undefined)
+    mocks.requireOrg.mockReturnValue("org-1")
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("does not reprice children when a second actor wins the parent save CAS", async () => {
+    let releaseBatch: () => void = () => undefined
+    const batchPaused = new Promise<void>((resolve) => {
+      releaseBatch = resolve
+    })
+    let signalBatch: () => void = () => undefined
+    const batchReached = new Promise<void>((resolve) => {
+      signalBatch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+
+    const staleClient = createD1(sqlite, undefined, {
+      paused: batchPaused,
+      signal: signalBatch,
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+        nuTechCatalogPrices,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const currentActor = drizzle(createD1(sqlite), {
+      schema: { nuTechOrderWorkflows, nuTechOrderItems },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleSave = saveProjectNuTechOrder("project-1", {
+      customerType: "new",
+      pricingMode: "cash_discount",
+      quantitySource: "customer_provided",
+      takeoffAcknowledgementStatus: "not_required",
+      scopeType: "block_sale",
+      blockQuantityNotes: null,
+      bracingIncluded: false,
+      bracingRentalStartDate: null,
+      bracingRentalEndDate: null,
+      bracingNotes: null,
+      deliveryMethod: "delivery",
+      requestedDeliveryDate: "2026-09-30",
+      airlitePurchaseOrderOperationId: "po-1",
+      orderStatus: "customer_approved",
+      vendorConfirmationNumber: null,
+      vendorInvoiceNumber: null,
+      vendorInvoiceStatus: "not_received",
+      vendorInvoiceReceivedAt: null,
+      notes: "Stale repricing",
+    })
+    await expect(
+      Promise.race([
+        batchReached.then(() => "batch"),
+        staleSave.then((result) => `completed: ${JSON.stringify(result)}`),
+      ])
+    ).resolves.toBe("batch")
+
+    await currentActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        notes: "Current actor wins",
+        updatedAt: "2026-08-25T05:01:00.000Z",
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+    await currentActor
+      .update(nuTechOrderItems)
+      .set({ unitPriceCents: 777, updatedAt: "2026-08-25T05:01:00.000Z" })
+      .where(eq(nuTechOrderItems.id, "nutech-item-1"))
+      .run()
+
+    releaseBatch()
+    await expect(staleSave).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while it was being saved. Refresh and try again.",
+    })
+    expect(sqlite.prepare(`
+      SELECT pricing_mode, notes, updated_at
+      FROM nutech_order_workflows WHERE id = 'workflow-1'
+    `).get()).toEqual({
+      pricing_mode: "standard",
+      notes: "Current actor wins",
+      updated_at: "2026-08-25T05:01:00.000Z",
+    })
+    expect(sqlite.prepare(`
+      SELECT unit_price_cents, updated_at
+      FROM nutech_order_items WHERE id = 'nutech-item-1'
+    `).get()).toEqual({
+      unit_price_cents: 777,
+      updated_at: "2026-08-25T05:01:00.000Z",
+    })
+    sqlite.close()
+  })
 })
 
 describe("purchase-order supplier email claim fence", () => {

@@ -65,6 +65,7 @@ import {
   type PurchaseOrderShipToState,
 } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactSelection } from "@/lib/purchase-orders/site-contact"
+import { buildPurchaseOrderUpdateInput } from "@/lib/purchase-orders/update-input"
 
 type DraftPurchaseOrderLine = {
   readonly id: string
@@ -465,10 +466,11 @@ function ProjectPurchaseOrderForm(
       const result =
         purchaseOrder === null
           ? await createPurchaseOrderRequest(projectId, request)
-          : await updatePurchaseOrderRequest(projectId, purchaseOrder.id, {
-              ...request,
-              expectedRevision: purchaseOrder.revision,
-            })
+          : await updatePurchaseOrderRequest(
+              projectId,
+              purchaseOrder.id,
+              buildPurchaseOrderUpdateInput(request, purchaseOrder)
+            )
 
       if (!result.success) {
         throw new Error(result.error)

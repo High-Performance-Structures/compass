@@ -348,7 +348,6 @@ async function nuTechProjectAccess(
   if (action !== "read" && isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
-  await requireFeaturePermission(user, "nutech-orders", action)
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -367,6 +366,7 @@ async function nuTechProjectAccess(
   if (!organization) {
     throw new Error("Purchase orders require an active internal organization.")
   }
+  await requireFeaturePermission(user, "nutech-orders", action)
   const project = await db
     .select({
       id: projects.id,
@@ -544,7 +544,6 @@ export async function getNuTechOrderDashboard(): Promise<
   if (!user.isActive || !isInternalStaffRole(user.role)) {
     throw new Error("Purchase orders are limited to active internal staff.")
   }
-  await requireFeaturePermission(user, "nutech-orders", "read")
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -563,6 +562,7 @@ export async function getNuTechOrderDashboard(): Promise<
   if (!organization) {
     throw new Error("Purchase orders require an active internal organization.")
   }
+  await requireFeaturePermission(user, "nutech-orders", "read")
   const projectRows = await db
     .select({
       id: projects.id,
@@ -929,7 +929,17 @@ export async function saveProjectNuTechOrder(
           )`,
           updatedAt: now,
         })
-        .where(eq(nuTechOrderItems.workflowId, id))
+        .where(
+          and(
+            eq(nuTechOrderItems.workflowId, id),
+            exists(
+              access.db
+                .select({ id: nuTechOrderWorkflows.id })
+                .from(nuTechOrderWorkflows)
+                .where(workflowSaveGuard)
+            )
+          )
+        )
       const saveResults = await access.db.batch([
         saveWorkflowQuery,
         repriceOrderItemsQuery,
