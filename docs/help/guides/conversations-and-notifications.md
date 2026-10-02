@@ -4,15 +4,15 @@
   "featureId": "conversations",
   "slug": "conversations-and-notifications",
   "title": "Conversations, Messages, and Notifications",
-  "summary": "Use project channels, direct messages, announcements, mentions, and notifications.",
-  "contextSummary": "Choose a project channel for durable project communication, direct messages for private coordination, and announcements only for truly audience-wide information.",
+  "summary": "Use project channels, direct messages, project-update texts, announcements, mentions, and notifications.",
+  "contextSummary": "Choose a project channel for durable project communication, use the department numbers for project-update texts, use HPS for text help and project lists, and reserve announcements for truly audience-wide information.",
   "category": "Communication",
-  "tags": ["conversations", "messages", "announcements", "mentions", "notifications", "channels"],
+  "tags": ["conversations", "messages", "sms", "texting", "announcements", "mentions", "notifications", "channels"],
   "audiences": ["staff"],
   "permissions": ["help:read", "channels:read"],
-  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/settings"],
+  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-09-30"
 }
 ---
 
@@ -26,6 +26,12 @@ Open the correct channel, confirm its name and project context, write the messag
 
 Mentions may trigger in-app, email, push, or text notifications according to the recipient's preferences and configured services.
 
+## Email People Outside Compass {#project-email}
+
+In a project's **Messages** workspace, staff can choose **New email** to send a project update to people who do not have Compass accounts. Add recipients from active project contacts, search the owner/vendor/internal directory, or enter an email address directly. Use **To**, **Cc**, and **Bcc** according to who should see the address list, then review the recipient counts before sending.
+
+The email is saved in the project's message history. Replies to its tracked address appear in that project conversation and notify the internal team. Recipients do not gain Compass access. A reply written inside Compass stays internal; use **New email** for another external update. If delivery fails, the original sender can retry the saved email. When delivery is uncertain, check its status before sending again.
+
 ## Attachments {#attachments}
 
 Use the composer attachment control and open the result after sending. A project-channel file should live in the mapped project Drive location, and intended recipients must have permission to open it. A preview in a conversation does not change the file's project-wide visibility.
@@ -38,6 +44,18 @@ Edit your own message to correct a mistake when allowed. Delete only when the re
 
 Authorized staff can create an announcement and select its audience. Choose narrowly: staff, owners, project partners, or everyone only when the content truly applies. An organization-wide announcement is not a substitute for a project message.
 
+## Text Project Updates {#text-project-updates}
+
+Send a project update to its department number:
+
+- Open Range / Design: **719-630-8767**
+- Nu-Tech: **719-686-0770**
+- HPS: **719-900-8850**
+
+Start the text with the project number, followed by a supported tag and the update. Attach photos or video to the same text when needed. For example: `H-430-1900 [DAILY LOG] Crew arrived at 7:00. Framing started.`
+
+For the complete active-project list or basic texting instructions, use the HPS number only: text `[list]` or `[help]` to **719-900-8850**. Project updates may come from any phone number; updates from unrecognized numbers are held for internal review.
+
 ## Notification Preferences {#notification-preferences}
 
 In **Settings**, confirm the timezone and choose supported in-app, email, push, and text notifications. SMS requires the user's own current consent. Save changes and use a test action when available; never enable text delivery for another person without consent.
@@ -48,3 +66,4 @@ In **Settings**, confirm the timezone and choose supported in-app, email, push, 
 - [ ] The message contains enough context to find later.
 - [ ] Attachments open for intended recipients.
 - [ ] Important decisions remain in a durable project record.
+- [ ] Texted updates start with the correct project number and go to the appropriate department number.

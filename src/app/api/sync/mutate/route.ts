@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   localSyncMetadata,
   SyncStatus,
@@ -311,6 +312,12 @@ async function checkResourceAuthorization(
   if (!can(user, resource, action)) {
     return { authorized: false, reason: `Role ${user.role} cannot ${action} ${resource}` }
   }
+  if (
+    (table === "scheduleTasks" || table === "taskDependencies") &&
+    !isInternalStaffRole(user.role) && user.role !== "developer"
+  ) {
+    return { authorized: false, reason: "Working schedule sync is available to internal staff only" }
+  }
 
   // For project-related resources, check project membership
   if (table === "scheduleTasks" || table === "taskDependencies") {
@@ -520,7 +527,8 @@ const TABLE_HANDLERS: Record<string, TableHandler> = {
         .from(users)
         .where(eq(users.id, recordId))
         .limit(1)
-      return (records[0] as Record<string, unknown>) ?? null
+      const record = records[0]
+      return record ? { ...record, address: null } : null
     },
     applyInsert: async (db, recordId, payload, now) => {
       await db.insert(users).values({

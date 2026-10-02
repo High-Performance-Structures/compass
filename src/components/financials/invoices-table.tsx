@@ -20,6 +20,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -66,6 +70,10 @@ export function InvoicesTable({
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
   const [rowSelection, setRowSelection] = React.useState({})
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
 
   const columns: ColumnDef<Invoice>[] = [
     {
@@ -179,14 +187,22 @@ export function InvoicesTable({
   const table = useReactTable({
     data: invoices,
     columns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    onSortingChange: (updater) => {
+      setSorting(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
-    state: { sorting, columnFilters, rowSelection },
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { sorting, columnFilters, rowSelection, pagination },
   })
 
   const emptyState = (
@@ -273,6 +289,11 @@ export function InvoicesTable({
         ) : (
           emptyState
         )}
+        <DataTablePagination
+          table={table}
+          itemLabel="invoices"
+          id="invoices-mobile-items-per-page"
+        />
       </div>
     )
   }
@@ -339,30 +360,7 @@ export function InvoicesTable({
           </Table>
         </div>
       </div>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <DataTablePagination table={table} itemLabel="invoices" id="invoices-items-per-page" />
     </div>
   )
 }

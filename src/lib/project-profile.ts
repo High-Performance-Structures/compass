@@ -388,7 +388,7 @@ export type ProjectNumberParts = {
   readonly addressSuffix: string
 }
 
-const PROJECT_NUMBER_PATTERN = /^([OHND])-(\d+)-([A-Z0-9]+)$/i
+const PROJECT_NUMBER_PATTERN = /^([OHND])-(\d+)-([A-Z0-9]+)(?:-(\d+))?$/i
 
 export function projectNumberParts(value: string): ProjectNumberParts | null {
   const match = PROJECT_NUMBER_PATTERN.exec(value.trim())
@@ -408,6 +408,25 @@ export function projectNumberParts(value: string): ProjectNumberParts | null {
   return { department, sequence, addressSuffix }
 }
 
+/**
+ * Returns the optional phase suffix without changing the existing project
+ * number parts contract used by registry, Sage, and profile code.
+ */
+export function projectNumberPhaseNumber(value: string): number | null {
+  const match = PROJECT_NUMBER_PATTERN.exec(value.trim())
+  const phaseNumber = match?.[4]
+  if (!phaseNumber) return null
+
+  const parsed = Number(phaseNumber)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+export function baseProjectNumber(value: string): string | null {
+  const parts = projectNumberParts(value)
+  if (!parts) return null
+  return `${parts.department}-${parts.sequence}-${parts.addressSuffix}`
+}
+
 export function buildProjectNumberWithAddressSuffix(
   projectNumber: string,
   addressSuffix: string,
@@ -422,7 +441,8 @@ export function buildProjectNumberWithAddressSuffix(
     throw new Error("Project-number address suffix may contain only letters and numbers.")
   }
 
-  return `${parts.department}-${parts.sequence}-${normalizedSuffix}`
+  const phaseNumber = projectNumberPhaseNumber(projectNumber)
+  return `${parts.department}-${parts.sequence}-${normalizedSuffix}${phaseNumber === null ? "" : `-${phaseNumber}`}`
 }
 
 export function defaultFollowUpCadenceDays(statusId: string): number | null {

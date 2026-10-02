@@ -70,6 +70,28 @@ describe("matchGotoInboundProject", () => {
     })
   })
 
+  it("accepts an explicit project number from an unrelated phone for review routing", () => {
+    const result = matchGotoInboundProject({
+      body: "N-100-00 [DAILY LOG] Materials arrived.",
+      senderPhone: "+17195550999",
+      priorConversationProjectIds: [],
+      candidates: [
+        project({
+          id: "project-n-100",
+          projectNumber: "N-100-00",
+          contactPhone: null,
+        }),
+      ],
+    })
+
+    expect(result).toEqual({
+      kind: "found",
+      id: "project-n-100",
+      projectNumber: "N-100-00",
+      reason: "project_number",
+    })
+  })
+
   it("does not match a contact through the wrong GoTo department number", () => {
     const result = matchGotoInboundProject({
       body: "Hello",

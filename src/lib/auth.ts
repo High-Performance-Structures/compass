@@ -22,6 +22,7 @@ import {
 } from "@/lib/user-roles"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 
 export type AuthUser = {
   readonly id: string
@@ -403,6 +404,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       const isPendingPlaceholder =
         emailMatch !== undefined &&
         !emailMatch.isActive &&
+        emailMatch.lastLoginAt === null &&
         !emailMatch.id.startsWith("user_")
       if (emailMatch && (emailMatch.isActive || isPendingPlaceholder)) {
         await db
@@ -482,6 +484,20 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         eq(organizations.id, organizationMembers.organizationId)
       )
       .where(eq(organizationMembers.userId, dbUser.id))
+
+    if (activatedPendingAccount) {
+      for (const membership of orgMemberships) {
+        if (membership.orgType !== "internal") continue
+        await ensureInternalContactForStaff(db, {
+          organizationId: membership.orgId,
+          userId: dbUser.id,
+          role: membership.memberRole,
+          name: dbUser.displayName ?? dbUser.email,
+          email: dbUser.email,
+          phone: dbUser.phone,
+        })
+      }
+    }
 
     let activeOrg: {
       readonly orgId: string
@@ -592,6 +608,8 @@ export async function ensureUserExists(workosUser: {
   }
 
   const db = getDb(env.DB)
+  const now = new Date().toISOString()
+  const normalizedEmail = workosUser.email.trim().toLowerCase()
 
   // Check if user already exists
   const existing = await db
@@ -617,7 +635,66 @@ export async function ensureUserExists(workosUser: {
     return existing
   }
 
-  const now = new Date().toISOString()
+  // Imported and invited accounts may predate their WorkOS user ID. Preserve
+  // the local primary key (and every membership that references it), then
+  // reconcile the authenticated identity by normalized email.
+  const emailMatch = await db
+    .select()
+    .from(users)
+    .where(sql`lower(trim(${users.email})) = ${normalizedEmail}`)
+    .get()
+  if (emailMatch) {
+    const isPendingPlaceholder =
+      !emailMatch.isActive &&
+      emailMatch.lastLoginAt === null &&
+      !emailMatch.id.startsWith("user_")
+    if (!emailMatch.isActive && !isPendingPlaceholder) {
+      throw new Error(
+        "This Compass account is inactive. Ask an administrator to restore access."
+      )
+    }
+
+    const workosDisplayName = [workosUser.firstName, workosUser.lastName]
+      .filter((part): part is string => Boolean(part?.trim()))
+      .join(" ")
+    const reconciledUser: User = {
+      ...emailMatch,
+      email: normalizedEmail,
+      firstName: workosUser.firstName ?? emailMatch.firstName,
+      lastName: workosUser.lastName ?? emailMatch.lastName,
+      displayName: workosDisplayName || emailMatch.displayName,
+      avatarUrl: workosUser.profilePictureUrl ?? emailMatch.avatarUrl,
+      isActive: true,
+      lastLoginAt: now,
+      updatedAt: now,
+    }
+    await db
+      .update(users)
+      .set({
+        email: reconciledUser.email,
+        firstName: reconciledUser.firstName,
+        lastName: reconciledUser.lastName,
+        displayName: reconciledUser.displayName,
+        avatarUrl: reconciledUser.avatarUrl,
+        isActive: reconciledUser.isActive,
+        lastLoginAt: reconciledUser.lastLoginAt,
+        updatedAt: reconciledUser.updatedAt,
+      })
+      .where(eq(users.id, emailMatch.id))
+      .run()
+
+    const claimedInvitation = await claimProjectAccessInvitations(
+      db,
+      emailMatch.id,
+      normalizedEmail,
+      now
+    )
+    if (claimedInvitation) {
+      await setActiveOrgCookie(claimedInvitation.organizationId)
+    }
+    return reconciledUser
+  }
+
   const pendingInvitation = await db
     .select({
       role: projectAccessInvitations.role,

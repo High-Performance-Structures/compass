@@ -31,7 +31,6 @@ import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
 import { AgentTab } from "@/components/settings/agent-tab"
-import { TeamTab } from "@/components/settings/team-tab"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 import { cn } from "@/lib/utils"
@@ -41,7 +40,6 @@ import {
 } from "@/components/developer-mode-provider"
 
 const SETTINGS_TABS = [
-  { value: "team", label: "Team" },
   { value: "general", label: "General" },
   { value: "notifications", label: "Notifications" },
   { value: "appearance", label: "Theme" },
@@ -164,9 +162,6 @@ export function SettingsModal({
 
   const renderContent = () => {
     switch (activeTab) {
-      case "team":
-        return <TeamTab />
-
       case "general":
         return (
           <div className="space-y-4 pt-2">

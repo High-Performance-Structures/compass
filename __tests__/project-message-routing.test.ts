@@ -15,7 +15,8 @@ function setup(): CorrespondenceTestDatabase {
   database = db
   db.sqlite.exec("ALTER TABLE users ADD COLUMN google_email TEXT")
   db.sqlite.exec(readFileSync("drizzle/0041_notifications.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
-  db.sqlite.exec("ALTER TABLE notification_recipients ADD COLUMN sms INTEGER NOT NULL DEFAULT 0; ALTER TABLE notification_preferences ADD COLUMN sms_phone_number TEXT; ALTER TABLE notification_preferences ADD COLUMN sms_consent_accepted INTEGER NOT NULL DEFAULT 0")
+  db.sqlite.exec(readFileSync("drizzle/0048_notification_channels.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
+  db.sqlite.exec(readFileSync("drizzle/0049_sms_consent.sql", "utf8").replaceAll("--> statement-breakpoint", ""))
   return db
 }
 afterEach(() => database?.close())
@@ -38,7 +39,7 @@ describe("[MESSAGE] intake", () => {
   })
   it("routes verified SMS through the shared tag parser and rejects unknown numbers", async () => {
     const db = setup()
-    db.sqlite.exec("INSERT INTO notification_preferences(user_id,sms_phone_number,sms_consent_accepted,updated_at) VALUES ('staff-a','+13035550123',1,'2026-09-05')")
+    db.sqlite.exec("INSERT INTO notification_preferences(user_id,sms_enabled,sms_phone_number,sms_consent_accepted,sms_consent_disclosure_version,sms_consent_phone_number,updated_at) VALUES ('staff-a',1,'+13035550123',1,'2026-06-30','+13035550123','2026-09-05')")
     expect((await routeProjectInboundSms({ ...input(db), senderPhone: "+13035550123" })).kind).toBe("routed")
     expect(await routeProjectInboundSms({ ...input(db), senderPhone: "+13035559999", candidate: candidate({ gmailMessageId: "sms-unknown" }) })).toEqual({ kind: "needs_review", projectId: "project-a" })
     expect(db.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_messages").get()).toEqual({ count: 1 })

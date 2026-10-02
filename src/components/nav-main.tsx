@@ -178,6 +178,88 @@ function NavLink({
   )
 }
 
+const SIDEBAR_COLLAPSIBLE_DURATION = 140
+const SIDEBAR_COLLAPSIBLE_OPEN_EASING = "cubic-bezier(0.16, 1, 0.3, 1)"
+const SIDEBAR_COLLAPSIBLE_CLOSE_EASING = "cubic-bezier(0.7, 0, 0.84, 1)"
+
+function AnimatedCollapsibleContent({
+  open,
+  children,
+}: {
+  readonly open: boolean
+  readonly children: React.ReactNode
+}) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const mountedRef = React.useRef(false)
+
+  React.useLayoutEffect(() => {
+    const node = ref.current
+    if (!node) return
+
+    const targetHeight = open ? node.scrollHeight : 0
+    const measuredHeight = Number.parseFloat(window.getComputedStyle(node).height)
+    const currentHeight = Number.isFinite(measuredHeight) ? measuredHeight : 0
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
+
+    if (
+      !mountedRef.current ||
+      reduceMotion ||
+      Math.abs(currentHeight - targetHeight) < 0.5
+    ) {
+      node.style.height = open ? "auto" : "0px"
+      mountedRef.current = true
+      return
+    }
+
+    const animation = node.animate(
+      [
+        { height: `${currentHeight}px` },
+        { height: `${targetHeight}px` },
+      ],
+      {
+        duration: SIDEBAR_COLLAPSIBLE_DURATION,
+        easing: open
+          ? SIDEBAR_COLLAPSIBLE_OPEN_EASING
+          : SIDEBAR_COLLAPSIBLE_CLOSE_EASING,
+        fill: "forwards",
+      },
+    )
+
+    let cancelled = false
+    animation.onfinish = () => {
+      if (cancelled) return
+      node.style.height = open ? "auto" : "0px"
+    }
+
+    return () => {
+      cancelled = true
+      const interruptedHeight = Number.parseFloat(
+        window.getComputedStyle(node).height,
+      )
+      animation.cancel()
+      animation.onfinish = null
+      if (Number.isFinite(interruptedHeight)) {
+        node.style.height = `${interruptedHeight}px`
+      }
+    }
+  }, [open])
+
+  return (
+    <CollapsibleContent
+      forceMount
+      hidden={false}
+      ref={ref}
+      aria-hidden={!open}
+      inert={!open ? true : undefined}
+      className="sidebar-collapsible-content"
+    >
+      {children}
+    </CollapsibleContent>
+  )
+}
+
 function NavSubmenu({
   item,
   activeUrl,
@@ -192,11 +274,14 @@ function NavSubmenu({
     (child) => child.url === activeUrl,
   )
 
+  const [open, setOpenState] = React.useState(hasActiveItem)
+
   return (
     <Collapsible
       asChild
       key={`${item.title}-${hasActiveItem ? "active" : "inactive"}`}
-      defaultOpen={hasActiveItem}
+      open={open}
+      onOpenChange={setOpenState}
       className="group/collapsible"
     >
       <SidebarMenuItem>
@@ -214,7 +299,7 @@ function NavSubmenu({
             <IconChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <AnimatedCollapsibleContent open={open}>
           {header}
           <SidebarMenuSub>
             {item.items.map((child) => (
@@ -234,7 +319,7 @@ function NavSubmenu({
               )
             ))}
           </SidebarMenuSub>
-        </CollapsibleContent>
+        </AnimatedCollapsibleContent>
       </SidebarMenuItem>
     </Collapsible>
   )
@@ -251,11 +336,14 @@ function NavNestedSubmenu({
     (child) => child.kind === "link" && child.url === activeUrl,
   )
 
+  const [open, setOpenState] = React.useState(hasActiveItem)
+
   return (
     <Collapsible
       asChild
       key={`${item.title}-${hasActiveItem ? "active" : "inactive"}`}
-      defaultOpen={hasActiveItem}
+      open={open}
+      onOpenChange={setOpenState}
       className="group/nested-collapsible"
     >
       <SidebarMenuSubItem>
@@ -268,7 +356,7 @@ function NavNestedSubmenu({
             </button>
           </SidebarMenuSubButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <AnimatedCollapsibleContent open={open}>
           <SidebarMenuSub className="mr-0 ml-3">
             {item.items.map((child) =>
               child.kind === "coming-soon" ? (
@@ -297,7 +385,7 @@ function NavNestedSubmenu({
               ),
             )}
           </SidebarMenuSub>
-        </CollapsibleContent>
+        </AnimatedCollapsibleContent>
       </SidebarMenuSubItem>
     </Collapsible>
   )

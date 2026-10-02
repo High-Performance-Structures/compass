@@ -131,6 +131,33 @@ describe("estimate ledger", () => {
     })
   })
 
+  it("rolls more than five breakdown items above $59K without a cap", () => {
+    const items = [
+      1_100_000,
+      1_250_000,
+      1_300_000,
+      1_425_000,
+      1_550_000,
+      1_675_000,
+    ].map((directCostCents) => ({
+      directCostCents,
+      markupRateBasisPoints: 0,
+      markupCents: 0,
+      taxable: false,
+      taxEntityId: null,
+      taxCode: null,
+      taxName: null,
+      taxRateBasisPoints: 0,
+      taxCents: 0,
+      lineTotalCents: directCostCents,
+    }))
+
+    expect(calculateEstimateLineBreakdownRollup(items)).toMatchObject({
+      directCostCents: 8_300_000,
+      lineTotalCents: 8_300_000,
+    })
+  })
+
   it("rolls estimate totals once across all lines", () => {
     expect(
       calculateEstimateTotals([
@@ -255,6 +282,7 @@ describe("estimate ledger", () => {
 
   it("hashes the full signed estimate basis, not only its totals", async () => {
     const input = {
+      assemblies: [],
       estimateId: "estimate-1",
       versionNumber: 1,
       title: "CA22 Construction Estimate",
@@ -286,7 +314,9 @@ describe("estimate ledger", () => {
       lines: [
         {
           id: "line-1",
+          assemblyId: null,
           divisionCode: "03",
+          reportPhaseId: null,
           costCode: "03 11 13",
           costCodeName: "Concrete Forming",
           description: "Concrete forming",
@@ -324,9 +354,22 @@ describe("estimate ledger", () => {
       phaseDescriptions: [
         { divisionCode: "03", description: "Concrete structure" },
       ],
+      reportPhases: [],
       acknowledgements: [],
     }
     const original = await estimateSourceHash(input)
+    expect(await estimateSourceHash({ ...input, showCostBreakdowns: false })).toBe(original)
+    expect(await estimateSourceHash({ ...input, showCostBreakdowns: true })).not.toBe(original)
+    expect(await estimateSourceHash({ ...input, showAssemblyBuilderFee: false })).toBe(original)
+    expect(await estimateSourceHash({ ...input, showAssemblyBuilderFee: true })).not.toBe(original)
+    const phase = { id: "fox", divisionCode: "03", name: "Fox Blocks", description: "ICF walls", itemize: true, sortOrder: 1 }
+    const withPhases = { ...input, reportPhases: [phase] }
+    const phaseHash = await estimateSourceHash(withPhases)
+    expect(phaseHash).not.toBe(original)
+    for (const change of [{ name: "ICF walls" }, { description: "New scope" }, { itemize: false }, { sortOrder: 2 }]) {
+      expect(await estimateSourceHash({ ...withPhases, reportPhases: [{ ...phase, ...change }] })).not.toBe(phaseHash)
+    }
+    expect(await estimateSourceHash({ ...withPhases, lines: input.lines.map((line) => ({ ...line, reportPhaseId: "fox" })) })).not.toBe(phaseHash)
     const revised = await estimateSourceHash({
       ...input,
       lines: [{ ...input.lines[0], specifications: "Per revision B" }],
@@ -369,6 +412,7 @@ describe("estimate ledger", () => {
           costItems: [
             {
               id: "cost-item-1",
+              costCode: "03 11 13", costCodeName: "Forming", description: "Forming", quantity: 1, unit: "LS", unitCostCents: 10_000,
               taxCode: "DENVER",
               taxName: "Denver",
               taxRateBasisPoints: 881,
@@ -381,6 +425,12 @@ describe("estimate ledger", () => {
       ],
     })
 
+    const differentAssembly = await estimateSourceHash({
+      ...input,
+      assemblies: [{ id: "foundation", name: "Foundation", description: null, sortOrder: 0 }],
+      lines: input.lines.map((line) => ({ ...line, assemblyId: "foundation" })),
+    })
+    expect(differentAssembly).not.toBe(original)
     expect(revised).not.toBe(original)
     expect(differentBasis).not.toBe(original)
     expect(differentPublishedDocument).not.toBe(original)

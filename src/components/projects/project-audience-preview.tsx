@@ -644,6 +644,7 @@ function OwnerProjectPreview({
           projectName={data.project.name}
           projectNumber={data.project.projectNumber}
           presentation={data.project.ownerScheduleView}
+          isPublished={data.project.schedulePublished}
         />
         )}
 
@@ -664,6 +665,7 @@ function OwnerProjectPreview({
         {section === "documents" && (
           <ProjectAudienceDocumentLibrary
             projectId={data.project.id}
+            contractDocuments={data.contractDocuments}
             documents={data.documents}
           />
         )}
@@ -780,6 +782,7 @@ export function ProjectAudiencePreview({
             projectId={data.project.id}
             projectName={data.project.name}
             projectNumber={data.project.projectNumber}
+            isPublished={data.project.schedulePublished}
           />
         )}
 
@@ -903,6 +906,7 @@ export function ProjectAudiencePreview({
         {section === "documents" && (
           <ProjectAudienceDocumentLibrary
             projectId={data.project.id}
+            contractDocuments={data.contractDocuments}
             documents={data.documents}
           />
         )}

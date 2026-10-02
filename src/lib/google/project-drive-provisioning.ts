@@ -39,6 +39,8 @@ export type ProjectDriveProvisioningInput = {
   readonly department: ProjectIntakeDepartment
   readonly folderName: string
   readonly existingFolderId?: string
+  /** Optional family parent; defaults to the department project root. */
+  readonly parentFolderId?: string
 }
 
 export type ProjectDriveProvisioningResult = {
@@ -195,46 +197,65 @@ async function copyTemplateContents(
   const destinationByKey = new Map(
     destinationItems.map((item) => [templateItemKey(item), item])
   )
-  let createdFolderCount = 0
-  let copiedFileCount = 0
-
+  // Different template items are independent Drive operations. Run siblings
+  // concurrently so a project with many standard folders does not keep the
+  // phase-creation server action open for several minutes. Identical keys are
+  // still serialized to preserve the previous merge-on-retry behavior.
+  const pendingByKey = new Map<string, Promise<TemplateCopyCounts>>()
   for (const templateItem of templateItems) {
     const key = templateItemKey(templateItem)
-    const existing = destinationByKey.get(key) ?? null
+    const prior = pendingByKey.get(key) ??
+      Promise.resolve({ createdFolderCount: 0, copiedFileCount: 0 })
+    const pending = prior.then(async (priorCounts) => {
+      const existing = destinationByKey.get(key) ?? null
 
-    if (templateItem.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
-      const destinationFolder =
-        existing ??
-        (await client.createFolder(userEmail, {
-          name: templateItem.name,
-          parentId: destinationFolderId,
-        }))
-      if (!existing) {
-        destinationByKey.set(key, destinationFolder)
-        createdFolderCount += 1
+      if (templateItem.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
+        const destinationFolder =
+          existing ??
+          (await client.createFolder(userEmail, {
+            name: templateItem.name,
+            parentId: destinationFolderId,
+          }))
+        if (!existing) destinationByKey.set(key, destinationFolder)
+        const nested = await copyTemplateContents(
+          client,
+          userEmail,
+          templateItem.id,
+          destinationFolder.id
+        )
+        return {
+          createdFolderCount:
+            priorCounts.createdFolderCount +
+            (existing ? 0 : 1) +
+            nested.createdFolderCount,
+          copiedFileCount:
+            priorCounts.copiedFileCount + nested.copiedFileCount,
+        }
       }
-      const nested = await copyTemplateContents(
-        client,
-        userEmail,
-        templateItem.id,
-        destinationFolder.id
-      )
-      createdFolderCount += nested.createdFolderCount
-      copiedFileCount += nested.copiedFileCount
-      continue
-    }
 
-    if (!existing) {
+      if (existing) return priorCounts
       const copied = await client.copyFile(userEmail, templateItem.id, {
         name: templateItem.name,
         parentId: destinationFolderId,
       })
       destinationByKey.set(key, copied)
-      copiedFileCount += 1
-    }
+      return {
+        createdFolderCount: priorCounts.createdFolderCount,
+        copiedFileCount: priorCounts.copiedFileCount + 1,
+      }
+    })
+    pendingByKey.set(key, pending)
   }
 
-  return { createdFolderCount, copiedFileCount }
+  const counts = await Promise.all(pendingByKey.values())
+  return counts.reduce(
+    (total, count) => ({
+      createdFolderCount:
+        total.createdFolderCount + count.createdFolderCount,
+      copiedFileCount: total.copiedFileCount + count.copiedFileCount,
+    }),
+    { createdFolderCount: 0, copiedFileCount: 0 },
+  )
 }
 
 export async function provisionProjectDriveFolder(
@@ -243,23 +264,31 @@ export async function provisionProjectDriveFolder(
   input: ProjectDriveProvisioningInput
 ): Promise<ProjectDriveProvisioningResult> {
   const source = sourceForDepartment(input.department)
+  const parentFolderId = input.parentFolderId ?? source.folderId
   const folderName = cleanFolderPart(input.folderName)
   if (!folderName) throw new Error("Project folder name is required.")
 
+  if (input.parentFolderId) {
+    const parent = await client.getFile(userEmail, input.parentFolderId)
+    if (parent.mimeType !== GOOGLE_FOLDER_MIME_TYPE) {
+      throw new Error("The configured project family Drive parent is not a folder.")
+    }
+  }
+
   const existingRoot = input.existingFolderId
     ? await client.getFile(userEmail, input.existingFolderId)
-    : await findFolder(client, userEmail, source.folderId, folderName)
+    : await findFolder(client, userEmail, parentFolderId, folderName)
   const root =
     existingRoot ??
     (await client.createFolder(userEmail, {
       name: folderName,
-      parentId: source.folderId,
+      parentId: parentFolderId,
     }))
   const verifiedRoot = await client.getFile(userEmail, root.id)
   verifyFolder(
     verifiedRoot,
     input.existingFolderId ? verifiedRoot.name : folderName,
-    source.folderId
+    parentFolderId
   )
 
   const templateFolderId = projectDriveTemplateFolderId(input.department)
@@ -285,7 +314,7 @@ export async function provisionProjectDriveFolder(
     folderId: verifiedRoot.id,
     folderName: verifiedRoot.name,
     folderUrl: `https://drive.google.com/drive/folders/${verifiedRoot.id}`,
-    parentFolderId: source.folderId,
+    parentFolderId,
     childFolderNames,
     createdRoot: existingRoot === null,
     createdChildCount: copied.createdFolderCount,

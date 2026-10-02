@@ -75,6 +75,7 @@ import {
   IconTrash,
   IconSend,
   IconTemplate,
+  IconEyeOff,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
@@ -127,6 +128,7 @@ import {
   saveScheduleView,
 } from "@/app/actions/schedule-saved-views"
 import {
+  moveScheduleToDraft,
   publishSchedule,
   type SchedulePublicationStatus,
 } from "@/app/actions/schedule-publications"
@@ -167,6 +169,7 @@ interface ScheduleViewProps {
   readonly currentUserAssigneeTerms?: readonly string[]
   readonly publicationStatus?: SchedulePublicationStatus | null
   readonly initialTaskFormOpen?: boolean
+  readonly canManagePublication?: boolean
 }
 
 export function ScheduleView({
@@ -187,6 +190,7 @@ export function ScheduleView({
   currentUserAssigneeTerms = [],
   publicationStatus: initialPublicationStatus = null,
   initialTaskFormOpen = false,
+  canManagePublication = false,
 }: ScheduleViewProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -262,18 +266,22 @@ export function ScheduleView({
   const [publicationStatus, setPublicationStatus] =
     useState<SchedulePublicationStatus | null>(initialPublicationStatus)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [moveToDraftOpen, setMoveToDraftOpen] = useState(false)
   const [publishReason, setPublishReason] = useState("")
   const [isPublishing, startPublishTransition] = useTransition()
+  const [isMovingToDraft, startMoveToDraftTransition] = useTransition()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const preferenceScopeKey = projectId ?? "unified"
 
+  useEffect(() => {
+    setPublicationStatus(initialPublicationStatus)
+  }, [initialPublicationStatus])
+
   function handlePublish(): void {
     if (!projectId) return
-    const wasPreviouslyPublished =
-      publicationStatus?.hasPublishedSchedule === true
-    const changeReason = wasPreviouslyPublished ? publishReason : ""
+    const hadPublication = publicationStatus?.publishedAt != null
     startPublishTransition(async () => {
-      const result = await publishSchedule(projectId, changeReason)
+      const result = await publishSchedule(projectId, hadPublication ? publishReason : "")
       if (!result.success) {
         toast.error(result.error)
         return
@@ -283,11 +291,28 @@ export function ScheduleView({
         hasUnpublishedChanges: false,
         publishedAt: result.publishedAt,
         publishedBy: null,
-        changeReason: wasPreviouslyPublished ? changeReason.trim() : null,
+        changeReason: hadPublication ? publishReason.trim() : "Initial publication.",
       })
       setPublishReason("")
       setPublishOpen(false)
       toast.success("Schedule published to owner and subcontractor views.")
+      router.refresh()
+    })
+  }
+
+  function handleMoveToDraft(): void {
+    if (!projectId) return
+    startMoveToDraftTransition(async () => {
+      const result = await moveScheduleToDraft(projectId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setPublicationStatus((current) =>
+        current ? { ...current, hasPublishedSchedule: false } : current
+      )
+      setMoveToDraftOpen(false)
+      toast.success("Schedule moved to draft and hidden from owners and subcontractors.")
       router.refresh()
     })
   }
@@ -854,26 +879,41 @@ export function ScheduleView({
               ? `Published ${new Date(
                   publicationStatus.publishedAt ?? ""
                 ).toLocaleString()}`
-              : "Not published"}
+              : publicationStatus.publishedAt
+                ? "Draft · Hidden from owners and subcontractors"
+                : "Draft · Never published"}
           </span>
-          {publicationStatus.hasUnpublishedChanges && (
-            <span className="shrink-0 text-amber-700 dark:text-amber-300">
-              Unpublished changes
+          {!publicationStatus.hasPublishedSchedule && publicationStatus.publishedAt && (
+            <span className="shrink-0 text-muted-foreground">
+              Last published {new Date(publicationStatus.publishedAt).toLocaleString()}
             </span>
           )}
-          <Button
-            className="ml-auto h-7 shrink-0 px-2 text-xs"
-            size="sm"
-            variant={
-              publicationStatus.hasUnpublishedChanges
-                ? "default"
-                : "outline"
-            }
-            onClick={() => setPublishOpen(true)}
-          >
-            <IconSend className="mr-1 size-3.5" />
-            Publish
-          </Button>
+          {publicationStatus.hasPublishedSchedule && publicationStatus.hasUnpublishedChanges && (
+            <span className="shrink-0 text-amber-700 dark:text-amber-300">
+              Draft changes are hidden; viewers still see the published version
+            </span>
+          )}
+          {canManagePublication && publicationStatus.hasPublishedSchedule && (
+            <Button
+              className="ml-auto h-7 shrink-0 px-2 text-xs"
+              size="sm"
+              variant="outline"
+              onClick={() => setMoveToDraftOpen(true)}
+            >
+              <IconEyeOff className="mr-1 size-3.5" />
+              Move to draft
+            </Button>
+          )}
+          {canManagePublication && (!publicationStatus.hasPublishedSchedule || publicationStatus.hasUnpublishedChanges) && (
+            <Button
+              className={publicationStatus.hasPublishedSchedule ? "h-7 shrink-0 px-2 text-xs" : "ml-auto h-7 shrink-0 px-2 text-xs"}
+              size="sm"
+              onClick={() => setPublishOpen(true)}
+            >
+              <IconSend className="mr-1 size-3.5" />
+              {publicationStatus.hasPublishedSchedule ? "Publish changes" : "Publish schedule"}
+            </Button>
+          )}
         </div>
       )}
 
@@ -1362,14 +1402,15 @@ export function ScheduleView({
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Publish schedule</DialogTitle>
+            <DialogTitle>
+              {publicationStatus?.hasPublishedSchedule ? "Publish changes" : "Publish schedule"}
+            </DialogTitle>
             <DialogDescription>
-              Owner and subcontractor workspaces will receive this schedule
-              snapshot. Internal edits made afterward remain unpublished until
-              the next release.
+              Owners and subcontractors will see the current schedule and its
+              selected visible items. Later edits stay internal until published again.
             </DialogDescription>
           </DialogHeader>
-          {publicationStatus?.hasPublishedSchedule && (
+          {publicationStatus?.publishedAt && (
             <div className="space-y-2">
               <Label htmlFor="schedule-publish-reason">Change reason</Label>
               <Textarea
@@ -1397,7 +1438,7 @@ export function ScheduleView({
               onClick={handlePublish}
               disabled={
                 isPublishing ||
-                (publicationStatus?.hasPublishedSchedule === true &&
+                (Boolean(publicationStatus?.publishedAt) &&
                   publishReason.trim().length < 3)
               }
             >
@@ -1405,6 +1446,28 @@ export function ScheduleView({
                 <IconLoader2 className="mr-1.5 size-4 animate-spin" />
               )}
               Publish
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={moveToDraftOpen} onOpenChange={setMoveToDraftOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Move schedule to draft?</DialogTitle>
+            <DialogDescription>
+              The schedule will disappear from owner and subcontractor workspaces
+              immediately. Your internal schedule and publication history stay intact.
+              You can publish the current schedule again when it is ready.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setMoveToDraftOpen(false)} disabled={isMovingToDraft}>
+              Cancel
+            </Button>
+            <Button onClick={handleMoveToDraft} disabled={isMovingToDraft}>
+              {isMovingToDraft && <IconLoader2 className="mr-1.5 size-4 animate-spin" />}
+              Move to draft
             </Button>
           </div>
         </DialogContent>

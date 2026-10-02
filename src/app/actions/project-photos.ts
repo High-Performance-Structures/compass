@@ -11,6 +11,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
   readonly id: string
@@ -154,6 +155,7 @@ function phaseOptions(
 export async function getProjectPhotoLibrary(
   projectId: string
 ): Promise<ProjectPhotoLibrary> {
+  const viewer = await requireAuth()
   const db = await verifyProjectAccess(projectId, "read")
 
   const [project] = await db
@@ -220,7 +222,8 @@ export async function getProjectPhotoLibrary(
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
-  const tasks = await db
+  const tasks = isInternalStaffRole(viewer.role) || viewer.role === "developer"
+    ? await db
     .select({
       phase: scheduleTasks.phase,
       sortOrder: scheduleTasks.sortOrder,
@@ -228,6 +231,7 @@ export async function getProjectPhotoLibrary(
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.sortOrder), asc(scheduleTasks.startDate))
+    : []
   const phaseNames = [...new Set(tasks.map((task) => task.phase))]
 
   const photos = rows.filter(isImage).map((row) => {

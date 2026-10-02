@@ -97,6 +97,7 @@ describe("legacy subcontractor schedule proposals", () => {
         confirmationRequired: true,
       },
       [],
+      { schedulePublished: true },
       { role: "subcontractor" },
       [{ snapshotData: publishedSnapshot() }],
       [],
@@ -150,12 +151,14 @@ function setupLegacyResponse(input: {
   readonly subVendorVisible?: boolean
   readonly assignedUserId?: string
   readonly startDate?: string
+  readonly schedulePublished?: boolean
 }): void {
   const snapshot = [{ snapshotData: publishedSnapshot(input.ownerVisible ?? true, input.subVendorVisible ?? false) }]
   const membership = { role: input.role }
   const values: readonly QueryValue[] = [
     { id: "task-1", projectId: "project-1", title: "Owner windows", startDate: input.startDate ?? "2026-09-14", workdays: 3, assignedUserId: input.assignedUserId ?? "user-1", confirmationRequired: true },
     [],
+    { schedulePublished: input.schedulePublished ?? true },
     ...(input.action === "response" ? [snapshot, membership] : [membership, snapshot]),
     [{ id: "staff-1", email: "staff@example.test", googleEmail: null, role: "project_manager" }],
   ]
@@ -201,6 +204,14 @@ describe("owner and vendor commitment responses", () => {
       ? await respondToScheduleTaskConfirmation("task-1", "confirmed")
       : await proposeScheduleTaskChange("task-1", { startDate: "2026-09-21", workdays: 3, note: "" })
     expect(result.success).toBe(false)
+    expect(mocks.updateSet).not.toHaveBeenCalled()
+  })
+  it.each(["response", "proposal"] as const)("rejects draft schedules for %s", async (action) => {
+    setupLegacyResponse({ role: "owner", action, schedulePublished: false })
+    const result = action === "response"
+      ? await respondToScheduleTaskConfirmation("task-1", "confirmed")
+      : await proposeScheduleTaskChange("task-1", { startDate: "2026-09-21", workdays: 3, note: "" })
+    expect(result).toEqual({ success: false, error: "This schedule is currently a draft." })
     expect(mocks.updateSet).not.toHaveBeenCalled()
   })
   it.each([

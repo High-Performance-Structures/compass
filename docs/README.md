@@ -46,7 +46,7 @@ The construction-specific modules that make up HPS Compass.
 - [desktop](modules/desktop.md) -- Electron desktop app, hosted Compass runtime, native shell bridge, packaged app distribution
 - [claude code](modules/claude-code.md) -- local bridge daemon, own Anthropic API key, filesystem + terminal tools, WebSocket protocol
 - [social publishing](modules/social-publishing.md) -- department-routed Facebook, Instagram, and X project posts with AI drafts and privacy review
-- [greeting cards](modules/cherish-cards.md) -- team preparation, Executive Admin approval and release, physical fulfillment safety, and digital e-card direction
+- [greeting cards](modules/cherish-cards.md) -- team preparation, individually granted approval and release, physical fulfillment safety, and digital e-card direction
 
 
 development
@@ -56,6 +56,7 @@ How to work on Compass.
 
 - [getting started](development/getting-started.md) -- local setup, environment variables, dev server, database, deployment
 - [conventions](development/conventions.md) -- TypeScript discipline, component patterns, file organization
+- [UI standards](development/ui-standards.md) -- canonical visual, responsive, list, accessibility, and release-review rules
 - [regression testing](development/regression-testing.md) -- pull-request, daily, native, and release regression strategy
 - [sidebar](development/sidebar.md) -- sidebar component architecture, desktop vs mobile, collapsed state, animations
 - [theming](development/theming.md) -- oklch color system, preset themes, custom theme generation, how applyTheme works

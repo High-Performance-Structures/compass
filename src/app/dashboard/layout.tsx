@@ -21,6 +21,7 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { ProjectListProvider } from "@/components/project-list-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
+import { isLocalDevelopment } from "@/lib/auth-config"
 import { cookies } from "next/headers"
 import { BiometricGuard } from "@/components/native/biometric-guard"
 import { OfflineBanner } from "@/components/native/offline-banner"
@@ -34,13 +35,13 @@ import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
 import {
   canUseAskCompass,
-  canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
   canPrepareGreetingCards,
   canManageUserAccess,
   canManageProjectRegistry,
 } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 import { getQuickAddProjects } from "@/lib/quick-add-server"
 import { QuickAddProvider } from "@/components/quick-add-menu"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -74,6 +75,7 @@ export default async function DashboardLayout({
   const canUseCompassAgent = canUseAskCompass(authUser)
   const canUseCompassFieldDesk = canUseFieldDesk(authUser)
   const canUseCompassOfficeTalk = canUseOfficeTalk(authUser)
+  const isDevelopment = isLocalDevelopment()
   const helpAccess = await getEffectiveHelpGuideAccess(authUser)
   const canViewHelp = helpAccess.canViewHelp
   const allowedHelpGuideIds = new Set(helpAccess.allowedGuideIds)
@@ -85,7 +87,10 @@ export default async function DashboardLayout({
     : false
   const canUseDirectMessages = canViewActivity
   const canManageFeedback = canManageUserAccess(authUser)
-  const canAccessExecutiveAdmin = canUseExecutiveAdmin(authUser)
+  const [canReviewCherish, canViewProjectArchive] = await Promise.all([
+    canFeature(authUser, "cherish-review", "read"),
+    canFeature(authUser, "project-archive-access", "read"),
+  ])
   const canAccessGreetingCards = canPrepareGreetingCards(authUser)
   const canUseDeveloperMode = canManageProjectRegistry(authUser)
   const quickAddProjects = await getQuickAddProjects(authUser, projectList)
@@ -143,8 +148,12 @@ export default async function DashboardLayout({
           canUseFieldDesk={canUseCompassFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
-          canUseExecutiveAdmin={canAccessExecutiveAdmin}
+          canUseExecutiveAdmin={canReviewCherish}
+          canViewProjectArchive={canViewProjectArchive}
           canPrepareGreetingCards={canAccessGreetingCards}
+          canUseOfficeTalk={canUseCompassOfficeTalk}
+          canUseDirectMessages={canUseDirectMessages}
+          canViewHelp={canViewHelp}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />
@@ -154,8 +163,7 @@ export default async function DashboardLayout({
             user={user}
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
-            canUseDirectMessages={canUseDirectMessages}
-            canViewHelp={canViewHelp}
+            showQuickAddInDevelopment={isDevelopment}
           />
           <NavigationProgress />
           <div className="flex min-h-0 flex-1 overflow-hidden">

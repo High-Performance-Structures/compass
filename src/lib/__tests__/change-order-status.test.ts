@@ -4,6 +4,7 @@ import {
   allowedChangeOrderTransitions,
   canEditChangeOrderContent,
   canTransitionChangeOrder,
+  isExecutedChangeOrderStatus,
   isExternallyPublishedChangeOrderStatus,
 } from "@/lib/change-orders/status"
 
@@ -76,5 +77,13 @@ describe("change order workflow", () => {
       isExternallyPublishedChangeOrderStatus("approved_for_owner")
     ).toBe(true)
     expect(isExternallyPublishedChangeOrderStatus("closed")).toBe(true)
+  })
+
+  it("identifies states backed by a completed change-order document", () => {
+    expect(isExecutedChangeOrderStatus("signature_pending")).toBe(false)
+    expect(isExecutedChangeOrderStatus("executed")).toBe(true)
+    expect(isExecutedChangeOrderStatus("sage_pending")).toBe(true)
+    expect(isExecutedChangeOrderStatus("synced")).toBe(true)
+    expect(isExecutedChangeOrderStatus("closed")).toBe(true)
   })
 })

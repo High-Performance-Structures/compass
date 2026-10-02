@@ -13,6 +13,8 @@ function message(id: string, sequence: number, body: string): CorrespondenceMess
     sentAt: `2026-09-05T05:3${sequence}:00.000Z`,
     body,
     recipients: [],
+    emailBcc: [],
+    emailDeliveryStatus: null,
     attachments: [],
     editedAt: null,
     retractedAt: null,

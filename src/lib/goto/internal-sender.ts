@@ -1,10 +1,14 @@
 import { normalizedSmsPhoneKey } from "@/lib/goto/numbers"
+import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type InternalSmsSenderCandidate = Readonly<{
   readonly role: string
-  readonly profilePhone: string | null
+  readonly smsEnabled: boolean | null
   readonly smsPhoneNumber: string | null
+  readonly smsConsentAccepted: boolean | null
+  readonly smsConsentDisclosureVersion: string | null
+  readonly smsConsentPhoneNumber: string | null
 }>
 
 export function isKnownInternalSmsSender(
@@ -16,10 +20,17 @@ export function isKnownInternalSmsSender(
 
   return candidates.some((candidate) => {
     if (!isInternalStaffRole(candidate.role)) return false
-    return [candidate.profilePhone, candidate.smsPhoneNumber].some(
-      (phoneNumber) =>
-        phoneNumber !== null &&
-        normalizedSmsPhoneKey(phoneNumber) === senderKey
-    )
+    if (candidate.smsEnabled !== true) return false
+    if (
+      !hasCurrentSmsConsent({
+        accepted: candidate.smsConsentAccepted === true,
+        phoneNumber: candidate.smsPhoneNumber,
+        consentPhoneNumber: candidate.smsConsentPhoneNumber,
+        disclosureVersion: candidate.smsConsentDisclosureVersion,
+      })
+    ) {
+      return false
+    }
+    return normalizedSmsPhoneKey(candidate.smsPhoneNumber ?? "") === senderKey
   })
 }

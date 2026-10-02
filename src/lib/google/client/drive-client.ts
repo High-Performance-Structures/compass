@@ -19,6 +19,7 @@ import {
   DRIVE_FILE_FIELDS,
   DRIVE_LIST_FIELDS,
   type DriveFile,
+  type DrivePermission,
   type DriveFileList,
   type DriveAbout,
   type DriveSharedDriveList,
@@ -222,6 +223,51 @@ export class DriveClient {
     return this.request<DriveFile>(
       userEmail,
       `/files/${fileId}?${params.toString()}`
+    )
+  }
+
+  async ensureReaderPermission(
+    userEmail: string,
+    fileId: string,
+    recipientEmail: string
+  ): Promise<void> {
+    const normalizedRecipient = recipientEmail.trim().toLowerCase()
+    let pageToken: string | null = null
+    do {
+      const listParams = new URLSearchParams({
+        supportsAllDrives: "true",
+        fields: "nextPageToken,permissions(id,type,role,emailAddress)",
+        pageSize: "100",
+      })
+      if (pageToken) listParams.set("pageToken", pageToken)
+      const page = await this.request<{
+        readonly permissions?: readonly DrivePermission[]
+        readonly nextPageToken?: string
+      }>(userEmail, `/files/${encodeURIComponent(fileId)}/permissions?${listParams.toString()}`)
+      if (page.permissions?.some((permission) =>
+        permission.type === "user" &&
+        permission.emailAddress?.trim().toLowerCase() === normalizedRecipient
+      )) return
+      pageToken = page.nextPageToken ?? null
+    } while (pageToken)
+
+    const params = new URLSearchParams({
+      supportsAllDrives: "true",
+      sendNotificationEmail: "true",
+      fields: "id,type,role,emailAddress",
+    })
+    await this.request(
+      userEmail,
+      `/files/${encodeURIComponent(fileId)}/permissions?${params.toString()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "user",
+          role: "reader",
+          emailAddress: normalizedRecipient,
+        }),
+      }
     )
   }
 

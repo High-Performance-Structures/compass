@@ -12,6 +12,7 @@ import {
   useReactTable,
   type ColumnDef,
   type ColumnFiltersState,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table"
 
@@ -20,6 +21,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,7 +56,12 @@ interface VendorsTableProps {
   categories: readonly string[]
   onEdit?: (vendor: VendorDirectoryCompany) => void
   onDelete?: (id: string) => void
+  onView?: (vendor: VendorDirectoryCompany) => void
+  selectedIds?: readonly string[]
+  onSelectionChange?: (ids: readonly string[]) => void
 }
+
+const EMPTY_SELECTION: readonly string[] = []
 
 function vendorSourceLabel(vendor: VendorDirectoryCompany): string {
   if (vendor.sourceSystem?.includes("sage")) return "Sage"
@@ -70,6 +80,9 @@ export function VendorsTable({
   categories,
   onEdit,
   onDelete,
+  onView,
+  selectedIds = EMPTY_SELECTION,
+  onSelectionChange,
 }: VendorsTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -78,8 +91,17 @@ export function VendorsTable({
   ])
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
-  const [rowSelection, setRowSelection] = React.useState({})
   const [columnVisibility] = React.useState({ category: false })
+  const rowSelection = React.useMemo<RowSelectionState>(
+    () => Object.fromEntries(selectedIds.map((id) => [id, true])),
+    [selectedIds]
+  )
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
+  // TanStack Table must receive stable data/column references across local state updates.
+  const tableData = React.useMemo(() => [...vendors], [vendors])
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -90,6 +112,7 @@ export function VendorsTable({
   }, [sorting])
 
   const handleSort = (value: string) => {
+    setPagination((current) => ({ ...current, pageIndex: 0 }))
     switch (value) {
       case "name-asc":
         setSorting([{ id: "name", desc: false }])
@@ -106,23 +129,19 @@ export function VendorsTable({
     }
   }
 
-  const columns: ColumnDef<VendorDirectoryCompany>[] = [
+  const columns = React.useMemo<ColumnDef<VendorDirectoryCompany>[]>(() => [
     {
       id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="select row"
-        />
-      ),
+      header: ({ table }) => <Checkbox
+        checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? "indeterminate" : false}
+        onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
+        aria-label="Select all vendors on this page"
+      />,
+      cell: ({ row }) => <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(checked) => row.toggleSelected(checked === true)}
+        aria-label={`Select ${row.original.name}`}
+      />,
       enableSorting: false,
       enableHiding: false,
     },
@@ -190,10 +209,11 @@ export function VendorsTable({
       },
     },
     {
-      accessorKey: "email",
-      header: "Company email",
+      id: "email",
+      accessorFn: (vendor) => vendor.primaryEmail || vendor.email,
+      header: "Contact email",
       cell: ({ row }) => {
-        const email = row.original.email
+        const email = row.original.primaryEmail || row.original.email
         if (!email) {
           return (
             <span className="text-muted-foreground/40">—</span>
@@ -254,6 +274,7 @@ export function VendorsTable({
     {
       id: "actions",
       cell: ({ row }) => {
+        if (!onEdit && !onDelete && !onView) return null
         const vendor = row.original
         return (
           <DropdownMenu>
@@ -264,38 +285,50 @@ export function VendorsTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(vendor)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              {onView && <DropdownMenuItem onClick={() => onView(vendor)}>View people</DropdownMenuItem>}
+              {onEdit && <DropdownMenuItem onClick={() => onEdit(vendor)}>Edit</DropdownMenuItem>}
+              {onEdit && onDelete && <DropdownMenuSeparator />}
+              {onDelete && <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => onDelete?.(vendor.id)}
+                onClick={() => onDelete(vendor.id)}
               >
                 Delete
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         )
       },
     },
-  ]
-  const visibleColumns = developerModeEnabled
-    ? columns
-    : columns.filter((column) => column.id !== "source")
+  ], [onEdit, onDelete, onView])
+  const visibleColumns = React.useMemo(() => columns.filter((column) =>
+    (developerModeEnabled || column.id !== "source") &&
+    (onSelectionChange !== undefined || column.id !== "select") &&
+    (onEdit !== undefined || onDelete !== undefined || onView !== undefined || column.id !== "actions")
+  ), [columns, developerModeEnabled, onEdit, onDelete, onView, onSelectionChange])
 
   const table = useReactTable({
-    data: [...vendors],
+    data: tableData,
     columns: visibleColumns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    getRowId: (vendor) => vendor.id,
+    onSortingChange: (updater) => {
+      setSorting(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
-    initialState: { pagination: { pageSize: 100 } },
-    state: { sorting, columnFilters, rowSelection, columnVisibility },
+    onRowSelectionChange: onSelectionChange ? (updater) => {
+      const next = typeof updater === "function" ? updater(rowSelection) : updater
+      onSelectionChange(Object.keys(next).filter((id) => next[id]))
+    } : undefined,
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { sorting, columnFilters, columnVisibility, rowSelection, pagination },
   })
 
   const emptyState = (
@@ -414,7 +447,7 @@ export function VendorsTable({
                       </p>
                     )}
                   </div>
-                  <DropdownMenu>
+                  {(onEdit || onDelete || onView) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -425,18 +458,17 @@ export function VendorsTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(v)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      {onView && <DropdownMenuItem onClick={() => onView(v)}>View people</DropdownMenuItem>}
+                      {onEdit && <DropdownMenuItem onClick={() => onEdit(v)}>Edit</DropdownMenuItem>}
+                      {onEdit && onDelete && <DropdownMenuSeparator />}
+                      {onDelete && <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => onDelete?.(v.id)}
+                        onClick={() => onDelete(v.id)}
                       >
                         Delete
-                      </DropdownMenuItem>
+                      </DropdownMenuItem>}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               )
             })}
@@ -444,6 +476,11 @@ export function VendorsTable({
         ) : (
           emptyState
         )}
+        <DataTablePagination
+          table={table}
+          itemLabel="vendors"
+          id="vendors-mobile-items-per-page"
+        />
       </div>
     )
   }
@@ -511,36 +548,11 @@ export function VendorsTable({
           </Table>
         </div>
       </div>
-      {(table.getPageCount() > 1 ||
-        table.getFilteredSelectedRowModel().rows.length > 0) && (
-        <div className="flex items-center justify-between shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {table.getFilteredSelectedRowModel().rows.length > 0
-              ? `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} selected`
-              : `${table.getFilteredRowModel().rows.length} contacts`}
-          </div>
-          {table.getPageCount() > 1 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                Next
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      <DataTablePagination
+        table={table}
+        itemLabel="vendors"
+        id="vendors-items-per-page"
+      />
     </div>
   )
 }

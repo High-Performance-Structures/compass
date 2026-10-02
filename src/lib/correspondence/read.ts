@@ -1,7 +1,10 @@
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from "drizzle-orm"
 import { correspondence, correspondenceAttachments, correspondenceDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceState } from "@/db/schema-correspondence"
 import { correspondenceSourceMessages, correspondenceSourceRecipients } from "@/db/schema-correspondence-source"
+import { projectEmailCampaigns, projectEmailRecipients } from "@/db/schema-project-email"
 import { authorizedConversation, authorizedProjectConversation, currentParticipants, type CorrespondenceContext } from "./access"
+import { draftAttachments } from "./saved-drafts"
+import { projectEmailPrivacy, visibleProjectEmailPeople } from "@/lib/email/project-email-privacy"
 import type { CorrespondenceDetail, CorrespondenceMessage, CorrespondenceSummary } from "./types"
 
 type SourceHeader = {
@@ -68,9 +71,11 @@ export async function listCorrespondence(ctx: CorrespondenceContext, conversatio
   const rows = await ctx.db.select({ conversation: correspondence }).from(correspondence)
     .where(and(projectHistory ? undefined : sql`EXISTS (SELECT 1 FROM correspondence_participants p WHERE p.conversation_id=${correspondence.id} AND p.user_id=${ctx.user.id} AND p.revoked_at IS NULL)`, eq(correspondence.projectId, ctx.projectId), eq(correspondence.organizationId, ctx.organizationId), conversationId ? eq(correspondence.id, conversationId) : undefined))
   const summaries = await Promise.all(rows.map(async ({ conversation }): Promise<CorrespondenceSummary | null> => {
-    const people = projectHistory
+    const allPeople = projectHistory
       ? (await ctx.db.select().from(correspondenceParticipants).where(eq(correspondenceParticipants.conversationId, conversation.id))).map((p) => ({ userId: p.userId, name: p.name, email: p.email, role: p.role, delivery: "compass" as const }))
       : await currentParticipants(ctx, conversation.id)
+    const privacy = await projectEmailPrivacy(ctx.db, ctx.organizationId, ctx.projectId, conversation.id)
+    const people = visibleProjectEmailPeople(allPeople, privacy, ctx.user.id)
     if (!projectHistory && !people.some((p) => p.userId === ctx.user.id)) return null
     const messages = await ctx.db.select({ message: correspondenceMessages }).from(correspondenceMessages)
       .where(and(eq(correspondenceMessages.conversationId, conversation.id), projectHistory ? undefined : sql`EXISTS (SELECT 1 FROM correspondence_recipients r WHERE r.message_id=${correspondenceMessages.id} AND r.user_id=${ctx.user.id})`)).orderBy(desc(correspondenceMessages.sentAt), desc(correspondenceMessages.sequence)).limit(1)
@@ -83,7 +88,13 @@ export async function listCorrespondence(ctx: CorrespondenceContext, conversatio
       .where(and(eq(correspondenceMessages.conversationId, conversation.id), or(isNull(correspondenceMessages.authorUserId), ne(correspondenceMessages.authorUserId, ctx.user.id)),
         isNull(correspondenceMessages.retractedAt), eq(correspondenceRecipients.baseline, false), isNull(correspondenceRecipients.openedAt))).limit(1).get()
     const state = await ctx.db.select().from(correspondenceState).where(and(eq(correspondenceState.conversationId, conversation.id), eq(correspondenceState.userId, ctx.user.id))).get()
+    const sent = await ctx.db.select({ sentAt: correspondenceMessages.sentAt, body: correspondenceMessages.body, id: correspondenceMessages.id }).from(correspondenceMessages)
+      .where(and(eq(correspondenceMessages.conversationId, conversation.id), eq(correspondenceMessages.authorUserId, ctx.user.id), isNull(correspondenceMessages.retractedAt),
+        sql`EXISTS(SELECT 1 FROM correspondence_recipients WHERE message_id=${correspondenceMessages.id} AND user_id=${ctx.user.id})`,
+        or(eq(correspondenceMessages.source, "compass"), sql`EXISTS(SELECT 1 FROM project_email_campaigns WHERE message_id=${correspondenceMessages.id} AND sender_user_id=${ctx.user.id} AND status IN ('sent','unknown'))`)))
+      .orderBy(desc(correspondenceMessages.sentAt)).limit(1).get()
     return {
+      lastSentAt: sent?.sentAt ?? null, lastSentExcerpt: sent?.body.slice(0, 180) ?? null, lastSentMessageId: sent?.id ?? null,
       id: conversation.id, projectId: ctx.projectId, subject: conversation.subject,
       excerpt: last.message.retractedAt ? "Message retracted" : last.message.body.slice(0, 180), lastActivityAt: last.message.sentAt,
       lastActivityDisplay: lastActivitySourceLocal ? lastSource?.sourceSentDisplay ?? null : null,
@@ -97,6 +108,8 @@ export async function listCorrespondence(ctx: CorrespondenceContext, conversatio
 }
 
 export async function readCorrespondence(ctx: CorrespondenceContext, conversationId: string, beforeSequence?: number, projectHistory = false): Promise<CorrespondenceDetail> {
+  const privacy = await projectEmailPrivacy(ctx.db, ctx.organizationId, ctx.projectId, conversationId)
+  const visibleRecipient = (userId: string): boolean => !privacy || privacy.senderUserId === ctx.user.id || userId === ctx.user.id || !privacy.blindUserIds.has(userId)
   const conversation = await (projectHistory ? authorizedProjectConversation : authorizedConversation)(ctx, conversationId)
   const summary = (await listCorrespondence(ctx, conversationId, projectHistory)).find((row) => row.id === conversationId)
   if (!summary) throw new Error("Conversation not found.")
@@ -108,12 +121,23 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
     .orderBy(desc(correspondenceMessages.sentAt), desc(correspondenceMessages.sequence)).limit(51)
   const visible = rows.slice(0, 50).reverse()
   const ids = visible.map(({ message }) => message.id)
+  const emailCampaigns = visible.some(({ message }) => message.source === "email" && message.authorUserId !== null)
+    ? await ctx.db.select().from(projectEmailCampaigns).where(and(eq(projectEmailCampaigns.organizationId, ctx.organizationId), eq(projectEmailCampaigns.projectId, ctx.projectId), inArray(projectEmailCampaigns.messageId, ids)))
+    : []
+  const emailRecipients = emailCampaigns.length
+    ? await ctx.db.select().from(projectEmailRecipients).where(inArray(projectEmailRecipients.campaignId, emailCampaigns.map((campaign) => campaign.id)))
+    : []
+  const campaignByMessage = new Map(emailCampaigns.map((campaign) => [campaign.messageId, campaign]))
   const recipients = ids.length ? await ctx.db.select().from(correspondenceRecipients).where(inArray(correspondenceRecipients.messageId, ids)) : []
   const sourceHeadersByMessage = await sourceHeaders(ctx, conversationId, ids)
   const attachments = ids.length ? await ctx.db.select().from(correspondenceAttachments).where(and(eq(correspondenceAttachments.projectId, ctx.projectId), eq(correspondenceAttachments.organizationId, ctx.organizationId), inArray(correspondenceAttachments.messageId, ids))) : []
   const receiptStates = await ctx.db.select().from(correspondenceState).where(eq(correspondenceState.conversationId, conversationId))
   const draft = projectHistory ? null : await ctx.db.select().from(correspondenceDrafts).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id))).get()
   const messages: CorrespondenceMessage[] = visible.map(({ message }) => ({
+    emailDeliveryStatus: campaignByMessage.get(message.id)?.status ?? null,
+    emailBcc: campaignByMessage.get(message.id)?.senderUserId === ctx.user.id
+      ? emailRecipients.filter((recipient) => recipient.campaignId === campaignByMessage.get(message.id)?.id && recipient.kind === "bcc").map((recipient) => recipient.email)
+      : [],
     ...((): Pick<CorrespondenceMessage, "sourceSentDisplay" | "sourceSentAt" | "sourceAttachmentReadiness"> => {
       const source = sourceHeadersByMessage.get(message.id)
       const linkedDriveIds = new Set(attachments.filter((attachment) => attachment.messageId === message.id && attachment.retiredAt === null && attachment.driveFileId !== null).map((attachment) => attachment.driveFileId))
@@ -131,14 +155,17 @@ export async function readCorrespondence(ctx: CorrespondenceContext, conversatio
     })(),
     id: message.id, sequence: message.sequence, source: message.source, authorName: message.authorName,
     authorUserId: message.authorUserId, sentAt: message.sentAt, body: message.retractedAt ? "" : message.body,
-    recipients: sourceHeadersByMessage.get(message.id)?.recipients ?? recipients.filter((r) => r.messageId === message.id && r.kind !== "author").map((r) => ({ name: r.name, kind: r.kind === "cc" ? "cc" : "to" })),
+    recipients: campaignByMessage.has(message.id)
+      ? emailRecipients.filter((recipient) => recipient.campaignId === campaignByMessage.get(message.id)?.id && recipient.kind !== "bcc").map((recipient) => ({ name: recipient.email, kind: recipient.kind === "cc" ? "cc" as const : "to" as const }))
+      : sourceHeadersByMessage.get(message.id)?.recipients ?? recipients.filter((r) => r.messageId === message.id && r.kind !== "author" && visibleRecipient(r.userId)).map((r) => ({ name: r.name, kind: r.kind === "cc" ? "cc" : "to" })),
     attachments: message.retractedAt ? [] : attachments.filter((a) => a.messageId === message.id).map((a) => ({ id: a.id, name: a.name, size: a.size, contentType: a.contentType, available: a.retiredAt === null && a.driveFileId !== null })),
     editedAt: message.editedAt, retractedAt: message.retractedAt, delivery: message.source === "buildertrend" ? "imported" : "saved",
-    readReceipts: recipients.filter((r) => r.messageId === message.id && r.kind !== "author").map((r) => {
+    readReceipts: recipients.filter((r) => r.messageId === message.id && r.kind !== "author" && visibleRecipient(r.userId)).map((r) => {
       const canShare = message.source !== "buildertrend" && (receiptStates.find((state) => state.userId === r.userId)?.shareReadReceipts ?? true)
       return { userId: r.userId, name: r.name, status: canShare ? r.openedAt ? "opened" : "not_opened" : "unavailable", openedAt: canShare ? r.openedAt : null }
     }),
     canEdit: !projectHistory && message.source === "compass" && message.authorUserId === ctx.user.id && !message.retractedAt,
   }))
-  return { conversation: summary, participantVersion: conversation.participantVersion, messages, hasEarlier: rows.length > 50, draft: draft ? { body: draft.body, version: draft.version } : null }
+  const replyAudience = privacy?.blindUserIds.has(ctx.user.id) ? "private_staff" : privacy && ctx.workspace === "staff" ? "shared_email" : null
+  return { replyAudience, conversation: summary, participantVersion: conversation.participantVersion, messages, hasEarlier: rows.length > 50, draft: draft ? { body: draft.body, version: draft.version, attachments: await draftAttachments(ctx, draft.attachmentIds) } : null }
 }

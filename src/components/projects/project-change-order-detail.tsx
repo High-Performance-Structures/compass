@@ -6,6 +6,7 @@ import type {
   ProjectChangeOrderFormOptions,
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
+import { ProjectChangeOrderExecutedDocument } from "@/components/projects/project-change-order-executed-document"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
 import {
   DeveloperOnly,
@@ -17,6 +18,7 @@ import {
   changeOrderDisplayStatus,
   changeOrderStatusLabel,
   isChangeOrderStatus,
+  isExecutedChangeOrderStatus,
 } from "@/lib/change-orders/status"
 
 function formatDate(value: string): string {
@@ -98,6 +100,16 @@ export function ProjectChangeOrderDetail({
         internal={internal}
         formOptions={formOptions}
       />
+
+      {isExecutedChangeOrderStatus(item.status) && item.audience === "owner" && (
+        <ProjectChangeOrderExecutedDocument
+          projectId={item.projectId}
+          changeOrderId={item.id}
+          available={item.executedDocumentAvailable}
+          label={item.executedDocumentLabel}
+          canManage={item.canManageExecutedDocument}
+        />
+      )}
 
       <section className="grid gap-4 lg:grid-cols-2">
         {item.budgetTreatment === "baseline_replacement" && (
@@ -217,6 +229,10 @@ export function ProjectChangeOrderDetail({
                       ? "Estimate and budget baseline replaced"
                     : event.eventType === "buildertrend_import"
                       ? "Historical record imported"
+                    : event.eventType === "executed_document_added"
+                      ? "Executed document added"
+                    : event.eventType === "executed_document_replaced"
+                      ? "Executed document replaced"
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}

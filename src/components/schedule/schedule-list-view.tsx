@@ -25,13 +25,6 @@ import {
   IconCircleCheck,
   IconX,
 } from "@tabler/icons-react"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
@@ -50,6 +43,10 @@ import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
+import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
@@ -161,6 +158,10 @@ export function ScheduleListView({
   const [depDialogOpen, setDepDialogOpen] = useState(false)
   const [localTasks, setLocalTasks] = useState(tasks)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
   const [pendingDeleteTasks, setPendingDeleteTasks] = useState<
     readonly ScheduleTaskData[]
   >([])
@@ -397,8 +398,9 @@ export function ScheduleListView({
     getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.id,
     onRowSelectionChange: setRowSelection,
-    state: { rowSelection, columnVisibility },
-    initialState: { pagination: { pageSize: 25 } },
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { rowSelection, columnVisibility, pagination },
   })
   const selectedTasks = table
     .getSelectedRowModel()
@@ -708,53 +710,7 @@ export function ScheduleListView({
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-3 px-1">
-        <span className="text-xs text-muted-foreground">
-          {table.getState().pagination.pageIndex *
-            table.getState().pagination.pageSize +
-            1}
-          -
-          {Math.min(
-            (table.getState().pagination.pageIndex + 1) *
-              table.getState().pagination.pageSize,
-            localTasks.length
-          )}{" "}
-          of {localTasks.length} items
-        </span>
-        <div className="flex items-center gap-2">
-          <Select
-            value={String(table.getState().pagination.pageSize)}
-            onValueChange={(val) => table.setPageSize(Number(val))}
-          >
-            <SelectTrigger className="h-7 w-[70px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="25">25</SelectItem>
-              <SelectItem value="50">50</SelectItem>
-              <SelectItem value="100">100</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Prev
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <DataTablePagination table={table} itemLabel="schedule items" id="schedule-items-per-page" />
 
       {(editingTask || projectId) && (
         <ScheduleItemFormDialog

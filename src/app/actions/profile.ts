@@ -1,17 +1,10 @@
 "use server"
 
-import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
+import { getWorkOS, signOut, withAuth } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import {
-  customers,
-  projectAccessInvitations,
-  projectContacts,
-  users,
-  vendorContacts,
-  vendors,
-} from "@/db/schema"
-import { and, eq, inArray } from "drizzle-orm"
+import { users } from "@/db/schema"
+import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import {
@@ -85,15 +78,17 @@ type ProfileUpdateResult = {
   readonly verificationEmailSent: boolean
 }
 
-function nullableProfileValue(value: string): string | null {
-  const normalized = value.trim()
-  return normalized.length > 0 ? normalized : null
+async function authenticatedWorkOSUserId(): Promise<string> {
+  const session = await withAuth()
+  if (!session?.user?.id) {
+    throw new Error("Your authentication session has expired. Sign in again.")
+  }
+  return session.user.id
 }
 
 /**
- * Update the signed-in user's identity in WorkOS and every linked Compass
- * contact snapshot. Once an account is active, this is the identity source of
- * truth for customer and vendor directory records linked through invitations.
+ * Update account identity only. Business contact details belong to the shared
+ * directories and must go through the reviewed Sage contact-change workflow.
  */
 export async function updateProfile(
   input: UpdateProfileInput
@@ -108,10 +103,11 @@ export async function updateProfile(
       }
     }
 
-    const { firstName, lastName, email, phone, address } = parsed.data
+    const { firstName, lastName, email } = parsed.data
 
     // Get current authenticated user
     const currentUser = await requireAuth()
+    const workosUserId = await authenticatedWorkOSUserId()
 
     const normalizedCurrentEmail = currentUser.email.trim().toLowerCase()
     const emailChanged = email !== normalizedCurrentEmail
@@ -120,7 +116,7 @@ export async function updateProfile(
     // email managed by SSO or directory sync before any local values change.
     const workos = getWorkOS()
     await workos.userManagement.updateUser({
-      userId: currentUser.id,
+      userId: workosUserId,
       firstName,
       lastName,
       ...(emailChanged ? { email } : {}),
@@ -132,165 +128,16 @@ export async function updateProfile(
       const db = getDb(env.DB)
       const now = new Date().toISOString()
       const displayName = `${firstName} ${lastName}`.trim()
-      const identity = {
-        email,
-        phone: nullableProfileValue(phone),
-        address: nullableProfileValue(address),
-      }
-
-      const acceptedContactRows = await db
-        .select({
-          id: projectContacts.id,
-          sourceEntityType: projectContacts.sourceEntityType,
-          sourceEntityId: projectContacts.sourceEntityId,
-          vendorContactId: projectContacts.vendorContactId,
-        })
-        .from(projectAccessInvitations)
-        .innerJoin(
-          projectContacts,
-          eq(projectContacts.id, projectAccessInvitations.projectContactId)
-        )
-        .where(
-          and(
-            eq(projectAccessInvitations.acceptedBy, currentUser.id),
-            eq(projectAccessInvitations.status, "accepted")
-          )
-        )
-
-      const acceptedContactIds = Array.from(
-        new Set(acceptedContactRows.map((contact) => contact.id))
-      )
-      const linkedCustomerIds = Array.from(
-        new Set(
-          acceptedContactRows.flatMap((contact) =>
-            contact.sourceEntityType === "customer" && contact.sourceEntityId
-              ? [contact.sourceEntityId]
-              : []
-          )
-        )
-      )
-      const linkedVendorIds = Array.from(
-        new Set(
-          acceptedContactRows.flatMap((contact) =>
-            contact.sourceEntityType === "vendor" &&
-            contact.sourceEntityId &&
-            !contact.vendorContactId
-              ? [contact.sourceEntityId]
-              : []
-          )
-        )
-      )
-      const linkedVendorContactIds = Array.from(
-        new Set(
-          acceptedContactRows.flatMap((contact) =>
-            contact.vendorContactId
-              ? [contact.vendorContactId]
-              : contact.sourceEntityType === "vendor_contact" &&
-                  contact.sourceEntityId
-                ? [contact.sourceEntityId]
-                : []
-          )
-        )
-      )
-
       await db
         .update(users)
         .set({
           firstName,
           lastName,
           displayName,
-          ...identity,
+          email,
           updatedAt: now,
         })
         .where(eq(users.id, currentUser.id))
-        .run()
-
-      await db
-        .update(projectContacts)
-        .set({
-          displayName,
-          ...identity,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(projectContacts.sourceEntityType, "user"),
-            eq(projectContacts.sourceEntityId, currentUser.id)
-          )
-        )
-        .run()
-
-      if (acceptedContactIds.length > 0) {
-        await db
-          .update(projectContacts)
-          .set({ ...identity, updatedAt: now })
-          .where(inArray(projectContacts.id, acceptedContactIds))
-          .run()
-      }
-
-      if (linkedCustomerIds.length > 0) {
-        await db
-          .update(customers)
-          .set({ ...identity, updatedAt: now })
-          .where(inArray(customers.id, linkedCustomerIds))
-          .run()
-        await db
-          .update(projectContacts)
-          .set({ ...identity, updatedAt: now })
-          .where(
-            and(
-              eq(projectContacts.sourceEntityType, "customer"),
-              inArray(projectContacts.sourceEntityId, linkedCustomerIds)
-            )
-          )
-          .run()
-      }
-
-      if (linkedVendorIds.length > 0) {
-        await db
-          .update(vendors)
-          .set({ ...identity, updatedAt: now })
-          .where(inArray(vendors.id, linkedVendorIds))
-          .run()
-        await db
-          .update(projectContacts)
-          .set({ ...identity, updatedAt: now })
-          .where(
-            and(
-              eq(projectContacts.sourceEntityType, "vendor"),
-              inArray(projectContacts.sourceEntityId, linkedVendorIds)
-            )
-          )
-          .run()
-      }
-
-      if (linkedVendorContactIds.length > 0) {
-        await db
-          .update(vendorContacts)
-          .set({
-            name: displayName,
-            email: identity.email,
-            phone: identity.phone,
-            updatedAt: now,
-          })
-          .where(inArray(vendorContacts.id, linkedVendorContactIds))
-          .run()
-        await db
-          .update(projectContacts)
-          .set({ displayName, ...identity, updatedAt: now })
-          .where(inArray(projectContacts.vendorContactId, linkedVendorContactIds))
-          .run()
-      }
-
-      await db
-        .update(projectAccessInvitations)
-        .set({ email, updatedAt: now })
-        .where(
-          and(
-            eq(projectAccessInvitations.acceptedBy, currentUser.id),
-            eq(projectAccessInvitations.status, "accepted")
-          )
-        )
         .run()
     }
 
@@ -298,7 +145,7 @@ export async function updateProfile(
     if (emailChanged) {
       try {
         await workos.userManagement.sendVerificationEmail({
-          userId: currentUser.id,
+          userId: workosUserId,
         })
         verificationEmailSent = true
       } catch (error) {
@@ -348,12 +195,13 @@ export async function changePassword(
     const { newPassword } = parsed.data
 
     // Get current authenticated user
-    const currentUser = await requireAuth()
+    await requireAuth()
+    const workosUserId = await authenticatedWorkOSUserId()
 
     // Update password in WorkOS
     const workos = getWorkOS()
     await workos.userManagement.updateUser({
-      userId: currentUser.id,
+      userId: workosUserId,
       password: newPassword,
     })
 

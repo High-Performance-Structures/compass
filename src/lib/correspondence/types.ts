@@ -4,7 +4,7 @@ export type CorrespondenceResult<T> =
 
 export type SendCorrespondenceResult =
   | { readonly success: true; readonly data: { readonly conversationId: string; readonly messageId: string } }
-  | { readonly success: false; readonly error: string; readonly retry: "edit" | "same_request" }
+  | { readonly success: false; readonly error: string; readonly retry: "edit" | "same_request"; readonly draftVersion?: number }
 
 export type CorrespondencePerson = {
   readonly userId: string
@@ -26,6 +26,9 @@ export type CorrespondenceSummary = {
   readonly saved: boolean
   readonly followUp: boolean
   readonly archived: boolean
+  readonly lastSentExcerpt?: string | null
+  readonly lastSentMessageId?: string | null
+  readonly lastSentAt?: string | null
   readonly closed: boolean
   readonly shareReadReceipts: boolean
 }
@@ -52,6 +55,8 @@ export type CorrespondenceMessage = {
   } | null
   readonly body: string
   readonly recipients: readonly { readonly name: string; readonly kind: "to" | "cc" }[]
+  readonly emailBcc: readonly string[]
+  readonly emailDeliveryStatus: "queued" | "dispatching" | "sent" | "failed" | "unknown" | null
   readonly attachments: readonly CorrespondenceAttachment[]
   readonly editedAt: string | null
   readonly retractedAt: string | null
@@ -60,11 +65,12 @@ export type CorrespondenceMessage = {
   readonly readReceipts: readonly { readonly userId: string; readonly name: string; readonly status: "opened" | "not_opened" | "unavailable"; readonly openedAt: string | null }[]
 }
 export type CorrespondenceDetail = {
+  readonly replyAudience?: "private_staff" | "shared_email" | null
   readonly conversation: CorrespondenceSummary
   readonly participantVersion: number
   readonly messages: readonly CorrespondenceMessage[]
   readonly hasEarlier: boolean
-  readonly draft: { readonly body: string; readonly version: number } | null
+  readonly draft: { readonly body: string; readonly version: number; readonly attachments?: readonly CorrespondenceAttachment[] } | null
 }
 export type CorrespondenceCompositionDraft = {
   readonly subject: string
@@ -81,6 +87,7 @@ export type CorrespondenceInbox = {
   readonly contacts: readonly CorrespondencePerson[]
 }
 export type SendCorrespondenceInput = {
+  readonly draft?: { readonly id: string; readonly version: number }
   readonly projectId: string
   readonly conversationId: string | null
   readonly subject: string
@@ -96,7 +103,7 @@ export type CorrespondenceStateInput = {
   readonly archived: boolean
 }
 
-export type CorrespondenceInboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived"
+export type CorrespondenceInboxFilter = "inbox" | "unread" | "follow-up" | "saved" | "archived" | "sent" | "drafts"
 
 export type ProjectMessageHistoryPage = {
   readonly projectName: string
@@ -111,4 +118,30 @@ export type ProjectMessageHistoryPage = {
     readonly sourceSentAt: string | null
   }[]
   readonly nextCursor: { readonly sentAt: string; readonly conversationId: string } | null
+}
+
+export type CompositionContent = {
+  readonly subject: string
+  readonly body: string
+  readonly attachmentIds: readonly string[]
+  readonly requestId: string | null
+} & (
+  | { readonly kind: "message"; readonly recipientUserIds: readonly string[] }
+  | { readonly kind: "email"; readonly to: readonly string[]; readonly cc: readonly string[]; readonly bcc: readonly string[] }
+)
+export type SavedComposition = {
+  readonly id: string
+  readonly version: number
+  readonly updatedAt: string
+  readonly content: CompositionContent
+  readonly attachments: readonly CorrespondenceAttachment[]
+}
+export type ProjectDraft = SavedComposition | {
+  readonly id: string
+  readonly kind: "reply"
+  readonly conversationId: string
+  readonly subject: string
+  readonly body: string
+  readonly updatedAt: string
+  readonly attachmentCount: number
 }

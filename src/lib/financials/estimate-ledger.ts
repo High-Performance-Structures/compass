@@ -405,9 +405,17 @@ export async function contractBudgetSourceHash(input: {
 }
 
 export async function estimateSourceHash(input: {
+  readonly assemblies: readonly {
+    readonly id: string
+    readonly name: string
+    readonly description: string | null
+    readonly sortOrder: number
+  }[]
   readonly estimateId: string
   readonly versionNumber: number
   readonly title: string
+  readonly showCostBreakdowns?: boolean
+  readonly showAssemblyBuilderFee?: boolean
   readonly reportMode: string
   readonly projectName: string
   readonly projectAddress: string | null
@@ -434,7 +442,9 @@ export async function estimateSourceHash(input: {
   readonly marginRateBasisPoints: number
   readonly contingencyRateBasisPoints: number
   readonly lines: readonly {
+    readonly assemblyId: string | null
     readonly id: string
+    readonly reportPhaseId: string | null
     readonly divisionCode: string
     readonly costCode: string
     readonly costCodeName: string
@@ -455,6 +465,12 @@ export async function estimateSourceHash(input: {
     readonly sortOrder: number
     readonly costItems: readonly {
       readonly id: string
+      readonly costCode: string
+      readonly costCodeName: string
+      readonly description: string
+      readonly quantity: number
+      readonly unit: string
+      readonly unitCostCents: number
       readonly taxCode: string | null
       readonly taxName: string | null
       readonly taxRateBasisPoints: number
@@ -478,6 +494,14 @@ export async function estimateSourceHash(input: {
   readonly phaseDescriptions: readonly {
     readonly divisionCode: string
     readonly description: string
+  }[]
+  readonly reportPhases: readonly {
+    readonly id: string
+    readonly divisionCode: string
+    readonly name: string
+    readonly description: string
+    readonly itemize: boolean
+    readonly sortOrder: number
   }[]
   readonly acknowledgements: readonly {
     readonly templateId: string
@@ -509,12 +533,17 @@ export async function estimateSourceHash(input: {
   const acknowledgements = [...input.acknowledgements].sort(
     (left, right) => left.sortOrder - right.sortOrder
   )
+  const reportPhases = [...input.reportPhases].sort((left, right) =>
+    left.sortOrder - right.sortOrder || left.id.localeCompare(right.id)
+  )
   const bytes = new TextEncoder().encode(
     JSON.stringify({
       estimateId: input.estimateId,
       versionNumber: input.versionNumber,
       title: input.title,
       reportMode: input.reportMode,
+      showCostBreakdowns: input.showCostBreakdowns ?? false,
+      ...(input.showAssemblyBuilderFee ? { showAssemblyBuilderFee: true } : {}),
       projectName: input.projectName,
       projectAddress: input.projectAddress,
       clientName: input.clientName,
@@ -527,8 +556,10 @@ export async function estimateSourceHash(input: {
       marginRateBasisPoints: input.marginRateBasisPoints,
       contingencyRateBasisPoints: input.contingencyRateBasisPoints,
       lines,
+      assemblies: [...input.assemblies].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)),
       basisDocuments,
       phaseDescriptions,
+      reportPhases,
       acknowledgements,
     })
   )

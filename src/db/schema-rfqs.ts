@@ -3,6 +3,47 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 import { projectOperations, projects, users } from "./schema"
 import { projectEstimateLines, projectEstimates } from "./schema-estimates"
 
+/** One durable delivery attempt for a bidder-specific RFQ email. */
+export const projectRfqEmailDeliveries = sqliteTable(
+  "project_rfq_email_deliveries",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    rfqOperationId: text("rfq_operation_id").notNull().references(() => projectOperations.id, { onDelete: "restrict" }),
+    recipientEmail: text("recipient_email").notNull(),
+    ccEmailsJson: text("cc_emails_json").notNull(),
+    subject: text("subject").notNull(),
+    documentLinksJson: text("document_links_json").notNull(),
+    status: text("status").notNull(),
+    provider: text("provider"),
+    providerMessageId: text("provider_message_id"),
+    error: text("error"),
+    requestedBy: text("requested_by").references(() => users.id, { onDelete: "set null" }),
+    requestedByName: text("requested_by_name").notNull(),
+    requestedAt: text("requested_at").notNull(),
+    sentAt: text("sent_at"),
+  },
+  (table) => [index("project_rfq_email_deliveries_rfq_idx").on(table.rfqOperationId, table.requestedAt)]
+)
+
+/** Append-only audit of staff-entered responses received outside Compass. */
+export const projectRfqManualResponseEvents = sqliteTable(
+  "project_rfq_manual_response_events",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    rfqOperationId: text("rfq_operation_id").notNull().references(() => projectOperations.id, { onDelete: "restrict" }),
+    receivedVia: text("received_via").notNull(),
+    sourceReference: text("source_reference"),
+    previousResponseJson: text("previous_response_json"),
+    responseJson: text("response_json").notNull(),
+    recordedBy: text("recorded_by").references(() => users.id, { onDelete: "set null" }),
+    recordedByName: text("recorded_by_name").notNull(),
+    recordedAt: text("recorded_at").notNull(),
+  },
+  (table) => [index("project_rfq_manual_response_events_rfq_idx").on(table.rfqOperationId, table.recordedAt)]
+)
+
 /**
  * Immutable snapshot of the vendor response that staff approved for an RFQ.
  * The RFQ portal response may be revised until approval, so approval must keep

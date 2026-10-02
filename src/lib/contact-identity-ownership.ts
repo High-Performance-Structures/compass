@@ -14,7 +14,7 @@ export type ContactIdentityFields = {
   readonly address: string | null
 }
 
-type DirectoryEntityType = "customer" | "vendor" | "vendor_contact"
+type DirectoryEntityType = "customer" | "customer_contact" | "vendor" | "vendor_contact"
 
 type DirectoryIdentityRow = {
   readonly entityType: string
@@ -65,7 +65,9 @@ export async function directoryIdentityManagedByActiveUser(input: {
   readonly entityId: string
 }): Promise<boolean> {
   const directoryMatch =
-    input.entityType === "vendor_contact"
+    input.entityType === "customer_contact"
+      ? eq(projectContacts.customerContactId, input.entityId)
+      : input.entityType === "vendor_contact"
       ? eq(projectContacts.vendorContactId, input.entityId)
       : input.entityType === "vendor"
         ? and(
@@ -119,6 +121,7 @@ export async function activeDirectoryIdentityKeys(input: {
     .select({
       entityType: projectContacts.sourceEntityType,
       entityId: projectContacts.sourceEntityId,
+      customerContactId: projectContacts.customerContactId,
       vendorContactId: projectContacts.vendorContactId,
     })
     .from(projectContacts)
@@ -138,6 +141,7 @@ export async function activeDirectoryIdentityKeys(input: {
         eq(users.isActive, true),
         or(
           eq(projectContacts.sourceEntityType, "customer"),
+          eq(projectContacts.sourceEntityType, "customer_contact"),
           eq(projectContacts.sourceEntityType, "vendor"),
           eq(projectContacts.sourceEntityType, "vendor_contact")
         )
@@ -146,6 +150,12 @@ export async function activeDirectoryIdentityKeys(input: {
 
   const identityRows: DirectoryIdentityRow[] = rows.flatMap((row) => {
     const directoryRows: DirectoryIdentityRow[] = [row]
+    if (row.customerContactId) {
+      directoryRows.push({
+        entityType: "customer_contact",
+        entityId: row.customerContactId,
+      })
+    }
     if (row.vendorContactId) {
       directoryRows.push({
         entityType: "vendor_contact",

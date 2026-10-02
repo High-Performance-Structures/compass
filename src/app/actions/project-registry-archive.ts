@@ -8,7 +8,7 @@ import { projectDuplicateDecisions, projectNumberAliases, projectNumberReservati
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
-import { canUseExecutiveAdmin, requirePermission } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 import { projectDeletionDependencyTableNames, type ProjectMergeSchemaRow } from "@/lib/project-merge-impact"
 import { projectNumberParts } from "@/lib/project-profile"
 
@@ -16,8 +16,8 @@ export type ArchivedRegistryProject = { readonly projectId: string; readonly pro
 type Result = { readonly success: true } | { readonly success: false; readonly error: string }
 
 async function context(action: "read" | "update" | "delete") {
-  const user = await requireAuth(); requirePermission(user, "project", action)
-  if (!canUseExecutiveAdmin(user)) throw new Error("Executive Admin access is required.")
+  const user = await requireAuth()
+  if (!(await canFeature(user, "project-archive-access", action === "read" ? "read" : "approve"))) throw new Error("Project Archive permission is required.")
   const organizationId = requireOrg(user); const { env } = await getCloudflareContext()
   if (!env?.DB) throw new Error("D1 not available")
   return { user, organizationId, db: getDb(env.DB), d1: env.DB }

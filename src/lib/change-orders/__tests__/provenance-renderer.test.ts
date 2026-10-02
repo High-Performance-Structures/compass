@@ -5,6 +5,16 @@ import type { ProjectChangeOrderItem, ProjectChangeOrderFormOptions } from "@/ap
 
 vi.mock("@/components/projects/project-change-order-create-form", () => ({ ProjectChangeOrderCreateForm: () => null }))
 vi.mock("@/components/projects/project-change-order-edit-form", () => ({ ProjectChangeOrderEditForm: () => null }))
+vi.mock("@/components/projects/project-change-order-executed-document", () => ({
+  ProjectChangeOrderExecutedDocument: ({ available, label }: {
+    readonly available: boolean
+    readonly label: string | null
+  }) => React.createElement(
+    "div",
+    null,
+    available ? `Open executed change order ${label ?? ""}` : "No authoritative executed document",
+  ),
+}))
 vi.mock("@/components/developer-mode-provider", () => ({ DeveloperOnly: () => null }))
 
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
@@ -25,7 +35,9 @@ function item(overrides: Partial<ProjectChangeOrderItem> = {}): ProjectChangeOrd
     sourceHref: null, internalNotes: null, budgetTreatment: "additive", baselineEstimate: null,
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,
     rebaselineCompletedAt: null, rebaselineBlockers: [], canExecuteRebaseline: false,
-    foxitStatus: "not_started", sageStatus: "not_ready", submittedAt: null,
+    foxitStatus: "not_started", sageStatus: "not_ready",
+    executedDocumentAvailable: false, executedDocumentLabel: null,
+    canManageExecutedDocument: false, submittedAt: null,
     createdAt: "2026-09-01T12:00:00.000Z", updatedAt: "2026-09-01T12:00:00.000Z",
     canEdit: false, canApprove: false, allowedTransitions: [], lines: [], documents: [],
     history: [{ id: "history", eventType: "buildertrend_import", fromStatus: null, toStatus: "executed",
@@ -99,5 +111,14 @@ describe("imported change-order provenance in shared list and detail", () => {
       expect(markup).not.toContain("Purpose: Not classified")
     }
     expect(render(native, false)[1]).toContain("Request created")
+  })
+
+  it("shows the authoritative executed document on owner-visible executed records", () => {
+    const detail = render(item({
+      executedDocumentAvailable: true,
+      executedDocumentLabel: "Executed CO-001.pdf",
+    }), false)[1]
+    expect(detail).toContain("Open executed change order")
+    expect(detail).toContain("Executed CO-001.pdf")
   })
 })

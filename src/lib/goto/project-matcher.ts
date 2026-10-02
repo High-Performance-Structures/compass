@@ -99,6 +99,9 @@ export function matchGotoInboundProject(input: {
   readonly priorConversationProjectIds: readonly string[]
   readonly candidates: readonly GotoProjectMatchCandidate[]
 }): GotoProjectMatchResult {
+  // A project number is a routing hint, not sender authorization. Accept it
+  // from any phone number; the inbound router separately decides whether the
+  // sender is trusted for automatic routing or must go to staff review.
   const explicit = resolveCandidates(
     input.candidates.filter((candidate) =>
       bodyMentionsProject(input.body, candidate.projectNumber)

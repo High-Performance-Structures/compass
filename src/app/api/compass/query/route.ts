@@ -4,10 +4,13 @@ import { validateAgentAuth } from "@/lib/agent/api-auth"
 import {
   dailyLogs,
   ownerProjectUpdates,
+  organizationMembers,
+  organizations,
   projectOperations,
   projectRfis,
   projects,
   scheduleTasks,
+  users,
 } from "@/db/schema"
 import { invoices, vendorBills } from "@/db/schema-netsuite"
 import { and, desc, eq, like, or } from "drizzle-orm"
@@ -18,6 +21,35 @@ import {
   projectHref,
   rfiHref,
 } from "@/lib/jarvis/search"
+import type { AuthUser } from "@/lib/auth"
+import { canFeature } from "@/lib/permission-enforcement"
+
+async function canReadDirectory(
+  db: ReturnType<typeof getDb>,
+  auth: { readonly userId: string; readonly orgId: string; readonly role: string },
+  featureId: "customers" | "vendors"
+): Promise<boolean> {
+  const row = await db.select({ user: users, membershipRole: organizationMembers.role, organization: organizations })
+    .from(users)
+    .innerJoin(organizationMembers, and(
+      eq(organizationMembers.userId, users.id),
+      eq(organizationMembers.organizationId, auth.orgId)
+    ))
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
+    .where(eq(users.id, auth.userId))
+    .get()
+  if (!row || !row.user.isActive || !row.organization.isActive || row.membershipRole !== auth.role) {
+    return false
+  }
+  const user: AuthUser = {
+    ...row.user,
+    role: row.membershipRole,
+    organizationId: row.organization.id,
+    organizationName: row.organization.name,
+    organizationType: row.organization.type,
+  }
+  return canFeature(user, featureId, "read")
+}
 
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
@@ -60,6 +92,9 @@ export async function POST(req: Request): Promise<Response> {
   try {
     switch (body.queryType) {
       case "customers": {
+        if (!(await canReadDirectory(db, auth, "customers"))) {
+          return Response.json({ error: "Customer directory access denied" }, { status: 403 })
+        }
         const rows = await db.query.customers.findMany({
           limit: cap,
           where: (c, { eq: eqFunc, like: likeFunc, and: andFunc }) => {
@@ -81,6 +116,9 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "vendors": {
+        if (!(await canReadDirectory(db, auth, "vendors"))) {
+          return Response.json({ error: "Vendor directory access denied" }, { status: 403 })
+        }
         const rows = await db.query.vendors.findMany({
           limit: cap,
           where: (v, { eq: eqFunc, like: likeFunc, and: andFunc }) => {
@@ -455,6 +493,9 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "customer_detail": {
+        if (!(await canReadDirectory(db, auth, "customers"))) {
+          return Response.json({ error: "Customer directory access denied" }, { status: 403 })
+        }
         const queryId = body.id
         if (!queryId) {
           return new Response(
@@ -481,6 +522,9 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "vendor_detail": {
+        if (!(await canReadDirectory(db, auth, "vendors"))) {
+          return Response.json({ error: "Vendor directory access denied" }, { status: 403 })
+        }
         const queryId = body.id
         if (!queryId) {
           return new Response(

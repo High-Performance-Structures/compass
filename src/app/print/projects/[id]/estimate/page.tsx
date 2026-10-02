@@ -1,19 +1,19 @@
 export const dynamic = "force-dynamic"
 
 import { requireProjectRouteId } from "@/lib/project-route-id"
-import { Fragment } from "react"
 import { redirect } from "next/navigation"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
+import { ProjectEstimateReportPhases } from "@/components/projects/project-estimate-report-phases"
 import {
   clientEstimateBuilderFeeExclusionSummary,
-  clientEstimatePhases,
+  clientEstimateReportGroups,
   clientEstimateTaxSummary,
-  type ClientEstimateLine,
 } from "@/lib/estimates/client-report"
+import { assemblyBuilderFeeAllocation } from "@/lib/estimates/assembly-builder-fee"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
@@ -25,41 +25,11 @@ function money(cents: number): string {
   }).format(cents / 100)
 }
 
-function quantity(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 4,
-  }).format(value)
-}
-
 function percent(basisPoints: number): string {
   return `${(basisPoints / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 4,
   })}%`
-}
-
-function lineTaxDetail(line: ClientEstimateLine): string | null {
-  if (line.taxCents <= 0) return null
-  const summary = clientEstimateTaxSummary([line])
-  const group = summary.groups.length === 1 ? summary.groups[0] : null
-  const context = group
-    ? [group.label, percent(group.rateBasisPoints)].filter(Boolean).join(" ")
-    : ""
-  return `Includes ${money(line.taxCents)} sales tax${context ? ` · ${context}` : ""}`
-}
-
-function LineTaxNote({
-  line,
-}: {
-  readonly line: ClientEstimateLine
-}): React.ReactElement | null {
-  const detail = lineTaxDetail(line)
-  if (!detail) return null
-  return (
-    <p className="mt-1 text-xs font-normal italic text-neutral-600">
-      {detail}
-    </p>
-  )
 }
 
 function estimateDate(value: string | null, createdAt: string): string {
@@ -102,10 +72,17 @@ export default async function ProjectEstimatePrintPage({
       item.description,
     ])
   )
-  const phases = clientEstimatePhases({
+  const phases = clientEstimateReportGroups({
+    mode: workspace.reportMode,
+    assemblies: workspace.assemblies,
     lines: workspace.lines,
     phaseDescriptions,
+    reportPhases: workspace.reportPhases,
+    defaultItemize: workspace.reportMode === "line_items",
   })
+  const assemblyFees = estimate.showAssemblyBuilderFee && (workspace.reportMode === "assembly_summary" || workspace.reportMode === "assembly_items")
+    ? assemblyBuilderFeeAllocation({ groups: phases, lines: workspace.lines, builderFeeCents: estimate.builderFeeCents })
+    : null
   const clientSubtotalCents = phases.reduce(
     (total, phase) => total + phase.subtotalCents,
     0
@@ -126,6 +103,12 @@ export default async function ProjectEstimatePrintPage({
     <>
       <style>{`
         @page { size: letter; margin: 0.55in; }
+        .estimate-report {
+          --muted-foreground: var(--report-secondary);
+          --border: var(--report-rule);
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
         @media print {
           body { background: white !important; }
           .estimate-report-actions { display: none !important; }
@@ -140,7 +123,7 @@ export default async function ProjectEstimatePrintPage({
         projectId={id}
         estimateId={estimate.id}
       />
-      <main className="estimate-report mx-auto max-w-[8.5in] bg-white p-8 text-black print:max-w-none print:p-0">
+      <main className="estimate-report mx-auto max-w-[8.5in] bg-report-paper p-4 text-report-ink sm:p-8 print:max-w-none print:p-0">
         <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-5">
           <div className="flex items-center gap-4">
             <ProjectBrandLogo
@@ -200,114 +183,8 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        {(workspace.reportMode === "division_summary" ||
-          workspace.reportMode === "phase_summary") && (
-          <section className="mt-6">
-            <div className="grid grid-cols-[1fr_1.2in] border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide">
-              <span>
-                {workspace.reportMode === "phase_summary"
-                  ? "Phase description"
-                  : "Division"}
-              </span>
-              <span className="text-right">Subtotal</span>
-            </div>
-            {phases.map((phase) => (
-              <div
-                key={phase.divisionCode}
-                className="grid break-inside-avoid grid-cols-[1fr_1.2in] gap-3 border-b py-3 text-sm"
-              >
-                <div>
-                  <p className="font-semibold">
-                    {workspace.reportMode === "phase_summary"
-                      ? phase.description
-                      : phase.divisionName}
-                  </p>
-                  <p className="text-xs text-neutral-600">
-                    {workspace.reportMode === "phase_summary"
-                      ? "Phase"
-                      : "Division"}{" "}
-                    {phase.divisionCode}
-                  </p>
-                  {phase.taxCents > 0 && (
-                    <p className="mt-1 text-xs italic text-neutral-600">
-                      Includes {money(phase.taxCents)} sales tax
-                    </p>
-                  )}
-                </div>
-                <span className="text-right font-semibold">
-                  {money(phase.subtotalCents)}
-                </span>
-              </div>
-            ))}
-          </section>
-        )}
-
-        {workspace.reportMode === "line_items" && (
-          <section className="mt-6">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-black text-left text-xs font-semibold uppercase tracking-wide">
-                  <th className="pb-1 pr-2">Cost code item</th>
-                  <th className="pb-1 pr-2 text-right">Quantity</th>
-                  <th className="pb-1 pr-2">Unit</th>
-                  <th className="pb-1 pr-2 text-right">Unit cost</th>
-                  <th className="pb-1 text-right">Total cost</th>
-                </tr>
-              </thead>
-              <tbody>
-            {phases.map((phase) => (
-              <Fragment key={phase.divisionCode}>
-                <tr className="break-inside-avoid border-b bg-neutral-100 font-semibold">
-                  <td className="py-2 pr-2" colSpan={5}>
-                    {phase.divisionCode} · {phase.description}
-                  </td>
-                </tr>
-                  {phase.lines.map((line) => (
-                    <tr
-                      key={line.id}
-                      className="break-inside-avoid border-b"
-                    >
-                      <td className="py-2 pr-2 align-top font-medium">
-                        <p>{line.costCode} · {line.costCodeName}</p>
-                        {line.description.trim() !==
-                          line.costCodeName.trim() && (
-                          <p className="mt-1 font-normal text-neutral-700">
-                            {line.description}
-                          </p>
-                        )}
-                        <LineTaxNote line={line} />
-                        {!line.includeInBuilderFee && (
-                          <p className="mt-1 text-xs font-normal italic text-neutral-600">
-                            Included in project cost; excluded from builder-fee calculation.
-                          </p>
-                        )}
-                      </td>
-                      <td className="py-2 pr-2 text-right align-top">
-                        {quantity(line.quantity)}
-                      </td>
-                      <td className="py-2 pr-2 align-top">{line.unit}</td>
-                      <td className="py-2 pr-2 text-right align-top">
-                        {money(line.unitCostCents)}
-                      </td>
-                      <td className="py-2 text-right align-top">
-                        {money(line.lineTotalCents)}
-                      </td>
-                    </tr>
-                  ))}
-                <tr className="break-inside-avoid border-b-2 border-black font-semibold">
-                  <td className="py-2" colSpan={4}>
-                    Total: {phase.divisionCode} · {phase.description}
-                  </td>
-                  <td className="py-2 text-right">
-                    {money(phase.subtotalCents)}
-                  </td>
-                </tr>
-              </Fragment>
-            ))}
-              </tbody>
-            </table>
-          </section>
-        )}
+        <ProjectEstimateReportPhases phases={phases} reportMode={workspace.reportMode} assemblyBuilderFees={assemblyFees?.byGroup} showCostBreakdowns={estimate.showCostBreakdowns} />
+        {assemblyFees && <p className="mt-3 text-xs text-muted-foreground">The project builder-fee summary below recaps the fees included in assembly totals; these fees are charged once.</p>}
 
         <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
           {taxSummary.taxCents > 0 ? (
@@ -316,7 +193,7 @@ export default async function ProjectEstimatePrintPage({
                 <span>Project work before sales tax</span>
                 <span>{money(clientPreTaxSubtotalCents)}</span>
               </div>
-              <div className="border-l-2 border-black bg-neutral-100 py-1 pl-3">
+              <div className="border-l-2 border-report-rule bg-report-subtotal py-1 pl-3">
                 {taxSummary.groups.map((group) => (
                   <div className="flex justify-between py-1" key={group.key}>
                     <span>
@@ -384,7 +261,10 @@ export default async function ProjectEstimatePrintPage({
               </div>
             </>
           )}
-          <div className="flex justify-between border-y-2 border-black py-2 text-base font-bold">
+          {assemblyFees && assemblyFees.unallocatedCents !== 0 && <div className="flex justify-between border-t py-2">
+            <span>Builder fee outside displayed assemblies</span><span>{money(assemblyFees.unallocatedCents)}</span>
+          </div>}
+          <div className="flex justify-between border-y-2 border-report-rule bg-report-total px-3 py-2 text-base font-bold">
             <span>Project Total:</span>
             <span>{money(clientTotalCents)}</span>
           </div>

@@ -139,17 +139,18 @@ const upsert = db.transaction(() => {
     INSERT INTO projects (
       id, project_number, name, status, address, client_name, project_manager,
       organization_id, owner_updates_enabled, owner_update_channel,
-      owner_update_cadence, created_at, updated_at
+      owner_update_cadence, schedule_published, created_at, updated_at
     ) VALUES (
       'e2e-project-001', 'H-E2E-001', 'Regression Test Project', 'OPEN',
       '100 Test Lane', 'Compass Demo Client', 'Demo User',
-      'demo-org-meridian', 1, 'compass', 'weekly', ?, ?
+      'demo-org-meridian', 1, 'compass', 'weekly', 1, ?, ?
     )
     ON CONFLICT(id) DO UPDATE SET
       project_number = excluded.project_number,
       name = excluded.name,
       status = excluded.status,
       organization_id = excluded.organization_id,
+      schedule_published = excluded.schedule_published,
       updated_at = excluded.updated_at
   `).run(now, now)
 

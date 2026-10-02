@@ -104,6 +104,26 @@ describe("Google Developer-folder project tracking intake", () => {
     ).toBe("O-212-55")
   })
 
+  it("does not treat a family phase suffix as a new top-level sequence", () => {
+    const rows = [
+      ["PROJECT NUMBER"],
+      ["O-64-660"],
+      ["O-64-660-1"],
+    ]
+    const layout = locateProjectTrackerLayout(rows)
+    expect(layout).not.toBeNull()
+    if (!layout) return
+
+    expect(
+      allocateProjectNumber({
+        department: "O",
+        streetNumber: "77",
+        rows,
+        layout,
+      }),
+    ).toBe("O-65-77")
+  })
+
   it("allocates from the Developer Project Registry Project ID column", () => {
     const rows = [
       ["Project ID", "Division", "Sequence"],
@@ -261,6 +281,29 @@ describe("Google Developer-folder project tracking intake", () => {
         driveFolderUrl: null,
       })[0]
     ).toBe("O-211-33A")
+  })
+
+  it("keeps a selected directory client's canonical name in the registry", () => {
+    const layout = locateProjectTrackerLayout([
+      ["Project Number", "Client Last Name", "Client First Name", "Company Name"],
+    ])
+    expect(layout).not.toBeNull()
+    if (!layout) return
+
+    expect(buildProjectRegistryRow({
+      layout,
+      project: {
+        ...PROJECT,
+        clientName: "Dan and Jane Mitchell",
+        clientFirstName: null,
+        clientLastName: null,
+        companyName: null,
+      },
+      projectNumber: "O-211-33A",
+      driveFolderUrl: null,
+      departmentTrackerUrl: "https://example.invalid/tracker",
+      createdBy: "Martine Vogel",
+    })).toEqual(["O-211-33A", "Dan and Jane Mitchell", "", ""])
   })
 
   it("creates patches only for explicitly mapped tracker cells", () => {

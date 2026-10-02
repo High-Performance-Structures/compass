@@ -8,6 +8,7 @@ import { projects } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
 const MAX_DASHBOARDS = 5
@@ -324,6 +325,10 @@ export async function executeDashboardQueries(
           break
         }
         case "schedule_tasks": {
+          if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+            dataContext[q.key] = { data: [], count: 0 }
+            break
+          }
           const orgProjects = await db
             .select({ id: projects.id })
             .from(projects)

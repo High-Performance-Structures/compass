@@ -769,7 +769,7 @@ test.describe("usable Compass areas", () => {
     await expect(page.getByText("1 selected", { exact: true })).toHaveCount(0)
   })
 
-  test("schedule assignee choices include active organization team members", async ({
+  test("schedule assignee choices respect shared-directory access", async ({
     page,
   }) => {
     const path =
@@ -790,12 +790,8 @@ test.describe("usable Compass areas", () => {
       name: "Edit Schedule Item",
     })
     await editDialog.getByRole("button", { name: "Demo User" }).click()
-    await expect(
-      page.getByText("Project & team contacts", { exact: true })
-    ).toBeVisible()
-    await expect(
-      page.getByRole("button", { name: "Demo User" })
-    ).toHaveCount(2)
+    await expect(page.getByText("No matching contacts.")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Demo User" })).toHaveCount(1)
   })
 
   test("schedule items expose related records in the existing to-do workspace", async ({

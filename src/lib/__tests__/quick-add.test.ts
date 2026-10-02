@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   QUICK_ADD_ACTIONS,
   quickAddHref,
+  shouldShowQuickAdd,
 } from "@/lib/quick-add"
 
 describe("Quick Add routes", () => {
@@ -18,6 +19,12 @@ describe("Quick Add routes", () => {
       "change-request",
       "warranty-request",
     ])
+  })
+
+  it("shows the development control even without authorized destinations", () => {
+    expect(shouldShowQuickAdd([], true)).toBe(true)
+    expect(shouldShowQuickAdd([], false)).toBe(false)
+    expect(shouldShowQuickAdd(["todo"], false)).toBe(true)
   })
 
   it("routes staff to existing dashboard workflows", () => {

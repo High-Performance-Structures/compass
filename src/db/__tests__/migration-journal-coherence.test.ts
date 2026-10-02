@@ -40,15 +40,15 @@ describe("D1 migration authority and Drizzle metadata", () => {
     expect(migrationFiles).toEqual([...migrationFiles].sort())
     expect(new Set(migrationTags).size).toBe(migrationTags.length)
     expect(migrationTags.slice(-9)).toEqual([
-      "0160_project_operation_revision",
-      "0161_purchase_order_email_claim",
-      "0162_purchase_order_email_claim_recovery",
-      "0163_nutech_order_item_release_guards",
-      "0164_purchase_order_email_reconciliation_evidence",
-      "0165_nutech_workbook_claim",
-      "0166_nutech_workbook_provider_effect",
-      "0167_nutech_purchase_order_release_token",
-      "0168_nutech_vendor_invoice_release_guard",
+      "0181_project_operation_revision",
+      "0182_purchase_order_email_claim",
+      "0183_purchase_order_email_claim_recovery",
+      "0184_nutech_order_item_release_guards",
+      "0185_purchase_order_email_reconciliation_evidence",
+      "0186_nutech_workbook_claim",
+      "0187_nutech_workbook_provider_effect",
+      "0188_nutech_purchase_order_release_token",
+      "0189_nutech_vendor_invoice_release_guard",
     ])
   })
 
@@ -67,15 +67,15 @@ describe("D1 migration authority and Drizzle metadata", () => {
       entries.map((_entry, index) => index)
     )
     expect(journalTags.slice(-9)).toEqual([
-      "0160_project_operation_revision",
-      "0161_purchase_order_email_claim",
-      "0162_purchase_order_email_claim_recovery",
-      "0163_nutech_order_item_release_guards",
-      "0164_purchase_order_email_reconciliation_evidence",
-      "0165_nutech_workbook_claim",
-      "0166_nutech_workbook_provider_effect",
-      "0167_nutech_purchase_order_release_token",
-      "0168_nutech_vendor_invoice_release_guard",
+      "0181_project_operation_revision",
+      "0182_purchase_order_email_claim",
+      "0183_purchase_order_email_claim_recovery",
+      "0184_nutech_order_item_release_guards",
+      "0185_purchase_order_email_reconciliation_evidence",
+      "0186_nutech_workbook_claim",
+      "0187_nutech_workbook_provider_effect",
+      "0188_nutech_purchase_order_release_token",
+      "0189_nutech_vendor_invoice_release_guard",
     ])
   })
 })

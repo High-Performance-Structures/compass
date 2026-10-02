@@ -41,6 +41,7 @@ import { projectDepartment } from "@/lib/project-branding"
 import {
   projectScheduleColor,
   schedulePortfolioProjects,
+  scheduleProjectSwitcherProjects,
 } from "@/lib/schedule/project-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -334,8 +335,17 @@ async function resolveAssignedUserId(
 export async function getSchedule(projectId: string): Promise<ScheduleData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
+  // External viewers use the audience workspace, which only serves the active
+  // publication. This action exposes editable working rows to internal staff.
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    return { tasks: [], dependencies: [], exceptions: [] }
+  }
   const orgId = requireOrg(user)
-  const accessibleProjects = await getScheduleProjects()
+  // Project routes may intentionally open completed or inactive historical
+  // schedules. Portfolio status filtering is navigation policy, not access
+  // control, so retain the current route when checking the accessible list.
+  const accessibleProjects =
+    await getScheduleProjectSwitcherProjects(projectId)
   if (!accessibleProjects.some((project) => project.id === projectId)) {
     throw new Error("Project not found or access denied")
   }
@@ -488,6 +498,9 @@ export async function getScopedSchedule(
 ): Promise<ScopedScheduleData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    return { projects: [], tasks: [], dependencies: [], exceptions: [] }
+  }
   const orgId = requireOrg(user)
   const accessibleProjects = await getProjects()
   const requestedIds = new Set(
@@ -615,6 +628,12 @@ export async function getScopedSchedule(
 
 export async function getScheduleProjects(): Promise<ProjectListItem[]> {
   return schedulePortfolioProjects(await getProjects())
+}
+
+export async function getScheduleProjectSwitcherProjects(
+  currentProjectId: string,
+): Promise<ProjectListItem[]> {
+  return scheduleProjectSwitcherProjects(await getProjects(), currentProjectId)
 }
 
 export async function importScheduleTemplateItems(

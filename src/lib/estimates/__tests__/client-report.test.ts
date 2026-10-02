@@ -17,6 +17,7 @@ function line(
 ): ClientEstimateLine {
   return {
     id: "line-1",
+    reportPhaseId: null,
     divisionCode: "03",
     divisionName: "Concrete",
     costCode: "03 30 00",
@@ -40,6 +41,58 @@ function line(
 }
 
 describe("estimate client report profiles", () => {
+  it("splits one CSI division into unlimited named phases with independent detail", () => {
+    const reportPhases = [
+      { id: "fox", divisionCode: "03", name: "Fox Blocks", description: "ICF walls", itemize: true, sortOrder: 1 },
+      { id: "concrete", divisionCode: "03", name: "Structural concrete", description: "Footings and slabs", itemize: false, sortOrder: 2 },
+      { id: "rebar", divisionCode: "03", name: "Reinforcing steel", description: "Supply and install", itemize: false, sortOrder: 3 },
+      { id: "empty", divisionCode: "03", name: "Future work", description: "", itemize: true, sortOrder: 4 },
+    ]
+    const phases = clientEstimatePhases({
+      reportPhases, defaultItemize: true, phaseDescriptions: {},
+      lines: [
+        line({ id: "steel", reportPhaseId: "rebar", lineTotalCents: 300 }),
+        line({ id: "forms", reportPhaseId: "fox", lineTotalCents: 100 }),
+        line({ id: "slab", reportPhaseId: "concrete", lineTotalCents: 200 }),
+        line({ id: "unassigned", lineTotalCents: 400 }),
+        line({ id: "hidden", reportPhaseId: "fox", ownerVisible: false, lineTotalCents: 999 }),
+      ],
+    })
+    expect(phases.map((phase) => [phase.name, phase.description, phase.itemize, phase.subtotalCents])).toEqual([
+      ["Fox Blocks", "ICF walls", true, 100],
+      ["Structural concrete", "Footings and slabs", false, 200],
+      ["Reinforcing steel", "Supply and install", false, 300],
+      ["Concrete", "Concrete", true, 400],
+    ])
+    expect(phases.reduce((sum, phase) => sum + phase.subtotalCents, 0)).toBe(1_000)
+    expect(phases.every((phase) => phase.divisionCode === "03")).toBe(true)
+  })
+
+  it("returns missing or mismatched phase assignments to CSI without dropping costs", () => {
+    const phases = clientEstimatePhases({
+      phaseDescriptions: {},
+      reportPhases: [{ id: "wrong", divisionCode: "04", name: "Masonry", description: "", itemize: true, sortOrder: 1 }],
+      lines: [line({ reportPhaseId: "missing" }), line({ id: "line-2", reportPhaseId: "wrong" })],
+    })
+    expect(phases).toHaveLength(1)
+    expect(phases[0]).toMatchObject({ id: "division:03", custom: false, itemize: false, subtotalCents: 20_000 })
+  })
+
+  it("preserves CSI division order with custom phases before each division's unassigned lines", () => {
+    const phases = clientEstimatePhases({
+      phaseDescriptions: {}, reportPhases: [{ id: "fox", divisionCode: "03", name: "Fox Blocks", description: "", itemize: true, sortOrder: 1 }],
+      lines: [line({ id: "default-03" }), line({ id: "fox-line", reportPhaseId: "fox" }), line({ id: "general", divisionCode: "01", divisionName: "General requirements" }), line({ id: "masonry", divisionCode: "04", divisionName: "Masonry" })],
+    })
+    expect(phases.map((phase) => phase.id)).toEqual(["division:01", "fox", "division:03", "division:04"])
+  })
+
+  it("supports more phases than the database statement parameter budget", () => {
+    const reportPhases = Array.from({ length: 150 }, (_, index) => ({ id: `phase-${index}`, divisionCode: "03", name: `Phase ${index}`, description: "", itemize: index % 2 === 0, sortOrder: index + 1 }))
+    const phases = clientEstimatePhases({ phaseDescriptions: {}, reportPhases, lines: reportPhases.map((phase) => line({ id: phase.id, reportPhaseId: phase.id })) })
+    expect(phases).toHaveLength(150)
+    expect(phases.reduce((sum, phase) => sum + phase.subtotalCents, 0)).toBe(1_500_000)
+  })
+
   it("totals the visible line amounts excluded from builder fees", () => {
     const summary = clientEstimateBuilderFeeExclusionSummary([
       line({
@@ -144,6 +197,7 @@ describe("estimate client report profiles", () => {
           costItems: [
             {
               taxCode: "DENVER",
+              id: "breakdown-1", costCode: "03 11 13", costCodeName: "Forming", description: "Forming", quantity: 1, unit: "LS", unitCostCents: 10_000,
               taxName: "Denver",
               taxRateBasisPoints: 881,
               taxCents: 881,
@@ -151,6 +205,7 @@ describe("estimate client report profiles", () => {
             },
             {
               taxCode: "CO",
+              id: "breakdown-2", costCode: "03 20 00", costCodeName: "Rebar", description: "Rebar", quantity: 1, unit: "LS", unitCostCents: 5_000,
               taxName: "Colorado",
               taxRateBasisPoints: 400,
               taxCents: 400,

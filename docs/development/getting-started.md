@@ -148,7 +148,7 @@ decision reactivates NetSuite for a specific workflow.
 
 ### CHERISH physical cards (optional)
 
-Handwrytten configuration is required only to enable the Executive Admin
+Handwrytten configuration is required only to enable the authorized staff
 physical-card action. Store `HANDWRYTTEN_API_KEY` as a Worker secret. Configure
 the sender name and complete US return address with the
 `HANDWRYTTEN_SENDER_*` variables shown in `.env.example`. See

@@ -5,8 +5,19 @@ import { IconPlus, IconShieldCheck } from "@tabler/icons-react"
 import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
+import {
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable,
+  type ColumnDef,
+} from "@tanstack/react-table"
 import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
+import {
+  getContactDirectoryAccess,
+  type ContactDirectoryAccess,
+} from "@/app/actions/contact-directory-access"
 import {
   getCustomers,
   createCustomerDirectoryContact,
@@ -25,6 +36,8 @@ import {
   type VendorDirectoryCompany,
 } from "@/app/actions/vendors"
 import type { Customer } from "@/db/schema"
+import type { CustomerDirectoryPerson } from "@/app/actions/customer-people"
+import { getMyContactRecords, type MyContactRecord } from "@/app/actions/my-contact-records"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,13 +47,43 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { TeamTab } from "@/components/settings/team-tab"
 import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { CustomerPeopleDialog } from "@/components/contacts/customer-people-dialog"
+import { DirectoryAccountLinkDialog, type DirectoryAccountLinkTarget } from "@/components/contacts/directory-account-link-dialog"
+import { SageContactEditorDialog, type SageContactEditorTarget } from "@/components/contacts/sage-contact-editor-dialog"
+import { SageContactReviewDialog } from "@/components/contacts/sage-contact-review-dialog"
+import { SageContactLinkLookupDialog, type SageContactLinkLookupTarget } from "@/components/contacts/sage-contact-link-lookup-dialog"
+import { SageContactCreateDialog, type SageContactCreateTarget } from "@/components/contacts/sage-contact-create-dialog"
+import { SageClientMatchingDialog } from "@/components/contacts/sage-client-matching-dialog"
+import { ContactMergeDialog } from "@/components/contacts/contact-merge-dialog"
+import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
+import { addCompaniesToProject, getCompanyAssociationProjects } from "@/app/actions/contact-project-associations"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 
 type Tab = "customers" | "vendors" | "internal"
+type DirectoryCapabilities = Record<Tab, ContactDirectoryAccess> & {
+  readonly canManageAccounts: boolean
+  readonly canReadSageReview: boolean
+  readonly canApproveSageReview: boolean
+  readonly canReadEmployeePrivate: boolean
+  readonly canCreateSagePeople: boolean
+}
 
 const DEFAULT_VENDOR_CATEGORIES = [
   "Supplier",
@@ -64,10 +107,42 @@ function isInternalVendor(vendor: VendorDirectoryCompany): boolean {
 
 function InternalContactsTable({
   contacts,
+  onSageEdit,
+  onSageLink,
 }: {
   readonly contacts: readonly InternalDirectoryContact[]
+  readonly onSageEdit?: (contact: InternalDirectoryContact) => void
+  readonly onSageLink?: (contact: InternalDirectoryContact) => void
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
+
+  const columns = React.useMemo<ColumnDef<InternalDirectoryContact>[]>(
+    () => [
+      { id: "name", header: "Name" },
+      { id: "company", header: "Company" },
+      { id: "role", header: "Role" },
+      { id: "contact", header: "Contact" },
+      { id: "access", header: "Compass access" },
+      ...(developerModeEnabled ? [{ id: "source", header: "Source" }] : []),
+      ...(onSageEdit || onSageLink ? [{ id: "actions", header: "Actions" }] : []),
+    ],
+    [developerModeEnabled, onSageEdit, onSageLink]
+  )
+
+  const table = useReactTable({
+    data: [...contacts],
+    columns,
+    getRowId: (contact) => contact.id,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { pagination },
+  })
 
   if (contacts.length === 0) {
     return (
@@ -81,54 +156,85 @@ function InternalContactsTable({
   }
 
   return (
-    <div className="min-h-0 overflow-auto rounded-md border">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
-          <tr className="border-b">
-            <th className="px-3 py-2 text-left font-medium">Name</th>
-            <th className="px-3 py-2 text-left font-medium">Company</th>
-            <th className="px-3 py-2 text-left font-medium">Role</th>
-            <th className="px-3 py-2 text-left font-medium">Contact</th>
-            {developerModeEnabled && (
-              <th className="px-3 py-2 text-left font-medium">Source</th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {contacts.map((contact) => (
-            <tr key={contact.id} className="border-b last:border-b-0">
-              <td className="px-3 py-2 font-medium">{contact.name}</td>
-              <td className="px-3 py-2 text-muted-foreground">
-                {contact.company ?? "Internal"}
-              </td>
-              <td className="px-3 py-2">
-                <Badge variant="secondary">{contact.role ?? "Internal"}</Badge>
-              </td>
-              <td className="px-3 py-2 text-muted-foreground">
-                <div className="flex flex-col gap-0.5">
-                  {contact.email ? (
-                    <a href={`mailto:${contact.email}`} className="hover:underline">
-                      {contact.email}
-                    </a>
-                  ) : (
-                    <span>No email</span>
-                  )}
-                  {contact.phone ? (
-                    <a href={`tel:${contact.phone}`} className="hover:underline">
-                      {contact.phone}
-                    </a>
-                  ) : null}
-                </div>
-              </td>
-              {developerModeEnabled && (
-                <td className="px-3 py-2">
-                  <Badge variant="outline">{contact.sourceLabel}</Badge>
-                </td>
-              )}
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
+            <tr className="border-b">
+              {table.getHeaderGroups()[0]?.headers.map((header) => (
+                <th key={header.id} className="px-3 py-2 text-left font-medium">
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => {
+              const contact = row.original
+              return (
+                <tr key={contact.id} className="border-b last:border-b-0">
+                  <td className="px-3 py-2 font-medium">{contact.name}</td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {contact.company ?? "Internal"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant="secondary">{contact.role ?? "Internal"}</Badge>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    <div className="flex flex-col gap-0.5">
+                      {contact.email ? (
+                        <a href={`mailto:${contact.email}`} className="hover:underline">
+                          {contact.email}
+                        </a>
+                      ) : (
+                        <span>No email</span>
+                      )}
+                      {contact.phone ? (
+                        <a href={`tel:${contact.phone}`} className="hover:underline">
+                          {contact.phone}
+                        </a>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge variant="outline">
+                      {contact.accessStatus === "active"
+                        ? "Active"
+                        : contact.accessStatus === "invited"
+                          ? "Invitation pending"
+                          : "No account"}
+                    </Badge>
+                  </td>
+                  {developerModeEnabled && (
+                    <td className="px-3 py-2">
+                      <Badge variant="outline">{contact.sourceLabel}</Badge>
+                    </td>
+                  )}
+                  {onSageEdit || onSageLink ? (
+                    <td className="px-3 py-2">
+                      {contact.sageEmployeeId && onSageEdit ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => onSageEdit(contact)}>
+                          Propose Sage edit
+                        </Button>
+                      ) : null}
+                      {!contact.sageEmployeeId && onSageLink ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => onSageLink(contact)}>
+                          Verify Sage link
+                        </Button>
+                      ) : null}
+                    </td>
+                  ) : null}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <DataTablePagination
+        table={table}
+        itemLabel="internal contacts"
+        id="internal-contacts-items-per-page"
+      />
     </div>
   )
 }
@@ -160,7 +266,32 @@ function ContactsContent() {
   const initialTab = toContactsTab(searchParams.get("tab"))
 
   const [tab, setTab] = React.useState<Tab>(initialTab)
+  const [accessDialogOpen, setAccessDialogOpen] = React.useState(false)
+  const [sageReviewOpen, setSageReviewOpen] = React.useState(false)
+  const [sageClientMatchingOpen, setSageClientMatchingOpen] = React.useState(false)
+  const [myContactsOpen, setMyContactsOpen] = React.useState(false)
+  const [myContacts, setMyContacts] = React.useState<readonly MyContactRecord[]>([])
+  const [myProposalStatuses, setMyProposalStatuses] = React.useState<readonly MySageContactProposalStatus[]>([])
+  const [sageEditorTarget, setSageEditorTarget] = React.useState<SageContactEditorTarget | null>(null)
+  const [sageLinkTarget, setSageLinkTarget] = React.useState<SageContactLinkLookupTarget | null>(null)
+  const [sageCreateTarget, setSageCreateTarget] = React.useState<SageContactCreateTarget | null>(null)
+  const [accountLinkTarget, setAccountLinkTarget] = React.useState<DirectoryAccountLinkTarget | null>(null)
+  const [peopleCustomer, setPeopleCustomer] = React.useState<Customer | null>(null)
   const [loading, setLoading] = React.useState(true)
+  const [directoryAccess, setDirectoryAccess] = React.useState<DirectoryCapabilities | null>(null)
+  const [associationProjects, setAssociationProjects] = React.useState<readonly { readonly id: string; readonly name: string; readonly projectNumber: string | null }[]>([])
+  const [associationProjectId, setAssociationProjectId] = React.useState("")
+  const [selectedCustomers, setSelectedCustomers] = React.useState<readonly string[]>([])
+  const [selectedVendors, setSelectedVendors] = React.useState<readonly string[]>([])
+  const [associationDialogOpen, setAssociationDialogOpen] = React.useState(false)
+  const [associating, setAssociating] = React.useState(false)
+  const [mergeSelection, setMergeSelection] = React.useState<{
+    readonly kind: "customer_company" | "vendor_company" | "customer_person" | "vendor_person"
+    readonly choices: readonly [
+      { readonly id: string; readonly name: string; readonly email: string | null },
+      { readonly id: string; readonly name: string; readonly email: string | null },
+    ]
+  } | null>(null)
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<
@@ -175,29 +306,57 @@ function ContactsContent() {
     React.useState<Customer | null>(null)
 
   const [vendorDialogOpen, setVendorDialogOpen] = React.useState(false)
+  const [vendorReadOnly, setVendorReadOnly] = React.useState(false)
   const [editingVendor, setEditingVendor] =
     React.useState<VendorDirectoryCompany | null>(null)
 
-  const loadAll = async () => {
+  const vendorContacts = React.useMemo(
+    () => vendorsList.filter((vendor) => !isInternalVendor(vendor)),
+    [vendorsList]
+  )
+  const vendorCategories = React.useMemo(() => Array.from(
+    new Set([
+      ...DEFAULT_VENDOR_CATEGORIES,
+      ...vendorContacts
+        .map((vendor) => vendor.category?.trim())
+        .filter((category): category is string => {
+          return Boolean(category) && category.toLowerCase() !== "internal"
+        }),
+    ])
+  ).sort((left, right) => left.localeCompare(right)), [vendorContacts])
+
+  const loadAll = React.useCallback(async () => {
     try {
-      const [customers, vendors, internalContacts] = await Promise.all([
-        getCustomers(),
-        getVendors(),
-        getInternalDirectoryContacts(),
+      const access = await getContactDirectoryAccess()
+      const [customers, vendors, internalContacts, myRecords, myStatuses, projects] = await Promise.all([
+        access.customers.read ? getCustomers() : Promise.resolve([]),
+        access.vendors.read ? getVendors() : Promise.resolve([]),
+        access.internal.read ? getInternalDirectoryContacts() : Promise.resolve([]),
+        getMyContactRecords(),
+        listMySageContactProposalStatuses(),
+        getCompanyAssociationProjects(),
       ])
+      setDirectoryAccess(access)
+      setTab((currentTab) => {
+        if (access[currentTab].read) return currentTab
+        return (["customers", "vendors", "internal"] as const).find((candidate) => access[candidate].read) ?? currentTab
+      })
       setCustomersList(customers)
       setVendorsList(vendors)
       setInternalContactsList(internalContacts)
+      setMyContacts(myRecords)
+      setMyProposalStatuses(myStatuses)
+      setAssociationProjects(projects)
     } catch {
       toast.error("Failed to load contacts")
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   React.useEffect(() => {
-    loadAll()
-  }, [])
+    void loadAll()
+  }, [loadAll])
 
   const openCustomer = React.useCallback(() => {
     setEditingCustomer(null)
@@ -206,6 +365,7 @@ function ContactsContent() {
 
   const openVendor = React.useCallback(() => {
     setEditingVendor(null)
+    setVendorReadOnly(false)
     setVendorDialogOpen(true)
   }, [])
 
@@ -234,11 +394,11 @@ function ContactsContent() {
   )
 
   const pageActions = React.useMemo(() => {
-    if (tab === "internal") return []
+    if (tab === "internal" || !directoryAccess?.[tab].create) return []
 
     const action = TAB_ACTIONS[tab]
     return [{ ...action, icon: Plus }]
-  }, [tab, TAB_ACTIONS])
+  }, [tab, TAB_ACTIONS, directoryAccess])
 
   useRegisterPageActions(pageActions)
 
@@ -331,23 +491,131 @@ function ContactsContent() {
     }
   }
 
+  const selectedCompanyIds = tab === "vendors" ? selectedVendors : selectedCustomers
+  const openCompanyMerge = () => {
+    if (selectedCompanyIds.length !== 2 || tab === "internal") return
+    const selected = tab === "vendors"
+      ? vendorContacts.filter((vendor) => selectedCompanyIds.includes(vendor.id))
+      : customersList.filter((customer) => selectedCompanyIds.includes(customer.id))
+    const first = selected[0]
+    const second = selected[1]
+    if (!first || !second) return
+    setMergeSelection({
+      kind: tab === "vendors" ? "vendor_company" : "customer_company",
+      choices: [
+        { id: first.id, name: first.name, email: first.email },
+        { id: second.id, name: second.name, email: second.email },
+      ],
+    })
+  }
+  const handleAssociateCompanies = async () => {
+    if (!associationProjectId || selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || tab === "internal") return
+    setAssociating(true)
+    try {
+      const result = await addCompaniesToProject({
+        kind: tab === "vendors" ? "vendor" : "customer",
+        ids: selectedCompanyIds,
+        projectId: associationProjectId,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      if (result.warning) toast.warning(result.warning)
+      toast.success(`${result.added} added to project${result.existing > 0 ? `; ${result.existing} already associated` : ""}. No Compass access was granted.`)
+      if (tab === "vendors") setSelectedVendors([])
+      else setSelectedCustomers([])
+      setAssociationDialogOpen(false)
+    } catch {
+      toast.error("Could not complete the project association. Please refresh and check Project Contacts before retrying.")
+    } finally {
+      setAssociating(false)
+    }
+  }
+
   if (loading) {
     return <ContactsSkeleton />
   }
 
-  const vendorContacts = vendorsList.filter((vendor) => !isInternalVendor(vendor))
+  const accessManagerDialog = directoryAccess?.canManageAccounts ? (
+    <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl">
+        <DialogHeader>
+          <DialogTitle>Compass access</DialogTitle>
+          <DialogDescription>
+            Manage invitations, account roles, and project access. Contact records remain in the directories behind this dialog.
+          </DialogDescription>
+        </DialogHeader>
+        <TeamTab initialSection={tab === "customers" ? "clients" : tab} />
+      </DialogContent>
+    </Dialog>
+  ) : null
+
+  const myContactsDialog = (
+    <Dialog open={myContactsOpen} onOpenChange={setMyContactsOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>My contact information</DialogTitle>
+          <DialogDescription>Propose a change to your own verified Sage contact record. Another authorized staff member reviews it before Sage is updated.</DialogDescription>
+        </DialogHeader>
+        {myContacts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No directory person is linked to your Compass account yet. Ask an account administrator to verify and link the correct contact record.</p>
+        ) : (
+          <div className="space-y-2">
+            {myContacts.map((record) => (
+              <div key={`${record.kind}:${record.entityId}`} className="flex items-center justify-between gap-3 border-b py-2 text-sm">
+                <div><div className="font-medium">{record.name}</div><div className="text-muted-foreground">{record.companyName ?? "Internal"}</div></div>
+                {record.sageLinked ? (
+                  <Button type="button" size="sm" variant="outline" onClick={() => {
+                    setMyContactsOpen(false)
+                    setSageEditorTarget({ kind: record.kind, entityId: record.entityId, name: record.name })
+                  }}>Propose edit</Button>
+                ) : <Badge variant="outline">Sage link pending</Badge>}
+              </div>
+            ))}
+          </div>
+        )}
+        {myProposalStatuses.length > 0 ? (
+          <div className="space-y-2 border-t pt-3 text-sm">
+            <p className="font-medium">Recent proposals</p>
+            {myProposalStatuses.map((proposal) => (
+              <div key={proposal.id} className="flex flex-wrap justify-between gap-2 border-b pb-2">
+                <span>{proposal.kind.replaceAll("_", " ")} · {new Date(proposal.requestedAt).toLocaleDateString()}</span>
+                <span>{proposal.status}{proposal.errorMessage ? ` · ${proposal.errorMessage}` : ""}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+
+  if (directoryAccess && !directoryAccess.customers.read && !directoryAccess.vendors.read && !directoryAccess.internal.read) {
+    return (
+      <>
+        <div className="space-y-3 p-6 text-sm text-muted-foreground">
+          <p>You do not have access to a shared contacts directory. You can still manage your own linked contact record.</p>
+          <Button variant="outline" size="sm" onClick={() => setMyContactsOpen(true)}>My contact information</Button>
+          {directoryAccess.canManageAccounts && (
+            <Button variant="outline" size="sm" onClick={() => setAccessDialogOpen(true)}>
+              Manage Compass access
+            </Button>
+          )}
+        </div>
+        {accessManagerDialog}
+        {myContactsDialog}
+        <SageContactEditorDialog
+          key={sageEditorTarget ? `${sageEditorTarget.kind}:${sageEditorTarget.entityId}` : "none"}
+          target={sageEditorTarget}
+          onOpenChange={(open) => { if (!open) setSageEditorTarget(null) }}
+          onSubmitted={() => { void loadAll() }}
+        />
+      </>
+    )
+  }
+
   const addLabel = tab === "customers" ? "Add Client / Lead" : "Add Vendor"
   const addHandler = tab === "customers" ? openCustomer : openVendor
-  const vendorCategories = Array.from(
-    new Set([
-      ...DEFAULT_VENDOR_CATEGORIES,
-      ...vendorContacts
-        .map((vendor) => vendor.category?.trim())
-        .filter((category): category is string => {
-          return Boolean(category) && category.toLowerCase() !== "internal"
-        }),
-    ])
-  ).sort((left, right) => left.localeCompare(right))
 
   return (
     <>
@@ -360,19 +628,19 @@ function ContactsContent() {
         >
           <div className="flex items-center justify-between gap-3 shrink-0">
             <TabsList>
-              <TabsTrigger value="customers" className="text-xs sm:text-sm">
+              <TabsTrigger value="customers" disabled={!directoryAccess?.customers.read} className="text-xs sm:text-sm">
                 Clients & Leads
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {customersList.length}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="vendors" className="text-xs sm:text-sm">
+              <TabsTrigger value="vendors" disabled={!directoryAccess?.vendors.read} className="text-xs sm:text-sm">
                 Vendors
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {vendorContacts.length}
                 </span>
               </TabsTrigger>
-              <TabsTrigger value="internal" className="text-xs sm:text-sm">
+              <TabsTrigger value="internal" disabled={!directoryAccess?.internal.read} className="text-xs sm:text-sm">
                 Internal
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {internalContactsList.length}
@@ -380,18 +648,64 @@ function ContactsContent() {
               </TabsTrigger>
             </TabsList>
 
-            {tab !== "internal" ? (
-              <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
-                <IconPlus className="size-3.5" />
-                <span className="hidden sm:inline ml-1.5">{addLabel}</span>
-              </Button>
-            ) : (
-              <Badge variant="outline" className="h-8 gap-1.5 px-3">
-                <IconShieldCheck className="size-3.5" />
-                HPS / Nu-Tech / ORC
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setMyContactsOpen(true)}>My contact information</Button>
+              {tab === "customers" && directoryAccess?.canReadSageReview ? (
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageClientMatchingOpen(true)}>Match with Sage</Button>
+              ) : null}
+              {directoryAccess?.canReadSageReview ? (
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setSageReviewOpen(true)}>Sage review</Button>
+              ) : null}
+              {directoryAccess?.canManageAccounts && (
+                <Button variant="outline" size="sm" className="h-8" onClick={() => setAccessDialogOpen(true)}>
+                  Manage Compass access
+                </Button>
+              )}
+              {tab !== "internal" && directoryAccess?.[tab].create ? (
+                <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
+                  <IconPlus className="size-3.5" />
+                  <span className="hidden sm:inline ml-1.5">{addLabel}</span>
+                </Button>
+              ) : tab === "internal" ? (
+                <Badge variant="outline" className="hidden h-8 gap-1.5 px-3 sm:inline-flex">
+                  <IconShieldCheck className="size-3.5" />
+                  HPS / Nu-Tech / ORC
+                </Badge>
+              ) : null}
+            </div>
           </div>
+
+          {tab !== "internal" && (associationProjects.length > 0 || (directoryAccess?.[tab].edit && directoryAccess?.[tab].delete)) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-b pb-2 text-sm">
+              <span className="text-muted-foreground">{selectedCompanyIds.length} {tab === "vendors" ? "vendors" : "clients/leads"} selected</span>
+              {associationProjects.length > 0 ? <SearchableCombobox
+                ariaLabel="Choose project for selected companies"
+                options={associationProjects.map((project) => ({
+                  value: project.id,
+                  label: project.projectNumber ? `${project.projectNumber} · ${project.name}` : project.name,
+                }))}
+                value={associationProjectId}
+                onValueChange={setAssociationProjectId}
+                placeholder="Choose project..."
+                searchPlaceholder="Search projects..."
+                className="w-72"
+              /> : null}
+              {associationProjects.length > 0 ? <Button type="button" size="sm" disabled={selectedCompanyIds.length === 0 || selectedCompanyIds.length > 100 || !associationProjectId} onClick={() => setAssociationDialogOpen(true)}>
+                Add selected to project
+              </Button> : null}
+              {directoryAccess?.[tab].edit && directoryAccess?.[tab].delete ? (
+                <Button type="button" size="sm" variant="outline" disabled={selectedCompanyIds.length !== 2} onClick={openCompanyMerge}>
+                  Merge 2 duplicates
+                </Button>
+              ) : null}
+              {selectedCompanyIds.length > 0 ? (
+                <Button type="button" size="sm" variant="ghost" onClick={() => tab === "vendors" ? setSelectedVendors([]) : setSelectedCustomers([])}>Clear selection</Button>
+              ) : null}
+              <span className="text-xs text-muted-foreground">{selectedCompanyIds.length > 100 ? "Choose at most 100 records per batch. " : ""}Project association and duplicate merging never grant Compass access.</span>
+            </div>
+          ) : tab !== "internal" && directoryAccess?.canManageAccounts ? (
+            <p className="mt-2 text-xs text-muted-foreground">To grant people project access, select their accounts in Manage Compass access.</p>
+          ) : null}
 
           <TabsContent
             value="customers"
@@ -399,11 +713,14 @@ function ContactsContent() {
           >
             <CustomersTable
               customers={customersList}
-              onEdit={(customer) => {
+              onViewPeople={(customer) => setPeopleCustomer(customer)}
+              onEdit={directoryAccess?.customers.edit ? (customer) => {
                 setEditingCustomer(customer)
                 setCustomerDialogOpen(true)
-              }}
-              onDelete={handleDeleteCustomer}
+              } : undefined}
+              onDelete={directoryAccess?.customers.delete ? handleDeleteCustomer : undefined}
+              selectedIds={selectedCustomers}
+              onSelectionChange={associationProjects.length > 0 || (directoryAccess?.customers.edit && directoryAccess.customers.delete) ? setSelectedCustomers : undefined}
             />
           </TabsContent>
 
@@ -414,11 +731,19 @@ function ContactsContent() {
             <VendorsTable
               vendors={vendorContacts}
               categories={vendorCategories}
-              onEdit={(vendor) => {
+              onView={(vendor) => {
                 setEditingVendor(vendor)
+                setVendorReadOnly(true)
                 setVendorDialogOpen(true)
               }}
-              onDelete={handleDeleteVendor}
+              onEdit={directoryAccess?.vendors.edit ? (vendor) => {
+                setEditingVendor(vendor)
+                setVendorReadOnly(false)
+                setVendorDialogOpen(true)
+              } : undefined}
+              onDelete={directoryAccess?.vendors.delete ? handleDeleteVendor : undefined}
+              selectedIds={selectedVendors}
+              onSelectionChange={associationProjects.length > 0 || (directoryAccess?.vendors.edit && directoryAccess.vendors.delete) ? setSelectedVendors : undefined}
             />
           </TabsContent>
 
@@ -426,25 +751,198 @@ function ContactsContent() {
             value="internal"
             className="mt-3 flex-1 min-h-0 flex flex-col"
           >
-            <InternalContactsTable contacts={internalContactsList} />
+            <InternalContactsTable
+              contacts={internalContactsList}
+              onSageEdit={directoryAccess?.internal.edit ? (contact) => setSageEditorTarget({ kind: "employee", entityId: contact.id, name: contact.name }) : undefined}
+              onSageLink={directoryAccess?.canReadSageReview && directoryAccess.canReadEmployeePrivate && directoryAccess.internal.read ? (contact) => setSageLinkTarget({ kind: "employee", entityId: contact.id, name: contact.name, sageRecordNumber: contact.sageEmployeeNumber }) : undefined}
+            />
           </TabsContent>
         </Tabs>
       </div>
+
+      {accessManagerDialog}
+      {myContactsDialog}
+      {mergeSelection ? (
+        <ContactMergeDialog
+          kind={mergeSelection.kind}
+          choices={mergeSelection.choices}
+          onOpenChange={(open) => { if (!open) setMergeSelection(null) }}
+          onMerged={() => {
+            setSelectedCustomers([])
+            setSelectedVendors([])
+            setPeopleCustomer(null)
+            setVendorDialogOpen(false)
+            void loadAll()
+          }}
+        />
+      ) : null}
+      {directoryAccess?.canReadSageReview && directoryAccess.customers.read ? (
+        <SageClientMatchingDialog
+          open={sageClientMatchingOpen}
+          onOpenChange={setSageClientMatchingOpen}
+          customers={customersList}
+          onVerify={(customer, sageNumber) => setSageLinkTarget({
+            kind: "client_company", entityId: customer.id, name: customer.name,
+            sageRecordNumber: sageNumber,
+          })}
+          onOpenCustomer={(customer) => {
+            setEditingCustomer(customer)
+            setCustomerDialogOpen(true)
+          }}
+          onOpenReview={() => setSageReviewOpen(true)}
+        />
+      ) : null}
+
+      <Dialog open={associationDialogOpen} onOpenChange={setAssociationDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add selected directory records to project?</DialogTitle>
+            <DialogDescription>
+              {selectedCompanyIds.length} directory record{selectedCompanyIds.length === 1 ? "" : "s"} will be associated internally with {associationProjects.find((project) => project.id === associationProjectId)?.name ?? "the selected project"}. This does not change the project&apos;s legal client or Sage link, invite anyone, grant login access, or make contacts visible in an external portal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" disabled={associating} onClick={() => setAssociationDialogOpen(false)}>Cancel</Button>
+            <Button type="button" disabled={associating} onClick={() => void handleAssociateCompanies()}>{associating ? "Adding..." : "Add to project"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <CustomerDialog
         open={customerDialogOpen}
         onOpenChange={setCustomerDialogOpen}
         initialData={editingCustomer}
         onSubmit={handleCustomerSubmit}
+        onManagePeople={editingCustomer ? () => {
+          setCustomerDialogOpen(false)
+          setPeopleCustomer(editingCustomer)
+        } : undefined}
+        onSageEditCompany={editingCustomer ? () => {
+          setCustomerDialogOpen(false)
+          setSageEditorTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name })
+        } : undefined}
+        onSageLinkCompany={editingCustomer && directoryAccess?.canReadSageReview ? () => {
+          setCustomerDialogOpen(false)
+          setSageLinkTarget({ kind: "client_company", entityId: editingCustomer.id, name: editingCustomer.name, sageRecordNumber: editingCustomer.sageClientNumber })
+        } : undefined}
       />
 
       <VendorDialog
         open={vendorDialogOpen}
         onOpenChange={setVendorDialogOpen}
         initialData={editingVendor}
+        readOnly={vendorReadOnly}
         categories={vendorCategories}
         onSubmit={handleVendorSubmit}
+        onSageEditCompany={editingVendor ? () => {
+          setVendorDialogOpen(false)
+          setSageEditorTarget({ kind: "vendor_company", entityId: editingVendor.id, name: editingVendor.name })
+        } : undefined}
+        onSageLinkCompany={editingVendor && directoryAccess?.canReadSageReview ? () => {
+          setVendorDialogOpen(false)
+          setSageLinkTarget({ kind: "vendor_company", entityId: editingVendor.id, name: editingVendor.name, sageRecordNumber: editingVendor.sageVendorNumber })
+        } : undefined}
+        onSageEditContact={directoryAccess?.vendors.edit ? (contactId, name) => {
+          setVendorDialogOpen(false)
+          setSageEditorTarget({ kind: "vendor_person", entityId: contactId, name })
+        } : undefined}
+        onSageLinkContact={directoryAccess?.canReadSageReview ? (contactId, name, lineNumber) => {
+          setVendorDialogOpen(false)
+          setSageLinkTarget({ kind: "vendor_person", entityId: contactId, name, sageRecordNumber: lineNumber === null ? null : String(lineNumber) })
+        } : undefined}
+        onSageCreateContact={directoryAccess?.canCreateSagePeople && directoryAccess.vendors.create && editingVendor?.sageVendorId ? () => {
+          setVendorDialogOpen(false)
+          setSageCreateTarget({ kind: "vendor_person", companyId: editingVendor.id, companyName: editingVendor.name })
+        } : undefined}
+        onLinkAccount={directoryAccess?.canManageAccounts ? (contactId, name, userId) => {
+          setVendorDialogOpen(false)
+          setAccountLinkTarget({ kind: "vendor_person", personId: contactId, name, userId })
+        } : undefined}
+        onMergePeople={directoryAccess?.vendors.edit && directoryAccess.vendors.delete ? (people) => {
+          setVendorDialogOpen(false)
+          setMergeSelection({
+            kind: "vendor_person",
+            choices: [
+              { id: people[0].id, name: people[0].name, email: people[0].email },
+              { id: people[1].id, name: people[1].name, email: people[1].email },
+            ],
+          })
+        } : undefined}
       />
+      <CustomerPeopleDialog
+        key={peopleCustomer?.id ?? "none"}
+        customer={peopleCustomer ? { id: peopleCustomer.id, name: peopleCustomer.name, sageLinked: Boolean(peopleCustomer.sageClientId || peopleCustomer.sageClientNumber), sageVerified: Boolean(peopleCustomer.sageClientId) } : null}
+        onOpenChange={(open) => { if (!open) setPeopleCustomer(null) }}
+        canEdit={directoryAccess?.customers.edit ?? false}
+        canCreate={directoryAccess?.customers.create ?? false}
+        canDelete={directoryAccess?.customers.delete ?? false}
+        canLinkAccounts={directoryAccess?.canManageAccounts ?? false}
+        onSageEdit={(person: CustomerDirectoryPerson) => {
+          setPeopleCustomer(null)
+          setSageEditorTarget({ kind: "client_person", entityId: person.id, name: person.name })
+        }}
+        onSageLink={directoryAccess?.canReadSageReview ? (person: CustomerDirectoryPerson) => {
+          setPeopleCustomer(null)
+          setSageLinkTarget({ kind: "client_person", entityId: person.id, name: person.name, sageRecordNumber: person.sageLineNumber === null ? null : String(person.sageLineNumber) })
+        } : undefined}
+        onSageCreate={directoryAccess?.canCreateSagePeople && directoryAccess.customers.create && peopleCustomer?.sageClientId ? () => {
+          setPeopleCustomer(null)
+          setSageCreateTarget({ kind: "client_person", companyId: peopleCustomer.id, companyName: peopleCustomer.name })
+        } : undefined}
+        onVerifySageCompany={directoryAccess?.canReadSageReview && peopleCustomer && !peopleCustomer.sageClientId ? () => {
+          setPeopleCustomer(null)
+          setSageLinkTarget({
+            kind: "client_company", entityId: peopleCustomer.id, name: peopleCustomer.name,
+            sageRecordNumber: peopleCustomer.sageClientNumber,
+          })
+        } : undefined}
+        onLinkAccount={(person: CustomerDirectoryPerson) => {
+          setPeopleCustomer(null)
+          setAccountLinkTarget({ kind: "client_person", personId: person.id, name: person.name, userId: person.userId })
+        }}
+        onMergePeople={directoryAccess?.customers.edit && directoryAccess.customers.delete ? (people) => {
+          setPeopleCustomer(null)
+          setMergeSelection({
+            kind: "customer_person",
+            choices: [
+              { id: people[0].id, name: people[0].name, email: people[0].email },
+              { id: people[1].id, name: people[1].name, email: people[1].email },
+            ],
+          })
+        } : undefined}
+      />
+      <SageContactEditorDialog
+        key={sageEditorTarget ? `${sageEditorTarget.kind}:${sageEditorTarget.entityId}` : "none"}
+        target={sageEditorTarget}
+        onOpenChange={(open) => { if (!open) setSageEditorTarget(null) }}
+        onSubmitted={() => { void loadAll() }}
+      />
+      <SageContactLinkLookupDialog
+        key={sageLinkTarget ? `${sageLinkTarget.kind}:${sageLinkTarget.entityId}` : "none"}
+        target={sageLinkTarget}
+        onOpenChange={(open) => { if (!open) setSageLinkTarget(null) }}
+        onRequested={() => { void loadAll() }}
+      />
+      <SageContactCreateDialog
+        key={sageCreateTarget ? `${sageCreateTarget.kind}:${sageCreateTarget.companyId}` : "none"}
+        target={sageCreateTarget}
+        onOpenChange={(open) => { if (!open) setSageCreateTarget(null) }}
+        onSubmitted={() => { void loadAll() }}
+      />
+      <DirectoryAccountLinkDialog
+        key={accountLinkTarget ? `${accountLinkTarget.kind}:${accountLinkTarget.personId}` : "none"}
+        target={accountLinkTarget}
+        onOpenChange={(open) => { if (!open) setAccountLinkTarget(null) }}
+        onLinked={() => { void loadAll() }}
+      />
+      {directoryAccess?.canReadSageReview ? (
+        <SageContactReviewDialog
+          open={sageReviewOpen}
+          onOpenChange={setSageReviewOpen}
+          canApprove={directoryAccess.canApproveSageReview}
+          canCreateSagePeople={directoryAccess.canCreateSagePeople}
+        />
+      ) : null}
     </>
   )
 }

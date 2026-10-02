@@ -75,47 +75,9 @@ export function buildSageClientDirectoryImportSql(input: {
   const values = sageClientValues(stable.clients)
   const organization = sqlLiteral(organizationId)
 
-  return `-- Generated Sage client directory import (${stable.clients.length} stable records).
--- Exact one-to-one names are linked. Ambiguous names are inserted separately for review.
-WITH sage_clients(client_number, name) AS (
-  VALUES
-    ${values}
-),
-possible_matches AS (
-  SELECT sc.client_number, c.id AS customer_id
-  FROM sage_clients sc
-  INNER JOIN customers c
-    ON c.organization_id = ${organization}
-   AND lower(trim(c.name)) = lower(trim(sc.name))
-   AND (
-     c.sage_client_number IS NULL
-     OR trim(c.sage_client_number) = ''
-     OR trim(c.sage_client_number) = sc.client_number
-   )
-),
-source_unique_matches AS (
-  SELECT client_number, MIN(customer_id) AS customer_id
-  FROM possible_matches
-  GROUP BY client_number
-  HAVING COUNT(DISTINCT customer_id) = 1
-),
-one_to_one_matches AS (
-  SELECT MIN(client_number) AS client_number, customer_id
-  FROM source_unique_matches
-  GROUP BY customer_id
-  HAVING COUNT(DISTINCT client_number) = 1
-)
-UPDATE customers
-SET
-  sage_client_number = (
-    SELECT match.client_number
-    FROM one_to_one_matches match
-    WHERE match.customer_id = customers.id
-  ),
-  relationship_type = 'client',
-  updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-WHERE id IN (SELECT customer_id FROM one_to_one_matches);
-
+  return `-- Generated Sage client directory candidates (${stable.clients.length} stable records).
+-- A name is never sufficient evidence to link an existing Compass customer.
+-- Number-only candidates are not verified Sage links and require reviewed reconciliation.
 WITH sage_clients(client_number, name) AS (
   VALUES
     ${values}
@@ -133,7 +95,7 @@ SELECT
   NULL,
   NULL,
   NULL,
-  'Imported from the Sage client directory. Portal access is not granted by this import.',
+  'Unverified Sage-number candidate. Reconcile the exact Sage ID and Compass customer before use; this import grants no portal access.',
   NULL,
   NULL,
   sc.client_number,

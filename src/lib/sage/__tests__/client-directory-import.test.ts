@@ -57,7 +57,7 @@ describe("Sage client directory import", () => {
     })
   })
 
-  it("links exact Buildertrend contacts to Sage and retains both identities", async () => {
+  it("keeps same-name Buildertrend and Sage candidates separate for review", async () => {
     const database = await createDatabase()
     database.exec(`
       CREATE TABLE customers (
@@ -92,21 +92,29 @@ describe("Sage client directory import", () => {
     expect(
       database
         .prepare(
-          `SELECT name, sage_client_number AS sageNumber,
+          `SELECT id, name, sage_client_number AS sageNumber,
                   buildertrend_contact_id AS buildertrendContactId
-           FROM customers ORDER BY name`
+           FROM customers ORDER BY id`
         )
         .all()
     ).toEqual([
       {
-        name: "Sage Only",
-        sageNumber: "101",
+        id: "buildertrend-existing",
+        name: "Shared Client",
+        sageNumber: null,
+        buildertrendContactId: "bt-shared",
+      },
+      {
+        id: "sage-customer-org-a-100",
+        name: "Shared Client",
+        sageNumber: "100",
         buildertrendContactId: null,
       },
       {
-        name: "Shared Client",
-        sageNumber: "100",
-        buildertrendContactId: "bt-shared",
+        id: "sage-customer-org-a-101",
+        name: "Sage Only",
+        sageNumber: "101",
+        buildertrendContactId: null,
       },
     ])
     database.close()

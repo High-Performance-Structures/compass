@@ -140,6 +140,12 @@ export const projectEstimates = sqliteTable(
     ),
     closingText: text("closing_text"),
     clientReportMode: text("client_report_mode"),
+    showCostBreakdowns: integer("show_cost_breakdowns", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    showAssemblyBuilderFee: integer("show_assembly_builder_fee", { mode: "boolean" })
+      .notNull()
+      .default(false),
     directCostCents: integer("direct_cost_cents").notNull().default(0),
     markupCents: integer("markup_cents").notNull().default(0),
     taxCents: integer("tax_cents").notNull().default(0),
@@ -262,6 +268,37 @@ export const projectEstimateAcknowledgements = sqliteTable(
   ]
 )
 
+export const projectEstimateReportPhases = sqliteTable(
+  "project_estimate_report_phases",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id").notNull().references(() => projectEstimates.id, { onDelete: "cascade" }),
+    divisionCode: text("division_code").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    itemize: integer("itemize", { mode: "boolean" }).notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(1),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("project_estimate_report_phases_estimate_order_idx").on(table.estimateId, table.sortOrder)]
+)
+
+export const projectEstimateAssemblies = sqliteTable(
+  "project_estimate_assemblies",
+  {
+    id: text("id").primaryKey(),
+    estimateId: text("estimate_id").notNull().references(() => projectEstimates.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("project_estimate_assemblies_order_idx").on(table.estimateId, table.sortOrder)]
+)
+
 export const projectEstimateLines = sqliteTable(
   "project_estimate_lines",
   {
@@ -276,6 +313,8 @@ export const projectEstimateLines = sqliteTable(
       () => estimateTemplateLines.id,
       { onDelete: "set null" }
     ),
+    assemblyId: text("assembly_id").references(() => projectEstimateAssemblies.id, { onDelete: "set null" }),
+    reportPhaseId: text("report_phase_id").references(() => projectEstimateReportPhases.id, { onDelete: "set null" }),
     divisionCode: text("division_code").notNull(),
     divisionName: text("division_name").notNull(),
     costCode: text("cost_code").notNull(),
@@ -321,6 +360,7 @@ export const projectEstimateLines = sqliteTable(
       table.projectId,
       table.costCode
     ),
+    index("project_estimate_lines_report_phase_idx").on(table.reportPhaseId),
   ]
 )
 
@@ -361,6 +401,10 @@ export const projectEstimateLineCostItems = sqliteTable(
     lineTotalCents: integer("line_total_cents").notNull().default(0),
     totalCostCents: integer("total_cost_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
+    deletedAt: text("deleted_at"),
+    deletedByUserId: text("deleted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -372,6 +416,11 @@ export const projectEstimateLineCostItems = sqliteTable(
     index("project_estimate_line_cost_items_estimate_idx").on(
       table.estimateId,
       table.estimateLineId
+    ),
+    index("project_estimate_line_cost_items_active_idx").on(
+      table.estimateLineId,
+      table.deletedAt,
+      table.sortOrder
     ),
   ]
 )

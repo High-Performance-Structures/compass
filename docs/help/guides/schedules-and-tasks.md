@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-09-08"
+  "lastReviewed": "2026-09-14"
 }
 ---
 
@@ -32,7 +32,7 @@ The critical path is calculated from activity duration, dependencies, dates, and
 
 ## Create or Edit a Schedule Item {#schedule-item}
 
-Enter a clear title, start date, workday duration, phase, assignee, and any dependency details. Review calculated dates before saving. If an assignee lacks project access, grant only the project role and permissions their work requires.
+Enter a clear title, start date, workday duration, phase, assignee, and any dependency details. Use **Notes** for additional activity context that belongs with the schedule item, then review calculated dates before saving. If an assignee lacks project access, grant only the project role and permissions their work requires.
 
 ## Predecessors {#predecessors}
 

@@ -32,8 +32,12 @@ const sageBridgePaths = [
   "/api/integrations/sage/tax-catalog/results",
   "/api/integrations/sage/client-project-writes/requests",
   "/api/integrations/sage/client-project-writes/results",
+  "/api/integrations/sage/contact-changes/requests",
+  "/api/integrations/sage/contact-changes/results",
+  "/api/integrations/sage/client-directory",
   "/api/integrations/sage/square-payments/requests",
   "/api/integrations/sage/square-payments/results",
+  "/api/integrations/square/auth-health",
 ]
 
 const webhookPaths = [
@@ -50,6 +54,7 @@ const scheduledMaintenancePaths = [
   "/api/operations/goto/recover-message-bodies",
   "/api/operations/sage/health",
   "/api/operations/sage/square-receipts",
+  "/api/operations/square/auth-health",
 ]
 
 export function isPublicPath(pathname: string): boolean {

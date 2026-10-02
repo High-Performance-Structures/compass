@@ -15,7 +15,7 @@ using System.Xml.Schema;
 
 namespace CompassSageClientProjectWriter
 {
-    internal static class Program
+    internal static partial class Program
     {
         private const string ApiDllPath = @"C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\Sage.100.Contractor.Api.dll";
         private const string XsdPath = @"C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\mbxml.xsd";
@@ -106,7 +106,9 @@ namespace CompassSageClientProjectWriter
         }
         private sealed class ApiSession : IDisposable
         {
-            public ApiSession(string user, string password)
+            public ApiSession(string user, string password) : this(user, password, TargetCompany) { }
+
+            public ApiSession(string user, string password, string company)
             {
                 try
                 {
@@ -126,8 +128,8 @@ namespace CompassSageClientProjectWriter
                     Invoke("EnableRequests", new object[0]);
                     object allowed = Invoke("IsApplicationAllowed", new object[] { user, password });
                     if (!(allowed is int) || (int)allowed != 0) throw new InvalidOperationException("The Sage API application is not allowed (code " + Convert.ToString(allowed) + ").");
-                    object valid = Invoke("IsValidUser", new object[] { TargetCompany, user, password });
-                    if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("jarvis.api is not a valid Sage API user for the target company.");
+                    object valid = Invoke("IsValidUser", new object[] { company, user, password });
+                    if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("The API user is not valid for the selected Sage company.");
                 }
                 catch
                 {
@@ -148,6 +150,18 @@ namespace CompassSageClientProjectWriter
         public static int Main(string[] args)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            if (args.Length > 0 && String.Equals(args[0], "--contact-run", StringComparison.OrdinalIgnoreCase))
+                return RunContactBridge();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactTest();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-write-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactWriteTest();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-email-map-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactEmailMapTest();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-child-add-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactChildAddTest();
+            if (args.Length > 0 && String.Equals(args[0], "--contact-schema-test", StringComparison.OrdinalIgnoreCase))
+                return RunContactSchemaTest();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -159,6 +173,11 @@ namespace CompassSageClientProjectWriter
                 }
                 WriteLog("INFO", "Writer run started.");
                 PollOnce();
+                // Reuse the existing scheduled writer sequentially so contact
+                // polling never needs a second Sage API session or task.
+                if (String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_BRIDGE_ENABLED"),
+                    "true", StringComparison.OrdinalIgnoreCase) && RunContactBridge() != 0)
+                    throw new InvalidOperationException("Sage contact bridge run failed.");
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }
@@ -383,6 +402,20 @@ namespace CompassSageClientProjectWriter
 
         private static SageRecord FindClient(ClientPayload client)
         {
+            // A previously linked client must be resolved by the exact stable
+            // Sage identity. Name/email matching is only for an unlinked add.
+            if (!String.IsNullOrWhiteSpace(client.sageClientId) ||
+                !String.IsNullOrWhiteSpace(client.sageClientNumber))
+            {
+                int linkedNumber;
+                if (String.IsNullOrWhiteSpace(client.sageClientId) ||
+                    !Int32.TryParse(client.sageClientNumber, out linkedNumber) || linkedNumber < 1)
+                    throw new InvalidOperationException("Compass supplied an incomplete Sage client link; no write was attempted.");
+                SageRecord linked = FindClientByNumber(linkedNumber);
+                if (linked == null || !String.Equals(linked.Id, client.sageClientId, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Compass Sage client ID and number do not identify the same client; no write was attempted.");
+                return linked;
+            }
             if (String.IsNullOrWhiteSpace(client.email)) return FindClientByName(client.name);
             SageRecord emailMatch = FindClientByEmail(client.email);
             if (emailMatch != null) return emailMatch;
