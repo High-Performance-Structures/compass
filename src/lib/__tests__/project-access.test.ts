@@ -2,7 +2,11 @@ import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/better-sqlite3"
 import { describe, expect, it, vi } from "vitest"
 
-import { getProjectAccessRecord } from "@/lib/project-access"
+import {
+  assertActiveInternalOrganization,
+  getProjectAudienceAccessRecord,
+  getProjectAccessRecord,
+} from "@/lib/project-access"
 
 const getDb = vi.fn()
 
@@ -26,7 +30,8 @@ function openDatabase(): InstanceType<typeof Database> {
     CREATE TABLE project_members (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
-      user_id TEXT NOT NULL
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'client'
     );
   `)
   return sqlite
@@ -57,7 +62,7 @@ describe("project access organization boundaries", () => {
       INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');
       INSERT INTO organizations VALUES ('org-b', 'Org B', 'org-b', 'client', 1, '2026-09-01', '2026-09-01');
       INSERT INTO projects VALUES ('project-b', 'org-b', 'B-1');
-      INSERT INTO project_members VALUES ('membership-1', 'project-b', 'user-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-b', 'user-1', 'client');
     `)
 
     getDb.mockReturnValue(drizzle(sqlite))
@@ -72,7 +77,7 @@ describe("project access organization boundaries", () => {
     sqlite.exec(`
       INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');
       INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
-      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1', 'client');
     `)
 
     getDb.mockReturnValue(drizzle(sqlite))
@@ -105,11 +110,156 @@ describe("project access organization boundaries", () => {
     sqlite.exec(`
       INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 0, '2026-09-01', '2026-09-01');
       INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
-      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1', 'client');
     `)
 
     getDb.mockReturnValue(drizzle(sqlite))
     const access = await getProjectAccessRecord(getDb(), baseUser, "project-a")
+
+    expect(access).toBeNull()
+    sqlite.close()
+  })
+
+  it("rejects an internal staff member's cross-organization membership", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'internal', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO organizations VALUES ('org-b', 'Org B', 'org-b', 'internal', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-b', 'org-b', 'B-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-b', 'user-1', 'client');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAccessRecord(
+      getDb(),
+      { ...baseUser, role: "project_manager", organizationType: "internal" },
+      "project-b"
+    )
+
+    expect(access).toBeNull()
+    sqlite.close()
+  })
+
+  it("rejects staff access when the authoritative organization is not internal", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAccessRecord(
+      getDb(),
+      { ...baseUser, role: "project_manager", organizationType: "internal" },
+      "project-a"
+    )
+
+    expect(access).toBeNull()
+    sqlite.close()
+  })
+
+  it("keeps developer access scoped to an assigned same-organization project", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'internal', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1', 'client');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAccessRecord(
+      getDb(),
+      { ...baseUser, role: "developer", organizationType: "internal" },
+      "project-a"
+    )
+
+    expect(access).toEqual({
+      id: "project-a",
+      organizationId: "org-a",
+      projectNumber: "A-1",
+    })
+    sqlite.close()
+  })
+
+  it("rejects an inactive user before project membership can grant access", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'internal', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1', 'client');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAccessRecord(
+      getDb(),
+      { ...baseUser, role: "developer", organizationType: "internal", isActive: false },
+      "project-a"
+    )
+
+    expect(access).toBeNull()
+    sqlite.close()
+  })
+
+  it("requires an authoritative active internal organization", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(
+      `INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');`
+    )
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    await expect(
+      assertActiveInternalOrganization(getDb(), {
+        ...baseUser,
+        role: "admin",
+        organizationType: "internal",
+      })
+    ).rejects.toThrow("Active internal organization is required")
+    sqlite.close()
+  })
+
+  it("requires an exact active client audience grant before media metadata", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1', 'client');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAudienceAccessRecord(
+      getDb(),
+      baseUser,
+      "project-a",
+      "owner"
+    )
+
+    expect(access).toEqual({
+      id: "project-a",
+      organizationId: "org-a",
+      projectNumber: "A-1",
+    })
+    sqlite.close()
+  })
+
+  it.each([
+    ["a mismatched audience role", "subcontractor", "owner"],
+    ["a cross-organization project", "client", "owner"],
+  ] as const)("rejects %s before audience metadata", async (_label, role, audience) => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'client', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO organizations VALUES ('org-b', 'Org B', 'org-b', 'client', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-b', 'org-b', 'B-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-b', 'user-1', '${role}');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAudienceAccessRecord(
+      getDb(),
+      baseUser,
+      "project-b",
+      audience
+    )
 
     expect(access).toBeNull()
     sqlite.close()

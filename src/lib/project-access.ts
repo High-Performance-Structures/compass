@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { organizations, projectMembers, projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
+import type { ProjectAudience } from "@/lib/project-audience-access"
 import {
   canUseOrganizationProjectScopeRole,
   isInternalStaffRole,
@@ -45,6 +46,7 @@ export async function assertActiveInternalOrganization(
     .where(
       and(
         eq(organizations.id, user.organizationId),
+        inArray(organizations.type, ["internal", "demo"]),
         eq(organizations.isActive, true)
       )
     )
@@ -60,7 +62,7 @@ export async function getProjectAccessRecord(
 ): Promise<ProjectAccessRecord | null> {
   if (!user.isActive || !user.organizationId) return null
   const organization = await db
-    .select({ id: organizations.id })
+    .select({ id: organizations.id, type: organizations.type })
     .from(organizations)
     .where(
       and(
@@ -72,68 +74,11 @@ export async function getProjectAccessRecord(
     .get()
   if (!organization) return null
 
-  if (
-    isInternalStaffRole(user.role) &&
-    (user.organizationType === "internal" || user.organizationType === "demo")
-  ) {
-    const project = await db
-      .select({
-        id: projects.id,
-        organizationId: projects.organizationId,
-        projectNumber: projects.projectNumber,
-      })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1)
-      .get()
-    if (!project) return null
-    if (
-      project.organizationId &&
-      usesOrganizationProjectScope(user, project.organizationId)
-    ) {
-      return project
-    }
-
-    const membership = await db
-      .select({ id: projectMembers.id })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .get()
-    if (!membership) return null
-
-    if (!project.organizationId) return null
-    const targetOrganization = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(
-        and(
-          eq(organizations.id, project.organizationId),
-          eq(organizations.isActive, true)
-        )
-      )
-      .limit(1)
-      .get()
-    return targetOrganization ? project : null
-  }
-
-  const membership = await db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, user.id)
-      )
-    )
-    .limit(1)
-    .get()
-  if (!membership) return null
+  const internalOrganization =
+    organization.type === "internal" || organization.type === "demo"
+  const internalStaff = isInternalStaffRole(user.role)
+  const scopedDeveloper = user.role === "developer"
+  if ((internalStaff || scopedDeveloper) && !internalOrganization) return null
 
   const project = await db
     .select({
@@ -150,9 +95,73 @@ export async function getProjectAccessRecord(
     )
     .limit(1)
     .get()
-
   if (!project) return null
-  return project
+
+  if (internalStaff) return project
+
+  const membership = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, user.id)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!membership) return null
+
+  return membership ? project : null
+}
+
+const PROJECT_AUDIENCE_ROLES: Readonly<Record<ProjectAudience, readonly string[]>> = {
+  owner: ["client", "owner"],
+  sub_vendor: ["subcontractor", "supplier"],
+}
+
+export function projectAudienceRoles(
+  audience: ProjectAudience
+): readonly string[] {
+  return PROJECT_AUDIENCE_ROLES[audience]
+}
+
+/**
+ * Resolve an external audience grant in the same query that binds the project
+ * to the viewer's active organization. Callers must use this result
+ * before selecting any audience resource or provider metadata.
+ */
+export async function getProjectAudienceAccessRecord(
+  db: Db,
+  user: AuthUser,
+  projectId: string,
+  audience: ProjectAudience
+): Promise<ProjectAccessRecord | null> {
+  if (!user.isActive || !user.organizationId) return null
+  if (isInternalStaffRole(user.role) || user.role === "developer") return null
+
+  const project = await db
+    .select({
+      id: projects.id,
+      organizationId: projects.organizationId,
+      projectNumber: projects.projectNumber,
+    })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .innerJoin(organizations, eq(organizations.id, projects.organizationId))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(projectMembers.userId, user.id),
+        inArray(projectMembers.role, projectAudienceRoles(audience)),
+        eq(projects.organizationId, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+
+  return project ?? null
 }
 
 export async function assertProjectAccess(

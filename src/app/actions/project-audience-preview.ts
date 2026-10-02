@@ -34,11 +34,12 @@ import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
+  assertProjectAccess,
+  getProjectAudienceAccessRecord,
+  projectAudienceRoles,
+} from "@/lib/project-access"
+import type { ProjectAudience } from "@/lib/project-audience-access"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
@@ -276,16 +277,12 @@ type AudienceProjectRow = AudienceProjectOption & {
 }
 
 function visibleAudienceProjectOptions(
-  rows: readonly AudienceProjectRow[],
-  audience: ProjectAudience
+  rows: readonly AudienceProjectRow[]
 ): readonly AudienceProjectOption[] {
   const seenProjectIds = new Set<string>()
 
   return rows.flatMap((row) => {
-    if (
-      seenProjectIds.has(row.id) ||
-      !canUseProjectAudience(row.projectRole, audience)
-    ) {
+    if (seenProjectIds.has(row.id)) {
       return []
     }
 
@@ -320,29 +317,29 @@ async function loadAudienceProjectOptions(input: {
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .innerJoin(organizations, eq(organizations.id, projects.organizationId))
     .where(
       and(
         eq(projectMembers.userId, input.userId),
+        inArray(projectMembers.role, projectAudienceRoles(input.audience)),
+        eq(organizations.isActive, true),
         organizationFilter
       )
     )
     .orderBy(asc(projects.projectNumber), asc(projects.name))
 
-  return visibleAudienceProjectOptions(rows, input.audience)
+  return visibleAudienceProjectOptions(rows)
 }
 
 export async function getProjectAudienceOptions(
   audience: ProjectAudience
 ): Promise<readonly AudienceProjectOption[]> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
-  if (
-    (user.organizationType === "internal" || user.organizationType === "demo") &&
-    isInternalStaffRole(user.role)
-  ) {
+  if (isInternalStaffRole(user.role) || user.role === "developer") {
     return []
   }
   if (!user.isActive || !user.organizationId) return []
+  requirePermission(user, "project", "read")
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -388,27 +385,15 @@ async function verifyProjectAccess(
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const project = await assertProjectAccess(db, user, projectId)
-  if (!project.organizationId) {
-    throw new Error("Project organization is missing")
-  }
   const viewerIsInternal =
     (user.organizationType === "internal" || user.organizationType === "demo") &&
     isInternalStaffRole(user.role)
-  if (!viewerIsInternal) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .get()
-    if (!canUseProjectAudience(membership?.role ?? null, audience)) {
-      throw new Error("Project not found")
-    }
+  const project = viewerIsInternal
+    ? await assertProjectAccess(db, user, projectId)
+    : await getProjectAudienceAccessRecord(db, user, projectId, audience)
+  if (!project) throw new Error("Project not found")
+  if (!project.organizationId) {
+    throw new Error("Project organization is missing")
   }
 
   return {

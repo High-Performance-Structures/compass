@@ -46,25 +46,19 @@ describe("correspondenceContext organization and project access", () => {
     })
   }
 
-  it("keeps an owner workspace when the active shell organization is another internal organization", async () => {
+  it("denies an owner workspace when the active shell organization is another internal organization", async () => {
     const db = open()
     authenticate(db, { activeOrganizationId: "org-b", activeOrganizationType: "internal", activeRole: "admin" })
 
-    const result = await correspondenceContext("project-a")
-
-    expect(result.organizationId).toBe("org-a")
-    expect(result.workspace).toBe("owner")
+    await expect(correspondenceContext("project-a")).rejects.toThrow("Project not found")
   })
 
-  it("classifies a target-organization supplier as sub_vendor", async () => {
+  it("denies a target-organization supplier when the active organization differs", async () => {
     const db = open()
     db.sqlite.prepare("UPDATE project_members SET role = ? WHERE project_id = ? AND user_id = ?").run("supplier", "project-a", "owner-a")
     authenticate(db, { activeOrganizationId: "org-b", activeOrganizationType: "internal", activeRole: "admin" })
 
-    const result = await correspondenceContext("project-a")
-
-    expect(result.organizationId).toBe("org-a")
-    expect(result.workspace).toBe("sub_vendor")
+    await expect(correspondenceContext("project-a")).rejects.toThrow("Project not found")
   })
 
   it("denies an active other-organization admin without project membership", async () => {
