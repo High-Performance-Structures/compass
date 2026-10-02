@@ -24,6 +24,25 @@ describe("correspondence actions against SQLite", () => {
   })
   afterEach(() => { database.close(); vi.clearAllMocks() })
 
+  it("accepts replies to larger existing audiences while retaining the new-message limit", async () => {
+    const audience = ["owner-a"]
+    for (let index = 0; index < 31; index++) {
+      const id = `bulk-owner-${index}`
+      audience.push(id)
+      database.sqlite.prepare("INSERT INTO users (id,email,display_name,role,is_active,created_at,updated_at) VALUES (?,?,?,'client',1,'2026-09-30','2026-09-30')").run(id, `${id}@example.test`, id)
+      database.sqlite.prepare("INSERT INTO organization_members (id,organization_id,user_id,role,joined_at) VALUES (?,'org-a',?,'client','2026-09-30')").run(`om-${id}`, id)
+      database.sqlite.prepare("INSERT INTO project_members (id,project_id,user_id,role,assigned_at) VALUES (?,'project-a',?,'owner','2026-09-30')").run(`pm-${id}`, id)
+      insertParticipant(database.sqlite, { id: `p-${id}`, conversationId: "thread", userId: id, role: "owner" })
+    }
+    mocks.context.mockImplementation(async () => context(database, "staff-a", "project-a"))
+    const input = { projectId: "project-a", conversationId: "thread", subject: "Subject", body: "Project update for everyone", recipientUserIds: audience, attachmentIds: [], idempotencyKey: "large-audience-reply-request", participantVersion: 1 }
+    const result = await sendCorrespondence(input)
+    expect(result.success).toBe(true)
+    if (!result.success) throw new Error(result.error)
+    expect(database.sqlite.prepare("SELECT COUNT(*) AS count FROM correspondence_recipients WHERE message_id=?").get(result.data.messageId)).toEqual({ count: 33 })
+    expect((await sendCorrespondence({ ...input, conversationId: null, participantVersion: null, idempotencyKey: "large-new-message-request" })).success).toBe(false)
+  })
+
   it("marks every received message in selected conversations as read for this user only", async () => {
     for (let index = 0; index < 65; index++) {
       const id = `older-${index}`
@@ -97,7 +116,7 @@ describe("correspondence actions against SQLite", () => {
     expect((await discardCorrespondenceDraft("project-a", "thread", 1)).success).toBe(true)
     expect((await saveCorrespondenceDraft("project-a", "thread", "Delayed autosave", 1)).success).toBe(false)
     const result = await getCorrespondenceDetail("project-a", "thread")
-    expect(result.success && result.data.draft).toEqual({ body: "", version: 2 })
+    expect(result.success && result.data.draft).toEqual({ body: "", version: 2, attachments: [] })
   })
   it("marks only observed messages, and does not certify a newer edit", async () => {
     expect((await markCorrespondenceOpened("project-a", "thread", [{ id: "seen", editedAt: null }])).success).toBe(true)

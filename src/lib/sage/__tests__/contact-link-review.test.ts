@@ -39,20 +39,21 @@ describe("reviewed Sage identity linking", () => {
     expect(sageEmployeeNamesMatch("Sarah Cowman", " ")).toBe(false)
   })
 
-  it("permits an authorized reviewer to approve their own employee lookup with an optional note", () => {
-    const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee", requesterIsReviewer: true,
+  it("permits an authorized reviewer to approve their own identity lookup with an optional note", () => {
+    const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee",
       compassName: "Sarah Cowman", sageName: "Sarah Cowman", reviewNote: "" }
     expect(sageIdentityLinkReviewError(input)).toBeNull()
     expect(sageIdentityLinkReviewError({ ...input, sageName: "Another Person" })).toBeNull()
     expect(sageIdentityLinkReviewError({ ...input, sageName: "Another Person", reviewNote: "Verified legal name in Sage" })).toBeNull()
     expect(sageIdentityLinkReviewError({ ...input, sageName: null })).toMatch(/not returned/)
-    expect(sageIdentityLinkReviewError({ ...input, kind: "client_company" })).toMatch(/limited/)
-    expect(sageIdentityLinkReviewError({ ...input, kind: "client_company", requesterIsReviewer: false, sageName: null }))
+    expect(sageIdentityLinkReviewError({ ...input, kind: "client_company" })).toBeNull()
+    expect(sageIdentityLinkReviewError({ ...input, kind: "vendor_company" })).toBeNull()
+    expect(sageIdentityLinkReviewError({ ...input, kind: "client_company", sageName: null }))
       .toMatch(/client name was not returned/)
   })
 
   it("does not require a written note for an employee name mismatch", () => {
-    const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee", requesterIsReviewer: false,
+    const input: Parameters<typeof sageIdentityLinkReviewError>[0] = { kind: "employee",
       compassName: "Sarah Cowman", sageName: "Sarah Coleman", reviewNote: "" }
     expect(sageIdentityLinkReviewError(input)).toBeNull()
     expect(sageIdentityLinkReviewError({ ...input, reviewNote: "Verified Sage legal name" })).toBeNull()

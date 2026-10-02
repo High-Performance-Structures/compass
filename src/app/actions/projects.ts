@@ -24,7 +24,7 @@ import {
   projectFamilies,
   projectFamilyPhases,
 } from "@/db/schema-project-families"
-import { and, asc, eq, notExists, or, sql } from "drizzle-orm"
+import { and, asc, eq, isNull, notExists, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -180,7 +180,7 @@ export async function getProjectIntakeCustomerOptions(): Promise<readonly Projec
     sageClientNumber: customers.sageClientNumber,
   })
     .from(customers)
-    .where(eq(customers.organizationId, organizationId))
+    .where(and(eq(customers.organizationId, organizationId), isNull(customers.mergedIntoCustomerId)))
     .orderBy(asc(customers.name))
   const reviewIds = sageClientLinkReviewIds(rows)
   return rows.map((customer) => ({
@@ -605,6 +605,7 @@ export async function createProjectIntake(
       .where(
         and(
           eq(customers.organizationId, organizationId),
+          isNull(customers.mergedIntoCustomerId),
           selectedCustomerId
             ? eq(customers.id, selectedCustomerId)
             : customerEmail
@@ -640,6 +641,7 @@ export async function createProjectIntake(
           sageClientNumber: customers.sageClientNumber,
         }).from(customers).where(and(
           eq(customers.organizationId, organizationId),
+          isNull(customers.mergedIntoCustomerId),
           sql`lower(trim(${customers.name})) = ${customerMatch.name.trim().toLowerCase()}`,
         ))
       : []
@@ -1779,6 +1781,7 @@ export async function createProjectShell(
       .where(
         and(
           eq(customers.organizationId, orgId),
+          isNull(customers.mergedIntoCustomerId),
           sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
         )
       )

@@ -358,6 +358,9 @@ export async function updateVendor(
       .limit(1)
       .get()
     if (!existing) return { success: false, error: "Vendor not found" }
+    if (existing.directoryStatus !== "active" || existing.mergedIntoVendorId) {
+      return { success: false, error: "This vendor was archived or merged. Edit the surviving directory record instead." }
+    }
 
     const contactInputs = normalizedContactInputs(data.contacts ?? [])
     const existingContacts = data.contacts === undefined
@@ -673,6 +676,10 @@ export async function deleteVendor(id: string) {
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
+    const existing = await db.select({ mergedIntoVendorId: vendors.mergedIntoVendorId })
+      .from(vendors).where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId))).get()
+    if (!existing) return { success: false, error: "Vendor not found." }
+    if (existing.mergedIntoVendorId) return { success: false, error: "Merged vendor records are retained for audit and cannot be deleted." }
     await db
       .delete(vendors)
       .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))

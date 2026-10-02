@@ -16,6 +16,7 @@ import {
 import {
   type CreateRfqDocumentLinkInput,
   type CreateRfqScopeLineInput,
+  type ProjectRfqCostCodeOption,
   createRfqRequest,
 } from "@/app/actions/project-operations"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
@@ -25,6 +26,10 @@ import type {
   ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
 import { Button } from "@/components/ui/button"
+import {
+  ProjectRfqCostCodePicker,
+  ProjectRfqDivisionPicker,
+} from "@/components/projects/project-rfq-cost-code-picker"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -72,7 +77,7 @@ type DraftRfqDocumentLink = {
   readonly notes: string
 }
 
-type RfqLineField = "description" | "phaseCode" | "costCode" | "notes"
+type RfqLineField = "description" | "notes"
 type RfqDocumentField = "label" | "url" | "notes"
 type SelectionFilterState = {
   readonly division: string
@@ -103,7 +108,10 @@ function newLine(): DraftRfqScopeLine {
   }
 }
 
-function lineFromSelection(selection: ProjectSelectionItem): DraftRfqScopeLine {
+function lineFromSelection(
+  selection: ProjectSelectionItem,
+  costCodeOptions: readonly ProjectRfqCostCodeOption[]
+): DraftRfqScopeLine {
   const detail = [
     selection.manufacturer ? `Manufacturer: ${selection.manufacturer}` : null,
     selection.model ? `Model: ${selection.model}` : null,
@@ -119,7 +127,9 @@ function lineFromSelection(selection: ProjectSelectionItem): DraftRfqScopeLine {
     id: crypto.randomUUID(),
     selectionId: selection.id,
     description: `${selection.roomName}: ${selection.name}`,
-    phaseCode: selection.phaseCode ?? "",
+    phaseCode:
+      costCodeOptions.find((option) => option.value === selection.costCode)
+        ?.divisionCode ?? selection.phaseCode ?? "",
     costCode: selection.costCode ?? "",
     notes: detail,
   }
@@ -269,11 +279,13 @@ export function ProjectRfqCreateForm({
   recipientOptions,
   selectionOptions,
   selectionsSummary,
+  costCodeOptions,
 }: {
   readonly projectId: string
   readonly recipientOptions: readonly ProjectTaskAssigneeOption[]
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
+  readonly costCodeOptions: readonly ProjectRfqCostCodeOption[]
 }): React.ReactElement {
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
@@ -476,7 +488,9 @@ export function ProjectRfqCreateForm({
 
   function importSelectedSelections(): void {
     if (selectedSelections.length === 0) return
-    const importedLines = selectedSelections.map(lineFromSelection)
+    const importedLines = selectedSelections.map((selection) =>
+      lineFromSelection(selection, costCodeOptions)
+    )
     setLines((current) => {
       const meaningfulLines = current.filter(
         (line) =>
@@ -507,6 +521,35 @@ export function ProjectRfqCreateForm({
           : line
       )
     )
+  }
+
+  function updateLineDivision(id: string, divisionCode: string): void {
+    setLines((current) => current.map((line) => {
+      if (line.id !== id) return line
+      const selectedCode = costCodeOptions.find(
+        (option) => option.value === line.costCode
+      )
+      return {
+        ...line,
+        phaseCode: divisionCode,
+        costCode: selectedCode?.divisionCode === divisionCode
+          ? line.costCode : "",
+      }
+    }))
+  }
+
+  function updateLineCostCode(id: string, costCode: string): void {
+    const selectedCode = costCodeOptions.find(
+      (option) => option.value === costCode
+    )
+    setLines((current) => current.map((line) => line.id === id
+      ? {
+          ...line,
+          costCode,
+          phaseCode: selectedCode?.divisionCode ?? line.phaseCode,
+        }
+      : line
+    ))
   }
 
   function addDocumentLink(): void {
@@ -1163,7 +1206,7 @@ export function ProjectRfqCreateForm({
                   Scope rows
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Use rows for cost codes, phases, alternates, or quote
+                  Use rows for Sage divisions, cost codes, alternates, or quote
                   sections.
                 </p>
               </div>
@@ -1178,11 +1221,11 @@ export function ProjectRfqCreateForm({
               </Button>
             </div>
             <div className="overflow-x-auto">
-              <div className="min-w-[820px]">
-                <div className="grid grid-cols-[2rem_minmax(14rem,1fr)_5rem_6rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+              <div className="min-w-[1050px]">
+                <div className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
                   <span>#</span>
                   <span>Description</span>
-                  <span>Phase</span>
+                  <span>Division</span>
                   <span>Cost code</span>
                   <span>Notes</span>
                   <span />
@@ -1190,7 +1233,7 @@ export function ProjectRfqCreateForm({
                 {lines.map((line, index) => (
                   <div
                     key={line.id}
-                    className="grid grid-cols-[2rem_minmax(14rem,1fr)_5rem_6rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 last:border-b-0"
+                    className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 last:border-b-0"
                   >
                     <span className="pt-2 text-xs font-medium text-muted-foreground">
                       {index + 1}
@@ -1203,21 +1246,22 @@ export function ProjectRfqCreateForm({
                       placeholder="Scope item"
                       className={LINE_INPUT_CLASS}
                     />
-                    <Input
+                    <ProjectRfqDivisionPicker
                       value={line.phaseCode}
-                      onChange={(event) =>
-                        updateLine(line.id, "phaseCode", event.target.value)
+                      options={costCodeOptions}
+                      rowNumber={index + 1}
+                      onValueChange={(value) =>
+                        updateLineDivision(line.id, value)
                       }
-                      placeholder="Phase"
-                      className={LINE_INPUT_CLASS}
                     />
-                    <Input
+                    <ProjectRfqCostCodePicker
                       value={line.costCode}
-                      onChange={(event) =>
-                        updateLine(line.id, "costCode", event.target.value)
+                      options={costCodeOptions}
+                      divisionCode={line.phaseCode}
+                      rowNumber={index + 1}
+                      onValueChange={(value) =>
+                        updateLineCostCode(line.id, value)
                       }
-                      placeholder="CSI"
-                      className={LINE_INPUT_CLASS}
                     />
                     <Input
                       value={line.notes}

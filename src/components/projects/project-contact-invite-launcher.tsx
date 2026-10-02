@@ -85,6 +85,8 @@ export function ProjectContactInviteLauncher({
     eligibleContacts.find((contact) => contact.id === selectedContactId) ?? null
   const grantsExistingAccount =
     selectedContact?.compassAccountStatus === "active"
+  const resendsPendingInvitation =
+    selectedContact?.accessStatus === "pending" && !grantsExistingAccount
 
   if (eligibleContacts.length === 0) return null
 
@@ -129,7 +131,9 @@ export function ProjectContactInviteLauncher({
       else if (result.accessStatus === "access_granted") {
         toast.success("Project access granted and welcome email sent")
       } else {
-        toast.success("Compass invitation and welcome email sent")
+        toast.success(resendsPendingInvitation
+          ? "Compass invitation and welcome email resent"
+          : "Compass invitation and welcome email sent")
       }
       handleOpenChange(false)
       router.refresh()
@@ -232,7 +236,9 @@ export function ProjectContactInviteLauncher({
                                   ? "Compass account active"
                                   : contact.compassAccountStatus === "inactive"
                                     ? "Compass account inactive"
-                                    : "New Compass account"}
+                                    : contact.accessStatus === "pending"
+                                      ? "Invitation pending · can resend"
+                                      : "New Compass account"}
                               </span>
                             </span>
                           </CommandItem>
@@ -299,7 +305,9 @@ export function ProjectContactInviteLauncher({
             <p className="border-t pt-4 text-xs text-muted-foreground">
               {grantsExistingAccount
                 ? "This Compass account is already active. Access to this project is granted immediately; no account invitation is sent."
-                : "New users receive a secure account invitation. No other project access is added."}
+                : resendsPendingInvitation
+                  ? "The current account invitation will be resent. No other project access is added."
+                  : "New users receive a secure account invitation. No other project access is added."}
             </p>
           </div>
 
@@ -326,7 +334,9 @@ export function ProjectContactInviteLauncher({
                 ? "Sending..."
                 : grantsExistingAccount
                   ? "Send Welcome and Grant Access"
-                  : "Send Welcome and Access"}
+                  : resendsPendingInvitation
+                    ? "Resend Invitation and Welcome"
+                    : "Send Welcome and Access"}
             </Button>
           </SheetFooter>
         </SheetContent>

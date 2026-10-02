@@ -1,4 +1,6 @@
+import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import type { ProjectDepartment } from "@/lib/project-branding"
+import { groupEstimateAssemblies, type EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
 
 export const ESTIMATE_TEXT_TEMPLATE_TYPES = [
@@ -15,6 +17,8 @@ export const ESTIMATE_CLIENT_REPORT_MODES = [
   "division_summary",
   "phase_summary",
   "line_items",
+  "assembly_summary",
+  "assembly_items",
 ] as const
 
 export type EstimateClientReportMode =
@@ -329,11 +333,7 @@ export function clientEstimatePhases(input: {
       return left[0].localeCompare(right[0])
     })
     .map(([key, sourceLines]) => {
-      const lines = [...sourceLines].sort((left, right) => {
-        const sortOrder = left.sortOrder - right.sortOrder
-        if (sortOrder !== 0) return sortOrder
-        return left.costCode.localeCompare(right.costCode)
-      })
+      const lines = [...sourceLines].sort(compareEstimateLineOrder)
       const divisionCode = lines[0]?.divisionCode ?? ""
       const divisionName = lines[0]?.divisionName ?? `Phase ${divisionCode}`
       const customDescription = input.phaseDescriptions[divisionCode]?.trim()
@@ -427,4 +427,29 @@ export function clientEstimateTaxSummary(
     taxCents: groups.reduce((total, group) => total + group.taxCents, 0),
     groups,
   }
+}
+
+export function clientEstimateReportGroups(input: {
+  readonly mode: EstimateClientReportMode
+  readonly assemblies: readonly EstimateAssembly[]
+  readonly lines: readonly (ClientEstimateLine & { readonly assemblyId: string | null })[]
+  readonly phaseDescriptions: Readonly<Record<string, string>>
+  readonly reportPhases?: readonly EstimateReportPhase[]
+  readonly defaultItemize?: boolean
+}): readonly ClientEstimatePhase[] {
+  if (input.mode !== "assembly_summary" && input.mode !== "assembly_items") return clientEstimatePhases(input)
+  return groupEstimateAssemblies(input.assemblies, input.lines.filter((line) => line.ownerVisible))
+    .filter((group) => group.lines.length > 0)
+    .map((group) => ({
+      id: group.id ?? "unassigned",
+      name: group.name,
+      custom: true,
+      itemize: input.mode === "assembly_items",
+      divisionCode: "",
+      divisionName: group.name,
+      description: group.description ?? "",
+      subtotalCents: group.subtotalCents,
+      taxCents: group.lines.reduce((sum, line) => sum + line.taxCents, 0),
+      lines: group.lines,
+    }))
 }

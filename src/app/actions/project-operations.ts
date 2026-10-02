@@ -57,6 +57,8 @@ import {
   parsePortalRfqPayload,
   type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
+import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
@@ -143,6 +145,14 @@ export type ProjectRfqScopeLineItem = {
   readonly phaseCode: string | null
   readonly costCode: string | null
   readonly notes: string | null
+}
+
+export type ProjectRfqCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+  readonly divisionLabel: string
 }
 
 export type ProjectRfqDocumentLinkItem = {
@@ -712,6 +722,31 @@ function normalizeRfqScopeLines(
       notes: null,
     },
   ]
+}
+
+async function validateRfqScopeCostCodes(
+  db: ReturnType<typeof getDb>,
+  lines: readonly NormalizedRfqScopeLine[],
+  existingLines: readonly ProjectRfqScopeLineItem[] = []
+): Promise<void> {
+  if (lines.every((line) => !line.costCode && !line.phaseCode)) return
+
+  const activeRows = await db
+    .select({
+      code: sageCostCodes.code,
+      divisionCode: sageCostCodes.divisionCode,
+    })
+    .from(sageCostCodes)
+    .where(eq(sageCostCodes.active, true))
+  const issues = rfqScopeCodingErrors(
+    lines,
+    new Map(activeRows.map((row) => [row.code, row.divisionCode])),
+    new Set(activeRows.map((row) => row.divisionCode)),
+    existingLines
+  )
+  if (issues.length > 0) {
+    throw new Error(issues.join(" "))
+  }
 }
 
 function normalizeRfqDocumentLinks(
@@ -1630,6 +1665,31 @@ export async function getProjectPurchaseOrderFormOptions(
   }
 }
 
+export async function getProjectRfqCostCodeOptions(
+  projectId: string
+): Promise<readonly ProjectRfqCostCodeOption[]> {
+  const db = await verifyProjectAccess(projectId, "rfqs")
+  const rows = await db
+    .select({
+      code: sageCostCodes.code,
+      displayLabel: sageCostCodes.displayLabel,
+      description: sageCostCodes.description,
+      divisionCode: sageCostCodes.divisionCode,
+      divisionLabel: sageCostCodes.divisionDisplayLabel,
+    })
+    .from(sageCostCodes)
+    .where(eq(sageCostCodes.active, true))
+    .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel))
+
+  return rows.map((row) => ({
+    value: row.code,
+    label: row.displayLabel,
+    description: row.description,
+    divisionCode: row.divisionCode,
+    divisionLabel: row.divisionLabel,
+  }))
+}
+
 export async function getProjectRfqs(
   projectId: string
 ): Promise<readonly ProjectRfqItem[]> {
@@ -2130,6 +2190,7 @@ export async function createRfqRequest(
       input.scopeItems,
       description ?? title
     )
+    await validateRfqScopeCostCodes(db, scopeItems)
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
     const primaryLine = scopeItems[0] ?? null
     const sourceRecordNumber = projectDocumentNumberFor(
@@ -2461,6 +2522,15 @@ export async function updateRfqRequest(
       input.scopeItems,
       description ?? title
     )
+    const previousScopeItems = parseRfqScopeItems(
+      parseJsonRecord(existing[0].sagePayloadJson),
+      existing[0].description
+    )
+    await validateRfqScopeCostCodes(
+      db,
+      scopeItems,
+      previousScopeItems
+    )
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
     const existingPayload = parseJsonRecord(existing[0].sagePayloadJson)
     const existingVendorResponse = parsePortalRfqPayload(
@@ -2597,6 +2667,23 @@ export async function deleteRfqRequest(
       return {
         success: false,
         error: "Only an unsent RFQ draft can be deleted. Close or void a shared RFQ instead.",
+      }
+    }
+
+    const [delivery, manualResponse] = await Promise.all([
+      db.select({ id: projectRfqEmailDeliveries.id })
+        .from(projectRfqEmailDeliveries)
+        .where(eq(projectRfqEmailDeliveries.rfqOperationId, rfqId))
+        .limit(1).then((rows) => rows[0] ?? null),
+      db.select({ id: projectRfqManualResponseEvents.id })
+        .from(projectRfqManualResponseEvents)
+        .where(eq(projectRfqManualResponseEvents.rfqOperationId, rfqId))
+        .limit(1).then((rows) => rows[0] ?? null),
+    ])
+    if (delivery || manualResponse) {
+      return {
+        success: false,
+        error: "This RFQ has delivery or response history. Void it to preserve that record.",
       }
     }
 

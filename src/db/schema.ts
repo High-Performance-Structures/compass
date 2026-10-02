@@ -2757,6 +2757,7 @@ export const customers = sqliteTable(
     sageClientStatusId: integer("sage_client_status_id"),
     buildertrendContactId: text("buildertrend_contact_id"),
     relationshipType: text("relationship_type").notNull().default("client"),
+    mergedIntoCustomerId: text("merged_into_customer_id"),
     organizationId: text("organization_id").references(() => organizations.id),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at"),
@@ -2802,6 +2803,7 @@ export const vendors = sqliteTable("vendors", {
   sourceRecordNumber: text("source_record_number"),
   sourceMetadata: text("source_metadata"),
   directoryStatus: text("directory_status").notNull().default("active"),
+  mergedIntoVendorId: text("merged_into_vendor_id"),
   syncStatus: text("sync_status").notNull().default("manual"),
   lastSyncedAt: text("last_synced_at"),
   organizationId: text("organization_id").references(() => organizations.id),
@@ -2836,6 +2838,7 @@ export const vendorContacts = sqliteTable(
       .notNull()
       .default(false),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
+    mergedIntoPersonId: text("merged_into_person_id"),
     sourceSystem: text("source_system").notNull().default("manual"),
     sourceRecordId: text("source_record_id"),
     createdAt: text("created_at").notNull(),
@@ -2876,6 +2879,7 @@ export const customerContacts = sqliteTable(
       .notNull()
       .default(false),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
+    mergedIntoPersonId: text("merged_into_person_id"),
     sourceSystem: text("source_system").notNull().default("manual"),
     sourceRecordId: text("source_record_id"),
     syncStatus: text("sync_status").notNull().default("manual"),
@@ -2899,6 +2903,24 @@ export const customerContacts = sqliteTable(
       .where(sql`${table.userId} IS NOT NULL`),
   ]
 )
+
+/** Immutable recovery record for directory-only duplicate merges. */
+export const contactMergeEvents = sqliteTable("contact_merge_events", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  sourceId: text("source_id").notNull(),
+  destinationId: text("destination_id").notNull(),
+  sourceSnapshotJson: text("source_snapshot_json").notNull(),
+  destinationSnapshotJson: text("destination_snapshot_json").notNull(),
+  movedPeopleCount: integer("moved_people_count").notNull().default(0),
+  movedProjectContactsCount: integer("moved_project_contacts_count").notNull().default(0),
+  mergedByUserId: text("merged_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  mergedAt: text("merged_at").notNull(),
+}, (table) => [
+  uniqueIndex("contact_merge_events_org_source_idx").on(table.organizationId, table.kind, table.sourceId),
+  index("contact_merge_events_org_destination_idx").on(table.organizationId, table.kind, table.destinationId),
+])
 
 export const internalContacts = sqliteTable(
   "internal_contacts",

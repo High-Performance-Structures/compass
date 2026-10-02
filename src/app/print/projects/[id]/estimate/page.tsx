@@ -10,9 +10,10 @@ import { ProjectEstimateReportActions } from "@/components/projects/project-esti
 import { ProjectEstimateReportPhases } from "@/components/projects/project-estimate-report-phases"
 import {
   clientEstimateBuilderFeeExclusionSummary,
-  clientEstimatePhases,
+  clientEstimateReportGroups,
   clientEstimateTaxSummary,
 } from "@/lib/estimates/client-report"
+import { assemblyBuilderFeeAllocation } from "@/lib/estimates/assembly-builder-fee"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
@@ -71,12 +72,17 @@ export default async function ProjectEstimatePrintPage({
       item.description,
     ])
   )
-  const phases = clientEstimatePhases({
+  const phases = clientEstimateReportGroups({
+    mode: workspace.reportMode,
+    assemblies: workspace.assemblies,
     lines: workspace.lines,
     phaseDescriptions,
     reportPhases: workspace.reportPhases,
     defaultItemize: workspace.reportMode === "line_items",
   })
+  const assemblyFees = estimate.showAssemblyBuilderFee && (workspace.reportMode === "assembly_summary" || workspace.reportMode === "assembly_items")
+    ? assemblyBuilderFeeAllocation({ groups: phases, lines: workspace.lines, builderFeeCents: estimate.builderFeeCents })
+    : null
   const clientSubtotalCents = phases.reduce(
     (total, phase) => total + phase.subtotalCents,
     0
@@ -97,6 +103,12 @@ export default async function ProjectEstimatePrintPage({
     <>
       <style>{`
         @page { size: letter; margin: 0.55in; }
+        .estimate-report {
+          --muted-foreground: var(--report-secondary);
+          --border: var(--report-rule);
+          print-color-adjust: exact;
+          -webkit-print-color-adjust: exact;
+        }
         @media print {
           body { background: white !important; }
           .estimate-report-actions { display: none !important; }
@@ -111,7 +123,7 @@ export default async function ProjectEstimatePrintPage({
         projectId={id}
         estimateId={estimate.id}
       />
-      <main className="estimate-report mx-auto max-w-[8.5in] bg-white p-8 text-black print:max-w-none print:p-0">
+      <main className="estimate-report mx-auto max-w-[8.5in] bg-report-paper p-4 text-report-ink sm:p-8 print:max-w-none print:p-0">
         <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-5">
           <div className="flex items-center gap-4">
             <ProjectBrandLogo
@@ -171,7 +183,8 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        <ProjectEstimateReportPhases phases={phases} reportMode={workspace.reportMode} />
+        <ProjectEstimateReportPhases phases={phases} reportMode={workspace.reportMode} assemblyBuilderFees={assemblyFees?.byGroup} showCostBreakdowns={estimate.showCostBreakdowns} />
+        {assemblyFees && <p className="mt-3 text-xs text-muted-foreground">The project builder-fee summary below recaps the fees included in assembly totals; these fees are charged once.</p>}
 
         <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
           {taxSummary.taxCents > 0 ? (
@@ -180,7 +193,7 @@ export default async function ProjectEstimatePrintPage({
                 <span>Project work before sales tax</span>
                 <span>{money(clientPreTaxSubtotalCents)}</span>
               </div>
-              <div className="border-l-2 border-black bg-neutral-100 py-1 pl-3">
+              <div className="border-l-2 border-report-rule bg-report-subtotal py-1 pl-3">
                 {taxSummary.groups.map((group) => (
                   <div className="flex justify-between py-1" key={group.key}>
                     <span>
@@ -248,7 +261,10 @@ export default async function ProjectEstimatePrintPage({
               </div>
             </>
           )}
-          <div className="flex justify-between border-y-2 border-black py-2 text-base font-bold">
+          {assemblyFees && assemblyFees.unallocatedCents !== 0 && <div className="flex justify-between border-t py-2">
+            <span>Builder fee outside displayed assemblies</span><span>{money(assemblyFees.unallocatedCents)}</span>
+          </div>}
+          <div className="flex justify-between border-y-2 border-report-rule bg-report-total px-3 py-2 text-base font-bold">
             <span>Project Total:</span>
             <span>{money(clientTotalCents)}</span>
           </div>
