@@ -17,6 +17,7 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
+  organizations,
   ownerProjectUpdates,
   projectContacts,
   projectMembers,
@@ -33,16 +34,19 @@ import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
+  assertProjectAccess,
+  getProjectAudienceAccessRecord,
+  projectAudienceRoles,
+} from "@/lib/project-access"
+import type { ProjectAudience } from "@/lib/project-audience-access"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { shouldIncludeOwnerUpdateHistory } from "@/lib/project-audience-preview-policy"
+
 import {
   isPortalVisiblePurchaseOrderStatus,
   parsePortalPurchaseOrderPayload,
@@ -273,16 +277,12 @@ type AudienceProjectRow = AudienceProjectOption & {
 }
 
 function visibleAudienceProjectOptions(
-  rows: readonly AudienceProjectRow[],
-  audience: ProjectAudience
+  rows: readonly AudienceProjectRow[]
 ): readonly AudienceProjectOption[] {
   const seenProjectIds = new Set<string>()
 
   return rows.flatMap((row) => {
-    if (
-      seenProjectIds.has(row.id) ||
-      !canUseProjectAudience(row.projectRole, audience)
-    ) {
+    if (seenProjectIds.has(row.id)) {
       return []
     }
 
@@ -317,30 +317,48 @@ async function loadAudienceProjectOptions(input: {
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .innerJoin(organizations, eq(organizations.id, projects.organizationId))
     .where(
       and(
         eq(projectMembers.userId, input.userId),
+        inArray(projectMembers.role, projectAudienceRoles(input.audience)),
+        eq(organizations.isActive, true),
         organizationFilter
       )
     )
     .orderBy(asc(projects.projectNumber), asc(projects.name))
 
-  return visibleAudienceProjectOptions(rows, input.audience)
+  return visibleAudienceProjectOptions(rows)
 }
 
 export async function getProjectAudienceOptions(
   audience: ProjectAudience
 ): Promise<readonly AudienceProjectOption[]> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
-  if (isInternalStaffRole(user.role)) return []
+  if (!user.isActive || !user.organizationId) return []
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const [organization] = await db
+    .select({ id: organizations.id, type: organizations.type })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+  if (!organization) return []
+  if (organization.type !== "client") return []
+  if (isInternalStaffRole(user.role) || user.role === "developer") return []
+  requirePermission(user, "project", "read")
+
   return loadAudienceProjectOptions({
     db,
     userId: user.id,
     audience,
+    organizationId: user.organizationId,
   })
 }
 
@@ -361,30 +379,37 @@ async function verifyProjectAccess(
   }
 }> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  if (!user.isActive || !user.organizationId) {
+    throw new Error("Project not found")
+  }
+  const [organization] = await db
+    .select({ id: organizations.id, type: organizations.type })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+  if (!organization) throw new Error("Project not found")
 
-  const project = await assertProjectAccess(db, user, projectId)
+  const viewerIsInternal =
+    (organization.type === "internal" || organization.type === "demo") &&
+    isInternalStaffRole(user.role)
+  if (!viewerIsInternal && organization.type !== "client") {
+    throw new Error("Project not found")
+  }
+  requirePermission(user, "project", "read")
+  const project = viewerIsInternal
+    ? await assertProjectAccess(db, user, projectId)
+    : await getProjectAudienceAccessRecord(db, user, projectId, audience)
+  if (!project) throw new Error("Project not found")
   if (!project.organizationId) {
     throw new Error("Project organization is missing")
-  }
-  const viewerIsInternal = isInternalStaffRole(user.role)
-  if (!viewerIsInternal) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .get()
-    if (!canUseProjectAudience(membership?.role ?? null, audience)) {
-      throw new Error("Project not found")
-    }
   }
 
   return {
@@ -438,6 +463,7 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
+  await requireAuth()
   const { db, env, organizationId, viewerIsInternal, viewer } =
     await verifyProjectAccess(projectId, audience)
 
@@ -744,7 +770,7 @@ export async function getProjectAudiencePreview(
   )
 
   const ownerUpdateRows =
-    audience === "owner"
+    shouldIncludeOwnerUpdateHistory(viewerIsInternal, audience)
       ? await db
           .select({
             id: ownerProjectUpdates.id,

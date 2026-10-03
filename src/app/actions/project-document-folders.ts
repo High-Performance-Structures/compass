@@ -99,7 +99,11 @@ export async function publishProjectDocumentFolder(
     if (!isProjectDocumentCategory(category)) {
       throw new Error("Choose a supported construction-document category.")
     }
-    const drive = await getProjectDocumentDriveContext({ db, env })
+    const drive = await getProjectDocumentDriveContext({
+      db,
+      env,
+      organizationId: access.organizationId,
+    })
     if (sourceDriveFolderId !== project.driveFolderId) {
       const withinProject = await isDriveItemWithinProjectFolder({
         client: drive.client,

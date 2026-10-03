@@ -14,6 +14,7 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { isDemoUser } from "@/lib/demo"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
 import {
   getYoutubeOAuthConfig,
@@ -24,9 +25,25 @@ import {
 } from "@/lib/google/youtube"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import {
+  getActiveOrganization,
+  assertProjectAccess,
+} from "@/lib/project-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
+
+type AuthenticatedUser = Awaited<ReturnType<typeof requireAuth>>
+
+function assertActiveInternalStaff(user: AuthenticatedUser): void {
+  if (
+    !user.isActive ||
+    !isInternalStaffRole(user.role)
+  ) {
+    throw new Error("Project video access requires active internal staff")
+  }
+}
 
 export type ProjectVideoItem = {
   readonly id: string
@@ -73,10 +90,22 @@ async function projectVideoDb(
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  await requireFeaturePermission(user, "project-photos", action)
-  const organizationId = requireOrg(user)
+  assertActiveInternalStaff(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const organization = await getActiveOrganization(db, user)
+  if (
+    !organization ||
+    (organization.type !== "internal" && organization.type !== "demo")
+  ) {
+    throw new Error("Project video access requires active internal staff")
+  }
+  if (action === "update" && (organization.type === "demo" || isDemoUser(user.id))) {
+    throw new Error("Demo mode is read-only")
+  }
+  const organizationId = requireOrg(user)
+  await requireFeaturePermission(user, "project-photos", action)
+  await assertProjectAccess(db, user, projectId)
   const [project] = await db
     .select({ id: projects.id })
     .from(projects)
@@ -257,6 +286,7 @@ export async function disconnectYoutubeChannel(input: {
 > {
   try {
     const user = await requireAuth()
+    assertActiveInternalStaff(user)
     const organizationId = requireOrg(user)
     const db = await projectVideoDb(input.projectId, "update")
     const channelKey = youtubeChannelKey(input.channelKey)
@@ -409,6 +439,7 @@ export async function publishProjectVideo(input: {
   readonly confirmPublic: boolean
 }): Promise<VideoActionResult> {
   const user = await requireAuth()
+  assertActiveInternalStaff(user)
   const organizationId = requireOrg(user)
   let db: Awaited<ReturnType<typeof projectVideoDb>> | null = null
   try {

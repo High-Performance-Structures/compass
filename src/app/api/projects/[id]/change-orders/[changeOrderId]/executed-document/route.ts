@@ -42,7 +42,10 @@ export async function GET(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await assertProjectAccess(db, user, projectId)
+    const projectAccess = await assertProjectAccess(db, user, projectId)
+    if (!projectAccess.organizationId) {
+      return new Response("Change-order document not found", { status: 404 })
+    }
     const internal = isInternalStaffRole(user.role)
 
     if (!internal) {
@@ -140,7 +143,11 @@ export async function GET(
       return new Response("Change-order document not found", { status: 404 })
     }
 
-    const drive = await getProjectDocumentDriveContext({ db, env })
+    const drive = await getProjectDocumentDriveContext({
+      db,
+      env,
+      organizationId: projectAccess.organizationId,
+    })
     const withinProject = await isDriveItemWithinProjectFolder({
       client: drive.client,
       googleEmail: drive.googleEmail,

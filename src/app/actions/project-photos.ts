@@ -8,9 +8,12 @@ import { dailyLogPhotos, dailyLogs, projects, scheduleTasks } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
+import {
+  getActiveOrganization,
+  assertProjectAccess,
+} from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectPhotoLibraryItem = {
@@ -75,21 +78,30 @@ async function verifyProjectAccess(
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  await requireFeaturePermission(user, "project-photos", action)
-  const orgId = requireOrg(user)
-
+  if (
+    !user.isActive ||
+    !isInternalStaffRole(user.role)
+  ) {
+    throw new Error("Project photo access requires active internal staff")
+  }
+  if (
+    action === "update" &&
+    (user.organizationType === "demo" || isDemoUser(user.id))
+  ) {
+    throw new Error("Demo mode is read-only")
+  }
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
+  const organization = await getActiveOrganization(db, user)
+  if (
+    !organization ||
+    (organization.type !== "internal" && organization.type !== "demo")
+  ) {
+    throw new Error("Project photo access requires active internal staff")
   }
+  await requireFeaturePermission(user, "project-photos", action)
+
+  await assertProjectAccess(db, user, projectId)
 
   return db
 }
@@ -287,23 +299,7 @@ export async function updateProjectPhotoPhase(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    await requireFeaturePermission(user, "project-photos", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
+    const db = await verifyProjectAccess(projectId, "update")
 
     const normalizedPhase = phase.trim() === "unassigned" ? "" : phase.trim()
 
@@ -342,23 +338,7 @@ export async function updateProjectPhotoPermissions(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    await requireFeaturePermission(user, "project-photos", "update")
-    const orgId = requireOrg(user)
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const existing = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
-      .limit(1)
-
-    if (!existing[0]) {
-      return { success: false, error: "Project not found" }
-    }
+    const db = await verifyProjectAccess(projectId, "update")
 
     const photoIds = [...new Set(input.photoIds)].filter(
       (id) => id.trim().length > 0

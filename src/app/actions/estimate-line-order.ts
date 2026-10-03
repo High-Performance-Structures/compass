@@ -11,7 +11,6 @@ import {
   sameEstimateLineOrder,
   type EstimateLineOrderGroup,
 } from "@/lib/estimates/line-order"
-import type { ProjectEstimateActionResult } from "@/app/actions/project-estimates"
 
 const orderInput = z.object({
   group: z.discriminatedUnion("type", [
@@ -23,6 +22,10 @@ const orderInput = z.object({
   orderedIds: z.array(z.string().min(1)).min(1),
 })
 
+type EstimateLineOrderActionResult =
+  | { readonly success: true; readonly id: string; readonly updatedAt: string }
+  | { readonly success: false; readonly error: string }
+
 export async function reorderProjectEstimateLines(
   projectId: string,
   estimateId: string,
@@ -32,7 +35,7 @@ export async function reorderProjectEstimateLines(
     readonly previousIds: readonly string[]
     readonly orderedIds: readonly string[]
   }
-): Promise<ProjectEstimateActionResult> {
+): Promise<EstimateLineOrderActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
     const estimate = await requireEditableEstimate(access.db, projectId, estimateId)
@@ -67,7 +70,9 @@ export async function reorderProjectEstimateLines(
         currentIds.some((id) => !selected.has(id))) {
       return { success: false, error: "Reorder only the existing items within this division or assembly." }
     }
-    if (sameEstimateLineOrder(currentIds, data.orderedIds)) return { success: true, id: estimateId }
+    if (sameEstimateLineOrder(currentIds, data.orderedIds)) {
+      return { success: true, id: estimateId, updatedAt: estimate.updatedAt }
+    }
     const now = new Date(Math.max(Date.now(), (Date.parse(estimate.updatedAt) || 0) + 1)).toISOString()
     const positions = reorderedEstimateLinePositions(lines, data.orderedIds)
     const writes: D1PreparedStatement[] = []
@@ -99,7 +104,7 @@ export async function reorderProjectEstimateLines(
       metadata: { groupType: group.type, groupId: group.type === "division" ? group.divisionCode : group.assemblyId, previousOrder: JSON.stringify(currentIds), savedOrder: JSON.stringify(data.orderedIds) }, createdAt: now,
     })
     revalidateEstimate(projectId)
-    return { success: true, id: estimateId }
+    return { success: true, id: estimateId, updatedAt: now }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to reorder estimate items." }
   }

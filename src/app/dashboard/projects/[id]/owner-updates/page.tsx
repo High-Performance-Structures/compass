@@ -89,7 +89,10 @@ export default async function ProjectOwnerUpdatesPage({
   const id = decodeProjectRouteId(rawProjectId)
   const currentUser = await getCurrentUser()
   const internalViewer =
-    currentUser !== null && isInternalStaffRole(currentUser.role)
+    currentUser !== null &&
+    currentUser.isActive &&
+    currentUser.organizationType === "internal" &&
+    isInternalStaffRole(currentUser.role)
   let project: {
     readonly id: string
     readonly name: string
