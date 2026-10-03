@@ -809,7 +809,17 @@ export async function saveProjectNuTechOrder(
             eq(nuTechOrderWorkflows.customerType, existing.customerType),
             eq(nuTechOrderWorkflows.pricingMode, existing.pricingMode),
             eq(nuTechOrderWorkflows.quantitySource, existing.quantitySource),
+            eq(
+              nuTechOrderWorkflows.takeoffAcknowledgementStatus,
+              existing.takeoffAcknowledgementStatus
+            ),
             eq(nuTechOrderWorkflows.scopeType, existing.scopeType),
+            existing.blockQuantityNotes === null
+              ? isNull(nuTechOrderWorkflows.blockQuantityNotes)
+              : eq(
+                  nuTechOrderWorkflows.blockQuantityNotes,
+                  existing.blockQuantityNotes
+                ),
             eq(nuTechOrderWorkflows.deliveryMethod, existing.deliveryMethod),
             eq(
               nuTechOrderWorkflows.bracingIncluded,
@@ -827,6 +837,9 @@ export async function saveProjectNuTechOrder(
                   nuTechOrderWorkflows.bracingRentalEndDate,
                   existing.bracingRentalEndDate
                 ),
+            existing.bracingNotes === null
+              ? isNull(nuTechOrderWorkflows.bracingNotes)
+              : eq(nuTechOrderWorkflows.bracingNotes, existing.bracingNotes),
             existing.catalogVersionId === null
               ? isNull(nuTechOrderWorkflows.catalogVersionId)
               : eq(nuTechOrderWorkflows.catalogVersionId, existing.catalogVersionId),
@@ -847,6 +860,31 @@ export async function saveProjectNuTechOrder(
               nuTechOrderWorkflows.airliteWorkbookStatus,
               existing.airliteWorkbookStatus
             ),
+            existing.vendorConfirmationNumber === null
+              ? isNull(nuTechOrderWorkflows.vendorConfirmationNumber)
+              : eq(
+                  nuTechOrderWorkflows.vendorConfirmationNumber,
+                  existing.vendorConfirmationNumber
+                ),
+            existing.vendorInvoiceNumber === null
+              ? isNull(nuTechOrderWorkflows.vendorInvoiceNumber)
+              : eq(
+                  nuTechOrderWorkflows.vendorInvoiceNumber,
+                  existing.vendorInvoiceNumber
+                ),
+            eq(
+              nuTechOrderWorkflows.vendorInvoiceStatus,
+              existing.vendorInvoiceStatus
+            ),
+            existing.vendorInvoiceReceivedAt === null
+              ? isNull(nuTechOrderWorkflows.vendorInvoiceReceivedAt)
+              : eq(
+                  nuTechOrderWorkflows.vendorInvoiceReceivedAt,
+                  existing.vendorInvoiceReceivedAt
+                ),
+            existing.notes === null
+              ? isNull(nuTechOrderWorkflows.notes)
+              : eq(nuTechOrderWorkflows.notes, existing.notes),
             existing.airliteWorkbookClaimToken === null
               ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimToken)
               : eq(
@@ -978,11 +1016,15 @@ export async function saveProjectNuTechOrder(
         throw new Error(NUTECH_ORDER_SAVE_CONFLICT_ERROR)
       }
     } else {
-      const saved = await saveWorkflowQuery.run()
-      if (saved.meta.changes !== 1) {
-        throw new Error(
-          "The Nu-Tech order changed while it was being saved. Refresh and try again."
-        )
+      const saveResults = await access.db.batch([
+        saveGuardQuery,
+        saveWorkflowQuery,
+        access.db
+          .delete(nutechOrderSaveGuards)
+          .where(eq(nutechOrderSaveGuards.workflowId, id)),
+      ])
+      if ((saveResults[1]?.meta.changes ?? 0) !== 1) {
+        throw new Error(NUTECH_ORDER_SAVE_CONFLICT_ERROR)
       }
     }
     revalidateNuTechPaths(projectId)

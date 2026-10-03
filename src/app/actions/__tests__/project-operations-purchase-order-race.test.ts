@@ -1066,6 +1066,212 @@ describe("Nu-Tech child repricing compare-and-swap", () => {
     sqlite.close()
   })
 
+  it("fences concurrent first saves when no active catalog exists", async () => {
+    let releaseFirstBatch: () => void = () => undefined
+    const firstBatchPaused = new Promise<void>((resolve) => {
+      releaseFirstBatch = resolve
+    })
+    let signalFirstBatch: () => void = () => undefined
+    const firstBatchReached = new Promise<void>((resolve) => {
+      signalFirstBatch = resolve
+    })
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+
+    const firstActorClient = createD1(sqlite, undefined, {
+      paused: firstBatchPaused,
+      signal: signalFirstBatch,
+    })
+    const secondActorClient = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const firstActor = drizzle(firstActorClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+        nuTechCatalogPrices,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const secondActor = drizzle(secondActorClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+        nuTechCatalogPrices,
+      },
+    })
+    mocks.getDb.mockReturnValueOnce(firstActor).mockReturnValueOnce(secondActor)
+
+    const input = {
+      customerType: "new",
+      pricingMode: "standard",
+      quantitySource: "customer_provided",
+      takeoffAcknowledgementStatus: "not_required",
+      scopeType: "block_sale",
+      blockQuantityNotes: null,
+      bracingIncluded: false,
+      bracingRentalStartDate: null,
+      bracingRentalEndDate: null,
+      bracingNotes: null,
+      deliveryMethod: "delivery",
+      requestedDeliveryDate: "2026-09-30",
+      airlitePurchaseOrderOperationId: "po-1",
+      orderStatus: "customer_approved",
+      vendorConfirmationNumber: null,
+      vendorInvoiceNumber: null,
+      vendorInvoiceStatus: "not_received",
+      vendorInvoiceReceivedAt: null,
+      notes: "first save",
+    } as const
+
+    const firstSave = saveProjectNuTechOrder("project-1", input)
+    await expect(
+      Promise.race([
+        firstBatchReached.then(() => "batch"),
+        firstSave.then((result) => `completed: ${JSON.stringify(result)}`),
+      ])
+    ).resolves.toBe("batch")
+
+    await expect(
+      saveProjectNuTechOrder("project-1", { ...input, notes: "second save" })
+    ).resolves.toEqual(expect.objectContaining({ success: true }))
+
+    releaseFirstBatch()
+    await expect(firstSave).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while it was being saved. Refresh and try again.",
+    })
+    expect(
+      sqlite
+        .prepare("SELECT notes FROM nutech_order_workflows WHERE project_id = 'project-1'")
+        .get()
+    ).toEqual({ notes: "second save" })
+    sqlite.close()
+  })
+
+  it("rejects a same-millisecond stale save when omitted workflow fields changed", async () => {
+    let releaseExistingRead: () => void = () => undefined
+    const existingReadPaused = new Promise<void>((resolve) => {
+      releaseExistingRead = resolve
+    })
+    let signalExistingRead: () => void = () => undefined
+    const existingReadReached = new Promise<void>((resolve) => {
+      signalExistingRead = resolve
+    })
+    let existingReadSignaled = false
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+
+    const staleActorClient = createD1(sqlite, {
+      paused: existingReadPaused,
+      shouldPause: (query) => {
+        const normalizedQuery = query.toLowerCase()
+        return (
+          normalizedQuery.startsWith("select") &&
+          normalizedQuery.includes("nutech_order_workflows")
+        )
+      },
+      signal: () => {
+        if (existingReadSignaled) return
+        existingReadSignaled = true
+        signalExistingRead()
+      },
+    })
+    const currentActorClient = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleActorClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+        nuTechCatalogPrices,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const currentActor = drizzle(currentActorClient, {
+      schema: { nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleSave = saveProjectNuTechOrder("project-1", {
+      customerType: "new",
+      pricingMode: "cash_discount",
+      quantitySource: "customer_provided",
+      takeoffAcknowledgementStatus: "not_required",
+      scopeType: "block_sale",
+      blockQuantityNotes: "stale block notes",
+      bracingIncluded: false,
+      bracingRentalStartDate: null,
+      bracingRentalEndDate: null,
+      bracingNotes: "stale bracing notes",
+      deliveryMethod: "delivery",
+      requestedDeliveryDate: "2026-09-30",
+      airlitePurchaseOrderOperationId: "po-1",
+      orderStatus: "customer_approved",
+      vendorConfirmationNumber: "stale confirmation",
+      vendorInvoiceNumber: "stale invoice",
+      vendorInvoiceStatus: "not_received",
+      vendorInvoiceReceivedAt: null,
+      notes: "stale notes",
+    })
+    await existingReadReached
+
+    await currentActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        takeoffAcknowledgementStatus: "signed",
+        blockQuantityNotes: "current block notes",
+        bracingNotes: "current bracing notes",
+        vendorConfirmationNumber: "current confirmation",
+        vendorInvoiceNumber: "current invoice",
+        vendorInvoiceStatus: "received",
+        vendorInvoiceReceivedAt: "2026-08-24",
+        notes: "current notes",
+        updatedAt: FIXED_NOW,
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+
+    releaseExistingRead()
+    await expect(staleSave).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while it was being saved. Refresh and try again.",
+    })
+    expect(
+      sqlite
+        .prepare(`
+          SELECT takeoff_acknowledgement_status, block_quantity_notes,
+            bracing_notes, vendor_confirmation_number, vendor_invoice_number,
+            vendor_invoice_status, vendor_invoice_received_at, notes
+          FROM nutech_order_workflows WHERE id = 'workflow-1'
+        `)
+        .get()
+    ).toEqual({
+      takeoff_acknowledgement_status: "signed",
+      block_quantity_notes: "current block notes",
+      bracing_notes: "current bracing notes",
+      vendor_confirmation_number: "current confirmation",
+      vendor_invoice_number: "current invoice",
+      vendor_invoice_status: "received",
+      vendor_invoice_received_at: "2026-08-24",
+      notes: "current notes",
+    })
+    sqlite.close()
+  })
+
   it("commits the parent save and child repricing together", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
