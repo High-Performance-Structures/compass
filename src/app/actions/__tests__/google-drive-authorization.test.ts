@@ -135,9 +135,9 @@ describe("generic Google Drive Server Action authorization", () => {
 
     expect(result).toMatchObject({ success: false })
     expect(mocks.requireAuth).toHaveBeenCalledTimes(1)
-    expect(mocks.getCloudflareContext).toHaveBeenCalledTimes(1)
-    expect(mocks.getDb).toHaveBeenCalledWith("db")
-    expect(mocks.getActiveOrganization).toHaveBeenCalled()
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
+    expect(mocks.getDb).not.toHaveBeenCalled()
+    expect(mocks.getActiveOrganization).not.toHaveBeenCalled()
     expect(mocks.requirePermission).not.toHaveBeenCalled()
   })
 
@@ -157,6 +157,9 @@ describe("generic Google Drive Server Action authorization", () => {
     const result = await listDriveFiles()
 
     expect(result).toMatchObject({ success: false })
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
+    expect(mocks.getDb).not.toHaveBeenCalled()
+    expect(mocks.getActiveOrganization).not.toHaveBeenCalled()
     expect(mocks.requirePermission).not.toHaveBeenCalled()
   })
 

@@ -59,18 +59,27 @@ type DriveStaffContext = {
   readonly organizationId: string
 }
 
+function assertDriveStaffCandidate(user: AuthUser): void {
+  if (
+    !user.isActive ||
+    !user.organizationId ||
+    (!isInternalStaffRole(user.role) && user.role !== "developer")
+  ) {
+    throw new Error("Google Drive access requires active internal staff")
+  }
+}
+
 async function requireDriveStaff(): Promise<DriveStaffContext> {
   const user = await requireAuth()
+  assertDriveStaffCandidate(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const organization = await getActiveOrganization(db, user)
   const organizationId = user.organizationId
   if (
-    !user.isActive ||
-    !organizationId ||
     !organization ||
     organization.type !== "internal" ||
-    (!isInternalStaffRole(user.role) && user.role !== "developer")
+    organization.id !== organizationId
   ) {
     throw new Error("Google Drive access requires active internal staff")
   }
