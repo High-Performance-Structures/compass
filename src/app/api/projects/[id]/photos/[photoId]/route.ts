@@ -21,6 +21,7 @@ import {
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import {
   assertProjectAccess,
+  getActiveOrganization,
   getProjectAudienceAccessRecord,
 } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -73,10 +74,11 @@ export async function GET(
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const organization = await getActiveOrganization(db, user)
     const viewerIsInternal =
-      (user.organizationType === "internal" || user.organizationType === "demo") &&
-      isInternalStaffRole(user.role)
-    if (!viewerIsInternal && audience === null) {
+      (organization?.type === "internal" || organization?.type === "demo") &&
+      (isInternalStaffRole(user.role) || user.role === "developer")
+    if (!viewerIsInternal && (audience === null || organization?.type !== "client")) {
       return new Response("Photo not found", { status: 404 })
     }
     const project = viewerIsInternal

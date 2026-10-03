@@ -278,6 +278,26 @@ describe("project access organization boundaries", () => {
     sqlite.close()
   })
 
+  it("rejects an audience grant from an authoritative internal organization", async () => {
+    const sqlite = openDatabase()
+    sqlite.exec(`
+      INSERT INTO organizations VALUES ('org-a', 'Org A', 'org-a', 'internal', 1, '2026-09-01', '2026-09-01');
+      INSERT INTO projects VALUES ('project-a', 'org-a', 'A-1');
+      INSERT INTO project_members VALUES ('membership-1', 'project-a', 'user-1', 'client');
+    `)
+
+    getDb.mockReturnValue(drizzle(sqlite))
+    const access = await getProjectAudienceAccessRecord(
+      getDb(),
+      baseUser,
+      "project-a",
+      "owner"
+    )
+
+    expect(access).toBeNull()
+    sqlite.close()
+  })
+
   it.each([
     ["a mismatched audience role", "subcontractor", "owner"],
     ["a cross-organization project", "client", "owner"],

@@ -103,7 +103,10 @@ describe("GET executed contract document", () => {
         FOXIT_ESIGN_CLIENT_SECRET: "client-secret",
       },
     })
-    mocks.assertProjectAccess.mockResolvedValue({ id: "project-1" })
+    mocks.assertProjectAccess.mockResolvedValue({
+      id: "project-1",
+      organizationId: "org-client",
+    })
     mocks.getProjectDocumentDriveContext.mockResolvedValue({
       client: {
         getFile: mocks.getFile,

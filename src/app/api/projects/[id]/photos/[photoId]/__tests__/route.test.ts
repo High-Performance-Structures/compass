@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   resolveProjectRouteId: vi.fn(),
   assertProjectAccess: vi.fn(),
   getProjectAudienceAccessRecord: vi.fn(),
+  getActiveOrganization: vi.fn(),
   decrypt: vi.fn(),
   parseServiceAccountKey: vi.fn(),
   downloadFile: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("@/lib/project-route-id", () => ({
 vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
   getProjectAudienceAccessRecord: mocks.getProjectAudienceAccessRecord,
+  getActiveOrganization: mocks.getActiveOrganization,
 }))
 vi.mock("@/lib/crypto", () => ({ decrypt: mocks.decrypt }))
 vi.mock("@/lib/google/config", () => ({
@@ -96,6 +98,15 @@ function configureDb({
 }): void {
   mocks.requireAuth.mockResolvedValue({ ...baseUser, role: viewerRole })
   mocks.resolveProjectRouteId.mockResolvedValue(project.id)
+  mocks.getActiveOrganization.mockResolvedValue({
+    id: "org-1",
+    type:
+      viewerRole === "client" ||
+      viewerRole === "subcontractor" ||
+      viewerRole === "supplier"
+        ? "client"
+        : "internal",
+  })
   if (projectAccessError) {
     mocks.assertProjectAccess.mockRejectedValue(projectAccessError)
   } else {
@@ -161,6 +172,21 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(response.status).toBe(200)
     expect(await response.text()).toBe("jpeg-bytes")
     expect(mocks.downloadFile).toHaveBeenCalledWith("drive@example.com", "drive-photo-1")
+  })
+
+  it("denies an external role when the authoritative organization is internal", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: photo,
+    })
+    mocks.getActiveOrganization.mockResolvedValue({ id: "org-1", type: "internal" })
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(404)
+    expect(mocks.getProjectAudienceAccessRecord).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
   it("serves an approved owner-visible photo only to an owner member", async () => {

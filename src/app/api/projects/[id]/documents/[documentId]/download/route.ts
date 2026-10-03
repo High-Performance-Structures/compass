@@ -46,7 +46,10 @@ export async function GET(
     if (!organization) {
       return new Response("Document not found", { status: 404 })
     }
-    await assertProjectAccess(db, user, projectId)
+    const projectAccess = await assertProjectAccess(db, user, projectId)
+    if (!projectAccess.organizationId) {
+      return new Response("Document not found", { status: 404 })
+    }
     if (!viewerIsInternal) {
       const membership = await db
         .select({ role: projectMembers.role })
@@ -99,6 +102,7 @@ export async function GET(
     const drive = await getProjectDocumentDriveContext({
       db,
       env,
+      organizationId: projectAccess.organizationId,
     })
     let response: Response
     let contentType = document.sourceMimeType

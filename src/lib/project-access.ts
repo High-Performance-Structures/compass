@@ -180,7 +180,8 @@ export async function getProjectAudienceAccessRecord(
         eq(projectMembers.userId, user.id),
         inArray(projectMembers.role, projectAudienceRoles(audience)),
         eq(projects.organizationId, user.organizationId),
-        eq(organizations.isActive, true)
+        eq(organizations.isActive, true),
+        eq(organizations.type, "client")
       )
     )
     .limit(1)
