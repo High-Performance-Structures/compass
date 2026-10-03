@@ -39,7 +39,7 @@ describe("D1 migration authority and Drizzle metadata", () => {
     // set. Numeric prefixes are historical and are not unique in this repo.
     expect(migrationFiles).toEqual([...migrationFiles].sort())
     expect(new Set(migrationTags).size).toBe(migrationTags.length)
-    expect(migrationTags.slice(-9)).toEqual([
+    expect(migrationTags.slice(-10)).toEqual([
       "0181_project_operation_revision",
       "0182_purchase_order_email_claim",
       "0183_purchase_order_email_claim_recovery",
@@ -49,6 +49,7 @@ describe("D1 migration authority and Drizzle metadata", () => {
       "0187_nutech_workbook_provider_effect",
       "0188_nutech_purchase_order_release_token",
       "0189_nutech_vendor_invoice_release_guard",
+      "0190_nutech_order_save_guard",
     ])
   })
 
@@ -66,7 +67,7 @@ describe("D1 migration authority and Drizzle metadata", () => {
     expect(entries.map((entry) => entry.idx)).toEqual(
       entries.map((_entry, index) => index)
     )
-    expect(journalTags.slice(-9)).toEqual([
+    expect(journalTags.slice(-10)).toEqual([
       "0181_project_operation_revision",
       "0182_purchase_order_email_claim",
       "0183_purchase_order_email_claim_recovery",
@@ -76,6 +77,7 @@ describe("D1 migration authority and Drizzle metadata", () => {
       "0187_nutech_workbook_provider_effect",
       "0188_nutech_purchase_order_release_token",
       "0189_nutech_vendor_invoice_release_guard",
+      "0190_nutech_order_save_guard",
     ])
   })
 })

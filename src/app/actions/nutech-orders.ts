@@ -12,6 +12,7 @@ import {
   nuTechOrderItems,
   nuTechOrderWorkflows,
   nuTechProducts,
+  nutechOrderSaveGuards,
   nutechVendorInvoiceReleaseGuards,
   type NewNuTechOrderWorkflow,
 } from "@/db/schema-nutech"
@@ -200,6 +201,8 @@ const AIRLITE_WORKBOOK_PROVIDER_UNRESOLVED_ERROR =
   "The Airlite workbook provider attempt is unresolved. Try again after Drive sync finishes."
 const VENDOR_INVOICE_RELEASE_CONFLICT_ERROR =
   "The Nu-Tech order changed while the vendor invoice was being released. Refresh and try again."
+const NUTECH_ORDER_SAVE_CONFLICT_ERROR =
+  "The Nu-Tech order changed while it was being saved. Refresh and try again."
 
 function activeAirliteWorkbookClaim(
   workflow: Pick<
@@ -857,6 +860,29 @@ export async function saveProjectNuTechOrder(
                   existing.airliteWorkbookClaimRevision
                 )
           )
+    const workflowSaveGuardValid =
+      existing === undefined
+        ? sql<number>`CASE WHEN NOT EXISTS (
+            SELECT 1
+            FROM ${nuTechOrderWorkflows}
+            WHERE ${nuTechOrderWorkflows.projectId} = ${projectId}
+          ) THEN 1 ELSE 0 END`
+        : sql<number>`CASE WHEN EXISTS (
+            SELECT 1
+            FROM ${nuTechOrderWorkflows}
+            WHERE ${workflowSaveGuard}
+          ) THEN 1 ELSE 0 END`
+    const saveGuardQuery = access.db
+      .insert(nutechOrderSaveGuards)
+      .values({
+        workflowId: id,
+        valid: workflowSaveGuardValid,
+        createdAt: now,
+      })
+      .onConflictDoUpdate({
+        target: nutechOrderSaveGuards.workflowId,
+        set: { valid: workflowSaveGuardValid, createdAt: now },
+      })
     const saveWorkflowQuery = access.db
       .insert(nuTechOrderWorkflows)
       .values(values)
@@ -934,20 +960,22 @@ export async function saveProjectNuTechOrder(
             eq(nuTechOrderItems.workflowId, id),
             exists(
               access.db
-                .select({ id: nuTechOrderWorkflows.id })
-                .from(nuTechOrderWorkflows)
-                .where(workflowSaveGuard)
+                .select({ workflowId: nutechOrderSaveGuards.workflowId })
+                .from(nutechOrderSaveGuards)
+                .where(eq(nutechOrderSaveGuards.workflowId, id))
             )
           )
         )
       const saveResults = await access.db.batch([
+        saveGuardQuery,
         saveWorkflowQuery,
         repriceOrderItemsQuery,
+        access.db
+          .delete(nutechOrderSaveGuards)
+          .where(eq(nutechOrderSaveGuards.workflowId, id)),
       ])
-      if ((saveResults[0]?.meta.changes ?? 0) !== 1) {
-        throw new Error(
-          "The Nu-Tech order changed while it was being saved. Refresh and try again."
-        )
+      if ((saveResults[1]?.meta.changes ?? 0) !== 1) {
+        throw new Error(NUTECH_ORDER_SAVE_CONFLICT_ERROR)
       }
     } else {
       const saved = await saveWorkflowQuery.run()
@@ -960,9 +988,17 @@ export async function saveProjectNuTechOrder(
     revalidateNuTechPaths(projectId)
     return { success: true, id }
   } catch (error) {
+    const saveConflict =
+      error instanceof Error &&
+      (error.message.includes("nutech_order_save_guards") ||
+        error.message.includes("CHECK constraint failed"))
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to save Nu-Tech order.",
+      error: saveConflict
+        ? NUTECH_ORDER_SAVE_CONFLICT_ERROR
+        : error instanceof Error
+          ? error.message
+          : "Failed to save Nu-Tech order.",
     }
   }
 }

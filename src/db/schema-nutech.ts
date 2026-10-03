@@ -288,6 +288,17 @@ export const nutechVendorInvoiceReleaseGuards = sqliteTable(
   },
 )
 
+// A short-lived row used by the D1 batch guard for the workflow save and its
+// child repricing. The CHECK turns a stale preflight into a batch rollback.
+export const nutechOrderSaveGuards = sqliteTable(
+  "nutech_order_save_guards",
+  {
+    workflowId: text("workflow_id").primaryKey(),
+    valid: integer("valid").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+)
+
 export type NuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferSelect
 export type NewNuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferInsert
 export type NuTechCatalogVersion = typeof nuTechCatalogVersions.$inferSelect

@@ -71,6 +71,7 @@ import {
   releaseNuTechVendorInvoice,
   saveProjectNuTechOrder,
 } from "@/app/actions/nutech-orders"
+import { getNuTechCatalogWorkspace } from "@/app/actions/nutech-catalog"
 import {
   deleteNuTechOrderItem,
   generateNuTechAirliteWorkbook,
@@ -381,6 +382,12 @@ function createSchema(sqlite: Sqlite): void {
     );
 
     CREATE TABLE nutech_vendor_invoice_release_guards (
+      workflow_id TEXT PRIMARY KEY NOT NULL,
+      valid INTEGER NOT NULL CHECK (valid = 1),
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE nutech_order_save_guards (
       workflow_id TEXT PRIMARY KEY NOT NULL,
       valid INTEGER NOT NULL CHECK (valid = 1),
       created_at TEXT NOT NULL
@@ -1058,6 +1065,111 @@ describe("Nu-Tech child repricing compare-and-swap", () => {
     })
     sqlite.close()
   })
+
+  it("commits the parent save and child repricing together", async () => {
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const actionDb = drizzle(createD1(sqlite), {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+        nuTechCatalogPrices,
+      },
+    })
+    mocks.getDb.mockReturnValue(actionDb)
+
+    await expect(
+      saveProjectNuTechOrder("project-1", {
+        customerType: "new",
+        pricingMode: "cash_discount",
+        quantitySource: "customer_provided",
+        takeoffAcknowledgementStatus: "not_required",
+        scopeType: "block_sale",
+        blockQuantityNotes: null,
+        bracingIncluded: false,
+        bracingRentalStartDate: null,
+        bracingRentalEndDate: null,
+        bracingNotes: null,
+        deliveryMethod: "delivery",
+        requestedDeliveryDate: "2026-09-30",
+        airlitePurchaseOrderOperationId: "po-1",
+        orderStatus: "customer_approved",
+        vendorConfirmationNumber: null,
+        vendorInvoiceNumber: null,
+        vendorInvoiceStatus: "not_received",
+        vendorInvoiceReceivedAt: null,
+        notes: "Repriced together",
+      })
+    ).resolves.toEqual({ success: true, id: "workflow-1" })
+
+    expect(
+      sqlite
+        .prepare(
+          "SELECT pricing_mode, notes FROM nutech_order_workflows WHERE id = 'workflow-1'"
+        )
+        .get()
+    ).toEqual({ pricing_mode: "cash_discount", notes: "Repriced together" })
+    expect(
+      sqlite
+        .prepare(
+          "SELECT unit_price_cents FROM nutech_order_items WHERE id = 'nutech-item-1'"
+        )
+        .get()
+    ).toEqual({ unit_price_cents: 110 })
+    expect(
+      sqlite.prepare("SELECT COUNT(*) AS count FROM nutech_order_save_guards").get()
+    ).toEqual({ count: 0 })
+    sqlite.close()
+  })
+})
+
+describe("Nu-Tech catalog organization ordering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAuth.mockResolvedValue({
+      id: "staff-1",
+      role: "project_manager",
+      isActive: true,
+    })
+    mocks.isInternalStaffRole.mockReturnValue(true)
+    mocks.requireOrg.mockReturnValue("org-1")
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
+  })
+
+  it.each([
+    ["client", 1],
+    ["internal", 0],
+  ] as const)(
+    "checks the authoritative %s/%s organization before catalog permission work",
+    async (organizationType, isActive) => {
+      const sqlite = new Database(":memory:")
+      createSchema(sqlite)
+      sqlite
+        .prepare("UPDATE organizations SET type = ?, is_active = ? WHERE id = ?")
+        .run(organizationType, isActive, "org-1")
+      // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+      const actionDb = drizzle(createD1(sqlite), { schema: { organizations } })
+      mocks.getDb.mockReturnValue(actionDb)
+
+      await expect(getNuTechCatalogWorkspace()).rejects.toThrow(
+        "Nu-Tech catalog requires an active internal organization."
+      )
+      expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
+      expect(mocks.getOrganizationDriveContext).not.toHaveBeenCalled()
+      expect(mocks.getDb.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.requireFeaturePermission.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+      )
+      sqlite.close()
+    }
+  )
 })
 
 describe("purchase-order supplier email claim fence", () => {

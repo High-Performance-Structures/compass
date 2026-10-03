@@ -109,7 +109,6 @@ async function nuTechCatalogAccess(
   if (action !== "read" && isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
-  await requireFeaturePermission(user, "nutech-orders", action)
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -128,6 +127,7 @@ async function nuTechCatalogAccess(
   if (!organization) {
     throw new Error("Nu-Tech catalog requires an active internal organization.")
   }
+  await requireFeaturePermission(user, "nutech-orders", action)
   return { user, organizationId, db }
 }
 
