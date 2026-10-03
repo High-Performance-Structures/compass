@@ -337,6 +337,76 @@
       "when": 1787671000000,
       "tag": "0137_cherish_anonymous_submission",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1789088087000,
+      "tag": "0181_project_operation_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1789088087001,
+      "tag": "0182_purchase_order_email_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1789088087002,
+      "tag": "0183_purchase_order_email_claim_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1789088087003,
+      "tag": "0184_nutech_order_item_release_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1789097666000,
+      "tag": "0185_purchase_order_email_reconciliation_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1789304279168,
+      "tag": "0186_nutech_workbook_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1789308804783,
+      "tag": "0187_nutech_workbook_provider_effect",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "6",
+      "when": 1789433742000,
+      "tag": "0188_nutech_purchase_order_release_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1789437000000,
+      "tag": "0189_nutech_vendor_invoice_release_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1789438800000,
+      "tag": "0190_nutech_order_save_guard",
+      "breakpoints": true
     }
   ]
 }

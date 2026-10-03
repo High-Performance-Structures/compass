@@ -1,9 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { IconCheck, IconMail, IconSend } from "@tabler/icons-react"
+import { IconAlertTriangle, IconCheck, IconMail, IconSend } from "@tabler/icons-react"
 
-import { sendPurchaseOrderEmail } from "@/app/actions/project-operations"
+import {
+  reconcilePurchaseOrderEmailDelivery,
+  sendPurchaseOrderEmail,
+} from "@/app/actions/project-operations"
 import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,6 +31,12 @@ type EmailStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "sending" }
   | { readonly kind: "sent"; readonly message: string }
+  | { readonly kind: "error"; readonly message: string }
+
+type ReconciliationStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "saving" }
+  | { readonly kind: "saved"; readonly message: string }
   | { readonly kind: "error"; readonly message: string }
 
 function defaultSubject(input: {
@@ -65,6 +74,8 @@ function defaultSupplierRecipients(email: string | null): readonly string[] {
 export function ProjectPurchaseOrderEmailButton({
   projectId,
   purchaseOrderId,
+  expectedRevision,
+  emailDeliveryRequiresReconciliation,
   poNumber,
   projectLabel,
   supplierName,
@@ -73,6 +84,8 @@ export function ProjectPurchaseOrderEmailButton({
 }: {
   readonly projectId: string
   readonly purchaseOrderId: string
+  readonly expectedRevision: number
+  readonly emailDeliveryRequiresReconciliation: boolean
   readonly poNumber: string | null
   readonly projectLabel: string
   readonly supplierName: string | null
@@ -91,6 +104,9 @@ export function ProjectPurchaseOrderEmailButton({
     defaultMessage({ supplierName, projectLabel, poNumber })
   )
   const [status, setStatus] = React.useState<EmailStatus>({ kind: "idle" })
+  const [providerMessageId, setProviderMessageId] = React.useState("")
+  const [reconciliationStatus, setReconciliationStatus] =
+    React.useState<ReconciliationStatus>({ kind: "idle" })
 
   function handleOpenChange(nextOpen: boolean): void {
     setOpen(nextOpen)
@@ -101,6 +117,8 @@ export function ProjectPurchaseOrderEmailButton({
     setSubject(defaultSubject({ poNumber, projectLabel }))
     setMessage(defaultMessage({ supplierName, projectLabel, poNumber }))
     setStatus({ kind: "idle" })
+    setProviderMessageId("")
+    setReconciliationStatus({ kind: "idle" })
   }
 
   async function submitEmail(
@@ -125,6 +143,108 @@ export function ProjectPurchaseOrderEmailButton({
     }
 
     setStatus({ kind: "error", message: result.error })
+  }
+
+  async function reconcileDelivery(
+    outcome: "delivered" | "not_delivered"
+  ): Promise<void> {
+    setReconciliationStatus({ kind: "saving" })
+    const result =
+      outcome === "delivered"
+        ? await reconcilePurchaseOrderEmailDelivery(projectId, purchaseOrderId, {
+            expectedRevision,
+            outcome,
+            providerMessageId,
+          })
+        : await reconcilePurchaseOrderEmailDelivery(projectId, purchaseOrderId, {
+            expectedRevision,
+            outcome,
+          })
+
+    if (!result.success) {
+      setReconciliationStatus({ kind: "error", message: result.error })
+      return
+    }
+    setReconciliationStatus({
+      kind: "saved",
+      message:
+        outcome === "delivered"
+          ? "Delivery confirmed. The purchase order is recorded as sent."
+          : "Non-delivery confirmed. A new supplier email can now be sent.",
+    })
+  }
+
+  if (emailDeliveryRequiresReconciliation) {
+    const saving = reconciliationStatus.kind === "saving"
+    const saved = reconciliationStatus.kind === "saved"
+    return (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="print:hidden"
+          >
+            <IconAlertTriangle className="size-4" />
+            Reconcile email
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Reconcile supplier email</DialogTitle>
+            <DialogDescription>
+              The provider delivery result stayed uncertain past its safe retry window.
+              Check the provider account and supplier correspondence before choosing an
+              outcome. This decision releases the purchase order for later actions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor={`po-email-provider-id-${purchaseOrderId}`}>
+              Provider message ID (optional)
+            </Label>
+            <Input
+              id={`po-email-provider-id-${purchaseOrderId}`}
+              value={providerMessageId}
+              onChange={(event) => setProviderMessageId(event.target.value)}
+              placeholder="Add when confirming delivery"
+              disabled={saving || saved}
+            />
+          </div>
+
+          {reconciliationStatus.kind === "saved" && (
+            <p className="rounded-md border border-brand-hps-primary bg-card px-3 py-2 text-sm text-brand-hps-primary">
+              {reconciliationStatus.message}
+            </p>
+          )}
+          {reconciliationStatus.kind === "error" && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {reconciliationStatus.message}
+            </p>
+          )}
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving || saved}
+              onClick={() => reconcileDelivery("not_delivered")}
+            >
+              {saving ? "Saving..." : "Confirm not delivered"}
+            </Button>
+            <Button
+              type="button"
+              disabled={saving || saved}
+              onClick={() => reconcileDelivery("delivered")}
+            >
+              <IconCheck className="size-4" />
+              {saving ? "Saving..." : "Confirm delivered"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (

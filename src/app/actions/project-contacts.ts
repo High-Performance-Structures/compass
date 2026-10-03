@@ -7,6 +7,7 @@ import { getDb } from "@/db"
 import {
   customerContacts,
   customers,
+  organizations,
   internalContacts,
   organizationMembers,
   projectAccessInvitations,
@@ -30,6 +31,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   projectContactCompassAccountStatus,
   projectContactAccessStatus,
@@ -2559,9 +2561,30 @@ export async function getProjectPurchaseOrderSiteContactOptions(
   projectId: string
 ): Promise<readonly ProjectTaskAssigneeOption[]> {
   const user = await requireAuth()
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Purchase orders are limited to active internal staff.")
+  }
+  const organizationId = requireOrg(user)
+  const { env } = await getCloudflareContext()
+  const organizationDb = getDb(env.DB)
+  const organization = await organizationDb
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, organizationId),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+    .get()
+  if (!organization) {
+    throw new Error("Purchase orders require an active internal organization.")
+  }
   await requireFeaturePermission(user, "purchase-orders", "read")
   const db = await verifyProjectAccess(projectId)
-  const orgId = requireOrg(user)
+  const orgId = organizationId
   const canViewInternal = await canFeature(user, "internal-directory", "read")
 
   const projectRows = await db

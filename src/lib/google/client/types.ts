@@ -32,6 +32,7 @@ export type DriveFile = {
   readonly iconLink?: string
   readonly thumbnailLink?: string
   readonly driveId?: string
+  readonly appProperties?: Readonly<Record<string, string>>
 }
 
 export type DriveFileList = {
@@ -89,7 +90,7 @@ export type UploadFileOptions = UploadOptions & {
 export const DRIVE_FILE_FIELDS =
   "id,name,mimeType,size,createdTime,modifiedTime,owners," +
   "parents,permissions,shared,trashed,webViewLink," +
-  "webContentLink,iconLink,thumbnailLink,driveId"
+  "webContentLink,iconLink,thumbnailLink,driveId,appProperties"
 
 export const DRIVE_LIST_FIELDS =
   `nextPageToken,files(${DRIVE_FILE_FIELDS})`
