@@ -12,6 +12,34 @@ const productionSmoke = readFileSync(
   "utf8",
 )
 
+function findStepRun(
+  jobName: string,
+  stepName: string,
+): string | null {
+  const lines = workflow.split("\n")
+  const jobStart = lines.findIndex((line) => line === `  ${jobName}:`)
+  if (jobStart < 0) return null
+
+  const nextJob = lines.findIndex(
+    (line, index) => index > jobStart && /^  [a-z0-9-]+:$/.test(line),
+  )
+  const jobLines = lines.slice(jobStart, nextJob < 0 ? lines.length : nextJob)
+  const stepStart = jobLines.findIndex(
+    (line) => line === `      - name: ${stepName}`,
+  )
+  if (stepStart < 0) return null
+
+  const nextStep = jobLines.findIndex(
+    (line, index) => index > stepStart && /^      - /.test(line),
+  )
+  const stepLines = jobLines.slice(
+    stepStart,
+    nextStep < 0 ? jobLines.length : nextStep,
+  )
+  const runLine = stepLines.find((line) => /^        run:/.test(line))
+  return runLine?.replace(/^        run:\s*/, "").trim() ?? null
+}
+
 describe("daily regression workflow", () => {
   it("runs the read-only production smoke spec instead of fixture workflows", () => {
     expect(workflow).toContain(
@@ -23,11 +51,18 @@ describe("daily regression workflow", () => {
   })
 
   it("builds the generated mobile shell before syncing each native platform", () => {
-    const mobileBuilds = workflow.match(/bun run mobile:build/g) ?? []
+    expect(findStepRun("android-build", "Synchronize Capacitor project")).toBe(
+      "bun run mobile:build && bunx cap sync android",
+    )
+    expect(findStepRun("ios-build", "Synchronize Capacitor project")).toBe(
+      "bun run mobile:build && bunx cap sync ios",
+    )
+  })
 
-    expect(mobileBuilds).toHaveLength(2)
-    expect(workflow).toContain("bunx cap sync android")
-    expect(workflow).toContain("bunx cap sync ios")
+  it("models the approved people legacy-route redirect", () => {
+    expect(productionSmoke).toMatch(
+      /path: "\/dashboard\/people",\s*expectedPath: "\/dashboard\/contacts\?tab=internal"/,
+    )
   })
 
   it("keeps production smoke navigation read-only", () => {
