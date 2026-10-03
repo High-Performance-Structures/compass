@@ -72,4 +72,11 @@ describe("daily regression workflow", () => {
     )
     expect(productionSmoke).not.toMatch(/request\.(post|put|patch|delete)\(/)
   })
+
+  it("blocks ambient Next server-action writes before they reach production", () => {
+    expect(productionSmoke).toContain("context.addInitScript")
+    expect(productionSmoke).toContain('method.toUpperCase() === "POST"')
+    expect(productionSmoke).toContain('headers.has("Next-Action")')
+    expect(productionSmoke).toContain("Promise.reject")
+  })
 })

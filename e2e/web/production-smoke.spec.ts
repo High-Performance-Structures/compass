@@ -56,13 +56,29 @@ async function expectHealthyNavigation(
 }
 
 test.describe("production smoke", () => {
-  test.beforeEach(async ({ page }) => {
+  test("demo workspace exposes healthy core navigation", async ({ page }) => {
+    const context = page.context()
+    const serverActionRequests: string[] = []
+    context.on("request", (request) => {
+      if (request.method() === "POST" && request.headers()["next-action"]) {
+        serverActionRequests.push(request.url())
+      }
+    })
+    await context.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window)
+      window.fetch = (input, init) => {
+        const request = input instanceof Request ? input : null
+        const method = (init?.method ?? request?.method ?? "GET").toUpperCase()
+        const headers = new Headers(init?.headers ?? request?.headers)
+        if (method.toUpperCase() === "POST" && headers.has("Next-Action")) {
+          return Promise.reject(new Error("Read-only smoke blocked a server action."))
+        }
+        return nativeFetch(input, init)
+      }
+    })
     await page.goto("/demo")
     await page.waitForURL(/\/dashboard/)
     await expect(page.locator("body")).not.toContainText(applicationErrorText)
-  })
-
-  test("demo workspace exposes healthy core navigation", async ({ page }) => {
     test.slow()
 
     for (const area of productionAreas) {
@@ -81,5 +97,7 @@ test.describe("production smoke", () => {
         }
       })
     }
+
+    expect(serverActionRequests).toEqual([])
   })
 })

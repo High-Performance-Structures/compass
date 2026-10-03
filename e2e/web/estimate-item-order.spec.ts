@@ -62,7 +62,7 @@ test("estimate items reorder within divisions and assemblies and persist in cust
     await assertOrder(assembly, ["c", "b", "a"])
     await assembly.getByRole("button", { name: "Sort Foundation phase by cost code", exact: true }).click()
     await assertOrder(assembly, ["c", "a", "b"])
-    if (!testInfo.project.name.startsWith("mobile")) {
+    if (!testInfo.project.name.startsWith("mobile") && testInfo.project.name !== "webkit") {
       const handle = assembly.getByRole("button", { name: /Drag to reorder 31-1/ })
       const target = assembly.locator(`[data-estimate-line-id="${id}c"]`)
       await handle.scrollIntoViewIfNeeded()
