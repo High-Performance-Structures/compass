@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projects, users } from "@/db/schema"
@@ -56,6 +56,7 @@ type DriveStaffContext = {
   readonly user: AuthUser
   readonly env: Awaited<ReturnType<typeof getCloudflareContext>>["env"]
   readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
 }
 
 async function requireDriveStaff(): Promise<DriveStaffContext> {
@@ -63,16 +64,17 @@ async function requireDriveStaff(): Promise<DriveStaffContext> {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const organization = await getActiveOrganization(db, user)
+  const organizationId = user.organizationId
   if (
     !user.isActive ||
-    !user.organizationId ||
+    !organizationId ||
     !organization ||
     organization.type !== "internal" ||
     (!isInternalStaffRole(user.role) && user.role !== "developer")
   ) {
     throw new Error("Google Drive access requires active internal staff")
   }
-  return { user, env, db }
+  return { user, env, db, organizationId }
 }
 
 async function getDecryptedServiceAccountKey(
@@ -511,7 +513,7 @@ export async function listProjectDriveFilesForField(
   | { success: false; error: string }
 > {
   try {
-    const { user, env, db } = await requireDriveStaff()
+    const { user, env, db, organizationId } = await requireDriveStaff()
     requirePermission(user, "document", "read")
     if (isDemoUser(user.id)) {
       return { success: true, files: [], nextPageToken: null }
@@ -524,14 +526,19 @@ export async function listProjectDriveFilesForField(
     const project = await db
       .select({ folderId: projects.googleDriveFolderId })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, organizationId)
+        )
+      )
       .limit(1)
       .then((rows) => rows[0] ?? null)
     if (!project?.folderId) {
       return { success: false, error: "Project folder is not mapped" }
     }
 
-    const auth = await getOrgGoogleAuth(db, user.organizationId ?? "")
+    const auth = await getOrgGoogleAuth(db, organizationId)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
     }
@@ -589,7 +596,7 @@ export async function listProjectDriveFolderForField(
   | { success: false; error: string }
 > {
   try {
-    const { user, env, db } = await requireDriveStaff()
+    const { user, env, db, organizationId } = await requireDriveStaff()
     requirePermission(user, "document", "read")
     if (isDemoUser(user.id)) {
       return { success: true, folderName: "Documents", files: [], nextPageToken: null }
@@ -602,14 +609,19 @@ export async function listProjectDriveFolderForField(
     const project = await db
       .select({ folderId: projects.googleDriveFolderId })
       .from(projects)
-      .where(eq(projects.id, projectId))
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, organizationId)
+        )
+      )
       .limit(1)
       .then((rows) => rows[0] ?? null)
     if (!project?.folderId) {
       return { success: false, error: "Project folder is not mapped" }
     }
 
-    const auth = await getOrgGoogleAuth(db, user.organizationId ?? "")
+    const auth = await getOrgGoogleAuth(db, organizationId)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
     }
@@ -1253,17 +1265,35 @@ export async function updateUserGoogleEmail(
   googleEmail: string | null
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
-    const { user, db } = await requireDriveStaff()
+    const { user, db, organizationId } = await requireDriveStaff()
     requirePermission(user, "user", "update")
 
-    await db
+    const result = await db
       .update(users)
       .set({
         googleEmail,
         updatedAt: new Date().toISOString(),
       })
-      .where(eq(users.id, userId))
+      .where(
+        and(
+          eq(users.id, userId),
+          eq(users.isActive, true),
+          sql`EXISTS (
+            SELECT 1
+            FROM organization_members AS membership
+            WHERE membership.user_id = ${users.id}
+              AND membership.organization_id = ${organizationId}
+          )`
+        )
+      )
       .run()
+
+    if (result.meta.changes !== 1) {
+      return {
+        success: false,
+        error: "User not found in active organization",
+      }
+    }
 
     return { success: true }
   } catch (err) {

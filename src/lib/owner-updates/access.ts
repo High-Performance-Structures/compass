@@ -10,21 +10,28 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 type OwnerUpdateRouteAccessOptions = {
   readonly allowDeveloperRead?: boolean
+  readonly allowDemoRead?: boolean
 }
 
 export async function assertOwnerUpdateRouteAccess(
   user: AuthUser,
   options: OwnerUpdateRouteAccessOptions = {}
 ): Promise<ReturnType<typeof getDb>> {
-  if (isDemoUser(user.id)) {
+  const isAllowedDemoRead =
+    options.allowDemoRead === true && isDemoUser(user.id)
+  if (isDemoUser(user.id) && !isAllowedDemoRead) {
     throw new Error("DEMO_READ_ONLY")
   }
   const isAllowedDeveloperRead =
     options.allowDeveloperRead === true && user.role === "developer"
+  const isAllowedDemoOrganization =
+    isAllowedDemoRead && user.organizationType === "demo"
   if (
     !user.isActive ||
-    (!isInternalStaffRole(user.role) && !isAllowedDeveloperRead) ||
-    user.organizationType !== "internal" ||
+    (!isInternalStaffRole(user.role) &&
+      !isAllowedDeveloperRead &&
+      !isAllowedDemoOrganization) ||
+    (!isAllowedDemoOrganization && user.organizationType !== "internal") ||
     !user.organizationId
   ) {
     throw new Error("Permission denied: internal staff access is required")
@@ -38,7 +45,10 @@ export async function assertOwnerUpdateRouteAccess(
     .where(
       and(
         eq(organizations.id, user.organizationId),
-        eq(organizations.type, "internal"),
+        eq(
+          organizations.type,
+          isAllowedDemoOrganization ? "demo" : "internal"
+        ),
         eq(organizations.isActive, true)
       )
     )

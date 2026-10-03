@@ -604,7 +604,7 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
   readonly viewer: Awaited<ReturnType<typeof requireAuth>>
 }> {
   const viewer = await requireAuth()
-  const db = await assertOwnerUpdateRouteAccess(viewer)
+  const db = await assertOwnerUpdateRouteAccess(viewer, { allowDemoRead: true })
   await requireFeaturePermission(viewer, "owner-updates", "read")
   await assertOwnerUpdateProjectAccess(db, viewer, projectId)
   return { db, viewer }

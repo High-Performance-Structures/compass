@@ -55,6 +55,15 @@ const developerUser = {
   updatedAt: "2026-09-28T00:00:00.000Z",
 }
 
+const demoUser = {
+  ...developerUser,
+  id: "demo-user-001",
+  role: "admin",
+  organizationId: "demo-org-meridian",
+  organizationName: "Meridian Group",
+  organizationType: "demo",
+}
+
 function createDatabase(
   rows: readonly OrganizationRow[] = [{ id: "org-1" }]
 ): Database {
@@ -96,6 +105,25 @@ describe("owner update route access", () => {
   it("keeps the developer role out of default owner-update access", async () => {
     await expect(assertOwnerUpdateRouteAccess(developerUser)).rejects.toThrow(
       "Permission denied: internal staff access is required"
+    )
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
+    expect(mocks.getDb).not.toHaveBeenCalled()
+  })
+
+  it("allows the demo workspace to read owner updates without opening mutation access", async () => {
+    const database = createDatabase()
+    mocks.getDb.mockReturnValue(database)
+
+    await expect(
+      assertOwnerUpdateRouteAccess(demoUser, { allowDemoRead: true })
+    ).resolves.toBe(database)
+    expect(mocks.getCloudflareContext).toHaveBeenCalledTimes(1)
+    expect(database.select).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps demo access denied unless the caller requests the read-only contract", async () => {
+    await expect(assertOwnerUpdateRouteAccess(demoUser)).rejects.toThrow(
+      "DEMO_READ_ONLY"
     )
     expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
     expect(mocks.getDb).not.toHaveBeenCalled()
