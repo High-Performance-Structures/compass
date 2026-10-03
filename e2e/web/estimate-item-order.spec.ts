@@ -65,15 +65,7 @@ test("estimate items reorder within divisions and assemblies and persist in cust
     if (!testInfo.project.name.startsWith("mobile")) {
       const handle = assembly.getByRole("button", { name: /Drag to reorder 31-1/ })
       const target = assembly.locator(`[data-estimate-line-id="${id}c"]`)
-      await handle.scrollIntoViewIfNeeded()
-      const start = await handle.boundingBox()
-      const end = await target.boundingBox()
-      if (!start || !end) throw new Error("Drag rows must be visible.")
-      await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
-      await page.mouse.down()
-      await page.mouse.move(start.x + start.width / 2, start.y - 10, { steps: 3 })
-      await page.mouse.move(start.x + start.width / 2, end.y + end.height / 2, { steps: 12 })
-      await page.mouse.up()
+      await handle.dragTo(target)
       await assertOrder(assembly, ["b", "c", "a"])
     } else {
       await assembly.getByRole("button", { name: /Move 31-1.* up/ }).click()
