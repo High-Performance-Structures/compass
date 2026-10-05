@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/contact-duplicates"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import {
   Dialog,
   DialogContent,
@@ -78,7 +79,10 @@ export function ContactMergeDialog({
     <Dialog open={choices !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Merge duplicate {kind.endsWith("company") ? "companies" : "people"}</DialogTitle>
+          <div className="flex items-center gap-1">
+            <DialogTitle>Merge duplicate {kind.endsWith("company") ? "companies" : "people"}</DialogTitle>
+            <ContextualHelpBeacon topicId="contacts.access.merge-duplicates" />
+          </div>
           <DialogDescription>
             Choose the record to keep. The other is archived and its project links are moved.
             This does not merge Sage records, grant Compass access, or overwrite the survivor&apos;s contact fields.

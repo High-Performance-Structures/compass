@@ -4,15 +4,15 @@
   "featureId": "project-contacts",
   "slug": "contacts-project-access-invitations",
   "title": "Contacts, Project Access, and Invitations",
-  "summary": "Manage directory contacts, project assignments, invitations, and access verification.",
+  "summary": "Manage directory contacts, duplicate merges, project assignments, invitations, and access verification.",
   "contextSummary": "A contact record, a project assignment, and a Compass login are separate. Search first, assign the correct project, then invite and verify access.",
   "category": "Start Here",
-  "tags": ["contacts", "access", "permissions", "invitations", "users", "Sage comparison", "client matching"],
+  "tags": ["contacts", "duplicate contacts", "merge", "access", "permissions", "invitations", "resend invitation", "users", "Sage comparison", "client matching"],
   "audiences": ["staff"],
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-28"
+  "lastReviewed": "2026-10-05"
 }
 ---
 
@@ -49,6 +49,8 @@ Selecting a pair does not link, merge, or transfer anything. **Look up selected 
 
 For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
 
+If the contact already has a pending account invitation, the action changes to **Resend invitation**. Review the current email address and editable welcome message before resending. Resending uses the current account invitation and does not add access to any other project.
+
 Linking a person to a Compass account is a separate, deliberate administrator action. Use **Compass account** beside the named person and choose the exact login. Never decide a match by email alone; the account link does not grant project access by itself.
 
 ## Verify Access {#verify-access}
@@ -57,9 +59,17 @@ After inviting, confirm Compass reports success, the person appears on the corre
 
 If the person does not appear in the invitation list, check that the contact is active, assigned to the current project, has a valid email, and that you have invitation permission.
 
+## Merge Duplicate Contacts {#merge-duplicates}
+
+Authorized staff can select exactly two client/lead companies or two vendor companies in **Contacts** and choose **Merge 2 duplicates**. For duplicate people, open the company and select two people. Review the preview and deliberately choose the record to keep.
+
+The other record is archived, its project links are moved to the survivor, and the merge and archived details remain in the audit history. The merge does not overwrite the survivor's phone, email, or address, merge Sage records, grant Compass access, or combine two different Compass login identities. Review any different contact fields first and copy needed current information into the record you intend to keep.
+
+Compass blocks unsafe merges, including conflicting Sage identities or person records linked to different Compass accounts. Stop and resolve the identity conflict instead of bypassing it. After a merge, verify the surviving contact, named people, project assignments, Sage link, and Compass account link before sending an invitation.
+
 ## Correct Mistakes Safely {#correct-mistakes}
 
-Stop before inviting either record when you find a likely duplicate. Ask an administrator to reconcile identity and assignments. If access was granted to the wrong person or project, treat it as a potential data-exposure issue and contact an administrator immediately.
+Stop before inviting either record when you find a likely duplicate. Use the authorized merge preview or ask an administrator to reconcile identity and assignments. If access was granted to the wrong person or project, treat it as a potential data-exposure issue and contact an administrator immediately.
 
 ## Quick Check {#quick-check}
 

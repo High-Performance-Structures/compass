@@ -61,6 +61,9 @@ describe("help registry", () => {
     expect(getHelpTopic("contacts.access.compare-clients-with-sage")?.href).toBe(
       "/dashboard/help/contacts-project-access-invitations#compare-clients-with-sage"
     )
+    expect(getHelpTopic("contacts.access.merge-duplicates")?.href).toBe(
+      "/dashboard/help/contacts-project-access-invitations#merge-duplicates"
+    )
     expect(getHelpTopic("not-a-topic")).toBeNull()
   })
 
@@ -103,6 +106,11 @@ describe("help registry", () => {
         "/dashboard/projects/project-123/contracts"
       ).map((guide) => guide.id)
     ).toContain("financials")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/messages"
+      ).map((guide) => guide.id)
+    ).toContain("conversations")
     expect(
       getHelpGuidesForRoute(
         "/preview/projects/project-123/owner/updates/update-456"
@@ -226,6 +234,22 @@ describe("help registry", () => {
     expect(ownerGuide?.content).toContain("**Open contract**")
     expect(searchHelpGuides("replace executed signed change order")[0]?.guide.id)
       .toBe("change.orders")
+  })
+
+  it("documents current project email, RFQ response, and contact merge workflows", () => {
+    const conversationsGuide = getHelpGuide("conversations-and-notifications")
+    const operationsGuide = getHelpGuide("project-operations")
+    const contactsGuide = getHelpGuide("contacts-project-access-invitations")
+
+    expect(conversationsGuide?.content).toContain("**Drafts**")
+    expect(conversationsGuide?.content).toContain("**Sent**")
+    expect(conversationsGuide?.content).toContain("10 attachments totaling 18 MB")
+    expect(operationsGuide?.content).toContain("**Send email**")
+    expect(operationsGuide?.content).toContain("**Record response**")
+    expect(operationsGuide?.content).toContain("active **Sage division**")
+    expect(contactsGuide?.content).toContain("**Merge 2 duplicates**")
+    expect(contactsGuide?.content).toContain("**Resend invitation**")
+    expect(contactsGuide?.content).toContain("does not overwrite the survivor's")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {
