@@ -26,7 +26,7 @@ export default async function ProjectEstimatePage({
   ])
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="compass-content-scroll min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href={`/dashboard/projects/${id}`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">

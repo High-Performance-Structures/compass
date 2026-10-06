@@ -155,7 +155,8 @@ export default async function DashboardLayout({
           canUseDirectMessages={canUseDirectMessages}
           canViewHelp={canViewHelp}
         />
-        <SidebarInset className="overflow-hidden">
+        {/* Keep focus and scrollIntoView inside page scroll regions, never the fixed frame. */}
+        <SidebarInset className="min-h-0 overflow-clip">
           <DesktopOfflineBanner />
           <OfflineBanner />
           <DemoBanner isDemo={isDemo} />
