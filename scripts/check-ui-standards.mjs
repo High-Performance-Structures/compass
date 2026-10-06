@@ -19,6 +19,28 @@ const pullRequestTemplate = read(".github/pull_request_template.md")
 const pagination = read("src/components/data-table-pagination.tsx")
 const dialog = read("src/components/ui/dialog.tsx")
 const alertDialog = read("src/components/ui/alert-dialog.tsx")
+const scrollArea = read("src/components/ui/scroll-area.tsx")
+const globalStyles = read("src/app/globals.css")
+
+if (!standards.includes("## Scrolling and long content") || !standards.includes('type="auto"')) {
+  failures.push("docs/development/ui-standards.md: must define visible scrollbars for long and growing content")
+}
+
+const nativeScrollbarDefaults = globalStyles.match(/(?:^|\n)\*\s*\{([^}]*)\}/)?.[1] ?? ""
+if (!/scrollbar-width:\s*(thin|auto)\s*;/.test(nativeScrollbarDefaults)) {
+  failures.push("src/app/globals.css: native scrollbars must be visible by default")
+}
+
+const webkitScrollbarDefaults = globalStyles.match(/(?:^|\n)\*::-webkit-scrollbar\s*\{([^}]*)\}/)?.[1] ?? ""
+for (const dimension of ["width", "height"]) {
+  if (!new RegExp(`${dimension}:\\s*[1-9][0-9]*(px|rem)\\s*;`).test(webkitScrollbarDefaults)) {
+    failures.push(`src/app/globals.css: default scrollbars must have a visible ${dimension}`)
+  }
+}
+
+if (!scrollArea.includes('type = "auto"') || !scrollArea.includes("type={type}")) {
+  failures.push("src/components/ui/scroll-area.tsx: custom scrollbars must show by default when content overflows")
+}
 
 if (!/25.*50.*100/.test(standards) || !/clamp/i.test(standards)) {
   failures.push(
@@ -66,26 +88,38 @@ if (
 const sourceDirectories = ["src/components", "src/app"]
 const sourceFiles = []
 
-const collectTypeScriptFiles = (relativeDirectory) => {
+const collectSourceFiles = (relativeDirectory) => {
   const absoluteDirectory = join(root, relativeDirectory)
   if (!existsSync(absoluteDirectory)) return
 
   for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
     const relativePath = join(relativeDirectory, entry.name)
     if (entry.isDirectory()) {
-      collectTypeScriptFiles(relativePath)
+      collectSourceFiles(relativePath)
       continue
     }
-    if (/\.(tsx?|mts|cts)$/.test(entry.name)) sourceFiles.push(relativePath)
+    if (/\.(tsx?|mts|cts|css)$/.test(entry.name)) sourceFiles.push(relativePath)
   }
 }
 
-for (const directory of sourceDirectories) collectTypeScriptFiles(directory)
+for (const directory of sourceDirectories) collectSourceFiles(directory)
 
 for (const relativePath of sourceFiles) {
   if (relativePath === "src/components/data-table-pagination.tsx") continue
 
   const source = read(relativePath)
+  // Radix suppresses its native viewport bar inside the dependency itself;
+  // product styles must not hide the only visible scrollbar.
+  const hidesScrollbar = /scrollbar-(?:hide|none)|\[scrollbar-width\s*:\s*none\]|\[&[^\]]*::-webkit-scrollbar[^\]]*\]:(?:hidden|w-0|h-0)|scrollbar-width\s*:\s*none|-ms-overflow-style\s*:\s*none|scrollbarWidth\s*:\s*["']none["']|::-webkit-scrollbar\s*\{[^}]*display\s*:\s*none/s
+  if (hidesScrollbar.test(source)) {
+    failures.push(`${relativePath}: product scrollbars must not be hidden`)
+  }
+  if (/<ScrollArea\b[^>]*\btype\s*=\s*["'](?:hover|scroll)["']/.test(source)) {
+    failures.push(`${relativePath}: ScrollArea must reveal overflow without hover or scrolling`)
+  }
+  if (/<ScrollBar\b[^>]*className\s*=\s*["'][^"']*\bhidden\b/.test(source)) {
+    failures.push(`${relativePath}: custom scrollbars must not be hidden`)
+  }
   if (!source.includes("getPaginationRowModel")) continue
 
   const requiredPatterns = [

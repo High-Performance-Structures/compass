@@ -554,13 +554,15 @@ export function ProjectEstimateWorkspacePanel({
     setLine(nextLine)
     setInsertAfterLineId(insertionPoint)
     window.requestAnimationFrame(() => {
-      lineEditorRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      })
-      lineEditorRef.current
+      const description = lineEditorRef.current
         ?.querySelector<HTMLInputElement>("#estimateDescription")
-        ?.focus({ preventScroll: true })
+      // On narrow screens the form is taller than the viewport; reveal the
+      // focused field rather than leaving it below the visible form heading.
+      ;(description ?? lineEditorRef.current)?.scrollIntoView({
+        behavior: "smooth",
+        block: description ? "center" : "start",
+      })
+      description?.focus({ preventScroll: true })
     })
   }
 
