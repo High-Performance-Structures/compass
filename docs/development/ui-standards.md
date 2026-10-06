@@ -38,6 +38,29 @@ conventions; this document defines the user-visible behavior and visual rules.
 - Use Lucide or Tabler icons consistently and give icon-only controls an
   accessible name.
 
+## Scrolling and long content
+
+- Long pages, document editors, growing forms, dialogs, sheets, and overflowed
+  lists must show a visible scrollbar by default whenever their content exceeds
+  the available space. Do not require hover, wheel scrolling, or field focus to
+  reveal that more content is available.
+- Wide tables, code blocks, and overflowing navigation or filter rows must also
+  expose a horizontal scrollbar when needed. Short content must not show an
+  empty scrollbar.
+- Use the shared theme-aware scrollbar styles. Native scrollbars are visible by
+  default; the shared `ScrollArea` uses `type="auto"` so its custom bar remains
+  visible while content overflows. Do not add local scrollbar-hiding styles.
+- A custom scrollbar may suppress the native bar only when it provides an
+  equivalent visible, draggable bar. Never show duplicate bars for one region.
+- Use `compass-content-scroll` on primary page/form scroll regions to reserve
+  scrollbar space and prevent fields or actions shifting as content grows.
+- Keep scroll regions bounded with `min-h-0`/`min-w-0` as needed. Focusing a field
+  or opening an editor must scroll its content region while the dashboard frame
+  remains stationary. Users must be able to return to earlier content without
+  refreshing the page.
+- Scrollbars must work with pointer dragging, keyboard navigation, and touch;
+  use semantic theme colors that remain visible in light and dark themes.
+
 ## Responsive behavior and accessibility
 
 - Responsive layouts must remain usable at narrow widths; do not merely scale
@@ -85,3 +108,7 @@ Before a PR that changes visible UI is merged or deployed, reviewers must check
 this document. Any new or changed list/table must explicitly verify page-size
 selection, mobile behavior, edit/delete page preservation, filtering behavior,
 empty/loading/error states, and accessibility labels.
+
+For scrolling changes, verify long and short content, growing document/form
+content, horizontal overflow, visible bars with the pointer outside the region,
+light/dark themes, mobile behavior, and stationary dashboard framing.

@@ -28,6 +28,9 @@
 - [ ] If this changes a dialog or alert, it remains viewport-centered,
       dynamically viewport-bounded, and internally scrollable when needed.
 
+- [ ] Long pages/forms and horizontal overflow show a visible scrollbar by
+      default, without hover, and the dashboard frame stays stationary.
+
 ## notes
 
 <!-- tradeoffs, anything reviewers should know -->

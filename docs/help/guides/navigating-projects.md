@@ -12,9 +12,13 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-29"
+  "lastReviewed": "2026-10-06"
 }
 ---
+
+## Scrolling Long Pages and Forms {#scrolling-long-pages}
+
+A scrollbar appears when a page, document editor, form, or panel has more content than fits on screen. You can drag the scrollbar to return to earlier content; it stays available without hovering over the page. Wide tables and navigation rows also show a horizontal scrollbar when there is more content to the side. When you open an estimate line editor or move between fields, only the content scrolls; the workspace frame stays in place. You should not need to refresh to get back to earlier content.
 
 ## Open a Project {#open-project}
 
