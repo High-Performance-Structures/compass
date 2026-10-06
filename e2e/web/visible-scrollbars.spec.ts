@@ -86,18 +86,18 @@ test("long pages and custom panels expose bars without hover; short panels do no
   await expect(horizontalBar.locator('[data-slot="scroll-area-thumb"]')).toBeVisible()
   await viewport.evaluate((element) => { element.querySelector('[data-scrollbar-test-wide="true"]')?.remove() })
   await expect(horizontalBar).toHaveCount(0)
-  await page.screenshot({ path: testInfo.outputPath("visible-panel-scrollbar.png") })
+  await page.screenshot({ animations: "disabled", path: testInfo.outputPath("visible-panel-scrollbar.png") })
+  const lightPanelBackground = await drawer.evaluate((element) => getComputedStyle(element).backgroundColor)
   const lightScrollbarColor = await pageRegion.evaluate((element) => getComputedStyle(element).getPropertyValue("scrollbar-color") || getComputedStyle(element, "::-webkit-scrollbar-thumb").backgroundColor)
   // Exercise the global dark tokens without persisting a user preference.
   await page.evaluate(() => {
     document.documentElement.classList.add("dark")
-    for (const property of ["--foreground", "--background", "--muted-foreground"]) {
-      document.documentElement.style.removeProperty(property)
-    }
+    document.documentElement.removeAttribute("style")
   })
   await expectNativeScrollbar(pageRegion, browserName)
+  expect(await drawer.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(lightPanelBackground)
   expect(await pageRegion.evaluate((element) => getComputedStyle(element).getPropertyValue("scrollbar-color") || getComputedStyle(element, "::-webkit-scrollbar-thumb").backgroundColor)).not.toBe(lightScrollbarColor)
-  await page.screenshot({ path: testInfo.outputPath("visible-panel-scrollbar-dark.png") })
+  await page.screenshot({ animations: "disabled", path: testInfo.outputPath("visible-panel-scrollbar-dark.png") })
 })
 
 for (const width of [1024, 390]) {
@@ -116,7 +116,7 @@ for (const width of [1024, 390]) {
     await dialog.getByRole("button", { name: "Create editable draft", exact: true }).scrollIntoViewIfNeeded()
     await expect(dialog.getByRole("button", { name: "Create editable draft", exact: true })).toBeInViewport()
     await expect.poll(() => frame.evaluate((element) => element.scrollTop)).toBe(0)
-    await page.screenshot({ path: testInfo.outputPath(`visible-form-scrollbar-${width}.png`) })
+    await page.screenshot({ animations: "disabled", path: testInfo.outputPath(`visible-form-scrollbar-${width}.png`) })
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
     await expect(dialog).toHaveCount(0)
   })
