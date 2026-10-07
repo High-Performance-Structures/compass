@@ -18,7 +18,7 @@ The GPU pipeline waits for the current frame's resized pixels before segmentatio
 
 The setup screen offers camera preview, a microphone level meter, a speaker test tone, device selectors, and camera/microphone joining preferences. A missing saved device falls back to the browser default. Speaker routing depends on browser support; the test explains when it uses the system default.
 
-During a call, the main control rail always provides **Mute** or **Unmute** for your own microphone. It does not require opening Participants. Muting stops the local track; unmuting requests a fresh track from the selected microphone. The meeting renderer uses container-fill mode so it cannot cover the control rail or notes panel.
+During a call, the single bottom toolbar always provides **Mute** or **Unmute** for your own microphone. It does not require opening Participants. Muting stops the local track; unmuting requests a fresh track from the selected microphone. The meeting renderer uses container-fill mode so it cannot cover the controls or notes panel. Camera, screen sharing, picture-in-picture, Background & Settings, Chat, Participants, and Leave share this toolbar. Controls wrap at narrower widths; notes and transcript stay beside the meeting on wide screens and below it on smaller screens. The SDK does not add a second set of media controls.
 
 During a call, **Background & Settings** opens the same preferences and preview. The camera pauses while its background pipeline is replaced. If the effect cannot start, it stays off; choose Off, retry, or continue without video. Background middleware is prepared before camera startup, and the application checks for a raw-video fallback.
 
@@ -34,3 +34,5 @@ Effect support is checked at runtime. The current SDK excludes iOS effects and r
 - `use-talk-settings.ts` owns account-scoped browser preferences, device choices, and camera transitions.
 - `talk-background-controller.ts` serializes background changes and removes only its own middleware.
 - `talk-setup.tsx`, `talk-preview.tsx`, `talk-settings-panel.tsx`, and `talk-image-editor.tsx` provide the controls.
+
+Microphone failures distinguish browser access, meeting publishing permissions, and audio publishing failure. Device names refresh after microphone access succeeds; before permission, settings explain why names can be hidden. Recovery instructions apply across supported browsers and operating systems.

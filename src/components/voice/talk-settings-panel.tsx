@@ -259,6 +259,12 @@ export function TalkSettingsPanel({
             </select>
           </label>
         ))}
+        {!devices.some((device) => device.kind === "audioinput" && device.label) ? (
+          <p className="text-xs text-muted-foreground">
+            Microphone names may be hidden until browser access is allowed. Use
+            the microphone control to request access, then refresh devices.
+          </p>
+        ) : null}
         <Button type="button" variant="outline" onClick={onRefreshDevices}>
           Refresh devices
         </Button>
