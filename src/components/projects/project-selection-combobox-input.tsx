@@ -124,7 +124,7 @@ export function ProjectSelectionComboboxInput({
                           </span>
                         )}
                         {developerModeEnabled && option.needsSageReview && (
-                          <span className="mt-1 block text-xs font-medium text-amber-700">
+                          <span className="mt-1 block text-xs font-medium text-warning">
                             Needs Sage review
                           </span>
                         )}

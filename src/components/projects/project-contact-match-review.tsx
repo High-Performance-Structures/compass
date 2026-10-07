@@ -93,7 +93,7 @@ function contactTypeLabel(type: ProjectContactType | null): string {
 function statusBadge(link: ProjectContactSourceLinkItem): React.ReactElement {
   if (link.matchStatus === "matched") {
     return (
-      <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">
+      <Badge className="bg-success text-success-foreground hover:bg-success">
         Matched
       </Badge>
     )
@@ -521,7 +521,7 @@ export function ProjectContactMatchReviewPanel({
         <MatchStat
           label="Matched"
           value={review.matchedCount}
-          icon={<IconCircleCheck className="size-4 text-emerald-700" />}
+          icon={<IconCircleCheck className="size-4 text-success" />}
         />
         <MatchStat
           label="Needs review"

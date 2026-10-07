@@ -1398,7 +1398,7 @@ export function ScheduleItemFormDialog({
                       </p>
                     )}
                     {changeProposal && (
-                      <div className="mt-3 space-y-3 border border-amber-400/50 bg-amber-500/5 px-3 py-3">
+                      <div className="mt-3 space-y-3 border border-warning/50 bg-warning/5 px-3 py-3">
                         <div>
                           <p className="text-xs font-medium">
                             Assignee proposed new dates

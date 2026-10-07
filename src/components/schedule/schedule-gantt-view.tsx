@@ -717,7 +717,7 @@ export function ScheduleGanttView({
                       ({group.tasks.length})
                     </span>
                     {collapsed && (
-                      <span className="text-muted-foreground font-normal ml-auto text-[10px]">
+                      <span className="text-muted-foreground font-normal ml-auto text-xs">
                         {group.startDate.slice(5)} – {group.endDate.slice(5)}
                       </span>
                     )}
@@ -759,7 +759,7 @@ export function ScheduleGanttView({
                 >
                   {multipleProjects && taskProject && (
                     <span
-                      className="inline-flex max-w-[72px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-[9px] font-medium"
+                      className="inline-flex max-w-[72px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-xs font-medium"
                       title={projectScheduleLabel(taskProject)}
                     >
                       <span
@@ -854,7 +854,7 @@ export function ScheduleGanttView({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 px-1.5 text-[11px]"
+              className="h-6 px-1.5 text-xs"
               onClick={() => setEditingScheduleKey((editing) => !editing)}
             >
               {editingScheduleKey ? "Done" : "Edit"}
@@ -864,7 +864,7 @@ export function ScheduleGanttView({
             {DISPLAY_COLOR_OPTIONS.map((color) => (
               <div
                 key={color.value}
-                className="flex items-center gap-1.5 text-[11px] text-foreground"
+                className="flex items-center gap-1.5 text-xs text-foreground"
               >
                 {editingScheduleKey ? (
                   <Popover>
@@ -930,7 +930,7 @@ export function ScheduleGanttView({
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-2 h-6 px-1.5 text-[10px]"
+            className="mt-2 h-6 px-1.5 text-xs"
             onClick={() => {
               setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
               setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
@@ -938,7 +938,7 @@ export function ScheduleGanttView({
           >
             Reset personal colors
           </Button>
-          <div className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground">
+          <div className="mt-3 border-t pt-2 text-xs leading-snug text-muted-foreground">
             <p>Schedule item bars use their chosen display color; phase is grouping only.</p>
             <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
           </div>

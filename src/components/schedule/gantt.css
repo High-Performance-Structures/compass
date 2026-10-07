@@ -66,8 +66,32 @@
 
 /* frappe-gantt base styles (vendored from frappe-gantt/dist/frappe-gantt.css) */
 :root{--g-arrow-color: #1f2937;--g-bar-color: #fff;--g-bar-border: #fff;--g-tick-color-thick: #ededed;--g-tick-color: #f3f3f3;--g-actions-background: #f3f3f3;--g-border-color: #ebeff2;--g-text-muted: #7c7c7c;--g-text-light: #fff;--g-text-dark: #171717;--g-progress-color: #dbdbdb;--g-handle-color: #37352f;--g-weekend-label-color: #dcdce4;--g-expected-progress: #c4c4e9;--g-header-background: #fff;--g-row-color: #fdfdfd;--g-row-border-color: #c7c7c7;--g-today-highlight: #37352f;--g-popup-actions: #ebeff2;--g-weekend-highlight-color: #f7f7f7}
+/* Map the vendored Frappe palette onto Compass theme tokens so the chart
+   follows light and dark mode. Item display colors below stay as chosen. */
+.gantt-container {
+  --g-arrow-color: var(--muted-foreground);
+  --g-bar-color: var(--card);
+  --g-bar-border: var(--border);
+  --g-tick-color-thick: color-mix(in srgb, var(--border) 80%, transparent);
+  --g-tick-color: color-mix(in srgb, var(--border) 45%, transparent);
+  --g-actions-background: var(--muted);
+  --g-border-color: color-mix(in srgb, var(--border) 60%, transparent);
+  --g-text-muted: var(--muted-foreground);
+  --g-text-light: var(--primary-foreground);
+  --g-text-dark: var(--foreground);
+  --g-progress-color: var(--muted);
+  --g-handle-color: var(--foreground);
+  --g-weekend-label-color: var(--muted-foreground);
+  --g-expected-progress: color-mix(in srgb, var(--info) 35%, transparent);
+  --g-header-background: var(--card);
+  --g-row-color: var(--background);
+  --g-row-border-color: var(--border);
+  --g-today-highlight: var(--primary);
+  --g-popup-actions: var(--muted);
+  --g-weekend-highlight-color: var(--muted);
+}
 .gantt-container{line-height:14.5px;position:relative;isolation:isolate;overflow:auto;font-size:12px;height:var(--gv-grid-height);width:100%;border-radius:8px}
-.gantt-container .popup-wrapper{position:absolute;top:0;left:0;background:#fff;box-shadow:0 10px 24px -3px #0003;padding:10px;border-radius:5px;width:max-content;z-index:1000}
+.gantt-container .popup-wrapper{position:absolute;top:0;left:0;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);box-shadow:var(--shadow-lg);padding:10px;border-radius:5px;width:max-content;z-index:1000}
 .gantt-container .popup-wrapper .title{margin-bottom:2px;color:var(--g-text-dark);font-size:.85rem;font-weight:650;line-height:15px}
 .gantt-container .popup-wrapper .subtitle{color:var(--g-text-dark);font-size:.8rem;margin-bottom:5px}
 .gantt-container .popup-wrapper .details{color:var(--g-text-muted);font-size:.7rem}
@@ -197,11 +221,7 @@
 }
 
 .gantt .grid-header {
-  fill: oklch(0.97 0 0);
-}
-
-.dark .gantt .grid-header {
-  fill: oklch(0.15 0 0);
+  fill: var(--g-header-background);
 }
 
 .gantt .grid-row {
@@ -209,47 +229,31 @@
 }
 
 .gantt .grid-row:nth-child(even) {
-  fill: oklch(0.97 0.005 170 / 0.3);
-}
-
-.dark .gantt .grid-row:nth-child(even) {
-  fill: oklch(0.2 0.005 170 / 0.2);
+  fill: var(--muted);
+  fill-opacity: 0.45;
 }
 
 .gantt .row-line {
-  stroke: oklch(0.9 0 0);
-}
-
-.dark .gantt .row-line {
-  stroke: oklch(0.25 0 0);
+  stroke: var(--g-border-color);
 }
 
 .gantt .tick {
-  stroke: oklch(0.92 0 0);
-}
-
-.dark .gantt .tick {
-  stroke: oklch(0.22 0 0);
+  stroke: var(--g-tick-color);
 }
 
 .gantt .lower-text,
 .gantt .upper-text {
   font-family: var(--font-sans);
-  fill: oklch(0.5 0 0);
-}
-
-.dark .gantt .lower-text,
-.dark .gantt .upper-text {
-  fill: oklch(0.65 0 0);
+  fill: var(--muted-foreground);
 }
 
 .gantt .arrow {
-  stroke: oklch(0.6 0.08 170);
+  stroke: color-mix(in oklch, var(--primary) 70%, var(--muted-foreground));
   stroke-width: 1.5;
 }
 
 .gantt .today-highlight {
-  fill: oklch(0.85 0.08 170 / 0.15);
+  fill: color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 /* summary bars (collapsed phase bars) */
@@ -268,7 +272,7 @@
 
 .gantt .bar-wrapper[data-id^="phase-"] .bar-label {
   font-weight: 600;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* phase-specific bar colors */

@@ -196,9 +196,9 @@ function presenceStatusForDeskStatus(
 
 function deskStatusDotClass(status: DeskStatus): string {
   if (status === "out") return "bg-muted-foreground"
-  if (status === "on-site") return "bg-amber-500"
-  if (status === "remote") return "bg-sky-600"
-  return "bg-emerald-600"
+  if (status === "on-site") return "bg-warning"
+  if (status === "remote") return "bg-info"
+  return "bg-success"
 }
 
 function includeCurrentAvailability(
