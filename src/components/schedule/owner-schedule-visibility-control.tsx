@@ -67,7 +67,7 @@ export function OwnerScheduleVisibilityControl({
       className="flex items-center gap-2"
       title={OPTIONS.find((option) => option.value === value)?.description}
     >
-      <span className="hidden items-center gap-1 text-xs font-medium text-muted-foreground xl:flex">
+      <span className="hidden items-center gap-1 text-xs font-medium text-muted-foreground 2xl:flex">
         <IconEye className="size-3.5" />
         Owner schedule
       </span>

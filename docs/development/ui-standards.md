@@ -60,6 +60,16 @@ one at a time.
 - **Borders.** `border-border` separates content; `border-input` outlines
   form fields and is darker so fields read as editable. Dark-mode borders must
   stay visible against both the page and card surfaces.
+- **Status color.** Use `destructive` (error, overdue, blocked), `warning`
+  (pending, needs attention), `success` (complete, paid, on track), and `info`
+  (neutral notices) instead of stock red, amber, green, or blue. Status text
+  uses `text-<role>`; tinted surfaces use `bg-<role>/10` with
+  `border-<role>/30`; solid fills use `bg-<role>` with
+  `text-<role>-foreground`. These tokens carry their own dark-mode values, so
+  do not add `dark:` color overrides. Neutral grays use `muted`,
+  `muted-foreground`, `foreground`, and `border`. `bun run ui:check` fails on
+  stock palette colors outside vendored AI elements, print layouts, file-type
+  icons, and the always-dark call window.
 - **Department color.** HPS, ORC, Nu-Tech, and Compass brand tokens identify
   context (a department tab, logo, or marker). Do not use them as large
   background washes.
@@ -68,14 +78,18 @@ one at a time.
   sit above the page, and overlay (`shadow-lg` or higher) for popovers, menus,
   sheets, and dialogs. Do not stack shadows on nested containers.
 
+- **Charts and the Gantt.** Chart and Gantt chrome (headers, grid, ticks,
+  labels, popups) reads theme tokens so it follows light and dark mode. Item
+  display colors chosen by people stay as chosen.
+
 ## Typography
 
 - Body text is 14px (`text-sm`). Secondary text and table cells may use 13px;
   captions, badges, and meta text use 12px (`text-xs`).
 - Do not use text smaller than 12px (`text-xs`). The only exceptions are
   print-only layouts, glyphs inside icon-sized count bubbles, avatar initials,
-  miniature file thumbnails, and Gantt bar labels; `bun run ui:check` lists the
-  exempt files and fails on any other sub-12px size.
+  and miniature file thumbnails; `bun run ui:check` lists the exempt files and
+  fails on any other sub-12px size.
 - Use `font-sans` (Sora) for interface text, `font-mono` (IBM Plex Mono) for
   codes and identifiers, and reserve `font-serif` (Playfair Display) for the
   dashboard greeting and similar single display moments.
@@ -93,6 +107,10 @@ one at a time.
   actions aligned to the right. Do not hand-build page titles. Avoid stacking a
   second toolbar or launch strip above the content when its controls can join
   that header row.
+- Dense workspace toolbars (Schedule) stay on one compact row and let the
+  workspace scroll sideways at narrow widths. Fit them by shortening labels on
+  smaller screens, keeping the full name as the accessible name and tooltip,
+  and size selects to their content rather than fixed widths that clip labels.
 - Keep the primary action visible without scrolling and give it the primary
   style. Secondary actions use outline or ghost buttons.
 - Forms have a readable maximum width (`max-w-5xl` for multi-column editors,

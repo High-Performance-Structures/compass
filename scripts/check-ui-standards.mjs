@@ -107,9 +107,15 @@ const smallTextExemptFiles = new Set([
   "src/components/help/help-compass-icon.tsx",
   "src/components/projects/daily-log-print-document.tsx",
   "src/components/projects/owner-update-document.tsx",
-  "src/components/schedule/schedule-gantt-view.tsx",
   "src/components/ui/badge-indicator.tsx",
   "src/components/ui/file-preview.tsx",
+])
+
+const stockColorExemptPrefixes = ["src/components/ai/", "src/app/print/"]
+const stockColorExemptFiles = new Set([
+  "src/components/files/file-icon.tsx",
+  "src/components/voice/realtimekit-meeting-dialog.tsx",
+  "src/components/voice/realtimekit-meeting-window.tsx",
 ])
 
 const sourceDirectories = ["src/components", "src/app"]
@@ -148,11 +154,22 @@ for (const relativePath of sourceFiles) {
     failures.push(`${relativePath}: custom scrollbars must not be hidden`)
   }
   // Text under 12px is reserved for print layouts, glyphs inside icon-sized
-  // count bubbles, avatar initials, file thumbnails, and Gantt bar labels.
+  // count bubbles, avatar initials, and file thumbnails.
   if (!smallTextExemptFiles.has(relativePath) && !relativePath.startsWith("src/app/print/")) {
     source.split("\n").forEach((line, index) => {
       if (/text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/.test(line) && !line.includes("AvatarFallback")) {
         failures.push(`${relativePath}:${index + 1}: text must be at least 12px (use text-xs)`)
+      }
+    })
+  }
+  // Status and neutral colors come from theme tokens (destructive, warning,
+  // success, info, muted). Stock palette colors are allowed only in vendored
+  // AI elements, print layouts, file-type icons, and the always-dark call window.
+  if (relativePath.endsWith(".tsx") && !stockColorExemptFiles.has(relativePath) && !stockColorExemptPrefixes.some((prefix) => relativePath.startsWith(prefix))) {
+    source.split("\n").forEach((line, index) => {
+      const stock = line.match(/(?<![\w:-])(?:(?:hover|focus|focus-visible|group-hover|dark):)*(?:bg|text|border|ring|fill|stroke|divide|outline|placeholder)-(?:red|rose|amber|yellow|orange|emerald|green|blue|sky|gray|neutral|zinc|slate|stone)-\d{2,3}\b/)
+      if (stock) {
+        failures.push(`${relativePath}:${index + 1}: use a theme token instead of ${stock[0]}`)
       }
     })
   }

@@ -207,7 +207,7 @@ export function FieldDesk({
             <div
               className={cn(
                 "flex items-center gap-2 text-sm",
-                online ? "text-emerald-700" : "text-amber-700",
+                online ? "text-success" : "text-warning",
               )}
             >
               {online ? (
@@ -229,7 +229,7 @@ export function FieldDesk({
           </div>
         </div>
         {pendingCount > 0 && (
-          <p className="mt-2 text-sm text-amber-700">
+          <p className="mt-2 text-sm text-warning">
             {pendingCount} field {pendingCount === 1 ? "item" : "items"} pending
             sync on this device.
           </p>
@@ -260,7 +260,7 @@ export function FieldDesk({
 
       <section className="py-5">
         <div className="flex items-center gap-2">
-          <IconHeartHandshake className="size-5 text-emerald-700" />
+          <IconHeartHandshake className="size-5 text-success" />
           <h2 className="text-lg font-semibold">CHERISH feedback</h2>
         </div>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">

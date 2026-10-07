@@ -109,7 +109,7 @@ export function GoogleConnectDialog({
                 <>
                   <IconCheck
                     size={16}
-                    className="text-green-500 shrink-0"
+                    className="text-success shrink-0"
                   />
                   <span className="text-sm truncate">
                     {keyFileName}

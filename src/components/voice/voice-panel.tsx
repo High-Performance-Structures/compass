@@ -77,7 +77,7 @@ export function VoicePanel(): React.ReactElement {
           ? "Voice Connected"
           : "Voice Paused"
   const statusColor =
-    connectionStatus === "error" ? "text-destructive" : "text-emerald-400"
+    connectionStatus === "error" ? "text-destructive" : "text-success"
 
   const clearMeetingWindowPoll = React.useCallback((): void => {
     if (meetingWindowPollRef.current) {
@@ -154,7 +154,7 @@ export function VoicePanel(): React.ReactElement {
               <button
                 type="button"
                 onClick={leaveChannel}
-                className="flex size-6 items-center justify-center rounded-md border border-red-500/35 bg-red-500/10 text-red-600 transition-colors hover:border-red-500/60 hover:bg-red-500/20 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                className="flex size-6 items-center justify-center rounded-md border border-destructive/35 bg-destructive/10 text-destructive transition-colors hover:border-destructive/60 hover:bg-destructive/20 hover:text-destructive"
                 aria-label="Disconnect"
               >
                 <IconPhoneOff className="size-4" />

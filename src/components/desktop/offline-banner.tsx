@@ -43,7 +43,7 @@ export function DesktopOfflineBanner({ className }: OfflineBannerProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 bg-amber-500/90 px-4 py-2 text-sm font-medium text-white dark:bg-amber-600/90",
+        "flex items-center justify-between gap-3 bg-warning/90 px-4 py-2 text-sm font-medium text-warning-foreground ",
         className,
       )}
     >
@@ -92,7 +92,7 @@ export function OfflineStatusBar({ className }: OfflineBannerProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-1.5 bg-amber-500/80 px-2 py-0.5 text-xs font-medium text-white",
+        "flex items-center justify-center gap-1.5 bg-warning/80 px-2 py-0.5 text-xs font-medium text-warning-foreground",
         className,
       )}
     >

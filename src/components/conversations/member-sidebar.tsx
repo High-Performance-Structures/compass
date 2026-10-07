@@ -39,13 +39,13 @@ type MemberGroupProps = {
 function getStatusColor(status: string): string {
   switch (status) {
     case "online":
-      return "bg-green-500"
+      return "bg-success"
     case "idle":
-      return "bg-yellow-500"
+      return "bg-warning"
     case "dnd":
-      return "bg-red-500"
+      return "bg-destructive"
     default:
-      return "bg-gray-400"
+      return "bg-muted-foreground"
   }
 }
 
@@ -73,10 +73,10 @@ function getRoleBadgeVariant(
 
 function RoleIcon({ role }: { readonly role: string }) {
   if (role === "owner") {
-    return <IconCrown className="h-3 w-3 text-yellow-500" />
+    return <IconCrown className="h-3 w-3 text-warning" />
   }
   if (role === "moderator") {
-    return <IconShield className="h-3 w-3 text-blue-500" />
+    return <IconShield className="h-3 w-3 text-info" />
   }
   return null
 }

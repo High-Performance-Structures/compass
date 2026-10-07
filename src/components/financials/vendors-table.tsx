@@ -263,7 +263,7 @@ export function VendorsTable({
               {vendorSourceLabel(vendor)}
             </Badge>
             {needsReview && (
-              <Badge variant="outline" className="text-amber-700">
+              <Badge variant="outline" className="text-warning">
                 Review
               </Badge>
             )}

@@ -356,7 +356,7 @@ export function ProjectTaskCreateButton({
                 {directoryAssignee.name} is in the directory, but not on this
                 project yet.
               </p>
-              <p className="mt-1 text-amber-900">
+              <p className="mt-1 text-warning">
                 You can create the to-do without changing project contacts, or
                 add this contact to the project first. Portal visibility still
                 needs a separate review.

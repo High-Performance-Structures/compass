@@ -324,7 +324,7 @@ function SelectionRow({
           )}
           {costCode?.needsSageReview && (
             <DeveloperOnly>
-              <Badge variant="outline" className="border-amber-500 text-amber-700">
+              <Badge variant="outline" className="border-warning text-warning">
                 Needs Sage review
               </Badge>
             </DeveloperOnly>

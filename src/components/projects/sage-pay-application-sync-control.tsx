@@ -37,7 +37,7 @@ function statusBadge(
     return (
       <Badge
         variant="outline"
-        className="gap-1 border-emerald-300 text-emerald-700"
+        className="gap-1 border-success/30 text-success"
       >
         <IconCheck className="size-3" />
         Synced
@@ -52,7 +52,7 @@ function statusBadge(
     return (
       <Badge
         variant="outline"
-        className="gap-1 border-blue-300 text-blue-700"
+        className="gap-1 border-info/30 text-info"
       >
         <IconClock className="size-3" />
         {status.status === "queued"
@@ -66,7 +66,7 @@ function statusBadge(
   return (
     <Badge
       variant="outline"
-      className="gap-1 border-amber-300 text-amber-700"
+      className="gap-1 border-warning/30 text-warning"
     >
       <IconAlertTriangle className="size-3" />
       {status.status === "needs_review" ? "Needs review" : "Failed"}
@@ -144,18 +144,18 @@ export function SagePayApplicationSyncControl({
       </div>
 
       {!state.projectMapped && (
-        <p className="mt-2 text-xs text-amber-700">
+        <p className="mt-2 text-xs text-warning">
           Add the Sage job mapping in Project Registry before syncing.
         </p>
       )}
       {!state.configured && (
-        <p className="mt-2 text-xs text-amber-700">
+        <p className="mt-2 text-xs text-warning">
           The private read-only Sage bridge still needs its shared secret and
           poller enabled.
         </p>
       )}
       {state.configured && !state.online && (
-        <p className="mt-2 text-xs text-amber-700">
+        <p className="mt-2 text-xs text-warning">
           The private Sage poller is offline or has not checked in recently.
         </p>
       )}

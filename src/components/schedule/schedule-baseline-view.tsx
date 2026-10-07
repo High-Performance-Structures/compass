@@ -201,8 +201,8 @@ export function ScheduleBaselineView({
                 className={
                   comparison.finishVarianceDays !== null &&
                   comparison.finishVarianceDays > 0
-                    ? "font-medium text-red-600"
-                    : "font-medium text-green-700"
+                    ? "font-medium text-destructive"
+                    : "font-medium text-success"
                 }
               >
                 {varianceLabel(comparison.finishVarianceDays)}
@@ -266,8 +266,8 @@ export function ScheduleBaselineView({
                         className={
                           row.startVarianceDays !== null &&
                           row.startVarianceDays > 0
-                            ? "text-xs font-medium text-red-600"
-                            : "text-xs font-medium text-green-700"
+                            ? "text-xs font-medium text-destructive"
+                            : "text-xs font-medium text-success"
                         }
                       >
                         {varianceLabel(row.startVarianceDays)}
@@ -278,8 +278,8 @@ export function ScheduleBaselineView({
                         className={
                           row.finishVarianceDays !== null &&
                           row.finishVarianceDays > 0
-                            ? "text-xs font-medium text-red-600"
-                            : "text-xs font-medium text-green-700"
+                            ? "text-xs font-medium text-destructive"
+                            : "text-xs font-medium text-success"
                         }
                       >
                         {varianceLabel(row.finishVarianceDays)}

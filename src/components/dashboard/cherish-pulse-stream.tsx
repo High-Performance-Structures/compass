@@ -258,7 +258,7 @@ export function CherishPulseStream({
             ))}
           </div>
           {message ? (
-            <p className="mt-3 border-l-2 border-emerald-700 pl-2 text-xs text-muted-foreground">
+            <p className="mt-3 border-l-2 border-success pl-2 text-xs text-muted-foreground">
               {message}
             </p>
           ) : null}
@@ -377,7 +377,7 @@ export function CherishPulseStream({
           {teamItems.map((item) => (
             <article
               key={item.id}
-              className="border-l-4 border-emerald-700 bg-muted/20 p-3"
+              className="border-l-4 border-success bg-muted/20 p-3"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{item.cherishValue}</Badge>

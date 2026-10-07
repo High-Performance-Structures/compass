@@ -801,7 +801,7 @@ export function ProjectEstimateWorkspacePanel({
                   groupHeading="Active Sage tax entities"
                 />
                 {selectedStartTemplate?.requiresProjectTaxEntity && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                  <p className="text-xs text-warning">
                     This template contains taxable lines. Select the project’s
                     tax entity before creating the draft.
                   </p>
@@ -2245,7 +2245,7 @@ export function ProjectEstimateWorkspacePanel({
             )}
             {estimate.status === "accepted" && (
               <div className="mt-4 border-t pt-4 text-sm">
-                <p className="font-medium text-emerald-700">
+                <p className="font-medium text-success">
                   Accepted estimate is locked. Budget changes now require an executed change order.
                 </p>
                 <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">
