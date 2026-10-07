@@ -1070,7 +1070,7 @@ export function ProjectPhotoReview({
                   )}
                   {developerModeEnabled && (
                     <span
-                      className="flex size-5 shrink-0 items-center justify-center rounded border border-border/70 bg-muted/40 text-[10px] font-semibold text-muted-foreground"
+                      className="flex size-5 shrink-0 items-center justify-center rounded border border-border/70 bg-muted/40 text-xs font-semibold text-muted-foreground"
                       title={`Source: ${sourceName}`}
                       aria-label={`Source: ${sourceName}`}
                     >

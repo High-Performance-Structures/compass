@@ -554,13 +554,15 @@ export function ProjectEstimateWorkspacePanel({
     setLine(nextLine)
     setInsertAfterLineId(insertionPoint)
     window.requestAnimationFrame(() => {
-      lineEditorRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      })
-      lineEditorRef.current
+      const description = lineEditorRef.current
         ?.querySelector<HTMLInputElement>("#estimateDescription")
-        ?.focus({ preventScroll: true })
+      // On narrow screens the form is taller than the viewport; reveal the
+      // focused field rather than leaving it below the visible form heading.
+      ;(description ?? lineEditorRef.current)?.scrollIntoView({
+        behavior: "smooth",
+        block: description ? "center" : "start",
+      })
+      description?.focus({ preventScroll: true })
     })
   }
 
@@ -799,7 +801,7 @@ export function ProjectEstimateWorkspacePanel({
                   groupHeading="Active Sage tax entities"
                 />
                 {selectedStartTemplate?.requiresProjectTaxEntity && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                  <p className="text-xs text-warning">
                     This template contains taxable lines. Select the project’s
                     tax entity before creating the draft.
                   </p>
@@ -1744,7 +1746,7 @@ export function ProjectEstimateWorkspacePanel({
           {editable && (
             <form
             ref={lineEditorRef}
-            className="mt-5 scroll-mt-6 border-t pt-4"
+            className="mt-5 max-w-5xl scroll-mt-6 border-t pt-4"
             onSubmit={saveLine}
           >
               <h3 className="mb-3 text-sm font-semibold">
@@ -2243,7 +2245,7 @@ export function ProjectEstimateWorkspacePanel({
             )}
             {estimate.status === "accepted" && (
               <div className="mt-4 border-t pt-4 text-sm">
-                <p className="font-medium text-emerald-700">
+                <p className="font-medium text-success">
                   Accepted estimate is locked. Budget changes now require an executed change order.
                 </p>
                 <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">

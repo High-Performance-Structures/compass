@@ -77,13 +77,13 @@ function accessLevelLabel(value: PermissionAccessLevel): string {
 function accessLevelClassName(value: PermissionAccessLevel): string {
   switch (value) {
     case "approve":
-      return "border-emerald-700/30 bg-emerald-700/10 text-emerald-900 dark:text-emerald-200"
+      return "border-success/30 bg-success/10 text-success "
     case "delete":
-      return "border-red-700/30 bg-red-700/10 text-red-900 dark:text-red-200"
+      return "border-destructive/30 bg-destructive/10 text-destructive "
     case "edit":
-      return "border-blue-700/30 bg-blue-700/10 text-blue-900 dark:text-blue-200"
+      return "border-info/30 bg-info/10 text-info "
     case "view":
-      return "border-stone-500/30 bg-stone-500/10 text-stone-800 dark:text-stone-200"
+      return "border-border/30 bg-muted text-foreground "
     case "none":
       return "border-muted bg-muted/40 text-muted-foreground"
   }
@@ -188,7 +188,7 @@ function ActionsList({
         <Badge
           key={action}
           variant="outline"
-          className="rounded-[4px] text-[11px]"
+          className="rounded-[4px] text-xs"
         >
           {action}
         </Badge>
@@ -254,7 +254,7 @@ function FeatureRow({
           {accessLevelLabel(accessLevel)}
         </Badge>
         {hasRoleOverride && (
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             role override
           </p>
         )}
@@ -280,7 +280,7 @@ function FeatureRow({
           onChange={(value) => onTeamChange(feature, value)}
         />
         {hasTeamOverride && (
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             team override
           </p>
         )}
@@ -476,7 +476,7 @@ export function PermissionsTab(): React.ReactElement {
             added to Compass&apos;s permission registry.
           </p>
           {demoMode && (
-            <p className="max-w-3xl text-sm font-medium text-amber-800 dark:text-amber-200">
+            <p className="max-w-3xl text-sm font-medium text-warning">
               Demo mode cannot save permission changes or modify role/team
               access. This matrix is only a preview of the permission model.
             </p>

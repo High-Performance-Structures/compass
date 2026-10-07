@@ -359,7 +359,7 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
           </div>
         </div>
         {status.connected ? (
-          <Badge variant="outline" className="gap-1 text-green-700">
+          <Badge variant="outline" className="gap-1 text-success">
             <IconCheck className="size-3" />
             Connected
           </Badge>
@@ -393,7 +393,7 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
             </DeveloperOnly>
           </dl>
           {status.requiresReconnect ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+            <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
               Reconnect Google Calendar to authorize managed project calendars and subscriptions.
               <div className="mt-2">
                 <Button size="sm" asChild><a href="/api/google/calendar/connect">Reconnect</a></Button>

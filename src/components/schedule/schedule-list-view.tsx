@@ -123,7 +123,7 @@ function InitialsAvatar({ name }: { name: string }) {
 
   return (
     <div className="flex items-center gap-1.5">
-      <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-medium">
+      <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
         {initials}
       </div>
       <span className="text-xs text-muted-foreground truncate max-w-[80px]">

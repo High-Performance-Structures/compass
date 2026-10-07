@@ -84,7 +84,7 @@ function QueueStateBadge({ item }: { readonly item: ProjectSageSyncItem }): Reac
   const state = itemQueueState(item)
   if (state === "ready") {
     return (
-      <Badge variant="outline" className="gap-1 border-emerald-300 text-emerald-700">
+      <Badge variant="outline" className="gap-1 border-success/30 text-success">
         <IconCheck className="size-3" />
         Ready
       </Badge>
@@ -92,14 +92,14 @@ function QueueStateBadge({ item }: { readonly item: ProjectSageSyncItem }): Reac
   }
   if (state === "queued") {
     return (
-      <Badge variant="outline" className="gap-1 border-blue-300 text-blue-700">
+      <Badge variant="outline" className="gap-1 border-info/30 text-info">
         <IconClock className="size-3" />
         Queued
       </Badge>
     )
   }
   return (
-    <Badge variant="outline" className="gap-1 border-amber-300 text-amber-700">
+    <Badge variant="outline" className="gap-1 border-warning/30 text-warning">
       <IconAlertTriangle className="size-3" />
       Review
     </Badge>
@@ -241,13 +241,13 @@ export function ProjectSageSyncQueuePanel({
 
       <div className="flex flex-wrap gap-2 px-4 py-3 text-xs">
         <Badge variant="outline">{queue.pendingItems.length} pending</Badge>
-        <Badge variant="outline" className="border-emerald-300 text-emerald-700">
+        <Badge variant="outline" className="border-success/30 text-success">
           {queue.readyCount} ready
         </Badge>
-        <Badge variant="outline" className="border-blue-300 text-blue-700">
+        <Badge variant="outline" className="border-info/30 text-info">
           {queue.queuedCount} queued
         </Badge>
-        <Badge variant="outline" className="border-amber-300 text-amber-700">
+        <Badge variant="outline" className="border-warning/30 text-warning">
           {queue.blockedCount} review
         </Badge>
       </div>

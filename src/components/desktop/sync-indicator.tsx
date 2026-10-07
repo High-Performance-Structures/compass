@@ -25,7 +25,7 @@ function getStatusIcon(status: SyncStatus) {
     case "error":
       return <AlertCircle className="h-3.5 w-3.5 text-destructive" />
     case "offline":
-      return <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+      return <AlertCircle className="h-3.5 w-3.5 text-warning" />
     case "idle":
     default:
       return <Check className="h-3.5 w-3.5" />
@@ -88,7 +88,7 @@ export function SyncIndicator({
         className={cn(
           "flex h-7 items-center gap-1.5 px-2 text-xs text-muted-foreground",
           status === "error" && "text-destructive",
-          status === "offline" && "text-amber-500",
+          status === "offline" && "text-warning",
           className
         )}
         role="status"
@@ -113,7 +113,7 @@ export function SyncIndicator({
             className={cn(
               "h-7 gap-1.5 px-2 text-xs",
               status === "error" && "text-destructive",
-              status === "offline" && "text-amber-500",
+              status === "offline" && "text-warning",
               className,
             )}
             onClick={handleClick}

@@ -1,9 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { decodeProjectRouteId } from "@/lib/project-route-id"
-import Link from "next/link"
 import {
-  IconArrowLeft,
   IconEye,
   IconFileDollar,
   IconLock,
@@ -22,6 +20,7 @@ import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
+import { PageHeader } from "@/components/page-header"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-print-button"
@@ -76,44 +75,38 @@ export default async function ProjectBudgetPage({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href={`/dashboard/projects/${id}`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <IconArrowLeft className="size-4" />
-            Project
-          </Link>
-          <div className="mt-3 flex items-center gap-2">
-            <IconFileDollar className="size-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Budget / G703
-            </h1>
-          </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+      <PageHeader
+        back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
+        icon={<IconFileDollar className="size-5 text-primary" />}
+        title="Budget / G703"
+        description={
+          <>
             Internal budget detail and owner-safe Schedule of Values.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <ProjectContextSwitcher
-            currentProjectId={id}
-            targetSection="budget"
-            placeholder="Switch budget project..."
-            className="w-full sm:w-[280px]"
-          />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Badge variant="outline">
-              <IconLock className="mr-1 size-3" />
-              Internal detail
-            </Badge>
-            <Badge variant="secondary">
-              <IconEye className="mr-1 size-3" />
-              Owner view
-            </Badge>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <ProjectContextSwitcher
+                currentProjectId={id}
+                targetSection="budget"
+                placeholder="Switch budget project..."
+                className="w-full sm:w-[280px]"
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Badge variant="outline">
+                  <IconLock className="mr-1 size-3" />
+                  Internal detail
+                </Badge>
+                <Badge variant="secondary">
+                  <IconEye className="mr-1 size-3" />
+                  Owner view
+                </Badge>
+              </div>
+            </div>
+          </>
+        }
+      />
 
       {developerModeEnabled && sageSyncState && (
         <div className="print:hidden">

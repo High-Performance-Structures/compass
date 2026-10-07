@@ -16,6 +16,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -763,17 +764,27 @@ export function ScheduleView({
         data-schedule-toolbar
       >
         <nav className="flex shrink-0 items-center gap-1.5 text-sm">
+          {/* The project switcher already names the project; repeat it in the
+              breadcrumb only when there is room. */}
           <Link
             href={
               globalMode || !projectId
                 ? "/dashboard/schedule"
                 : `/dashboard/projects/${projectId}`
             }
-            className="text-muted-foreground hover:text-foreground truncate transition-colors"
+            className={cn(
+              "text-muted-foreground hover:text-foreground truncate transition-colors",
+              !globalMode && projectId && "hidden 2xl:inline"
+            )}
           >
             {globalMode ? "Scheduling" : projectName}
           </Link>
-          <IconChevronRight className="size-3.5 text-muted-foreground/60 shrink-0" />
+          <IconChevronRight
+            className={cn(
+              "size-3.5 text-muted-foreground/60 shrink-0",
+              !globalMode && projectId && "hidden 2xl:block"
+            )}
+          />
           <span className="font-medium">
             {globalMode ? "Project schedules" : "Schedule"}
           </span>
@@ -798,11 +809,14 @@ export function ScheduleView({
                 currentProjectId={projectId}
                 targetSection="schedule"
                 placeholder="Switch schedule project..."
-                className="h-8 w-full sm:w-[300px]"
+                className="h-8 w-full sm:w-[240px]"
               />
               <Button asChild variant="outline" size="sm" className="h-8">
-                <Link href="/dashboard/schedule?mode=projects&scope=all&view=gantt">
-                  All project schedules
+                <Link
+                  href="/dashboard/schedule?mode=projects&scope=all&view=gantt"
+                  title="All project schedules"
+                >
+                  All schedules
                 </Link>
               </Button>
             </>
@@ -856,6 +870,7 @@ export function ScheduleView({
             size="sm"
             onClick={() => setTaskFormOpen(true)}
             className="h-8"
+            aria-label="New Schedule Item"
             disabled={!projectId}
             title={
               projectId
@@ -864,7 +879,8 @@ export function ScheduleView({
             }
           >
             <IconPlus className="size-3.5" />
-            <span className="hidden sm:inline ml-1.5">New Schedule Item</span>
+            <span className="ml-1.5 hidden 2xl:inline">New Schedule Item</span>
+            <span className="ml-1.5 hidden sm:inline 2xl:hidden">New item</span>
           </Button>
         </div>
       </div>
@@ -889,7 +905,7 @@ export function ScheduleView({
             </span>
           )}
           {publicationStatus.hasPublishedSchedule && publicationStatus.hasUnpublishedChanges && (
-            <span className="shrink-0 text-amber-700 dark:text-amber-300">
+            <span className="shrink-0 text-warning">
               Draft changes are hidden; viewers still see the published version
             </span>
           )}
@@ -939,7 +955,7 @@ export function ScheduleView({
               {activeFilterCount > 0 && (
                 <Badge
                   variant="secondary"
-                  className="ml-1.5 h-4 min-w-4 rounded-sm px-1 text-[10px]"
+                  className="ml-1.5 h-4 min-w-4 rounded-sm px-1 text-xs"
                 >
                   {activeFilterCount}
                 </Badge>
@@ -1016,7 +1032,7 @@ export function ScheduleView({
 
         <Select value={orderMode} onValueChange={handleOrderModeChange}>
           <SelectTrigger
-            className="h-8 w-[132px] shrink-0 text-xs sm:w-[146px]"
+            className="h-8 w-auto shrink-0 text-xs"
             aria-label="Schedule ordering"
           >
             <SelectValue />
@@ -1036,7 +1052,7 @@ export function ScheduleView({
             if (nextPreset) setPreset(nextPreset)
           }}
         >
-          <SelectTrigger className="h-8 w-[126px] shrink-0 text-xs">
+          <SelectTrigger className="h-8 w-auto shrink-0 text-xs" aria-label="Date range">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1058,7 +1074,7 @@ export function ScheduleView({
             if (nextGroup) setGroupMode(nextGroup)
           }}
         >
-          <SelectTrigger className="h-8 w-[118px] shrink-0 text-xs">
+          <SelectTrigger className="h-8 w-auto shrink-0 text-xs" aria-label="Grouping">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1143,7 +1159,7 @@ export function ScheduleView({
                     onClick={() => applySavedView(savedView)}
                   >
                     <span className="block truncate">{savedView.name}</span>
-                    <span className="text-[11px] capitalize text-muted-foreground">
+                    <span className="text-xs capitalize text-muted-foreground">
                       {savedView.visibility}
                     </span>
                   </button>

@@ -18,6 +18,7 @@ import {
   IconCalendarWeek,
   IconCheck,
   IconChecklist,
+  IconChevronRight,
   IconClipboardText,
   IconFileInvoice,
   IconHome2,
@@ -195,9 +196,9 @@ function presenceStatusForDeskStatus(
 
 function deskStatusDotClass(status: DeskStatus): string {
   if (status === "out") return "bg-muted-foreground"
-  if (status === "on-site") return "bg-amber-500"
-  if (status === "remote") return "bg-sky-600"
-  return "bg-emerald-600"
+  if (status === "on-site") return "bg-warning"
+  if (status === "remote") return "bg-info"
+  return "bg-success"
 }
 
 function includeCurrentAvailability(
@@ -436,13 +437,13 @@ function Horizon({
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-[11px] font-semibold tracking-wide text-muted-foreground">
+                  <p className="text-xs font-semibold tracking-wide text-muted-foreground">
                     {formatDay(day)}
                   </p>
                   <p className="text-sm font-semibold">{formatMonthDay(day)}</p>
                 </div>
                 {index === 0 ? (
-                  <span className="text-[10px] font-semibold uppercase text-primary">
+                  <span className="text-xs font-semibold uppercase text-primary">
                     Today
                   </span>
                 ) : null}
@@ -456,7 +457,7 @@ function Horizon({
                     className="block border-l-2 border-primary pl-2 text-xs transition-colors hover:text-primary"
                   >
                     <span className="line-clamp-1 font-medium">{task.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                       {!task.allDay && task.startTime
                         ? `${task.startTime} · ${task.projectLabel}`
                         : task.projectLabel}
@@ -469,7 +470,7 @@ function Horizon({
                   </p>
                 ) : null}
                 {dayTasks.length > 2 ? (
-                  <p className="text-[11px] font-medium text-muted-foreground">
+                  <p className="text-xs font-medium text-muted-foreground">
                     +{dayTasks.length - 2} more
                   </p>
                 ) : null}
@@ -754,11 +755,8 @@ function OfficeTaskList({
           <Link
             key={task.id}
             href={task.href}
-            className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+            className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <span className="flex size-5 shrink-0 items-center justify-center border text-muted-foreground">
-              <IconArrowRight className="size-3" />
-            </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">
                 {task.title}
@@ -767,9 +765,13 @@ function OfficeTaskList({
                 {task.detail}
               </span>
             </span>
-            <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
+            <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
               {task.category}
-            </Badge>
+            </span>
+            <IconChevronRight
+              className="size-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              aria-hidden="true"
+            />
           </Link>
         ))}
         {tasks.length === 0 ? (
@@ -944,12 +946,15 @@ function OfficeAlerts({
           <Link
             key={alert.label}
             href={alert.href}
-            className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
+            className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
             <span className="text-muted-foreground">{alert.icon}</span>
             <span className="flex-1 text-sm">{alert.label}</span>
             <span className="font-semibold tabular-nums text-primary">{alert.value}</span>
-            <IconArrowRight className="size-4 text-muted-foreground" />
+            <IconChevronRight
+              className="size-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              aria-hidden="true"
+            />
           </Link>
         ))}
       </div>
@@ -1052,7 +1057,7 @@ function ProjectWorkspace({
             <Link
               key={project.id}
               href={`/dashboard/projects/${project.id}`}
-              className="grid gap-3 px-4 py-3 transition-colors hover:bg-muted/50 sm:grid-cols-[minmax(0,1fr)_auto]"
+              className="group grid gap-3 px-4 py-3 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_auto]"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -1071,7 +1076,10 @@ function ProjectWorkspace({
                 <span><strong>{project.openRfiCount}</strong> RFIs</span>
                 <span><strong>{project.photosToReview}</strong> photos</span>
                 <span><strong>{project.progress}%</strong></span>
-                <IconArrowRight className="size-4 text-muted-foreground" />
+                <IconChevronRight
+                  className="size-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                  aria-hidden="true"
+                />
               </div>
             </Link>
           ))}
@@ -1100,7 +1108,7 @@ function ProjectWorkspace({
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-semibold">{rfi.rfiNumber}</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {rfi.dueDate ? formatMonthDay(rfi.dueDate) : "No due date"}
                 </span>
               </div>
@@ -1154,7 +1162,7 @@ function ProjectWorkspace({
                 <p className="truncate text-xs font-medium">
                   {photo.caption ?? photo.fileName}
                 </p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {photo.projectLabel}
                 </p>
               </div>

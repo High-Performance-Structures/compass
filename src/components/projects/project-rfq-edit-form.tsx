@@ -547,7 +547,7 @@ export function ProjectRfqEditForm({
           </div>
 
           {rfq.templateReview && (
-            <div className="border-l-2 border-amber-500 px-3 py-2 text-sm">
+            <div className="border-l-2 border-warning px-3 py-2 text-sm">
               <p className="font-medium">Complete the template review before sharing</p>
               {rfq.templateReview.unresolvedPlaceholders.length > 0 && (
                 <p className="mt-1 text-muted-foreground">

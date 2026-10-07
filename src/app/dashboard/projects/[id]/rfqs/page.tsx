@@ -2,7 +2,6 @@ import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
 import {
-  IconArrowLeft,
   IconClock,
   IconExternalLink,
   IconFileText,
@@ -39,6 +38,7 @@ import {
 } from "@/app/actions/project-selections"
 import { getProjects } from "@/app/actions/projects"
 import { getProjectHistoricalRfqWorkspace } from "@/app/actions/project-historical-rfq-history"
+import { PageHeader } from "@/components/page-header"
 import { ProjectHistoricalRfqList } from "@/components/projects/project-historical-rfq-list"
 import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-form"
 import { ProjectRfqBidActions } from "@/components/projects/project-rfq-bid-actions"
@@ -293,7 +293,7 @@ function RfqCard({
       )}
 
       {rfq.templateReview && (
-        <div className="mt-3 border-l-2 border-amber-500 px-3 py-2 text-sm">
+        <div className="mt-3 border-l-2 border-warning px-3 py-2 text-sm">
           <p className="font-medium">Template RFQ needs project review</p>
           {rfq.templateReview.unresolvedPlaceholders.length > 0 && (
             <p className="mt-1 text-muted-foreground">
@@ -535,44 +535,39 @@ export default async function ProjectRfqsPage({
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
-            <Link href={`/dashboard/projects/${id}`}>
-              <IconArrowLeft className="size-4" />
-              Project
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <IconShoppingCartQuestion className="size-5 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Requests for Quote
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
+        icon={<IconShoppingCartQuestion className="size-5 text-primary" />}
+        title="Requests for Quote"
+        description={
+          <>
             {project?.projectNumber ? `${project.projectNumber} - ` : ""}
             {project?.name ?? "Project"} scopes, quote requests, and vendor
             response tracking.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <ProjectQuickSwitcher
-            projects={projects}
-            currentProjectId={id}
-            targetSection="rfqs"
-            placeholder="Switch RFQ project..."
-            className="w-full sm:w-[300px]"
-          />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Badge variant={openRfqs.length > 0 ? "secondary" : "outline"}>
-              {openRfqs.length} open
-            </Badge>
-            {overdueCount > 0 && (
-              <Badge variant="destructive">{overdueCount} overdue</Badge>
-            )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <ProjectQuickSwitcher
+                projects={projects}
+                currentProjectId={id}
+                targetSection="rfqs"
+                placeholder="Switch RFQ project..."
+                className="w-full sm:w-[300px]"
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Badge variant={openRfqs.length > 0 ? "secondary" : "outline"}>
+                  {openRfqs.length} open
+                </Badge>
+                {overdueCount > 0 && (
+                  <Badge variant="destructive">{overdueCount} overdue</Badge>
+                )}
+              </div>
+            </div>
+          </>
+        }
+      />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">

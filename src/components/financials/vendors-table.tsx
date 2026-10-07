@@ -169,7 +169,7 @@ export function VendorsTable({
               </span>
               <Badge
                 variant="secondary"
-                className="shrink-0 text-[10px] px-1.5 py-0"
+                className="shrink-0 text-xs px-1.5 py-0"
               >
                 {v.category}
               </Badge>
@@ -263,7 +263,7 @@ export function VendorsTable({
               {vendorSourceLabel(vendor)}
             </Badge>
             {needsReview && (
-              <Badge variant="outline" className="text-amber-700">
+              <Badge variant="outline" className="text-warning">
                 Review
               </Badge>
             )}
@@ -431,7 +431,7 @@ export function VendorsTable({
                       </p>
                       <Badge
                         variant="secondary"
-                        className="shrink-0 text-[10px] px-1.5 py-0"
+                        className="shrink-0 text-xs px-1.5 py-0"
                       >
                         {v.category}
                       </Badge>
@@ -442,7 +442,7 @@ export function VendorsTable({
                         : "No contact people"}
                     </p>
                     {developerModeEnabled && (
-                      <p className="mt-1 text-[11px] text-muted-foreground">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
                       </p>
                     )}

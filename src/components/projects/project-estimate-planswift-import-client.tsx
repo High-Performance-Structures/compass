@@ -720,7 +720,7 @@ export function ProjectEstimatePlanSwiftImportClient({
                               aria-invalid={!row.costCode}
                             />
                             {!knownCode && row.costCode && (
-                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                              <p className="mt-1 text-xs text-warning">
                                 Map to an active cost code
                               </p>
                             )}
@@ -806,11 +806,11 @@ export function ProjectEstimatePlanSwiftImportClient({
                                 {row.issues.join("; ")}
                               </span>
                             ) : !knownCode ? (
-                              <span className="text-amber-700 dark:text-amber-400">
+                              <span className="text-warning">
                                 Map cost code or exclude
                               </span>
                             ) : included ? (
-                              <span className="text-emerald-700 dark:text-emerald-400">
+                              <span className="text-success">
                                 Ready to import
                               </span>
                             ) : (
