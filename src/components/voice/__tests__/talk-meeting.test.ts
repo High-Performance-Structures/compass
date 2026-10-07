@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => {
       leave: vi.fn(async () => {}),
       ai: { on: vi.fn(), off: vi.fn(), transcripts: [] },
       participants: {
+        audioSubscribed: new Map<string, { audioEnabled: boolean; audioTrack: MediaStreamTrack | undefined }>(),
         kickAll: vi.fn(async () => {}),
         pip: { isSupported: vi.fn(() => true), isActive: false, init: vi.fn(), enable: vi.fn(), disable: vi.fn() }
       }
@@ -107,9 +108,6 @@ vi.mock("@cloudflare/realtimekit-react-ui", async () => {
       )
   }
 })
-vi.mock("@/hooks/use-music-ducking", () => ({
-  useVoiceActivityPublisher: () => {}
-}))
 vi.mock("@/lib/realtimekit/browser-api-proxy", () => ({
   installRealtimeKitBrowserApiProxy: () => () => {}
 }))
@@ -159,6 +157,8 @@ describe("Talk joining workflow", () => {
     mocks.supported = true
     localStorage.clear()
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
+    vi.stubGlobal("BroadcastChannel", undefined)
+    mocks.meeting.participants.audioSubscribed.clear()
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -204,6 +204,57 @@ describe("Talk joining workflow", () => {
       await Promise.resolve()
     })
   }
+
+  it("joins with microphone and camera off while an unmuted peer's audio is still arriving", async () => {
+    const broadcastClose = vi.fn()
+    const audioClose = vi.fn(async () => {})
+    const sourceDisconnect = vi.fn()
+    const createSource = vi.fn(() => ({ connect: vi.fn(), disconnect: sourceDisconnect }))
+    const analyser = {
+      fftSize: 256, disconnect: vi.fn(),
+      getByteTimeDomainData: (samples: Uint8Array): void => { samples.fill(255) }
+    }
+    const publish = vi.fn()
+    vi.stubGlobal("BroadcastChannel", class { postMessage = publish; close = broadcastClose })
+    vi.stubGlobal("MediaStream", class {})
+    vi.stubGlobal("AudioContext", class {
+      state = "running"
+      close = audioClose
+      createMediaStreamSource = createSource
+      createAnalyser = (): typeof analyser => analyser
+    })
+    const meterTimer = vi.spyOn(window, "setInterval").mockImplementation(() => 0)
+    mocks.meeting.participants.audioSubscribed.set("existing-speaker", {
+      audioEnabled: true, audioTrack: undefined
+    })
+    await render()
+    await click("Join meeting")
+    expect(container.textContent).toContain("Connected meeting")
+    expect(container.querySelector('button[aria-label="Unmute microphone"]')).not.toBeNull()
+    expect(mocks.meeting.join).toHaveBeenCalledOnce()
+    expect(mocks.meeting.leave).not.toHaveBeenCalled()
+    expect(mocks.self.enableAudio).not.toHaveBeenCalled()
+    expect(mocks.self.enableVideo).not.toHaveBeenCalled()
+    const sampleVoice = meterTimer.mock.calls[0]?.[0]
+    if (typeof sampleVoice !== "function") throw new Error("Missing voice meter callback")
+    expect(() => sampleVoice()).not.toThrow()
+    expect(createSource).not.toHaveBeenCalled()
+    const speaker = mocks.meeting.participants.audioSubscribed.get("existing-speaker")
+    if (!speaker) throw new Error("Missing remote speaker")
+    // JSDOM has no native MediaStreamTrack; model the SDK's later track arrival.
+    Object.defineProperty(speaker, "audioTrack", { configurable: true, value: {
+      kind: "audio", readyState: "live", id: "remote-audio"
+    } })
+    await act(async () => sampleVoice())
+    expect(createSource).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ active: true }))
+    expect(container.textContent).toContain("Connected meeting")
+    await act(async () => root.unmount())
+    expect(sourceDisconnect).toHaveBeenCalledOnce()
+    expect(audioClose).toHaveBeenCalledOnce()
+    expect(broadcastClose).toHaveBeenCalledOnce()
+    expect(publish).toHaveBeenLastCalledWith(expect.objectContaining({ active: false }))
+  })
 
   it("shows setup without joining or requesting camera capture", async () => {
     await render()

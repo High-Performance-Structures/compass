@@ -22,6 +22,8 @@ During a call, the single bottom toolbar always provides **Mute** or **Unmute** 
 
 During a call, **Background & Settings** opens the same preferences and preview. The camera pauses while its background pipeline is replaced. If the effect cannot start, it stays off; choose Off, retry, or continue without video. Background middleware is prepared before camera startup, and the application checks for a raw-video fallback.
 
+An unmuted participant can appear before their subscribed audio track is ready. The voice-activity meter skips pending tracks and picks them up when they arrive, so entering an active call with the camera and microphone off does not crash the meeting page.
+
 ## Runtime and compatibility
 
 Background segmentation runs in the browser through `@cloudflare/realtimekit-virtual-background`. The package downloads its WASM and model from vendor asset hosts; it does not require files at `/tflite.wasm` or `/tflite-simd.wasm` on Compass. The two photo presets also load from the vendor asset host.
