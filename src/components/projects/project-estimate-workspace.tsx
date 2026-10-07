@@ -1746,7 +1746,7 @@ export function ProjectEstimateWorkspacePanel({
           {editable && (
             <form
             ref={lineEditorRef}
-            className="mt-5 scroll-mt-6 border-t pt-4"
+            className="mt-5 max-w-5xl scroll-mt-6 border-t pt-4"
             onSubmit={saveLine}
           >
               <h3 className="mb-3 text-sm font-semibold">

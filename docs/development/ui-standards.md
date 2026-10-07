@@ -72,8 +72,10 @@ one at a time.
 
 - Body text is 14px (`text-sm`). Secondary text and table cells may use 13px;
   captions, badges, and meta text use 12px (`text-xs`).
-- Do not use text smaller than 12px. Do not add new `text-[8px]` through
-  `text-[11px]` sizes; replace existing ones when their component is touched.
+- Do not use text smaller than 12px (`text-xs`). The only exceptions are
+  print-only layouts, glyphs inside icon-sized count bubbles, avatar initials,
+  miniature file thumbnails, and Gantt bar labels; `bun run ui:check` lists the
+  exempt files and fails on any other sub-12px size.
 - Use `font-sans` (Sora) for interface text, `font-mono` (IBM Plex Mono) for
   codes and identifiers, and reserve `font-serif` (Playfair Display) for the
   dashboard greeting and similar single display moments.
@@ -85,18 +87,22 @@ one at a time.
 
 ## Page anatomy
 
-- Each dashboard page starts with one header row: title, optional one-line
-  description, and the page's actions aligned to the right. Avoid stacking a
+- Each dashboard page starts with one header row built with the shared
+  `PageHeader` component (`src/components/page-header.tsx`): optional back
+  link, icon or department logo, title, one-line description, and the page's
+  actions aligned to the right. Do not hand-build page titles. Avoid stacking a
   second toolbar or launch strip above the content when its controls can join
   that header row.
 - Keep the primary action visible without scrolling and give it the primary
   style. Secondary actions use outline or ghost buttons.
-- Forms have a readable maximum width. Short values (quantity, cost,
+- Forms have a readable maximum width (`max-w-5xl` for multi-column editors,
+  `max-w-2xl` for single-column forms). Short values (quantity, cost,
   percentage, dates, codes) use short fields instead of stretching across the
   page.
-- When a list row opens a record, make the whole row the click target with a
-  visible hover and focus state. Do not add a separate bordered arrow button
-  for the same action.
+- When a list row opens a record, make the whole row the click target with
+  `hover:bg-accent`, a visible inset focus ring, and an optional trailing
+  chevron that strengthens on hover. Do not add a separate bordered arrow
+  button for the same action.
 - Show a badge or tag only when it distinguishes the item from its neighbors.
   If every row would carry the same tag, use a group heading instead.
 

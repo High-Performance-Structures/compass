@@ -583,7 +583,7 @@ function PhotoStrip({
               className="group relative aspect-[4/3] cursor-pointer overflow-hidden rounded-md border bg-muted text-left"
             >
               <DailyLogPhotoThumb photo={photo} projectId={projectId} />
-              <div className="absolute inset-x-0 bottom-0 bg-background/85 px-2 py-1 text-[11px]">
+              <div className="absolute inset-x-0 bottom-0 bg-background/85 px-2 py-1 text-xs">
                 {photo.ownerVisible
                   ? "Owner visible"
                   : statusLabel(photo.reviewStatus)}

@@ -1138,7 +1138,7 @@ export const components: {
       }
       return (
         <span
-          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${colors[status] ?? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}
+          className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium uppercase ${colors[status] ?? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}
         >
           {status}
         </span>
@@ -1195,7 +1195,7 @@ export const components: {
               props.commitMessage) && (
               <div className="flex items-center gap-2 text-xs">
                 {props.commitSha && (
-                  <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">
+                  <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">
                     {props.commitSha}
                   </code>
                 )}

@@ -266,7 +266,7 @@ export function SiteHeader({
             className="flex h-8 w-full items-center rounded-md border border-border/50 bg-muted/30 pl-9 pr-16 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:bg-muted/50 focus:bg-muted/50 focus:border-border"
           />
           <kbd
-            className="text-muted-foreground/50 pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 hidden sm:inline-flex h-5 items-center gap-0.5 rounded-md border border-border/40 bg-background/50 px-1.5 font-mono text-[10px]"
+            className="text-muted-foreground/50 pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 hidden sm:inline-flex h-5 items-center gap-0.5 rounded-md border border-border/40 bg-background/50 px-1.5 font-mono text-xs"
           >
             <span>&#x2318;</span>K
           </kbd>
