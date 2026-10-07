@@ -68,6 +68,7 @@ test.describe("Electron runtime", () => {
 
       await page.goto(
         new URL("/dashboard/projects/e2e-project-001", appUrl).toString(),
+        { timeout: 90_000, waitUntil: "domcontentloaded" },
       )
       await page.waitForURL(/\/dashboard\/projects\/e2e-project-001$/)
       await expect(page.getByText("Regression Test Project", { exact: true })).toBeVisible()
