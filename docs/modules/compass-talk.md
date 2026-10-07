@@ -18,6 +18,8 @@ The GPU pipeline waits for the current frame's resized pixels before segmentatio
 
 The setup screen offers camera preview, a microphone level meter, a speaker test tone, device selectors, and camera/microphone joining preferences. A missing saved device falls back to the browser default. Speaker routing depends on browser support; the test explains when it uses the system default.
 
+During a call, the main control rail always provides **Mute** or **Unmute** for your own microphone. It does not require opening Participants. Muting stops the local track; unmuting requests a fresh track from the selected microphone. The meeting renderer uses container-fill mode so it cannot cover the control rail or notes panel.
+
 During a call, **Background & Settings** opens the same preferences and preview. The camera pauses while its background pipeline is replaced. If the effect cannot start, it stays off; choose Off, retry, or continue without video. Background middleware is prepared before camera startup, and the application checks for a raw-video fallback.
 
 ## Runtime and compatibility
