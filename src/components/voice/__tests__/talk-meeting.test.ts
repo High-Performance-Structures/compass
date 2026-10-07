@@ -660,6 +660,67 @@ describe("Talk joining workflow", () => {
     expect(mocks.self.videoEnabled).toBe(true)
   })
 
+  it("restarts a live camera once per blur slider adjustment", async () => {
+    localStorage.setItem(
+      talkPreferencesKey("test-user"),
+      JSON.stringify({
+        ...defaultTalkPreferences(),
+        joinWithCamera: true,
+        background: { mode: "blur", strength: 45 }
+      })
+    )
+    await render()
+    await click("Join meeting")
+    await click("Background & Settings")
+    const slider = document.body.querySelector<HTMLInputElement>('input[type="range"]')
+    if (!slider) throw new Error("Blur slider not found")
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+    const drag = async (value: string): Promise<void> => {
+      await act(async () => {
+        setValue?.call(slider, value)
+        slider.dispatchEvent(new Event("input", { bubbles: true }))
+        await Promise.resolve()
+      })
+    }
+    for (const value of ["50", "60", "70", "80"]) await drag(value)
+    expect(document.body.textContent).toContain("Blur strength: 80%")
+    expect(mocks.self.disableVideo).not.toHaveBeenCalled()
+    await act(async () => {
+      slider.dispatchEvent(new Event("pointerup", { bubbles: true }))
+      await Promise.resolve()
+    })
+    expect(mocks.self.disableVideo).toHaveBeenCalledOnce()
+    expect(
+      JSON.parse(localStorage.getItem(talkPreferencesKey("test-user")) ?? "{}").background
+    ).toEqual({ mode: "blur", strength: 80 })
+
+    // Keyboard steps commit after a pause instead of on every step.
+    await drag("90")
+    expect(mocks.self.disableVideo).toHaveBeenCalledOnce()
+    const pending = vi.mocked(window.setTimeout).mock.calls.filter(([, delay]) => delay === 400)
+    const commit = pending.at(-1)?.[0]
+    if (typeof commit !== "function") throw new Error("Missing slider commit timer")
+    await act(async () => {
+      commit()
+      await Promise.resolve()
+    })
+    expect(mocks.self.disableVideo).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps a bounded diagnostic trail", async () => {
+    Reflect.deleteProperty(window, "__compassRealtimeKitDiagnostics")
+    vi.spyOn(console, "info").mockImplementation(() => {})
+    await render()
+    const audioUpdate = mocks.self.on.mock.calls.find(([event]) => event === "audioUpdate")?.[1]
+    if (typeof audioUpdate !== "function") throw new Error("Missing audioUpdate handler")
+    await act(async () => {
+      for (let index = 0; index < 75; index += 1) audioUpdate({ audioEnabled: index % 2 === 0 })
+    })
+    const diagnostics = Reflect.get(window, "__compassRealtimeKitDiagnostics")
+    expect(Array.isArray(diagnostics) ? diagnostics.length : 0).toBe(50)
+    expect(document.documentElement.hasAttribute("data-compass-realtimekit-diagnostics")).toBe(false)
+  })
+
   it("remains camera-off if the SDK silently falls back to raw video", async () => {
     mocks.self.addVideoMiddleware.mockImplementationOnce(async () => ({
       success: true,

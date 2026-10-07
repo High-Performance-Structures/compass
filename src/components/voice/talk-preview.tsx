@@ -18,7 +18,7 @@ export function TalkPreview({
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const testContextRef = React.useRef<AudioContext | null>(null)
   const [deviceRevision, setDeviceRevision] = React.useState(0)
-  const [level, setLevel] = React.useState(0)
+  const meterRef = React.useRef<HTMLMeterElement | null>(null)
   const [audioStatus, setAudioStatus] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -40,7 +40,12 @@ export function TalkPreview({
     }
   }, [meeting, videoEnabled])
 
+  // The level is written straight to the meter so sampling does not re-render
+  // the preview (and the in-call settings dialog) on every animation frame.
   React.useEffect(() => {
+    const setLevel = (value: number): void => {
+      if (meterRef.current) meterRef.current.value = value
+    }
     if (!audioEnabled || !meeting.self.audioTrack) {
       setLevel(0)
       return
@@ -71,6 +76,7 @@ export function TalkPreview({
       )
     return () => {
       cancelAnimationFrame(frame)
+      setLevel(0)
       source.disconnect()
       void context.close().catch(() => {})
     }
@@ -142,9 +148,9 @@ export function TalkPreview({
           Microphone {audioEnabled ? "level" : "is off"}
         </span>
         <meter
+          ref={meterRef}
           min={0}
           max={100}
-          value={level}
           className="flex-1"
           aria-label="Microphone input level"
         />

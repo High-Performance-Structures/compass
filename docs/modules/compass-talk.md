@@ -10,6 +10,8 @@ Personal images, joining preferences, and device choices are stored locally in t
 
 Each personal background has a confirmation-based removal action. Removing a selected image clears both its stored image and its selection, switching to Off.
 
+Blur strength applies once per adjustment, when the slider is released or keyboard steps pause, so a live camera restarts its background pipeline once rather than at every step.
+
 **Stronger background cleanup** increases mask filtering and the confidence required to keep camera pixels, reducing uncertain background edges and light spill. It may trim fine hair or fingertips. Standard remains the default and existing preferences retain their background, images, and devices. The stronger mask controls are most effective in Chrome, Edge, and Firefox; the SDK's Safari fallback does not apply the same GPU mask refinement. Neither setting guarantees that every misclassified monitor or object will disappear.
 
 The GPU pipeline waits for the current frame's resized pixels before segmentation. Each effect installation also restores middleware-owned rendering, including after Off, so the SDK's normal canvas renderer cannot compete with the effect loop.
