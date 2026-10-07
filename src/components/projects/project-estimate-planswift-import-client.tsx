@@ -16,6 +16,7 @@ import {
   type ProjectEstimateCostCodeOption,
 } from "@/app/actions/project-estimates";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -564,31 +565,28 @@ export function ProjectEstimatePlanSwiftImportClient({
                         {mappingDescription(field.key, field.requirement)}
                       </p>
                     </div>
-                    <Select
+                    <SearchableCombobox
                       value={
                         mappings[field.key] === null
                           ? "unmapped"
                           : String(mappings[field.key])
                       }
                       onValueChange={(value) =>
-                        changeMapping(field.key, value)
+                        changeMapping(field.key, value === "" ? "unmapped" : value)
                       }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unmapped">Not mapped</SelectItem>
-                        {headers.map((header, columnIndex) => (
-                          <SelectItem
-                            key={`${columnIndex}-${header}`}
-                            value={String(columnIndex)}
-                          >
-                            {header}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={[
+                        { value: "unmapped", label: "Not mapped" },
+                        ...headers.map((header, columnIndex) => ({
+                          value: String(columnIndex),
+                          label: header,
+                          description: `Column ${columnIndex + 1}`,
+                        })),
+                      ]}
+                      ariaLabel={`Spreadsheet column for ${field.label}`}
+                      placeholder="Not mapped"
+                      searchPlaceholder="Search columns..."
+                      emptyMessage="No matching columns."
+                    />
                   </div>
                 ))}
               </div>

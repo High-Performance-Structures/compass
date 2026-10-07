@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation"
 import { deleteProjectEstimateReportPhase, saveProjectEstimateReportPhase } from "@/app/actions/project-estimate-report-phases"
 import type { ProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 
@@ -119,10 +119,19 @@ export function ProjectEstimateReportPhaseEditor({ projectId, estimateId, worksp
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="report-phase-source">Source CSI division</Label>
-            <Select value={draft.divisionCode} disabled={pending} onValueChange={(divisionCode) => setDraft({ ...draft, divisionCode, lineIds: [] })}>
-              <SelectTrigger id="report-phase-source"><SelectValue placeholder="Choose division" /></SelectTrigger>
-              <SelectContent>{[...divisions.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([code, name]) => <SelectItem key={code} value={code}>{code} · {name}</SelectItem>)}</SelectContent>
-            </Select>
+            <SearchableCombobox
+              id="report-phase-source"
+              value={draft.divisionCode}
+              disabled={pending}
+              onValueChange={(divisionCode) => setDraft({ ...draft, divisionCode, lineIds: [] })}
+              options={[...divisions.entries()]
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([code, name]) => ({ value: code, label: `${code} · ${name}`, keywords: name }))}
+              ariaLabel="Source CSI division"
+              placeholder="Choose division"
+              searchPlaceholder="Search divisions..."
+              emptyMessage="No matching divisions."
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="report-phase-name">Customer-facing phase name</Label>
