@@ -66,14 +66,7 @@ test.describe("Electron runtime", () => {
       })
       await expect(dashboardHeading).toBeVisible()
 
-      // Electron exposes a window.open popup as a Page event on Linux, while
-      // macOS and Windows can surface the same native window through the
-      // Electron application event. Listen on both surfaces so the test proves
-      // the same popup workflow without depending on platform event plumbing.
-      const previewWindowPromise = Promise.race([
-        page.waitForEvent("popup", { timeout: 90_000 }),
-        app.waitForEvent("window", { timeout: 90_000 }),
-      ])
+      const initialWindowCount = app.windows().length
       const previewUrl = new URL(
         "/preview/projects/e2e-project-001/owner",
         appUrl,
@@ -105,7 +98,13 @@ test.describe("Electron runtime", () => {
       await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
         link.remove(),
       )
-      const previewWindow = await previewWindowPromise
+      await expect
+        .poll(() => app.windows().length)
+        .toBeGreaterThan(initialWindowCount)
+      const previewWindow = app
+        .windows()
+        .find((window) => window !== page)
+      if (!previewWindow) throw new Error("Preview Electron window not found")
       previewVideo = previewWindow.video()
       await expect(previewWindow).toHaveURL(
         /\/preview\/projects\/e2e-project-001\/owner$/,

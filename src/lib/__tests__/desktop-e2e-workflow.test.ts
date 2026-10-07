@@ -128,5 +128,7 @@ describe("desktop E2E workflow fixtures", () => {
 
     expect(source).not.toContain("const openedWindow = await page.evaluate")
     expect(source).toContain(".click({ force: true })")
+    expect(source).not.toContain("Promise.race([")
+    expect(source).toContain("app.windows().length")
   })
 })
