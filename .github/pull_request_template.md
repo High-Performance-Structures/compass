@@ -28,6 +28,10 @@
 - [ ] If this changes a dialog or alert, it remains viewport-centered,
       dynamically viewport-bounded, and internally scrollable when needed.
 
+- [ ] New or changed UI uses theme surface roles, the 12px minimum text
+      size, tabular figures for numbers, and the shared page header pattern.
+- [ ] Theme or token changes include before/after screenshots (light, dark,
+      and phone width).
 - [ ] Long pages/forms and horizontal overflow show a visible scrollbar by
       default, without hover, and the dashboard frame stays stationary.
 

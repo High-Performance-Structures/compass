@@ -136,7 +136,8 @@ export default async function DashboardLayout({
         className="h-screen overflow-hidden"
         style={
           {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
+            // Fixed width so navigation labels do not wrap when the spacing scale changes.
+            "--sidebar-width": "21.5rem",
           } as React.CSSProperties
         }
       >
