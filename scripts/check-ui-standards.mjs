@@ -42,6 +42,22 @@ if (!scrollArea.includes('type = "auto"') || !scrollArea.includes("type={type}")
   failures.push("src/components/ui/scroll-area.tsx: custom scrollbars must show by default when content overflows")
 }
 
+for (const section of ["## Theme tokens, density, and elevation", "## Typography", "## Page anatomy"]) {
+  if (!standards.includes(section)) {
+    failures.push(`docs/development/ui-standards.md: must define ${section.replace("## ", "")}`)
+  }
+}
+
+// Density is a theme token; structural widths must not depend on it.
+for (const [selector, block] of [
+  [":root", globalStyles.match(/(?:^|\n):root\s*\{([^}]*)\}/)?.[1] ?? ""],
+  [".dark", globalStyles.match(/(?:^|\n)\.dark\s*\{([^}]*)\}/)?.[1] ?? ""],
+]) {
+  if (!/--spacing:\s*0\.25rem\s*;/.test(block)) {
+    failures.push(`src/app/globals.css: ${selector} must keep the 0.25rem density token`)
+  }
+}
+
 if (!/25.*50.*100/.test(standards) || !/clamp/i.test(standards)) {
   failures.push(
     "docs/development/ui-standards.md: pagination standard must define page sizes and clamping",
