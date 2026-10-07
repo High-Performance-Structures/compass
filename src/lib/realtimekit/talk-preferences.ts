@@ -21,6 +21,7 @@ const backgroundSchema = z.discriminatedUnion("mode", [
 const preferencesSchema = z.object({
   version: z.literal(1),
   background: backgroundSchema,
+  backgroundCleanup: z.enum(["standard", "strong"]).default("standard"),
   images: z.array(imageSchema).max(6),
   cameraId: z.string().max(256),
   microphoneId: z.string().max(256),
@@ -30,6 +31,7 @@ const preferencesSchema = z.object({
 })
 
 export type TalkBackground = Readonly<z.infer<typeof backgroundSchema>>
+export type TalkCleanup = TalkPreferences["backgroundCleanup"]
 export type TalkImage = Readonly<z.infer<typeof imageSchema>>
 export type TalkPreferences = Omit<
   Readonly<z.infer<typeof preferencesSchema>>,
@@ -75,6 +77,7 @@ export function defaultTalkPreferences(): TalkPreferences {
   return {
     version: 1,
     background: { mode: "none" },
+    backgroundCleanup: "standard",
     images: [],
     cameraId: "",
     microphoneId: "",

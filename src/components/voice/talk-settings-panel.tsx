@@ -86,6 +86,29 @@ export function TalkSettingsPanel({
             />
           </label>
         ) : null}
+        {preferences.background.mode !== "none" ? (
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={preferences.backgroundCleanup === "strong"}
+                onChange={(event) =>
+                  onChange({
+                    ...preferences,
+                    backgroundCleanup: event.currentTarget.checked
+                      ? "strong"
+                      : "standard"
+                  })
+                }
+              />
+              Stronger background cleanup
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Hides more uncertain background edges. May trim fine hair or
+              fingertips. Most effective in Chrome, Edge, and Firefox.
+            </p>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {images.map((image) => (
             <div key={image.id} className="min-w-0">

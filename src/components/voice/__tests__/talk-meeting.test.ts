@@ -250,6 +250,51 @@ describe("Talk joining workflow", () => {
     expect(mocks.self.videoEnabled).toBe(true)
   })
 
+  it("pauses a live camera while stronger cleanup replaces the mask pipeline", async () => {
+    localStorage.setItem(
+      talkPreferencesKey("test-user"),
+      JSON.stringify({
+        ...defaultTalkPreferences(),
+        joinWithCamera: true,
+        background: { mode: "blur", strength: 45 }
+      })
+    )
+    await render()
+    await click("Join meeting")
+    await click("Background& Settings")
+    const label = [...document.body.querySelectorAll("label")].find((item) =>
+      item.textContent?.includes("Stronger background cleanup")
+    )
+    const checkbox = label?.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]'
+    )
+    if (!checkbox) throw new Error("Cleanup option not found")
+    await act(async () => {
+      checkbox.click()
+      await Promise.resolve()
+    })
+    expect(checkbox.checked).toBe(true)
+    expect(
+      JSON.parse(localStorage.getItem(talkPreferencesKey("test-user")) ?? "{}")
+        .backgroundCleanup
+    ).toBe("strong")
+    expect(mocks.self.disableVideo).toHaveBeenCalledOnce()
+    expect(mocks.self.disableVideo.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.self.removeVideoMiddleware.mock.invocationCallOrder[0] ?? 0
+    )
+    expect(
+      mocks.self.addVideoMiddleware.mock.invocationCallOrder[1]
+    ).toBeLessThan(mocks.self.enableVideo.mock.invocationCallOrder[1] ?? 0)
+    expect(mocks.self.videoEnabled).toBe(true)
+    await act(async () => {
+      checkbox.click()
+      await Promise.resolve()
+    })
+    expect(checkbox.checked).toBe(false)
+    expect(mocks.self.disableVideo).toHaveBeenCalledTimes(2)
+    expect(mocks.self.videoEnabled).toBe(true)
+  })
+
   it("remains camera-off if the SDK silently falls back to raw video", async () => {
     mocks.self.addVideoMiddleware.mockImplementationOnce(async () => ({
       success: true,

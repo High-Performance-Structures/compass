@@ -1,6 +1,9 @@
 import type RTKMeeting from "@cloudflare/realtimekit"
 import type Transformer from "@cloudflare/realtimekit-virtual-background"
-import type { TalkBackground } from "@/lib/realtimekit/talk-preferences"
+import type {
+  TalkBackground,
+  TalkCleanup
+} from "@/lib/realtimekit/talk-preferences"
 
 type Middleware = Parameters<RTKMeeting["self"]["addVideoMiddleware"]>[0]
 export type BackgroundResult =
@@ -10,6 +13,7 @@ export type BackgroundResult =
 /** Own only Talk's middleware; serialize changes so slow image loads cannot win over newer choices. */
 export class TalkBackgroundController {
   private transformer: Transformer | null = null
+  private cleanup: TalkCleanup | null = null
   private middleware: Middleware | null = null
   private queue: Promise<BackgroundResult> = Promise.resolve({ success: true })
   private disposed = false
@@ -18,7 +22,8 @@ export class TalkBackgroundController {
 
   apply(
     background: TalkBackground,
-    imageUrl: string | null
+    imageUrl: string | null,
+    cleanup: TalkCleanup = "standard"
   ): Promise<BackgroundResult> {
     this.queue = this.queue.then(async () => {
       if (this.disposed)
@@ -30,6 +35,11 @@ export class TalkBackgroundController {
             disablePerFrameCanvasRendering: false
           })
           return { success: true }
+        }
+        if (this.transformer && this.cleanup !== cleanup) {
+          await this.remove()
+          this.transformer.destruct()
+          this.transformer = null
         }
         if (!this.transformer) {
           const { default: VideoBackgroundTransformer } = await import(
@@ -44,8 +54,19 @@ export class TalkBackgroundController {
           }
           // The SDK loads its WASM and model from its asset hosts, not the Compass public directory.
           this.transformer = await VideoBackgroundTransformer.init({
-            meeting: this.meeting
+            meeting: this.meeting,
+            // Await this frame's resized pixels so the mask does not trail a moving person.
+            segmentationConfig: { deferInputResizing: false },
+            postProcessingConfig:
+              cleanup === "strong"
+                ? {
+                    jointBilateralFilter: { sigmaSpace: 2, sigmaColor: 0.1 },
+                    coverage: [0.65, 0.9],
+                    lightWrapping: 0
+                  }
+                : {}
           })
+          this.cleanup = cleanup
         }
         if (this.disposed)
           return { success: false, error: "This meeting has closed." }
@@ -62,6 +83,10 @@ export class TalkBackgroundController {
         if (this.disposed)
           return { success: false, error: "This meeting has closed." }
         await this.remove()
+        // Off restores normal rendering. Reusing a transformer must restore its own render loop every time.
+        await this.meeting.self.setVideoMiddlewareGlobalConfig({
+          disablePerFrameCanvasRendering: true
+        })
         const result = await this.meeting.self.addVideoMiddleware(middleware)
         if (!result.success) return { success: false, error: result.message }
         this.middleware = middleware

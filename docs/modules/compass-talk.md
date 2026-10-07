@@ -10,6 +10,10 @@ Personal images, joining preferences, and device choices are stored locally in t
 
 Each personal background has a confirmation-based removal action. Removing a selected image clears both its stored image and its selection, switching to Off.
 
+**Stronger background cleanup** increases mask filtering and the confidence required to keep camera pixels, reducing uncertain background edges and light spill. It may trim fine hair or fingertips. Standard remains the default and existing preferences retain their background, images, and devices. The stronger mask controls are most effective in Chrome, Edge, and Firefox; the SDK's Safari fallback does not apply the same GPU mask refinement. Neither setting guarantees that every misclassified monitor or object will disappear.
+
+The GPU pipeline waits for the current frame's resized pixels before segmentation. Each effect installation also restores middleware-owned rendering, including after Off, so the SDK's normal canvas renderer cannot compete with the effect loop.
+
 ## Before and during a meeting
 
 The setup screen offers camera preview, a microphone level meter, a speaker test tone, device selectors, and camera/microphone joining preferences. A missing saved device falls back to the browser default. Speaker routing depends on browser support; the test explains when it uses the system default.

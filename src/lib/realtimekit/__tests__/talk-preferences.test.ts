@@ -31,6 +31,29 @@ describe("Talk preferences", () => {
       expect(parseTalkPreferences(raw)).toEqual(defaultTalkPreferences())
     }
   })
+  it("adds standard cleanup to existing v1 choices without losing personal images or devices", () => {
+    const saved = {
+      version: 1,
+      background: { mode: "image", imageId: "personal" },
+      images: [
+        { id: "personal", name: "Office", url: "data:image/jpeg;base64,YQ==" }
+      ],
+      cameraId: "camera-1",
+      microphoneId: "mic-1",
+      speakerId: "speaker-1",
+      joinWithCamera: true,
+      joinWithMicrophone: false
+    }
+    expect(parseTalkPreferences(JSON.stringify(saved))).toEqual({
+      ...saved,
+      backgroundCleanup: "standard"
+    })
+    expect(
+      parseTalkPreferences(
+        JSON.stringify({ ...saved, backgroundCleanup: "strong" })
+      )
+    ).toEqual({ ...saved, backgroundCleanup: "strong" })
+  })
   it("does not restore arbitrary URLs or missing personal images", () => {
     const saved = {
       ...defaultTalkPreferences(),
