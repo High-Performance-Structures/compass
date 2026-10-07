@@ -58,6 +58,13 @@ function playwrightConfig(): string {
   return readFileSync(join(process.cwd(), "playwright.config.ts"), "utf8")
 }
 
+function electronRuntimeSpec(): string {
+  return readFileSync(
+    join(process.cwd(), "e2e/desktop/electron-runtime.spec.ts"),
+    "utf8",
+  )
+}
+
 describe("desktop E2E workflow fixtures", () => {
   it("prepares the local schema before every desktop E2E job", () => {
     const jobs = recordProperty(workflow(), "jobs")
@@ -114,5 +121,14 @@ describe("desktop E2E workflow fixtures", () => {
     expect(config).not.toContain('"COMPASS_E2E=true node')
     expect(config).toContain('"node node_modules/next/dist/bin/next start"')
     expect(config).toContain('"node node_modules/next/dist/bin/next dev --webpack"')
+  })
+
+  it("opens the preview through a native user gesture", () => {
+    const source = electronRuntimeSpec()
+
+    expect(source).not.toContain("const openedWindow = await page.evaluate")
+    expect(source).toContain(
+      'await page.locator(\'[data-e2e-preview-link="true"]\').click()',
+    )
   })
 })

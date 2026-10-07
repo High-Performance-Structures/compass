@@ -61,6 +61,10 @@ test.describe("Electron runtime", () => {
           page.evaluate(() => window.compassDesktop?.platform.isDesktop ?? false),
         )
         .toBe(true)
+      const dashboardHeading = page.getByText("Morning launchpad", {
+        exact: true,
+      })
+      await expect(dashboardHeading).toBeVisible()
 
       // Electron exposes a window.open popup as a Page event on Linux, while
       // macOS and Windows can surface the same native window through the
@@ -74,32 +78,30 @@ test.describe("Electron runtime", () => {
         "/preview/projects/e2e-project-001/owner",
         appUrl,
       ).toString()
-      const openedWindow = await page.evaluate((url) => {
-        const popup = window.open(
-          url,
-          "compass-project-audience-preview",
-          "popup=yes,width=1180,height=800",
-        )
-        return popup !== null
+      // A real target=_blank click is required here. On macOS, window.open()
+      // can return a non-null proxy without creating a native Electron window.
+      // The click exercises the same guarded handler with an actual user gesture.
+      await page.evaluate((url) => {
+        const link = document.createElement("a")
+        link.href = url
+        link.target = "compass-project-audience-preview"
+        link.rel = "noreferrer"
+        link.dataset.e2ePreviewLink = "true"
+        link.textContent = "Open preview"
+        Object.assign(link.style, {
+          position: "fixed",
+          top: "8px",
+          left: "8px",
+          zIndex: "2147483647",
+          width: "120px",
+          height: "32px",
+        })
+        document.body.appendChild(link)
       }, previewUrl)
-      if (!openedWindow) {
-        // Some macOS runner sessions reject a scripted window.open without a
-        // user gesture. A real target=_blank click exercises the same native
-        // Electron handler while preserving the preview workflow assertion.
-        await page.evaluate((url) => {
-          const link = document.createElement("a")
-          link.href = url
-          link.target = "compass-project-audience-preview"
-          link.rel = "noreferrer"
-          link.dataset.e2ePreviewLink = "true"
-          link.textContent = "Open preview"
-          document.body.appendChild(link)
-        }, previewUrl)
-        await page.locator('[data-e2e-preview-link="true"]').click()
-        await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
-          link.remove(),
-        )
-      }
+      await page.locator('[data-e2e-preview-link="true"]').click()
+      await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
+        link.remove(),
+      )
       const previewWindow = await previewWindowPromise
       previewVideo = previewWindow.video()
       await expect(previewWindow).toHaveURL(
