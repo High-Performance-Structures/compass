@@ -188,7 +188,7 @@ function ActionsList({
         <Badge
           key={action}
           variant="outline"
-          className="rounded-[4px] text-[11px]"
+          className="rounded-[4px] text-xs"
         >
           {action}
         </Badge>
@@ -254,7 +254,7 @@ function FeatureRow({
           {accessLevelLabel(accessLevel)}
         </Badge>
         {hasRoleOverride && (
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             role override
           </p>
         )}
@@ -280,7 +280,7 @@ function FeatureRow({
           onChange={(value) => onTeamChange(feature, value)}
         />
         {hasTeamOverride && (
-          <p className="mt-1 text-[11px] text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground">
             team override
           </p>
         )}

@@ -6,6 +6,12 @@ import { createDefaultConfig, RtkMeeting } from "@cloudflare/realtimekit-react-u
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { TalkSettingsPanel } from "@/components/voice/talk-settings-panel"
+import { TalkSetup } from "@/components/voice/talk-setup"
+import { TalkPreview } from "@/components/voice/talk-preview"
+import { useTalkSettings } from "@/hooks/use-talk-settings"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
 
@@ -15,10 +21,6 @@ type TranscriptEntry = {
   readonly transcript: string
   readonly isPartialTranscript: boolean
   readonly date: Date
-}
-
-type VideoBackgroundAddonHandle = {
-  readonly unregister: () => void | Promise<void>
 }
 
 type ScreenShareStatus =
@@ -31,12 +33,6 @@ type ScreenShareStatus =
 
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
 type MeetingMediaKind = "audio" | "video"
-
-const MEETING_BACKGROUND_IMAGES = [
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%2320170f'/%3E%3Cstop offset='.46' stop-color='%234f2f13'/%3E%3Cstop offset='1' stop-color='%233f7d4d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23a)' width='1600' height='900'/%3E%3Ccircle cx='1320' cy='160' r='260' fill='%23ffffff' opacity='.12'/%3E%3Cpath d='M0 760 C360 620 580 820 900 680 C1170 562 1320 620 1600 470 L1600 900 L0 900 Z' fill='%230b120d' opacity='.45'/%3E%3C/svg%3E",
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' x2='1'%3E%3Cstop stop-color='%230f172a'/%3E%3Cstop offset='.52' stop-color='%233f7d4d'/%3E%3Cstop offset='1' stop-color='%239c7426'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23b)' width='1600' height='900'/%3E%3Cpath d='M160 710 L520 350 L840 700 L1050 480 L1450 720 Z' fill='%23ffffff' opacity='.15'/%3E%3Cpath d='M0 720 H1600 V900 H0 Z' fill='%23050505' opacity='.38'/%3E%3C/svg%3E",
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect fill='%230f1a13' width='1600' height='900'/%3E%3Cpath d='M0 130 H1600' stroke='%233f7d4d' stroke-width='4' opacity='.35'/%3E%3Cpath d='M0 300 H1600M0 470 H1600M0 640 H1600' stroke='%23ffffff' stroke-width='2' opacity='.12'/%3E%3Cpath d='M280 0 V900M620 0 V900M960 0 V900M1300 0 V900' stroke='%23ffffff' stroke-width='2' opacity='.10'/%3E%3Ccircle cx='1250' cy='220' r='150' fill='%239c7426' opacity='.30'/%3E%3C/svg%3E",
-]
 
 function createCompassMeetingConfig(): UIConfig {
   const base = createDefaultConfig()
@@ -85,8 +81,6 @@ function createCompassMeetingConfig(): UIConfig {
       ...base.root,
       "div#controlbar-left": ["rtk-screen-share-toggle"],
       "div#controlbar-center": [
-        "rtk-mic-toggle",
-        "rtk-camera-toggle",
         "rtk-more-toggle",
         "rtk-leave-button",
       ],
@@ -147,8 +141,6 @@ function createCompassMeetingConfig(): UIConfig {
         ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
       ],
       "div#controlbar-mobile": [
-        "rtk-mic-toggle",
-        "rtk-camera-toggle",
         "rtk-leave-button",
         "rtk-more-toggle",
       ],
@@ -315,30 +307,6 @@ function recordRealtimeKitDiagnostic(
   console.info(`RealtimeKit diagnostic: ${event}`, payload)
 }
 
-async function runtimeAssetAvailable(path: string): Promise<boolean> {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 5000)
-  try {
-    const response = await fetch(path, {
-      method: "GET",
-      signal: controller.signal,
-    })
-    return response.ok
-  } catch {
-    return false
-  } finally {
-    window.clearTimeout(timeout)
-  }
-}
-
-async function videoBackgroundRuntimeAvailable(): Promise<boolean> {
-  const [tflite, tfliteSimd] = await Promise.all([
-    runtimeAssetAvailable("/tflite.wasm"),
-    runtimeAssetAvailable("/tflite-simd.wasm"),
-  ])
-  return tflite && tfliteSimd
-}
-
 function mediaDeviceLabel(kind: MeetingMediaKind): string {
   return kind === "audio" ? "microphone" : "camera"
 }
@@ -364,7 +332,8 @@ function mediaPermissionMessage(
 }
 
 async function requestMediaTrack(
-  kind: MeetingMediaKind
+  kind: MeetingMediaKind,
+  deviceId: string
 ): Promise<MediaStreamTrack> {
   if (
     typeof navigator === "undefined" ||
@@ -373,10 +342,11 @@ async function requestMediaTrack(
     throw new Error("This browser does not support camera or microphone access.")
   }
 
+  const available = await navigator.mediaDevices.enumerateDevices()
+  const selected = available.some(device => device.deviceId === deviceId && device.kind === (kind === "audio" ? "audioinput" : "videoinput"))
+  const constraints = selected ? { deviceId: { exact: deviceId } } : true
   const stream = await navigator.mediaDevices.getUserMedia(
-    kind === "audio"
-      ? { audio: true, video: false }
-      : { audio: false, video: true }
+    kind === "audio" ? { audio: constraints, video: false } : { audio: false, video: constraints }
   )
   const tracks =
     kind === "audio" ? stream.getAudioTracks() : stream.getVideoTracks()
@@ -394,14 +364,16 @@ async function requestMediaTrack(
 
 export function RealtimeKitMeetingWindow({
   channelId,
+  userId,
 }: {
   readonly channelId: string
+  readonly userId: string
 }): React.ReactElement {
   const [meeting, initMeeting] = useRealtimeKitClient({ resetOnLeave: true })
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [meetingTitle, setMeetingTitle] = React.useState("Compass Talk")
-  const [meetingConfig, setMeetingConfig] = React.useState<UIConfig>(() =>
+  const [meetingConfig] = React.useState<UIConfig>(() =>
     createCompassMeetingConfig()
   )
   const [notes, setNotes] = React.useState("")
@@ -426,15 +398,15 @@ export function RealtimeKitMeetingWindow({
     React.useState<MediaButtonStatus>("idle")
   const [pipStatus, setPipStatus] =
     React.useState<MediaButtonStatus>("idle")
-  const [backgroundStatus, setBackgroundStatus] = React.useState<string | null>(
-    null
-  )
+  const [joined, setJoined] = React.useState(false)
+  const [joining, setJoining] = React.useState(false)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const talk = useTalkSettings(meeting, userId)
   const [canScreenShare, setCanScreenShare] = React.useState(false)
   const [canUsePictureInPicture, setCanUsePictureInPicture] =
     React.useState(false)
   const [pictureInPictureActive, setPictureInPictureActive] =
     React.useState(false)
-  const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
@@ -449,9 +421,14 @@ export function RealtimeKitMeetingWindow({
     return tracks
   }, [meeting])
   useVoiceActivityPublisher({
-    channelId: meeting ? channelId : null,
+    channelId: meeting && joined ? channelId : null,
     getTracks: getVoiceTracks,
   })
+
+  React.useEffect(() => {
+    if (!meeting) return
+    return () => { if (!meeting.self.roomJoined) meeting.self.cleanUpTracks() }
+  }, [meeting])
 
   const setRealtimeKitCaptions = React.useCallback((enabled: boolean): void => {
     const meetingElement =
@@ -576,9 +553,7 @@ export function RealtimeKitMeetingWindow({
       if (!initializedMeeting) {
         throw new Error("Cloudflare meeting did not initialize.")
       }
-      if (!initializedMeeting.self.roomJoined) {
-        await initializedMeeting.join()
-      }
+      setJoined(initializedMeeting.self.roomJoined)
     }
 
     void (async () => {
@@ -615,71 +590,6 @@ export function RealtimeKitMeetingWindow({
   React.useEffect(() => {
     document.title = meetingTitle
   }, [meetingTitle])
-
-  React.useEffect(() => {
-    if (!meeting) return
-
-    let isCurrent = true
-    void (async () => {
-      const runtimeAvailable = await videoBackgroundRuntimeAvailable()
-      if (!runtimeAvailable) {
-        recordRealtimeKitDiagnostic("background-runtime-unavailable", {
-          requiredAssets: ["/tflite.wasm", "/tflite-simd.wasm"],
-        })
-        if (isCurrent) {
-          setBackgroundStatus(
-            "Background effects are paused while the video ML runtime is added."
-          )
-        }
-        return
-      }
-
-      const [{ default: VideoBackgroundAddon }, { registerAddons }] =
-        await Promise.all([
-          import("@cloudflare/realtimekit-ui-addons/video-background"),
-          import("@cloudflare/realtimekit-ui"),
-        ])
-      if (!isCurrent) return
-
-      const backgroundAddon = await VideoBackgroundAddon.init({
-        meeting,
-        modes: ["blur", "virtual", "random", "none"],
-        randomCount: 3,
-        blurStrength: 45,
-        buttonLabel: "Background",
-        images: MEETING_BACKGROUND_IMAGES,
-      })
-      if (!isCurrent) {
-        await backgroundAddon.unregister()
-        return
-      }
-
-      addonRef.current = backgroundAddon
-      setBackgroundStatus(null)
-      setMeetingConfig(
-        registerAddons(
-          [backgroundAddon],
-          meeting,
-          createCompassMeetingConfig()
-        )
-      )
-    })().catch((cause: unknown) => {
-      recordRealtimeKitDiagnostic("background-addon-failed", {
-        error: realtimeKitErrorDetails(cause),
-      })
-      if (isCurrent) {
-        setBackgroundStatus("Background effects could not start in this browser.")
-      }
-    })
-
-    return () => {
-      isCurrent = false
-      const addon = addonRef.current
-      addonRef.current = null
-      if (addon) void addon.unregister()
-      setMeetingConfig(createCompassMeetingConfig())
-    }
-  }, [meeting])
 
   React.useEffect(() => {
     if (!meeting) return
@@ -938,7 +848,7 @@ export function RealtimeKitMeetingWindow({
         audioTrackRef.current = null
       } else {
         setAudioStatus("starting")
-        requestedTrack = await requestMediaTrack("audio")
+        requestedTrack = await requestMediaTrack("audio", talk.preferences.microphoneId)
         await meeting.self.enableAudio(requestedTrack)
         if (!meeting.self.audioEnabled) {
           requestedTrack.stop()
@@ -960,7 +870,7 @@ export function RealtimeKitMeetingWindow({
       setAudioStatus("error")
       setScreenShareMessage(mediaPermissionMessage("audio", cause))
     }
-  }, [meeting])
+  }, [meeting, talk])
 
   const toggleVideo = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
@@ -975,12 +885,14 @@ export function RealtimeKitMeetingWindow({
         videoTrackRef.current = null
       } else {
         setVideoStatus("starting")
-        requestedTrack = await requestMediaTrack("video")
+        if (!await talk.applyBackground()) { setVideoStatus("idle"); return }
+        requestedTrack = await requestMediaTrack("video", talk.preferences.cameraId)
         await meeting.self.enableVideo(requestedTrack)
-        if (!meeting.self.videoEnabled) {
+        if (!meeting.self.videoEnabled || (talk.preferences.background.mode !== "none" && meeting.self.videoTrack === meeting.self.rawVideoTrack)) {
           requestedTrack.stop()
           requestedTrack = null
-          throw new Error("RealtimeKit did not enable the camera track.")
+          await meeting.self.disableVideo()
+          throw new Error("The camera background could not start. Choose Off or join without video.")
         }
         videoTrackRef.current?.stop()
         videoTrackRef.current = requestedTrack
@@ -995,9 +907,9 @@ export function RealtimeKitMeetingWindow({
       })
       setVideoEnabled(meeting.self.videoEnabled)
       setVideoStatus("error")
-      setScreenShareMessage(mediaPermissionMessage("video", cause))
+      setScreenShareMessage(cause instanceof Error && cause.message.includes("background") ? cause.message : mediaPermissionMessage("video", cause))
     }
-  }, [meeting])
+  }, [meeting, talk])
 
   const micButtonLabel =
     audioStatus === "starting"
@@ -1034,6 +946,47 @@ export function RealtimeKitMeetingWindow({
         : pictureInPictureActive
           ? "Exit PiP"
           : "PiP"
+
+  const joinPreparedMeeting = async (): Promise<void> => {
+    if (!meeting || joining || talk.busy) return
+    setJoining(true)
+    setScreenShareMessage(null)
+    try {
+      await talk.restoreDevices()
+      if (talk.preferences.joinWithCamera && !meeting.self.videoEnabled) {
+        await toggleVideo()
+        if (!meeting.self.videoEnabled) return
+      } else if (!talk.preferences.joinWithCamera && meeting.self.videoEnabled) {
+        await toggleVideo()
+      }
+      if (talk.preferences.joinWithMicrophone && !meeting.self.audioEnabled) {
+        await toggleAudio()
+        if (!meeting.self.audioEnabled) return
+      } else if (!talk.preferences.joinWithMicrophone && meeting.self.audioEnabled) {
+        await toggleAudio()
+      }
+      await meeting.join()
+      setJoined(true)
+    } catch (cause: unknown) {
+      setScreenShareMessage(errorMessageForCause(cause))
+    } finally { setJoining(false) }
+  }
+
+  const settingsPanel = (
+    <TalkSettingsPanel preferences={talk.preferences} onChange={talk.update} devices={talk.devices}
+      onDeviceChange={(kind, id) => void talk.changeDevice(kind, id)}
+      onRefreshDevices={() => void talk.refreshDevices()} busy={talk.busy || joining} status={talk.status} />
+  )
+
+  if (!loading && !error && meeting && !joined) {
+    const mediaBusy = videoStatus === "starting" || videoStatus === "stopping" || audioStatus === "starting" || audioStatus === "stopping"
+    return <TalkSetup title={meetingTitle}
+      preview={<TalkPreview meeting={meeting} videoEnabled={videoEnabled} audioEnabled={audioEnabled} speakerId={talk.preferences.speakerId} />}
+      settings={settingsPanel} videoEnabled={videoEnabled} audioEnabled={audioEnabled}
+      busy={talk.busy || joining || mediaBusy} canJoin={talk.ready} joining={joining} error={screenShareMessage}
+      onVideo={() => void toggleVideo()} onAudio={() => void toggleAudio()} onJoin={() => void joinPreparedMeeting()}
+      onCancel={() => { meeting.self.cleanUpTracks(); window.location.assign(`/dashboard/conversations/${channelId}`) }} />
+  }
 
   const showMeetingControls = !error
 
@@ -1133,12 +1086,19 @@ export function RealtimeKitMeetingWindow({
           </p>
         </div>
       </header>
-      {screenShareMessage || backgroundStatus ? (
+      {screenShareMessage || talk.status ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
           {screenShareMessage ? <span>{screenShareMessage}</span> : null}
-          {backgroundStatus ? <span>{backgroundStatus}</span> : null}
+          {talk.status ? <span>{talk.status}</span> : null}
         </div>
       ) : null}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="z-[130] max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Camera & Background</DialogTitle><DialogDescription>Update your background and devices without leaving the call.</DialogDescription></DialogHeader>
+          {meeting ? <TalkPreview meeting={meeting} videoEnabled={videoEnabled} audioEnabled={audioEnabled} speakerId={talk.preferences.speakerId} /> : null}
+          {settingsPanel}
+        </DialogContent>
+      </Dialog>
       <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_5rem] overflow-hidden xl:grid-cols-[minmax(0,1fr)_5.75rem_20rem]">
         {loading ? (
           <div className="col-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-3">
@@ -1186,6 +1146,7 @@ export function RealtimeKitMeetingWindow({
                 onClick={() => void toggleVideo()}
                 disabled={
                   !meeting ||
+                  talk.busy ||
                   videoStatus === "starting" ||
                   videoStatus === "stopping"
                 }
@@ -1228,11 +1189,7 @@ export function RealtimeKitMeetingWindow({
               >
                 {pipButtonLabel}
               </button>
-              {backgroundStatus ? (
-                <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-2 text-center text-xs font-semibold leading-tight text-white/55">
-                  Background Paused
-                </span>
-              ) : null}
+              <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>Background<br />& Settings</Button>
               <div className="min-h-3 flex-1" />
               <button
                 type="button"

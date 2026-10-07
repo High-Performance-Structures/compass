@@ -24,7 +24,7 @@ export function DashboardTabs({
 }: DashboardTabsProps) {
   return (
     <div className={cn("border-b", className)}>
-      <div className="flex overflow-x-auto px-2 md:px-4 [&::-webkit-scrollbar]:hidden">
+      <div className="flex overflow-x-auto px-2 md:px-4">
         {tabs.map((tab) => (
           <button
             key={tab.id}

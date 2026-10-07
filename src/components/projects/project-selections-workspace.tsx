@@ -302,12 +302,12 @@ function SelectionRow({
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium">{selection.name}</p>
           <DeveloperOnly>
-            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+            <Badge variant="outline" className="h-5 px-1.5 text-xs">
               {sourceLabel(selection)}
             </Badge>
           </DeveloperOnly>
           {selection.parentChoiceValue && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+            <Badge variant="secondary" className="h-5 px-1.5 text-xs">
               After {selection.parentChoiceValue}
             </Badge>
           )}

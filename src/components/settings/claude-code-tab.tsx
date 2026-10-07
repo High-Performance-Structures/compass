@@ -134,7 +134,7 @@ function SetupInstructions() {
               {step.code && (
                 <div className="flex items-center gap-1 bg-muted rounded px-2 py-1.5">
                   <Terminal className="h-3 w-3 text-muted-foreground shrink-0" />
-                  <code className="text-[11px] flex-1 font-mono">
+                  <code className="text-xs flex-1 font-mono">
                     {step.code}
                   </code>
                   <CopyButton text={step.code} />
@@ -287,7 +287,7 @@ function CreateKeyDialog({
                       <p className="text-xs font-medium">
                         {scope.label}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         {scope.desc}
                       </p>
                     </div>
@@ -351,20 +351,20 @@ function KeyRow({
           </span>
           <Badge
             variant={apiKey.isActive ? "default" : "secondary"}
-            className="text-[10px] px-1.5 py-0"
+            className="text-xs px-1.5 py-0"
           >
             {apiKey.isActive ? "active" : "revoked"}
           </Badge>
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <code className="text-[10px] text-muted-foreground font-mono">
+          <code className="text-xs text-muted-foreground font-mono">
             {apiKey.keyPrefix}...
           </code>
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {scopes.join(", ")}
           </span>
           {apiKey.lastUsedAt && (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               used{" "}
               {new Date(
                 apiKey.lastUsedAt,

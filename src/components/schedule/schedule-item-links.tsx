@@ -103,7 +103,7 @@ export function ScheduleItemLinks({
         <IconLink className="size-4 text-muted-foreground" />
         <p className="text-xs font-medium">Operational links</p>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-xs text-muted-foreground">
         Keep the file, RFI, conversation, or to-do used to complete this work
         beside the schedule item.
       </p>
@@ -121,7 +121,7 @@ export function ScheduleItemLinks({
               key={link.id}
               className="grid grid-cols-[5rem_minmax(0,1fr)_auto_auto] items-center gap-2 border-b py-2 last:border-b-0"
             >
-              <span className="text-[11px] font-medium uppercase text-muted-foreground">
+              <span className="text-xs font-medium uppercase text-muted-foreground">
                 {typeLabel(link.resourceType)}
               </span>
               <span className="truncate text-xs">{link.label}</span>

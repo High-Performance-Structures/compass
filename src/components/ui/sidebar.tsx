@@ -238,6 +238,10 @@ function Sidebar({
           data-slot="sidebar"
           data-mobile="true"
           className="bg-sidebar text-sidebar-foreground w-[--sidebar-width-mobile] max-w-[85vw] p-0 border-0"
+          onEscapeKeyDown={(event) => {
+            // Let an open utility drawer consume Escape before the mobile sheet.
+            if (document.activeElement?.closest('[data-slot="sidebar-workspace-drawer"][data-open="true"][data-pinned="false"]')) event.preventDefault()
+          }}
           side={side}
           showClose={false}
         >

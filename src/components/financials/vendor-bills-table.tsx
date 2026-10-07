@@ -243,7 +243,7 @@ export function VendorBillsTable({
                       </p>
                       <Badge
                         variant={STATUS_VARIANT[status] ?? "secondary"}
-                        className="shrink-0 text-[10px] px-1.5 py-0"
+                        className="shrink-0 text-xs px-1.5 py-0"
                       >
                         {status.replace("_", " ")}
                       </Badge>
