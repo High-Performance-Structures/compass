@@ -231,6 +231,8 @@ function AnimatedCollapsibleContent({
     animation.onfinish = () => {
       if (cancelled) return
       node.style.height = open ? "auto" : "0px"
+      // Release the animated height so nested sections can grow the open menu.
+      animation.cancel()
     }
 
     return () => {

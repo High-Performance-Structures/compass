@@ -58,6 +58,10 @@ conventions; this document defines the user-visible behavior and visual rules.
   or opening an editor must scroll its content region while the dashboard frame
   remains stationary. Users must be able to return to earlier content without
   refreshing the page.
+- Personal sidebar photos must remain compact and must not grow with sidebar
+  width at the expense of navigation space.
+- Expanded navigation groups must grow when nested sections open. Completed
+  animations must release fixed dimensions so later items remain reachable.
 - Scrollbars must work with pointer dragging, keyboard navigation, and touch;
   use semantic theme colors that remain visible in light and dark themes.
 
