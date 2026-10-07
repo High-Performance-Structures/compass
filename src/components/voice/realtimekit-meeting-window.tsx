@@ -913,12 +913,12 @@ export function RealtimeKitMeetingWindow({
 
   const micButtonLabel =
     audioStatus === "starting"
-      ? "Mic..."
+      ? "Unmuting..."
       : audioStatus === "stopping"
         ? "Muting..."
         : audioEnabled
           ? "Mute"
-          : "Mic"
+          : "Unmute"
 
   const videoButtonLabel =
     videoStatus === "starting"
@@ -1109,9 +1109,11 @@ export function RealtimeKitMeetingWindow({
             {error}
           </div>
         ) : (
-          <div ref={meetingUiRef} className="min-w-0 bg-black">
-            <div className="relative min-h-0 flex-1">
+          <div ref={meetingUiRef} className="relative min-h-0 min-w-0 overflow-hidden bg-black">
+            <div className="h-full w-full">
+              {/* Fill keeps the SDK renderer inside its grid cell, leaving the call controls clickable. */}
               <RtkMeeting
+                mode="fill"
                 meeting={meeting}
                 config={meetingConfig}
                 applyDesignSystem
@@ -1128,6 +1130,7 @@ export function RealtimeKitMeetingWindow({
               <button
                 type="button"
                 onClick={() => void toggleAudio()}
+                aria-label={audioEnabled ? "Mute microphone" : "Unmute microphone"}
                 disabled={
                   !meeting ||
                   audioStatus === "starting" ||
