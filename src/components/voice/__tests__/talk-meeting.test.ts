@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => {
   const track = { stop: vi.fn(), getSettings: () => ({ deviceId: "camera" }) }
   const transformed = { stop: vi.fn() }
   const self = {
+    permissions: { canProduceAudio: "ALLOWED" },
+    stageStatus: "ON_STAGE",
     videoEnabled: false,
     audioEnabled: false,
     screenShareEnabled: false,
@@ -22,6 +24,7 @@ const mocks = vi.hoisted(() => {
       return this.backgroundActive ? transformed : track
     },
     rawVideoTrack: track,
+    rawAudioTrack: track,
     on: vi.fn(),
     off: vi.fn(),
     cleanUpTracks: vi.fn(),
@@ -74,11 +77,28 @@ vi.mock("@cloudflare/realtimekit-react-ui", async () => {
   const ReactModule = await import("react")
   return {
     createDefaultConfig: () => ({}),
-    RtkMeeting: ({ mode }: { readonly mode: string }) =>
+    RtkChatToggle: () => null,
+    RtkParticipantsToggle: () => null,
+    RtkMoreToggle: () => null,
+    RtkPollsToggle: () => null,
+    RtkPluginsToggle: () => null,
+    RtkFullscreenToggle: () => null,
+    RtkMuteAllButton: () => null,
+    RtkBreakoutRoomsToggle: () => null,
+    RtkRecordingToggle: () => null,
+    RtkDebuggerToggle: () => null,
+    RtkMeeting: ({
+      mode,
+      children
+    }: {
+      readonly mode: string
+      readonly children: React.ReactNode
+    }) =>
       ReactModule.createElement(
         "div",
         { "data-meeting-mode": mode },
-        "Connected meeting"
+        "Connected meeting",
+        children
       )
   }
 })
@@ -121,6 +141,8 @@ describe("Talk joining workflow", () => {
   let container: HTMLDivElement
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.self.permissions.canProduceAudio = "ALLOWED"
+    mocks.self.stageStatus = "ON_STAGE"
     mocks.self.videoEnabled = false
     mocks.self.audioEnabled = false
     mocks.self.roomJoined = false
@@ -163,7 +185,8 @@ describe("Talk joining workflow", () => {
   }
   const click = async (label: string): Promise<void> => {
     const button = [...document.body.querySelectorAll("button")].find(
-      (item) => item.textContent === label
+      (item) =>
+        item.getAttribute("aria-label") === label || item.textContent === label
     )
     if (!button) throw new Error(`Button not found: ${label}`)
     await act(async () => {
@@ -228,6 +251,85 @@ describe("Talk joining workflow", () => {
     expect(mocks.self.audioEnabled).toBe(true)
     expect(capture).toHaveBeenCalledTimes(3)
     expect(mocks.meeting.join).toHaveBeenCalledOnce()
+  })
+
+  it("explains meeting audio restrictions without requesting microphone capture", async () => {
+    const capture = vi.spyOn(navigator.mediaDevices, "getUserMedia")
+    mocks.self.permissions.canProduceAudio = "NOT_ALLOWED"
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(capture).not.toHaveBeenCalled()
+    expect(container.textContent).toContain("Ask the host to allow you to speak")
+    expect(mocks.self.enableAudio).not.toHaveBeenCalled()
+  })
+
+  it("gives browser-neutral instructions when microphone access is denied", async () => {
+    vi.spyOn(navigator.mediaDevices, "getUserMedia").mockRejectedValueOnce(
+      new DOMException("Permission denied", "NotAllowedError")
+    )
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(container.textContent).toContain("system privacy settings")
+    expect(container.textContent).not.toContain("Brave")
+    expect(container.textContent).not.toContain("macOS")
+    expect(mocks.self.enableAudio).not.toHaveBeenCalled()
+  })
+
+  it("distinguishes a found microphone from SDK publishing failure and refreshes its name", async () => {
+    let permitted = false
+    const device: MediaDeviceInfo = {
+      deviceId: "mic", groupId: "mic-group", kind: "audioinput",
+      label: "Laptop microphone", toJSON: () => ({})
+    }
+    vi.spyOn(navigator.mediaDevices, "enumerateDevices").mockImplementation(async () => permitted ? [device] : [])
+    // JSDOM has no capture hardware; provide only the track interface used by Talk.
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: async () => {
+      permitted = true
+      return { getAudioTracks: () => [mocks.track], getTracks: () => [mocks.track] }
+    } })
+    mocks.self.enableAudio.mockImplementationOnce(async () => {}).mockImplementationOnce(async () => {})
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(container.textContent).toContain("Your browser found a microphone")
+    expect(mocks.track.stop).toHaveBeenCalled()
+    await click("Background & Settings")
+    expect(document.body.textContent).toContain("Laptop microphone")
+  })
+
+  it("recovers the first unmute through SDK capture without opening PiP", async () => {
+    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(1, mocks.track)
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(2)
+    expect(mocks.self.disableAudio).toHaveBeenCalledOnce()
+    expect(mocks.self.audioEnabled).toBe(true)
+    expect(container.querySelector('button[aria-label="Mute microphone"]')).not.toBeNull()
+    await click("Mute")
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(3, mocks.track)
+    expect(mocks.self.audioEnabled).toBe(true)
+  })
+
+  it("retains a selected microphone when SDK capture is needed", async () => {
+    const device: MediaDeviceInfo = {
+      deviceId: "headset", groupId: "headset-group", kind: "audioinput",
+      label: "Headset", toJSON: () => ({})
+    }
+    localStorage.setItem(talkPreferencesKey("test-user"), JSON.stringify({
+      ...defaultTalkPreferences(), microphoneId: device.deviceId
+    }))
+    vi.spyOn(navigator.mediaDevices, "enumerateDevices").mockResolvedValue([device])
+    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(mocks.self.setDevice).toHaveBeenCalledWith(device)
+    expect(mocks.self.audioEnabled).toBe(true)
   })
 
   it("updates the main control after an SDK mute event so the user can unmute", async () => {
@@ -306,7 +408,7 @@ describe("Talk joining workflow", () => {
     )
     await render()
     await click("Join meeting")
-    await click("Background& Settings")
+    await click("Background & Settings")
     await click("Blur")
     expect(mocks.self.disableVideo).toHaveBeenCalledOnce()
     expect(mocks.self.enableVideo).toHaveBeenCalledTimes(2)
@@ -330,7 +432,7 @@ describe("Talk joining workflow", () => {
     )
     await render()
     await click("Join meeting")
-    await click("Background& Settings")
+    await click("Background & Settings")
     const label = [...document.body.querySelectorAll("label")].find((item) =>
       item.textContent?.includes("Stronger background cleanup")
     )

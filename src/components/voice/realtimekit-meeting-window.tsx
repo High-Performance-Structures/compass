@@ -2,12 +2,14 @@
 
 import * as React from "react"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
-import { createDefaultConfig, RtkMeeting } from "@cloudflare/realtimekit-react-ui"
+import { RtkChatToggle, RtkParticipantsToggle, RtkMoreToggle, RtkPollsToggle, RtkPluginsToggle, RtkFullscreenToggle, RtkMuteAllButton, RtkBreakoutRoomsToggle, RtkRecordingToggle, RtkDebuggerToggle } from "@cloudflare/realtimekit-react-ui"
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
-import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { createCompassMeetingConfig } from "@/components/voice/talk-meeting-config"
+import { TalkMeetingRenderer } from "@/components/voice/talk-meeting-renderer"
+import { TalkCallControls } from "@/components/voice/talk-call-controls"
 import { TalkSettingsPanel } from "@/components/voice/talk-settings-panel"
 import { TalkSetup } from "@/components/voice/talk-setup"
 import { TalkPreview } from "@/components/voice/talk-preview"
@@ -34,148 +36,6 @@ type ScreenShareStatus =
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
 type MeetingMediaKind = "audio" | "video"
 
-function createCompassMeetingConfig(): UIConfig {
-  const base = createDefaultConfig()
-  return {
-    ...base,
-    designTokens: {
-      ...base.designTokens,
-      theme: "dark",
-      borderRadius: "rounded",
-      colors: {
-        ...base.designTokens?.colors,
-        brand: {
-          ...base.designTokens?.colors?.brand,
-          300: "#9bd3a8",
-          400: "#63b878",
-          500: "#3f7d4d",
-          600: "#32663e",
-          700: "#244d2d",
-        },
-        background: {
-          ...base.designTokens?.colors?.background,
-          1000: "#08110b",
-          900: "#0e1a12",
-          800: "#142419",
-          700: "#203626",
-          600: "#2d4a34",
-        },
-        text: "#f8fafc",
-        "text-on-brand": "#ffffff",
-        danger: "#ef4444",
-        success: "#22c55e",
-        warning: "#f59e0b",
-        "video-bg": "#050805",
-      },
-    },
-    config: {
-      ...base.config,
-      videoFit: "contain",
-      notification_sounds: {
-        ...base.config?.notification_sounds,
-        participant_joined: false,
-        participant_left: false,
-      },
-    },
-    root: {
-      ...base.root,
-      "div#controlbar-left": ["rtk-screen-share-toggle"],
-      "div#controlbar-center": [
-        "rtk-more-toggle",
-        "rtk-leave-button",
-      ],
-      "div#controlbar-right": [
-        "rtk-chat-toggle",
-        "rtk-polls-toggle",
-        "rtk-participants-toggle",
-        "rtk-caption-toggle",
-        "rtk-settings-toggle",
-      ],
-      "rtk-more-toggle.activeMoreMenu": [
-        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-mute-all-button", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-breakout-rooms-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        ["rtk-recording-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-debugger-toggle", { variant: "horizontal" }],
-      ],
-      "rtk-more-toggle.activeMoreMenu.md": [
-        ["rtk-chat-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-polls-toggle", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-participants-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        [
-          "rtk-caption-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-mute-all-button", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-breakout-rooms-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-      ],
-      "rtk-more-toggle.activeMoreMenu.sm": [
-        ["rtk-chat-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-polls-toggle", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-participants-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        [
-          "rtk-caption-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
-      ],
-      "div#controlbar-mobile": [
-        "rtk-leave-button",
-        "rtk-more-toggle",
-      ],
-    },
-    styles: {
-      ...base.styles,
-      "rtk-controlbar": {
-        ...base.styles?.["rtk-controlbar"],
-        backgroundColor: "rgba(8, 17, 11, 0.92)",
-        border: "1px solid rgba(255, 255, 255, 0.18)",
-        boxShadow: "0 18px 50px rgba(0, 0, 0, 0.42)",
-      },
-      "rtk-controlbar-button": {
-        ...base.styles?.["rtk-controlbar-button"],
-        color: "#f8fafc",
-      },
-      "rtk-more-toggle": {
-        ...base.styles?.["rtk-more-toggle"],
-        color: "#f8fafc",
-      },
-      "rtk-settings-toggle": {
-        ...base.styles?.["rtk-settings-toggle"],
-        color: "#f8fafc",
-      },
-      "rtk-chat-toggle": {
-        ...base.styles?.["rtk-chat-toggle"],
-        color: "#f8fafc",
-      },
-      "rtk-participants-toggle": {
-        ...base.styles?.["rtk-participants-toggle"],
-        color: "#f8fafc",
-      },
-    },
-  }
-}
 
 function transcriptKey(entry: TranscriptEntry): string {
   return entry.id.length > 0
@@ -316,19 +176,19 @@ function mediaPermissionMessage(
   cause: unknown
 ): string {
   const label = mediaDeviceLabel(kind)
-  if (cause instanceof DOMException) {
+  if (cause instanceof DOMException || cause instanceof Error) {
     if (cause.name === "NotFoundError") {
-      return `No ${label} was found. Connect one and try again.`
+      return `No ${label} was found. Connect one, choose System default in Background & Settings, and try again.`
     }
     if (cause.name === "NotReadableError" || cause.name === "AbortError") {
       return `The ${label} is unavailable or already in use by another app. Close the other app and try again.`
     }
     if (cause.name === "NotAllowedError" || cause.name === "SecurityError") {
-      return `Compass still cannot access your ${label}. Allow it for this site. If macOS just granted access, fully quit Brave with ⌘Q, reopen it, and rejoin Office Talk.`
+      return `Compass cannot access your ${label}. Allow it in this site’s browser permissions and your system privacy settings, then try again. If you just changed system access, fully quit and reopen the browser.`
     }
   }
 
-  return `Office Talk could not start your ${label}. If macOS just granted access, fully quit Brave with ⌘Q, reopen it, and rejoin Office Talk.`
+  return `Office Talk could not start your ${label}. Check the selected device and browser permissions, then try again.`
 }
 
 async function requestMediaTrack(
@@ -840,6 +700,7 @@ export function RealtimeKitMeetingWindow({
 
     setScreenShareMessage(null)
     let requestedTrack: MediaStreamTrack | null = null
+    let microphoneFound = false
     try {
       if (meeting.self.audioEnabled) {
         setAudioStatus("stopping")
@@ -848,12 +709,40 @@ export function RealtimeKitMeetingWindow({
         audioTrackRef.current = null
       } else {
         setAudioStatus("starting")
+        // The SDK silently returns when a participant cannot publish audio.
+        // Explain meeting permission separately from browser/device access.
+        if (
+          meeting.self.permissions.canProduceAudio === "NOT_ALLOWED" ||
+          (meeting.self.permissions.canProduceAudio === "CAN_REQUEST" &&
+            (meeting.self.stageStatus === "OFF_STAGE" || meeting.self.stageStatus === "REQUESTED_TO_JOIN_STAGE"))
+        ) {
+          setAudioStatus("error")
+          setScreenShareMessage("This meeting does not currently allow your microphone. Ask the host to allow you to speak.")
+          return
+        }
         requestedTrack = await requestMediaTrack("audio", talk.preferences.microphoneId)
+        microphoneFound = true
+        await talk.refreshDevices()
         await meeting.self.enableAudio(requestedTrack)
         if (!meeting.self.audioEnabled) {
+          // PiP uses SDK-owned capture. If a fresh application track cannot
+          // start audio, retry that same supported path without requiring PiP.
+          await meeting.self.disableAudio()
           requestedTrack.stop()
           requestedTrack = null
-          throw new Error("RealtimeKit did not enable the microphone track.")
+          const available = await navigator.mediaDevices.enumerateDevices()
+          const selected = available.find(device =>
+            device.kind === "audioinput" && device.deviceId === talk.preferences.microphoneId
+          )
+          if (selected) await meeting.self.setDevice(selected)
+          await meeting.self.enableAudio()
+          if (!meeting.self.audioEnabled) {
+            meeting.self.rawAudioTrack?.stop()
+            throw new Error("RealtimeKit did not enable the microphone track.")
+          }
+          requestedTrack = meeting.self.rawAudioTrack
+          await talk.refreshDevices()
+          recordRealtimeKitDiagnostic("audio-sdk-capture-recovered", {})
         }
         audioTrackRef.current?.stop()
         audioTrackRef.current = requestedTrack
@@ -865,10 +754,15 @@ export function RealtimeKitMeetingWindow({
       requestedTrack?.stop()
       recordRealtimeKitDiagnostic("audio-toggle-failed", {
         error: realtimeKitErrorDetails(cause),
+        microphoneFound,
+        canProduceAudio: meeting.self.permissions.canProduceAudio,
+        stageStatus: meeting.self.stageStatus,
       })
       setAudioEnabled(meeting.self.audioEnabled)
       setAudioStatus("error")
-      setScreenShareMessage(mediaPermissionMessage("audio", cause))
+      setScreenShareMessage(microphoneFound
+        ? "Your browser found a microphone, but Office Talk could not enable its audio. Try Unmute again. If it keeps failing, leave and rejoin the call."
+        : mediaPermissionMessage("audio", cause))
     }
   }, [meeting, talk])
 
@@ -988,12 +882,10 @@ export function RealtimeKitMeetingWindow({
       onCancel={() => { meeting.self.cleanUpTracks(); window.location.assign(`/dashboard/conversations/${channelId}`) }} />
   }
 
-  const showMeetingControls = !error
-
   return (
     <main
       data-compass-meeting
-      className="fixed inset-0 z-[100] flex h-dvh min-h-dvh flex-col bg-slate-950 text-white"
+      className="dark fixed inset-0 z-[100] flex h-dvh min-h-dvh flex-col bg-background text-foreground"
     >
       <style>
         {`
@@ -1078,14 +970,6 @@ export function RealtimeKitMeetingWindow({
           }
         `}
       </style>
-      <header className="flex h-12 shrink-0 items-center justify-center border-b border-white/10 px-4 text-center">
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{meetingTitle}</h1>
-          <p className="text-xs text-white/55">
-            Compass meeting with notes, transcript, and background effects
-          </p>
-        </div>
-      </header>
       {screenShareMessage || talk.status ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
           {screenShareMessage ? <span>{screenShareMessage}</span> : null}
@@ -1099,114 +983,54 @@ export function RealtimeKitMeetingWindow({
           {settingsPanel}
         </DialogContent>
       </Dialog>
-      <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_5rem] overflow-hidden xl:grid-cols-[minmax(0,1fr)_5.75rem_20rem]">
+      <section className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min(16rem,32dvh))] overflow-hidden xl:grid-cols-[minmax(0,1fr)_20rem] xl:grid-rows-1">
         {loading ? (
-          <div className="col-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-3">
+          <div className="row-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-2">
             Opening secure meeting...
           </div>
         ) : error ? (
-          <div className="col-span-2 flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-3">
+          <div className="row-span-2 flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-2">
             {error}
           </div>
         ) : (
           <div ref={meetingUiRef} className="relative min-h-0 min-w-0 overflow-hidden bg-black">
             <div className="h-full w-full">
               {/* Fill keeps the SDK renderer inside its grid cell, leaving the call controls clickable. */}
-              <RtkMeeting
-                mode="fill"
-                meeting={meeting}
-                config={meetingConfig}
-                applyDesignSystem
-                leaveOnUnmount
-                loadConfigFromPreset={false}
-                showSetupScreen={false}
-              />
+              <TalkMeetingRenderer meeting={meeting} config={meetingConfig}>
+                <TalkCallControls
+                  audioEnabled={audioEnabled} audioLabel={micButtonLabel}
+                  audioDisabled={!meeting || audioStatus === "starting" || audioStatus === "stopping"}
+                  onAudio={() => void toggleAudio()}
+                  videoEnabled={videoEnabled} videoLabel={videoButtonLabel}
+                  videoDisabled={!meeting || talk.busy || videoStatus === "starting" || videoStatus === "stopping"}
+                  onVideo={() => void toggleVideo()}
+                  canScreenShare={canScreenShare} screenShareLabel={screenShareButtonLabel}
+                  screenShareDisabled={!meeting || screenShareStatus === "starting" || screenShareStatus === "stopping"}
+                  onScreenShare={() => void toggleScreenShare()}
+                  pipLabel={pipButtonLabel}
+                  pipDisabled={!meeting || !canUsePictureInPicture || pipStatus === "starting" || pipStatus === "stopping"}
+                  onPip={() => void togglePictureInPicture()}
+                  onSettings={() => setSettingsOpen(true)}
+                  leaveDisabled={!meeting} onLeave={() => void leaveMeeting()}
+                >
+                  <RtkChatToggle meeting={meeting} variant="horizontal" />
+                  <RtkParticipantsToggle meeting={meeting} variant="horizontal" />
+                  <RtkMoreToggle>
+                    <RtkPollsToggle slot="more-elements" variant="horizontal" />
+                    <RtkPluginsToggle slot="more-elements" variant="horizontal" />
+                    <RtkFullscreenToggle slot="more-elements" variant="horizontal" targetElement={meetingUiRef.current ?? undefined} />
+                    <RtkMuteAllButton slot="more-elements" variant="horizontal" />
+                    <RtkBreakoutRoomsToggle slot="more-elements" variant="horizontal" />
+                    <RtkRecordingToggle slot="more-elements" variant="horizontal" />
+                    <RtkDebuggerToggle slot="more-elements" />
+                  </RtkMoreToggle>
+                </TalkCallControls>
+              </TalkMeetingRenderer>
             </div>
           </div>
         )}
-        {!loading && showMeetingControls ? (
-          <aside className="flex min-h-0 flex-col border-l border-white/10 bg-[#070b08]">
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3">
-              <button
-                type="button"
-                onClick={() => void toggleAudio()}
-                aria-label={audioEnabled ? "Mute microphone" : "Unmute microphone"}
-                disabled={
-                  !meeting ||
-                  audioStatus === "starting" ||
-                  audioStatus === "stopping"
-                }
-                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                  audioEnabled
-                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                }`}
-              >
-                {micButtonLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleVideo()}
-                disabled={
-                  !meeting ||
-                  talk.busy ||
-                  videoStatus === "starting" ||
-                  videoStatus === "stopping"
-                }
-                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                  videoEnabled
-                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                }`}
-              >
-                {videoButtonLabel}
-              </button>
-              {canScreenShare ? (
-                <button
-                  type="button"
-                  onClick={() => void toggleScreenShare()}
-                  disabled={
-                    !meeting ||
-                    screenShareStatus === "starting" ||
-                    screenShareStatus === "stopping"
-                  }
-                  className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                    screenShareStatus === "sharing"
-                      ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
-                      : "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                  }`}
-                >
-                  {screenShareButtonLabel}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void togglePictureInPicture()}
-                disabled={
-                  !meeting ||
-                  !canUsePictureInPicture ||
-                  pipStatus === "starting" ||
-                  pipStatus === "stopping"
-                }
-                className="rounded-sm border border-white/20 bg-white/[0.04] px-2 py-2 text-xs font-semibold leading-tight text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626] disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {pipButtonLabel}
-              </button>
-              <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>Background<br />& Settings</Button>
-              <div className="min-h-3 flex-1" />
-              <button
-                type="button"
-                onClick={() => void leaveMeeting()}
-                disabled={!meeting}
-                className="rounded-sm border border-red-300/65 bg-red-500/25 px-2 py-2 text-xs font-semibold leading-tight text-red-50 transition-colors hover:border-red-200 hover:bg-red-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Leave
-              </button>
-            </div>
-          </aside>
-        ) : null}
         {!loading && !error ? (
-          <aside className="col-span-2 min-h-0 max-h-[42dvh] border-t border-white/10 bg-[#08110b] xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0">
+          <aside className="min-h-0 border-t border-border bg-background xl:border-l xl:border-t-0">
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 border-b border-white/10 p-2">
                 <button
@@ -1238,6 +1062,7 @@ export function RealtimeKitMeetingWindow({
                     value={notes}
                     onChange={(event) => setNotes(event.currentTarget.value)}
                     placeholder="Meeting notes..."
+                    aria-label="Meeting notes"
                     className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-[#63b878]"
                   />
                   <button
