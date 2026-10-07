@@ -43,7 +43,8 @@ const mocks = vi.hoisted(() => {
     disableVideo: vi.fn(async () => {
       self.videoEnabled = false
     }),
-    enableAudio: vi.fn(async () => {
+    enableAudio: vi.fn(async (track: unknown) => {
+      void track
       self.audioEnabled = true
     }),
     disableAudio: vi.fn(async () => {
@@ -73,8 +74,12 @@ vi.mock("@cloudflare/realtimekit-react-ui", async () => {
   const ReactModule = await import("react")
   return {
     createDefaultConfig: () => ({}),
-    RtkMeeting: () =>
-      ReactModule.createElement("div", null, "Connected meeting")
+    RtkMeeting: ({ mode }: { readonly mode: string }) =>
+      ReactModule.createElement(
+        "div",
+        { "data-meeting-mode": mode },
+        "Connected meeting"
+      )
   }
 })
 vi.mock("@/hooks/use-music-ducking", () => ({
@@ -184,6 +189,70 @@ describe("Talk joining workflow", () => {
     expect(mocks.meeting.join).toHaveBeenCalledOnce()
     expect(container.textContent).toContain("Connected meeting")
   })
+  it("keeps the main call microphone usable across mute and unmute cycles", async () => {
+    const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }, { stop: vi.fn() }]
+    let requested = 0
+    const capture = vi.fn(async () => {
+      const track = tracks[requested++]
+      if (!track) throw new Error("Unexpected capture")
+      return { getAudioTracks: () => [track], getTracks: () => [track] }
+    })
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: capture
+    })
+    await render()
+    await click("Join meeting")
+    expect(
+      container
+        .querySelector("[data-meeting-mode]")
+        ?.getAttribute("data-meeting-mode")
+    ).toBe("fill")
+    const unmute = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Unmute microphone"]'
+    )
+    expect(unmute?.disabled).toBe(false)
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(1, tracks[0])
+    expect(
+      container.querySelector('button[aria-label="Mute microphone"]')
+    ).not.toBeNull()
+    await click("Mute")
+    expect(tracks[0]?.stop).toHaveBeenCalledOnce()
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(2, tracks[1])
+    expect(tracks[1]?.stop).not.toHaveBeenCalled()
+    await click("Mute")
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(3, tracks[2])
+    expect(mocks.self.audioEnabled).toBe(true)
+    expect(capture).toHaveBeenCalledTimes(3)
+    expect(mocks.meeting.join).toHaveBeenCalledOnce()
+  })
+
+  it("updates the main control after an SDK mute event so the user can unmute", async () => {
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    const audioUpdate = mocks.self.on.mock.calls.find(
+      ([event]) => event === "audioUpdate"
+    )?.[1]
+    if (typeof audioUpdate !== "function")
+      throw new Error("Missing audio subscription")
+    await act(async () => {
+      mocks.self.audioEnabled = false
+      audioUpdate({ audioEnabled: false })
+    })
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        'button[aria-label="Unmute microphone"]'
+      )?.disabled
+    ).toBe(false)
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenCalledTimes(2)
+    expect(mocks.self.audioEnabled).toBe(true)
+  })
+
   it("restores a saved background before enabling the camera and joining", async () => {
     localStorage.setItem(
       talkPreferencesKey("test-user"),
