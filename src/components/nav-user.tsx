@@ -206,7 +206,7 @@ export function SidebarDeskPhoto({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="group/photo block w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none"
+            className="group/photo mx-auto block w-full max-w-40 rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none"
             aria-label="Edit sidebar photo"
           >
             <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-sidebar-accent group-data-[collapsible=icon]:aspect-square group-data-[collapsible=icon]:rounded-md">
