@@ -99,6 +99,9 @@ async function verifyProjectAccess(
   ) {
     throw new Error("Project photo access requires active internal staff")
   }
+  if (action === "update" && organization.type === "demo") {
+    throw new Error("Demo mode is read-only")
+  }
   await requireFeaturePermission(user, "project-photos", action)
 
   await assertProjectAccess(db, user, projectId)

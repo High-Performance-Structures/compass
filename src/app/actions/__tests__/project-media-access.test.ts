@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permission-enforcement", () => ({
@@ -31,7 +32,11 @@ vi.mock("@/lib/google/youtube", () => ({
   youtubeTokenSalt: vi.fn(),
 }))
 
-import { getProjectPhotoLibrary } from "@/app/actions/project-photos"
+import {
+  getProjectPhotoLibrary,
+  updateProjectPhotoPermissions,
+  updateProjectPhotoPhase,
+} from "@/app/actions/project-photos"
 import { getProjectVideoWorkspace } from "@/app/actions/project-videos"
 
 const baseUser = {
@@ -77,6 +82,41 @@ describe("project media Server Action boundaries", () => {
     expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
     expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
     expect(mocks.getDb).not.toHaveBeenCalled()
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["photo phase", () => updateProjectPhotoPhase("project-a", "photo-a", "framing")],
+    [
+      "photo permissions",
+      () =>
+        updateProjectPhotoPermissions("project-a", {
+          photoIds: ["photo-a"],
+          reviewStatus: "approved",
+          ownerVisible: true,
+          subVendorVisible: false,
+          publicShareable: false,
+          photoKind: "progress",
+        }),
+    ],
+  ] as const)("rejects %s for an authoritative demo organization before project mutation access", async (_label, action) => {
+    mocks.requireAuth.mockResolvedValue({
+      ...baseUser,
+      id: "stale-internal-auth",
+      role: "admin",
+      organizationType: "internal",
+    })
+    mocks.getCloudflareContext.mockResolvedValue({ env: { DB: "db" } })
+    mocks.getDb.mockReturnValue({})
+    mocks.getActiveOrganization.mockResolvedValue({ id: "org-a", type: "demo" })
+
+    await expect(action()).resolves.toEqual({
+      success: false,
+      error: "Demo mode is read-only",
+    })
+
+    expect(mocks.getActiveOrganization).toHaveBeenCalled()
+    expect(mocks.requireFeaturePermission).not.toHaveBeenCalled()
     expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
   })
 })

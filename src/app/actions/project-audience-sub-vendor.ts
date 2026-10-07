@@ -16,7 +16,11 @@ import {
   notifyRfiCreated,
   notifyRfqResponseReceived,
 } from "@/lib/notifications/events"
-import { assertProjectAccess } from "@/lib/project-access"
+import { isDemoUser } from "@/lib/demo"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
 import type { ProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
@@ -120,6 +124,10 @@ async function getSubVendorWriteContext(
   const user = await requireAuth()
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const organization = await getActiveOrganization(db, user)
+  if (isDemoUser(user.id) || organization?.type === "demo") {
+    throw new Error("Demo mode is read-only")
+  }
   const project = await assertProjectAccess(db, user, projectId)
   if (!project.organizationId) throw new Error("Project organization is missing.")
 

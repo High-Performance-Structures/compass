@@ -105,6 +105,26 @@ export async function getProjectAccessRecord(
   const scopedDeveloper = user.role === "developer"
   if ((internalStaff || scopedDeveloper) && !internalOrganization) return null
 
+  if (!internalStaff) {
+    const membership = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .innerJoin(organizations, eq(organizations.id, projects.organizationId))
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id),
+          eq(projects.organizationId, user.organizationId),
+          eq(organizations.id, user.organizationId),
+          eq(organizations.isActive, true)
+        )
+      )
+      .limit(1)
+      .get()
+    if (!membership) return null
+  }
+
   const project = await db
     .select({
       id: projects.id,
@@ -123,21 +143,7 @@ export async function getProjectAccessRecord(
   if (!project) return null
 
   if (internalStaff) return project
-
-  const membership = await db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(projectMembers.userId, user.id)
-      )
-    )
-    .limit(1)
-    .get()
-  if (!membership) return null
-
-  return membership ? project : null
+  return project
 }
 
 const PROJECT_AUDIENCE_ROLES: Readonly<Record<ProjectAudience, readonly string[]>> = {
