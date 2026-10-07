@@ -138,17 +138,10 @@ function realtimeKitErrorDetails(cause: unknown): Readonly<Record<string, unknow
   return { cause }
 }
 
-function safeDiagnosticJson(value: unknown): string {
-  const seen = new WeakSet<object>()
-  return JSON.stringify(value, (_key: string, item: unknown): unknown => {
-    if (item !== null && typeof item === "object") {
-      if (seen.has(item)) return "[Circular]"
-      seen.add(item)
-    }
-    return item
-  })
-}
+const MAX_REALTIMEKIT_DIAGNOSTICS = 50
 
+// Keep a bounded in-memory trail for support (window.__compassRealtimeKitDiagnostics).
+// Serializing the whole history into the DOM on every media event slowed long calls.
 function recordRealtimeKitDiagnostic(
   event: string,
   payload: Readonly<Record<string, unknown>>
@@ -158,15 +151,9 @@ function recordRealtimeKitDiagnostic(
     const diagnostics = Array.isArray(existing) ? existing : []
     const nextDiagnostics = [
       ...diagnostics,
-      { event, payload },
-    ]
+      { event, at: new Date().toISOString(), payload },
+    ].slice(-MAX_REALTIMEKIT_DIAGNOSTICS)
     Reflect.set(window, "__compassRealtimeKitDiagnostics", nextDiagnostics)
-    if (typeof document !== "undefined") {
-      document.documentElement.setAttribute(
-        "data-compass-realtimekit-diagnostics",
-        safeDiagnosticJson(nextDiagnostics)
-      )
-    }
   }
   console.info(`RealtimeKit diagnostic: ${event}`, payload)
 }
