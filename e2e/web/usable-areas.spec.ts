@@ -606,10 +606,26 @@ test.describe("usable Compass areas", () => {
           element.style.height = "120px"
           element.scrollTop = paneEdge === "top" ? 0 : element.scrollHeight
         }, edge)
-        await scrollRegion.evaluate((element, paneEdge) => {
-          const distance = Math.min(240, element.scrollHeight - element.clientHeight)
-          element.scrollTop = paneEdge === "top" ? distance : 0
-        }, edge)
+        // Keep the pane on screen: scroll the workspace no further than the
+        // pane's own offset, so the wheel lands on the pane at any density.
+        await scrollRegion.evaluate((element) => {
+          element.scrollTop = 0
+        })
+        const paneOffset = await pane.evaluate(
+          (element) => element.getBoundingClientRect().top
+        )
+        await scrollRegion.evaluate(
+          (element, args) => {
+            const offset = args.paneTop - element.getBoundingClientRect().top
+            const distance = Math.min(
+              240,
+              element.scrollHeight - element.clientHeight,
+              Math.max(1, Math.floor(offset))
+            )
+            element.scrollTop = args.paneEdge === "top" ? distance : 0
+          },
+          { paneEdge: edge, paneTop: paneOffset }
+        )
         const initialWorkspaceTop = await scrollRegion.evaluate(
           (element) => element.scrollTop
         )
