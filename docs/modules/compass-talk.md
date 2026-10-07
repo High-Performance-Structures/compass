@@ -35,4 +35,4 @@ Effect support is checked at runtime. The current SDK excludes iOS effects and r
 - `talk-background-controller.ts` serializes background changes and removes only its own middleware.
 - `talk-setup.tsx`, `talk-preview.tsx`, `talk-settings-panel.tsx`, and `talk-image-editor.tsx` provide the controls.
 
-Microphone failures distinguish browser access, meeting publishing permissions, and audio publishing failure. Device names refresh after microphone access succeeds; before permission, settings explain why names can be hidden. Recovery instructions apply across supported browsers and operating systems.
+If supplying a fresh microphone track does not enable audio, Talk releases that track and retries SDK-owned capture (the path used by the SDK PiP controls), retaining an available selected microphone. Microphone failures distinguish browser access, meeting publishing permissions, and audio publishing failure. Device names refresh after microphone access succeeds; before permission, settings explain why names can be hidden. Recovery instructions apply across supported browsers and operating systems.

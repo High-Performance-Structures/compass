@@ -725,9 +725,24 @@ export function RealtimeKitMeetingWindow({
         await talk.refreshDevices()
         await meeting.self.enableAudio(requestedTrack)
         if (!meeting.self.audioEnabled) {
+          // PiP uses SDK-owned capture. If a fresh application track cannot
+          // start audio, retry that same supported path without requiring PiP.
+          await meeting.self.disableAudio()
           requestedTrack.stop()
           requestedTrack = null
-          throw new Error("RealtimeKit did not enable the microphone track.")
+          const available = await navigator.mediaDevices.enumerateDevices()
+          const selected = available.find(device =>
+            device.kind === "audioinput" && device.deviceId === talk.preferences.microphoneId
+          )
+          if (selected) await meeting.self.setDevice(selected)
+          await meeting.self.enableAudio()
+          if (!meeting.self.audioEnabled) {
+            meeting.self.rawAudioTrack?.stop()
+            throw new Error("RealtimeKit did not enable the microphone track.")
+          }
+          requestedTrack = meeting.self.rawAudioTrack
+          await talk.refreshDevices()
+          recordRealtimeKitDiagnostic("audio-sdk-capture-recovered", {})
         }
         audioTrackRef.current?.stop()
         audioTrackRef.current = requestedTrack

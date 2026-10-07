@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
       return this.backgroundActive ? transformed : track
     },
     rawVideoTrack: track,
+    rawAudioTrack: track,
     on: vi.fn(),
     off: vi.fn(),
     cleanUpTracks: vi.fn(),
@@ -288,7 +289,7 @@ describe("Talk joining workflow", () => {
       permitted = true
       return { getAudioTracks: () => [mocks.track], getTracks: () => [mocks.track] }
     } })
-    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    mocks.self.enableAudio.mockImplementationOnce(async () => {}).mockImplementationOnce(async () => {})
     await render()
     await click("Join meeting")
     await click("Unmute")
@@ -296,6 +297,39 @@ describe("Talk joining workflow", () => {
     expect(mocks.track.stop).toHaveBeenCalled()
     await click("Background & Settings")
     expect(document.body.textContent).toContain("Laptop microphone")
+  })
+
+  it("recovers the first unmute through SDK capture without opening PiP", async () => {
+    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(1, mocks.track)
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(2)
+    expect(mocks.self.disableAudio).toHaveBeenCalledOnce()
+    expect(mocks.self.audioEnabled).toBe(true)
+    expect(container.querySelector('button[aria-label="Mute microphone"]')).not.toBeNull()
+    await click("Mute")
+    await click("Unmute")
+    expect(mocks.self.enableAudio).toHaveBeenNthCalledWith(3, mocks.track)
+    expect(mocks.self.audioEnabled).toBe(true)
+  })
+
+  it("retains a selected microphone when SDK capture is needed", async () => {
+    const device: MediaDeviceInfo = {
+      deviceId: "headset", groupId: "headset-group", kind: "audioinput",
+      label: "Headset", toJSON: () => ({})
+    }
+    localStorage.setItem(talkPreferencesKey("test-user"), JSON.stringify({
+      ...defaultTalkPreferences(), microphoneId: device.deviceId
+    }))
+    vi.spyOn(navigator.mediaDevices, "enumerateDevices").mockResolvedValue([device])
+    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    await render()
+    await click("Join meeting")
+    await click("Unmute")
+    expect(mocks.self.setDevice).toHaveBeenCalledWith(device)
+    expect(mocks.self.audioEnabled).toBe(true)
   })
 
   it("updates the main control after an SDK mute event so the user can unmute", async () => {
