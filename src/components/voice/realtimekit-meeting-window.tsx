@@ -1,13 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { X } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
 import { RtkChatToggle, RtkParticipantsToggle, RtkMoreToggle, RtkPollsToggle, RtkPluginsToggle, RtkFullscreenToggle, RtkMuteAllButton, RtkBreakoutRoomsToggle, RtkRecordingToggle, RtkDebuggerToggle } from "@cloudflare/realtimekit-react-ui"
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
-import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createCompassMeetingConfig } from "@/components/voice/talk-meeting-config"
@@ -17,17 +14,10 @@ import { TalkCallControls } from "@/components/voice/talk-call-controls"
 import { TalkSettingsPanel } from "@/components/voice/talk-settings-panel"
 import { TalkSetup } from "@/components/voice/talk-setup"
 import { TalkPreview } from "@/components/voice/talk-preview"
+import { TalkNotesPanel } from "@/components/voice/talk-notes-panel"
 import { useTalkSettings } from "@/hooks/use-talk-settings"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
-
-type TranscriptEntry = {
-  readonly id: string
-  readonly name: string
-  readonly transcript: string
-  readonly isPartialTranscript: boolean
-  readonly date: Date
-}
 
 type ScreenShareStatus =
   | "idle"
@@ -40,52 +30,6 @@ type ScreenShareStatus =
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
 type MeetingMediaKind = "audio" | "video"
 
-
-function transcriptKey(entry: TranscriptEntry): string {
-  return entry.id.length > 0
-    ? entry.id
-    : `${entry.name}-${entry.date.toISOString()}-${entry.transcript}`
-}
-
-function mergeTranscript(
-  current: readonly TranscriptEntry[],
-  entry: TranscriptEntry
-): readonly TranscriptEntry[] {
-  const key = transcriptKey(entry)
-  const next = current.filter((item) => transcriptKey(item) !== key)
-  return [...next, entry].sort((a, b) => a.date.getTime() - b.date.getTime())
-}
-
-function transcriptText(entries: readonly TranscriptEntry[]): string {
-  return entries
-    .filter((entry) => !entry.isPartialTranscript)
-    .map((entry) => {
-      const time = entry.date.toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      })
-      return `[${time}] ${entry.name}: ${entry.transcript}`
-    })
-    .join("\n")
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-function linesToHtml(value: string): string {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map(escapeHtml)
-    .join("<br>")
-}
 
 function errorMessageForCause(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -227,15 +171,8 @@ export function RealtimeKitMeetingWindow({
   const [meetingConfig] = React.useState<UIConfig>(() =>
     createCompassMeetingConfig()
   )
-  const [notes, setNotes] = React.useState("")
   const [notesPanelOpen, setNotesPanelOpen] = React.useState(true)
-  const [notesStatus, setNotesStatus] = React.useState<string | null>(null)
-  const [activePanel, setActivePanel] = React.useState<"notes" | "transcript">(
-    "notes"
-  )
-  const [transcripts, setTranscripts] = React.useState<readonly TranscriptEntry[]>(
-    []
-  )
+  const [hasUnsavedNotes, setHasUnsavedNotes] = React.useState(false)
   const [transcriptEnabled, setTranscriptEnabled] = React.useState(false)
   const [screenShareStatus, setScreenShareStatus] =
     React.useState<ScreenShareStatus>("idle")
@@ -525,72 +462,6 @@ export function RealtimeKitMeetingWindow({
       meeting.self.off("mediaPermissionError", handleMediaPermissionError)
     }
   }, [meeting])
-
-  React.useEffect(() => {
-    if (!meeting || !transcriptEnabled) return
-    const handleTranscript = (entry: TranscriptEntry): void => {
-      setTranscripts((current) => mergeTranscript(current, entry))
-    }
-    meeting.ai.on("transcript", handleTranscript)
-    setTranscripts([...meeting.ai.transcripts])
-    return () => {
-      meeting.ai.off("transcript", handleTranscript)
-    }
-  }, [meeting, transcriptEnabled])
-
-  const savedTranscriptText = React.useMemo(
-    () => transcriptText(transcripts),
-    [transcripts]
-  )
-
-  const saveMeetingNotes = React.useCallback(async (): Promise<void> => {
-    const trimmed = notes.trim()
-    if (trimmed.length === 0) {
-      setNotesStatus("Add a note before saving.")
-      return
-    }
-
-    setNotesStatus("Saving notes...")
-    const result = await sendMessage({
-      channelId,
-      content: `### Meeting notes\n\n${trimmed}`,
-      contentHtml: `<section><h3>Meeting notes</h3><p>${linesToHtml(trimmed)}</p></section>`,
-    })
-    setNotesStatus(
-      result.success
-        ? "Saved to this conversation."
-        : result.error ?? "Failed to save notes."
-    )
-  }, [channelId, notes])
-
-  const saveTranscript = React.useCallback(async (): Promise<void> => {
-    if (savedTranscriptText.length === 0) {
-      setNotesStatus("No finalized transcript lines to save yet.")
-      return
-    }
-
-    setNotesStatus("Saving transcript...")
-    const result = await sendMessage({
-      channelId,
-      content: `### Meeting transcript\n\n${savedTranscriptText}`,
-      contentHtml: `<section><h3>Meeting transcript</h3><pre>${escapeHtml(savedTranscriptText)}</pre></section>`,
-    })
-    setNotesStatus(
-      result.success
-        ? "Transcript saved to this conversation."
-        : result.error ?? "Failed to save transcript."
-    )
-  }, [channelId, savedTranscriptText])
-
-  const toggleTranscriptCapture = React.useCallback((): void => {
-    const nextEnabled = !transcriptEnabled
-    setRealtimeKitCaptions(nextEnabled)
-    setNotesStatus(
-      nextEnabled
-        ? "Captions and transcript capture started for you."
-        : "Captions and transcript capture turned off for you."
-    )
-  }, [setRealtimeKitCaptions, transcriptEnabled])
 
   const closeMeetingWindow = React.useCallback((): void => {
     window.close()
@@ -984,7 +855,7 @@ export function RealtimeKitMeetingWindow({
         </div>
       ) : null}
       <TalkLeaveConfirmation open={leaveOpen} busy={leaving} error={leaveError}
-        canEndMeeting={canEndMeeting}
+        canEndMeeting={canEndMeeting} hasUnsavedNotes={hasUnsavedNotes}
         onOpenChange={setLeaveOpen}
         onLeave={() => void leaveMeeting(false)}
         onEndMeeting={() => void leaveMeeting(true)} />
@@ -1048,130 +919,11 @@ export function RealtimeKitMeetingWindow({
             </div>
           </div>
         )}
-        {!loading && !error ? (
-          <aside id="talk-notes-transcript" aria-label="Notes and transcript" hidden={!notesPanelOpen}
-            className="min-h-0 border-t border-border bg-background xl:border-l xl:border-t-0">
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex shrink-0 border-b border-white/10 p-2">
-                <button
-                  type="button"
-                  onClick={() => setActivePanel("notes")}
-                  className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                    activePanel === "notes"
-                      ? "bg-[#3f7d4d] text-white"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  Notes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePanel("transcript")}
-                  className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                    activePanel === "transcript"
-                      ? "bg-[#3f7d4d] text-white"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  Transcript
-                </button>
-                <Button type="button" variant="ghost" size="icon"
-                  aria-label="Close Notes & Transcript" onClick={() => setNotesPanelOpen(false)}>
-                  <X aria-hidden="true" />
-                </Button>
-              </div>
-              {activePanel === "notes" ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-                  <textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.currentTarget.value)}
-                    placeholder="Meeting notes..."
-                    aria-label="Meeting notes"
-                    className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-[#63b878]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void saveMeetingNotes()}
-                    className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860]"
-                  >
-                    Save Notes to Conversation
-                  </button>
-                  {notesStatus ? (
-                    <p className="text-xs text-white/55">{notesStatus}</p>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                    {!transcriptEnabled ? (
-                      <div className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/65">
-                        <p className="font-semibold text-white">
-                          Captions and transcript capture are off.
-                        </p>
-                        <p className="mt-1">
-                          Start it only after everyone knows the meeting is being
-                          transcribed.
-                        </p>
-                      </div>
-                    ) : null}
-                    {transcripts.length === 0 ? (
-                      <p className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/60">
-                        {transcriptEnabled
-                          ? "No transcript lines yet."
-                          : "No transcript has been captured for this meeting."}
-                      </p>
-                    ) : null}
-                    {transcripts.length > 0
-                      ? transcripts.map((entry) => (
-                          <div
-                            key={transcriptKey(entry)}
-                            className={`rounded-sm border p-2 text-sm ${
-                              entry.isPartialTranscript
-                                ? "border-white/10 bg-white/5 text-white/55"
-                                : "border-[#3f7d4d]/50 bg-[#3f7d4d]/10 text-white"
-                            }`}
-                          >
-                            <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/45">
-                              <span className="truncate font-medium">{entry.name}</span>
-                              <span>
-                                {entry.date.toLocaleTimeString([], {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                            <p>{entry.transcript}</p>
-                          </div>
-                        ))
-                      : null}
-                  </div>
-                  <div className="grid shrink-0 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={toggleTranscriptCapture}
-                      className={`rounded-sm px-3 py-2 text-sm font-semibold text-white transition-colors ${
-                        transcriptEnabled
-                          ? "border border-white/20 bg-white/10 hover:bg-white/15"
-                          : "bg-[#3f7d4d] hover:bg-[#4f9860]"
-                      }`}
-                    >
-                      {transcriptEnabled
-                        ? "Turn Captions Off"
-                        : "Turn Captions On"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void saveTranscript()}
-                      disabled={savedTranscriptText.length === 0}
-                      className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
-                    >
-                      Save Transcript to Conversation
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </aside>
+        {!loading && !error && meeting ? (
+          <TalkNotesPanel meeting={meeting} channelId={channelId} userId={userId}
+            open={notesPanelOpen} onClose={() => setNotesPanelOpen(false)}
+            transcriptEnabled={transcriptEnabled} onTranscriptEnabledChange={setRealtimeKitCaptions}
+            onUnsavedNotesChange={setHasUnsavedNotes} />
         ) : null}
       </section>
     </main>

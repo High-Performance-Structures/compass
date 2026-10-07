@@ -4,6 +4,7 @@ import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 import { RealtimeKitMeetingWindow } from "../realtimekit-meeting-window"
+import { talkNotesDraftKey } from "../talk-notes-panel"
 import {
   defaultTalkPreferences,
   talkPreferencesKey
@@ -296,6 +297,25 @@ describe("Talk joining workflow", () => {
     expect(textarea.value).toBe("Keep these meeting notes")
     expect(mocks.meeting.join).toHaveBeenCalledOnce()
     expect(mocks.meeting.leave).not.toHaveBeenCalled()
+  })
+
+  it("keeps an unsaved notes draft in this browser and mentions it when leaving", async () => {
+    localStorage.setItem(talkNotesDraftKey("test-user", "test-channel"), "Draft from earlier")
+    await render()
+    await click("Join meeting")
+    const textarea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Meeting notes"]')
+    expect(textarea?.value).toBe("Draft from earlier")
+    expect(container.textContent).toContain("Restored unsaved notes")
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set
+    await act(async () => {
+      setValue?.call(textarea, "Draft from earlier, plus more")
+      textarea?.dispatchEvent(new Event("input", { bubbles: true }))
+      await Promise.resolve()
+    })
+    window.dispatchEvent(new Event("pagehide"))
+    expect(localStorage.getItem(talkNotesDraftKey("test-user", "test-channel"))).toBe("Draft from earlier, plus more")
+    await click("Leave")
+    expect(document.body.textContent).toContain("Your notes have not been saved to the conversation")
   })
 
   it("keeps the transcript tab and capture active while its panel is hidden", async () => {
