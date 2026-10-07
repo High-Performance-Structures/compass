@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react"
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react"
+import { useRouter } from "next/navigation"
 import {
   closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -60,16 +61,11 @@ export function ProjectEstimateLineOrder({ projectId, estimateId, updatedAt, gro
   readonly editable: boolean
   readonly renderItem: (item: ProjectEstimateLineItem) => ReactNode
 }): React.ReactElement {
+  const router = useRouter()
   const contextId = useId()
   const [orderedItems, setOrderedItems] = useState(items)
-  const [currentUpdatedAt, setCurrentUpdatedAt] = useState(updatedAt)
-  const persistedIds = useRef(items.map((item) => item.id))
   const [pending, startTransition] = useTransition()
-  useEffect(() => {
-    setOrderedItems(items)
-    persistedIds.current = items.map((item) => item.id)
-    setCurrentUpdatedAt(updatedAt)
-  }, [items, updatedAt])
+  useEffect(() => { setOrderedItems(items) }, [items])
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
@@ -77,14 +73,14 @@ export function ProjectEstimateLineOrder({ projectId, estimateId, updatedAt, gro
   )
   function save(next: readonly ProjectEstimateLineItem[]): void {
     if (pending || !editable) return
-    const previousIds = persistedIds.current
+    const previousIds = items.map((item) => item.id)
     const orderedIds = next.map((item) => item.id)
     if (sameEstimateLineOrder(previousIds, orderedIds)) return
     setOrderedItems(next)
     startTransition(async () => {
       try {
         const result = await reorderProjectEstimateLines(projectId, estimateId, {
-          group, expectedUpdatedAt: currentUpdatedAt, previousIds, orderedIds,
+          group, expectedUpdatedAt: updatedAt, previousIds, orderedIds,
         })
         if (!result.success) {
           setOrderedItems(items)
@@ -92,8 +88,7 @@ export function ProjectEstimateLineOrder({ projectId, estimateId, updatedAt, gro
           return
         }
         toast.success("Item order saved")
-        persistedIds.current = orderedIds
-        setCurrentUpdatedAt(result.updatedAt)
+        router.refresh()
       } catch {
         setOrderedItems(items)
         toast.error("Unable to save item order. Try again.")

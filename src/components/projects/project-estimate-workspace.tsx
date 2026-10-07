@@ -276,13 +276,19 @@ export function ProjectEstimateWorkspacePanel({
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
 
-  const lastLoadedEstimateId = useRef<string | null>(null)
+  const lastLoadedHeader = useRef<string | null>(null)
+  const persistedHeader = JSON.stringify([
+    estimate?.id, estimate?.defaultTaxEntityId, estimate?.termsTemplateId,
+    estimate?.contractTerms, estimate?.introductionTemplateId, estimate?.introductionText,
+    estimate?.closingTemplateId, estimate?.closingText, estimate?.clientSigners,
+    estimate?.companySignerContactId, estimate?.companySignerName, estimate?.companySignerTitle,
+    estimate?.companySignerEmail, estimate?.companySignerInitials,
+  ])
   useEffect(() => {
-    // Refreshes from saves elsewhere in the workspace must not reset unfinished
-    // header fields. Reload the draft only when switching to another estimate.
-    const estimateId = estimate?.id ?? null
-    if (lastLoadedEstimateId.current === estimateId) return
-    lastLoadedEstimateId.current = estimateId
+    // Line-order saves refresh the workspace. Equivalent signer arrays from the
+    // server must not reset unfinished header fields in another input area.
+    if (lastLoadedHeader.current === persistedHeader) return
+    lastLoadedHeader.current = persistedHeader
     setDefaultTaxEntityId(estimate?.defaultTaxEntityId ?? "")
     setTermsTemplateId(estimate?.termsTemplateId ?? "")
     setContractTerms(estimate?.contractTerms ?? "")
@@ -298,7 +304,23 @@ export function ProjectEstimateWorkspacePanel({
       email: estimate?.companySignerEmail ?? "",
     })
     setCompanySignerInitials(estimate?.companySignerInitials ?? "")
-  }, [estimate])
+  }, [
+    persistedHeader,
+    estimate?.id,
+    estimate?.defaultTaxEntityId,
+    estimate?.termsTemplateId,
+    estimate?.contractTerms,
+    estimate?.introductionTemplateId,
+    estimate?.introductionText,
+    estimate?.closingTemplateId,
+    estimate?.closingText,
+    estimate?.clientSigners,
+    estimate?.companySignerContactId,
+    estimate?.companySignerName,
+    estimate?.companySignerTitle,
+    estimate?.companySignerEmail,
+    estimate?.companySignerInitials,
+  ])
 
   useEffect(() => {
     setSignatureMessage(null)

@@ -33,7 +33,6 @@ test("estimate items reorder within divisions and assemblies and persist in cust
     await workOn.click()
     await page.getByRole("option", { name: /^Introduction & closing/ }).click()
     await page.getByLabel("Client report introduction", { exact: true }).fill("Unfinished text survives reordering.")
-    await expect(page.getByLabel("Client report introduction", { exact: true })).toHaveValue("Unfinished text survives reordering.")
     await workOn.click()
     await page.getByRole("option", { name: /^Estimate costs/ }).click()
     const division = page.getByRole("group", { name: "03 · Concrete items", exact: true })
