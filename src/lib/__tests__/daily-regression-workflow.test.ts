@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
+import YAML from "yaml"
 import { describe, expect, it } from "vitest"
 
 const workflow = readFileSync(
@@ -12,51 +13,88 @@ const productionSmoke = readFileSync(
   "utf8",
 )
 
-function findStepRun(
-  jobName: string,
-  stepName: string,
-): string | null {
-  const lines = workflow.split("\n")
-  const jobStart = lines.findIndex((line) => line === `  ${jobName}:`)
-  if (jobStart < 0) return null
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
 
-  const nextJob = lines.findIndex(
-    (line, index) => index > jobStart && /^  [a-z0-9-]+:$/.test(line),
-  )
-  const jobLines = lines.slice(jobStart, nextJob < 0 ? lines.length : nextJob)
-  const stepStart = jobLines.findIndex(
-    (line) => line === `      - name: ${stepName}`,
-  )
-  if (stepStart < 0) return null
+function record(value: unknown, description: string): Readonly<Record<string, unknown>> {
+  if (!isRecord(value)) throw new Error(`Expected ${description} to be a YAML mapping.`)
+  return value
+}
 
-  const nextStep = jobLines.findIndex(
-    (line, index) => index > stepStart && /^      - /.test(line),
-  )
-  const stepLines = jobLines.slice(
-    stepStart,
-    nextStep < 0 ? jobLines.length : nextStep,
-  )
-  const runLine = stepLines.find((line) => /^        run:/.test(line))
-  return runLine?.replace(/^        run:\s*/, "").trim() ?? null
+function list(value: unknown, description: string): readonly unknown[] {
+  if (!Array.isArray(value)) throw new Error(`Expected ${description} to be a YAML list.`)
+  return value
+}
+
+const workflowDocument = record(YAML.parse(workflow), "workflow")
+const jobs = record(workflowDocument.jobs, "jobs")
+
+function job(name: string): Readonly<Record<string, unknown>> {
+  return record(jobs[name], `job ${name}`)
+}
+
+function namedStep(jobName: string, stepName: string): Readonly<Record<string, unknown>> {
+  const steps = list(job(jobName).steps, `steps for ${jobName}`)
+  const step = steps.find((candidate) => isRecord(candidate) && candidate.name === stepName)
+  return record(step, `${jobName}/${stepName}`)
+}
+
+function usedStep(jobName: string, action: string): Readonly<Record<string, unknown>> {
+  const steps = list(job(jobName).steps, `steps for ${jobName}`)
+  const step = steps.find((candidate) => isRecord(candidate) && candidate.uses === action)
+  return record(step, `${jobName}/${action}`)
 }
 
 describe("daily regression workflow", () => {
-  it("runs the read-only production smoke spec instead of fixture workflows", () => {
-    expect(workflow).toContain(
-      "bunx playwright test e2e/web/production-smoke.spec.ts --project=${{ matrix.project }}",
-    )
-    expect(workflow).not.toContain(
-      "bunx playwright test e2e/web --project=${{ matrix.project }}",
-    )
+  it("runs only the read-only production smoke spec for every browser matrix entry", () => {
+    const productionJob = job("production-smoke")
+    const matrix = record(record(productionJob.strategy, "production matrix").matrix, "production matrix")
+    expect(matrix.include).toEqual([
+      { project: "chromium", browser: "chromium" },
+      { project: "mobile-chrome", browser: "chromium" },
+      { project: "mobile-safari", browser: "webkit" },
+    ])
+    expect(namedStep("production-smoke", "Run read-only production journeys")).toEqual({
+      name: "Run read-only production journeys",
+      run: "bunx playwright test e2e/web/production-smoke.spec.ts --project=${{ matrix.project }}",
+      env: {
+        PLAYWRIGHT_BASE_URL: "https://compass.openrangeconstruction.ltd",
+        PLAYWRIGHT_REQUIRE_PROJECT: "false",
+      },
+    })
   })
 
   it("builds the generated mobile shell before syncing each native platform", () => {
-    expect(findStepRun("android-build", "Synchronize Capacitor project")).toBe(
+    expect(namedStep("android-build", "Synchronize Capacitor project").run).toBe(
       "bun run mobile:build && bunx cap sync android",
     )
-    expect(findStepRun("ios-build", "Synchronize Capacitor project")).toBe(
+    expect(namedStep("ios-build", "Synchronize Capacitor project").run).toBe(
       "bun run mobile:build && bunx cap sync ios",
     )
+  })
+
+  it("collects browser diagnostics even when a matrix job fails", () => {
+    expect(usedStep("production-smoke", "actions/upload-artifact@v4")).toEqual({
+      uses: "actions/upload-artifact@v4",
+      if: "always()",
+      with: {
+        name: "daily-playwright-${{ matrix.project }}",
+        path: "playwright-report/\ntest-results/\n",
+        "if-no-files-found": "ignore",
+        "retention-days": 14,
+      },
+    })
+  })
+
+  it("reports every required job result without allowing blanket failures", () => {
+    const report = job("report")
+    expect(report.if).toBe("always()")
+    expect(report.needs).toEqual(["production-smoke", "android-build", "ios-build"])
+    const reportSteps = list(report.steps, "report steps")
+    expect(reportSteps).toHaveLength(1)
+    expect(record(reportSteps[0], "report step").uses).toBe("actions/github-script@v7")
+    expect(workflowDocument).not.toHaveProperty("defaults.run.continue-on-error")
   })
 
   it("models the approved people legacy-route redirect", () => {
