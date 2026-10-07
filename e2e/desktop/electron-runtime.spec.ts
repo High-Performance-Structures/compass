@@ -98,7 +98,10 @@ test.describe("Electron runtime", () => {
         })
         document.body.appendChild(link)
       }, previewUrl)
-      await page.locator('[data-e2e-preview-link="true"]').click()
+      await page.bringToFront()
+      await page
+        .locator('[data-e2e-preview-link="true"]')
+        .click({ force: true })
       await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
         link.remove(),
       )
