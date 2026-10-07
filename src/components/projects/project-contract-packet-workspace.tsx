@@ -44,6 +44,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -631,6 +632,7 @@ export function ProjectContractPacketWorkspacePanel({
             <div className="flex flex-wrap items-center gap-2">
               <IconFileDescription className="size-5 text-primary" />
               <h2 className="font-semibold">{packet.packetNumber} · contract packet v{packet.versionNumber}</h2>
+              <ContextualHelpBeacon topicId="financials.contract-packets" />
               <Badge variant="outline">{statusLabel(packet.status)}</Badge>
               <Badge variant="secondary">Foxit {statusLabel(packet.foxitStatus)}</Badge>
             </div>

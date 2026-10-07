@@ -14,6 +14,7 @@ import {
 import { updateCorrespondenceInbox } from "@/app/actions/correspondence-inbox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type {
@@ -139,9 +140,12 @@ export function CorrespondenceInboxPanel(props: {
       aria-label="Message inbox"
     >
       <div className="border-b p-4">
-        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Project messages
-        </p>
+        <div className="flex items-center gap-1">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Project messages
+          </p>
+          <ContextualHelpBeacon topicId="conversations.project-email" className="size-6" />
+        </div>
         <div className="mt-1 flex items-center justify-between gap-2">
           <h1 className="truncate text-lg font-semibold">
             {props.inbox.projectName}

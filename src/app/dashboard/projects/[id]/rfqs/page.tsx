@@ -51,6 +51,7 @@ import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
@@ -548,6 +549,7 @@ export default async function ProjectRfqsPage({
             <h1 className="text-2xl font-semibold tracking-tight">
               Requests for Quote
             </h1>
+            <ContextualHelpBeacon topicId="project.operations.rfqs" />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {project?.projectNumber ? `${project.projectNumber} - ` : ""}

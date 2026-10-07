@@ -23,13 +23,14 @@ describe("help registry", () => {
   })
 
   it("provides the initial canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(15)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(15)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(15)
+    expect(HELP_GUIDES).toHaveLength(16)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(16)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(16)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
         "audience.trade",
+        "change.orders",
         "greeting.cards",
       ])
     )
@@ -50,6 +51,18 @@ describe("help registry", () => {
     )
     expect(getHelpTopic("contacts.access.add-and-invite")?.section?.title).toBe(
       "Add and Invite a Contact"
+    )
+    expect(getHelpTopic("financials.client-report-phases")?.href).toBe(
+      "/dashboard/help/financial-workflows#client-report-phases"
+    )
+    expect(getHelpTopic("change.orders.executed-documents")?.href).toBe(
+      "/dashboard/help/change-orders-and-executed-documents#executed-documents"
+    )
+    expect(getHelpTopic("contacts.access.compare-clients-with-sage")?.href).toBe(
+      "/dashboard/help/contacts-project-access-invitations#compare-clients-with-sage"
+    )
+    expect(getHelpTopic("contacts.access.merge-duplicates")?.href).toBe(
+      "/dashboard/help/contacts-project-access-invitations#merge-duplicates"
     )
     expect(getHelpTopic("not-a-topic")).toBeNull()
   })
@@ -83,6 +96,21 @@ describe("help registry", () => {
         "/dashboard/projects/project-123/owner-updates/update-456?preview=1"
       ).map((guide) => guide.id)
     ).toContain("owner.updates")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/change-orders/change-456"
+      ).map((guide) => guide.id)
+    ).toContain("change.orders")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/contracts"
+      ).map((guide) => guide.id)
+    ).toContain("financials")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/messages"
+      ).map((guide) => guide.id)
+    ).toContain("conversations")
     expect(
       getHelpGuidesForRoute(
         "/preview/projects/project-123/owner/updates/update-456"
@@ -176,6 +204,52 @@ describe("help registry", () => {
     expect(getHelpGuide("schedules-and-tasks")?.content).toContain("**Notes**")
     expect(getHelpGuide("project-operations")?.content).toContain("**Pickup copy**")
     expect(getHelpGuide("greeting-cards")?.content).toContain("search the design catalog")
+  })
+
+  it("documents custom client report phases without changing accounting data", () => {
+    const financialGuide = getHelpGuide("financial-workflows")
+
+    expect(financialGuide?.content).toContain("**Add report phase**")
+    expect(financialGuide?.content).toContain("**Itemize costs for the client**")
+    expect(financialGuide?.content).toContain("presentation only")
+    expect(financialGuide?.content).toContain("returns its lines to their default CSI grouping")
+    expect(searchHelpGuides("custom report phase client costs")[0]?.guide.id)
+      .toBe("financials")
+  })
+
+  it("documents current publication, Sage comparison, and executed-document workflows", () => {
+    const scheduleGuide = getHelpGuide("schedules-and-tasks")
+    const contactsGuide = getHelpGuide("contacts-project-access-invitations")
+    const contractsGuide = getHelpGuide("financial-workflows")
+    const changeOrdersGuide = getHelpGuide("change-orders-and-executed-documents")
+    const ownerGuide = getHelpGuide("owner-workspace")
+
+    expect(scheduleGuide?.content).toContain("**Move to draft**")
+    expect(scheduleGuide?.content).toContain("last published version")
+    expect(contactsGuide?.content).toContain("**Compare with Sage**")
+    expect(contactsGuide?.content).toContain("does not link, merge, or transfer")
+    expect(contractsGuide?.content).toContain("**Replace active contract document**")
+    expect(changeOrdersGuide?.content).toContain("**Replace active executed document**")
+    expect(ownerGuide?.content).toContain("**Open executed change order**")
+    expect(ownerGuide?.content).toContain("**Open contract**")
+    expect(searchHelpGuides("replace executed signed change order")[0]?.guide.id)
+      .toBe("change.orders")
+  })
+
+  it("documents current project email, RFQ response, and contact merge workflows", () => {
+    const conversationsGuide = getHelpGuide("conversations-and-notifications")
+    const operationsGuide = getHelpGuide("project-operations")
+    const contactsGuide = getHelpGuide("contacts-project-access-invitations")
+
+    expect(conversationsGuide?.content).toContain("**Drafts**")
+    expect(conversationsGuide?.content).toContain("**Sent**")
+    expect(conversationsGuide?.content).toContain("10 attachments totaling 18 MB")
+    expect(operationsGuide?.content).toContain("**Send email**")
+    expect(operationsGuide?.content).toContain("**Record response**")
+    expect(operationsGuide?.content).toContain("active **Sage division**")
+    expect(contactsGuide?.content).toContain("**Merge 2 duplicates**")
+    expect(contactsGuide?.content).toContain("**Resend invitation**")
+    expect(contactsGuide?.content).toContain("does not overwrite the survivor's")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {

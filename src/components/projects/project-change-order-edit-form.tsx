@@ -25,6 +25,7 @@ import {
 } from "@/components/projects/project-change-order-cost-lines-editor"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -457,7 +458,10 @@ export function ProjectChangeOrderEditForm({
         !isExecutedChangeOrderStatus(item.status) && (
           <div className="space-y-4 border-t pt-4">
             <div>
-              <p className="text-sm font-medium">Executed change-order PDF</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium">Executed change-order PDF</p>
+                <ContextualHelpBeacon topicId="change.orders.executed-documents" />
+              </div>
               <p className="text-xs text-muted-foreground">
                 Upload the complete signed change order or paste its secure saved
                 link. Owners open this authoritative copy through Compass without

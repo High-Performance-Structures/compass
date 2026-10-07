@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -883,6 +884,10 @@ export function ScheduleView({
                 ? "Draft · Hidden from owners and subcontractors"
                 : "Draft · Never published"}
           </span>
+          <ContextualHelpBeacon
+            topicId="schedule.publish-schedule"
+            className="size-7"
+          />
           {!publicationStatus.hasPublishedSchedule && publicationStatus.publishedAt && (
             <span className="shrink-0 text-muted-foreground">
               Last published {new Date(publicationStatus.publishedAt).toLocaleString()}
