@@ -768,21 +768,19 @@ export function ProjectEstimateWorkspacePanel({
                 <h3 className="font-medium">Start from template</h3>
               </div>
               <div className="mt-3 space-y-3">
-                <Select
+                <SearchableCombobox
                   value={startTemplateId}
                   onValueChange={setStartTemplateId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a published estimate template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {estimateTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name} · {template.lineCount} lines
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={estimateTemplates.map((template) => ({
+                    value: template.id,
+                    label: template.name,
+                    description: `${template.lineCount} lines`,
+                  }))}
+                  ariaLabel="Estimate template"
+                  placeholder="Choose a published estimate template"
+                  searchPlaceholder="Search estimate templates..."
+                  emptyMessage="No matching templates."
+                />
                 <SearchableCombobox
                   value={startTaxEntityId}
                   onValueChange={setStartTaxEntityId}
@@ -1278,28 +1276,25 @@ export function ProjectEstimateWorkspacePanel({
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="termsTemplateId">Contract terms template</Label>
-            <Select
-              name="termsTemplateId"
+            <input type="hidden" name="termsTemplateId" value={termsTemplateId} />
+            <SearchableCombobox
+              id="termsTemplateId"
               value={termsTemplateId}
               onValueChange={(value) => {
                 setTermsTemplateId(value)
+                // A cleared or missing template keeps the text already written.
+                if (value === "") return
                 setContractTerms(
                   selectedTemplateBody(workspace.termsTemplates, value)
                 )
               }}
               disabled={!editable}
-            >
-              <SelectTrigger id="termsTemplateId">
-                <SelectValue placeholder="Choose a terms template" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.termsTemplates.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={workspace.termsTemplates}
+              ariaLabel="Contract terms template"
+              placeholder="Choose a terms template"
+              searchPlaceholder="Search templates..."
+              emptyMessage="No matching templates."
+            />
             {workspace.termsTemplates.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 No {workspace.department}-department terms templates are
@@ -1330,53 +1325,47 @@ export function ProjectEstimateWorkspacePanel({
             <Label htmlFor="introductionTemplateId">
               Introductory text template
             </Label>
-            <Select
-              name="introductionTemplateId"
+            <input type="hidden" name="introductionTemplateId" value={introductionTemplateId} />
+            <SearchableCombobox
+              id="introductionTemplateId"
               value={introductionTemplateId}
               onValueChange={(value) => {
                 setIntroductionTemplateId(value)
+                // A cleared or missing template keeps the text already written.
+                if (value === "") return
                 setIntroductionText(
                   selectedTemplateBody(workspace.introductionTemplates, value)
                 )
               }}
               disabled={!editable || workspace.introductionTemplates.length === 0}
-            >
-              <SelectTrigger id="introductionTemplateId">
-                <SelectValue placeholder="Choose introductory copy" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.introductionTemplates.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={workspace.introductionTemplates}
+              ariaLabel="Introductory text template"
+              placeholder="Choose introductory copy"
+              searchPlaceholder="Search templates..."
+              emptyMessage="No matching templates."
+            />
           </div>
             <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="closingTemplateId">Closing text template</Label>
-            <Select
-              name="closingTemplateId"
+            <input type="hidden" name="closingTemplateId" value={closingTemplateId} />
+            <SearchableCombobox
+              id="closingTemplateId"
               value={closingTemplateId}
               onValueChange={(value) => {
                 setClosingTemplateId(value)
+                // A cleared or missing template keeps the text already written.
+                if (value === "") return
                 setClosingText(
                   selectedTemplateBody(workspace.closingTemplates, value)
                 )
               }}
               disabled={!editable || workspace.closingTemplates.length === 0}
-            >
-              <SelectTrigger id="closingTemplateId">
-                <SelectValue placeholder="Choose closing copy" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.closingTemplates.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={workspace.closingTemplates}
+              ariaLabel="Closing text template"
+              placeholder="Choose closing copy"
+              searchPlaceholder="Search templates..."
+              emptyMessage="No matching templates."
+            />
           </div>
             <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
             <Label htmlFor="introductionText">
@@ -1781,8 +1770,9 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-1.5">
-                  <Label>CSI division</Label>
-                  <Select
+                  <Label htmlFor="estimate-line-division">CSI division</Label>
+                  <SearchableCombobox
+                    id="estimate-line-division"
                     value={line.divisionCode}
                     onValueChange={(value) =>
                       setLine({
@@ -1792,16 +1782,16 @@ export function ProjectEstimateWorkspacePanel({
                         reportPhaseId: "",
                       })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose division first" />
-                    </SelectTrigger>
-                    <SelectContent>
-                    {divisions.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                  </Select>
+                    options={divisions.map(([value, label]) => ({
+                      value,
+                      label,
+                      keywords: value,
+                    }))}
+                    ariaLabel="CSI division"
+                    placeholder="Choose division first"
+                    searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
+                    emptyMessage="No matching divisions."
+                  />
                 </div>
                 <div className="space-y-1.5 xl:col-span-2">
                 <Label>Cost code</Label>
@@ -1830,33 +1820,30 @@ export function ProjectEstimateWorkspacePanel({
                   <Label htmlFor="estimate-report-phase">
                     Customer-facing report phase
                   </Label>
-                  <Select
+                  <SearchableCombobox
+                    id="estimate-report-phase"
                     value={line.reportPhaseId || "__csi__"}
                     onValueChange={(value) =>
                       setLine({
                         ...line,
-                        reportPhaseId: value === "__csi__" ? "" : value,
+                        reportPhaseId:
+                          value === "__csi__" || value === "" ? "" : value,
                       })
                     }
-                  >
-                    <SelectTrigger id="estimate-report-phase">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__csi__">
-                        Default CSI grouping
-                      </SelectItem>
-                      {workspace.reportPhases
+                    options={[
+                      { value: "__csi__", label: "Default CSI grouping" },
+                      ...workspace.reportPhases
                         .filter(
                           (phase) => phase.divisionCode === line.divisionCode
                         )
-                        .map((phase) => (
-                          <SelectItem key={phase.id} value={phase.id}>
-                            {phase.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                        .map((phase) => ({ value: phase.id, label: phase.name })),
+                    ]}
+                    ariaLabel="Customer-facing report phase"
+                    placeholder="Default CSI grouping"
+                    searchPlaceholder="Search report phases..."
+                    emptyMessage="No matching report phases."
+                    className="sm:max-w-sm"
+                  />
                   <p className="text-xs text-muted-foreground">Create phases in Client report settings. CSI cost codes and calculations are unchanged.</p>
                 </div>
                 <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
