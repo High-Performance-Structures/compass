@@ -37,7 +37,7 @@ import {
   revokeApiKey,
   deleteApiKey,
 } from "@/app/actions/mcp-keys"
-import { useBridgeState } from "@/components/agent/chat-provider"
+import { useBridgeDetection, useBridgeState } from "@/components/agent/chat-provider"
 
 interface ApiKeyRow {
   readonly id: string
@@ -407,6 +407,8 @@ export function ClaudeCodeTab() {
 
   // use shared bridge state from ChatProvider
   const bridge = useBridgeState()
+  // Show live daemon status here even before the bridge is enabled.
+  useBridgeDetection(true)
 
   const loadKeys = React.useCallback(async () => {
     const result = await listApiKeys()

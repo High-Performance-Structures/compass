@@ -180,7 +180,9 @@ function MemberListContent({
     // 10-second polling interval when sidebar is open
     let pollInterval: ReturnType<typeof setInterval> | null = null
     if (isOpen) {
-      pollInterval = setInterval(fetchMembers, 10_000)
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === "visible") void fetchMembers()
+      }, 10_000)
     }
 
     return () => {
