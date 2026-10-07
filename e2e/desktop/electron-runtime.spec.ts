@@ -38,7 +38,7 @@ test.describe("Electron runtime", () => {
     let previewVideo: Video | null = null
     let testFailure: unknown = null
     const app = await electron.launch({
-      args: ["dist-electron/electron/main.js"],
+      args: ["--disable-popup-blocking", "dist-electron/electron/main.js"],
       recordVideo: {
         dir: videoDir,
         size: { width: 1180, height: 800 },
