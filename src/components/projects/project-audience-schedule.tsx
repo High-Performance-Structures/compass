@@ -291,7 +291,7 @@ export function ProjectAudienceSchedule({
                 {WEEKDAYS.map((weekday) => (
                   <div
                     key={weekday}
-                    className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground"
+                    className="px-2 py-2 text-center text-xs font-medium text-muted-foreground"
                   >
                     {weekday}
                   </div>
@@ -326,7 +326,7 @@ export function ProjectAudienceSchedule({
                           <div
                             key={item.id}
                             title={`${item.title} · ${statusLabel(item.status)}`}
-                            className="truncate border-l-2 px-1 py-0.5 text-[10px] leading-4"
+                            className="truncate border-l-2 px-1 py-0.5 text-xs leading-4"
                             style={{
                               borderColor: getScheduleItemDisplayColor(
                                 item,
@@ -342,7 +342,7 @@ export function ProjectAudienceSchedule({
                           </div>
                         ))}
                         {dayItems.length > 3 && (
-                          <p className="px-1 text-[10px] text-muted-foreground">
+                          <p className="px-1 text-xs text-muted-foreground">
                             +{dayItems.length - 3} more
                           </p>
                         )}

@@ -42,6 +42,22 @@ if (!scrollArea.includes('type = "auto"') || !scrollArea.includes("type={type}")
   failures.push("src/components/ui/scroll-area.tsx: custom scrollbars must show by default when content overflows")
 }
 
+for (const section of ["## Theme tokens, density, and elevation", "## Typography", "## Page anatomy"]) {
+  if (!standards.includes(section)) {
+    failures.push(`docs/development/ui-standards.md: must define ${section.replace("## ", "")}`)
+  }
+}
+
+// Density is a theme token; structural widths must not depend on it.
+for (const [selector, block] of [
+  [":root", globalStyles.match(/(?:^|\n):root\s*\{([^}]*)\}/)?.[1] ?? ""],
+  [".dark", globalStyles.match(/(?:^|\n)\.dark\s*\{([^}]*)\}/)?.[1] ?? ""],
+]) {
+  if (!/--spacing:\s*0\.25rem\s*;/.test(block)) {
+    failures.push(`src/app/globals.css: ${selector} must keep the 0.25rem density token`)
+  }
+}
+
 if (!/25.*50.*100/.test(standards) || !/clamp/i.test(standards)) {
   failures.push(
     "docs/development/ui-standards.md: pagination standard must define page sizes and clamping",
@@ -85,6 +101,17 @@ if (
   )
 }
 
+const smallTextExemptFiles = new Set([
+  "src/app/dashboard/projects/[id]/purchase-orders/page.tsx",
+  "src/components/desktop/sync-indicator.tsx",
+  "src/components/help/help-compass-icon.tsx",
+  "src/components/projects/daily-log-print-document.tsx",
+  "src/components/projects/owner-update-document.tsx",
+  "src/components/schedule/schedule-gantt-view.tsx",
+  "src/components/ui/badge-indicator.tsx",
+  "src/components/ui/file-preview.tsx",
+])
+
 const sourceDirectories = ["src/components", "src/app"]
 const sourceFiles = []
 
@@ -119,6 +146,15 @@ for (const relativePath of sourceFiles) {
   }
   if (/<ScrollBar\b[^>]*className\s*=\s*["'][^"']*\bhidden\b/.test(source)) {
     failures.push(`${relativePath}: custom scrollbars must not be hidden`)
+  }
+  // Text under 12px is reserved for print layouts, glyphs inside icon-sized
+  // count bubbles, avatar initials, file thumbnails, and Gantt bar labels.
+  if (!smallTextExemptFiles.has(relativePath) && !relativePath.startsWith("src/app/print/")) {
+    source.split("\n").forEach((line, index) => {
+      if (/text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/.test(line) && !line.includes("AvatarFallback")) {
+        failures.push(`${relativePath}:${index + 1}: text must be at least 12px (use text-xs)`)
+      }
+    })
   }
   if (!source.includes("getPaginationRowModel")) continue
 

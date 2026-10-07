@@ -20,9 +20,11 @@ export function ProjectAudienceNotificationSettings({
   compact = false,
   triggerIcon = "bell",
   className,
+  triggerLabel = "Notification settings",
 }: {
   readonly compact?: boolean
   readonly triggerIcon?: "bell" | "settings"
+  readonly triggerLabel?: string
   readonly className?: string
 }): React.ReactElement {
   const TriggerIcon = triggerIcon === "settings" ? IconSettings : IconBell
@@ -38,7 +40,7 @@ export function ProjectAudienceNotificationSettings({
           title={compact ? "Notification settings" : undefined}
         >
           <TriggerIcon className="size-4" />
-          {!compact && "Notification settings"}
+          {!compact && triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">

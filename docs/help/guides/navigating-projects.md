@@ -24,6 +24,10 @@ A scrollbar appears when a page, document editor, form, or panel has more conten
 
 Select **Projects**, choose the appropriate department and status view, then search by project number, client, name, or address. The project overview and navigation show only the tools allowed by your role and assignment.
 
+## Find Project Financials {#project-financials}
+
+Expand **Projects** in the left menu, then expand **Project Financials** to reach Financial Overview, Estimates, Project Budget, Bills & Pay Applications, Purchase Orders, and Change Orders. If several menu sections are open, scroll inside the left menu to reach later sections. Opening another section keeps the remaining menu items reachable. The Compass icon at the bottom opens a compact drawer: hover over it or click/tap it to see your photo, **Help**, **Feedback**, **Settings**, and communication controls. Choose **Pin** to leave the drawer open, or **Unpin** to return to a temporary drawer. The pin preference is remembered in this browser. Select the photo to change or reset it. The photo stays compact with crisp edges when you widen the sidebar, and the menu scrollbar remains available above the drawer.
+
 ## Keep Project Context {#keep-context}
 
 The active project determines where Compass saves records and uploads. When a project switcher is available inside a workflow, use it to move to the same tool on another job. Before saving, sending, approving, or uploading, verify the project number and name shown on the page.

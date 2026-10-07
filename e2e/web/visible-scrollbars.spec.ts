@@ -44,6 +44,7 @@ test("long pages and custom panels expose bars without hover; short panels do no
   const pageRegion = frame.locator("div.overflow-y-auto").first()
   await expect.poll(() => pageRegion.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true)
   await expectNativeScrollbar(pageRegion, browserName)
+  await page.getByRole("button", { name: "Open Compass drawer", exact: true }).click()
   await page.getByRole("button", { name: "Open Compass Help", exact: true }).click()
   const drawer = page.locator('[data-slot="sheet-content"]')
   const viewport = drawer.locator('[data-slot="scroll-area-viewport"]')

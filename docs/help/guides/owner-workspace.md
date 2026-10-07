@@ -27,7 +27,7 @@
     "/preview/projects/[id]/owner/warranty"
   ],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-06"
+  "lastReviewed": "2026-10-06"
 }
 ---
 
@@ -98,3 +98,7 @@ Small compass-and-question-mark symbols beside selected controls are Help beacon
 - [ ] I understand that a request is not an approval, order, payment, or contract change.
 - [ ] I kept messages and files within the intended project audience.
 - [ ] I returned to Compass for the current version before acting.
+
+## Personal Workspace Drawer {#workspace-drawer}
+
+On desktop, the Compass icon at the bottom of the sidebar opens your personal drawer. Hover or click it to see your compact photo, **Notifications**, and **Appearance**. Choose **Pin** to leave it open, or **Unpin** to return to a temporary drawer. Your pin choice is remembered in this browser. Select the photo to change or reset it. The project menu scrollbar stays available above the drawer. On mobile, notification settings and theme controls remain in the header.

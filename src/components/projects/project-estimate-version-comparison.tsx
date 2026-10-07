@@ -144,9 +144,9 @@ export function ProjectEstimateVersionComparisonDocument({
               </span>
             </div>
             <div className="overflow-x-auto print:overflow-visible">
-              <table className="w-full min-w-[850px] border-collapse text-sm print:min-w-0 print:text-[10px]">
+              <table className="w-full min-w-[850px] border-collapse text-sm print:min-w-0 print:text-xs">
                 <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground print:text-[9px] print:text-neutral-600">
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground print:text-xs print:text-neutral-600">
                     <th className="w-[1.05in] py-2 pr-3">Cost code</th>
                     <th className="py-2 pr-3">Base scope</th>
                     <th className="w-[1.15in] py-2 pr-3 text-right">Base</th>
@@ -180,7 +180,7 @@ export function ProjectEstimateVersionComparisonDocument({
                         <span className="font-medium">
                           {signedMoney(row.deltaCents)}
                         </span>
-                        <span className="block text-[10px] uppercase tracking-wide text-muted-foreground print:text-neutral-600">
+                        <span className="block text-xs uppercase tracking-wide text-muted-foreground print:text-neutral-600">
                           {changeLabel(row.change)}
                         </span>
                       </td>
