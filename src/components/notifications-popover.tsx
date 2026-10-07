@@ -216,6 +216,8 @@ export function NotificationsPopover({
     mountedRef.current = true
     void loadNotifications(true)
     const intervalId = window.setInterval(() => {
+      // Hidden tabs skip the poll; returning to the tab refreshes immediately.
+      if (document.visibilityState !== "visible") return
       void loadNotifications(false)
     }, 15_000)
     function refreshWhenVisible(): void {

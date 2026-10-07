@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useUIStream, type Spec } from "@json-render/react"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -140,6 +141,27 @@ export function useBridgeState(): BridgeContextValue {
   )
 }
 
+const BRIDGE_DETECT_INTERVAL_MS = 15_000
+
+/**
+ * Probe ws://localhost for the bridge daemon while `active` and the tab is
+ * visible. Probing unconditionally opened a failing localhost WebSocket every
+ * 15 s on every page for everyone with Ask Compass.
+ */
+export function useBridgeDetection(active: boolean): void {
+  const runningRef = React.useRef(false)
+  const check = React.useCallback((): void => {
+    if (runningRef.current) return
+    runningRef.current = true
+    void detectBridge()
+      .then(storeBridgeConnected)
+      .finally(() => {
+        runningRef.current = false
+      })
+  }, [])
+  useVisibleInterval(check, BRIDGE_DETECT_INTERVAL_MS, active)
+}
+
 // --- Backward compat aliases ---
 
 export function useAgent(): PanelContextValue {
@@ -245,20 +267,8 @@ function EnabledChatProvider({
   // --- Bridge daemon state (reads from module store) ---
   const bridge = useBridgeState()
 
-  // detect bridge on interval, write to store
-  React.useEffect(() => {
-    let cancelled = false
-    const check = async () => {
-      const connected = await detectBridge()
-      if (!cancelled) storeBridgeConnected(connected)
-    }
-    check()
-    const interval = setInterval(check, 15000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
+  // Probe the local bridge only for people who turned it on.
+  useBridgeDetection(bridge.bridgeEnabled)
 
   // TODO: Re-implement bridge transport for new agent architecture
   const bridgeTransport = React.useMemo(() => {
