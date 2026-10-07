@@ -46,7 +46,22 @@ function usedStep(jobName: string, action: string): Readonly<Record<string, unkn
   return record(step, `${jobName}/${action}`)
 }
 
+function containsKey(value: unknown, key: string): boolean {
+  if (Array.isArray(value)) return value.some((entry) => containsKey(entry, key))
+  if (!isRecord(value)) return false
+  return Object.entries(value).some(
+    ([entryKey, entryValue]) => entryKey === key || containsKey(entryValue, key),
+  )
+}
+
 describe("daily regression workflow", () => {
+  it("keeps the scheduled and manually dispatched triggers", () => {
+    expect(workflowDocument.on).toEqual({
+      schedule: [{ cron: "15 13 * * *" }],
+      workflow_dispatch: null,
+    })
+  })
+
   it("runs only the read-only production smoke spec for every browser matrix entry", () => {
     const productionJob = job("production-smoke")
     const matrix = record(record(productionJob.strategy, "production matrix").matrix, "production matrix")
@@ -63,6 +78,27 @@ describe("daily regression workflow", () => {
         PLAYWRIGHT_REQUIRE_PROJECT: "false",
       },
     })
+  })
+
+  it("keeps production jobs unconditional and disallows continue-on-error", () => {
+    expect(job("production-smoke")).not.toHaveProperty("if")
+    expect(job("android-build")).not.toHaveProperty("if")
+    expect(job("ios-build")).not.toHaveProperty("if")
+    expect(job("report").if).toBe("always()")
+    expect(containsKey(workflowDocument, "continue-on-error")).toBe(false)
+  })
+
+  it("allows only the declared production setup and smoke commands", () => {
+    const productionSteps = list(job("production-smoke").steps, "production steps")
+    const runCommands = productionSteps.flatMap((candidate) => {
+      if (!isRecord(candidate) || typeof candidate.run !== "string") return []
+      return [candidate.run]
+    })
+    expect(runCommands).toEqual([
+      "bun install --frozen-lockfile",
+      "bunx playwright install --with-deps ${{ matrix.browser }}",
+      "bunx playwright test e2e/web/production-smoke.spec.ts --project=${{ matrix.project }}",
+    ])
   })
 
   it("builds the generated mobile shell before syncing each native platform", () => {
