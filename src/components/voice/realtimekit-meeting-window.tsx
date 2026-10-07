@@ -1,6 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
 import { RtkChatToggle, RtkParticipantsToggle, RtkMoreToggle, RtkPollsToggle, RtkPluginsToggle, RtkFullscreenToggle, RtkMuteAllButton, RtkBreakoutRoomsToggle, RtkRecordingToggle, RtkDebuggerToggle } from "@cloudflare/realtimekit-react-ui"
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
@@ -9,6 +12,7 @@ import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createCompassMeetingConfig } from "@/components/voice/talk-meeting-config"
 import { TalkMeetingRenderer } from "@/components/voice/talk-meeting-renderer"
+import { TalkLeaveConfirmation } from "@/components/voice/talk-leave-confirmation"
 import { TalkCallControls } from "@/components/voice/talk-call-controls"
 import { TalkSettingsPanel } from "@/components/voice/talk-settings-panel"
 import { TalkSetup } from "@/components/voice/talk-setup"
@@ -237,6 +241,7 @@ export function RealtimeKitMeetingWindow({
     createCompassMeetingConfig()
   )
   const [notes, setNotes] = React.useState("")
+  const [notesPanelOpen, setNotesPanelOpen] = React.useState(true)
   const [notesStatus, setNotesStatus] = React.useState<string | null>(null)
   const [activePanel, setActivePanel] = React.useState<"notes" | "transcript">(
     "notes"
@@ -261,6 +266,10 @@ export function RealtimeKitMeetingWindow({
   const [joined, setJoined] = React.useState(false)
   const [joining, setJoining] = React.useState(false)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [leaveOpen, setLeaveOpen] = React.useState(false)
+  const [leaving, setLeaving] = React.useState(false)
+  const [leaveError, setLeaveError] = React.useState<string | null>(null)
+  const [canEndMeeting, setCanEndMeeting] = React.useState(false)
   const talk = useTalkSettings(meeting, userId)
   const [canScreenShare, setCanScreenShare] = React.useState(false)
   const [canUsePictureInPicture, setCanUsePictureInPicture] =
@@ -270,6 +279,7 @@ export function RealtimeKitMeetingWindow({
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
+  const endingMeetingRef = React.useRef(false)
 
   const getVoiceTracks = React.useCallback((): readonly MediaStreamTrack[] => {
     if (!meeting) return []
@@ -308,31 +318,31 @@ export function RealtimeKitMeetingWindow({
       typeof navigator !== "undefined" &&
         typeof navigator.mediaDevices?.getDisplayMedia === "function"
     )
-    setCanUsePictureInPicture(
-      typeof document !== "undefined" && document.pictureInPictureEnabled
-    )
   }, [])
 
   React.useEffect(() => {
+    if (!meeting) return
+    const pip = meeting.participants.pip
     const updatePictureInPictureState = (): void => {
-      setPictureInPictureActive(Boolean(document.pictureInPictureElement))
+      setPictureInPictureActive(pip.isActive)
     }
-
-    document.addEventListener("enterpictureinpicture", updatePictureInPictureState)
-    document.addEventListener("leavepictureinpicture", updatePictureInPictureState)
+    const updatePermissions = (): void => {
+      setCanEndMeeting(meeting.self.permissions.kickParticipant)
+    }
+    setCanUsePictureInPicture(pip.isSupported() && meeting.self.config.pipMode)
     updatePictureInPictureState()
-
+    updatePermissions()
+    // The SDK's composite PiP video lives outside the renderer's shadow roots.
+    // Capture also observes the browser's non-bubbling PiP close event.
+    document.addEventListener("enterpictureinpicture", updatePictureInPictureState, true)
+    document.addEventListener("leavepictureinpicture", updatePictureInPictureState, true)
+    meeting.self.permissions.addListener("permissionsUpdate", updatePermissions)
     return () => {
-      document.removeEventListener(
-        "enterpictureinpicture",
-        updatePictureInPictureState
-      )
-      document.removeEventListener(
-        "leavepictureinpicture",
-        updatePictureInPictureState
-      )
+      document.removeEventListener("enterpictureinpicture", updatePictureInPictureState, true)
+      document.removeEventListener("leavepictureinpicture", updatePictureInPictureState, true)
+      meeting.self.permissions.removeListener("permissionsUpdate", updatePermissions)
     }
-  }, [])
+  }, [meeting])
 
   React.useEffect(() => {
     return () => {
@@ -595,64 +605,74 @@ export function RealtimeKitMeetingWindow({
     )
   }, [setRealtimeKitCaptions, transcriptEnabled])
 
-  const leaveMeeting = React.useCallback(async (): Promise<void> => {
+  const closeMeetingWindow = React.useCallback((): void => {
+    window.close()
+    window.setTimeout(() => {
+      window.location.assign(`/dashboard/conversations/${channelId}`)
+    }, 150)
+  }, [channelId])
+
+  React.useEffect(() => {
+    if (!meeting) return
+    const handleRoomLeft = (): void => {
+      if (!endingMeetingRef.current) return
+      endingMeetingRef.current = false
+      closeMeetingWindow()
+    }
+    meeting.self.on("roomLeft", handleRoomLeft)
+    return () => { meeting.self.off("roomLeft", handleRoomLeft) }
+  }, [meeting, closeMeetingWindow])
+
+  const leaveMeeting = React.useCallback(async (endForEveryone: boolean): Promise<void> => {
+    if (!meeting || leaving) return
+    // Use the SDK's host permission and server-authorized kickAll operation,
+    // matching its built-in End for Everyone choice. Recheck at confirmation.
+    if (endForEveryone && !meeting.self.permissions.kickParticipant) {
+      setLeaveError("You do not have permission to end this meeting for everyone.")
+      return
+    }
+    setLeaving(true)
+    setLeaveError(null)
     try {
-      if (meeting?.self.screenShareEnabled) {
-        await meeting.self.disableScreenShare()
+      if (endForEveryone) {
+        // kickAll sends a request without a server acknowledgement. Keep the
+        // connection alive until roomLeft confirms that the host was removed.
+        endingMeetingRef.current = true
+        await meeting.participants.kickAll()
+        setScreenShareMessage("Ending the meeting for everyone...")
+      } else {
+        if (meeting.self.roomJoined) await meeting.leave()
+        closeMeetingWindow()
       }
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture()
-      }
-      if (meeting?.self.roomJoined) {
-        await meeting.leave()
-      }
+      setLeaveOpen(false)
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("leave-meeting-failed", {
         error: realtimeKitErrorDetails(cause),
       })
+      endingMeetingRef.current = false
+      setLeaveError(errorMessageForCause(cause))
     } finally {
-      window.close()
-      window.setTimeout(() => {
-        window.location.assign(`/dashboard/conversations/${channelId}`)
-      }, 150)
+      setLeaving(false)
     }
-  }, [channelId, meeting])
+  }, [closeMeetingWindow, meeting, leaving])
 
-  const togglePictureInPicture = React.useCallback(async (): Promise<void> => {
-    if (!canUsePictureInPicture) {
+  const togglePictureInPicture = React.useCallback((): void => {
+    if (!meeting || !canUsePictureInPicture) {
       setScreenShareMessage("Picture-in-picture is not available in this browser.")
       return
     }
-
     setScreenShareMessage(null)
     try {
-      if (document.pictureInPictureElement) {
-        setPipStatus("stopping")
-        await document.exitPictureInPicture()
+      const pip = meeting.participants.pip
+      if (pip.isActive) {
+        pip.disable()
         setPictureInPictureActive(false)
-        setPipStatus("idle")
-        return
+      } else {
+        // Idempotent initialization prepares the SDK's participant canvas and
+        // media controls. Searching document videos misses shadow-DOM tiles.
+        pip.init()
+        pip.enable()
       }
-
-      const videos = Array.from(document.querySelectorAll("video"))
-      const activeVideo =
-        videos.find(
-          (video) =>
-            !video.disablePictureInPicture &&
-            video.videoWidth > 0 &&
-            video.videoHeight > 0
-        ) ??
-        videos.find((video) => !video.disablePictureInPicture) ??
-        null
-
-      if (!activeVideo) {
-        setScreenShareMessage("Turn video on before starting picture-in-picture.")
-        return
-      }
-
-      setPipStatus("starting")
-      await activeVideo.requestPictureInPicture()
-      setPictureInPictureActive(true)
       setPipStatus("idle")
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("picture-in-picture-failed", {
@@ -661,7 +681,7 @@ export function RealtimeKitMeetingWindow({
       setPipStatus("error")
       setScreenShareMessage(errorMessageForCause(cause))
     }
-  }, [canUsePictureInPicture])
+  }, [canUsePictureInPicture, meeting])
 
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
@@ -976,6 +996,11 @@ export function RealtimeKitMeetingWindow({
           {talk.status ? <span>{talk.status}</span> : null}
         </div>
       ) : null}
+      <TalkLeaveConfirmation open={leaveOpen} busy={leaving} error={leaveError}
+        canEndMeeting={canEndMeeting}
+        onOpenChange={setLeaveOpen}
+        onLeave={() => void leaveMeeting(false)}
+        onEndMeeting={() => void leaveMeeting(true)} />
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="z-[130] max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>Camera & Background</DialogTitle><DialogDescription>Update your background and devices without leaving the call.</DialogDescription></DialogHeader>
@@ -983,7 +1008,12 @@ export function RealtimeKitMeetingWindow({
           {settingsPanel}
         </DialogContent>
       </Dialog>
-      <section className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min(16rem,32dvh))] overflow-hidden xl:grid-cols-[minmax(0,1fr)_20rem] xl:grid-rows-1">
+      <section className={cn(
+        "grid min-h-0 flex-1 overflow-hidden",
+        notesPanelOpen
+          ? "grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min(16rem,32dvh))] xl:grid-cols-[minmax(0,1fr)_20rem] xl:grid-rows-1"
+          : "grid-cols-1 grid-rows-1"
+      )}>
         {loading ? (
           <div className="row-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-2">
             Opening secure meeting...
@@ -1011,7 +1041,9 @@ export function RealtimeKitMeetingWindow({
                   pipDisabled={!meeting || !canUsePictureInPicture || pipStatus === "starting" || pipStatus === "stopping"}
                   onPip={() => void togglePictureInPicture()}
                   onSettings={() => setSettingsOpen(true)}
-                  leaveDisabled={!meeting} onLeave={() => void leaveMeeting()}
+                  leaveDisabled={!meeting || leaving} onLeave={() => { setLeaveError(null); setLeaveOpen(true) }}
+                  notesPanelOpen={notesPanelOpen}
+                  onToggleNotesPanel={() => setNotesPanelOpen(open => !open)}
                 >
                   <RtkChatToggle meeting={meeting} variant="horizontal" />
                   <RtkParticipantsToggle meeting={meeting} variant="horizontal" />
@@ -1030,7 +1062,8 @@ export function RealtimeKitMeetingWindow({
           </div>
         )}
         {!loading && !error ? (
-          <aside className="min-h-0 border-t border-border bg-background xl:border-l xl:border-t-0">
+          <aside id="talk-notes-transcript" aria-label="Notes and transcript" hidden={!notesPanelOpen}
+            className="min-h-0 border-t border-border bg-background xl:border-l xl:border-t-0">
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 border-b border-white/10 p-2">
                 <button
@@ -1055,6 +1088,10 @@ export function RealtimeKitMeetingWindow({
                 >
                   Transcript
                 </button>
+                <Button type="button" variant="ghost" size="icon"
+                  aria-label="Close Notes & Transcript" onClick={() => setNotesPanelOpen(false)}>
+                  <X aria-hidden="true" />
+                </Button>
               </div>
               {activePanel === "notes" ? (
                 <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
