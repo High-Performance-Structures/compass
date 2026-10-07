@@ -9,7 +9,9 @@ import {
   MonitorUp,
   PictureInPicture2,
   Settings,
-  PhoneOff
+  PhoneOff,
+  PanelRightClose,
+  PanelRightOpen
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -32,6 +34,8 @@ type TalkCallControlsProps = {
   readonly onSettings: () => void
   readonly leaveDisabled: boolean
   readonly onLeave: () => void
+  readonly notesPanelOpen: boolean
+  readonly onToggleNotesPanel: () => void
   readonly children: ReactNode
 }
 
@@ -120,6 +124,18 @@ export function TalkCallControls(props: TalkCallControlsProps): ReactNode {
         Leave
       </Button>
       <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2 [--rtk-space-5:8px] [--rtk-space-3:8px] [--rtk-space-6:16px] [--rtk-space-12:36px] [--rtk-controlbar-button-icon-size:16px] [&>rtk-more-toggle]:h-9">
+        <Button
+          type="button"
+          variant={props.notesPanelOpen ? "secondary" : "outline"}
+          aria-label={props.notesPanelOpen ? "Hide Notes & Transcript" : "Show Notes & Transcript"}
+          aria-expanded={props.notesPanelOpen}
+          aria-controls="talk-notes-transcript"
+          onClick={props.onToggleNotesPanel}
+        >
+          {props.notesPanelOpen ? <PanelRightClose aria-hidden="true" /> : <PanelRightOpen aria-hidden="true" />}
+          <span className="hidden sm:inline">Notes &amp; Transcript</span>
+          <span className="sm:hidden">Notes</span>
+        </Button>
         {props.children}
       </div>
     </div>
