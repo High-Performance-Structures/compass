@@ -13,11 +13,11 @@ export default async function ConversationMeetingPage({
   readonly params: Promise<{ readonly channelId: string }>
 }): Promise<React.ReactElement> {
   const user = await getCurrentUser()
-  if (!canUseOfficeTalk(user)) {
+  if (!user || !canUseOfficeTalk(user)) {
     redirect(
       "/dashboard/access-restricted?feature=conversations&action=join"
     )
   }
   const { channelId } = await params
-  return <RealtimeKitMeetingWindow channelId={channelId} />
+  return <RealtimeKitMeetingWindow channelId={channelId} userId={user.id} />
 }
