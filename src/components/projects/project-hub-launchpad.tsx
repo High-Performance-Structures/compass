@@ -286,7 +286,7 @@ function ProjectCard({
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {project.projectNumber ?? "Compass project"}
             </p>
             <h2 className="mt-0.5 truncate text-sm font-semibold">
@@ -318,7 +318,7 @@ function ProjectCard({
             ) : null}
             <Badge
               variant="outline"
-              className="px-1.5 py-0 text-[10px]"
+              className="px-1.5 py-0 text-xs"
             >
               {department === "OTHER" ? "Other" : department}
             </Badge>

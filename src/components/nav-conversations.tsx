@@ -236,7 +236,7 @@ export function NavConversations() {
           {channel.name}
         </span>
         {channel.unreadCount && channel.unreadCount > 0 && (
-          <span className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+          <span className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
             {channel.unreadCount}
           </span>
         )}
@@ -267,7 +267,7 @@ export function NavConversations() {
 
   const renderProjectLabel = (project: ProjectListItem) => (
     <SidebarMenuItem key={`project-label-${project.id}`}>
-      <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
+      <div className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/60">
         <span className="block truncate">
           {project.projectNumber ?? project.name}
         </span>
@@ -412,7 +412,7 @@ export function NavConversations() {
                   {projectChannelsByProject.orphanChannels.length > 0 && (
                     <>
                       <SidebarMenuItem>
-                        <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
+                        <div className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-sidebar-foreground/60">
                           Unmapped
                         </div>
                       </SidebarMenuItem>

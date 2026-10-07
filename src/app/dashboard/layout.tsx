@@ -136,7 +136,8 @@ export default async function DashboardLayout({
         className="h-screen overflow-hidden"
         style={
           {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
+            // Fixed width so navigation labels do not wrap when the spacing scale changes.
+            "--sidebar-width": "21.5rem",
           } as React.CSSProperties
         }
       >
@@ -155,7 +156,8 @@ export default async function DashboardLayout({
           canUseDirectMessages={canUseDirectMessages}
           canViewHelp={canViewHelp}
         />
-        <SidebarInset className="overflow-hidden">
+        {/* Keep focus and scrollIntoView inside page scroll regions, never the fixed frame. */}
+        <SidebarInset className="min-h-0 overflow-clip">
           <DesktopOfflineBanner />
           <OfflineBanner />
           <DemoBanner isDemo={isDemo} />

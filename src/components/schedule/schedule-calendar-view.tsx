@@ -132,14 +132,14 @@ function ScheduleTaskCard({
       title={`${task.title} — ${percent}% complete`}
     >
       {showProject && project && (
-        <span className="mb-0.5 block truncate text-[10px] font-medium text-muted-foreground">
+        <span className="mb-0.5 block truncate text-xs font-medium text-muted-foreground">
           <ProjectIdentity project={project} />
         </span>
       )}
       <span
         className={cn(
           "block truncate font-medium",
-          compact ? "text-[10px]" : "text-sm"
+          compact ? "text-xs" : "text-sm"
         )}
       >
         {task.title}
@@ -294,7 +294,7 @@ export function ScheduleCalendarView({
               (day) => (
                 <div
                   key={day}
-                  className="border-r py-1.5 text-center text-[11px] font-medium text-muted-foreground last:border-r-0"
+                  className="border-r py-1.5 text-center text-xs font-medium text-muted-foreground last:border-r-0"
                 >
                   {day}
                 </div>
@@ -315,7 +315,7 @@ export function ScheduleCalendarView({
                 >
                   <span
                     className={cn(
-                      "mb-1 inline-flex size-5 items-center justify-center rounded-full text-[11px]",
+                      "mb-1 inline-flex size-5 items-center justify-center rounded-full text-xs",
                       isToday(day)
                         ? "bg-primary font-semibold text-primary-foreground"
                         : "text-muted-foreground"
@@ -337,7 +337,7 @@ export function ScheduleCalendarView({
                     {dayTasks.length > 3 && (
                       <button
                         type="button"
-                        className="w-full px-1 text-left text-[10px] font-medium text-primary hover:underline"
+                        className="w-full px-1 text-left text-xs font-medium text-primary hover:underline"
                         onClick={() => setExpandedDay(day)}
                       >
                         +{dayTasks.length - 3} more
@@ -396,7 +396,7 @@ export function ScheduleCalendarView({
                     />
                   ))}
                   {dayTasks.length === 0 && (
-                    <p className="text-[11px] text-muted-foreground">No items</p>
+                    <p className="text-xs text-muted-foreground">No items</p>
                   )}
                 </div>
               </section>

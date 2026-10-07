@@ -231,6 +231,8 @@ function AnimatedCollapsibleContent({
     animation.onfinish = () => {
       if (cancelled) return
       node.style.height = open ? "auto" : "0px"
+      // Release the animated height so nested sections can grow the open menu.
+      animation.cancel()
     }
 
     return () => {
@@ -369,7 +371,7 @@ function NavNestedSubmenu({
                     >
                       <child.icon />
                       <span>{child.title}</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-sidebar-foreground/60">
+                      <span className="ml-auto shrink-0 text-xs text-sidebar-foreground/60">
                         {child.note}
                       </span>
                     </button>
