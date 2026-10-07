@@ -66,36 +66,18 @@ test.describe("Electron runtime", () => {
       })
       await expect(dashboardHeading).toBeVisible()
 
+      await page.goto(
+        new URL("/dashboard/projects/e2e-project-001", appUrl).toString(),
+      )
+      await page.waitForURL(/\/dashboard\/projects\/e2e-project-001$/)
+      await expect(page.getByText("Regression Test Project", { exact: true })).toBeVisible()
       const initialWindowCount = app.windows().length
-      const previewUrl = new URL(
-        "/preview/projects/e2e-project-001/owner",
-        appUrl,
-      ).toString()
-      // A real target=_blank click is required here. On macOS, window.open()
-      // can return a non-null proxy without creating a native Electron window.
-      // The click exercises the same guarded handler with an actual user gesture.
-      await page.evaluate((url) => {
-        const link = document.createElement("a")
-        link.href = url
-        link.target = "compass-project-audience-preview"
-        link.rel = "noreferrer"
-        link.dataset.e2ePreviewLink = "true"
-        link.textContent = "Open preview"
-        Object.assign(link.style, {
-          position: "fixed",
-          top: "8px",
-          left: "8px",
-          zIndex: "2147483647",
-          width: "120px",
-          height: "32px",
-        })
-        document.body.appendChild(link)
-      }, previewUrl)
+      await page.getByRole("button", { name: "Project actions" }).click()
+      const ownerPreview = page.getByRole("menuitem", { name: "Owner preview" })
+      await expect(ownerPreview).toBeVisible()
       await page.bringToFront()
-      const previewLink = page.locator('[data-e2e-preview-link="true"]')
-      await expect(previewLink).toBeVisible()
-      const previewLinkBox = await previewLink.boundingBox()
-      if (!previewLinkBox) throw new Error("Preview link bounds not found")
+      const ownerPreviewBox = await ownerPreview.boundingBox()
+      if (!ownerPreviewBox) throw new Error("Owner preview bounds not found")
       await app.evaluate(
         ({ BrowserWindow }, bounds) => {
           const mainWindow = BrowserWindow.getAllWindows().find(
@@ -120,10 +102,7 @@ test.describe("Electron runtime", () => {
             clickCount: 1,
           })
         },
-        previewLinkBox,
-      )
-      await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
-        link.remove(),
+        ownerPreviewBox,
       )
       await expect
         .poll(() => app.windows().length)

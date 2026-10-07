@@ -128,6 +128,8 @@ describe("desktop E2E workflow fixtures", () => {
 
     expect(source).not.toContain("const openedWindow = await page.evaluate")
     expect(source).toContain('"--disable-popup-blocking"')
+    expect(source).toContain('getByRole("button", { name: "Project actions" })')
+    expect(source).toContain('getByRole("menuitem", { name: "Owner preview" })')
     expect(source).toContain("sendInputEvent")
     expect(source).not.toContain("Promise.race([")
     expect(source).toContain("app.windows().length")
