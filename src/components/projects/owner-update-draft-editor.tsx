@@ -939,7 +939,7 @@ export function OwnerUpdateDraftEditor({
                         {photo.caption ?? photo.fileName}
                       </p>
                       {developerModeEnabled && (
-                        <p className="mt-1 text-[11px] text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {sourceLabel(photo.sourceSystem)}
                         </p>
                       )}

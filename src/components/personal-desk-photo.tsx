@@ -172,7 +172,7 @@ export function PersonalDeskPhoto({
                 unoptimized
                 className="object-cover"
               />
-              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/45 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition group-hover/photo:opacity-100">
+              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/45 px-2 py-1 text-xs font-medium text-white opacity-0 transition group-hover/photo:opacity-100">
                 <span>Desk photo</span>
                 <IconPhotoEdit className="size-3.5" />
               </div>

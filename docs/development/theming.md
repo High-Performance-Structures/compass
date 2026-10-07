@@ -101,7 +101,7 @@ Beyond colors and fonts, each theme defines spatial and shadow tokens:
 ```typescript
 export interface ThemeTokens {
   readonly radius: string      // border radius (e.g., "1.575rem")
-  readonly spacing: string     // base spacing unit (e.g., "0.3rem")
+  readonly spacing: string     // base spacing unit (e.g., "0.25rem")
   readonly trackingNormal: string  // letter spacing
   readonly shadowColor: string
   readonly shadowOpacity: string

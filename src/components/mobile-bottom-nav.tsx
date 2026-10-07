@@ -55,7 +55,7 @@ function NavItem({
       </div>
       <span
         className={cn(
-          "text-[11px] leading-tight",
+          "text-xs leading-tight",
           isActive
             ? "font-semibold text-primary"
             : "font-medium text-muted-foreground"

@@ -107,7 +107,7 @@ export function MemoriesTable() {
             <TableCell className="py-2">
               <Badge
                 variant={TYPE_VARIANTS[memory.memoryType] ?? "secondary"}
-                className="text-[10px] px-1.5 py-0"
+                className="text-xs px-1.5 py-0"
               >
                 {memory.memoryType}
               </Badge>

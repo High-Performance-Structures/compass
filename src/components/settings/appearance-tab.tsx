@@ -132,7 +132,7 @@ function ThemeCard({
         {!theme.isPreset && (
           <Badge
             variant="secondary"
-            className="ml-auto shrink-0 text-[10px] px-1 py-0"
+            className="ml-auto shrink-0 text-xs px-1 py-0"
           >
             Custom
           </Badge>

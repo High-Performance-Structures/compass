@@ -976,7 +976,7 @@ function CherishPulse(): React.ReactElement {
                 <span
                   key={value}
                   className={cn(
-                    "rounded-sm border px-2 py-0.5 text-[11px] font-medium",
+                    "rounded-sm border px-2 py-0.5 text-xs font-medium",
                     value === "Reliability"
                       ? "border-emerald-700 bg-emerald-700 text-white"
                       : "bg-muted/40 text-muted-foreground"
@@ -1144,7 +1144,7 @@ function CherishPulse(): React.ReactElement {
                   <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                     {response.message}
                   </p>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {response.submittedByName ?? "Team member"} · {formatShortDate(response.createdAt)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
