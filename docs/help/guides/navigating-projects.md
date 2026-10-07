@@ -26,7 +26,7 @@ Select **Projects**, choose the appropriate department and status view, then sea
 
 ## Find Project Financials {#project-financials}
 
-Expand **Projects** in the left menu, then expand **Project Financials** to reach Financial Overview, Estimates, Project Budget, Bills & Pay Applications, Purchase Orders, and Change Orders. If several menu sections are open, scroll inside the left menu to reach later sections. Opening another section keeps the remaining menu items reachable. The compact desk photo below the menu stays available for photo changes without taking extra space when you widen the sidebar.
+Expand **Projects** in the left menu, then expand **Project Financials** to reach Financial Overview, Estimates, Project Budget, Bills & Pay Applications, Purchase Orders, and Change Orders. If several menu sections are open, scroll inside the left menu to reach later sections. Opening another section keeps the remaining menu items reachable. The Compass icon at the bottom opens a compact drawer: hover over it or click/tap it to see your photo, **Help**, **Feedback**, **Settings**, and communication controls. Choose **Pin** to leave the drawer open, or **Unpin** to return to a temporary drawer. The pin preference is remembered in this browser. Select the photo to change or reset it. The photo stays compact with crisp edges when you widen the sidebar, and the menu scrollbar remains available above the drawer.
 
 ## Keep Project Context {#keep-context}
 

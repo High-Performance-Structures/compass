@@ -48,6 +48,7 @@ import {
 import { NavFiles } from "@/components/nav-files"
 import { NavConversations } from "@/components/nav-conversations"
 import { SidebarCommunicationDock, SidebarDeskPhoto } from "@/components/nav-user"
+import { SidebarWorkspaceDrawer } from "@/components/sidebar-workspace-drawer"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
@@ -70,9 +71,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
 
@@ -750,6 +748,7 @@ export function AppSidebar({
   readonly canViewHelp?: boolean
 }) {
   const { channelId } = useVoiceState()
+  const { state, isMobile, setOpen } = useSidebar()
   const pathname = usePathname()
 
   if (pathname.startsWith("/dashboard/field")) return null
@@ -769,39 +768,31 @@ export function AppSidebar({
           canViewProjectArchive={canViewProjectArchive}
         />
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border/60">
-        <SidebarDeskPhoto user={user} />
-        <SidebarMenu>
-          {canViewHelp ? (
-            <SidebarMenuItem>
-              <HelpDrawer
-                triggerLabel="Compass Help"
-                triggerClassName="h-7 w-full justify-start gap-1.5 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm font-normal text-sidebar-foreground ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-1.5! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden"
-              />
-            </SidebarMenuItem>
-          ) : null}
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              onClick={openFeedbackDialog}
-              tooltip="Report feedback"
-            >
-              <IconMessageReport />
-              <span>Report feedback</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Settings">
-              <Link href="/dashboard/settings">
-                <IconSettings />
+      <SidebarFooter className="gap-0 p-0!">
+        <SidebarWorkspaceDrawer
+          collapsed={!isMobile && state === "collapsed"}
+          onExpand={() => setOpen(true)}
+          preferenceKey={user ? `compass-sidebar-drawer-pinned:${user.email}` : null}
+          communicationDock={<SidebarCommunicationDock canUseOfficeTalk={canUseOfficeTalk} canUseDirectMessages={canUseDirectMessages} />}
+        >
+          <div className="flex items-center gap-2 px-1">
+            <SidebarDeskPhoto user={user} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              {canViewHelp ? <HelpDrawer
+                triggerLabel="Help"
+                triggerClassName="flex h-6 w-full items-center justify-start gap-1.5 rounded-md px-1 text-xs font-normal text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring [&>svg]:size-3.5"
+              /> : null}
+              <button type="button" onClick={openFeedbackDialog} className="flex h-6 items-center gap-1.5 rounded-md px-1 text-xs hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+                <IconMessageReport className="size-3.5 shrink-0" aria-hidden="true" />
+                <span>Feedback</span>
+              </button>
+              <Link href="/dashboard/settings" className="flex h-6 items-center gap-1.5 rounded-md px-1 text-xs hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+                <IconSettings className="size-3.5 shrink-0" aria-hidden="true" />
                 <span>Settings</span>
               </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <SidebarCommunicationDock
-          canUseOfficeTalk={canUseOfficeTalk}
-          canUseDirectMessages={canUseDirectMessages}
-        />
+            </div>
+          </div>
+        </SidebarWorkspaceDrawer>
         {channelId !== null && <VoicePanel />}
       </SidebarFooter>
     </Sidebar>

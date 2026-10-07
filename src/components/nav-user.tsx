@@ -32,16 +32,18 @@ import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 
+type SidebarPhotoUser = Pick<SidebarUser, "name" | "email" | "avatar" | "sidebarDeskPhoto">
+
 function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
   e.preventDefault()
 }
 
-function defaultSidebarPhoto(user: SidebarUser): string | null {
+function defaultSidebarPhoto(user: SidebarPhotoUser): string | null {
   return user.avatar
 }
 
-function loadSidebarPhoto(user: SidebarUser): string | null {
+function loadSidebarPhoto(user: SidebarPhotoUser): string | null {
   if (user.sidebarDeskPhoto) return user.sidebarDeskPhoto
   try {
     return (
@@ -53,7 +55,7 @@ function loadSidebarPhoto(user: SidebarUser): string | null {
   }
 }
 
-function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
+function saveSidebarPhoto(user: SidebarPhotoUser, dataUrl: string): void {
   try {
     window.localStorage.setItem(
       sidebarDeskPhotoStorageKey(user.email),
@@ -64,7 +66,7 @@ function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
   }
 }
 
-function resetSidebarPhoto(user: SidebarUser): void {
+function resetSidebarPhoto(user: SidebarPhotoUser): void {
   try {
     window.localStorage.removeItem(sidebarDeskPhotoStorageKey(user.email))
   } catch {
@@ -119,7 +121,7 @@ function resizeSidebarPhoto(dataUrl: string): Promise<string> {
 export function SidebarDeskPhoto({
   user,
 }: {
-  readonly user: SidebarUser | null
+  readonly user: SidebarPhotoUser | null
 }): React.ReactElement | null {
   const [sidebarPhotoUrl, setSidebarPhotoUrl] = React.useState<string | null>(
     null
@@ -201,21 +203,21 @@ export function SidebarDeskPhoto({
   }
 
   return (
-    <div className="px-2 pb-2 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:pb-1">
+    <div className="w-24 shrink-0">
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="group/photo mx-auto block w-full max-w-40 rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:shadow-none"
+            className="group/photo block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             aria-label="Edit sidebar photo"
           >
-            <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-sidebar-accent group-data-[collapsible=icon]:aspect-square group-data-[collapsible=icon]:rounded-md">
+            <div className="relative aspect-[3/2] overflow-hidden bg-sidebar-accent">
               {sidebarPhotoUrl && !sidebarPhotoFailed ? (
                 <Image
                   src={sidebarPhotoUrl}
                   alt={`${user.name}'s sidebar photo`}
                   fill
-                  sizes="240px"
+                  sizes="120px"
                   unoptimized
                   className="object-cover"
                   onError={() => setSidebarPhotoFailed(true)}
@@ -225,8 +227,7 @@ export function SidebarDeskPhoto({
                   {initials}
                 </span>
               )}
-              <span className="absolute inset-x-0 bottom-0 hidden items-center justify-between bg-black/45 px-2 py-1 text-[11px] font-medium text-white group-hover/photo:flex group-data-[collapsible=icon]:hidden">
-                <span>Desk photo</span>
+              <span className="absolute bottom-1 right-1 hidden bg-sidebar/90 p-0.5 text-sidebar-foreground group-hover/photo:block group-focus-visible/photo:block">
                 <IconPhotoEdit className="size-3.5" />
               </span>
             </div>
@@ -322,10 +323,10 @@ export function SidebarCommunicationDock({
         : "grid-cols-2"
 
   return (
-    <div className="group-data-[collapsible=icon]:hidden px-1 pb-1">
+    <div>
       <div
         className={cn(
-          "grid items-center gap-1 rounded-md bg-sidebar-accent/20 p-1",
+          "grid items-center gap-1",
           gridColumnsClass,
         )}
       >
@@ -339,7 +340,7 @@ export function SidebarCommunicationDock({
           selectedDeviceId={inputDeviceId}
           onSelectDevice={setInputDevice}
           deviceLabel="Input Device"
-          className="h-8 w-full px-1"
+          className="h-7 w-full px-1"
         />
         <DeviceButtonGroup
           isMuted={isDeafened}
@@ -351,7 +352,7 @@ export function SidebarCommunicationDock({
           selectedDeviceId={outputDeviceId}
           onSelectDevice={setOutputDevice}
           deviceLabel="Output Device"
-          className="h-8 w-full px-1"
+          className="h-7 w-full px-1"
         />
         {canUseOfficeTalk && (
           <button
@@ -363,7 +364,7 @@ export function SidebarCommunicationDock({
             onPointerDown={stopEvent}
             aria-label="Open Office Talk"
             title="Office Talk"
-            className="flex h-8 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex h-7 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <IconVideo className="size-4" />
           </button>
@@ -378,7 +379,7 @@ export function SidebarCommunicationDock({
             onPointerDown={stopEvent}
             aria-label="Direct message a team member"
             title="Direct message"
-            className="flex h-8 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex h-7 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <IconMessageCircle className="size-4" />
           </button>

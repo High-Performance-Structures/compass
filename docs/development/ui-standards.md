@@ -59,7 +59,15 @@ conventions; this document defines the user-visible behavior and visual rules.
   remains stationary. Users must be able to return to earlier content without
   refreshing the page.
 - Personal sidebar photos must remain compact and must not grow with sidebar
-  width at the expense of navigation space.
+  width at the expense of navigation space. Use crisp rectangular photo edges,
+  without a frame, shadow, or feathering, beside the compact Help, Feedback, and
+  Settings links.
+- Keep personal/sidebar utility actions in a bottom mini drawer with a visible
+  Compass trigger. Reveal it on intentional hover, keyboard focus, or click/tap;
+  support pinning it open. Unpinned previews overlay navigation without shifting
+  it; pinned drawers reserve space while the navigation keeps its visible
+  scrollbar above. Keep photo/device popovers usable and active voice controls
+  available. Respect reduced motion and keep collapsed/mobile sidebars usable.
 - Expanded navigation groups must grow when nested sections open. Completed
   animations must release fixed dimensions so later items remain reachable.
 - Scrollbars must work with pointer dragging, keyboard navigation, and touch;

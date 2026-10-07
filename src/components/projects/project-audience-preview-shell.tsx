@@ -210,7 +210,7 @@ export function ProjectAudiencePreviewShell({
           : "min-h-screen"
       )}
     >
-      <aside className="sticky top-0 hidden h-dvh flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
+      <aside className="sticky top-0 hidden h-dvh min-h-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
         <div className="border-b border-sidebar-border p-4">
           <Link href={homeHref} className="flex items-center gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center">
@@ -262,7 +262,7 @@ export function ProjectAudiencePreviewShell({
         </div>
 
         <nav
-          className="flex-1 space-y-1 overflow-y-auto p-3"
+          className="compass-sidebar-scroll min-h-0 flex-1 space-y-1 overflow-y-auto p-3"
           aria-label="Project workspace"
         >
           {navigation.map((item) => (
