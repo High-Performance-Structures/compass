@@ -36,8 +36,8 @@ vi.mock("@cloudflare/realtimekit", () => ({
 vi.mock("@cloudflare/realtimekit-virtual-background", () => ({
   default: {
     isSupported: () => mocks.supported,
-    init: async () => {
-      mocks.init()
+    init: async (options: unknown) => {
+      mocks.init(options)
       return {
         createBackgroundBlurVideoMiddleware: mocks.blur,
         createStaticBackgroundVideoMiddleware: mocks.image,
@@ -78,6 +78,65 @@ describe("Talk background ownership", () => {
     expect(mocks.destruct).toHaveBeenCalledTimes(1)
     await controller.apply({ mode: "none" }, null)
     expect(mocks.remove).toHaveBeenCalledTimes(2)
+  })
+  it("restores the transformer render loop when effects restart after Off", async () => {
+    const controller = new TalkBackgroundController(
+      await RTKMeeting.init({ authToken: "test" })
+    )
+    await controller.apply({ mode: "blur", strength: 45 }, null)
+    await controller.apply({ mode: "none" }, null)
+    await controller.apply({ mode: "blur", strength: 45 }, null)
+    expect(mocks.init).toHaveBeenCalledOnce()
+    expect(mocks.configure).toHaveBeenNthCalledWith(1, {
+      disablePerFrameCanvasRendering: true
+    })
+    expect(mocks.configure).toHaveBeenNthCalledWith(2, {
+      disablePerFrameCanvasRendering: false
+    })
+    expect(mocks.configure).toHaveBeenNthCalledWith(3, {
+      disablePerFrameCanvasRendering: true
+    })
+    expect(mocks.configure.mock.invocationCallOrder[2]).toBeLessThan(
+      mocks.add.mock.invocationCallOrder[1] ?? 0
+    )
+  })
+  it("uses current-frame segmentation and rebuilds the pipeline when cleanup changes", async () => {
+    const controller = new TalkBackgroundController(
+      await RTKMeeting.init({ authToken: "test" })
+    )
+    await controller.apply({ mode: "blur", strength: 45 }, null)
+    expect(mocks.init).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        segmentationConfig: { deferInputResizing: false },
+        postProcessingConfig: {}
+      })
+    )
+    await controller.apply(
+      { mode: "image", imageId: "hps" },
+      "/hps.svg",
+      "strong"
+    )
+    expect(mocks.remove).toHaveBeenCalledOnce()
+    expect(mocks.remove.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.init.mock.invocationCallOrder[1] ?? 0
+    )
+    expect(mocks.init).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        segmentationConfig: { deferInputResizing: false },
+        postProcessingConfig: {
+          jointBilateralFilter: { sigmaSpace: 2, sigmaColor: 0.1 },
+          coverage: [0.65, 0.9],
+          lightWrapping: 0
+        }
+      })
+    )
+    await controller.apply({ mode: "blur", strength: 60 }, null, "strong")
+    expect(mocks.init).toHaveBeenCalledTimes(2)
+    await controller.apply({ mode: "blur", strength: 60 }, null, "standard")
+    expect(mocks.init).toHaveBeenCalledTimes(3)
+    expect(mocks.init).toHaveBeenLastCalledWith(
+      expect.objectContaining({ postProcessingConfig: {} })
+    )
   })
   it("reports unsupported effects without changing media", async () => {
     mocks.supported = false

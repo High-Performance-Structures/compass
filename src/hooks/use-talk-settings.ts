@@ -130,7 +130,8 @@ export function useTalkSettings(
             if (resumeCamera) await meeting.self.disableVideo()
             const result = await controller.apply(
               background,
-              image?.url ?? null
+              image?.url ?? null,
+              current.backgroundCleanup
             )
             if (!mountedRef.current || controllerRef.current !== controller)
               return false
@@ -219,8 +220,9 @@ export function useTalkSettings(
   const update = React.useCallback(
     (next: TalkPreferences): void => {
       const backgroundChanged =
+        next.backgroundCleanup !== preferencesRef.current.backgroundCleanup ||
         JSON.stringify(next.background) !==
-        JSON.stringify(preferencesRef.current.background)
+          JSON.stringify(preferencesRef.current.background)
       preferencesRef.current = next
       setPreferences(next)
       try {
