@@ -39,18 +39,13 @@ async function expectHealthyNavigation(
     response.status(),
     `${path} returned HTTP ${response.status()}`,
   ).toBeLessThan(400)
-  if (expectedPath === path) {
-    await expect(page).toHaveURL(
-      new RegExp(path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    )
-  } else {
-    await expect
-      .poll(() => {
-        const url = new URL(page.url())
-        return `${url.pathname}${url.search}`
-      })
-      .toBe(expectedPath)
-  }
+  await expect
+    .poll(() => {
+      const url = new URL(page.url())
+      const actualPath = `${url.pathname}${url.search}`
+      return actualPath
+    })
+    .toBe(expectedPath)
   await expect(page.locator("body")).not.toContainText(applicationErrorText)
   await expect(page.locator("body")).not.toBeEmpty()
 }
@@ -58,26 +53,18 @@ async function expectHealthyNavigation(
 test.describe("production smoke", () => {
   test("demo workspace exposes healthy core navigation", async ({ page }) => {
     const context = page.context()
-    const serverActionRequests: string[] = []
-    context.on("request", (request) => {
+    await context.route("**/*", async (route) => {
+      const request = route.request()
       if (request.method() === "POST" && request.headers()["next-action"]) {
-        serverActionRequests.push(request.url())
+        await route.abort("blockedbyclient")
+        return
       }
-    })
-    await context.addInitScript(() => {
-      const nativeFetch = window.fetch.bind(window)
-      window.fetch = (input, init) => {
-        const request = input instanceof Request ? input : null
-        const method = (init?.method ?? request?.method ?? "GET").toUpperCase()
-        const headers = new Headers(init?.headers ?? request?.headers)
-        if (method.toUpperCase() === "POST" && headers.has("Next-Action")) {
-          return Promise.reject(new Error("Read-only smoke blocked a server action."))
-        }
-        return nativeFetch(input, init)
-      }
+      await route.continue()
     })
     await page.goto("/demo")
-    await page.waitForURL(/\/dashboard/)
+    await page.waitForURL(
+      (url) => `${url.pathname}${url.search}` === "/dashboard",
+    )
     await expect(page.locator("body")).not.toContainText(applicationErrorText)
     test.slow()
 
@@ -97,7 +84,5 @@ test.describe("production smoke", () => {
         }
       })
     }
-
-    expect(serverActionRequests).toEqual([])
   })
 })

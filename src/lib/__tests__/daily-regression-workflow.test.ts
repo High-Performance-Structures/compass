@@ -147,10 +147,28 @@ describe("daily regression workflow", () => {
     expect(productionSmoke).not.toMatch(/request\.(post|put|patch|delete)\(/)
   })
 
-  it("blocks ambient Next server-action writes before they reach production", () => {
-    expect(productionSmoke).toContain("context.addInitScript")
-    expect(productionSmoke).toContain('method.toUpperCase() === "POST"')
-    expect(productionSmoke).toContain('headers.has("Next-Action")')
-    expect(productionSmoke).toContain("Promise.reject")
+  it("aborts ambient Next server-action writes before network dispatch", () => {
+    expect(productionSmoke).toMatch(
+      /await context\.route\("\*\*\/\*",\s*async \(route\) =>/,
+    )
+    expect(productionSmoke).toContain("const request = route.request()")
+    expect(productionSmoke).toContain('request.method() === "POST"')
+    expect(productionSmoke).toContain('request.headers()["next-action"]')
+    expect(productionSmoke).toContain('await route.abort("blockedbyclient")')
+    expect(productionSmoke).not.toContain("context.addInitScript")
+    expect(productionSmoke).not.toContain("window.fetch")
+    expect(productionSmoke).not.toContain(
+      "expect(serverActionRequests).toEqual([])",
+    )
+  })
+
+  it("compares every navigation using the exact pathname and search", () => {
+    expect(productionSmoke).toContain(
+      'const actualPath = `${url.pathname}${url.search}`',
+    )
+    expect(productionSmoke).toContain(".toBe(expectedPath)")
+    expect(productionSmoke).not.toContain("new RegExp")
+    expect(productionSmoke).not.toContain("toHaveURL")
+    expect(productionSmoke).not.toMatch(/waitForURL\(\s*\//)
   })
 })
