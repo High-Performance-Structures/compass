@@ -70,13 +70,36 @@ test.describe("Electron runtime", () => {
         page.waitForEvent("popup", { timeout: 90_000 }),
         app.waitForEvent("window", { timeout: 90_000 }),
       ])
-      await page.evaluate(() => {
-        window.open(
-          `${window.location.origin}/preview/projects/e2e-project-001/owner`,
+      const previewUrl = new URL(
+        "/preview/projects/e2e-project-001/owner",
+        appUrl,
+      ).toString()
+      const openedWindow = await page.evaluate((url) => {
+        const popup = window.open(
+          url,
           "compass-project-audience-preview",
-          "popup=yes,width=1180,height=800"
+          "popup=yes,width=1180,height=800",
         )
-      })
+        return popup !== null
+      }, previewUrl)
+      if (!openedWindow) {
+        // Some macOS runner sessions reject a scripted window.open without a
+        // user gesture. A real target=_blank click exercises the same native
+        // Electron handler while preserving the preview workflow assertion.
+        await page.evaluate((url) => {
+          const link = document.createElement("a")
+          link.href = url
+          link.target = "compass-project-audience-preview"
+          link.rel = "noreferrer"
+          link.dataset.e2ePreviewLink = "true"
+          link.textContent = "Open preview"
+          document.body.appendChild(link)
+        }, previewUrl)
+        await page.locator('[data-e2e-preview-link="true"]').click()
+        await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
+          link.remove(),
+        )
+      }
       const previewWindow = await previewWindowPromise
       previewVideo = previewWindow.video()
       await expect(previewWindow).toHaveURL(
