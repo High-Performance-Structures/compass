@@ -127,7 +127,7 @@ describe("desktop E2E workflow fixtures", () => {
     const source = electronRuntimeSpec()
 
     expect(source).not.toContain("const openedWindow = await page.evaluate")
-    expect(source).toContain(".click({ force: true })")
+    expect(source).toContain("sendInputEvent")
     expect(source).not.toContain("Promise.race([")
     expect(source).toContain("app.windows().length")
   })

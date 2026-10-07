@@ -92,9 +92,36 @@ test.describe("Electron runtime", () => {
         document.body.appendChild(link)
       }, previewUrl)
       await page.bringToFront()
-      await page
-        .locator('[data-e2e-preview-link="true"]')
-        .click({ force: true })
+      const previewLink = page.locator('[data-e2e-preview-link="true"]')
+      await expect(previewLink).toBeVisible()
+      const previewLinkBox = await previewLink.boundingBox()
+      if (!previewLinkBox) throw new Error("Preview link bounds not found")
+      await app.evaluate(
+        ({ BrowserWindow }, bounds) => {
+          const mainWindow = BrowserWindow.getAllWindows().find(
+            (candidate) => !candidate.webContents.getURL().includes("/preview/"),
+          )
+          if (!mainWindow) throw new Error("Main Electron window not found")
+          mainWindow.focus()
+          const x = bounds.x + bounds.width / 2
+          const y = bounds.y + bounds.height / 2
+          mainWindow.webContents.sendInputEvent({
+            type: "mouseDown",
+            x,
+            y,
+            button: "left",
+            clickCount: 1,
+          })
+          mainWindow.webContents.sendInputEvent({
+            type: "mouseUp",
+            x,
+            y,
+            button: "left",
+            clickCount: 1,
+          })
+        },
+        previewLinkBox,
+      )
       await page.locator('[data-e2e-preview-link="true"]').evaluate((link) =>
         link.remove(),
       )
