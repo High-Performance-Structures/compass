@@ -896,6 +896,64 @@ export async function saveProjectNuTechOrder(
               : eq(
                   nuTechOrderWorkflows.airliteWorkbookClaimRevision,
                   existing.airliteWorkbookClaimRevision
+                ),
+            existing.airliteWorkbookId === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookId)
+              : eq(nuTechOrderWorkflows.airliteWorkbookId, existing.airliteWorkbookId),
+            existing.airliteWorkbookUrl === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookUrl)
+              : eq(nuTechOrderWorkflows.airliteWorkbookUrl, existing.airliteWorkbookUrl),
+            existing.airliteWorkbookGeneratedAt === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookGeneratedAt)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookGeneratedAt,
+                  existing.airliteWorkbookGeneratedAt
+                ),
+            existing.airliteWorkbookGeneratedBy === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookGeneratedBy)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookGeneratedBy,
+                  existing.airliteWorkbookGeneratedBy
+                ),
+            existing.airliteWorkbookClaimReclaimAfter === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimReclaimAfter,
+                  existing.airliteWorkbookClaimReclaimAfter
+                ),
+            existing.airliteWorkbookClaimRetryUntil === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimRetryUntil)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimRetryUntil,
+                  existing.airliteWorkbookClaimRetryUntil
+                ),
+            existing.airliteWorkbookClaimAttempt === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimAttempt)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimAttempt,
+                  existing.airliteWorkbookClaimAttempt
+                ),
+            existing.airliteWorkbookClaimFingerprint === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimFingerprint)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimFingerprint,
+                  existing.airliteWorkbookClaimFingerprint
+                ),
+            existing.airliteWorkbookClaimError === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookClaimError)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookClaimError,
+                  existing.airliteWorkbookClaimError
+                ),
+            eq(
+              nuTechOrderWorkflows.airliteWorkbookProviderStatus,
+              existing.airliteWorkbookProviderStatus
+            ),
+            existing.airliteWorkbookProviderAttemptedAt === null
+              ? isNull(nuTechOrderWorkflows.airliteWorkbookProviderAttemptedAt)
+              : eq(
+                  nuTechOrderWorkflows.airliteWorkbookProviderAttemptedAt,
+                  existing.airliteWorkbookProviderAttemptedAt
                 )
           )
     const workflowSaveGuardValid =

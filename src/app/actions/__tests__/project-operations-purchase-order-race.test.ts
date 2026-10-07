@@ -1272,6 +1272,167 @@ describe("Nu-Tech child repricing compare-and-swap", () => {
     sqlite.close()
   })
 
+  it("rejects a same-millisecond stale save after a provider reservation records workbook evidence", async () => {
+    let releaseExistingRead: () => void = () => undefined
+    const existingReadPaused = new Promise<void>((resolve) => {
+      releaseExistingRead = resolve
+    })
+    let signalExistingRead: () => void = () => undefined
+    const existingReadReached = new Promise<void>((resolve) => {
+      signalExistingRead = resolve
+    })
+    let existingReadSignaled = false
+    const sqlite = new Database(":memory:")
+    createSchema(sqlite)
+    seedDraft(sqlite, FIXED_NOW)
+    seedNuTechWorkflow(sqlite, FIXED_NOW)
+    sqlite
+      .prepare(`
+        UPDATE nutech_order_workflows
+        SET airlite_workbook_status = ?,
+          airlite_workbook_claim_token = ?,
+          airlite_workbook_claim_revision = ?,
+          airlite_workbook_claim_reclaim_after = ?,
+          airlite_workbook_claim_retry_until = ?,
+          airlite_workbook_claim_attempt = ?,
+          airlite_workbook_claim_fingerprint = ?,
+          airlite_workbook_provider_status = ?
+        WHERE id = ?
+      `)
+      .run(
+        "generating",
+        "claim-before-provider",
+        7,
+        "2026-08-25T04:59:00.000Z",
+        "2026-08-24T05:00:00.000Z",
+        1,
+        "fingerprint-before-provider",
+        "not_started",
+        "workflow-1"
+      )
+
+    const staleActorClient = createD1(sqlite, {
+      paused: existingReadPaused,
+      shouldPause: (query) => {
+        const normalizedQuery = query.toLowerCase()
+        return (
+          normalizedQuery.startsWith("select") &&
+          normalizedQuery.includes("nutech_order_workflows")
+        )
+      },
+      signal: () => {
+        if (existingReadSignaled) return
+        existingReadSignaled = true
+        signalExistingRead()
+      },
+    })
+    const providerActorClient = createD1(sqlite)
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const staleActor = drizzle(staleActorClient, {
+      schema: {
+        organizations,
+        projects,
+        nuTechCatalogVersions,
+        nuTechOrderWorkflows,
+        nuTechOrderItems,
+        nuTechProducts,
+        nuTechCatalogPrices,
+      },
+    })
+    // @ts-expect-error The SQLite adapter implements the D1 methods exercised here.
+    const providerActor = drizzle(providerActorClient, {
+      schema: { nuTechOrderWorkflows },
+    })
+    mocks.getDb.mockReturnValue(staleActor)
+
+    const staleSave = saveProjectNuTechOrder("project-1", {
+      customerType: "new",
+      pricingMode: "standard",
+      quantitySource: "customer_provided",
+      takeoffAcknowledgementStatus: "not_required",
+      scopeType: "block_sale",
+      blockQuantityNotes: null,
+      bracingIncluded: false,
+      bracingRentalStartDate: null,
+      bracingRentalEndDate: null,
+      bracingNotes: null,
+      deliveryMethod: "delivery",
+      requestedDeliveryDate: "2026-09-30",
+      airlitePurchaseOrderOperationId: "po-1",
+      orderStatus: "customer_approved",
+      vendorConfirmationNumber: null,
+      vendorInvoiceNumber: null,
+      vendorInvoiceStatus: "not_received",
+      vendorInvoiceReceivedAt: null,
+      notes: "stale parent save",
+    })
+    await existingReadReached
+
+    await providerActor
+      .update(nuTechOrderWorkflows)
+      .set({
+        airliteWorkbookId: "drive-workbook-1",
+        airliteWorkbookUrl: "https://docs.google.com/spreadsheets/d/drive-workbook-1/edit",
+        airliteWorkbookGeneratedAt: FIXED_NOW,
+        airliteWorkbookGeneratedBy: "staff-1",
+        airliteWorkbookClaimReclaimAfter: "2026-08-25T05:05:00.000Z",
+        airliteWorkbookClaimRetryUntil: "2026-08-26T05:00:00.000Z",
+        airliteWorkbookClaimAttempt: 2,
+        airliteWorkbookClaimFingerprint: "fingerprint-provider-effect",
+        airliteWorkbookClaimError: "provider effect recorded",
+        airliteWorkbookProviderStatus: "succeeded",
+        airliteWorkbookProviderAttemptedAt: FIXED_NOW,
+        updatedAt: FIXED_NOW,
+      })
+      .where(eq(nuTechOrderWorkflows.id, "workflow-1"))
+      .run()
+
+    releaseExistingRead()
+    await expect(staleSave).resolves.toEqual({
+      success: false,
+      error: "The Nu-Tech order changed while it was being saved. Refresh and try again.",
+    })
+    expect(
+      sqlite
+        .prepare(`
+          SELECT airlite_workbook_status, airlite_workbook_id,
+            airlite_workbook_url, airlite_workbook_generated_at,
+            airlite_workbook_generated_by, airlite_workbook_claim_token,
+            airlite_workbook_claim_revision, airlite_workbook_claim_reclaim_after,
+            airlite_workbook_claim_retry_until, airlite_workbook_claim_attempt,
+            airlite_workbook_claim_fingerprint, airlite_workbook_claim_error,
+            airlite_workbook_provider_status, airlite_workbook_provider_attempted_at
+          FROM nutech_order_workflows WHERE id = 'workflow-1'
+        `)
+        .get()
+    ).toEqual({
+      airlite_workbook_status: "generating",
+      airlite_workbook_id: "drive-workbook-1",
+      airlite_workbook_url:
+        "https://docs.google.com/spreadsheets/d/drive-workbook-1/edit",
+      airlite_workbook_generated_at: FIXED_NOW,
+      airlite_workbook_generated_by: "staff-1",
+      airlite_workbook_claim_token: "claim-before-provider",
+      airlite_workbook_claim_revision: 7,
+      airlite_workbook_claim_reclaim_after: "2026-08-25T05:05:00.000Z",
+      airlite_workbook_claim_retry_until: "2026-08-26T05:00:00.000Z",
+      airlite_workbook_claim_attempt: 2,
+      airlite_workbook_claim_fingerprint: "fingerprint-provider-effect",
+      airlite_workbook_claim_error: "provider effect recorded",
+      airlite_workbook_provider_status: "succeeded",
+      airlite_workbook_provider_attempted_at: FIXED_NOW,
+    })
+    expect(
+      sqlite
+        .prepare("SELECT notes FROM nutech_order_workflows WHERE id = 'workflow-1'")
+        .get()
+    ).toEqual({ notes: null })
+    expect(
+      sqlite.prepare("SELECT COUNT(*) AS count FROM nutech_order_save_guards").get()
+    ).toEqual({ count: 0 })
+    sqlite.close()
+  })
+
   it("commits the parent save and child repricing together", async () => {
     const sqlite = new Database(":memory:")
     createSchema(sqlite)
