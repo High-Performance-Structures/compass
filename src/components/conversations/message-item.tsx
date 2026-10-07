@@ -173,7 +173,7 @@ export const MessageItem = React.memo(function MessageItem({
         <div className="flex items-baseline gap-2">
           <span className="text-sm font-medium">{displayName}</span>
           {roleBadge && (
-            <Badge variant={roleBadge.variant} className="h-4 text-[10px] px-1">
+            <Badge variant={roleBadge.variant} className="h-4 text-xs px-1">
               {roleBadge.label}
             </Badge>
           )}

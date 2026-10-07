@@ -846,7 +846,7 @@ export function ScheduleItemFormDialog({
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <p className="text-xs font-medium">Optional template to-dos</p>
-                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              <p className="mt-0.5 text-xs text-muted-foreground">
                                 {selectedTemplateTodoIds.length} of{" "}
                                 {selectedTemplateGroup.linkedTodos.length} selected · none are added
                                 unless selected
@@ -905,7 +905,7 @@ export function ScheduleItemFormDialog({
                                   <span className="min-w-0 flex-1">
                                     <span className="block text-xs font-medium">{todo.title}</span>
                                     {todo.checklistItemCount > 0 && (
-                                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      <span className="mt-0.5 block text-xs text-muted-foreground">
                                         Includes {todo.checklistItemCount} checklist item
                                         {todo.checklistItemCount === 1 ? "" : "s"}
                                       </span>
@@ -955,7 +955,7 @@ export function ScheduleItemFormDialog({
                   )
                   return (
                     <FormItem>
-                      <FormLabel className="text-[11px] font-medium text-muted-foreground">
+                      <FormLabel className="text-xs font-medium text-muted-foreground">
                         Phase
                       </FormLabel>
                       <div className="flex items-center gap-2">
@@ -1041,7 +1041,7 @@ export function ScheduleItemFormDialog({
               />
 
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground font-medium">Display color</span>
+                <span className="text-xs text-muted-foreground font-medium">Display color</span>
                 <div className="flex items-center gap-1.5" aria-label="Display color">
                   {DISPLAY_COLOR_OPTIONS.map((color) => {
                     const selected = watchedDisplayColor === color.value
@@ -1064,7 +1064,7 @@ export function ScheduleItemFormDialog({
                     )
                   })}
                 </div>
-                <label className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground">
+                <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
                   <Input
                     type="color"
                     aria-label="Custom schedule item color"
@@ -1090,7 +1090,7 @@ export function ScheduleItemFormDialog({
                   name="startDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                      <FormLabel className="text-xs text-muted-foreground font-medium">
                         Start
                       </FormLabel>
                       <Popover>
@@ -1129,7 +1129,7 @@ export function ScheduleItemFormDialog({
                   name="workdays"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                      <FormLabel className="text-xs text-muted-foreground font-medium">
                         Duration
                       </FormLabel>
                       <div className="flex items-center gap-1">
@@ -1145,7 +1145,7 @@ export function ScheduleItemFormDialog({
                             name={field.name}
                           />
                         </FormControl>
-                        <span className="text-[11px] text-muted-foreground shrink-0">d</span>
+                        <span className="text-xs text-muted-foreground shrink-0">d</span>
                       </div>
                       <FormMessage />
                     </FormItem>
@@ -1153,7 +1153,7 @@ export function ScheduleItemFormDialog({
                 />
 
                 <FormItem>
-                  <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                  <FormLabel className="text-xs text-muted-foreground font-medium">
                     End
                   </FormLabel>
                   <div className="flex items-center h-9 px-3 rounded-md bg-muted/40 text-sm text-muted-foreground tabular-nums">
@@ -1167,7 +1167,7 @@ export function ScheduleItemFormDialog({
                 name="shiftReason"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                    <FormLabel className="text-xs text-muted-foreground font-medium">
                       Schedule shift reason
                     </FormLabel>
                     <FormControl>
@@ -1178,7 +1178,7 @@ export function ScheduleItemFormDialog({
                         {...field}
                       />
                     </FormControl>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Saved in activity history. If the project finish moves later,
                       project administrators are warned that a change order may be needed.
                     </p>
@@ -1201,7 +1201,7 @@ export function ScheduleItemFormDialog({
                     )}
                     Details
                     {!detailsOpen && (isEditing || hasPredecessors) && (
-                      <span className="text-[10px] text-primary ml-1">(has data)</span>
+                      <span className="text-xs text-primary ml-1">(has data)</span>
                     )}
                   </button>
                 </CollapsibleTrigger>
@@ -1214,7 +1214,7 @@ export function ScheduleItemFormDialog({
                       name="status"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                          <FormLabel className="text-xs text-muted-foreground font-medium">
                             Status
                           </FormLabel>
                           <Select
@@ -1256,7 +1256,7 @@ export function ScheduleItemFormDialog({
                       name="assignedTo"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                          <FormLabel className="text-xs text-muted-foreground font-medium">
                             Responsible contact
                           </FormLabel>
                           <ProjectAssigneePicker
@@ -1296,7 +1296,7 @@ export function ScheduleItemFormDialog({
                           <FormControl>
                             <Switch checked={field.value} onCheckedChange={field.onChange} />
                           </FormControl>
-                          <FormLabel className="!mt-0 text-[11px] text-muted-foreground font-medium">
+                          <FormLabel className="!mt-0 text-xs text-muted-foreground font-medium">
                             Milestone
                           </FormLabel>
                         </FormItem>
@@ -1310,7 +1310,7 @@ export function ScheduleItemFormDialog({
                     name="percentComplete"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                        <FormLabel className="text-xs text-muted-foreground font-medium">
                           Progress
                         </FormLabel>
                         <div className="flex items-center gap-3">
@@ -1345,7 +1345,7 @@ export function ScheduleItemFormDialog({
 
                   <div className="border-t pt-4">
                     <p className="text-xs font-medium">Audience &amp; commitment</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Visibility changes reach project workspaces only after the schedule is
                       published.
                     </p>
@@ -1434,7 +1434,7 @@ export function ScheduleItemFormDialog({
                           </Button>
                         </div>
                         {acceptProposalOnSave && (
-                          <p className="text-[11px] text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             Saving applies these dates through the normal dependency and
                             related to-do updates. Publish afterward to make them visible
                             externally.
@@ -1490,7 +1490,7 @@ export function ScheduleItemFormDialog({
                   {/* Predecessors */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
-                      <h3 className="text-[11px] font-medium text-muted-foreground">
+                      <h3 className="text-xs font-medium text-muted-foreground">
                         Predecessors
                       </h3>
                       <ContextualHelpBeacon topicId="schedule.predecessors" />
@@ -1529,7 +1529,7 @@ export function ScheduleItemFormDialog({
                           </Select>
                           <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
                             <div className="min-w-0 space-y-1">
-                              <span className="block text-[10px] text-muted-foreground">
+                              <span className="block text-xs text-muted-foreground">
                                 Relationship
                               </span>
                               <Select
@@ -1557,7 +1557,7 @@ export function ScheduleItemFormDialog({
                               </Select>
                             </div>
                             <div className="min-w-0 space-y-1">
-                              <span className="block text-[10px] text-muted-foreground">
+                              <span className="block text-xs text-muted-foreground">
                                 Lag / lead days
                               </span>
                               <Input
@@ -1615,7 +1615,7 @@ export function ScheduleItemFormDialog({
                         </Select>
                         <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
                           <div className="min-w-0 space-y-1">
-                            <span className="block text-[10px] text-muted-foreground">
+                            <span className="block text-xs text-muted-foreground">
                               Relationship
                             </span>
                             <Select
@@ -1638,7 +1638,7 @@ export function ScheduleItemFormDialog({
                             </Select>
                           </div>
                           <div className="min-w-0 space-y-1">
-                            <span className="block text-[10px] text-muted-foreground">
+                            <span className="block text-xs text-muted-foreground">
                               Lag / lead days
                             </span>
                             <Input
@@ -1684,7 +1684,7 @@ export function ScheduleItemFormDialog({
                     )}
 
                     {availableTasks.length === 0 && existingPredecessors.length === 0 && (
-                      <p className="text-[11px] text-muted-foreground/60">
+                      <p className="text-xs text-muted-foreground/60">
                         No other schedule items to link as predecessors.
                       </p>
                     )}
@@ -1696,7 +1696,7 @@ export function ScheduleItemFormDialog({
                     name="notes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-[11px] text-muted-foreground font-medium">
+                        <FormLabel className="text-xs text-muted-foreground font-medium">
                           Notes
                         </FormLabel>
                         <FormControl>
@@ -1719,12 +1719,12 @@ export function ScheduleItemFormDialog({
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-medium">Related to-dos</h3>
                         {!linkedTodosLoading && (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
                             {linkedTodos.length}
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         These stay in the existing Compass project to-do list and link back here.
                       </p>
                     </div>
@@ -1774,7 +1774,7 @@ export function ScheduleItemFormDialog({
                             >
                               {todo.title}
                             </Link>
-                            <p className="mt-1 text-[11px] text-muted-foreground">
+                            <p className="mt-1 text-xs text-muted-foreground">
                               {todo.sourceRecordNumber ?? "Compass to-do"}
                               {todo.assigneeName || todo.companyName
                                 ? ` · ${todo.assigneeName ?? todo.companyName}`
@@ -1784,7 +1784,7 @@ export function ScheduleItemFormDialog({
                                 : " · No due date"}
                             </p>
                           </div>
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                             {todo.status.replaceAll("_", " ")}
                           </span>
                         </div>
@@ -1804,7 +1804,7 @@ export function ScheduleItemFormDialog({
 
             {/* Footer */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 border-t shrink-0">
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 {!isEditing && selectedTemplateItemId
                   ? `1 schedule item + ${selectedTemplateTodoIds.length} to-do${
                       selectedTemplateTodoIds.length === 1 ? "" : "s"

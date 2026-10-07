@@ -54,7 +54,7 @@ function SkillCard({
             </span>
             <Badge
               variant={enabled ? "default" : "secondary"}
-              className="text-[10px] px-1.5 py-0"
+              className="text-xs px-1.5 py-0"
             >
               {enabled ? "enabled" : "disabled"}
             </Badge>
@@ -64,7 +64,7 @@ function SkillCard({
               {skill.description}
             </p>
           )}
-          <p className="text-muted-foreground text-[10px] mt-1">
+          <p className="text-muted-foreground text-xs mt-1">
             {skill.source}
           </p>
         </div>
@@ -104,7 +104,7 @@ function SkillCard({
       )}
 
       {expanded && skill.contentPreview && (
-        <pre className="text-[11px] bg-muted rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
+        <pre className="text-xs bg-muted rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap">
           {skill.contentPreview}
         </pre>
       )}
@@ -196,8 +196,8 @@ export function SkillsTab() {
         <Label className="text-xs">Install from GitHub</Label>
         <p className="text-muted-foreground text-xs">
           Enter a GitHub path like{" "}
-          <code className="text-[10px]">owner/repo/skill-name</code>{" "}
-          or <code className="text-[10px]">owner/repo</code>
+          <code className="text-xs">owner/repo/skill-name</code>{" "}
+          or <code className="text-xs">owner/repo</code>
         </p>
         <div className="flex gap-2">
           <Input

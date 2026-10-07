@@ -939,7 +939,7 @@ export function ScheduleView({
               {activeFilterCount > 0 && (
                 <Badge
                   variant="secondary"
-                  className="ml-1.5 h-4 min-w-4 rounded-sm px-1 text-[10px]"
+                  className="ml-1.5 h-4 min-w-4 rounded-sm px-1 text-xs"
                 >
                   {activeFilterCount}
                 </Badge>
@@ -1143,7 +1143,7 @@ export function ScheduleView({
                     onClick={() => applySavedView(savedView)}
                   >
                     <span className="block truncate">{savedView.name}</span>
-                    <span className="text-[11px] capitalize text-muted-foreground">
+                    <span className="text-xs capitalize text-muted-foreground">
                       {savedView.visibility}
                     </span>
                   </button>

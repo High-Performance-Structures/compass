@@ -86,7 +86,7 @@ function MemberGroup({ title, members, statusColor }: MemberGroupProps) {
 
   return (
     <div className="mb-4">
-      <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {title} — {members.length}
       </h3>
       <ul className="space-y-0.5">
@@ -126,7 +126,7 @@ function MemberGroup({ title, members, statusColor }: MemberGroupProps) {
                 )}
               </div>
               {(member.role === "owner" || member.role === "moderator") && (
-                <Badge variant={getRoleBadgeVariant(member.role)} className="text-[10px]">
+                <Badge variant={getRoleBadgeVariant(member.role)} className="text-xs">
                   {member.role}
                 </Badge>
               )}

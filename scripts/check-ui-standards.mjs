@@ -101,6 +101,17 @@ if (
   )
 }
 
+const smallTextExemptFiles = new Set([
+  "src/app/dashboard/projects/[id]/purchase-orders/page.tsx",
+  "src/components/desktop/sync-indicator.tsx",
+  "src/components/help/help-compass-icon.tsx",
+  "src/components/projects/daily-log-print-document.tsx",
+  "src/components/projects/owner-update-document.tsx",
+  "src/components/schedule/schedule-gantt-view.tsx",
+  "src/components/ui/badge-indicator.tsx",
+  "src/components/ui/file-preview.tsx",
+])
+
 const sourceDirectories = ["src/components", "src/app"]
 const sourceFiles = []
 
@@ -135,6 +146,15 @@ for (const relativePath of sourceFiles) {
   }
   if (/<ScrollBar\b[^>]*className\s*=\s*["'][^"']*\bhidden\b/.test(source)) {
     failures.push(`${relativePath}: custom scrollbars must not be hidden`)
+  }
+  // Text under 12px is reserved for print layouts, glyphs inside icon-sized
+  // count bubbles, avatar initials, file thumbnails, and Gantt bar labels.
+  if (!smallTextExemptFiles.has(relativePath) && !relativePath.startsWith("src/app/print/")) {
+    source.split("\n").forEach((line, index) => {
+      if (/text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/.test(line) && !line.includes("AvatarFallback")) {
+        failures.push(`${relativePath}:${index + 1}: text must be at least 12px (use text-xs)`)
+      }
+    })
   }
   if (!source.includes("getPaginationRowModel")) continue
 

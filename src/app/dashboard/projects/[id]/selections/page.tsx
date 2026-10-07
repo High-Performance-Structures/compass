@@ -1,9 +1,9 @@
 import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
+import { PageHeader } from "@/components/page-header"
 import { SelectionDecisionWorkspace } from "@/components/selections/selection-decision-workspace"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
-import { IconArrowLeft } from "@tabler/icons-react"
 import { notFound } from "next/navigation"
 
 import {
@@ -19,7 +19,6 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import { projectBrandFor } from "@/lib/project-branding"
 
@@ -79,59 +78,50 @@ export default async function ProjectSelectionsPage({
 
   return (
     <ProjectContextWatermarkShell>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
-            <Link href={`/dashboard/projects/${id}`}>
-              <IconArrowLeft className="size-4" />
-              Project
-            </Link>
-          </Button>
-          <div className="flex items-center gap-3">
-            <ProjectBrandLogo
-              brand={brand}
-              size={32}
-              className="h-8 w-8 object-contain"
-            />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Finish Selections
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
+        icon={<ProjectBrandLogo brand={brand} size={32} className="h-8 w-8 object-contain" />}
+        title="Finish Selections"
+        description={
+          <>
             {label} room selections, supplier links, cost codes, and RFQ-ready
             items.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <ProjectQuickSwitcher
-            projects={projects}
-            currentProjectId={id}
-            targetSection="selections"
-            placeholder="Switch selections project..."
-            className="w-full sm:w-[300px]"
-          />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Badge variant="secondary">
-              {summary.roomCount} room{summary.roomCount === 1 ? "" : "s"}
-            </Badge>
-            {summary.sourceWorkbookCount > 0 && (
-              <DeveloperOnly>
-                <Badge variant="outline">
-                  {summary.sourceWorkbookCount} workbook
-                  {summary.sourceWorkbookCount === 1 ? "" : "s"}
+          </>
+        }
+        actions={
+          <>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <ProjectQuickSwitcher
+                projects={projects}
+                currentProjectId={id}
+                targetSection="selections"
+                placeholder="Switch selections project..."
+                className="w-full sm:w-[300px]"
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Badge variant="secondary">
+                  {summary.roomCount} room{summary.roomCount === 1 ? "" : "s"}
                 </Badge>
-              </DeveloperOnly>
-            )}
-            <Badge variant="secondary">{summary.totalCount} total</Badge>
-            <Badge variant="outline">
-              {summary.needsDecisionCount} need decision
-            </Badge>
-            <Badge variant="outline">{summary.approvedCount} approved</Badge>
-            <Badge variant="outline">{summary.pricingCount} pricing</Badge>
-            <Badge variant="outline">{summary.orderedCount} ordered</Badge>
-          </div>
-        </div>
-      </div>
+                {summary.sourceWorkbookCount > 0 && (
+                  <DeveloperOnly>
+                    <Badge variant="outline">
+                      {summary.sourceWorkbookCount} workbook
+                      {summary.sourceWorkbookCount === 1 ? "" : "s"}
+                    </Badge>
+                  </DeveloperOnly>
+                )}
+                <Badge variant="secondary">{summary.totalCount} total</Badge>
+                <Badge variant="outline">
+                  {summary.needsDecisionCount} need decision
+                </Badge>
+                <Badge variant="outline">{summary.approvedCount} approved</Badge>
+                <Badge variant="outline">{summary.pricingCount} pricing</Badge>
+                <Badge variant="outline">{summary.orderedCount} ordered</Badge>
+              </div>
+            </div>
+          </>
+        }
+      />
 
       <Link
         href={`/preview/projects/${id}/owner/selections`}

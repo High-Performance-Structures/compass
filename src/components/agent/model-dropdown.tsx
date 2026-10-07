@@ -341,7 +341,7 @@ export function ModelDropdown(): React.JSX.Element {
                     <span className="text-xs font-medium">
                       {m.name}
                     </span>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {m.description}
                     </p>
                   </div>
@@ -354,7 +354,7 @@ export function ModelDropdown(): React.JSX.Element {
           </div>
         ) : (
           <div className="p-1.5">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
               Model ID
             </label>
             <Input
