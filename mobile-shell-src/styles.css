@@ -61,7 +61,7 @@ button { cursor: pointer; }
   font-weight: 800;
 }
 
-.shell { width: 100%; max-width: 100%; min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.shell { width: 100%; max-width: 100%; min-height: 100vh; padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
 .shell-header {
   position: sticky;
   top: 0;
@@ -96,6 +96,8 @@ button { cursor: pointer; }
 .row { width: 100%; min-height: 72px; display: flex; align-items: center; gap: 14px; padding: 14px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; }
 .row:last-child { border-bottom: 0; }
 .row-main { min-width: 0; flex: 1; }
+.row > strong { flex-shrink: 0; }
+.row-title { overflow-wrap: anywhere; }
 .row-title { margin: 0; font-size: 15px; font-weight: 750; }
 .row-note { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
 .row-date { flex: 0 0 64px; color: var(--green); font-size: 13px; font-weight: 800; }
@@ -135,7 +137,8 @@ button { cursor: pointer; }
   text-align: left;
 }
 .cherish-spotlight span { color: var(--green); font-size: 11px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
-.cherish-spotlight strong { font-size: 14px; line-height: 1.45; }
+/* Keep the spotlight a short teaser; the full story lives on the Cherish tab. */
+.cherish-spotlight strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 14px; line-height: 1.45; }
 .cherish-spotlight small { color: var(--muted); font-size: 11px; }
 .cherish-stream { margin-bottom: 28px; }
 .cherish-recognition-list { border-bottom: 1px solid var(--line); }
@@ -172,6 +175,9 @@ button { cursor: pointer; }
   font-size: 16px;
 }
 .field textarea { min-height: 94px; resize: vertical; }
+/* iOS Safari gives date inputs an intrinsic width that ignores width: 100%. */
+.field input[type="date"] { display: block; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; text-align: left; }
+.field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .field select { appearance: auto; }
 .native-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .file-picker { display: grid; gap: 4px; min-height: 58px; padding: 12px; border: 1px solid var(--green); border-radius: 4px; color: var(--green); }
@@ -250,7 +256,9 @@ button { cursor: pointer; }
 .message-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .message-author { font-weight: 800; }
 .message-time { color: var(--muted); }
-.message-body { margin: 7px 0 0; white-space: pre-wrap; font-size: 14px; line-height: 1.55; }
+.message-body { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.55; }
+.message-body.collapsed { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
+.message-more { margin-top: 6px; padding: 4px 0; border: 0; background: transparent; color: var(--green); font-size: 13px; font-weight: 750; }
 .project-message-tools { margin-top: 18px; border-top: 1px solid var(--line); }
 .project-message-tools > summary { padding: 16px 0; color: var(--green); font-size: 14px; font-weight: 800; cursor: pointer; }
 .chat-compose { padding: 0 0 18px; }
