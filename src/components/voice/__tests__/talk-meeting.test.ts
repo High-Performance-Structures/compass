@@ -86,14 +86,12 @@ vi.mock("@cloudflare/realtimekit-react-ui", async () => {
     createDefaultConfig: () => ({}),
     RtkChatToggle: () => null,
     RtkParticipantsToggle: () => null,
-    RtkMoreToggle: () => null,
-    RtkPollsToggle: () => null,
-    RtkPluginsToggle: () => null,
-    RtkFullscreenToggle: () => null,
-    RtkMuteAllButton: () => null,
-    RtkBreakoutRoomsToggle: () => null,
-    RtkRecordingToggle: () => null,
-    RtkDebuggerToggle: () => null,
+    RtkMoreToggle: ({ children }: { readonly children: React.ReactNode }) =>
+      ReactModule.createElement("div", { "data-testid": "more-menu" }, children),
+    RtkPollsToggle: () => ReactModule.createElement("span", null, "Polls"),
+    RtkFullscreenToggle: () => ReactModule.createElement("span", null, "Fullscreen"),
+    RtkMuteAllButton: () => ReactModule.createElement("span", null, "Mute all"),
+    RtkRecordingToggle: () => ReactModule.createElement("span", null, "Recording"),
     RtkMeeting: ({
       mode,
       children
@@ -678,6 +676,75 @@ describe("Talk joining workflow", () => {
     expect(checkbox.checked).toBe(false)
     expect(mocks.self.disableVideo).toHaveBeenCalledTimes(2)
     expect(mocks.self.videoEnabled).toBe(true)
+  })
+
+  it("offers the alternate microphone method when the browser microphone will not start", async () => {
+    await render()
+    await click("Join meeting")
+    // Neither the application track nor the automatic SDK retry enables audio.
+    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    mocks.self.enableAudio.mockImplementationOnce(async () => {})
+    await click("Unmute microphone")
+    const alert = container.querySelector('[role="alert"]')
+    expect(alert?.textContent).toContain("could not turn it on")
+    await click("Try alternate microphone method")
+    expect(mocks.self.audioEnabled).toBe(true)
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+    expect(container.querySelector('button[aria-label="Mute microphone"]')).not.toBeNull()
+  })
+
+  it("keeps an error visible until dismissed and retries from it", async () => {
+    await render()
+    await click("Join meeting")
+    vi.spyOn(navigator.mediaDevices, "getUserMedia").mockRejectedValueOnce(
+      new DOMException("busy", "NotReadableError")
+    )
+    await click("Unmute microphone")
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("already in use")
+    await click("Try again")
+    expect(mocks.self.audioEnabled).toBe(true)
+    await click("Mute microphone")
+    vi.spyOn(navigator.mediaDevices, "getUserMedia").mockRejectedValueOnce(
+      new DOMException("busy", "NotReadableError")
+    )
+    await click("Unmute microphone")
+    await click("Dismiss message")
+    expect(container.querySelector('[role="alert"]')).toBeNull()
+  })
+
+  it("shows host-only controls in More only to hosts and omits developer tools", async () => {
+    await render()
+    await click("Join meeting")
+    const menu = (): string => container.querySelector('[data-testid="more-menu"]')?.textContent ?? ""
+    expect(menu()).toContain("Polls")
+    expect(menu()).toContain("Fullscreen")
+    expect(menu()).not.toContain("Mute all")
+    expect(menu()).not.toContain("Recording")
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    mocks.self.permissions.kickParticipant = true
+    mocks.self.roomJoined = false
+    await render()
+    await click("Join meeting")
+    expect(menu()).toContain("Mute all")
+    expect(menu()).toContain("Recording")
+  })
+
+  it("remembers whether Notes & Transcript is open and starts collapsed in smaller windows", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query }))
+    await render()
+    await click("Join meeting")
+    expect(container.querySelector<HTMLElement>("#talk-notes-transcript")?.hidden).toBe(true)
+    await click("Show Notes & Transcript")
+    expect(localStorage.getItem("compass:talk:notes-panel:v1:test-user")).toBe("open")
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    mocks.self.roomJoined = false
+    await render()
+    await click("Join meeting")
+    expect(container.querySelector<HTMLElement>("#talk-notes-transcript")?.hidden).toBe(false)
   })
 
   it("restarts a live camera once per blur slider adjustment", async () => {

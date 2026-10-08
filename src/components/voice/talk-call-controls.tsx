@@ -36,16 +36,19 @@ type TalkCallControlsProps = {
   readonly onLeave: () => void
   readonly notesPanelOpen: boolean
   readonly onToggleNotesPanel: () => void
+  /** Rendered directly above the controls so errors appear next to the button that failed. */
+  readonly notice: ReactNode
   readonly children: ReactNode
 }
 
 export function TalkCallControls(props: TalkCallControlsProps): ReactNode {
   return (
+    <div slot="compass-controls" className="flex w-full flex-col bg-background text-foreground">
+    {props.notice}
     <div
-      slot="compass-controls"
       role="toolbar"
       aria-label="Call controls"
-      className="flex w-full flex-wrap items-center gap-2 bg-background p-2 text-foreground [&_button]:h-9 [&_button]:shrink-0 [&_button]:whitespace-nowrap [&_button]:px-2 [&_button]:text-xs"
+      className="flex w-full flex-wrap items-center gap-2 p-2 [&_button]:h-9 [&_button]:shrink-0 [&_button]:whitespace-nowrap [&_button]:px-2 [&_button]:text-xs"
     >
       <Button
         type="button"
@@ -138,6 +141,7 @@ export function TalkCallControls(props: TalkCallControlsProps): ReactNode {
         </Button>
         {props.children}
       </div>
+    </div>
     </div>
   )
 }

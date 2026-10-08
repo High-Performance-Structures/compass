@@ -27,7 +27,9 @@ const preferencesSchema = z.object({
   microphoneId: z.string().max(256),
   speakerId: z.string().max(256),
   joinWithCamera: z.boolean(),
-  joinWithMicrophone: z.boolean()
+  joinWithMicrophone: z.boolean(),
+  // Opt-in; added after v1 shipped, so older saved preferences default it off.
+  mutedSpeechHint: z.boolean().default(false)
 })
 
 export type TalkBackground = Readonly<z.infer<typeof backgroundSchema>>
@@ -83,7 +85,8 @@ export function defaultTalkPreferences(): TalkPreferences {
     microphoneId: "",
     speakerId: "",
     joinWithCamera: false,
-    joinWithMicrophone: false
+    joinWithMicrophone: false,
+    mutedSpeechHint: false
   }
 }
 
