@@ -1,8 +1,9 @@
 "use client"
 
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import * as React from "react"
 import Link from "next/link"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { useRouter } from "next/navigation"
 import {
   approveSelectionDecision,
@@ -40,6 +41,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+const ALL_ROOMS = "__all_rooms__"
+
 function productHref(value: string | null): string | null {
   try {
     return safeSelectionUrl(value)
@@ -60,9 +63,10 @@ function DecisionCard({
     [requestOpen, setRequestOpen] = React.useState(false),
     [error, setError] = React.useState<string | null>(null),
     [pending, start] = React.useTransition()
-  const { register, handleSubmit } = useForm<{ operationId: string }>({
+  const { control, handleSubmit, watch } = useForm<{ operationId: string }>({
     defaultValues: { operationId: "" },
   })
+  const chosenPurchaseOrder = watch("operationId")
   const staff = workspace.audience === "staff",
     owner = workspace.audience === "owner",
     spec = staff ? item.currentSpec : item.spec
@@ -293,20 +297,29 @@ function DecisionCard({
                 }),
               )}
             >
-              <select
-                aria-label={`Purchase order for ${spec.name}`}
-                className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
-                {...register("operationId", { required: true })}
-                required
-              >
-                <option value="">Choose a project purchase order</option>
-                {workspace.purchaseOrders.map((po) => (
-                  <option key={po.id} value={po.id}>
-                    {po.label}
-                  </option>
-                ))}
-              </select>
-              <Button size="sm" disabled={pending}>
+              <Controller
+                control={control}
+                name="operationId"
+                rules={{ required: true }}
+                render={({ field }) => (
+                  <SearchableCombobox
+                    className="h-9 min-w-0 flex-1 text-sm"
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    options={workspace.purchaseOrders.map((po) => ({
+                      value: po.id,
+                      label: po.label,
+                    }))}
+                    ariaLabel={`Purchase order for ${spec.name}`}
+                    placeholder="Choose a project purchase order"
+                    searchPlaceholder="Search purchase orders..."
+                    emptyMessage="No matching purchase orders."
+                    required
+                  />
+                )}
+              />
+              {/* Linking needs a chosen purchase order. */}
+              <Button size="sm" disabled={pending || chosenPurchaseOrder === ""}>
                 Link PO
               </Button>
             </form>
@@ -582,27 +595,30 @@ export function SelectionDecisionWorkspace({
         </label>
         <label className="flex items-center gap-2 text-sm">
           Room
-          <select
-            className="h-9 rounded-md border bg-background px-2"
-            aria-label="Room"
-            value={room}
-            onChange={(event) => setRoom(event.target.value)}
-          >
-            <option value="">All rooms</option>
-            {[
-              ...new Set(
-                workspace.items.map(
-                  (item) =>
-                    (workspace.audience === "staff"
-                      ? item.currentSpec
-                      : item.spec
-                    ).roomName,
+          <SearchableCombobox
+            className="h-9 w-48 text-sm"
+            // "" means all rooms; the picker needs a non-empty value for it.
+            value={room === "" ? ALL_ROOMS : room}
+            onValueChange={(value) => setRoom(value === ALL_ROOMS ? "" : value)}
+            options={[
+              { value: ALL_ROOMS, label: "All rooms" },
+              ...[
+                ...new Set(
+                  workspace.items.map(
+                    (item) =>
+                      (workspace.audience === "staff"
+                        ? item.currentSpec
+                        : item.spec
+                      ).roomName,
+                  ),
                 ),
-              ),
-            ].map((value) => (
-              <option key={value}>{value}</option>
-            ))}
-          </select>
+              ].map((value) => ({ value, label: value })),
+            ]}
+            ariaLabel="Room"
+            placeholder="All rooms"
+            searchPlaceholder="Search rooms..."
+            emptyMessage="No matching rooms."
+          />
         </label>
         {workspace.audience !== "sub_vendor" && (
           <label className="flex items-center gap-2 text-sm">
