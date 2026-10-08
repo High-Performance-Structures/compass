@@ -1,5 +1,6 @@
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { projectJobStatusBucket } from "@/lib/project-profile"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 const PROJECT_COLORS = [
   "#2563eb",
@@ -172,7 +173,7 @@ export function projectScheduleLabel(
   project: Pick<ScheduleProjectData, "name" | "projectNumber">
 ): string {
   return project.projectNumber
-    ? `${project.projectNumber} — ${project.name}`
+    ? projectNumberAndName(project, " — ")
     : project.name
 }
 

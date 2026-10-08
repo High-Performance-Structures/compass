@@ -21,6 +21,7 @@ import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import { projectBrandFor } from "@/lib/project-branding"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export const dynamic = "force-dynamic"
 
@@ -42,7 +43,7 @@ function projectLabel(
 ): string {
   if (!project) return "Project"
   return project.projectNumber
-    ? `${project.projectNumber} - ${project.name}`
+    ? projectNumberAndName(project, " - ")
     : project.name
 }
 

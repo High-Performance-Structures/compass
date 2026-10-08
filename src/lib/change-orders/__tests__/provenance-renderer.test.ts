@@ -100,6 +100,15 @@ describe("imported change-order provenance in shared list and detail", () => {
     },
   )
 
+  it("states provenance on each imported row but shows the long context once", () => {
+    const list = renderToStaticMarkup(React.createElement(ProjectChangeOrderList, {
+      projectId: "project-1", items: [item({ id: "co-1" }), item({ id: "co-2" }), item({ id: "co-3" })],
+      detailBaseHref: "/change-orders", internal: true, formOptions, canCreate: false,
+    }))
+    expect(list.split("Initiator: Not verified from Buildertrend").length - 1).toBe(3)
+    expect(list.split("does not independently verify initiation").length - 1).toBe(1)
+  })
+
   it("retains native requester, approval label, and creation history", () => {
     const native = item({ sourceType: "owner_request", history: [{ id: "created", eventType: "created",
       fromStatus: null, toStatus: "submitted", actorName: "Legacy project owner", actorRole: "owner",

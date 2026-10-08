@@ -19,6 +19,7 @@ import { projectBrandFor } from "@/lib/project-branding"
 import { driveFileIdFromRfqLink } from "@/lib/rfqs/drive-links"
 import { rfqEmailHtml, rfqEmailText, type RfqEmailDocument } from "@/lib/rfqs/email"
 import { parsePortalRfqPayload, rfqNeedsTemplateReview, withPortalRfqRecipientEmail } from "@/lib/rfqs/portal-response"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export type RfqEmailDeliveryItem = {
   readonly id: string
@@ -213,7 +214,7 @@ export async function sendProjectRfqEmail(
       const emailInput = {
         brand,
         projectLabel: access.project.projectNumber
-          ? `${access.project.projectNumber} - ${access.project.name}`
+          ? projectNumberAndName(access.project, " - ")
           : access.project.name,
         rfqNumber: rfq.sourceRecordNumber,
         title: rfq.title,
