@@ -7,7 +7,7 @@ import { PortfolioPanel, type PortfolioSelection } from "@/components/dashboard/
 import { PortfolioPipeline } from "@/components/dashboard/portfolio-map/portfolio-pipeline"
 import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfolio-scene"
 import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
-import type { PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import type { PortfolioHiddenJob, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
 
 // three.js and the terrain scene load only when the map is about to be seen.
 const PortfolioTerrain = dynamic(
@@ -37,9 +37,11 @@ function defaultView(): PortfolioView {
 export function PortfolioSection({
   jobs,
   unplaced,
+  hidden,
 }: {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
+  readonly hidden: readonly PortfolioHiddenJob[]
 }): React.ReactElement | null {
   const sectionRef = React.useRef<HTMLElement | null>(null)
   const [view, setView] = React.useState<PortfolioView>("pipeline")
@@ -96,7 +98,7 @@ export function PortfolioSection({
     [hoveredJobId, selection],
   )
 
-  if (jobs.length === 0 && unplaced.length === 0) return null
+  if (jobs.length === 0 && unplaced.length === 0 && hidden.length === 0) return null
 
   const showMap = view === "map" && !mapUnavailable
   const building = jobs.filter((job) => job.phase === "construction").length
@@ -162,6 +164,7 @@ export function PortfolioSection({
           <PortfolioPanel
             jobs={jobs}
             unplaced={unplaced}
+            hidden={hidden}
             selection={selection}
             onSelectJob={selectJob}
             onSelectPhase={selectPhase}

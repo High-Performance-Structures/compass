@@ -11,7 +11,14 @@ block, with a side panel of quick information and links into each job.
   aggregated in SQL.
 - **Scope**: HPS and Open Range (construction and design) projects. Nu-Tech
   jobs are left off, using the project department or job-number prefix
-  (`isMappedDepartment`).
+  (`isMappedDepartment`). Projects with the built-in **Internal** job status
+  (office records, Compass development and test projects) are left off too;
+  the Project Hub has an Internal view for them.
+- **Per-project override**: the project information page and the map panel
+  set `portfolio_map_visibility` to `default` (follow status and department),
+  `shown` (always on the map; statuses without a phase appear in closeout for
+  warranty/complete jobs, pre-construction otherwise) or `hidden`. Hidden jobs
+  are listed in the panel with "Show on map". Changes are audited.
 - **Phase** comes from the job status (`phaseForJobStatus` in
   `src/lib/portfolio-map/model.ts`). Warranty, complete, closed, refused,
   inactive and material-order statuses (ordered, partial order, price sheet
@@ -25,8 +32,7 @@ block, with a side panel of quick information and links into each job.
   (`colorado-places.json`). Only a trailing state is ignored, so "Colorado
   Springs" keeps its name. Jobs that cannot be placed are listed in the panel,
   each linking to its project information page, instead of guessed. Jobs in the
-  same town are fanned out on a small ring. The internal office record
-  (H-OFFICE) is not shown.
+  same town are fanned out on a small ring.
 - **Freshness**: job data is read on every dashboard load, so a newly added
   address or town appears on the next visit (a reload bypasses the browser's
   30-second page cache).

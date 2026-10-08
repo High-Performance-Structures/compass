@@ -1,7 +1,8 @@
 import placesData from "./colorado-places.json"
 import zipsData from "./colorado-zips.json"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
-import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
+import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/project-profile"
+import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export const PORTFOLIO_PHASES = [
   { id: "estimating", label: "Estimating", short: "EST" },
@@ -14,6 +15,7 @@ export const PORTFOLIO_PHASES = [
 
 export type PortfolioPhaseId = (typeof PORTFOLIO_PHASES)[number]["id"]
 export type PortfolioHealth = "ok" | "risk" | "late"
+export { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export type PortfolioMapJob = {
   readonly id: string
@@ -31,6 +33,7 @@ export type PortfolioMapJob = {
   readonly nextTaskTitle: string | null
   readonly nextTaskStart: string | null
   readonly health: PortfolioHealth
+  readonly visibility: PortfolioMapVisibility
 }
 
 /**
@@ -79,10 +82,37 @@ export function isMappedDepartment(project: {
   return resolvedProjectDepartment(project) !== "N"
 }
 
-/** The internal office record (H-OFFICE) is not a job and stays off the map. */
-export function isOfficeRecord(projectNumber: string | null): boolean {
-  const normalized = (projectNumber ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
-  return normalized === "h-office" || normalized.startsWith("h-office-")
+export type PortfolioProjectRule = {
+  readonly projectId: string
+  readonly projectNumber: string | null
+  readonly department: string | null
+  readonly jobStatusId: string | null
+  readonly jobStatusLabel: string | null
+  readonly visibility: PortfolioMapVisibility
+}
+
+/** Phase the job would have by its status and department alone. */
+export function defaultPortfolioPhase(rule: PortfolioProjectRule): PortfolioPhaseId | null {
+  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel)
+  return phase && isMappedDepartment(rule) ? phase : null
+}
+
+/**
+ * Where a job appears on the map, if at all. The per-project override wins:
+ * "hidden" removes it; "shown" keeps it even when its status or department is
+ * normally excluded, using closeout for warranty/complete jobs and
+ * pre-construction otherwise when the status has no phase.
+ */
+export function portfolioPhaseFor(rule: PortfolioProjectRule): PortfolioPhaseId | null {
+  if (rule.visibility === "hidden") return null
+  if (rule.visibility === "default") return defaultPortfolioPhase(rule)
+  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel)
+  if (phase) return phase
+  const bucket = projectJobStatusBucket({
+    jobStatusId: rule.jobStatusId ?? "",
+    jobStatusLabel: rule.jobStatusLabel ?? "",
+  })
+  return bucket === "warranty" || bucket === "complete" ? "closeout" : "precon"
 }
 
 function normalizeLabel(value: string): string {
