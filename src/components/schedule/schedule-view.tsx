@@ -173,13 +173,17 @@ interface ScheduleViewProps {
   readonly canManagePublication?: boolean
 }
 
+// Stable default: a fresh [] per render invalidated the Gantt task memo and
+// rebuilt the chart.
+const NO_SCHEDULE_PROJECTS: readonly ScheduleProjectData[] = []
+
 export function ScheduleView({
   projectId,
   projectName,
   initialData,
   baselines,
   allProjects = [],
-  scheduleProjects = [],
+  scheduleProjects = NO_SCHEDULE_PROJECTS,
   scope,
   assigneeOptions = [],
   initialView = "gantt",
