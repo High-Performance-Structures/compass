@@ -42,7 +42,7 @@ const SOCIAL_DEPARTMENT_DESTINATIONS: Readonly<
     xHandle: "@ORConstruction",
   },
   H: {
-    facebookPageName: "High Performance Structures, Inc.",
+    facebookPageName: "High Performance Structures Inc.",
     instagramUsername: "hpscolorado",
     xHandle: "@HPSColorado",
   },
@@ -54,7 +54,13 @@ const SOCIAL_DEPARTMENT_DESTINATIONS: Readonly<
 }
 
 function normalizedAccountName(value: string): string {
-  return value.trim().replace(/^@/, "").toLocaleLowerCase("en-US")
+  // Punctuation-insensitive so "Structures, Inc." and "Structures Inc." match.
+  return value
+    .trim()
+    .replace(/^@/, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/[.,]/g, "")
+    .replace(/\s+/g, " ")
 }
 
 export function socialDepartmentDestination(

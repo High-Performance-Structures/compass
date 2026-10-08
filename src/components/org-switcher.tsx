@@ -37,7 +37,7 @@ type OrgInfo = {
   readonly role: string
 }
 
-const COMPASS_COMPANY_NAME = "High Performance Structures, Inc."
+const COMPASS_COMPANY_NAME = "High Performance Structures Inc."
 
 function sidebarCompanyName(activeOrgName: string | null): string {
   // Project department branding belongs in project documents. It must never

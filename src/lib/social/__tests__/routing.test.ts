@@ -26,7 +26,7 @@ describe("social destination routing", () => {
 
   it("pins each department to its approved Facebook Page and X profile", () => {
     expect(socialDepartmentDestination("H")).toEqual({
-      facebookPageName: "High Performance Structures, Inc.",
+      facebookPageName: "High Performance Structures Inc.",
       instagramUsername: "hpscolorado",
       xHandle: "@HPSColorado",
     })
@@ -38,6 +38,7 @@ describe("social destination routing", () => {
       socialDepartmentDestination("O"),
     )
     expect(isExpectedFacebookPage("H", "High Performance Structures, Inc.")).toBe(true)
+    expect(isExpectedFacebookPage("H", "High Performance Structures Inc.")).toBe(true)
     expect(isExpectedFacebookPage("H", "Nu-Tech Systems")).toBe(false)
     expect(isExpectedInstagramProfile("O", "orconstructionltd")).toBe(true)
     expect(isExpectedInstagramProfile("O", "hpscolorado")).toBe(false)
