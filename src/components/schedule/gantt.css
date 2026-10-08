@@ -26,10 +26,17 @@
   scrollbar-color: color-mix(in oklch, var(--foreground) 32%, transparent) transparent;
 }
 
+/* Selected item: two-tone ring (light inside, dark outside) reads on light
+   and dark bars alike, and its whole row is tinted to match the list. */
 .gantt .bar-wrapper.schedule-focused .bar {
-  filter: brightness(1.08);
-  stroke: oklch(0.28 0.03 160) !important;
-  stroke-width: 3px !important;
+  stroke: var(--background) !important;
+  stroke-width: 2px !important;
+  outline: 2px solid var(--foreground) !important;
+  outline-offset: 1px;
+}
+
+.gantt .grid-row.schedule-focused-row {
+  fill: color-mix(in oklch, var(--primary) 14%, var(--g-row-color));
 }
 
 .gantt-container::-webkit-scrollbar {

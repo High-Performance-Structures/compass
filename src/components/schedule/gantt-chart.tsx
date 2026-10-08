@@ -610,10 +610,18 @@ export function GanttChart({
     for (const element of root.querySelectorAll(".bar-wrapper.schedule-focused")) {
       element.classList.remove("schedule-focused")
     }
+    for (const element of root.querySelectorAll(".grid-row.schedule-focused-row")) {
+      element.classList.remove("schedule-focused-row")
+    }
     if (!focusedTaskId) return
     root
       .querySelector(`.bar-wrapper[data-id="${CSS.escape(focusedTaskId)}"]`)
       ?.classList.add("schedule-focused")
+    // Frappe draws one grid row per task, in task order.
+    const rowIndex = latestTasksRef.current.findIndex((task) => task.id === focusedTaskId)
+    if (rowIndex >= 0) {
+      root.querySelectorAll(".gantt .grid-row")[rowIndex]?.classList.add("schedule-focused-row")
+    }
   }, [focusedTaskId, renderVersion])
 
   useEffect(() => {

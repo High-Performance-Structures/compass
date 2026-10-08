@@ -693,8 +693,11 @@ export function ScheduleGanttView({
     scrollToTodayRef.current?.()
   }, [displayItems])
 
+  // The list's own scroll area scrolls both ways: a minimum width keeps titles
+  // readable when the panel is narrow, and the horizontal scrollbar stays at
+  // the bottom of the visible panel instead of the end of a long table.
   const taskTable = (
-    <Table className="table-fixed">
+    <Table className="table-fixed min-w-[30rem]" containerClassName="overflow-visible">
       <TableHeader className="sticky top-0 z-10 bg-background">
         <TableRow className="h-[85px]">
           <TableHead className="text-xs">Title</TableHead>
@@ -760,7 +763,7 @@ export function ScheduleGanttView({
               onClick={() => focusTaskOnTimeline(task)}
               title="Show this item on the timeline"
             >
-              <TableCell className="h-[48px] py-0 text-xs truncate max-w-[140px]">
+              <TableCell className="h-[48px] py-0 text-xs">
                 <span
                   className={cn(
                     "flex min-w-0 items-center gap-1.5",
@@ -781,7 +784,10 @@ export function ScheduleGanttView({
                       </span>
                     </span>
                   )}
-                  <span className="truncate">{task.title}</span>
+                  {/* Two lines fit the 48px row, which must stay level with its bar. */}
+                  <span className="line-clamp-2 break-words leading-tight" title={task.title}>
+                    {task.title}
+                  </span>
                 </span>
               </TableCell>
               <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
