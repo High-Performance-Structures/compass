@@ -243,6 +243,7 @@ export class PortfolioScene {
   private grid: TerrainGrid | null = null
   private markers: Marker[] = []
   private landmarks: { readonly title: string; readonly sub: string; readonly point: Vector3 }[] = []
+  private focusSelectedPending = false
   private highlight: SceneHighlight = { selectedJobId: null, hoveredJobId: null, selectedPhase: null }
   private pendingJobs: { readonly jobs: readonly PortfolioMapJob[]; readonly colors: SceneJobColors } | null = null
   private size = { w: 1, h: 1 }
@@ -516,6 +517,18 @@ export class PortfolioScene {
       return [{ job, mesh, material, edges, flag, flagMaterial, top: new Vector3(xz[0], ground + height + 0.02, xz[1]) }]
     })
     this.applyHighlight()
+    const focus = this.focusSelectedPending
+      ? this.markers.find((item) => item.job.id === this.highlight.selectedJobId)
+      : undefined
+    if (focus) {
+      this.focusSelectedPending = false
+      this.flyTo(focus.top.x, focus.top.y * 0.6, focus.top.z, Math.max(this.view.zoom, 2.8))
+    }
+  }
+
+  /** Fly to the selected job once its marker exists (used by single-job views). */
+  focusSelectedWhenPlaced(): void {
+    this.focusSelectedPending = true
   }
 
   setHighlight(next: SceneHighlight): void {

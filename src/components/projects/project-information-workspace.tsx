@@ -31,6 +31,7 @@ import {
 import { type ProjectDepartment } from "@/lib/project-branding"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
 
@@ -264,7 +265,7 @@ export function ProjectInformationWorkspace({
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
             {information.project.projectNumber
-              ? `${information.project.projectNumber} · ${information.project.name}`
+              ? projectNumberAndName(information.project, " · ")
               : information.project.name}
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">

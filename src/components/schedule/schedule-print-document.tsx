@@ -29,6 +29,7 @@ import {
   type SchedulePrintLayout,
 } from "@/lib/schedule/print-range"
 import { cn } from "@/lib/utils"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export type SchedulePrintItem = {
   readonly id: string
@@ -72,7 +73,7 @@ function formatLabel(value: string): string {
 
 function projectLabel(project: SchedulePrintProject): string {
   return project.projectNumber
-    ? `${project.projectNumber} · ${project.name}`
+    ? projectNumberAndName(project, " · ")
     : project.name
 }
 
@@ -394,7 +395,7 @@ export function SchedulePrintDocument({
   if (!mounted) return null
 
   const title = projectNumber
-    ? `${projectNumber} · ${projectName}`
+    ? projectNumberAndName({ projectNumber, name: projectName }, " · ")
     : projectName
   const printableItems = range
     ? filterScheduleItemsForPrint(items, range)

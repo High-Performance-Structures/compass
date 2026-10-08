@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { PinnedMessagesPanel } from "@/components/conversations/pinned-messages-panel"
 import { SearchDialog } from "@/components/conversations/search-dialog"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 type ChannelHeaderProps = {
   readonly channelId: string
@@ -31,7 +32,7 @@ type ChannelHeaderProps = {
 
 function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): string {
   return project.projectNumber
-    ? `${project.projectNumber} - ${project.name}`
+    ? projectNumberAndName(project, " - ")
     : project.name
 }
 
