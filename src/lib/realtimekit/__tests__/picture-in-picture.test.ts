@@ -177,6 +177,15 @@ describe("RealtimeKit picture-in-picture tile discovery", () => {
 
     detach()
     expect(registry.getCandidates("self-participant")).toHaveLength(0)
+    root.dispatchEvent(
+      new CustomEvent("tileLoad", {
+        detail: {
+          participant: { id: "self-participant" },
+          videoElement: video,
+        },
+      })
+    )
+    expect(registry.getCandidates("self-participant")).toHaveLength(0)
     root.remove()
   })
 

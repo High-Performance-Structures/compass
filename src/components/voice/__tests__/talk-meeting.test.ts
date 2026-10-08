@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+/** @vitest-environment jsdom */
 import * as React from "react"
 import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   const track = { stop: vi.fn(), getSettings: () => ({ deviceId: "camera" }) }
   const transformed = { stop: vi.fn() }
   const self = {
+    id: "self",
     permissions: { canProduceAudio: "ALLOWED", kickParticipant: false, addListener: vi.fn(), removeListener: vi.fn() },
     config: { pipMode: true },
     stageStatus: "ON_STAGE",
@@ -154,7 +155,31 @@ describe("Talk joining workflow", () => {
     mocks.self.roomJoined = false
     mocks.self.backgroundActive = false
     mocks.supported = true
+    const storage = new Map<string, string>()
+    vi.stubGlobal("localStorage", {
+      clear: () => storage.clear(),
+      getItem: (key: string) => storage.get(key) ?? null,
+      removeItem: (key: string) => { storage.delete(key) },
+      setItem: (key: string, value: string) => { storage.set(key, value) }
+    })
     localStorage.clear()
+    Object.defineProperty(document, "pictureInPictureEnabled", {
+      configurable: true,
+      value: true
+    })
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: null
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, "pictureInPictureElement", {
+          configurable: true,
+          value: null
+        })
+      })
+    })
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
     vi.stubGlobal("BroadcastChannel", undefined)
     mocks.meeting.participants.audioSubscribed.clear()
@@ -336,24 +361,14 @@ describe("Talk joining workflow", () => {
     expect(container.querySelector('textarea[aria-label="Meeting notes"]')).not.toBeNull()
   })
 
-  it("opens SDK PiP without needing light-DOM camera videos and tracks browser close", async () => {
+  it("reports a missing PiP target without invoking provider-side controls", async () => {
     await render()
     await click("Join meeting")
-    expect(document.querySelector("video")).toBeNull()
     await click("PiP")
-    expect(mocks.meeting.participants.pip.init).toHaveBeenCalledOnce()
-    expect(mocks.meeting.participants.pip.enable).toHaveBeenCalledOnce()
-    await act(async () => {
-      mocks.meeting.participants.pip.isActive = true
-      document.dispatchEvent(new Event("enterpictureinpicture"))
-    })
-    await click("Exit PiP")
-    expect(mocks.meeting.participants.pip.disable).toHaveBeenCalledOnce()
-    await act(async () => {
-      mocks.meeting.participants.pip.isActive = false
-      document.dispatchEvent(new Event("leavepictureinpicture"))
-    })
-    expect(container.textContent).toContain("PiP")
+    expect(container.textContent).toContain("Turn video on before starting picture-in-picture.")
+    expect(mocks.meeting.participants.pip.init).not.toHaveBeenCalled()
+    expect(mocks.meeting.participants.pip.enable).not.toHaveBeenCalled()
+    expect(mocks.meeting.participants.pip.disable).not.toHaveBeenCalled()
     expect(mocks.meeting.leave).not.toHaveBeenCalled()
   })
 

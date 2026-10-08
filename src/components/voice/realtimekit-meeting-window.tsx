@@ -342,14 +342,6 @@ export function RealtimeKitMeetingWindow({
 
   React.useEffect(() => {
     if (!meeting || loading || error) return
-    const meetingUi = meetingUiRef.current
-    if (!meetingUi) return
-
-    return pipTileRegistryRef.current.attach(meetingUi)
-  }, [error, loading, meeting])
-
-  React.useEffect(() => {
-    if (!meeting || loading || error) return
     const meetingElement =
       meetingUiRef.current?.querySelector<HTMLElement>("rtk-meeting")
     if (!meetingElement) return
