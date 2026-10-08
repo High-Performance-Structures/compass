@@ -42,6 +42,7 @@ describe("project hub status filters", () => {
       ["Warranty", 0],
       ["Complete", 1],
       ["Inactive", 1],
+      ["Internal", 0],
       ["Archive", 0],
       ["Other", 0],
     ])

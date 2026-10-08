@@ -27,6 +27,13 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
   changeOrderDisplayStatus,
@@ -295,26 +302,28 @@ export function ProjectChangeOrderEditForm({
             <Label htmlFor="change-order-edit-budget-treatment">
               Budget treatment
             </Label>
-            <select
-              id="change-order-edit-budget-treatment"
+            <Select
               name="budgetTreatment"
               value={budgetTreatment}
               disabled={!item.canEdit}
-              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-              onChange={(event) => {
-                const value = event.currentTarget.value
+              onValueChange={(value) =>
                 setBudgetTreatment(
                   value === "baseline_replacement"
                     ? "baseline_replacement"
                     : "additive"
                 )
-              }}
+              }
             >
-              <option value="additive">Budget adjustment</option>
-              <option value="baseline_replacement">
-                Preconstruction baseline replacement
-              </option>
-            </select>
+              <SelectTrigger id="change-order-edit-budget-treatment" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="additive">Budget adjustment</SelectItem>
+                <SelectItem value="baseline_replacement">
+                  Preconstruction baseline replacement
+                </SelectItem>
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
               {budgetTreatment === "baseline_replacement"
                 ? "Replaces the current estimate baseline without adding this amount again."
@@ -326,24 +335,24 @@ export function ProjectChangeOrderEditForm({
               <Label htmlFor="change-order-edit-replacement-estimate">
                 Replacement estimate
               </Label>
-              <select
-                id="change-order-edit-replacement-estimate"
+              <Select
                 name="replacementEstimateId"
                 value={replacementEstimateId}
                 disabled={!item.canEdit}
                 required
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                onChange={(event) =>
-                  setReplacementEstimateId(event.currentTarget.value)
-                }
+                onValueChange={setReplacementEstimateId}
               >
-                <option value="">Choose a revised estimate</option>
-                {replacementOptions.map((estimate) => (
-                  <option key={estimate.id} value={estimate.id}>
-                    {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id="change-order-edit-replacement-estimate" className="h-9 w-full">
+                  <SelectValue placeholder="Choose a revised estimate" />
+                </SelectTrigger>
+                <SelectContent>
+                  {replacementOptions.map((estimate) => (
+                    <SelectItem key={estimate.id} value={estimate.id}>
+                      {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
                 Current baseline: {currentBaseline
                   ? `${currentBaseline.estimateNumber} v${currentBaseline.versionNumber}`
@@ -384,17 +393,16 @@ export function ProjectChangeOrderEditForm({
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="change-order-edit-audience">Audience</Label>
-            <select
-              id="change-order-edit-audience"
-              name="audience"
-              defaultValue={item.audience}
-              disabled={!item.canEdit}
-              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="internal">Internal only</option>
-              <option value="owner">Owner visible when approved</option>
-              <option value="sub_vendor">Sub/vendor request</option>
-            </select>
+            <Select name="audience" defaultValue={item.audience} disabled={!item.canEdit}>
+              <SelectTrigger id="change-order-edit-audience" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="internal">Internal only</SelectItem>
+                <SelectItem value="owner">Owner visible when approved</SelectItem>
+                <SelectItem value="sub_vendor">Sub/vendor request</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="change-order-internal-notes">Internal notes</Label>
@@ -521,26 +529,28 @@ export function ProjectChangeOrderEditForm({
       <div className="grid gap-4 border-t pt-4 lg:grid-cols-[1fr_2fr_auto]">
         <div className="space-y-2">
           <Label htmlFor="change-order-edit-status">Status</Label>
-          <select
-            id="change-order-edit-status"
+          <Select
             name="status"
             value={status}
             disabled={readOnly}
-            className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-            onChange={(event) => {
-              const value = event.currentTarget.value
+            onValueChange={(value) => {
               if (isChangeOrderStatus(value)) setStatus(value)
             }}
           >
-            <option value={item.status}>
-              {changeOrderDisplayStatus(item.status, item.sourceType)}
-            </option>
-            {item.allowedTransitions.map((status) => (
-              <option key={status} value={status}>
-                {changeOrderStatusLabel(status)}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="change-order-edit-status" className="h-9 w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={item.status}>
+                {changeOrderDisplayStatus(item.status, item.sourceType)}
+              </SelectItem>
+              {item.allowedTransitions.map((status) => (
+                <SelectItem key={status} value={status}>
+                  {changeOrderStatusLabel(status)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
           <Label htmlFor="change-order-transition-note">

@@ -337,6 +337,27 @@ export function TalkSettingsPanel({
           />
           Join with microphone on
         </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={preferences.mutedSpeechHint}
+            onChange={(event) =>
+              onChange({
+                ...preferences,
+                mutedSpeechHint: event.currentTarget.checked
+              })
+            }
+          />
+          <span>
+            Tell me when I&rsquo;m talking while muted
+            <span className="block text-xs text-muted-foreground">
+              Keeps your microphone open in this browser while you are muted so
+              Compass can notice speech. Nothing is sent to the meeting, but
+              your browser will show the microphone as in use.
+            </span>
+          </span>
+        </label>
       </fieldset>
       {status ? (
         <p role="status" className="text-sm text-muted-foreground">

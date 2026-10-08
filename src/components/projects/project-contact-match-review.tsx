@@ -25,6 +25,13 @@ import {
 } from "@/app/actions/project-contacts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ProjectContactDirectorySelect } from "@/components/projects/project-contact-directory-select"
 import { ProjectContactReviewScrollRestorer } from "@/components/projects/project-contact-review-scroll-restorer"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
@@ -279,15 +286,16 @@ function CreateContactForm({
     >
       <input type="hidden" name="projectId" value={projectId} />
       <LinkIdInputs links={group.links} />
-      <select
-        name="contactType"
-        defaultValue="subcontractor"
-        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-ring/50 focus:ring-[3px]"
-      >
-        <option value="subcontractor">New subcontractor</option>
-        <option value="supplier">New supplier</option>
-        <option value="owner">New owner contact</option>
-      </select>
+      <Select name="contactType" defaultValue="subcontractor">
+        <SelectTrigger aria-label="New contact type" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-ring/50 focus:ring-[3px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="subcontractor">New subcontractor</SelectItem>
+          <SelectItem value="supplier">New supplier</SelectItem>
+          <SelectItem value="owner">New owner contact</SelectItem>
+        </SelectContent>
+      </Select>
       <Button type="submit" size="sm" variant="secondary">
         <IconLink />
         Create contact
@@ -342,15 +350,16 @@ function UpdateContactTypeForm({
     >
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="projectContactId" value={link.projectContactId} />
-      <select
-        name="contactType"
-        defaultValue={link.contactType}
-        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-ring/50 focus:ring-[3px]"
-      >
-        <option value="subcontractor">Subcontractor</option>
-        <option value="supplier">Supplier</option>
-        <option value="owner">Owner</option>
-      </select>
+      <Select name="contactType" defaultValue={link.contactType}>
+        <SelectTrigger aria-label="Contact type" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-ring/50 focus:ring-[3px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="subcontractor">Subcontractor</SelectItem>
+          <SelectItem value="supplier">Supplier</SelectItem>
+          <SelectItem value="owner">Owner</SelectItem>
+        </SelectContent>
+      </Select>
       <Button type="submit" size="sm" variant="outline">
         Update contact
       </Button>

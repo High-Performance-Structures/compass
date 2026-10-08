@@ -43,9 +43,12 @@ const STORY_TICK_MS = 100
 export function CherishStoryInvitation({
   items,
   className,
+  quietWhenRead = false,
 }: {
   readonly items: readonly CherishStory[]
   readonly className?: string
+  /** Shrink to a faint replay line once every story has been watched. */
+  readonly quietWhenRead?: boolean
 }): React.ReactElement | null {
   const [stories, setStories] = useState(items)
   const [open, setOpen] = useState(false)
@@ -261,8 +264,22 @@ export function CherishStoryInvitation({
     })
   }
 
+  const quiet = quietWhenRead && unreadCount === 0
   return (
     <>
+      {quiet ? (
+        <section aria-label="CHERISH stories" className={className}>
+          <button
+            type="button"
+            onClick={openStories}
+            aria-label="Replay today's CHERISH stories"
+            className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <IconHeartHandshake className="size-3.5" aria-hidden="true" />
+            Today’s CHERISH · Replay
+          </button>
+        </section>
+      ) : (
       <section
         className={cn(
           "border-y bg-muted/20 px-3 py-3 sm:px-4",
@@ -307,6 +324,7 @@ export function CherishStoryInvitation({
           </span>
         </button>
       </section>
+      )}
 
       <Dialog open={open} onOpenChange={(nextOpen) => {
         if (nextOpen) setOpen(true)

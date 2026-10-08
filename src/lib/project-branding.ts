@@ -30,7 +30,7 @@ const ORC_BRAND: BrandIdentity = {
 }
 
 const HPS_BRAND: BrandIdentity = {
-  companyName: "High Performance Structures, Inc.",
+  companyName: "High Performance Structures Inc.",
   email: "accounting@hps-colorado.com",
   logoAlt: "High Performance Structures",
   logoSrc: "/department-logos/hps-h-green.svg",

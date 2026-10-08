@@ -10,6 +10,7 @@ import {
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
   nearestScheduleRowIndexForDate,
+  revealBarScrollLeft,
   normalizeWheelDelta,
   paddingToIncludeDate,
   persistGanttScrollPosition,
@@ -231,5 +232,20 @@ describe("Gantt dominant-axis scrolling", () => {
         scrollWidth: 2_400,
       })
     ).toBe(1_400)
+  })
+})
+
+describe("revealBarScrollLeft", () => {
+  const view = { scrollLeft: 1_000, clientWidth: 800, scrollWidth: 5_000 }
+
+  it("leaves a visible bar where it is so repeated clicks do not move the chart", () => {
+    expect(revealBarScrollLeft({ ...view, barLeft: 1_200, barWidth: 100 })).toBeNull()
+    expect(revealBarScrollLeft({ ...view, barLeft: 900, barWidth: 200 })).toBeNull()
+  })
+
+  it("centers an off-screen bar within the scrollable range", () => {
+    expect(revealBarScrollLeft({ ...view, barLeft: 3_000, barWidth: 200 })).toBe(2_700)
+    expect(revealBarScrollLeft({ ...view, barLeft: 100, barWidth: 100 })).toBe(0)
+    expect(revealBarScrollLeft({ ...view, barLeft: 4_950, barWidth: 50 })).toBe(4_200)
   })
 })

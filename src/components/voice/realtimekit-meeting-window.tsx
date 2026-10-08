@@ -3,7 +3,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
-import { RtkChatToggle, RtkParticipantsToggle, RtkMoreToggle, RtkPollsToggle, RtkPluginsToggle, RtkFullscreenToggle, RtkMuteAllButton, RtkBreakoutRoomsToggle, RtkRecordingToggle, RtkDebuggerToggle } from "@cloudflare/realtimekit-react-ui"
+import { RtkChatToggle, RtkParticipantsToggle, RtkMoreToggle, RtkPollsToggle, RtkFullscreenToggle, RtkMuteAllButton, RtkRecordingToggle } from "@cloudflare/realtimekit-react-ui"
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -11,6 +11,7 @@ import { createCompassMeetingConfig } from "@/components/voice/talk-meeting-conf
 import { TalkMeetingRenderer } from "@/components/voice/talk-meeting-renderer"
 import { TalkLeaveConfirmation } from "@/components/voice/talk-leave-confirmation"
 import { TalkCallControls } from "@/components/voice/talk-call-controls"
+import { CALL_NOTICE_INFO_MS, TalkCallNotice, type CallNotice, type CallNoticeAction } from "@/components/voice/talk-call-notice"
 import { TalkSettingsPanel } from "@/components/voice/talk-settings-panel"
 import { TalkSetup } from "@/components/voice/talk-setup"
 import { TalkPreview } from "@/components/voice/talk-preview"
@@ -18,6 +19,7 @@ import { TalkNotesPanel } from "@/components/voice/talk-notes-panel"
 import { useTalkSettings } from "@/hooks/use-talk-settings"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
+import { useMutedSpeechHint } from "@/hooks/use-muted-speech-hint"
 
 type ScreenShareStatus =
   | "idle"
@@ -171,14 +173,12 @@ export function RealtimeKitMeetingWindow({
   const [meetingConfig] = React.useState<UIConfig>(() =>
     createCompassMeetingConfig()
   )
-  const [notesPanelOpen, setNotesPanelOpen] = React.useState(true)
+  const [notesPanelOpen, setNotesPanelOpenState] = React.useState(true)
   const [hasUnsavedNotes, setHasUnsavedNotes] = React.useState(false)
   const [transcriptEnabled, setTranscriptEnabled] = React.useState(false)
   const [screenShareStatus, setScreenShareStatus] =
     React.useState<ScreenShareStatus>("idle")
-  const [screenShareMessage, setScreenShareMessage] = React.useState<string | null>(
-    null
-  )
+  const [notice, setNotice] = React.useState<CallNotice | null>(null)
   const [audioEnabled, setAudioEnabled] = React.useState(false)
   const [videoEnabled, setVideoEnabled] = React.useState(false)
   const [audioStatus, setAudioStatus] =
@@ -204,6 +204,53 @@ export function RealtimeKitMeetingWindow({
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
   const endingMeetingRef = React.useRef(false)
+
+  const showInfo = React.useCallback((text: string): void => {
+    setNotice({ tone: "info", text, action: null })
+  }, [])
+  const showError = React.useCallback(
+    (text: string, action: CallNoticeAction | null = null): void => {
+      setNotice({ tone: "error", text, action })
+    },
+    []
+  )
+  // Routine status clears itself; errors stay until dismissed or replaced.
+  React.useEffect(() => {
+    if (notice?.tone !== "info") return
+    const timer = window.setTimeout(() => {
+      setNotice((current) => (current === notice ? null : current))
+    }, CALL_NOTICE_INFO_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
+  // Remember whether each person keeps Notes & Transcript open. New users start
+  // collapsed below the xl breakpoint so the video keeps the room.
+  const notesPanelKey = `compass:talk:notes-panel:v1:${userId}`
+  React.useEffect(() => {
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem(notesPanelKey)
+    } catch {
+      /* Storage unavailable: fall back to the window size. */
+    }
+    setNotesPanelOpenState(
+      stored === "open" ||
+        (stored === null &&
+          (typeof window.matchMedia !== "function" ||
+            window.matchMedia("(min-width: 1280px)").matches))
+    )
+  }, [notesPanelKey])
+  const setNotesPanelOpen = React.useCallback(
+    (open: boolean): void => {
+      setNotesPanelOpenState(open)
+      try {
+        localStorage.setItem(notesPanelKey, open ? "open" : "closed")
+      } catch {
+        /* The choice still applies to this call. */
+      }
+    },
+    [notesPanelKey]
+  )
 
   const getVoiceTracks = React.useCallback((): readonly MediaStreamTrack[] => {
     if (!meeting) return []
@@ -420,9 +467,7 @@ export function RealtimeKitMeetingWindow({
       readonly screenShareEnabled: boolean
     }): void => {
       setScreenShareStatus(payload.screenShareEnabled ? "sharing" : "idle")
-      setScreenShareMessage(
-        payload.screenShareEnabled ? "Screen sharing is active." : null
-      )
+      if (payload.screenShareEnabled) showInfo("Screen sharing is active.")
       recordRealtimeKitDiagnostic("screen-share-update", {
         enabled: payload.screenShareEnabled,
       })
@@ -436,12 +481,10 @@ export function RealtimeKitMeetingWindow({
       setVideoStatus("idle")
       const kind = isRecord(payload) ? recordValue(payload, "kind") : null
       if (kind === "audio" || kind === "video") {
-        setScreenShareMessage(mediaPermissionMessage(kind, payload))
+        showError(mediaPermissionMessage(kind, payload), kind === "audio" ? "retry-audio" : "retry-video")
       } else if (kind === "screenshare") {
         setScreenShareStatus("blocked")
-        setScreenShareMessage(
-          "Screen sharing was blocked or canceled by the browser."
-        )
+        showInfo("Screen sharing was blocked or canceled by the browser.")
       }
     }
 
@@ -461,7 +504,7 @@ export function RealtimeKitMeetingWindow({
       meeting.self.off("screenShareUpdate", handleScreenShareUpdate)
       meeting.self.off("mediaPermissionError", handleMediaPermissionError)
     }
-  }, [meeting])
+  }, [meeting, showError, showInfo])
 
   const closeMeetingWindow = React.useCallback((): void => {
     window.close()
@@ -497,7 +540,7 @@ export function RealtimeKitMeetingWindow({
         // connection alive until roomLeft confirms that the host was removed.
         endingMeetingRef.current = true
         await meeting.participants.kickAll()
-        setScreenShareMessage("Ending the meeting for everyone...")
+        showInfo("Ending the meeting for everyone...")
       } else {
         if (meeting.self.roomJoined) await meeting.leave()
         closeMeetingWindow()
@@ -512,14 +555,14 @@ export function RealtimeKitMeetingWindow({
     } finally {
       setLeaving(false)
     }
-  }, [closeMeetingWindow, meeting, leaving])
+  }, [closeMeetingWindow, meeting, leaving, showInfo])
 
   const togglePictureInPicture = React.useCallback((): void => {
     if (!meeting || !canUsePictureInPicture) {
-      setScreenShareMessage("Picture-in-picture is not available in this browser.")
+      showError("Picture-in-picture is not available in this browser.")
       return
     }
-    setScreenShareMessage(null)
+    setNotice(null)
     try {
       const pip = meeting.participants.pip
       if (pip.isActive) {
@@ -537,20 +580,20 @@ export function RealtimeKitMeetingWindow({
         error: realtimeKitErrorDetails(cause),
       })
       setPipStatus("error")
-      setScreenShareMessage(errorMessageForCause(cause))
+      showError(errorMessageForCause(cause))
     }
-  }, [canUsePictureInPicture, meeting])
+  }, [canUsePictureInPicture, meeting, showError])
 
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
-    setScreenShareMessage(null)
+    setNotice(null)
     try {
       if (meeting.self.screenShareEnabled) {
         setScreenShareStatus("stopping")
         await meeting.self.disableScreenShare()
         setScreenShareStatus("idle")
-        setScreenShareMessage(null)
+        setNotice(null)
         return
       }
 
@@ -559,24 +602,38 @@ export function RealtimeKitMeetingWindow({
       setScreenShareStatus(
         meeting.self.screenShareEnabled ? "sharing" : "idle"
       )
-      setScreenShareMessage(
-        meeting.self.screenShareEnabled
-          ? "Screen sharing is active."
-          : "Screen sharing did not start."
-      )
+      if (meeting.self.screenShareEnabled) showInfo("Screen sharing is active.")
+      else showError("Screen sharing did not start.", "retry-screen-share")
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("screen-share-failed", {
         error: realtimeKitErrorDetails(cause),
       })
       setScreenShareStatus("error")
-      setScreenShareMessage(errorMessageForCause(cause))
+      showError(errorMessageForCause(cause), "retry-screen-share")
     }
-  }, [meeting])
+  }, [meeting, showError, showInfo])
+
+  /** Let the SDK open the selected microphone itself (the path PiP uses). */
+  const enableAudioWithSdkCapture = React.useCallback(async (): Promise<MediaStreamTrack> => {
+    if (!meeting) throw new Error("The meeting is not ready.")
+    const available = await navigator.mediaDevices.enumerateDevices()
+    const selected = available.find(device =>
+      device.kind === "audioinput" && device.deviceId === talk.preferences.microphoneId
+    )
+    if (selected) await meeting.self.setDevice(selected)
+    await meeting.self.enableAudio()
+    if (!meeting.self.audioEnabled) {
+      meeting.self.rawAudioTrack?.stop()
+      throw new Error("RealtimeKit did not enable the microphone track.")
+    }
+    await talk.refreshDevices()
+    return meeting.self.rawAudioTrack
+  }, [meeting, talk])
 
   const toggleAudio = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
-    setScreenShareMessage(null)
+    setNotice(null)
     let requestedTrack: MediaStreamTrack | null = null
     let microphoneFound = false
     try {
@@ -595,7 +652,7 @@ export function RealtimeKitMeetingWindow({
             (meeting.self.stageStatus === "OFF_STAGE" || meeting.self.stageStatus === "REQUESTED_TO_JOIN_STAGE"))
         ) {
           setAudioStatus("error")
-          setScreenShareMessage("This meeting does not currently allow your microphone. Ask the host to allow you to speak.")
+          showError("This meeting does not currently allow your microphone. Ask the host to allow you to speak.")
           return
         }
         requestedTrack = await requestMediaTrack("audio", talk.preferences.microphoneId)
@@ -608,18 +665,7 @@ export function RealtimeKitMeetingWindow({
           await meeting.self.disableAudio()
           requestedTrack.stop()
           requestedTrack = null
-          const available = await navigator.mediaDevices.enumerateDevices()
-          const selected = available.find(device =>
-            device.kind === "audioinput" && device.deviceId === talk.preferences.microphoneId
-          )
-          if (selected) await meeting.self.setDevice(selected)
-          await meeting.self.enableAudio()
-          if (!meeting.self.audioEnabled) {
-            meeting.self.rawAudioTrack?.stop()
-            throw new Error("RealtimeKit did not enable the microphone track.")
-          }
-          requestedTrack = meeting.self.rawAudioTrack
-          await talk.refreshDevices()
+          requestedTrack = await enableAudioWithSdkCapture()
           recordRealtimeKitDiagnostic("audio-sdk-capture-recovered", {})
         }
         audioTrackRef.current?.stop()
@@ -638,16 +684,45 @@ export function RealtimeKitMeetingWindow({
       })
       setAudioEnabled(meeting.self.audioEnabled)
       setAudioStatus("error")
-      setScreenShareMessage(microphoneFound
-        ? "Your browser found a microphone, but Office Talk could not enable its audio. Try Unmute again. If it keeps failing, leave and rejoin the call."
-        : mediaPermissionMessage("audio", cause))
+      if (microphoneFound) {
+        showError("Your browser found a microphone, but Office Talk could not turn it on.", "alternate-microphone")
+      } else {
+        showError(mediaPermissionMessage("audio", cause), "retry-audio")
+      }
     }
-  }, [meeting, talk])
+  }, [enableAudioWithSdkCapture, meeting, showError, talk])
+
+  // The method the SDK's PiP controls use; offered when the normal path fails.
+  const tryAlternateMicrophone = React.useCallback(async (): Promise<void> => {
+    if (!meeting) return
+    setNotice(null)
+    setAudioStatus("starting")
+    try {
+      if (!meeting.self.audioEnabled) {
+        const track = await enableAudioWithSdkCapture()
+        audioTrackRef.current?.stop()
+        audioTrackRef.current = track
+      }
+      recordRealtimeKitDiagnostic("audio-alternate-capture", { enabled: meeting.self.audioEnabled })
+      setAudioEnabled(meeting.self.audioEnabled)
+      setAudioStatus("idle")
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("audio-alternate-capture-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      setAudioEnabled(meeting.self.audioEnabled)
+      setAudioStatus("error")
+      showError(
+        "The alternate method also could not turn on your microphone. Close other apps that may be using it, or open PiP and use its microphone button.",
+        "retry-audio"
+      )
+    }
+  }, [enableAudioWithSdkCapture, meeting, showError])
 
   const toggleVideo = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
-    setScreenShareMessage(null)
+    setNotice(null)
     let requestedTrack: MediaStreamTrack | null = null
     try {
       if (meeting.self.videoEnabled) {
@@ -679,9 +754,31 @@ export function RealtimeKitMeetingWindow({
       })
       setVideoEnabled(meeting.self.videoEnabled)
       setVideoStatus("error")
-      setScreenShareMessage(cause instanceof Error && cause.message.includes("background") ? cause.message : mediaPermissionMessage("video", cause))
+      showError(cause instanceof Error && cause.message.includes("background") ? cause.message : mediaPermissionMessage("video", cause), "retry-video")
     }
-  }, [meeting, talk])
+  }, [meeting, showError, talk])
+
+  const handleNoticeAction = (action: CallNoticeAction): void => {
+    if (action === "alternate-microphone") void tryAlternateMicrophone()
+    else if (action === "retry-audio" || action === "unmute") {
+      if (!meeting?.self.audioEnabled) void toggleAudio()
+    } else if (action === "retry-video") {
+      if (!meeting?.self.videoEnabled) void toggleVideo()
+    } else void toggleScreenShare()
+  }
+
+  useMutedSpeechHint({
+    active: joined && talk.preferences.mutedSpeechHint && !audioEnabled && audioStatus === "idle",
+    microphoneId: talk.preferences.microphoneId,
+    onSpeech: () => {
+      // Never cover an error the person still needs to act on.
+      setNotice((current) =>
+        current?.tone === "error"
+          ? current
+          : { tone: "info", text: "You're muted. Unmute to talk.", action: "unmute" }
+      )
+    },
+  })
 
   const micButtonLabel =
     audioStatus === "starting"
@@ -722,7 +819,7 @@ export function RealtimeKitMeetingWindow({
   const joinPreparedMeeting = async (): Promise<void> => {
     if (!meeting || joining || talk.busy) return
     setJoining(true)
-    setScreenShareMessage(null)
+    setNotice(null)
     try {
       await talk.restoreDevices()
       if (talk.preferences.joinWithCamera && !meeting.self.videoEnabled) {
@@ -740,7 +837,7 @@ export function RealtimeKitMeetingWindow({
       await meeting.join()
       setJoined(true)
     } catch (cause: unknown) {
-      setScreenShareMessage(errorMessageForCause(cause))
+      showError(errorMessageForCause(cause))
     } finally { setJoining(false) }
   }
 
@@ -755,7 +852,7 @@ export function RealtimeKitMeetingWindow({
     return <TalkSetup title={meetingTitle}
       preview={<TalkPreview meeting={meeting} videoEnabled={videoEnabled} audioEnabled={audioEnabled} speakerId={talk.preferences.speakerId} />}
       settings={settingsPanel} videoEnabled={videoEnabled} audioEnabled={audioEnabled}
-      busy={talk.busy || joining || mediaBusy} canJoin={talk.ready} joining={joining} error={screenShareMessage}
+      busy={talk.busy || joining || mediaBusy} canJoin={talk.ready} joining={joining} error={notice?.tone === "error" ? notice.text : null}
       onVideo={() => void toggleVideo()} onAudio={() => void toggleAudio()} onJoin={() => void joinPreparedMeeting()}
       onCancel={() => { meeting.self.cleanUpTracks(); window.location.assign(`/dashboard/conversations/${channelId}`) }} />
   }
@@ -848,11 +945,10 @@ export function RealtimeKitMeetingWindow({
           }
         `}
       </style>
-      {screenShareMessage || talk.status ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
-          {screenShareMessage ? <span>{screenShareMessage}</span> : null}
-          {talk.status ? <span>{talk.status}</span> : null}
-        </div>
+      {talk.status ? (
+        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+          {talk.status}
+        </p>
       ) : null}
       <TalkLeaveConfirmation open={leaveOpen} busy={leaving} error={leaveError}
         canEndMeeting={canEndMeeting} hasUnsavedNotes={hasUnsavedNotes}
@@ -901,18 +997,19 @@ export function RealtimeKitMeetingWindow({
                   onSettings={() => setSettingsOpen(true)}
                   leaveDisabled={!meeting || leaving} onLeave={() => { setLeaveError(null); setLeaveOpen(true) }}
                   notesPanelOpen={notesPanelOpen}
-                  onToggleNotesPanel={() => setNotesPanelOpen(open => !open)}
+                  onToggleNotesPanel={() => setNotesPanelOpen(!notesPanelOpen)}
+                  notice={notice ? (
+                    <TalkCallNotice notice={notice} onAction={handleNoticeAction} onDismiss={() => setNotice(null)} />
+                  ) : null}
                 >
                   <RtkChatToggle meeting={meeting} variant="horizontal" />
                   <RtkParticipantsToggle meeting={meeting} variant="horizontal" />
                   <RtkMoreToggle>
                     <RtkPollsToggle slot="more-elements" variant="horizontal" />
-                    <RtkPluginsToggle slot="more-elements" variant="horizontal" />
                     <RtkFullscreenToggle slot="more-elements" variant="horizontal" targetElement={meetingUiRef.current ?? undefined} />
-                    <RtkMuteAllButton slot="more-elements" variant="horizontal" />
-                    <RtkBreakoutRoomsToggle slot="more-elements" variant="horizontal" />
-                    <RtkRecordingToggle slot="more-elements" variant="horizontal" />
-                    <RtkDebuggerToggle slot="more-elements" />
+                    {/* Host-only meeting controls; Plugins, Breakout Rooms, and Debugger are not offered to staff. */}
+                    {canEndMeeting ? <RtkMuteAllButton slot="more-elements" variant="horizontal" /> : null}
+                    {canEndMeeting ? <RtkRecordingToggle slot="more-elements" variant="horizontal" /> : null}
                   </RtkMoreToggle>
                 </TalkCallControls>
               </TalkMeetingRenderer>
