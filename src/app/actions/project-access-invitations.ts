@@ -40,6 +40,7 @@ import {
   isInternalStaffRole,
 } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 const invitationSchema = z.object({
   projectId: z.string().trim().min(1),
@@ -603,7 +604,7 @@ export async function sendProjectAccessInvitation(
     }
 
     const projectLabel = row.projectNumber
-      ? `${row.projectNumber} - ${row.projectName}`
+      ? projectNumberAndName({ projectNumber: row.projectNumber, name: row.projectName }, " - ")
       : row.projectName
     let emailResult: Awaited<ReturnType<typeof sendCompassEmail>>
     try {

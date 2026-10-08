@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { projectDisplayName } from "@/lib/project-display-name"
+import { projectDisplayName, projectNumberAndName } from "@/lib/project-display-name"
 
 describe("projectDisplayName", () => {
   it("removes a doubled job number from the start of the name", () => {
@@ -28,5 +28,19 @@ describe("projectDisplayName", () => {
 
   it("falls back to the job number when nothing else remains", () => {
     expect(projectDisplayName({ name: "O-170-2684", projectNumber: "O-170-2684" })).toBe("O-170-2684")
+  })
+})
+
+describe("projectNumberAndName", () => {
+  it("shows the job number once, then the cleaned name", () => {
+    expect(projectNumberAndName({ name: "O-170-2684 - O-170-2684 County Ln 7 - Loomis", projectNumber: "O-170-2684" })).toBe(
+      "O-170-2684 - County Ln 7 - Loomis",
+    )
+    expect(projectNumberAndName({ name: "Ezell Residence", projectNumber: "H-430-1900" }, " · ")).toBe("H-430-1900 · Ezell Residence")
+  })
+
+  it("falls back to the name alone without a job number", () => {
+    expect(projectNumberAndName({ name: "Office Remodel", projectNumber: null })).toBe("Office Remodel")
+    expect(projectNumberAndName({ name: "Office Remodel" })).toBe("Office Remodel")
   })
 })

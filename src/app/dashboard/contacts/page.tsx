@@ -75,6 +75,7 @@ import { ContactMergeDialog } from "@/components/contacts/contact-merge-dialog"
 import { listMySageContactProposalStatuses, type MySageContactProposalStatus } from "@/app/actions/sage-contact-changes"
 import { addCompaniesToProject, getCompanyAssociationProjects } from "@/app/actions/contact-project-associations"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 type Tab = "customers" | "vendors" | "internal"
 type DirectoryCapabilities = Record<Tab, ContactDirectoryAccess> & {
@@ -682,7 +683,7 @@ function ContactsContent() {
                 ariaLabel="Choose project for selected companies"
                 options={associationProjects.map((project) => ({
                   value: project.id,
-                  label: project.projectNumber ? `${project.projectNumber} · ${project.name}` : project.name,
+                  label: project.projectNumber ? projectNumberAndName(project, " · ") : project.name,
                 }))}
                 value={associationProjectId}
                 onValueChange={setAssociationProjectId}

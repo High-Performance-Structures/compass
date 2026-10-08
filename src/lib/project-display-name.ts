@@ -13,7 +13,7 @@ function escapeRegExp(value: string): string {
  */
 export function projectDisplayName(project: {
   readonly name: string
-  readonly projectNumber: string | null
+  readonly projectNumber?: string | null
 }): string {
   const number = project.projectNumber?.trim() ?? ""
   const leadingNumber = number
@@ -31,4 +31,18 @@ export function projectDisplayName(project: {
     if (remaining === before) break
   }
   return remaining || number || project.name.trim()
+}
+
+/**
+ * "Job number - name" for labels, without repeating a job number the stored
+ * name already starts with ("O-170-2684 - County Ln 7 - Loomis").
+ */
+export function projectNumberAndName(
+  project: { readonly name: string; readonly projectNumber?: string | null },
+  separator = " - ",
+): string {
+  const name = projectDisplayName(project)
+  const number = project.projectNumber?.trim() ?? ""
+  if (!number || name === number) return name
+  return `${number}${separator}${name}`
 }
