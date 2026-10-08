@@ -153,6 +153,7 @@ function FinancialsContent() {
   React.useEffect(() => {
     if (tab !== "payments") return
     const refresh = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return
       void getSageSquareReceipts()
         .then(setSquareReceipts)
         .catch(() => undefined)

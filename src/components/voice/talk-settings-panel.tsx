@@ -11,6 +11,59 @@ import {
 
 export type TalkDeviceKind = "cameraId" | "microphoneId" | "speakerId"
 
+const BLUR_COMMIT_DELAY_MS = 400
+
+/**
+ * Each committed strength rebuilds the camera's background pipeline, so the
+ * slider tracks its value locally and commits once per adjustment: on pointer
+ * release or blur, or once dragging or keyboard steps pause.
+ */
+function BlurStrengthSlider({
+  strength,
+  onCommit
+}: {
+  readonly strength: number
+  readonly onCommit: (strength: number) => void
+}): React.ReactElement {
+  const [draft, setDraft] = React.useState(strength)
+  const onCommitRef = React.useRef(onCommit)
+  onCommitRef.current = onCommit
+
+  React.useEffect(() => {
+    setDraft(strength)
+  }, [strength])
+
+  React.useEffect(() => {
+    if (draft === strength) return
+    const timer = window.setTimeout(
+      () => onCommitRef.current(draft),
+      BLUR_COMMIT_DELAY_MS
+    )
+    return () => window.clearTimeout(timer)
+  }, [draft, strength])
+
+  const commitNow = (): void => {
+    if (draft !== strength) onCommitRef.current(draft)
+  }
+
+  return (
+    <label className="grid gap-2 text-sm">
+      Blur strength: {draft}%
+      <input
+        type="range"
+        min={10}
+        max={100}
+        step={5}
+        value={draft}
+        onPointerUp={commitNow}
+        onPointerCancel={commitNow}
+        onBlur={commitNow}
+        onChange={(event) => setDraft(event.currentTarget.valueAsNumber)}
+      />
+    </label>
+  )
+}
+
 export function TalkSettingsPanel({
   preferences,
   onChange,
@@ -66,25 +119,15 @@ export function TalkSettingsPanel({
           </Button>
         </div>
         {preferences.background.mode === "blur" ? (
-          <label className="grid gap-2 text-sm">
-            Blur strength: {preferences.background.strength}%
-            <input
-              type="range"
-              min={10}
-              max={100}
-              step={5}
-              value={preferences.background.strength}
-              onChange={(event) =>
-                onChange({
-                  ...preferences,
-                  background: {
-                    mode: "blur",
-                    strength: event.currentTarget.valueAsNumber
-                  }
-                })
-              }
-            />
-          </label>
+          <BlurStrengthSlider
+            strength={preferences.background.strength}
+            onCommit={(strength) =>
+              onChange({
+                ...preferences,
+                background: { mode: "blur", strength }
+              })
+            }
+          />
         ) : null}
         {preferences.background.mode !== "none" ? (
           <div className="space-y-1">
@@ -259,6 +302,12 @@ export function TalkSettingsPanel({
             </select>
           </label>
         ))}
+        {!devices.some((device) => device.kind === "audioinput" && device.label) ? (
+          <p className="text-xs text-muted-foreground">
+            Microphone names may be hidden until browser access is allowed. Use
+            the microphone control to request access, then refresh devices.
+          </p>
+        ) : null}
         <Button type="button" variant="outline" onClick={onRefreshDevices}>
           Refresh devices
         </Button>
@@ -287,6 +336,27 @@ export function TalkSettingsPanel({
             }
           />
           Join with microphone on
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={preferences.mutedSpeechHint}
+            onChange={(event) =>
+              onChange({
+                ...preferences,
+                mutedSpeechHint: event.currentTarget.checked
+              })
+            }
+          />
+          <span>
+            Tell me when I&rsquo;m talking while muted
+            <span className="block text-xs text-muted-foreground">
+              Keeps your microphone open in this browser while you are muted so
+              Compass can notice speech. Nothing is sent to the meeting, but
+              your browser will show the microphone as in use.
+            </span>
+          </span>
         </label>
       </fieldset>
       {status ? (

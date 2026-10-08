@@ -37,7 +37,7 @@ import {
   revokeApiKey,
   deleteApiKey,
 } from "@/app/actions/mcp-keys"
-import { useBridgeState } from "@/components/agent/chat-provider"
+import { useBridgeDetection, useBridgeState } from "@/components/agent/chat-provider"
 
 interface ApiKeyRow {
   readonly id: string
@@ -71,7 +71,7 @@ function CopyButton({
       onClick={handleCopy}
     >
       {copied ? (
-        <Check className="h-3.5 w-3.5 text-green-500" />
+        <Check className="h-3.5 w-3.5 text-success" />
       ) : (
         <Copy className="h-3.5 w-3.5" />
       )}
@@ -229,7 +229,7 @@ function CreateKeyDialog({
               </code>
               <CopyButton text={newKey} />
             </div>
-            <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
+            <div className="flex items-start gap-2 text-warning">
               <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" />
               <p className="text-xs">
                 Store this key securely. It cannot be
@@ -407,6 +407,8 @@ export function ClaudeCodeTab() {
 
   // use shared bridge state from ChatProvider
   const bridge = useBridgeState()
+  // Show live daemon status here even before the bridge is enabled.
+  useBridgeDetection(true)
 
   const loadKeys = React.useCallback(async () => {
     const result = await listApiKeys()
@@ -469,8 +471,8 @@ export function ClaudeCodeTab() {
           <div
             className={`h-2 w-2 rounded-full ${
               bridge.bridgeConnected
-                ? "bg-green-500"
-                : "bg-red-500"
+                ? "bg-success"
+                : "bg-destructive"
             }`}
           />
           <span className="text-xs">

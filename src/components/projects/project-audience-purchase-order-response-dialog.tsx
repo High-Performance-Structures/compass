@@ -5,6 +5,7 @@ import { IconClipboardCheck, IconProgressCheck } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 
 import { respondToSubVendorPurchaseOrder } from "@/app/actions/project-audience-sub-vendor"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -191,25 +192,19 @@ export function ProjectAudiencePurchaseOrderResponseDialog({
                 {recipients.length > 0 ? (
                   <label className="grid gap-1.5 text-sm font-medium">
                     Send to
-                    <Select
+                    <SearchableCombobox
                       value={recipientUserId}
                       onValueChange={setRecipientUserId}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Choose a project team member" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {recipients.map((recipient) => (
-                          <SelectItem
-                            key={recipient.userId}
-                            value={recipient.userId}
-                          >
-                            {recipient.displayName}
-                            {recipient.role ? ` · ${recipient.role}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={recipients.map((recipient) => ({
+                        value: recipient.userId,
+                        label: recipient.displayName,
+                        description: recipient.role ?? undefined,
+                      }))}
+                      ariaLabel="Send to"
+                      placeholder="Choose a project team member"
+                      searchPlaceholder="Search the project team..."
+                      emptyMessage="No matching team members."
+                    />
                   </label>
                 ) : (
                   <div className="grid gap-1.5 text-sm">

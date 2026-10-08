@@ -24,6 +24,7 @@ import type {
 } from "@/app/actions/work-calendar"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -33,13 +34,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { workCalendarEntryMatches } from "@/lib/work-calendar"
 import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
@@ -522,23 +516,26 @@ export function WorkCalendar({
           {data.googlePeople.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-medium text-muted-foreground">Google calendars</span>
-              <Select
+              <SearchableCombobox
+                className="h-8 w-[240px] text-sm"
                 value={data.activeGooglePeopleFilter}
-                onValueChange={changePeopleFilter}
-              >
-                <SelectTrigger size="sm" className="w-[240px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="me">My Google calendars</SelectItem>
-                  <SelectItem value="all">All staff availability</SelectItem>
-                  {data.googlePeople.map((person) => (
-                    <SelectItem key={person.userId} value={person.userId}>
-                      {person.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                // The filter reloads the calendar; ignore the picker's empty reset.
+                onValueChange={(value) => {
+                  if (value !== "") changePeopleFilter(value)
+                }}
+                options={[
+                  { value: "me", label: "My Google calendars" },
+                  { value: "all", label: "All staff availability" },
+                  ...data.googlePeople.map((person) => ({
+                    value: person.userId,
+                    label: person.name,
+                  })),
+                ]}
+                ariaLabel="Google calendars to show"
+                placeholder="My Google calendars"
+                searchPlaceholder="Search staff..."
+                emptyMessage="No matching staff."
+              />
               <span className="text-xs text-muted-foreground">
                 Other users' personal events are shown as Busy.
               </span>

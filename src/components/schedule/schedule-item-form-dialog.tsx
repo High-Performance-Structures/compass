@@ -40,6 +40,10 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  SearchableCombobox,
+  type SearchableComboboxOption,
+} from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {
   createTask,
@@ -105,6 +109,38 @@ const defaultPhaseOptions: readonly ReusableSchedulePhaseOption[] = PHASE_ORDER.
 }))
 
 const CUSTOM_PHASE_VALUE = "__custom_phase__"
+
+// Predecessor options show start date and phase so items with the same title
+// can be told apart.
+function predecessorPickerOptions(
+  tasks: readonly ScheduleTaskData[]
+): readonly SearchableComboboxOption[] {
+  return tasks.map((task) => ({
+    value: task.id,
+    label: task.title,
+    description: [task.startDate, task.phase].filter(Boolean).join(" · "),
+  }))
+}
+
+// Phase picker options: saved and default phases (deduplicated by value), the
+// item's current phase even when it is no longer listed, and the custom entry.
+function schedulePhasePickerOptions(
+  options: readonly ReusableSchedulePhaseOption[],
+  currentValue: string
+): readonly SearchableComboboxOption[] {
+  const seen = new Set<string>()
+  const result: SearchableComboboxOption[] = []
+  for (const option of options) {
+    if (seen.has(option.value)) continue
+    seen.add(option.value)
+    result.push({ value: option.value, label: option.label })
+  }
+  if (currentValue !== "" && !seen.has(currentValue)) {
+    result.push({ value: currentValue, label: currentValue, description: "Current phase" })
+  }
+  result.push({ value: CUSTOM_PHASE_VALUE, label: "+ Add custom phase…", keywords: "new custom" })
+  return result
+}
 
 const DEPENDENCY_TYPES: readonly { value: DependencyType; label: string }[] = [
   { value: "FS", label: "Finish-to-Start" },
@@ -809,34 +845,38 @@ export function ScheduleItemFormDialog({
                     </p>
                   ) : (
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <Select value={selectedTemplateId} onValueChange={chooseTemplate}>
-                        <SelectTrigger aria-label="Choose schedule template">
-                          <SelectValue placeholder="Choose template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(templateGroups ?? []).map((group) => (
-                            <SelectItem key={group.templateId} value={group.templateId}>
-                              {group.templateName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
+                      <SearchableCombobox
+                        value={selectedTemplateId}
+                        // Ignore the picker's reset while templates reload so
+                        // a typed title and dates are never cleared.
+                        onValueChange={(templateId) => {
+                          if (templateId !== "") chooseTemplate(templateId)
+                        }}
+                        options={(templateGroups ?? []).map((group) => ({
+                          value: group.templateId,
+                          label: group.templateName,
+                          description: `${group.scheduleItems.length} schedule items`,
+                        }))}
+                        ariaLabel="Choose schedule template"
+                        placeholder="Choose template"
+                        searchPlaceholder="Search templates..."
+                        emptyMessage="No matching templates."
+                      />
+                      <SearchableCombobox
                         value={selectedTemplateItemId}
-                        onValueChange={applyTemplateScheduleItem}
+                        onValueChange={(templateItemId) => {
+                          if (templateItemId !== "") applyTemplateScheduleItem(templateItemId)
+                        }}
                         disabled={!selectedTemplateGroup}
-                      >
-                        <SelectTrigger aria-label="Choose template schedule item">
-                          <SelectValue placeholder="Choose schedule item" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(selectedTemplateGroup?.scheduleItems ?? []).map((item) => (
-                            <SelectItem key={item.id} value={item.id}>
-                              {item.title}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        options={(selectedTemplateGroup?.scheduleItems ?? []).map((item) => ({
+                          value: item.id,
+                          label: item.title,
+                        }))}
+                        ariaLabel="Choose template schedule item"
+                        placeholder="Choose schedule item"
+                        searchPlaceholder="Search schedule items..."
+                        emptyMessage="No matching schedule items."
+                      />
                     </div>
                   )}
                   {selectedTemplateGroup && selectedTemplateItemId && (
@@ -959,41 +999,31 @@ export function ScheduleItemFormDialog({
                         Phase
                       </FormLabel>
                       <div className="flex items-center gap-2">
-                        <Select
-                          value={customPhaseMode ? CUSTOM_PHASE_VALUE : field.value}
-                          onValueChange={(value) => {
-                            if (value === CUSTOM_PHASE_VALUE) {
-                              setCustomPhaseMode(true)
+                        <FormControl>
+                          <SearchableCombobox
+                            className="h-9 flex-1"
+                            value={customPhaseMode ? CUSTOM_PHASE_VALUE : field.value}
+                            onValueChange={(value) => {
+                              // An empty value is the picker's own reset; keep the saved phase.
+                              if (value === "") return
+                              if (value === CUSTOM_PHASE_VALUE) {
+                                setCustomPhaseMode(true)
+                                setCustomPhaseName("")
+                                setSaveCustomPhase(true)
+                                field.onChange("")
+                                return
+                              }
+                              setCustomPhaseMode(false)
                               setCustomPhaseName("")
-                              setSaveCustomPhase(true)
-                              field.onChange("")
-                              return
-                            }
-                            setCustomPhaseMode(false)
-                            setCustomPhaseName("")
-                            field.onChange(value)
-                          }}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="h-9 flex-1">
-                              <SelectValue
-                                placeholder={
-                                  phaseOptionsLoading ? "Loading phases…" : "Choose phase"
-                                }
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {phaseOptions.map((option) => (
-                              <SelectItem key={`${option.source}-${option.value}`} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value={CUSTOM_PHASE_VALUE}>
-                              + Add custom phase…
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                              field.onChange(value)
+                            }}
+                            options={schedulePhasePickerOptions(phaseOptions, field.value)}
+                            ariaLabel="Phase"
+                            placeholder={phaseOptionsLoading ? "Loading phases…" : "Choose phase"}
+                            searchPlaceholder="Search phases..."
+                            emptyMessage="No matching phases."
+                          />
+                        </FormControl>
                         {selectedSavedPhase?.id && !customPhaseMode && (
                           <Button
                             type="button"
@@ -1398,7 +1428,7 @@ export function ScheduleItemFormDialog({
                       </p>
                     )}
                     {changeProposal && (
-                      <div className="mt-3 space-y-3 border border-amber-400/50 bg-amber-500/5 px-3 py-3">
+                      <div className="mt-3 space-y-3 border border-warning/50 bg-warning/5 px-3 py-3">
                         <div>
                           <p className="text-xs font-medium">
                             Assignee proposed new dates
@@ -1507,26 +1537,19 @@ export function ScheduleItemFormDialog({
                           key={dep.id}
                           className="space-y-2 border-b border-border/70 pb-3 last:border-b-0 last:pb-0"
                         >
-                          <Select
+                          <SearchableCombobox
+                            className="h-9 text-xs"
                             value={edit.taskId}
-                            onValueChange={(value) =>
-                              updateExistingPredecessor(dep.id, "taskId", value)
-                            }
-                          >
-                            <SelectTrigger
-                              className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
-                              aria-label="Saved predecessor schedule item"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableTasks.map((task) => (
-                                <SelectItem key={task.id} value={task.id}>
-                                  {task.title}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            // Ignore the picker's reset so a saved dependency is never blanked.
+                            onValueChange={(value) => {
+                              if (value !== "") updateExistingPredecessor(dep.id, "taskId", value)
+                            }}
+                            options={predecessorPickerOptions(availableTasks)}
+                            ariaLabel="Saved predecessor schedule item"
+                            placeholder="Select schedule item"
+                            searchPlaceholder="Search schedule items..."
+                            emptyMessage="No matching schedule items."
+                          />
                           <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
                             <div className="min-w-0 space-y-1">
                               <span className="block text-xs text-muted-foreground">
@@ -1595,24 +1618,18 @@ export function ScheduleItemFormDialog({
                         key={idx}
                         className="space-y-2 border-b border-border/70 pb-3 last:border-b-0 last:pb-0"
                       >
-                        <Select
+                        <SearchableCombobox
+                          className="h-9 text-xs"
                           value={pred.taskId}
-                          onValueChange={(val) => updatePendingPredecessor(idx, "taskId", val)}
-                        >
-                          <SelectTrigger
-                            className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
-                            aria-label="Predecessor schedule item"
-                          >
-                            <SelectValue placeholder="Select schedule item" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableTasks.map((t) => (
-                              <SelectItem key={t.id} value={t.id}>
-                                {t.title}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          onValueChange={(val) => {
+                            if (val !== "") updatePendingPredecessor(idx, "taskId", val)
+                          }}
+                          options={predecessorPickerOptions(availableTasks)}
+                          ariaLabel="Predecessor schedule item"
+                          placeholder="Select schedule item"
+                          searchPlaceholder="Search schedule items..."
+                          emptyMessage="No matching schedule items."
+                        />
                         <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
                           <div className="min-w-0 space-y-1">
                             <span className="block text-xs text-muted-foreground">

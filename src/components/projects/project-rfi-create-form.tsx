@@ -27,6 +27,13 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   RFI_CONTACT_GROUPS,
   type RfiContactOption,
 } from "@/lib/rfis/contact-options"
@@ -332,25 +339,27 @@ export function ProjectRfiCreateForm({
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <select
-            name="priority"
-            defaultValue="normal"
-            className={DOCUMENT_SELECT_CLASS}
-          >
-            <option value="normal">Normal priority</option>
-            <option value="high">High priority</option>
-            <option value="low">Low priority</option>
-          </select>
-          <select
-            name="audience"
-            defaultValue="internal"
-            className={DOCUMENT_SELECT_CLASS}
-          >
-            <option value="internal">Internal only</option>
-            <option value="sub_vendor">Sub/vendor visible</option>
-            <option value="owner">Owner visible</option>
-            <option value="public">Owner and sub/vendor visible</option>
-          </select>
+          <Select name="priority" defaultValue="normal">
+            <SelectTrigger aria-label="Priority" className={DOCUMENT_SELECT_CLASS}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">Normal priority</SelectItem>
+              <SelectItem value="high">High priority</SelectItem>
+              <SelectItem value="low">Low priority</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select name="audience" defaultValue="internal">
+            <SelectTrigger aria-label="Audience" className={DOCUMENT_SELECT_CLASS}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="internal">Internal only</SelectItem>
+              <SelectItem value="sub_vendor">Sub/vendor visible</SelectItem>
+              <SelectItem value="owner">Owner visible</SelectItem>
+              <SelectItem value="public">Owner and sub/vendor visible</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="border-t pt-3">
           <label className="flex items-start gap-2 text-sm font-medium">

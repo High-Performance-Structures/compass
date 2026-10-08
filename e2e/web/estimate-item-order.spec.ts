@@ -72,7 +72,13 @@ test("estimate items reorder within divisions and assemblies and persist in cust
       await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
       await page.mouse.down()
       await page.mouse.move(start.x + start.width / 2, start.y - 10, { steps: 3 })
-      await page.mouse.move(start.x + start.width / 2, end.y + 2, { steps: 20 })
+      await page.mouse.move(start.x + start.width / 2, end.y + end.height / 2, { steps: 12 })
+      // Release only after dnd-kit has resolved the drop target: the sortable
+      // strategy shifts the target row down once the dragged row is over it.
+      // WebKit can otherwise deliver mouseup before the last move is processed.
+      await expect
+        .poll(() => target.evaluate((row) => new DOMMatrixReadOnly(getComputedStyle(row).transform === "none" ? undefined : getComputedStyle(row).transform).m42))
+        .toBeGreaterThan(0)
       await page.mouse.up()
       await assertOrder(assembly, ["b", "c", "a"])
     } else {

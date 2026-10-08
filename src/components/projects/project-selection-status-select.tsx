@@ -6,13 +6,7 @@ import {
   updateProjectSelectionStatus,
   type ProjectSelectionStatus,
 } from "@/app/actions/project-selections"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 
 const STATUS_OPTIONS: readonly {
   readonly value: ProjectSelectionStatus
@@ -69,17 +63,16 @@ export function ProjectSelectionStatusSelect({
   }
 
   return (
-    <Select value={currentStatus} onValueChange={changeStatus} disabled={saving}>
-      <SelectTrigger size="sm" className="h-8 w-[150px] bg-background">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <SearchableCombobox
+      className="h-8 w-[150px] bg-background text-sm"
+      value={currentStatus}
+      onValueChange={(value) => void changeStatus(value)}
+      disabled={saving}
+      options={STATUS_OPTIONS}
+      ariaLabel="Selection status"
+      placeholder="Choose status"
+      searchPlaceholder="Search statuses..."
+      emptyMessage="No matching statuses."
+    />
   )
 }

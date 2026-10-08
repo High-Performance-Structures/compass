@@ -16,6 +16,7 @@ import {
   type ProjectEstimateCostCodeOption,
 } from "@/app/actions/project-estimates";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -564,31 +565,28 @@ export function ProjectEstimatePlanSwiftImportClient({
                         {mappingDescription(field.key, field.requirement)}
                       </p>
                     </div>
-                    <Select
+                    <SearchableCombobox
                       value={
                         mappings[field.key] === null
                           ? "unmapped"
                           : String(mappings[field.key])
                       }
                       onValueChange={(value) =>
-                        changeMapping(field.key, value)
+                        changeMapping(field.key, value === "" ? "unmapped" : value)
                       }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unmapped">Not mapped</SelectItem>
-                        {headers.map((header, columnIndex) => (
-                          <SelectItem
-                            key={`${columnIndex}-${header}`}
-                            value={String(columnIndex)}
-                          >
-                            {header}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={[
+                        { value: "unmapped", label: "Not mapped" },
+                        ...headers.map((header, columnIndex) => ({
+                          value: String(columnIndex),
+                          label: header,
+                          description: `Column ${columnIndex + 1}`,
+                        })),
+                      ]}
+                      ariaLabel={`Spreadsheet column for ${field.label}`}
+                      placeholder="Not mapped"
+                      searchPlaceholder="Search columns..."
+                      emptyMessage="No matching columns."
+                    />
                   </div>
                 ))}
               </div>
@@ -720,7 +718,7 @@ export function ProjectEstimatePlanSwiftImportClient({
                               aria-invalid={!row.costCode}
                             />
                             {!knownCode && row.costCode && (
-                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                              <p className="mt-1 text-xs text-warning">
                                 Map to an active cost code
                               </p>
                             )}
@@ -806,11 +804,11 @@ export function ProjectEstimatePlanSwiftImportClient({
                                 {row.issues.join("; ")}
                               </span>
                             ) : !knownCode ? (
-                              <span className="text-amber-700 dark:text-amber-400">
+                              <span className="text-warning">
                                 Map cost code or exclude
                               </span>
                             ) : included ? (
-                              <span className="text-emerald-700 dark:text-emerald-400">
+                              <span className="text-success">
                                 Ready to import
                               </span>
                             ) : (

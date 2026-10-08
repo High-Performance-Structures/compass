@@ -117,14 +117,14 @@ export function SidebarWorkspaceDrawer({
         dismiss()
       }}
     >
-      <div className="order-2 flex h-9 items-center justify-center border-t border-sidebar-border/60 [@media(pointer:coarse)]:h-11">
+      <div className="order-2 flex h-9 items-center border-t border-sidebar-border/60 px-1.5 [@media(pointer:coarse)]:h-11 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
         <button
           ref={triggerRef}
           type="button"
           aria-label={visible && (pinned || phase === "open") ? "Close Compass drawer" : "Open Compass drawer"}
           aria-expanded={visible}
           aria-controls={drawerId}
-          className="flex h-8 w-12 items-center justify-center gap-1 rounded-md text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring [@media(pointer:coarse)]:h-11 group-data-[collapsible=icon]:w-8"
+          className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring [@media(pointer:coarse)]:h-11 group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
           onKeyDown={(event) => {
             if (event.key !== "ArrowUp") return
             event.preventDefault()
@@ -148,8 +148,10 @@ export function SidebarWorkspaceDrawer({
             }
           }}
         >
-          <IconCompass className="size-4" aria-hidden="true" />
-          <IconChevronUp className={cn("size-3 transition-transform motion-reduce:transition-none group-data-[collapsible=icon]:hidden", visible && "rotate-180")} aria-hidden="true" />
+          <IconCompass className="hidden size-4 shrink-0 group-data-[collapsible=icon]:block" aria-hidden="true" />
+          {/* A slim labeled row; hover preview, click, pin and keyboard behavior are unchanged. */}
+          <span className="flex-1 text-left font-mono text-xs uppercase tracking-[0.14em] group-data-[collapsible=icon]:hidden">Workspace</span>
+          <IconChevronUp className={cn("size-3.5 transition-transform motion-reduce:transition-none group-data-[collapsible=icon]:hidden", visible && "rotate-180")} aria-hidden="true" />
         </button>
       </div>
       <div

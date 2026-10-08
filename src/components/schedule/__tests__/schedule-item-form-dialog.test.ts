@@ -213,6 +213,37 @@ vi.mock("@/components/ui/select", () => {
   }
 })
 
+// Render searchable pickers as native selects so tests can choose a value.
+vi.mock("@/components/searchable-combobox", () => ({
+  SearchableCombobox: ({
+    options,
+    value,
+    onValueChange,
+    ariaLabel,
+    disabled,
+  }: {
+    options: readonly { value: string; label: string }[]
+    value: string
+    onValueChange: (value: string) => void
+    ariaLabel: string
+    disabled?: boolean
+  }) =>
+    React.createElement(
+      "select",
+      {
+        "aria-label": ariaLabel,
+        value,
+        disabled,
+        onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
+          onValueChange(event.currentTarget.value),
+      },
+      React.createElement("option", { value: "" }, ""),
+      ...options.map((option) =>
+        React.createElement("option", { key: option.value, value: option.value }, option.label)
+      )
+    ),
+}))
+
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: { children: React.ReactNode }) =>
     React.createElement(React.Fragment, null, children),
