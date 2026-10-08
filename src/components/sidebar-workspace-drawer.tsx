@@ -148,7 +148,7 @@ export function SidebarWorkspaceDrawer({
             }
           }}
         >
-          <IconCompass className="size-4 shrink-0" aria-hidden="true" />
+          <IconCompass className="hidden size-4 shrink-0 group-data-[collapsible=icon]:block" aria-hidden="true" />
           {/* A slim labeled row; hover preview, click, pin and keyboard behavior are unchanged. */}
           <span className="flex-1 text-left font-mono text-xs uppercase tracking-[0.14em] group-data-[collapsible=icon]:hidden">Workspace</span>
           <IconChevronUp className={cn("size-3.5 transition-transform motion-reduce:transition-none group-data-[collapsible=icon]:hidden", visible && "rotate-180")} aria-hidden="true" />

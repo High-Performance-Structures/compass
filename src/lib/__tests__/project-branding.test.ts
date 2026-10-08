@@ -105,7 +105,7 @@ describe("project branding", () => {
 
   it("uses distinct HPS and Nu-Tech identities", () => {
     expect(projectBrandFor({ projectNumber: "H-OFFICE" })).toMatchObject({
-      companyName: "High Performance Structures, Inc.",
+      companyName: "High Performance Structures Inc.",
       logoSrc: "/department-logos/hps-h-green.svg",
     })
     expect(projectBrandFor({ projectNumber: "N-830-8220" })).toMatchObject({
@@ -117,7 +117,7 @@ describe("project branding", () => {
   it.each([
     ["O-202-595", "Open Range Construction, Ltd.", "/department-logos/orc-mark.png"],
     ["D-18-00", "Open Range Construction, Ltd.", "/department-logos/orc-mark.png"],
-    ["H-OFFICE", "High Performance Structures, Inc.", "/department-logos/hps-h-green.svg"],
+    ["H-OFFICE", "High Performance Structures Inc.", "/department-logos/hps-h-green.svg"],
     ["N-830-8220", "Nu-Tech Systems", "/department-logos/nu-tech-n.png"],
   ])(
     "maps %s to a deployable department logo",
@@ -135,7 +135,7 @@ describe("project branding", () => {
   it("keeps HPS as the safe fallback for unnumbered legacy projects", () => {
     expect(projectBrandFor({})).toMatchObject({
       department: "H",
-      companyName: "High Performance Structures, Inc.",
+      companyName: "High Performance Structures Inc.",
     })
   })
 
