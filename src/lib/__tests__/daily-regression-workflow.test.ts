@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
+import ts from "typescript"
 import YAML from "yaml"
 import { describe, expect, it } from "vitest"
 
@@ -11,6 +12,13 @@ const workflow = readFileSync(
 const productionSmoke = readFileSync(
   join(process.cwd(), "e2e/web/production-smoke.spec.ts"),
   "utf8",
+)
+const productionSmokeSourceFile = ts.createSourceFile(
+  "production-smoke.spec.ts",
+  productionSmoke,
+  ts.ScriptTarget.Latest,
+  true,
+  ts.ScriptKind.TS,
 )
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -52,6 +60,117 @@ function containsKey(value: unknown, key: string): boolean {
   return Object.entries(value).some(
     ([entryKey, entryValue]) => entryKey === key || containsKey(entryValue, key),
   )
+}
+
+function functionBody(name: string): ts.Block {
+  let declaration: ts.FunctionDeclaration | undefined
+  const visit = (node: ts.Node): void => {
+    if (declaration) return
+    if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
+      declaration = node
+      return
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(productionSmokeSourceFile)
+
+  const body = declaration?.body
+  if (!body) throw new Error(`Expected ${name} to have a function body.`)
+  return body
+}
+
+function containsCall(
+  root: ts.Node,
+  predicate: (call: ts.CallExpression) => boolean,
+): boolean {
+  let found = false
+  const visit = (node: ts.Node): void => {
+    if (found) return
+    if (ts.isCallExpression(node) && predicate(node)) {
+      found = true
+      return
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(root)
+  return found
+}
+
+function hasResponseStatusAssertion(body: ts.Block): boolean {
+  return containsCall(body, (call) => {
+    if (
+      !ts.isPropertyAccessExpression(call.expression) ||
+      call.expression.name.text !== "toBeLessThan" ||
+      call.arguments.length !== 1
+    ) {
+      return false
+    }
+
+    const threshold = call.arguments[0]
+    if (!ts.isNumericLiteral(threshold) || threshold.text !== "400") return false
+
+    const expectation = call.expression.expression
+    if (
+      !ts.isCallExpression(expectation) ||
+      !ts.isIdentifier(expectation.expression) ||
+      expectation.expression.text !== "expect" ||
+      expectation.arguments.length < 1
+    ) {
+      return false
+    }
+
+    const actual = expectation.arguments[0]
+    if (
+      !ts.isCallExpression(actual) ||
+      !ts.isPropertyAccessExpression(actual.expression) ||
+      actual.expression.name.text !== "status" ||
+      actual.arguments.length !== 0 ||
+      !ts.isIdentifier(actual.expression.expression)
+    ) {
+      return false
+    }
+
+    return actual.expression.expression.text === "response"
+  })
+}
+
+function hasNonEmptyResponseBodyAssertion(body: ts.Block): boolean {
+  return containsCall(body, (call) => {
+    if (
+      !ts.isPropertyAccessExpression(call.expression) ||
+      call.expression.name.text !== "toBeEmpty" ||
+      call.arguments.length !== 0
+    ) {
+      return false
+    }
+
+    const notAccess = call.expression.expression
+    if (
+      !ts.isPropertyAccessExpression(notAccess) ||
+      notAccess.name.text !== "not" ||
+      !ts.isCallExpression(notAccess.expression) ||
+      !ts.isIdentifier(notAccess.expression.expression) ||
+      notAccess.expression.expression.text !== "expect" ||
+      notAccess.expression.arguments.length < 1
+    ) {
+      return false
+    }
+
+    const actual = notAccess.expression.arguments[0]
+    if (
+      !ts.isCallExpression(actual) ||
+      !ts.isPropertyAccessExpression(actual.expression) ||
+      actual.expression.name.text !== "locator" ||
+      actual.arguments.length !== 1 ||
+      !ts.isIdentifier(actual.expression.expression) ||
+      actual.expression.expression.text !== "page"
+    ) {
+      return false
+    }
+
+    const selector = actual.arguments[0]
+    return ts.isStringLiteral(selector) && selector.text === "body"
+  })
 }
 
 describe("daily regression workflow", () => {
@@ -170,5 +289,9 @@ describe("daily regression workflow", () => {
     expect(productionSmoke).not.toContain("new RegExp")
     expect(productionSmoke).not.toContain("toHaveURL")
     expect(productionSmoke).not.toMatch(/waitForURL\(\s*\//)
+
+    const navigationAssertions = functionBody("expectHealthyNavigation")
+    expect(hasResponseStatusAssertion(navigationAssertions)).toBe(true)
+    expect(hasNonEmptyResponseBodyAssertion(navigationAssertions)).toBe(true)
   })
 })
