@@ -43,6 +43,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invitation"
+import { PortfolioSection } from "@/components/dashboard/portfolio-map/portfolio-section"
+import type { PortfolioMapData } from "@/lib/portfolio-map/load"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Select,
@@ -1239,6 +1241,7 @@ export function DashboardLaunchpad({
   canManageOfficeMaintenance,
   canPrepareGreetingCards,
   cherishRecognitions,
+  portfolio,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1249,6 +1252,7 @@ export function DashboardLaunchpad({
   readonly canManageOfficeMaintenance: boolean
   readonly canPrepareGreetingCards: boolean
   readonly cherishRecognitions: readonly CherishStory[]
+  readonly portfolio: PortfolioMapData
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1317,6 +1321,8 @@ export function DashboardLaunchpad({
           officeProjectId={officeProjectId}
         />
       </div>
+
+      <PortfolioSection jobs={portfolio.jobs} unplacedCount={portfolio.unplacedCount} />
 
       {mode === "office" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.5fr)_minmax(15rem,0.5fr)]">
