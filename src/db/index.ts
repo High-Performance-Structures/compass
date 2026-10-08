@@ -21,6 +21,7 @@ import * as participantSchema from "./schema-participants"
 import * as socialSchema from "./schema-social"
 import * as documentSchema from "./schema-documents"
 import * as rfqSchema from "./schema-rfqs"
+import * as projectFamilySchema from "./schema-project-families"
 
 import * as correspondenceSchema from "./schema-correspondence"
 import * as correspondenceEmailSchema from "./schema-correspondence-email"
@@ -55,6 +56,7 @@ const allSchemas = {
   ...socialSchema,
   ...documentSchema,
   ...rfqSchema,
+  ...projectFamilySchema,
 }
 
 // Legacy function - kept for backwards compatibility

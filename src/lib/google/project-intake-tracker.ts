@@ -1,5 +1,35 @@
 export type ProjectIntakeDepartment = "O" | "H" | "N" | "D"
 
+/** The sheet has one owner slot; linked person fields come from the directory. */
+export function projectTrackerOwnerContact(input: {
+  readonly projectClientName: string | null
+  readonly assignmentName: string | null
+  readonly assignmentCompanyName: string | null
+  readonly assignmentEmail: string | null
+  readonly assignmentPhone: string | null
+  readonly canonicalPersonId: string | null
+  readonly canonicalPersonName: string | null
+  readonly canonicalPersonEmail: string | null
+  readonly canonicalPersonPhone: string | null
+  readonly canonicalCompanyName: string | null
+}): {
+  readonly name: string
+  readonly companyName: string
+  readonly email: string
+  readonly phone: string
+} {
+  return {
+    name: input.canonicalPersonName ?? input.projectClientName ?? input.assignmentName ?? "",
+    companyName: input.canonicalCompanyName ?? input.assignmentCompanyName ?? "",
+    email: input.canonicalPersonId
+      ? input.canonicalPersonEmail ?? ""
+      : input.assignmentEmail ?? "",
+    phone: input.canonicalPersonId
+      ? input.canonicalPersonPhone ?? ""
+      : input.assignmentPhone ?? "",
+  }
+}
+
 export type ProjectIntakeTrackerInput = {
   readonly department: ProjectIntakeDepartment
   readonly projectName: string
@@ -296,6 +326,14 @@ export function buildProjectRegistryRow(input: {
   readonly createdBy: string
 }): readonly string[] {
   const destination = departmentTrackingDestination(input.project.department)
+  // The registry has split-name columns, but a linked directory record may
+  // have only one canonical display name (including multiple owners).
+  const registryClientName =
+    !cellText(input.project.clientFirstName) &&
+    !cellText(input.project.clientLastName) &&
+    !cellText(input.project.companyName)
+      ? cellText(input.project.clientName)
+      : ""
   const values: Readonly<Record<string, string>> = {
     "project id": input.projectNumber,
     "project number": input.projectNumber,
@@ -303,7 +341,7 @@ export function buildProjectRegistryRow(input: {
     sequence: sequenceFromProjectNumber(input.projectNumber),
     "street number code": cellText(input.project.streetNumber),
     "street name label": cellText(input.project.streetName) || input.project.projectName,
-    "client last name": cellText(input.project.clientLastName),
+    "client last name": cellText(input.project.clientLastName) || registryClientName,
     "client first name": cellText(input.project.clientFirstName),
     "company name": cellText(input.project.companyName),
     "city state zip": cellText(input.project.cityStateZip),

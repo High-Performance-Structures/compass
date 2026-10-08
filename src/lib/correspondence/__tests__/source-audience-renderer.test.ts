@@ -14,6 +14,7 @@ function renderMessage(message: CorrespondenceMessage): string {
     editDisabled: false,
     onEdit: async () => {},
     onRetract: () => {},
+    onRetryEmail: async () => {},
   }))
 }
 
@@ -30,6 +31,8 @@ function message(overrides: Partial<CorrespondenceMessage> = {}): Correspondence
     sourceAttachmentReadiness: { expectedRecoverableFileCount: 4, linkedAttachmentCount: 0, pendingFileCount: 4 },
     body: "Historical body",
     recipients: [{ name: "Pending Original Recipient", kind: "to" }, { name: "Staff A", kind: "cc" }],
+    emailBcc: [],
+    emailDeliveryStatus: null,
     attachments: [{ id: "retired", name: "old.jpg", size: 12, contentType: "image/jpeg", available: false }],
     editedAt: null,
     retractedAt: null,
@@ -56,6 +59,15 @@ describe("historical source audience renderers", () => {
     const markup = renderMessage(message({ source: "compass", sentAt: "2026-09-05T12:00:00.000Z", sourceSentDisplay: null, sourceSentAt: null, sourceAttachmentReadiness: null, delivery: "saved" }))
     expect(markup).not.toContain("Source time:")
     expect(markup).toContain("dateTime=\"2026-09-05T12:00:00.000Z\"")
+  })
+
+  it("shows a recoverable failure to the sender without exposing blind recipients elsewhere", () => {
+    const sender = renderMessage(message({ source: "email", authorUserId: "owner-a", emailDeliveryStatus: "failed", emailBcc: ["blind@example.com"], delivery: "saved" }))
+    const colleague = renderMessage(message({ source: "email", authorUserId: "staff-a", emailDeliveryStatus: "failed", emailBcc: [], delivery: "saved" }))
+    expect(sender).toContain("Retry failed email")
+    expect(sender).toContain("blind@example.com")
+    expect(colleague).not.toContain("Retry failed email")
+    expect(colleague).not.toContain("blind@example.com")
   })
 
   it("renders a search source-local label without converting it to a Date", () => {

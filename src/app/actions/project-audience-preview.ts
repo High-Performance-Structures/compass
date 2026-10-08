@@ -26,6 +26,7 @@ import {
   schedulePublications,
   scheduleTasks,
 } from "@/db/schema"
+import { contractPackets } from "@/db/schema-contracts"
 import { scheduleTaskAssignees, projectSourceRecordParticipants } from "@/db/schema-participants"
 import { projectDocuments } from "@/db/schema-documents"
 import { channelMembers, channels } from "@/db/schema-conversations"
@@ -55,7 +56,7 @@ import {
   selectOwnScheduleCommitments,
   type OwnerScheduleView,
 } from "@/lib/schedule/owner-visibility"
-import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
+import { activePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { selectAudienceScheduleSourceRows } from "@/lib/schedule/audience-publication"
@@ -222,6 +223,15 @@ export type AudienceDocument = {
   readonly publishedAt: string | null
 }
 
+export type AudienceContractDocument = {
+  readonly id: string
+  readonly packetNumber: string
+  readonly versionNumber: number
+  readonly title: string
+  readonly executedAt: string | null
+  readonly label: string | null
+}
+
 export type ProjectAudiencePreview = {
   readonly audience: ProjectAudience
   readonly viewerIsInternal: boolean
@@ -242,10 +252,12 @@ export type ProjectAudiencePreview = {
     readonly clientName: string | null
     readonly projectManager: string | null
     readonly ownerScheduleView: OwnerScheduleView
+    readonly schedulePublished: boolean
     readonly warrantyEnabled: boolean
   }
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
+  readonly contractDocuments: readonly AudienceContractDocument[]
   readonly documents: readonly AudienceDocument[]
   readonly schedulePublicationAvailable: boolean
   readonly scheduleItems: readonly AudienceScheduleItem[]
@@ -438,6 +450,7 @@ export async function getProjectAudiencePreview(
       clientName: projects.clientName,
       projectManager: projects.projectManager,
       ownerScheduleView: projects.ownerScheduleView,
+      schedulePublished: projects.schedulePublished,
       status: projects.status,
       jobStatusId: projects.jobStatusId,
     })
@@ -546,7 +559,20 @@ export async function getProjectAudiencePreview(
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
-  const currentScheduleRows = await db
+  const publishedSchedule = await db
+    .select({ snapshotData: schedulePublications.snapshotData })
+    .from(schedulePublications)
+    .where(eq(schedulePublications.projectId, projectId))
+    .orderBy(desc(schedulePublications.publishedAt))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  const publishedSnapshot = activePublishedScheduleSnapshot(
+    project.schedulePublished,
+    publishedSchedule?.snapshotData ?? null
+  )
+  // External viewers never read working rows for a draft. Staff can still
+  // preview those rows; active publications only overlay response state.
+  const currentScheduleRows = viewerIsInternal || publishedSnapshot ? await db
     .select({
       id: scheduleTasks.id,
       title: scheduleTasks.title,
@@ -574,7 +600,7 @@ export async function getProjectAudiencePreview(
     })
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
-    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder)) : []
   // External viewers only receive the child row that they can answer. This
   // keeps another assignee's private response message and proposal private.
   const scheduleAssigneeRows = await db
@@ -630,24 +656,13 @@ export async function getProjectAudiencePreview(
     existing.push(row)
     visibleScheduleAssigneesByTask.set(row.scheduleTaskId, existing)
   }
-  const publishedSchedule = await db
-    .select({ snapshotData: schedulePublications.snapshotData })
-    .from(schedulePublications)
-    .where(eq(schedulePublications.projectId, projectId))
-    .orderBy(desc(schedulePublications.publishedAt))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-  const publishedSnapshot = publishedSchedule
-    ? parsePublishedScheduleSnapshot(publishedSchedule.snapshotData)
-    : null
   // Once a publication exists, fail closed if its immutable snapshot cannot
   // be parsed. Falling back to live rows could expose unpublished changes.
   const currentScheduleById = new Map(
     currentScheduleRows.map((task) => [task.id, task])
   )
-  const publishedScheduleRows = publishedSchedule
-    ? publishedSnapshot
-      ? publishedSnapshot.tasks.map((task) => {
+  const publishedScheduleRows = publishedSnapshot
+    ? publishedSnapshot.tasks.map((task) => {
           const currentTask = currentScheduleById.get(task.id)
           const assigneeSetMatches = sameScheduleAssigneeSet(
             (scheduleAssigneesByTask.get(task.id) ?? []).map(
@@ -709,7 +724,6 @@ export async function getProjectAudiencePreview(
               : [],
           }
         })
-      : []
     : null
   const draftScheduleRows = currentScheduleRows.map((task) => ({
     ...task,
@@ -1087,33 +1101,55 @@ export async function getProjectAudiencePreview(
 
   // Published construction documents use one whole-project audience. Owners,
   // assigned subcontractors, and internal previews receive the same set.
-  const documentRows = await db
-    .select({
-      id: projectDocuments.id,
-      category: projectDocuments.category,
-      title: projectDocuments.title,
-      description: projectDocuments.description,
-      documentDate: projectDocuments.documentDate,
-      revision: projectDocuments.revision,
-      status: projectDocuments.status,
-      downloadable: projectDocuments.downloadable,
-      sourceFileName: projectDocuments.sourceFileName,
-      publishedAt: projectDocuments.publishedAt,
-    })
-    .from(projectDocuments)
-    .where(
-      and(
-        eq(projectDocuments.projectId, projectId),
-        eq(projectDocuments.audience, "project_team"),
-        inArray(projectDocuments.status, ["current", "superseded"]),
-        isNotNull(projectDocuments.publishedAt)
+  const [documentRows, contractDocumentRows] = await Promise.all([
+    db
+      .select({
+        id: projectDocuments.id,
+        category: projectDocuments.category,
+        title: projectDocuments.title,
+        description: projectDocuments.description,
+        documentDate: projectDocuments.documentDate,
+        revision: projectDocuments.revision,
+        status: projectDocuments.status,
+        downloadable: projectDocuments.downloadable,
+        sourceFileName: projectDocuments.sourceFileName,
+        publishedAt: projectDocuments.publishedAt,
+      })
+      .from(projectDocuments)
+      .where(
+        and(
+          eq(projectDocuments.projectId, projectId),
+          eq(projectDocuments.audience, "project_team"),
+          inArray(projectDocuments.status, ["current", "superseded"]),
+          isNotNull(projectDocuments.publishedAt)
+        )
       )
-    )
-    .orderBy(
-      asc(projectDocuments.category),
-      desc(projectDocuments.documentDate),
-      asc(projectDocuments.title)
-    )
+      .orderBy(
+        asc(projectDocuments.category),
+        desc(projectDocuments.documentDate),
+        asc(projectDocuments.title)
+      ),
+    audience === "owner"
+      ? db
+          .select({
+            id: contractPackets.id,
+            packetNumber: contractPackets.packetNumber,
+            versionNumber: contractPackets.versionNumber,
+            title: contractPackets.title,
+            executedAt: contractPackets.signedAt,
+            label: contractPackets.acceptanceEvidenceLabel,
+          })
+          .from(contractPackets)
+          .where(
+            and(
+              eq(contractPackets.projectId, projectId),
+              eq(contractPackets.status, "executed"),
+              isNotNull(contractPackets.signaturePackageUrl)
+            )
+          )
+          .orderBy(desc(contractPackets.signedAt), desc(contractPackets.versionNumber))
+      : Promise.resolve([]),
+  ])
 
   return {
     audience,
@@ -1129,6 +1165,7 @@ export async function getProjectAudiencePreview(
       clientName: project.clientName,
       projectManager: project.projectManager,
       ownerScheduleView,
+      schedulePublished: project.schedulePublished && publishedSnapshot !== null,
       warrantyEnabled: isWarrantyProjectStage({
         status: project.status,
         jobStatusId: project.jobStatusId,
@@ -1159,6 +1196,7 @@ export async function getProjectAudiencePreview(
             : "No phase assigned.",
       }
     }),
+    contractDocuments: contractDocumentRows,
     documents: documentRows,
     schedulePublicationAvailable: publishedSnapshot !== null,
     scheduleItems: audienceScheduleItems,

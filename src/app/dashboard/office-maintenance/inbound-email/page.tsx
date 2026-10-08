@@ -25,6 +25,7 @@ import {
 } from "@/app/actions/inbound-sms-review"
 import { InboundSmsProjectCombobox } from "@/components/goto/inbound-sms-project-combobox"
 import { InboundSmsRoutingFields } from "@/components/goto/inbound-sms-routing-fields"
+import { InboundSmsRouteSubmitButton } from "@/components/goto/inbound-sms-route-submit-button"
 import { TrashInboundSmsButton } from "@/components/goto/trash-inbound-sms-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -155,7 +156,7 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                   />
                 </label>
                 <div className="flex justify-end md:col-span-2">
-                  <Button type="submit">Route to Compass</Button>
+                  <InboundSmsRouteSubmitButton />
                 </div>
               </form>
               <div className="mt-2 flex flex-wrap justify-end gap-2">

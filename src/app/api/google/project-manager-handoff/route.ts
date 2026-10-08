@@ -7,11 +7,23 @@ import {
   projectOperations,
   projects,
 } from "@/db/schema"
+import {
+  projectFamilies,
+  projectFamilyPhases,
+} from "@/db/schema-project-families"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  baseProjectNumber,
+  projectNumberPhaseNumber,
+} from "@/lib/project-profile"
 import {
   projectDepartmentFromDivisionLabel,
   resolvedProjectDepartment,
 } from "@/lib/project-branding"
+import {
+  existingPhaseHandoffUpdatePolicy,
+  resolveProjectHandoffClient,
+} from "@/lib/google/project-manager-handoff"
 
 type HandoffAction = "create_project" | "update_project"
 
@@ -22,6 +34,7 @@ type HandoffPayload = {
   readonly projectNumber: string
   readonly name: string
   readonly clientName: string | null
+  readonly companyName: string | null
   readonly address: string | null
   readonly status: string | null
   readonly folderId: string | null
@@ -40,6 +53,19 @@ type ParseResult =
   | { readonly success: false; readonly error: string }
 
 type StringRecord = Record<string, unknown>
+
+type ExistingSageProjectHandoff = {
+  readonly id: string
+  readonly description: string | null
+  readonly status: string
+  readonly companyName: string | null
+  readonly sageJobId: string | null
+  readonly sageJobNumber: string | null
+  readonly sageWriteStatus: string
+  readonly sagePayloadJson: string | null
+  readonly syncStatus: string
+  readonly updatedAt: string
+}
 
 const PROJECT_STATUS_VALUES = [
   "OPEN",
@@ -257,6 +283,7 @@ function parsePayload(value: unknown): ParseResult {
       projectNumber,
       name,
       clientName: textValue(value, "clientName"),
+      companyName: firstTextValue(value, ["companyName", "company"]),
       address: composeAddress(value),
       status: textValue(value, "status"),
       folderId: textValue(value, "folderId"),
@@ -347,26 +374,24 @@ async function stageProjectForSageSync(
   input: {
     readonly projectId: string
     readonly payload: HandoffPayload
+    readonly companyName: string | null
+    readonly requiresClientReview: boolean
+    readonly existingHandoff: ExistingSageProjectHandoff | null
+    readonly preserveClientDecision: boolean
+    readonly preserveSyncState: boolean
+    readonly payloadJson: string
     readonly now: string
   }
-): Promise<void> {
-  const [existing] = await db
-    .select({ id: projectOperations.id })
-    .from(projectOperations)
-    .where(
-      and(
-        eq(projectOperations.projectId, input.projectId),
-        eq(projectOperations.sourceRecordType, "sage_project_handoff"),
-        eq(projectOperations.sourceRecordId, input.payload.projectNumber)
-      )
-    )
-    .limit(1)
-
+): Promise<boolean> {
+  const existing = input.existingHandoff
   const title = `${input.payload.projectNumber} Sage project handoff`
-  const description =
-    input.payload.action === "create_project"
-      ? "Create or match this Google Project Manager project in Sage."
-      : "Review Google Project Manager changes and update the Sage job if needed."
+  const description = input.preserveClientDecision && existing
+    ? existing.description
+    : input.requiresClientReview
+      ? "Confirm the client/company before queueing this phased project for Sage. The Google contact name is retained only in the source payload."
+      : input.payload.action === "create_project"
+        ? "Create or match this Google Project Manager project in Sage."
+        : "Review Google Project Manager changes and update the Sage job if needed."
   const folderId =
     input.payload.folderId ?? driveFolderIdFromUrl(input.payload.folderLink)
   const values = {
@@ -376,27 +401,47 @@ async function stageProjectForSageSync(
     sourceRecordNumber: input.payload.projectNumber,
     title,
     description,
-    status: "needs_review",
+    status:
+      input.preserveClientDecision && existing
+        ? existing.status
+        : "needs_review",
     priority: "high",
     assigneeType: "internal",
     assigneeName: input.payload.assignedTo,
-    companyName: input.payload.clientName,
+    companyName:
+      input.preserveClientDecision && existing
+        ? existing.companyName
+        : input.companyName,
     externalUrl: driveFolderUrl(folderId, input.payload.folderLink),
-    sageJobId: null,
-    sageJobNumber: null,
-    sageWriteStatus: "needs_review",
-    sagePayloadJson: JSON.stringify(input.payload.rawPayload),
+    sageJobId: existing?.sageJobId ?? null,
+    sageJobNumber: existing?.sageJobNumber ?? null,
+    sageWriteStatus: input.preserveSyncState && existing
+      ? existing.sageWriteStatus
+      : input.preserveClientDecision || !input.requiresClientReview
+        ? "needs_review"
+        : "not_ready",
+    sagePayloadJson: input.payloadJson,
     syncDirection: "write",
-    syncStatus: "pending_sage",
+    syncStatus: input.preserveSyncState && existing
+      ? existing.syncStatus
+      : input.preserveClientDecision || !input.requiresClientReview
+        ? "pending_sage"
+        : "needs_review",
     updatedAt: input.now,
   }
 
   if (existing) {
-    await db
+    const updated = await db
       .update(projectOperations)
       .set(values)
-      .where(eq(projectOperations.id, existing.id))
-    return
+      .where(
+        and(
+          eq(projectOperations.id, existing.id),
+          eq(projectOperations.updatedAt, existing.updatedAt),
+        ),
+      )
+      .returning({ id: projectOperations.id })
+    return updated.length === 1
   }
 
   await db.insert(projectOperations).values({
@@ -409,6 +454,101 @@ async function stageProjectForSageSync(
     lastSyncedAt: null,
     createdAt: input.now,
     ...values,
+  })
+  return true
+}
+
+async function linkPhasedHandoffToFamily(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly projectId: string
+  readonly projectNumber: string
+  readonly projectName: string
+  readonly folderId: string | null
+  readonly now: string
+}): Promise<void> {
+  const phaseNumber = projectNumberPhaseNumber(input.projectNumber)
+  const baseNumber = baseProjectNumber(input.projectNumber)
+  if (phaseNumber === null || !baseNumber) return
+
+  const baseProject = await input.db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.organizationId, input.organizationId),
+        eq(projects.projectNumber, baseNumber),
+      ),
+    )
+    .limit(1)
+    .get()
+  if (!baseProject) return
+
+  const family = await input.db
+    .select({ id: projectFamilies.id })
+    .from(projectFamilies)
+    .innerJoin(
+      projectFamilyPhases,
+      and(
+        eq(projectFamilyPhases.familyId, projectFamilies.id),
+        eq(projectFamilyPhases.projectId, baseProject.id),
+      ),
+    )
+    .where(eq(projectFamilies.organizationId, input.organizationId))
+    .limit(1)
+    .get()
+  if (!family) return
+
+  const sequence = phaseNumber + 1
+  const existing = await input.db
+    .select({
+      id: projectFamilyPhases.id,
+      projectId: projectFamilyPhases.projectId,
+      googleDriveFolderId: projectFamilyPhases.googleDriveFolderId,
+    })
+    .from(projectFamilyPhases)
+    .where(
+      and(
+        eq(projectFamilyPhases.familyId, family.id),
+        eq(projectFamilyPhases.sequence, sequence),
+      ),
+    )
+    .limit(1)
+    .get()
+  if (existing && existing.projectId && existing.projectId !== input.projectId) {
+    return
+  }
+
+  if (existing) {
+    await input.db
+      .update(projectFamilyPhases)
+      .set({
+        projectId: input.projectId,
+        projectNumber: input.projectNumber,
+        googleDriveFolderId: input.folderId ?? existing.googleDriveFolderId,
+        name: input.projectName,
+        updatedAt: input.now,
+      })
+      .where(eq(projectFamilyPhases.id, existing.id))
+    return
+  }
+
+  await input.db.insert(projectFamilyPhases).values({
+    id: crypto.randomUUID(),
+    familyId: family.id,
+    projectId: input.projectId,
+    projectNumber: input.projectNumber,
+    googleDriveFolderId: input.folderId,
+    sequence,
+    name: input.projectName,
+    description: null,
+    jobStatusId: "awaiting_funding",
+    originatingChangeOrderId: null,
+    authorizedContractAmountCents: null,
+    authorizedAt: null,
+    createdBy: null,
+    createdAt: input.now,
+    updatedAt: input.now,
   })
 }
 
@@ -446,7 +586,11 @@ export async function POST(request: Request): Promise<Response> {
   const now = new Date().toISOString()
   const payload = parsed.payload
   const [existingProject] = await db
-    .select({ id: projects.id, department: projects.department })
+    .select({
+      id: projects.id,
+      department: projects.department,
+      clientName: projects.clientName,
+    })
     .from(projects)
     .where(
       and(
@@ -455,6 +599,30 @@ export async function POST(request: Request): Promise<Response> {
       )
     )
     .limit(1)
+
+  const phaseNumber = projectNumberPhaseNumber(payload.projectNumber)
+  const baseNumber = baseProjectNumber(payload.projectNumber)
+  const baseProject =
+    phaseNumber !== null && baseNumber
+      ? await db
+          .select({ clientName: projects.clientName })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.organizationId, organizationId),
+              eq(projects.projectNumber, baseNumber),
+            ),
+          )
+          .limit(1)
+          .get()
+      : null
+  const clientResolution = resolveProjectHandoffClient({
+    isPhase: phaseNumber !== null,
+    submittedContactName: payload.clientName,
+    submittedCompanyName: payload.companyName,
+    existingClientName: existingProject?.clientName ?? null,
+    baseProjectClientName: baseProject?.clientName ?? null,
+  })
 
   const folderId = payload.folderId ?? driveFolderIdFromUrl(payload.folderLink)
   const folderUrl = driveFolderUrl(folderId, payload.folderLink)
@@ -465,27 +633,59 @@ export async function POST(request: Request): Promise<Response> {
   const projectId =
     existingProject?.id ??
     `proj-${slugPart(payload.projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
+  const existingHandoff = existingProject
+    ? (await db
+        .select({
+          id: projectOperations.id,
+          description: projectOperations.description,
+          status: projectOperations.status,
+          companyName: projectOperations.companyName,
+          sageJobId: projectOperations.sageJobId,
+          sageJobNumber: projectOperations.sageJobNumber,
+          sageWriteStatus: projectOperations.sageWriteStatus,
+          sagePayloadJson: projectOperations.sagePayloadJson,
+          syncStatus: projectOperations.syncStatus,
+          updatedAt: projectOperations.updatedAt,
+        })
+        .from(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceSystem, "google_project_manager"),
+            eq(projectOperations.sourceRecordType, "sage_project_handoff"),
+            eq(projectOperations.sourceRecordId, payload.projectNumber),
+          ),
+        )
+        .limit(1)
+        .get() ?? null)
+    : null
+  const payloadJson = JSON.stringify(payload.rawPayload)
+  const handoffPolicy =
+    clientResolution.requiresReview && existingHandoff
+      ? existingPhaseHandoffUpdatePolicy({
+          ...existingHandoff,
+          existingPayloadJson: existingHandoff.sagePayloadJson,
+          incomingPayloadJson: payloadJson,
+        })
+      : {
+          preserveClientDecision: false,
+          preserveSyncState: false,
+          rejectWhileInFlight: false,
+        }
+  if (handoffPolicy.rejectWhileInFlight) {
+    return Response.json(
+      {
+        error:
+          "This phase already has a Sage handoff in progress. Retry after it finishes so the newer Google changes are not lost.",
+      },
+      { status: 409 },
+    )
+  }
+  const projectClientName = handoffPolicy.preserveClientDecision
+    ? existingHandoff?.companyName ?? clientResolution.clientName
+    : clientResolution.clientName
 
-  if (existingProject) {
-    const projectUpdates = {
-      name: payload.name,
-      department: existingProject.department ?? department,
-      status: projectStatus,
-      clientName: payload.clientName,
-      projectManager: payload.assignedTo,
-      googleDriveFolderId: folderId,
-      ownerUpdatesEnabled: true,
-      ownerUpdateChannel: "compass",
-      ownerUpdateCadence: "weekly",
-      updatedAt: now,
-      ...(payload.address === null ? {} : { address: payload.address }),
-    }
-
-    await db
-      .update(projects)
-      .set(projectUpdates)
-      .where(eq(projects.id, existingProject.id))
-  } else {
+  if (!existingProject) {
     await db.insert(projects).values({
       id: projectId,
       organizationId,
@@ -494,7 +694,7 @@ export async function POST(request: Request): Promise<Response> {
       name: payload.name,
       status: projectStatus,
       address: payload.address,
-      clientName: payload.clientName,
+      clientName: projectClientName,
       projectManager: payload.assignedTo,
       googleDriveFolderId: folderId,
       ownerUpdatesEnabled: true,
@@ -503,6 +703,46 @@ export async function POST(request: Request): Promise<Response> {
       createdAt: now,
       updatedAt: now,
     })
+  }
+
+  const handoffStaged = await stageProjectForSageSync(db, {
+    projectId,
+    payload,
+    companyName: clientResolution.clientName,
+    requiresClientReview: clientResolution.requiresReview,
+    existingHandoff,
+    preserveClientDecision: handoffPolicy.preserveClientDecision,
+    preserveSyncState: handoffPolicy.preserveSyncState,
+    payloadJson,
+    now,
+  })
+  if (!handoffStaged) {
+    return Response.json(
+      {
+        error:
+          "The Sage handoff changed while this Google update was being saved. Retry so no project changes are lost.",
+      },
+      { status: 409 },
+    )
+  }
+
+  if (existingProject) {
+    await db
+      .update(projects)
+      .set({
+        name: payload.name,
+        department: existingProject.department ?? department,
+        status: projectStatus,
+        clientName: projectClientName,
+        projectManager: payload.assignedTo,
+        googleDriveFolderId: folderId,
+        ownerUpdatesEnabled: true,
+        ownerUpdateChannel: "compass",
+        ownerUpdateCadence: "weekly",
+        updatedAt: now,
+        ...(payload.address === null ? {} : { address: payload.address }),
+      })
+      .where(eq(projects.id, existingProject.id))
   }
 
   await upsertProjectExternalLink(db, {
@@ -520,6 +760,8 @@ export async function POST(request: Request): Promise<Response> {
       trackerId: payload.trackerId,
       trackerRowIndex: payload.trackerRowIndex,
       occurredAt: payload.occurredAt,
+      contactName: payload.clientName,
+      companyName: payload.companyName,
     }),
     now,
   })
@@ -555,13 +797,25 @@ export async function POST(request: Request): Promise<Response> {
     now,
   })
 
-  await stageProjectForSageSync(db, { projectId, payload, now })
+  await linkPhasedHandoffToFamily({
+    db,
+    organizationId,
+    projectId,
+    projectNumber: payload.projectNumber,
+    projectName: payload.name,
+    folderId,
+    now,
+  })
 
   return Response.json({
     success: true,
     projectId,
     projectNumber: payload.projectNumber,
     action: existingProject ? "updated" : "created",
-    sageSync: "pending_sage",
+    sageSync: handoffPolicy.preserveSyncState
+      ? existingHandoff?.syncStatus ?? "pending_sage"
+      : handoffPolicy.preserveClientDecision || !clientResolution.requiresReview
+        ? "pending_sage"
+        : "needs_review",
   })
 }

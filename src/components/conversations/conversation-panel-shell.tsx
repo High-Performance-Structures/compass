@@ -1,13 +1,12 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, ExternalLink, MessageCircle, PanelRightClose, RefreshCw } from "lucide-react"
 import { getConversationPanelData } from "@/app/actions/conversation-panel"
 import { listChannels } from "@/app/actions/conversations"
 import { DirectMessagePicker } from "@/components/conversations/direct-message-dialog"
-import { MessageComposer } from "@/components/conversations/message-composer"
-import { MessageList } from "@/components/conversations/message-list"
 import { ConversationsProvider } from "@/contexts/conversations-context"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -17,6 +16,20 @@ import {
 } from "@/lib/conversations/notification-route"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { useConversationPanel } from "./conversation-panel-provider"
+import { prefetchWhenIdle } from "@/lib/client/prefetch-when-idle"
+
+// The composer (TipTap) and message list load when a conversation opens,
+// not with every dashboard page.
+const loadMessageComposer = () => import("@/components/conversations/message-composer")
+const loadMessageList = () => import("@/components/conversations/message-list")
+const MessageComposer = dynamic(
+  () => loadMessageComposer().then((module) => module.MessageComposer),
+  { ssr: false }
+)
+const MessageList = dynamic(
+  () => loadMessageList().then((module) => module.MessageList),
+  { ssr: false }
+)
 
 type PanelData = Extract<
   Awaited<ReturnType<typeof getConversationPanelData>>,
@@ -38,6 +51,10 @@ function channelLabel(channel: TextChannel): string {
 function ConversationPanelContent() {
   const router = useRouter()
   const { isOpen, channelId, view, open, close } = useConversationPanel()
+  React.useEffect(
+    () => prefetchWhenIdle(() => Promise.all([loadMessageComposer(), loadMessageList()])),
+    []
+  )
   const [channels, setChannels] = React.useState<readonly TextChannel[]>([])
   const [channelsLoading, setChannelsLoading] = React.useState(false)
   const [channelsError, setChannelsError] = React.useState<string | null>(null)

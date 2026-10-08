@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  canApproveGreetingCards: vi.fn(),
+  canFeature: vi.fn(),
   canPrepareGreetingCards: vi.fn(),
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
@@ -13,9 +13,9 @@ vi.mock("@/lib/auth", () => ({ requireAuth: mocks.requireAuth }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/permissions", () => ({
-  canApproveGreetingCards: mocks.canApproveGreetingCards,
   canPrepareGreetingCards: mocks.canPrepareGreetingCards,
 }))
+vi.mock("@/lib/permission-enforcement", () => ({ canFeature: mocks.canFeature }))
 
 import { getGreetingCardRecipientOptions } from "@/app/actions/greeting-card-recipients"
 
@@ -31,7 +31,7 @@ describe("getGreetingCardRecipientOptions", () => {
       displayName: "Office Staff",
     })
     mocks.canPrepareGreetingCards.mockReturnValue(true)
-    mocks.canApproveGreetingCards.mockReturnValue(false)
+    mocks.canFeature.mockResolvedValue(false)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: {} } })
     mocks.getDb.mockReset()
   })
@@ -101,7 +101,11 @@ describe("getGreetingCardRecipientOptions", () => {
       "team:employee-1",
     ])
     expect(result.data.find((option) => option.id === "team:employee-1"))
-      .toEqual(expect.objectContaining({ recipientType: "employee" }))
+      .toEqual(expect.objectContaining({
+        recipientType: "employee",
+        addressStatus: "missing",
+        recipient: expect.objectContaining({ address1: "" }),
+      }))
     expect(result.data.some((option) => option.id === "team:developer-1"))
       .toBe(false)
   })

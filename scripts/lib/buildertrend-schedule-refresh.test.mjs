@@ -57,11 +57,14 @@ describe("Buildertrend schedule refresh", () => {
   it("generates guarded, idempotent SQL without user-facing Buildertrend links", () => {
     const output = generateBuildertrendScheduleRefreshSql(fixture())
 
-    expect(output).toContain("INSERT INTO projects SELECT * FROM projects")
-    expect(output).toContain("AND NOT (")
+    expect(output).toContain("AS preflight_gate")
+    expect(output).toContain("AS source_link_gate")
+    expect(output).not.toContain("INSERT INTO projects SELECT * FROM projects")
     expect(output).toContain("id='task-1' AND title='Foundation'")
     expect(output).toContain("UPDATE schedule_tasks")
     expect(output).toContain("INSERT INTO task_dependencies")
+    expect(output).toContain("INSERT INTO buildertrend_schedule_task_source_links")
+    expect(output).toContain("linked_source_records")
     expect(output).toMatch(/bt-observation-20260815-[a-f0-9]{12}-45847565-1001/)
     expect(output).toContain("buildertrend_url")
     expect(output).toContain("NULL, 'Foundation'")
@@ -72,6 +75,7 @@ describe("Buildertrend schedule refresh", () => {
       dependencyCount: 1,
       preservesCompassTaskIds: true,
       createsExternalLinks: false,
+      createsProvenanceLinks: true,
     })
   })
 

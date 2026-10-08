@@ -12,6 +12,7 @@ type ProjectQuickSwitcherProps = {
   readonly currentProjectId?: string | null
   readonly targetSection?: string
   readonly placeholder?: string
+  readonly placeholderClassName?: string
   readonly className?: string
 }
 
@@ -25,6 +26,7 @@ export function ProjectQuickSwitcher({
   currentProjectId = null,
   targetSection,
   placeholder = "Search projects...",
+  placeholderClassName,
   className,
 }: ProjectQuickSwitcherProps): React.ReactElement {
   const router = useRouter()
@@ -40,6 +42,7 @@ export function ProjectQuickSwitcher({
       }}
       ariaLabel="Switch project"
       placeholder={placeholder}
+      placeholderClassName={placeholderClassName}
       className={className}
     />
   )

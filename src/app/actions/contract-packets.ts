@@ -13,7 +13,9 @@ import {
   contractPackets,
 } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
+import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import { validateExecutedContractDocumentReplacement } from "@/lib/contracts/executed-document"
 import {
   contractDepositCents,
   contractPacketCanBeEdited,
@@ -170,6 +172,13 @@ export type ContractPacketManualExecutionInput = {
   readonly signedAt: string | null
   readonly evidenceUrl: string | null
   readonly evidenceLabel: string | null
+  readonly attested: boolean
+}
+
+export type ContractPacketExecutedDocumentReplacementInput = {
+  readonly evidenceUrl: string | null
+  readonly evidenceLabel: string | null
+  readonly reason: string | null
   readonly attested: boolean
 }
 
@@ -1314,6 +1323,101 @@ export async function recordManualProjectContractPacketExecution(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to record contract execution.",
+    }
+  }
+}
+
+export async function replaceExecutedProjectContractPacketDocument(
+  projectId: string,
+  packetId: string,
+  input: ContractPacketExecutedDocumentReplacementInput
+): Promise<ContractPacketActionResult> {
+  try {
+    const access = await packetAccess(projectId, true)
+    const packet = await access.db
+      .select()
+      .from(contractPackets)
+      .where(
+        and(eq(contractPackets.id, packetId), eq(contractPackets.projectId, projectId))
+      )
+      .get()
+    if (!packet || packet.status !== "executed") {
+      throw new Error("Only an executed contract packet can receive a replacement copy.")
+    }
+
+    const replacement = validateExecutedContractDocumentReplacement(input)
+    if (replacement.url === packet.signaturePackageUrl) {
+      throw new Error("Choose a different saved contract document.")
+    }
+
+    const linkedEstimate = await access.db
+      .select({ id: projectEstimates.id })
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.id, packet.estimateId),
+          eq(projectEstimates.projectId, projectId)
+        )
+      )
+      .get()
+    if (!linkedEstimate) throw new Error("The contract packet's estimate was not found.")
+
+    const previousUrl = packet.signaturePackageUrl
+    const previousLabel = packet.acceptanceEvidenceLabel
+    const now = new Date().toISOString()
+    await access.db.batch([
+      access.db
+        .update(contractPackets)
+        .set({
+          signaturePackageUrl: replacement.url,
+          acceptanceEvidenceLabel: replacement.label,
+          updatedAt: now,
+        })
+        .where(eq(contractPackets.id, packet.id)),
+      access.db
+        .update(projectEstimates)
+        .set({
+          signaturePackageUrl: replacement.url,
+          acceptanceEvidenceLabel: replacement.label,
+          updatedAt: now,
+        })
+        .where(eq(projectEstimates.id, linkedEstimate.id)),
+    ])
+
+    await recordActivityEvent({
+      db: access.db,
+      organizationId: access.organizationId,
+      projectId,
+      actor: access.user,
+      category: "financial",
+      action: "executed_contract_document_replaced",
+      entityType: "contract_packet",
+      entityId: packet.id,
+      summary: `Replaced the active executed contract document for ${packet.packetNumber} v${packet.versionNumber}.`,
+      metadata: {
+        previousUrl,
+        previousLabel,
+        replacementUrl: replacement.url,
+        replacementLabel: replacement.label,
+        reason: replacement.reason,
+        foxitEnvelopeId: packet.foxitEnvelopeId,
+      },
+      createdAt: now,
+    })
+
+    revalidateContractPacket(projectId)
+    return {
+      success: true,
+      id: packet.id,
+      message: "Active executed contract document replaced. The original reference remains in activity history.",
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to replace the executed contract document.",
     }
   }
 }

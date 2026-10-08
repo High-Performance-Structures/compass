@@ -4,13 +4,13 @@ import { IconHeartHandshake, IconLock } from "@tabler/icons-react"
 
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { getCurrentUser } from "@/lib/auth"
-import { canUseExecutiveAdmin } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 
 export const dynamic = "force-dynamic"
 
 export default async function CherishReviewPage(): Promise<React.ReactElement> {
   const user = await getCurrentUser()
-  if (!canUseExecutiveAdmin(user)) {
+  if (!(await canFeature(user, "cherish-review", "read"))) {
     redirect("/dashboard/access-restricted?action=review%20CHERISH")
   }
 
@@ -28,7 +28,7 @@ export default async function CherishReviewPage(): Promise<React.ReactElement> {
           private concerns, or archive submissions that should not be shared.
         </p>
         <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <IconLock className="size-3.5" /> Executive Admin only
+          <IconLock className="size-3.5" /> Restricted to staff granted CHERISH review access
         </p>
       </header>
 

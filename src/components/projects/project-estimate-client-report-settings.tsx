@@ -1,7 +1,16 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react"
 import Link from "next/link"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod/v4"
 import { useRouter } from "next/navigation"
 import { IconExternalLink, IconFileDescription } from "@tabler/icons-react"
 
@@ -17,6 +26,8 @@ import {
   isEstimateClientReportMode,
   type EstimateClientReportMode,
 } from "@/lib/estimates/client-report"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import { ESTIMATE_CLIENT_REPORT_MODES } from "@/lib/estimates/client-report"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -30,11 +41,21 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import type { EstimateWorkSection } from "@/lib/estimates/workspace-sections"
+import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { ProjectEstimateReportPhaseEditor } from "@/components/projects/project-estimate-report-phase-editor"
+
+const reportSettingsSchema = z.object({
+  reportMode: z.enum(ESTIMATE_CLIENT_REPORT_MODES),
+  showAssemblyBuilderFee: z.boolean(),
+  showCostBreakdowns: z.boolean(),
+})
 
 function reportModeLabel(mode: EstimateClientReportMode): string {
   if (mode === "division_summary") return "Division subtotals + grand total"
   if (mode === "phase_summary") return "Phase subtotals + grand total"
+  if (mode === "assembly_summary") return "Assembly totals"
+  if (mode === "assembly_items") return "Assembly cost code detail"
   return "Line items + division totals"
 }
 
@@ -43,22 +64,46 @@ export function ProjectEstimateClientReportSettings({
   workspace,
   estimate,
   editable,
+  workSection,
 }: {
   readonly projectId: string
   readonly workspace: ProjectEstimateWorkspace
   readonly estimate: ProjectEstimateSummary
   readonly editable: boolean
+  readonly workSection?: EstimateWorkSection
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
-  const [reportMode, setReportMode] = useState(workspace.reportMode)
+  const reportForm = useForm<z.infer<typeof reportSettingsSchema>>({
+    resolver: zodResolver(reportSettingsSchema),
+    defaultValues: {
+      reportMode: workspace.reportMode,
+      showAssemblyBuilderFee: estimate.showAssemblyBuilderFee,
+      showCostBreakdowns: estimate.showCostBreakdowns,
+    },
+  })
+  const reportMode = reportForm.watch("reportMode")
+  const showAssemblyBuilderFee = reportForm.watch("showAssemblyBuilderFee")
+  const showCostBreakdowns = reportForm.watch("showCostBreakdowns")
+  const assemblyReport =
+    reportMode === "assembly_summary" || reportMode === "assembly_items"
   const [acknowledgementIds, setAcknowledgementIds] = useState<readonly string[]>(
     workspace.selectedAcknowledgements.map((item) => item.templateId)
   )
   useEffect(() => {
-    setReportMode(workspace.reportMode)
-  }, [workspace.reportMode])
+    reportForm.reset({
+      reportMode: workspace.reportMode,
+      showAssemblyBuilderFee: estimate.showAssemblyBuilderFee,
+      showCostBreakdowns: estimate.showCostBreakdowns,
+    })
+  }, [
+    workspace.reportMode,
+    estimate.id,
+    estimate.showAssemblyBuilderFee,
+    estimate.showCostBreakdowns,
+    reportForm,
+  ])
   const phases = useMemo(() => {
     const groups = new Map<string, string>()
     for (const line of workspace.lines) {
@@ -106,7 +151,9 @@ export function ProjectEstimateClientReportSettings({
       const result = await setProjectEstimateClientReportMode(
         projectId,
         estimate.id,
-        reportMode
+        reportMode,
+        showAssemblyBuilderFee,
+        showCostBreakdowns
       )
       setMessage(result.success ? "Client report view saved." : result.error)
       if (result.success) router.refresh()
@@ -162,20 +209,42 @@ export function ProjectEstimateClientReportSettings({
   }
 
   return (
-    <section className="clarity-panel-strong p-4">
+    <section
+      className="clarity-panel-strong p-4"
+      hidden={
+        workSection !== undefined &&
+        !["report", "descriptions", "contract", "text"].includes(workSection)
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <IconFileDescription className="mt-0.5 size-5 text-primary" />
           <div>
-            <h2 className="font-semibold">Client report presentation</h2>
+            <h2 className="font-semibold">
+              {workSection === "descriptions"
+                ? "Group descriptions & report phases"
+                : workSection === "contract"
+                  ? "Customer acknowledgements"
+                  : workSection === "text"
+                    ? "Department text templates"
+                    : "Client report presentation"}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Your {workspace.department}-department format is the default.
-              Custom report phases can mix itemized costs and lump sums in any
-              department. Internal markup rates stay in the working estimate.
+              {workSection === "descriptions"
+                ? "Edit the scope shown beneath assembly and division totals, or organize custom report phases."
+                : workSection === "contract"
+                  ? "Choose the additional forms to append to the client report."
+                  : workSection === "text"
+                    ? "Reuse department introductions, closing text, and contract terms across estimates."
+                    : "Choose detail or totals by division or assembly. Internal markup rates stay in the working estimate."}
             </p>
           </div>
         </div>
-        <Badge variant="outline">{reportModeLabel(workspace.reportMode)}</Badge>
+        <div hidden={workSection !== undefined && workSection !== "report"}>
+          <Badge variant="outline">
+            {reportModeLabel(workspace.reportMode)}
+          </Badge>
+        </div>
       </div>
 
       {message && (
@@ -184,56 +253,116 @@ export function ProjectEstimateClientReportSettings({
         </p>
       )}
 
-      <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-        <div className="space-y-1.5">
-          <Label htmlFor="client-report-view">Default client report detail (unassigned CSI groups)</Label>
-          <Select
-            value={reportMode}
-            onValueChange={(value) => {
-              if (isEstimateClientReportMode(value)) setReportMode(value)
-            }}
-            disabled={!editable}
-          >
-            <SelectTrigger id="client-report-view">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="division_summary">
-                Division subtotals and grand total
-              </SelectItem>
-              <SelectItem value="phase_summary">
-                Phase descriptions, subtotals, and grand total
-              </SelectItem>
-              <SelectItem value="line_items">
-                Individual line items with division totals
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        {editable && (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isPending || reportMode === workspace.reportMode}
-            onClick={saveReportMode}
-          >
-            Save report view
-          </Button>
-        )}
-      </div>
-
-      <ProjectEstimateReportPhaseEditor projectId={projectId} estimateId={estimate.id} workspace={workspace} editable={editable} key={estimate.id} />
-
-      {workspace.reportMode !== "division_summary" && phases.length > 0 && (
-        <div className="mt-5 space-y-3 border-t pt-4">
-          <div>
-            <h3 className="text-sm font-semibold">Default CSI group descriptions</h3>
-            <p className="text-xs text-muted-foreground">
-              These descriptions apply to lines not assigned to a custom phase.
-              Custom phases use their own name and scope description above.
-            </p>
+      <div hidden={workSection !== undefined && workSection !== "report"}>
+        <form onSubmit={reportForm.handleSubmit(saveReportMode)} className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <div className="space-y-1.5">
+            <Label htmlFor="client-report-view">Client report view</Label>
+            <SearchableCombobox
+              id="client-report-view"
+              ariaLabel="Client report presentation"
+              placeholder="Choose report view"
+              value={reportMode}
+              options={ESTIMATE_CLIENT_REPORT_MODES.map((mode) => ({
+                value: mode,
+                label: reportModeLabel(mode),
+              }))}
+              onValueChange={(value) => { if (isEstimateClientReportMode(value)) reportForm.setValue("reportMode", value) }}
+              disabled={!editable}
+            />
           </div>
-          {phases.map(([divisionCode, divisionName]) => (
+          {editable && (
+            <Button
+              type="submit"
+              variant="outline"
+              disabled={
+                isPending ||
+                (reportMode === workspace.reportMode &&
+                  showAssemblyBuilderFee === estimate.showAssemblyBuilderFee &&
+                  showCostBreakdowns === estimate.showCostBreakdowns)
+              }
+            >
+              Save report view
+            </Button>
+          )}
+          <div className="md:col-span-2">
+            <label className="flex items-start gap-3 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={showCostBreakdowns}
+                onCheckedChange={(checked) =>
+                  reportForm.setValue("showCostBreakdowns", checked === true)
+                }
+                disabled={!editable || isPending}
+              />
+              <span>
+                <span className="font-medium">
+                  Show cost breakdowns in customer report
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Off by default. Include underlying labor, material, and other
+                  costs beneath itemized cost codes. Totals-only and lump-sum
+                  groups stay summarized.
+                </span>
+              </span>
+            </label>
+          </div>
+          {assemblyReport && (
+            <div className="md:col-span-2">
+          <label className="flex items-start gap-3 text-sm">
+            <Checkbox className="mt-0.5" checked={showAssemblyBuilderFee} onCheckedChange={(checked) => reportForm.setValue("showAssemblyBuilderFee", checked === true)} disabled={!editable || isPending} />
+            <span>
+              <span className="font-medium">Show builder-fee subtotal for each assembly</span>
+              <span className="mt-1 block text-xs text-muted-foreground">Show combined overhead, margin, and contingency plus each assembly’s total including its fee. Items excluded from builder fees remain excluded.</span>
+            </span>
+          </label>
+        </div>
+          )}
+        </form>
+      </div>
+      <div hidden={workSection !== undefined && workSection !== "descriptions"}>
+        {workspace.assemblies.length > 0 && (
+          <div className="mt-4 space-y-3">
+            <h3 className="text-sm font-semibold">Assembly descriptions</h3>
+            {workspace.assemblies.map((assembly) => (
+              <div
+                key={assembly.id}
+                className="flex flex-wrap items-start justify-between gap-3 border-b pb-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{assembly.name}</p>
+                  <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+                    {assembly.description ||
+                      "No report description saved. The totals report will summarize its customer-visible cost code scopes."}
+                  </p>
+                </div>
+                {editable && (
+                  <ProjectEstimateAssemblyEditor
+                    projectId={projectId}
+                    estimateId={estimate.id}
+                    assembly={assembly}
+                    assemblies={workspace.assemblies}
+                    lines={workspace.lines}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <ProjectEstimateReportPhaseEditor projectId={projectId} estimateId={estimate.id} workspace={workspace} editable={editable} key={estimate.id} />
+
+        {phases.length > 0 && (
+          <div className="mt-5 space-y-3 border-t pt-4">
+            <div>
+              <h3 className="text-sm font-semibold">
+                Default CSI group descriptions
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                These descriptions explain division totals and apply to lines
+                not assigned to a custom phase. Custom phases use their own name
+                and scope description above.
+              </p>
+            </div>
+            {phases.map(([divisionCode, divisionName]) => (
             <form
               key={divisionCode}
               className="grid gap-2 md:grid-cols-[9rem_minmax(0,1fr)_auto] md:items-end"
@@ -265,10 +394,11 @@ export function ProjectEstimateClientReportSettings({
               )}
             </form>
           ))}
-        </div>
-      )}
-
-      {workspace.department === "N" && (
+          </div>
+        )}
+      </div>
+      <div hidden={workSection !== undefined && workSection !== "contract"}>
+        {workspace.department === "N" && (
         <div className="mt-5 border-t pt-4">
           <h3 className="text-sm font-semibold">Append acknowledgements</h3>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -320,8 +450,19 @@ export function ProjectEstimateClientReportSettings({
           )}
         </div>
       )}
-
-      {editable && (
+      </div>
+      <details
+        hidden={
+          workSection !== undefined &&
+          workSection !== "text" &&
+          workSection !== "contract"
+        }
+        className="mt-5 border-t pt-4"
+      >
+        <summary className="text-sm font-medium">
+          Manage department text templates
+        </summary>
+        {editable && (
         <form className="mt-5 border-t pt-4" onSubmit={saveTextTemplate}>
           <h3 className="text-sm font-semibold">
             Add an {workspace.department}-department text template
@@ -367,6 +508,7 @@ export function ProjectEstimateClientReportSettings({
           </div>
         </form>
       )}
+      </details>
     </section>
   )
 }

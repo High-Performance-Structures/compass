@@ -25,6 +25,9 @@ vi.mock("@/components/projects/project-audience-preview-shell", () => ({
   ProjectAudiencePreviewShell: ({ children }: { readonly children: React.ReactNode }) => children,
 }))
 vi.mock("@/components/projects/project-change-order-create-form", () => ({ ProjectChangeOrderCreateForm: () => null }))
+vi.mock("@/components/projects/project-change-order-executed-document", () => ({
+  ProjectChangeOrderExecutedDocument: () => null,
+}))
 vi.mock("@/components/developer-mode-provider", () => ({ DeveloperOnly: () => null }))
 
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
@@ -51,7 +54,9 @@ function record(sourceType = "buildertrend_import"): ProjectChangeOrderItem {
     sourceHref: null, internalNotes: null, budgetTreatment: "additive", baselineEstimate: null,
     replacementEstimate: null, replacementEstimateUrl: null, estimateComparisonUrl: null,
     rebaselineCompletedAt: null, rebaselineBlockers: [], canExecuteRebaseline: false,
-    foxitStatus: "not_started", sageStatus: "not_ready", submittedAt: null,
+    foxitStatus: "not_started", sageStatus: "not_ready",
+    executedDocumentAvailable: false, executedDocumentLabel: null,
+    canManageExecutedDocument: false, submittedAt: null,
     createdAt: "2026-09-01T12:00:00Z", updatedAt: "2026-09-01T12:00:00Z",
     canEdit: false, canApprove: false, allowedTransitions: [],
     lines: Array.from({ length: 18 }, (_, index) => ({

@@ -223,7 +223,7 @@ export function CherishFeedbackForm({
             id="cherish-anonymous-description"
             className="mt-0.5 block text-muted-foreground"
           >
-            Your name will not appear in Executive Admin review, dashboard
+            Your name will not appear in CHERISH review, dashboard
             stories, or Field App recognition.
           </span>
         </span>
@@ -243,9 +243,9 @@ export function CherishFeedbackForm({
         >
           {feedback ??
             (responseType === "concern"
-              ? "Private concerns are visible only to Executive Admin reviewers."
+              ? "Private concerns are visible only to staff granted CHERISH review access."
               : recipientId === COMPANY_RECIPIENT
-                ? "Company stories appear after Executive Admin approval."
+                ? "Company stories appear after authorized review and approval."
                 : "Only the selected employee will see this after approval.")}
         </p>
         <Button

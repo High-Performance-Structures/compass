@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { projects, scheduleTasks, taskDependencies, workdayExceptions } from "@/db/schema"
 import { eq, asc, and } from "drizzle-orm"
 import { calculateEndDate } from "@/lib/schedule/business-days"
@@ -138,6 +139,12 @@ export async function POST(req: Request): Promise<Response> {
       status: 401,
       headers: { "Content-Type": "application/json" },
     })
+  }
+  if (!isInternalStaffRole(auth.role) && auth.role !== "developer") {
+    return Response.json(
+      { error: "Working schedule access is available to internal staff only" },
+      { status: 403 }
+    )
   }
 
   const db = getDb(env.DB)

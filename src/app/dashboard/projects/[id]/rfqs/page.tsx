@@ -2,7 +2,6 @@ import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
 import {
-  IconArrowLeft,
   IconClock,
   IconExternalLink,
   IconFileText,
@@ -14,13 +13,23 @@ import {
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import {
+  getProjectRfqCostCodeOptions,
   getProjectRfqs,
+  type ProjectRfqCostCodeOption,
   type ProjectRfqItem,
 } from "@/app/actions/project-operations"
 import {
   getProjectRfqBidWorkspace,
   type ProjectRfqBidWorkflowItem,
 } from "@/app/actions/project-rfq-bids"
+import {
+  getProjectRfqEmailDeliveries,
+  type RfqEmailDeliveryItem,
+} from "@/app/actions/project-rfq-email"
+import {
+  getProjectRfqManualResponseEvents,
+  type ManualRfqResponseEventItem,
+} from "@/app/actions/project-rfq-manual-response"
 import {
   getProjectSelectionOptions,
   getProjectSelections,
@@ -29,12 +38,15 @@ import {
 } from "@/app/actions/project-selections"
 import { getProjects } from "@/app/actions/projects"
 import { getProjectHistoricalRfqWorkspace } from "@/app/actions/project-historical-rfq-history"
+import { PageHeader } from "@/components/page-header"
 import { ProjectHistoricalRfqList } from "@/components/projects/project-historical-rfq-list"
 import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-form"
 import { ProjectRfqBidActions } from "@/components/projects/project-rfq-bid-actions"
 import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
 import { ProjectRfqDuplicateDialog } from "@/components/projects/project-rfq-duplicate-dialog"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
+import { ProjectRfqEmailButton, ProjectRfqEmailHistory } from "@/components/projects/project-rfq-email-button"
+import { ProjectRfqManualResponse } from "@/components/projects/project-rfq-manual-response"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -112,7 +124,7 @@ function projectDisplayLabel(
 function rfqTaskDescription(rfq: ProjectRfqItem): string {
   const scopeLines = rfq.scopeItems.map((line) => {
     const coding = [
-      line.phaseCode ? `Phase: ${line.phaseCode}` : null,
+      line.phaseCode ? `Division: ${line.phaseCode}` : null,
       line.costCode ? `Cost code: ${line.costCode}` : null,
     ]
       .filter((value) => value !== null)
@@ -159,11 +171,14 @@ function RfqCard({
   taskAssigneeOptions,
   selectionOptions,
   selectionsSummary,
+  costCodeOptions,
   developerModeEnabled,
   bidWorkflow,
   canApproveBids,
   canImportBids,
   editableEstimates,
+  emailDeliveries,
+  manualResponseEvents,
 }: {
   readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
@@ -173,6 +188,7 @@ function RfqCard({
   readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
+  readonly costCodeOptions: readonly ProjectRfqCostCodeOption[]
   readonly developerModeEnabled: boolean
   readonly bidWorkflow: ProjectRfqBidWorkflowItem | null
   readonly canApproveBids: boolean
@@ -181,6 +197,8 @@ function RfqCard({
     readonly id: string
     readonly label: string
   }[]
+  readonly emailDeliveries: readonly RfqEmailDeliveryItem[]
+  readonly manualResponseEvents: readonly ManualRfqResponseEventItem[]
 }): React.ReactElement {
   return (
     <article
@@ -218,6 +236,7 @@ function RfqCard({
               rfq={rfq}
               selectionOptions={selectionOptions}
               selectionsSummary={selectionsSummary}
+              costCodeOptions={costCodeOptions}
             />
           )}
           <ProjectRfqDuplicateDialog
@@ -225,6 +244,17 @@ function RfqCard({
             rfqId={rfq.id}
             rfqNumber={rfq.sourceRecordNumber}
             recipientOptions={taskAssigneeOptions}
+          />
+          <ProjectRfqEmailButton
+            projectId={projectId}
+            projectLabel={projectLabel}
+            rfq={rfq}
+          />
+          <ProjectRfqManualResponse
+            projectId={projectId}
+            rfq={rfq}
+            approved={bidWorkflow !== null}
+            events={manualResponseEvents}
           />
           <ProjectRfqShareActions
             brand={brand}
@@ -263,7 +293,7 @@ function RfqCard({
       )}
 
       {rfq.templateReview && (
-        <div className="mt-3 border-l-2 border-amber-500 px-3 py-2 text-sm">
+        <div className="mt-3 border-l-2 border-warning px-3 py-2 text-sm">
           <p className="font-medium">Template RFQ needs project review</p>
           {rfq.templateReview.unresolvedPlaceholders.length > 0 && (
             <p className="mt-1 text-muted-foreground">
@@ -366,19 +396,21 @@ function RfqCard({
         <span>Response needed by {formatDate(rfq.dueDate)}</span>
       </div>
 
+      <ProjectRfqEmailHistory deliveries={emailDeliveries} />
+
       {rfq.scopeItems.length > 0 && (
         <div className="mt-3 overflow-hidden border bg-muted/10">
-          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_5rem_6rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_10rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs font-medium text-muted-foreground">
             <span>#</span>
             <span>Scope</span>
-            <span>Phase</span>
+            <span>Division</span>
             <span>Cost code</span>
             <span>Notes</span>
           </div>
           {rfq.scopeItems.map((line) => (
             <div
               key={`${rfq.id}-${line.lineNumber}`}
-              className="grid grid-cols-[2.5rem_minmax(0,1fr)_5rem_6rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs last:border-b-0"
+              className="grid grid-cols-[2.5rem_minmax(0,1fr)_8rem_10rem_minmax(0,.8fr)] gap-2 border-b px-3 py-2 text-xs last:border-b-0"
             >
               <span className="font-medium">{line.lineNumber}</span>
               <span>{line.description}</span>
@@ -462,16 +494,22 @@ export default async function ProjectRfqsPage({
     taskAssigneeOptions,
     selectionsSummary,
     selectionOptions,
+    costCodeOptions,
     bidWorkspace,
     historicalWorkspace,
+    emailDeliveries,
+    manualResponseEvents,
   ] = await Promise.all([
     getProjects(),
     getProjectRfqs(id),
     getProjectTaskAssigneeOptions(id),
     getProjectSelections(id),
     getProjectSelectionOptions(id),
+    getProjectRfqCostCodeOptions(id),
     getProjectRfqBidWorkspace(id),
     showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
+    getProjectRfqEmailDeliveries(id),
+    getProjectRfqManualResponseEvents(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -497,44 +535,39 @@ export default async function ProjectRfqsPage({
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
-            <Link href={`/dashboard/projects/${id}`}>
-              <IconArrowLeft className="size-4" />
-              Project
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <IconShoppingCartQuestion className="size-5 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Requests for Quote
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
+        icon={<IconShoppingCartQuestion className="size-5 text-primary" />}
+        title="Requests for Quote"
+        description={
+          <>
             {project?.projectNumber ? `${project.projectNumber} - ` : ""}
             {project?.name ?? "Project"} scopes, quote requests, and vendor
             response tracking.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <ProjectQuickSwitcher
-            projects={projects}
-            currentProjectId={id}
-            targetSection="rfqs"
-            placeholder="Switch RFQ project..."
-            className="w-full sm:w-[300px]"
-          />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Badge variant={openRfqs.length > 0 ? "secondary" : "outline"}>
-              {openRfqs.length} open
-            </Badge>
-            {overdueCount > 0 && (
-              <Badge variant="destructive">{overdueCount} overdue</Badge>
-            )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <ProjectQuickSwitcher
+                projects={projects}
+                currentProjectId={id}
+                targetSection="rfqs"
+                placeholder="Switch RFQ project..."
+                className="w-full sm:w-[300px]"
+              />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Badge variant={openRfqs.length > 0 ? "secondary" : "outline"}>
+                  {openRfqs.length} open
+                </Badge>
+                {overdueCount > 0 && (
+                  <Badge variant="destructive">{overdueCount} overdue</Badge>
+                )}
+              </div>
+            </div>
+          </>
+        }
+      />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
@@ -549,6 +582,7 @@ export default async function ProjectRfqsPage({
             recipientOptions={taskAssignees}
             selectionOptions={selectionOptions}
             selectionsSummary={selectionsSummary}
+            costCodeOptions={costCodeOptions}
           />
         </div>
 
@@ -589,6 +623,7 @@ export default async function ProjectRfqsPage({
               taskAssigneeOptions={taskAssignees}
               selectionOptions={selectionOptions}
               selectionsSummary={selectionsSummary}
+              costCodeOptions={costCodeOptions}
               developerModeEnabled={developerModeEnabled}
               bidWorkflow={
                 bidWorkspace.workflows.find(
@@ -598,6 +633,8 @@ export default async function ProjectRfqsPage({
               canApproveBids={bidWorkspace.canApprove}
               canImportBids={bidWorkspace.canImport}
               editableEstimates={bidWorkspace.editableEstimates}
+              emailDeliveries={emailDeliveries.filter((delivery) => delivery.rfqOperationId === rfq.id)}
+              manualResponseEvents={manualResponseEvents.filter((event) => event.rfqOperationId === rfq.id)}
             />
           ))
         ) : (

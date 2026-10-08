@@ -47,6 +47,13 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { reportStaleDeployment } from "@/lib/deployment/version"
 import {
   isStaleServerActionError,
@@ -57,6 +64,7 @@ import {
   purchaseOrderSiteContactOptions,
   purchaseOrderVendorOptions,
 } from "@/lib/purchase-orders/form-options"
+import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import {
   initialPurchaseOrderShipToState,
   purchaseOrderShipToValue,
@@ -266,14 +274,6 @@ function numberFromText(value: string): number | null {
 function cleanText(value: string): string | null {
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
-}
-
-function money(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value)
 }
 
 function lineAmount(line: DraftPurchaseOrderLine): number {
@@ -561,7 +561,7 @@ function ProjectPurchaseOrderForm(
         <div className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
           <span className="font-medium">Draft totals</span>
           <span className="text-muted-foreground">
-            {money(total)} total · {codedLineCount}/{lines.length} lines coded
+            {formatPurchaseOrderMoney(total)} total · {codedLineCount}/{lines.length} lines coded
           </span>
         </div>
         <div className="space-y-3">
@@ -637,10 +637,9 @@ function ProjectPurchaseOrderForm(
             </Field>
             <div className="space-y-2">
               <Field label="Ship to / delivery location">
-                <select
+                <Select
                   value={shipTo.choice}
-                  onChange={(event) => {
-                    const choice = event.target.value
+                  onValueChange={(choice) => {
                     if (choice === "jobsite") {
                       setShipTo((current) => ({ ...current, choice: "jobsite" }))
                     } else if (choice === "pickup") {
@@ -649,14 +648,18 @@ function ProjectPurchaseOrderForm(
                       setShipTo((current) => ({ ...current, choice: "other" }))
                     }
                   }}
-                  className={DOCUMENT_SELECT_CLASS}
                 >
-                  <option value="jobsite" disabled={jobsiteAddress === null}>
-                    Jobsite
-                  </option>
-                  <option value="pickup">Pick-Up</option>
-                  <option value="other">Other</option>
-                </select>
+                  <SelectTrigger aria-label="Ship to / delivery location" className={DOCUMENT_SELECT_CLASS}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jobsite" disabled={jobsiteAddress === null}>
+                      Jobsite
+                    </SelectItem>
+                    <SelectItem value="pickup">Pick-Up</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
               {shipTo.choice === "jobsite" && jobsiteAddress !== null && (
                 <Input
@@ -709,15 +712,16 @@ function ProjectPurchaseOrderForm(
               />
             </Field>
             <Field label="Priority">
-              <select
-                name="priority"
-                defaultValue={purchaseOrder?.priority ?? "normal"}
-                className={DOCUMENT_SELECT_CLASS}
-              >
-                <option value="normal">Normal priority</option>
-                <option value="high">High priority</option>
-                <option value="low">Low priority</option>
-              </select>
+              <Select name="priority" defaultValue={purchaseOrder?.priority ?? "normal"}>
+                <SelectTrigger aria-label="Priority" className={DOCUMENT_SELECT_CLASS}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal priority</SelectItem>
+                  <SelectItem value="high">High priority</SelectItem>
+                  <SelectItem value="low">Low priority</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
           </div>
         </div>
@@ -854,7 +858,7 @@ function ProjectPurchaseOrderForm(
           <div className="grid grid-cols-1 gap-x-5 gap-y-3 text-sm sm:grid-cols-3">
             <div>
               <p className="text-xs text-muted-foreground">PO total</p>
-              <p className="font-semibold">{money(total)}</p>
+              <p className="font-semibold">{formatPurchaseOrderMoney(total)}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Accounting coding</p>

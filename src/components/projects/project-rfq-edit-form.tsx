@@ -13,6 +13,7 @@ import {
 import {
   type CreateRfqDocumentLinkInput,
   type CreateRfqScopeLineInput,
+  type ProjectRfqCostCodeOption,
   type ProjectRfqItem,
   updateRfqRequest,
 } from "@/app/actions/project-operations"
@@ -21,7 +22,12 @@ import type {
   ProjectSelectionOptions,
   ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
+import {
+  ProjectRfqCostCodePicker,
+  ProjectRfqDivisionPicker,
+} from "@/components/projects/project-rfq-cost-code-picker"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
@@ -66,7 +72,7 @@ type DraftRfqDocumentLink = {
   readonly notes: string
 }
 
-type RfqLineField = "description" | "phaseCode" | "costCode" | "notes"
+type RfqLineField = "description" | "notes"
 type RfqDocumentField = "label" | "url" | "notes"
 type SelectionFilterState = {
   readonly division: string
@@ -114,7 +120,10 @@ function newLine(): DraftRfqScopeLine {
   }
 }
 
-function lineFromSelection(selection: ProjectSelectionItem): DraftRfqScopeLine {
+function lineFromSelection(
+  selection: ProjectSelectionItem,
+  costCodeOptions: readonly ProjectRfqCostCodeOption[]
+): DraftRfqScopeLine {
   const detail = [
     selection.manufacturer ? `Manufacturer: ${selection.manufacturer}` : null,
     selection.model ? `Model: ${selection.model}` : null,
@@ -129,7 +138,9 @@ function lineFromSelection(selection: ProjectSelectionItem): DraftRfqScopeLine {
   return {
     id: crypto.randomUUID(),
     description: `${selection.roomName}: ${selection.name}`,
-    phaseCode: selection.phaseCode ?? "",
+    phaseCode:
+      costCodeOptions.find((option) => option.value === selection.costCode)
+        ?.divisionCode ?? selection.phaseCode ?? "",
     costCode: selection.costCode ?? "",
     notes: detail,
   }
@@ -228,11 +239,13 @@ export function ProjectRfqEditForm({
   rfq,
   selectionOptions,
   selectionsSummary,
+  costCodeOptions,
 }: {
   readonly projectId: string
   readonly rfq: ProjectRfqItem
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
+  readonly costCodeOptions: readonly ProjectRfqCostCodeOption[]
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -392,7 +405,9 @@ export function ProjectRfqEditForm({
 
   function importSelectedSelections(): void {
     if (selectedSelections.length === 0) return
-    const importedLines = selectedSelections.map(lineFromSelection)
+    const importedLines = selectedSelections.map((selection) =>
+      lineFromSelection(selection, costCodeOptions)
+    )
     setLines((current) => {
       const meaningfulLines = current.filter(
         (line) =>
@@ -418,6 +433,35 @@ export function ProjectRfqEditForm({
         line.id === id ? { ...line, [field]: value } : line
       )
     )
+  }
+
+  function updateLineDivision(id: string, divisionCode: string): void {
+    setLines((current) => current.map((line) => {
+      if (line.id !== id) return line
+      const selectedCode = costCodeOptions.find(
+        (option) => option.value === line.costCode
+      )
+      return {
+        ...line,
+        phaseCode: divisionCode,
+        costCode: selectedCode?.divisionCode === divisionCode
+          ? line.costCode : "",
+      }
+    }))
+  }
+
+  function updateLineCostCode(id: string, costCode: string): void {
+    const selectedCode = costCodeOptions.find(
+      (option) => option.value === costCode
+    )
+    setLines((current) => current.map((line) => line.id === id
+      ? {
+          ...line,
+          costCode,
+          phaseCode: selectedCode?.divisionCode ?? line.phaseCode,
+        }
+      : line
+    ))
   }
 
   function addDocumentLink(): void {
@@ -504,7 +548,7 @@ export function ProjectRfqEditForm({
           </div>
 
           {rfq.templateReview && (
-            <div className="border-l-2 border-amber-500 px-3 py-2 text-sm">
+            <div className="border-l-2 border-warning px-3 py-2 text-sm">
               <p className="font-medium">Complete the template review before sharing</p>
               {rfq.templateReview.unresolvedPlaceholders.length > 0 && (
                 <p className="mt-1 text-muted-foreground">
@@ -711,9 +755,11 @@ export function ProjectRfqEditForm({
                   <span className="text-xs font-medium text-muted-foreground">
                     Division
                   </span>
-                  <Select
+                  <SearchableCombobox
                     value={selectionFilters.division}
-                    onValueChange={(value) =>
+                    onValueChange={(picked) => {
+                      // An empty value is the picker's reset: show all divisions.
+                      const value = picked || ALL
                       setSelectionFilters((current) => ({
                         ...current,
                         division: value,
@@ -727,77 +773,75 @@ export function ProjectRfqEditForm({
                             ? current.costCode
                             : ALL,
                       }))
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="All divisions" />
-                    </SelectTrigger>
-                    <SelectContent className="compass-content-scroll max-h-80">
-                      <SelectItem value={ALL}>All divisions</SelectItem>
-                      {selectionDivisions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    }}
+                    options={[
+                      { value: ALL, label: "All divisions" },
+                      ...selectionDivisions.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                        keywords: option.value,
+                      })),
+                    ]}
+                    ariaLabel="Filter selections by division"
+                    placeholder="All divisions"
+                    searchPlaceholder="Search divisions..."
+                    emptyMessage="No matching divisions."
+                  />
                 </label>
 
                 <label className="space-y-1.5">
                   <span className="text-xs font-medium text-muted-foreground">
                     Cost code
                   </span>
-                  <Select
+                  <SearchableCombobox
                     value={selectionFilters.costCode}
-                    onValueChange={(value) =>
+                    onValueChange={(picked) =>
                       setSelectionFilters((current) => ({
                         ...current,
-                        costCode: value,
+                        costCode: picked || ALL,
                       }))
                     }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="All cost codes" />
-                    </SelectTrigger>
-                    <SelectContent className="compass-content-scroll max-h-80">
-                      <SelectItem value={ALL}>All cost codes</SelectItem>
-                      {filteredSelectionCostCodes.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                          {option.needsSageReview
-                            ? " - needs review"
-                            : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: ALL, label: "All cost codes" },
+                      ...filteredSelectionCostCodes.map((option) => ({
+                        value: option.value,
+                        label: option.label,
+                        description: option.needsSageReview ? "Needs review" : undefined,
+                        keywords: option.value,
+                      })),
+                    ]}
+                    ariaLabel="Filter selections by cost code"
+                    placeholder="All cost codes"
+                    searchPlaceholder="Search cost codes..."
+                    emptyMessage="No matching cost codes."
+                  />
                 </label>
 
                 <label className="space-y-1.5">
                   <span className="text-xs font-medium text-muted-foreground">
                     Room
                   </span>
-                  <Select
+                  <SearchableCombobox
                     value={selectionFilters.roomName}
-                    onValueChange={(value) =>
+                    onValueChange={(picked) =>
                       setSelectionFilters((current) => ({
                         ...current,
-                        roomName: value,
+                        roomName: picked || ALL,
                       }))
                     }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="All rooms" />
-                    </SelectTrigger>
-                    <SelectContent className="compass-content-scroll max-h-80">
-                      <SelectItem value={ALL}>All rooms</SelectItem>
-                      {selectionsSummary.rooms.map((room) => (
-                        <SelectItem key={room.roomName} value={room.roomName}>
-                          {room.roomName} ({room.selections.length})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: ALL, label: "All rooms" },
+                      ...selectionsSummary.rooms.map((room) => ({
+                        value: room.roomName,
+                        label: room.roomName,
+                        description: `${room.selections.length} selections`,
+                      })),
+                    ]}
+                    ariaLabel="Filter selections by room"
+                    placeholder="All rooms"
+                    searchPlaceholder="Search rooms..."
+                    emptyMessage="No matching rooms."
+                  />
                 </label>
               </div>
               <div className="compass-content-scroll max-h-72 overflow-y-auto border-t">
@@ -915,11 +959,11 @@ export function ProjectRfqEditForm({
               </Button>
             </div>
             <div className="overflow-x-auto">
-              <div className="min-w-[820px]">
-                <div className="grid grid-cols-[2rem_minmax(14rem,1fr)_5rem_6rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+              <div className="min-w-[1050px]">
+                <div className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
                   <span>#</span>
                   <span>Description</span>
-                  <span>Phase</span>
+                  <span>Division</span>
                   <span>Cost code</span>
                   <span>Notes</span>
                   <span />
@@ -927,7 +971,7 @@ export function ProjectRfqEditForm({
                 {lines.map((line, index) => (
                   <div
                     key={line.id}
-                    className="grid grid-cols-[2rem_minmax(14rem,1fr)_5rem_6rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 last:border-b-0"
+                    className="grid grid-cols-[2rem_minmax(14rem,1fr)_11rem_16rem_minmax(10rem,.8fr)_2.5rem] gap-2 border-b py-2 last:border-b-0"
                   >
                     <span className="pt-2 text-xs font-medium text-muted-foreground">
                       {index + 1}
@@ -939,19 +983,22 @@ export function ProjectRfqEditForm({
                       }
                       className={LINE_INPUT_CLASS}
                     />
-                    <Input
+                    <ProjectRfqDivisionPicker
                       value={line.phaseCode}
-                      onChange={(event) =>
-                        updateLine(line.id, "phaseCode", event.target.value)
+                      options={costCodeOptions}
+                      rowNumber={index + 1}
+                      onValueChange={(value) =>
+                        updateLineDivision(line.id, value)
                       }
-                      className={LINE_INPUT_CLASS}
                     />
-                    <Input
+                    <ProjectRfqCostCodePicker
                       value={line.costCode}
-                      onChange={(event) =>
-                        updateLine(line.id, "costCode", event.target.value)
+                      options={costCodeOptions}
+                      divisionCode={line.phaseCode}
+                      rowNumber={index + 1}
+                      onValueChange={(value) =>
+                        updateLineCostCode(line.id, value)
                       }
-                      className={LINE_INPUT_CLASS}
                     />
                     <Input
                       value={line.notes}

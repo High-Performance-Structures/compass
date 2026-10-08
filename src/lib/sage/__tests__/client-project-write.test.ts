@@ -70,6 +70,14 @@ describe("Sage client/project write contract", () => {
       },
     }
     expect(sageClientProjectWritePayloadSchema.safeParse(payload).success).toBe(true)
+    expect(sageClientProjectWritePayloadSchema.safeParse({
+      ...payload,
+      client: { ...payload.client, sageClientId: "client-guid", sageClientNumber: "2890" },
+    }).success).toBe(true)
+    expect(sageClientProjectWritePayloadSchema.safeParse({
+      ...payload,
+      client: { ...payload.client, sageClientId: "client-guid" },
+    }).success).toBe(false)
     expect(
       sageClientProjectWritePayloadSchema.safeParse({
         ...payload,

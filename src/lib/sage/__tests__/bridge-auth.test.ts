@@ -102,6 +102,14 @@ describe("Sage bridge HMAC authentication", () => {
     })
   })
 
+  it("allows a larger bounded directory snapshot without raising other bridge limits", async () => {
+    const body = "a".repeat(MAX_SAGE_BRIDGE_BODY_BYTES + 1)
+    const request = new Request("https://compass.example/client-directory", { method: "POST", body })
+    const result = await readBoundedSageBridgeBody(request, 4 * MAX_SAGE_BRIDGE_BODY_BYTES)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.rawBody.length).toBe(body.length)
+  })
+
   it("prefers a dedicated pay-application secret and supports migration fallback", () => {
     const shared = "shared-sage-bridge-secret-with-32-characters"
     const dedicated = "dedicated-pay-app-secret-with-32-characters"

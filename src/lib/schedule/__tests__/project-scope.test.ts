@@ -4,6 +4,7 @@ import {
   projectScheduleColor,
   projectScheduleLabel,
   schedulePortfolioProjects,
+  scheduleProjectSwitcherProjects,
   scheduleProjectSelection,
   scheduleScopeHref,
   scheduleSelectionModeFor,
@@ -45,6 +46,36 @@ describe("unified schedule project scope", () => {
 
     expect(portfolio.map((project) => project.id)).toEqual([
       "active",
+      "warranty",
+    ])
+  })
+
+  it("keeps the current historical project in the project schedule switcher", () => {
+    const switcherProjects = scheduleProjectSwitcherProjects(
+      [
+        { id: "active", jobStatusId: "current", jobStatusLabel: "Current" },
+        {
+          id: "complete-current",
+          jobStatusId: "complete",
+          jobStatusLabel: "Complete",
+        },
+        {
+          id: "complete-other",
+          jobStatusId: "complete",
+          jobStatusLabel: "Complete",
+        },
+        {
+          id: "warranty",
+          jobStatusId: "warranty",
+          jobStatusLabel: "Warranty",
+        },
+      ],
+      "complete-current",
+    )
+
+    expect(switcherProjects.map((project) => project.id)).toEqual([
+      "active",
+      "complete-current",
       "warranty",
     ])
   })

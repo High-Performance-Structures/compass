@@ -41,6 +41,12 @@ describe("MessageList scrolling", () => {
   let scrollTo: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    // Auto scrollbars observe overflow on mount; jsdom has no ResizeObserver.
+    vi.stubGlobal("ResizeObserver", class {
+      readonly observe = vi.fn()
+      readonly unobserve = vi.fn()
+      readonly disconnect = vi.fn()
+    })
     host = document.createElement("div")
     document.body.appendChild(host)
     root = createRoot(host)
@@ -56,6 +62,7 @@ describe("MessageList scrolling", () => {
     document.body.replaceChildren()
     realtimeState.messages = []
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it("shows newest navigation after an empty conversation receives realtime messages and is manually scrolled", async () => {

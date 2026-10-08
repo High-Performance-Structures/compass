@@ -22,6 +22,7 @@ import {
   projectJobStatusBucket,
   projectJobStatusLabel,
   projectNumberParts,
+  projectNumberPhaseNumber,
 } from "@/lib/project-profile"
 
 describe("project profile rules", () => {
@@ -216,6 +217,15 @@ describe("project profile rules", () => {
       sequence: "430",
       addressSuffix: "2150",
     })
+    expect(projectNumberParts("H-430-2150-1")).toEqual({
+      department: "H",
+      sequence: "430",
+      addressSuffix: "2150",
+    })
+    expect(projectNumberPhaseNumber("H-430-2150-1")).toBe(1)
+    expect(buildProjectNumberWithAddressSuffix("H-430-2150-1", "3295")).toBe(
+      "H-430-3295-1",
+    )
   })
 
   it("rejects a number edit that would alter the department or sequence", () => {

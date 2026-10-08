@@ -258,7 +258,7 @@ export function FileUploadDialog({
                   {item.status === "done" ? (
                     <IconCheck
                       size={14}
-                      className="shrink-0 text-green-500"
+                      className="shrink-0 text-success"
                     />
                   ) : item.status === "error" ? (
                     <IconX

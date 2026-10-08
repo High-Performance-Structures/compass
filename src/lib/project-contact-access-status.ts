@@ -27,7 +27,17 @@ export type ProjectContactInvitationSnapshot = {
 export function projectContactCanInvite(
   status: ProjectContactAccessStatus
 ): boolean {
-  return status === "not_invited" || status === "expired"
+  return status === "not_invited" || status === "expired" || status === "pending"
+}
+
+export function projectContactNeedsPersonForInvitation(input: {
+  readonly contactType: string
+  readonly vendorContactId: string | null
+}): boolean {
+  if (input.contactType === "supplier" || input.contactType === "subcontractor") {
+    return input.vendorContactId === null
+  }
+  return false
 }
 
 export function projectContactAccessStatus(input: {

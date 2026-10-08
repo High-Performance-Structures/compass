@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache"
 import { correspondence, correspondenceCompositionDrafts, correspondenceDrafts, correspondenceMessages, correspondenceParticipants, correspondenceRecipients, correspondenceRevisions, correspondenceState } from "@/db/schema-correspondence"
 import { correspondenceSourceMessages } from "@/db/schema-correspondence-source"
 import { authorizedConversation, correspondenceContacts, correspondenceContext, currentParticipants } from "@/lib/correspondence/access"
+import { releaseRejectedComposition, validateDraftAttachments } from "@/lib/correspondence/saved-drafts"
 import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/read"
 import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
-import { persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
+import { correspondenceHash, persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
 import type { CorrespondenceInboxFilter, CorrespondenceCompositionDraft, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 
@@ -37,7 +38,14 @@ export async function sendCorrespondence(input: SendCorrespondenceInput): Promis
   try {
     const parsed = parseCorrespondenceSend(input)
     if (!parsed.success) return { ...parsed, retry: "edit" }
-    const data = await persistCorrespondence(await correspondenceContext(parsed.data.projectId), parsed.data)
+    const ctx = await correspondenceContext(parsed.data.projectId)
+    let data: { readonly conversationId: string; readonly messageId: string }
+    try { data = await persistCorrespondence(ctx, parsed.data) } catch (error) {
+      if (!(error instanceof RejectedCorrespondenceSendError) || !parsed.data.draft) throw error
+      const messageId = await correspondenceHash(JSON.stringify([ctx.organizationId, ctx.user.id, parsed.data.idempotencyKey]))
+      const draftVersion = await releaseRejectedComposition(ctx, parsed.data.draft, parsed.data.idempotencyKey, messageId)
+      return { ...failure(error), retry: draftVersion === null ? "same_request" : "edit", ...(draftVersion === null ? {} : { draftVersion }) }
+    }
     refresh(input.projectId)
     return { success: true, data }
   } catch (error) { return { ...failure(error), retry: error instanceof RejectedCorrespondenceSendError ? "edit" : "same_request" } }
@@ -52,15 +60,16 @@ export async function setCorrespondenceState(projectId: string, conversationId: 
     return { success: true, data: null }
   } catch (error) { return failure(error) }
 }
-export async function saveCorrespondenceDraft(projectId: string, conversationId: string, body: string, expectedVersion: number): Promise<CorrespondenceResult<{ readonly version: number }>> {
+export async function saveCorrespondenceDraft(projectId: string, conversationId: string, body: string, expectedVersion: number, attachmentIds: readonly string[] = []): Promise<CorrespondenceResult<{ readonly version: number }>> {
   try {
     if (typeof body !== "string" || body.length > 50000 || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) throw new Error("Invalid draft.")
     const ctx = await correspondenceContext(projectId)
     await authorizedConversation(ctx, conversationId)
+    await validateDraftAttachments(ctx, attachmentIds, "message")
     const version = expectedVersion + 1
     const rows = expectedVersion === 0
-      ? await ctx.db.insert(correspondenceDrafts).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, body, version, updatedAt: new Date().toISOString() }).onConflictDoNothing().returning({ version: correspondenceDrafts.version })
-      : await ctx.db.update(correspondenceDrafts).set({ body, version, updatedAt: new Date().toISOString() }).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id), eq(correspondenceDrafts.version, expectedVersion))).returning({ version: correspondenceDrafts.version })
+      ? await ctx.db.insert(correspondenceDrafts).values({ id: crypto.randomUUID(), conversationId, userId: ctx.user.id, body, attachmentIds, version, updatedAt: new Date().toISOString() }).onConflictDoNothing().returning({ version: correspondenceDrafts.version })
+      : await ctx.db.update(correspondenceDrafts).set({ body, attachmentIds, version, updatedAt: new Date().toISOString() }).where(and(eq(correspondenceDrafts.conversationId, conversationId), eq(correspondenceDrafts.userId, ctx.user.id), eq(correspondenceDrafts.version, expectedVersion))).returning({ version: correspondenceDrafts.version })
     if (!rows.length) throw new Error("This draft changed on another device. Copy your text before reloading.")
     return { success: true, data: { version } }
   } catch (error) { return failure(error) }
@@ -142,10 +151,10 @@ export async function searchCorrespondence(projectId: string, query: string, fil
   try {
     if (typeof query !== "string" || query.trim().length < 2 || query.length > 200) throw new Error("Enter between 2 and 200 characters to search messages.")
     const ctx = await correspondenceContext(projectId)
-    if (filter !== undefined && !["inbox", "unread", "follow-up", "saved", "archived"].includes(filter)) throw new Error("Invalid inbox filter.")
+    if (filter !== undefined && !["inbox", "unread", "follow-up", "saved", "archived", "sent"].includes(filter)) throw new Error("Invalid inbox filter.")
     const term = query.trim()
     const stateValue = (field: "archived" | "follow_up" | "saved") => sql`COALESCE((SELECT ${sql.raw(field)} FROM correspondence_user_state s WHERE s.conversation_id=${correspondence.id} AND s.user_id=${ctx.user.id}), 0)`
-    const inboxFilter = filter === undefined ? undefined : and(
+    const inboxFilter = filter === undefined || filter === "sent" ? undefined : and(
       sql`${stateValue("archived")}=${filter === "archived" ? 1 : 0}`,
       filter === "saved" ? sql`${stateValue("saved")}=1` : undefined,
       filter === "follow-up" ? sql`${stateValue("follow_up")}=1` : undefined,
@@ -159,6 +168,7 @@ export async function searchCorrespondence(projectId: string, query: string, fil
       .innerJoin(correspondenceRecipients, and(eq(correspondenceRecipients.messageId, correspondenceMessages.id), eq(correspondenceRecipients.userId, ctx.user.id)))
       .innerJoin(correspondenceParticipants, and(eq(correspondenceParticipants.conversationId, correspondence.id), eq(correspondenceParticipants.userId, ctx.user.id), eq(correspondenceParticipants.role, ctx.workspace), isNull(correspondenceParticipants.revokedAt)))
       .where(and(eq(correspondence.projectId, projectId), eq(correspondence.organizationId, ctx.organizationId), isNull(correspondenceMessages.retractedAt), inboxFilter,
+        filter === "sent" ? and(eq(correspondenceMessages.authorUserId, ctx.user.id), or(eq(correspondenceMessages.source, "compass"), sql`EXISTS(SELECT 1 FROM project_email_campaigns WHERE message_id=${correspondenceMessages.id} AND sender_user_id=${ctx.user.id} AND status IN ('sent','unknown'))`)) : undefined,
         or(sql`instr(lower(${correspondence.subject}), lower(${term})) > 0`, sql`instr(lower(${correspondenceMessages.body}), lower(${term})) > 0`)))
       .orderBy(desc(correspondenceMessages.sentAt), desc(correspondenceMessages.sequence)).limit(51)
     const sourceByMessage = new Map<string, { readonly sourceSentDisplay: string; readonly sourceSentAt: string | null }>()

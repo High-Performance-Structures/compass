@@ -240,12 +240,13 @@ export function generateBuildertrendScheduleRefreshSql(input) {
   ].join(" AND ")
 
   const statements = [
-    // A failed guard attempts to duplicate the project's primary key and aborts
-    // before any mutation. A passing guard inserts zero rows.
-    `INSERT INTO projects SELECT * FROM projects WHERE id=(SELECT id FROM projects ORDER BY id LIMIT 1) AND NOT (${guardSql});`,
+    // Malformed JSON is evaluated only on failure. This assertion does not
+    // depend on another row existing or mutate an unrelated table.
+    `SELECT CASE WHEN (${guardSql}) THEN 1 ELSE json_extract('buildertrend schedule preflight failed', '$') END AS preflight_gate;`,
     `UPDATE projects SET buildertrend_project_id=${sql(fixture.buildertrendJobId)}, updated_at=${sql(fixture.capturedAt)} WHERE id=${sql(fixture.projectId)} AND (buildertrend_project_id IS NULL OR buildertrend_project_id=${sql(fixture.buildertrendJobId)});`,
     `INSERT INTO buildertrend_staging_runs (id, organization_id, run_key, manifest_fingerprint, source_method, source_label, status, started_by, started_at, completed_at, raw_artifact_drive_file_id, raw_artifact_drive_url, source_notes, summary_json, created_at, updated_at) VALUES (${sql(runId)}, ${sql(fixture.organizationId)}, ${sql(runKey)}, ${sql(manifestFingerprint)}, 'authenticated_browser_capture', ${sql(fixture.sourceLabel)}, 'completed', NULL, ${sql(fixture.capturedAt)}, ${sql(fixture.capturedAt)}, NULL, NULL, 'Verified schedule refresh; no access grants, notifications, external links, or Sage writes.', ${sql(summary)}, ${sql(fixture.capturedAt)}, ${sql(fixture.capturedAt)}) ON CONFLICT(organization_id, run_key) DO UPDATE SET status='completed', completed_at=excluded.completed_at, summary_json=excluded.summary_json, updated_at=excluded.updated_at WHERE buildertrend_staging_runs.manifest_fingerprint=excluded.manifest_fingerprint;`,
   ]
+  const sourceLinkChecks = []
 
   for (const item of fixture.items) {
     statements.push(
@@ -259,6 +260,7 @@ export function generateBuildertrendScheduleRefreshSql(input) {
   for (const item of fixture.items) {
     const recordId = `bt-staging-schedule-${fixture.buildertrendJobId}-${item.sourceRecordId}`
     const sourceKey = `job:${fixture.buildertrendJobId}:schedule_item:${item.sourceRecordId}`
+    const sourceLinkId = `bt-schedule-source-link-${fixture.buildertrendJobId}-${item.sourceRecordId}`
     const recordPayload = JSON.stringify({
       buildertrendJobId: fixture.buildertrendJobId,
       buildertrendRecordId: item.sourceRecordId,
@@ -274,6 +276,12 @@ export function generateBuildertrendScheduleRefreshSql(input) {
       `INSERT INTO buildertrend_staging_records (id, organization_id, source_key, requested_project_id, project_id, source_scope, source_record_type, buildertrend_job_id, buildertrend_lead_id, buildertrend_record_id, buildertrend_record_number, buildertrend_url, title, record_date, record_status, source_status, department_code, client_name, contact_name, contact_email, amount, searchable_text, normalized_summary, raw_payload_json, source_archive_drive_folder_id, source_archive_drive_file_id, source_archive_drive_url, verified_archive_drive_folder_id, verified_archive_drive_file_id, verified_archive_drive_url, review_status, promotion_status, promoted_record_type, promoted_record_id, sage_reconciliation_status, source_notes, review_notes, created_at, updated_at) VALUES (${sql(recordId)}, ${sql(fixture.organizationId)}, ${sql(sourceKey)}, ${sql(fixture.projectId)}, ${sql(fixture.projectId)}, 'job', 'schedule_item', ${sql(fixture.buildertrendJobId)}, NULL, ${sql(item.sourceRecordId)}, ${sql(String(item.sortOrder))}, NULL, ${sql(item.title)}, ${sql(item.startDate)}, ${sql(item.complete ? "complete" : item.percent > 0 ? "in_progress" : "pending")}, ${sql(`${item.percent}%`)}, ${sql(fixture.projectNumber.split("-")[0])}, NULL, NULL, NULL, NULL, ${sql(`${item.title} ${item.phase}`)}, ${sql(`${item.title}; ${item.startDate} to ${item.endDate}; ${item.percent}%`)}, ${sql(recordPayload)}, NULL, NULL, NULL, NULL, NULL, NULL, 'verified', 'promoted', 'schedule_task', ${sql(item.compassTaskId)}, 'not_reviewed', 'Authenticated Buildertrend schedule detail capture.', 'Operational task ID retained during verified refresh.', ${sql(fixture.capturedAt)}, ${sql(fixture.capturedAt)}) ON CONFLICT(organization_id, source_key) DO UPDATE SET project_id=excluded.project_id, buildertrend_record_number=excluded.buildertrend_record_number, title=excluded.title, record_date=excluded.record_date, record_status=excluded.record_status, source_status=excluded.source_status, searchable_text=excluded.searchable_text, normalized_summary=excluded.normalized_summary, raw_payload_json=excluded.raw_payload_json, promotion_status=CASE WHEN buildertrend_staging_records.promoted_record_id IS NULL OR buildertrend_staging_records.promoted_record_id=excluded.promoted_record_id THEN 'promoted' ELSE buildertrend_staging_records.promotion_status END, promoted_record_type=CASE WHEN buildertrend_staging_records.promoted_record_id IS NULL OR buildertrend_staging_records.promoted_record_id=excluded.promoted_record_id THEN 'schedule_task' ELSE buildertrend_staging_records.promoted_record_type END, promoted_record_id=CASE WHEN buildertrend_staging_records.promoted_record_id IS NULL OR buildertrend_staging_records.promoted_record_id=excluded.promoted_record_id THEN excluded.promoted_record_id ELSE buildertrend_staging_records.promoted_record_id END, updated_at=excluded.updated_at;`,
       `INSERT OR IGNORE INTO buildertrend_staging_observations (id, import_run_id, organization_id, entity_kind, entity_key, entity_id, observed_payload_json, observed_at) VALUES (${sql(`bt-observation-${captureDate}-${captureFingerprint}-${fixture.buildertrendJobId}-${item.sourceRecordId}`)}, ${sql(runId)}, ${sql(fixture.organizationId)}, 'record', ${sql(sourceKey)}, ${sql(recordId)}, ${sql(recordPayload)}, ${sql(fixture.capturedAt)});`,
     )
+    statements.push(
+      `INSERT INTO buildertrend_schedule_task_source_links (id, organization_id, project_id, source_record_id, schedule_task_id, schedule_task_id_snapshot, linked_at, target_deleted_at) SELECT ${sql(sourceLinkId)}, ${sql(fixture.organizationId)}, ${sql(fixture.projectId)}, source.id, task.id, task.id, ${sql(fixture.capturedAt)}, NULL FROM buildertrend_staging_records source JOIN schedule_tasks task ON task.id=${sql(item.compassTaskId)} WHERE source.organization_id=${sql(fixture.organizationId)} AND source.source_key=${sql(sourceKey)} AND source.project_id=${sql(fixture.projectId)} AND source.promotion_status='promoted' AND source.promoted_record_type='schedule_task' AND source.promoted_record_id=task.id AND task.project_id=${sql(fixture.projectId)} ON CONFLICT(id) DO NOTHING;`,
+    )
+    sourceLinkChecks.push(
+      `(SELECT COUNT(*) FROM buildertrend_schedule_task_source_links link JOIN buildertrend_staging_records source ON source.id=link.source_record_id WHERE link.id=${sql(sourceLinkId)} AND link.organization_id=${sql(fixture.organizationId)} AND link.project_id=${sql(fixture.projectId)} AND source.source_key=${sql(sourceKey)} AND link.schedule_task_id=${sql(item.compassTaskId)} AND link.schedule_task_id_snapshot=${sql(item.compassTaskId)} AND link.target_deleted_at IS NULL)=1`,
+    )
   }
 
   for (const dependency of fixture.dependencies) {
@@ -288,8 +296,15 @@ export function generateBuildertrendScheduleRefreshSql(input) {
     )
   }
 
+  for (let index = 0; index < sourceLinkChecks.length; index += 40) {
+    const checks = sourceLinkChecks.slice(index, index + 40).join(" AND ")
+    statements.push(
+      `SELECT CASE WHEN (${checks}) THEN 1 ELSE json_extract('buildertrend schedule source link check failed', '$') END AS source_link_gate;`,
+    )
+  }
+
   statements.push(
-    `SELECT ${sql(fixture.projectId)} AS project_id, ${fixture.items.length} AS expected_items, (SELECT COUNT(*) FROM schedule_tasks WHERE project_id=${sql(fixture.projectId)}) AS operational_items, (SELECT COUNT(*) FROM task_dependencies WHERE predecessor_id IN (${taskIdsSql}) AND successor_id IN (${taskIdsSql})) AS dependencies, (SELECT COUNT(*) FROM buildertrend_staging_records WHERE organization_id=${sql(fixture.organizationId)} AND buildertrend_job_id=${sql(fixture.buildertrendJobId)} AND source_record_type='schedule_item' AND promotion_status='promoted') AS promoted_source_records;`,
+    `SELECT ${sql(fixture.projectId)} AS project_id, ${fixture.items.length} AS expected_items, (SELECT COUNT(*) FROM schedule_tasks WHERE project_id=${sql(fixture.projectId)}) AS operational_items, (SELECT COUNT(*) FROM task_dependencies WHERE predecessor_id IN (${taskIdsSql}) AND successor_id IN (${taskIdsSql})) AS dependencies, (SELECT COUNT(*) FROM buildertrend_staging_records WHERE organization_id=${sql(fixture.organizationId)} AND buildertrend_job_id=${sql(fixture.buildertrendJobId)} AND source_record_type='schedule_item' AND promotion_status='promoted') AS promoted_source_records, (SELECT COUNT(*) FROM buildertrend_schedule_task_source_links link JOIN buildertrend_staging_records source ON source.id=link.source_record_id WHERE link.organization_id=${sql(fixture.organizationId)} AND link.project_id=${sql(fixture.projectId)} AND source.buildertrend_job_id=${sql(fixture.buildertrendJobId)} AND source.source_record_type='schedule_item' AND link.schedule_task_id IS NOT NULL) AS linked_source_records;`,
   )
 
   return `${statements.join("\n")}\n`
@@ -306,5 +321,6 @@ export function summarizeBuildertrendScheduleRefresh(input) {
     dependencyCount: fixture.dependencies.length,
     preservesCompassTaskIds: true,
     createsExternalLinks: false,
+    createsProvenanceLinks: true,
   }
 }

@@ -163,6 +163,10 @@ One thing to note: the AI SDK v6 uses `zod/v4` internally, so tool input schemas
 Component conventions
 ---
 
+User-visible UI policy is canonical in [UI standards](ui-standards.md). This
+document records the implementation conventions that support that policy; do
+not create a second conflicting product standard here.
+
 ### shadcn/ui
 
 Compass uses shadcn/ui with the new-york style variant. Components live in `src/components/ui/` and are added via:
@@ -204,7 +208,10 @@ Two animation libraries coexist:
 
 ### Data tables
 
-Built on `@tanstack/react-table`. The pattern uses a `DataTable` component that takes column definitions and data arrays.
+Built on `@tanstack/react-table`. The pattern uses a `DataTable` component that
+takes column definitions and data arrays. Paginated tables use the shared
+`DataTablePagination` component and the page-size behavior in
+[UI standards](ui-standards.md).
 
 ### Forms
 
@@ -237,12 +244,8 @@ clear a child selection when it is no longer available.
 
 ### Information density and responsive text
 
-Keep Compass clean, crisp, professional, and easy to scan. Rounded cards,
-badges, pills, and other bordered "bubbles" should normally account for no
-more than roughly 20% of an informational layout. Prefer typography,
-whitespace, and subtle rules or dividers for grouping. Reserve a bounded
-container for a meaningful section or interaction instead of wrapping every
-individual value.
+Keep Compass clean, crisp, professional, and easy to scan. Follow the layout,
+theme, radius, and responsive-text rules in [UI standards](ui-standards.md).
 
 Text must remain readable when a window narrows. Content containers need
 `min-w-0`, and user-entered prose should use `break-words` with

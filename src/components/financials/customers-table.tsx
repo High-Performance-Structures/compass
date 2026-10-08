@@ -11,6 +11,7 @@ import {
   useReactTable,
   type ColumnDef,
   type ColumnFiltersState,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table"
 
@@ -18,8 +19,12 @@ import type { Customer } from "@/db/schema"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import {
+  DataTablePagination,
+  DEFAULT_TABLE_PAGE_SIZE,
+} from "@/components/data-table-pagination"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,12 +54,20 @@ interface CustomersTableProps {
   customers: Customer[]
   onEdit?: (customer: Customer) => void
   onDelete?: (id: string) => void
+  onViewPeople?: (customer: Customer) => void
+  selectedIds?: readonly string[]
+  onSelectionChange?: (ids: readonly string[]) => void
 }
+
+const EMPTY_SELECTION: readonly string[] = []
 
 export function CustomersTable({
   customers,
   onEdit,
   onDelete,
+  onViewPeople,
+  selectedIds = EMPTY_SELECTION,
+  onSelectionChange,
 }: CustomersTableProps) {
   const isMobile = useIsMobile()
   const { developerModeEnabled } = useDeveloperMode()
@@ -63,7 +76,14 @@ export function CustomersTable({
   ])
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
-  const [rowSelection, setRowSelection] = React.useState({})
+  const rowSelection = React.useMemo<RowSelectionState>(
+    () => Object.fromEntries(selectedIds.map((id) => [id, true])),
+    [selectedIds]
+  )
+  const [pagination, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: DEFAULT_TABLE_PAGE_SIZE,
+  })
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -74,6 +94,7 @@ export function CustomersTable({
   }, [sorting])
 
   const handleSort = (value: string) => {
+    setPagination((current) => ({ ...current, pageIndex: 0 }))
     switch (value) {
       case "name-asc":
         setSorting([{ id: "name", desc: false }])
@@ -90,23 +111,19 @@ export function CustomersTable({
     }
   }
 
-  const columns: ColumnDef<Customer>[] = [
+  const columns = React.useMemo<ColumnDef<Customer>[]>(() => [
     {
       id: "select",
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(v) => row.toggleSelected(!!v)}
-          aria-label="select row"
-        />
-      ),
+      header: ({ table }) => <Checkbox
+        checked={table.getIsAllPageRowsSelected() ? true : table.getIsSomePageRowsSelected() ? "indeterminate" : false}
+        onCheckedChange={(checked) => table.toggleAllPageRowsSelected(checked === true)}
+        aria-label="Select all clients on this page"
+      />,
+      cell: ({ row }) => <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(checked) => row.toggleSelected(checked === true)}
+        aria-label={`Select ${row.original.name}`}
+      />,
       enableSorting: false,
       enableHiding: false,
     },
@@ -202,9 +219,8 @@ export function CustomersTable({
       header: "Source",
       cell: ({ row }) => {
         const customer = row.original
-        const isSageLinked = Boolean(
-          customer.sageClientId || customer.sageClientNumber
-        )
+        const isSageLinked = Boolean(customer.sageClientId)
+        const isSageCandidate = !isSageLinked && Boolean(customer.sageClientNumber)
         const isBuildertrendLinked = Boolean(customer.buildertrendContactId)
         return (
           <div className="flex flex-wrap gap-1">
@@ -216,10 +232,13 @@ export function CustomersTable({
                   : ""}
               </Badge>
             ) : null}
+            {isSageCandidate ? (
+              <Badge variant="outline">Sage candidate #{customer.sageClientNumber}</Badge>
+            ) : null}
             {isBuildertrendLinked ? (
               <Badge variant="outline">Buildertrend</Badge>
             ) : null}
-            {!isSageLinked && !isBuildertrendLinked ? (
+            {!isSageLinked && !isSageCandidate && !isBuildertrendLinked ? (
               <Badge variant="outline">Compass</Badge>
             ) : null}
           </div>
@@ -244,6 +263,7 @@ export function CustomersTable({
     {
       id: "actions",
       cell: ({ row }) => {
+        if (!onEdit && !onDelete && !onViewPeople) return null
         const customer = row.original
         return (
           <DropdownMenu>
@@ -254,38 +274,50 @@ export function CustomersTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(customer)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(customer)}>People at this client</DropdownMenuItem>}
+              {onEdit && <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>}
+              {onEdit && onDelete && <DropdownMenuSeparator />}
+              {onDelete && <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => onDelete?.(customer.id)}
+                onClick={() => onDelete(customer.id)}
               >
                 Delete
-              </DropdownMenuItem>
+              </DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
         )
       },
     },
-  ]
-  const visibleColumns = developerModeEnabled
-    ? columns
-    : columns.filter((column) => column.id !== "source")
+  ], [onEdit, onDelete, onViewPeople])
+  const visibleColumns = React.useMemo(() => columns.filter((column) =>
+    (developerModeEnabled || column.id !== "source") &&
+    (onSelectionChange !== undefined || column.id !== "select") &&
+    (onEdit !== undefined || onDelete !== undefined || onViewPeople !== undefined || column.id !== "actions")
+  ), [columns, developerModeEnabled, onEdit, onDelete, onViewPeople, onSelectionChange])
 
   const table = useReactTable({
     data: customers,
     columns: visibleColumns,
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    getRowId: (customer) => customer.id,
+    onSortingChange: (updater) => {
+      setSorting(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
+    onColumnFiltersChange: (updater) => {
+      setColumnFilters(updater)
+      setPagination((current) => ({ ...current, pageIndex: 0 }))
+    },
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    onRowSelectionChange: setRowSelection,
-    initialState: { pagination: { pageSize: 100 } },
-    state: { sorting, columnFilters, rowSelection },
+    onRowSelectionChange: onSelectionChange ? (updater) => {
+      const next = typeof updater === "function" ? updater(rowSelection) : updater
+      onSelectionChange(Object.keys(next).filter((id) => next[id]))
+    } : undefined,
+    autoResetPageIndex: false,
+    onPaginationChange: setPagination,
+    state: { sorting, columnFilters, rowSelection, pagination },
   })
 
   const emptyState = (
@@ -346,7 +378,7 @@ export function CustomersTable({
                         .join(" \u00b7 ") || "No contact info"}
                     </p>
                   </div>
-                  <DropdownMenu>
+                  {(onEdit || onDelete || onViewPeople) && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
@@ -357,18 +389,17 @@ export function CustomersTable({
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit?.(c)}>
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
+                      {onViewPeople && <DropdownMenuItem onClick={() => onViewPeople(c)}>People at this client</DropdownMenuItem>}
+                      {onEdit && <DropdownMenuItem onClick={() => onEdit(c)}>Edit</DropdownMenuItem>}
+                      {onEdit && onDelete && <DropdownMenuSeparator />}
+                      {onDelete && <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => onDelete?.(c.id)}
+                        onClick={() => onDelete(c.id)}
                       >
                         Delete
-                      </DropdownMenuItem>
+                      </DropdownMenuItem>}
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
                 </div>
               )
             })}
@@ -376,6 +407,11 @@ export function CustomersTable({
         ) : (
           emptyState
         )}
+        <DataTablePagination
+          table={table}
+          itemLabel="contacts"
+          id="customers-mobile-items-per-page"
+        />
       </div>
     )
   }
@@ -440,36 +476,11 @@ export function CustomersTable({
           </Table>
         </div>
       </div>
-      {(table.getPageCount() > 1 ||
-        table.getFilteredSelectedRowModel().rows.length > 0) && (
-        <div className="flex items-center justify-between shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {table.getFilteredSelectedRowModel().rows.length > 0
-              ? `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} selected`
-              : `${table.getFilteredRowModel().rows.length} contacts`}
-          </div>
-          {table.getPageCount() > 1 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                Next
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      <DataTablePagination
+        table={table}
+        itemLabel="contacts"
+        id="customers-items-per-page"
+      />
     </div>
   )
 }

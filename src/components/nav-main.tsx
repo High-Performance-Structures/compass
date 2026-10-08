@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconChevronRight, type Icon } from "@tabler/icons-react"
+import type { Icon } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
@@ -22,6 +22,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
+
+
+// The full-width menu is text only; icons appear in the collapsed rail, where
+// they are the only thing that can show. Groups open without a caret: their
+// items are indented along the submenu guide line.
+const COLLAPSED_ONLY_ICON = "hidden group-data-[collapsible=icon]:block"
 
 export interface NavLinkItem {
   readonly kind: "link"
@@ -137,7 +143,7 @@ function NavLink({
   )
   const content = (
     <>
-      {item.icon && <item.icon />}
+      {item.icon && !nested ? <item.icon className={COLLAPSED_ONLY_ICON} /> : null}
       <span>{item.title}</span>
     </>
   )
@@ -178,6 +184,90 @@ function NavLink({
   )
 }
 
+const SIDEBAR_COLLAPSIBLE_DURATION = 140
+const SIDEBAR_COLLAPSIBLE_OPEN_EASING = "cubic-bezier(0.16, 1, 0.3, 1)"
+const SIDEBAR_COLLAPSIBLE_CLOSE_EASING = "cubic-bezier(0.7, 0, 0.84, 1)"
+
+function AnimatedCollapsibleContent({
+  open,
+  children,
+}: {
+  readonly open: boolean
+  readonly children: React.ReactNode
+}) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const mountedRef = React.useRef(false)
+
+  React.useLayoutEffect(() => {
+    const node = ref.current
+    if (!node) return
+
+    const targetHeight = open ? node.scrollHeight : 0
+    const measuredHeight = Number.parseFloat(window.getComputedStyle(node).height)
+    const currentHeight = Number.isFinite(measuredHeight) ? measuredHeight : 0
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches
+
+    if (
+      !mountedRef.current ||
+      reduceMotion ||
+      Math.abs(currentHeight - targetHeight) < 0.5
+    ) {
+      node.style.height = open ? "auto" : "0px"
+      mountedRef.current = true
+      return
+    }
+
+    const animation = node.animate(
+      [
+        { height: `${currentHeight}px` },
+        { height: `${targetHeight}px` },
+      ],
+      {
+        duration: SIDEBAR_COLLAPSIBLE_DURATION,
+        easing: open
+          ? SIDEBAR_COLLAPSIBLE_OPEN_EASING
+          : SIDEBAR_COLLAPSIBLE_CLOSE_EASING,
+        fill: "forwards",
+      },
+    )
+
+    let cancelled = false
+    animation.onfinish = () => {
+      if (cancelled) return
+      node.style.height = open ? "auto" : "0px"
+      // Release the animated height so nested sections can grow the open menu.
+      animation.cancel()
+    }
+
+    return () => {
+      cancelled = true
+      const interruptedHeight = Number.parseFloat(
+        window.getComputedStyle(node).height,
+      )
+      animation.cancel()
+      animation.onfinish = null
+      if (Number.isFinite(interruptedHeight)) {
+        node.style.height = `${interruptedHeight}px`
+      }
+    }
+  }, [open])
+
+  return (
+    <CollapsibleContent
+      forceMount
+      hidden={false}
+      ref={ref}
+      aria-hidden={!open}
+      inert={!open ? true : undefined}
+      className="sidebar-collapsible-content"
+    >
+      {children}
+    </CollapsibleContent>
+  )
+}
+
 function NavSubmenu({
   item,
   activeUrl,
@@ -192,11 +282,14 @@ function NavSubmenu({
     (child) => child.url === activeUrl,
   )
 
+  const [open, setOpenState] = React.useState(hasActiveItem)
+
   return (
     <Collapsible
       asChild
       key={`${item.title}-${hasActiveItem ? "active" : "inactive"}`}
-      defaultOpen={hasActiveItem}
+      open={open}
+      onOpenChange={setOpenState}
       className="group/collapsible"
     >
       <SidebarMenuItem>
@@ -209,12 +302,11 @@ function NavSubmenu({
               if (state === "collapsed") setOpen(true)
             }}
           >
-            <item.icon />
+            <item.icon className={COLLAPSED_ONLY_ICON} />
             <span>{item.title}</span>
-            <IconChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <AnimatedCollapsibleContent open={open}>
           {header}
           <SidebarMenuSub>
             {item.items.map((child) => (
@@ -234,7 +326,7 @@ function NavSubmenu({
               )
             ))}
           </SidebarMenuSub>
-        </CollapsibleContent>
+        </AnimatedCollapsibleContent>
       </SidebarMenuItem>
     </Collapsible>
   )
@@ -251,24 +343,25 @@ function NavNestedSubmenu({
     (child) => child.kind === "link" && child.url === activeUrl,
   )
 
+  const [open, setOpenState] = React.useState(hasActiveItem)
+
   return (
     <Collapsible
       asChild
       key={`${item.title}-${hasActiveItem ? "active" : "inactive"}`}
-      defaultOpen={hasActiveItem}
+      open={open}
+      onOpenChange={setOpenState}
       className="group/nested-collapsible"
     >
       <SidebarMenuSubItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuSubButton asChild isActive={hasActiveItem}>
             <button type="button" aria-label={item.title}>
-              <item.icon />
               <span>{item.title}</span>
-              <IconChevronRight className="ml-auto transition-transform group-data-[state=open]/nested-collapsible:rotate-90" />
             </button>
           </SidebarMenuSubButton>
         </CollapsibleTrigger>
-        <CollapsibleContent>
+        <AnimatedCollapsibleContent open={open}>
           <SidebarMenuSub className="mr-0 ml-3">
             {item.items.map((child) =>
               child.kind === "coming-soon" ? (
@@ -279,9 +372,8 @@ function NavNestedSubmenu({
                       disabled
                       aria-label={`${child.title} — ${child.note}`}
                     >
-                      <child.icon />
                       <span>{child.title}</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-sidebar-foreground/60">
+                      <span className="ml-auto shrink-0 text-xs text-sidebar-foreground/60">
                         {child.note}
                       </span>
                     </button>
@@ -297,7 +389,7 @@ function NavNestedSubmenu({
               ),
             )}
           </SidebarMenuSub>
-        </CollapsibleContent>
+        </AnimatedCollapsibleContent>
       </SidebarMenuSubItem>
     </Collapsible>
   )

@@ -2,9 +2,11 @@
 
 import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 import { getDb } from "@/db"
 import {
+  customerContacts,
   customers,
   organizationMembers,
   projectContacts,
@@ -44,6 +46,7 @@ import {
   departmentTrackingDestination,
   locateProjectTrackerLayout,
   patchProjectTrackerCells,
+  projectTrackerOwnerContact,
   PROJECT_REGISTRY_DESTINATION,
   updateProjectTrackerRow,
   type ProjectIntakeDepartment,
@@ -126,6 +129,7 @@ export type ProjectInformation = {
     readonly clientStatus: ProjectClientStatus
     readonly jobStatusId: string
     readonly status: string
+    readonly portfolioMapVisibility: PortfolioMapVisibility
   }
   readonly jobStatuses: readonly ProjectProfileJobStatus[]
   readonly interactionTypes: readonly ProjectInteractionTypeOption[]
@@ -365,6 +369,7 @@ export async function getProjectInformation(
         clientStatus: projects.clientStatus,
         jobStatusId: projects.jobStatusId,
         status: projects.status,
+        portfolioMapVisibility: projects.portfolioMapVisibility,
       })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
@@ -750,14 +755,58 @@ export async function retryProjectProfileSyncOperation(input: {
       const department = trackerDepartment(project.projectNumber)
       if (!department) throw new Error("Project number has no supported tracker department.")
       const contactRows = await db
-        .select({ displayName: projectContacts.displayName, companyName: projectContacts.companyName, email: projectContacts.email, phone: projectContacts.phone })
+        .select({
+          displayName: projectContacts.displayName,
+          customerContactId: projectContacts.customerContactId,
+          companyName: projectContacts.companyName,
+          email: projectContacts.email,
+          phone: projectContacts.phone,
+          directoryPersonName: customerContacts.name,
+          directoryPersonEmail: customerContacts.email,
+          directoryPersonPhone: customerContacts.phone,
+          directoryCompanyName: customers.company,
+        })
         .from(projectContacts)
+        .leftJoin(
+          customers,
+          and(
+            or(
+              eq(projectContacts.customerId, customers.id),
+              and(
+                eq(projectContacts.sourceEntityType, "customer"),
+                eq(projectContacts.sourceEntityId, customers.id)
+              )
+            ),
+            eq(customers.organizationId, organizationId)
+          )
+        )
+        .leftJoin(
+          customerContacts,
+          and(
+            eq(projectContacts.customerContactId, customerContacts.id),
+            eq(customerContacts.customerId, customers.id),
+            eq(customerContacts.active, true)
+          )
+        )
         .where(and(eq(projectContacts.projectId, input.projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
         .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder))
         .limit(1)
       const contact = contactRows[0]
       const address = projectAddressParts(project.address)
-      const clientName = project.clientName ?? contact?.displayName ?? ""
+      const ownerContact = projectTrackerOwnerContact({
+        projectClientName: project.clientName,
+        assignmentName: contact?.displayName ?? null,
+        assignmentCompanyName: contact?.companyName ?? null,
+        assignmentEmail: contact?.email ?? null,
+        assignmentPhone: contact?.phone ?? null,
+        canonicalPersonId: contact?.customerContactId ?? null,
+        canonicalPersonName: contact?.directoryPersonName ?? null,
+        canonicalPersonEmail: contact?.directoryPersonEmail ?? null,
+        canonicalPersonPhone: contact?.directoryPersonPhone ?? null,
+        canonicalCompanyName: contact?.directoryCompanyName ?? null,
+      })
+      const clientName = ownerContact.name
+      const companyName = ownerContact.companyName
       const nameParts = clientName.trim().split(/\s+/).filter(Boolean)
       const firstName = nameParts[0] ?? ""
       const lastName = nameParts.slice(1).join(" ")
@@ -775,7 +824,7 @@ export async function retryProjectProfileSyncOperation(input: {
         rows: registryRows,
         layout: registryLayout,
         currentProjectNumbers: syncProjectNumbers,
-        patches: patchProjectTrackerCells({ layout: registryLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, "street number code": address.streetNumber ?? "", "street name label": address.streetName ?? project.name, "client first name": firstName, "client last name": lastName, "company name": contact?.companyName ?? "", "city state zip": address.cityStateZip ?? "", "folder link": driveFolderUrl, "lead tracker link": `https://docs.google.com/spreadsheets/d/${trackerDestination.spreadsheetId}` } }),
+        patches: patchProjectTrackerCells({ layout: registryLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, "street number code": address.streetNumber ?? "", "street name label": address.streetName ?? project.name, "client first name": firstName, "client last name": lastName, "company name": companyName, "city state zip": address.cityStateZip ?? "", "folder link": driveFolderUrl, "lead tracker link": `https://docs.google.com/spreadsheets/d/${trackerDestination.spreadsheetId}` } }),
       })
       const departmentRows = await clients.sheets.getValues(clients.trackerEmail, { spreadsheetId: trackerDestination.spreadsheetId, range: "'Tracker'!A:ZZ" })
       const departmentLayout = locateProjectTrackerLayout(departmentRows)
@@ -788,7 +837,7 @@ export async function retryProjectProfileSyncOperation(input: {
         rows: departmentRows,
         layout: departmentLayout,
         currentProjectNumbers: syncProjectNumbers,
-        patches: patchProjectTrackerCells({ layout: departmentLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, client: clientName, customer: clientName, "builder gc": contact?.companyName ?? clientName, "contact person": clientName, address: project.address ?? "", "project address": project.address ?? "", phone: contact?.phone ?? "", email: contact?.email ?? "", "billing address": project.mailingAddress ?? "", "folder link": driveFolderUrl } }),
+        patches: patchProjectTrackerCells({ layout: departmentLayout, values: { "project id": project.projectNumber, "project number": project.projectNumber, client: clientName, customer: clientName, "builder gc": companyName || clientName, "contact person": clientName, address: project.address ?? "", "project address": project.address ?? "", phone: ownerContact.phone, email: ownerContact.email, "billing address": project.mailingAddress ?? "", "folder link": driveFolderUrl } }),
       })
     } else {
       return { success: false, error: "Unsupported synchronization operation." }
@@ -948,16 +997,27 @@ export async function updateProjectInformation(input: {
 
     const linkedCustomers = input.updateClientDefaultMailingAddress
       ? await db
-        .select({ id: customers.id })
+        .select({
+          id: customers.id,
+          sageClientId: customers.sageClientId,
+          sageClientNumber: customers.sageClientNumber,
+        })
         .from(projectContacts)
         .innerJoin(customers, eq(projectContacts.sourceEntityId, customers.id))
         .where(
           and(
             eq(projectContacts.projectId, input.projectId),
             eq(projectContacts.sourceEntityType, "customer"),
+            eq(customers.organizationId, organizationId),
           ),
         )
       : []
+    if (linkedCustomers.some((customer) => customer.sageClientId || customer.sageClientNumber)) {
+      return {
+        success: false,
+        error: "This client is linked to Sage. Update its default mailing address through Contacts review, or leave the client-default option unchecked.",
+      }
+    }
     const updatedAt = nowIso()
     const legacyStatus = legacyProjectStatusAfterClientUpdate({
       currentStatus: existing.status,
@@ -1557,6 +1617,71 @@ export async function updateProjectJobStatus(input: {
   } catch (error) {
     console.error("Unable to update project job status", error)
     return { success: false, error: "Unable to update project status." }
+  }
+}
+
+export async function updateProjectMapVisibility(input: {
+  readonly projectId: string
+  readonly visibility: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const { db, organizationId, user } = await projectProfileContext(
+      input.projectId,
+      "update",
+    )
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
+      return { success: false, error: "Demo data cannot be changed." }
+    }
+    const visibility = input.visibility
+    if (!isPortfolioMapVisibility(visibility)) {
+      return { success: false, error: "Choose a portfolio map setting." }
+    }
+
+    const existingRows = await db
+      .select({ visibility: projects.portfolioMapVisibility })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    const existing = existingRows[0]
+    if (!existing) return { success: false, error: "Project not found." }
+    if (existing.visibility === visibility) return { success: true }
+
+    const updatedAt = nowIso()
+    await db.batch([
+      db
+        .update(projects)
+        .set({ portfolioMapVisibility: visibility, updatedAt })
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            eq(projects.organizationId, organizationId),
+          ),
+        ),
+      db.insert(projectProfileAuditEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        projectId: input.projectId,
+        actorUserId: user.id,
+        eventType: "project_map_visibility_updated",
+        entityType: "project",
+        entityId: input.projectId,
+        beforeJson: JSON.stringify({ portfolioMapVisibility: existing.visibility }),
+        afterJson: JSON.stringify({ portfolioMapVisibility: visibility }),
+        createdAt: updatedAt,
+      }),
+    ])
+
+    revalidateProjectProfile(input.projectId)
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to update portfolio map visibility", error)
+    return { success: false, error: "Unable to update the portfolio map setting." }
   }
 }
 

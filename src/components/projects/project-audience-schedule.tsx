@@ -109,6 +109,7 @@ export function ProjectAudienceSchedule({
   projectName,
   projectNumber,
   presentation = "items",
+  isPublished,
 }: {
   readonly audienceLabel: string
   readonly items: readonly AudienceScheduleItem[]
@@ -117,6 +118,7 @@ export function ProjectAudienceSchedule({
   readonly projectName: string
   readonly projectNumber: string | null
   readonly presentation?: OwnerScheduleView
+  readonly isPublished: boolean
 }): React.ReactElement {
   const displayColorPalette = useScheduleDisplayPalette(projectId)
   const printBrand = projectBrandFor({ projectId, projectNumber })
@@ -143,8 +145,9 @@ export function ProjectAudienceSchedule({
         <div>
           <h2 className="text-sm font-semibold">Project Schedule</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {items.length} visible {presentation === "phases" ? "phase / assigned item" : "item"}
-            {items.length === 1 ? "" : "s"} · Published schedule
+            {isPublished
+              ? `${items.length} visible ${presentation === "phases" ? "phase / assigned item" : "item"}${items.length === 1 ? "" : "s"} · Published schedule`
+              : "Draft · Not visible yet"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -152,6 +155,7 @@ export function ProjectAudienceSchedule({
             type="button"
             variant="outline"
             size="sm"
+            disabled={!isPublished || items.length === 0}
             onClick={() => void printScheduleDocument()}
           >
             <IconPrinter className="size-4" />
@@ -189,7 +193,11 @@ export function ProjectAudienceSchedule({
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {!isPublished ? (
+        <p className="p-5 text-sm text-muted-foreground">
+          The project team is working on this schedule. It will appear here when published.
+        </p>
+      ) : items.length === 0 ? (
         <p className="p-5 text-sm text-muted-foreground">
           {publicationAvailable
             ? "No schedule items are currently visible."
@@ -283,7 +291,7 @@ export function ProjectAudienceSchedule({
                 {WEEKDAYS.map((weekday) => (
                   <div
                     key={weekday}
-                    className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground"
+                    className="px-2 py-2 text-center text-xs font-medium text-muted-foreground"
                   >
                     {weekday}
                   </div>
@@ -318,7 +326,7 @@ export function ProjectAudienceSchedule({
                           <div
                             key={item.id}
                             title={`${item.title} · ${statusLabel(item.status)}`}
-                            className="truncate border-l-2 px-1 py-0.5 text-[10px] leading-4"
+                            className="truncate border-l-2 px-1 py-0.5 text-xs leading-4"
                             style={{
                               borderColor: getScheduleItemDisplayColor(
                                 item,
@@ -334,7 +342,7 @@ export function ProjectAudienceSchedule({
                           </div>
                         ))}
                         {dayItems.length > 3 && (
-                          <p className="px-1 text-[10px] text-muted-foreground">
+                          <p className="px-1 text-xs text-muted-foreground">
                             +{dayItems.length - 3} more
                           </p>
                         )}

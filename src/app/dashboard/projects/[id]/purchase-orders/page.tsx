@@ -45,6 +45,7 @@ import {
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
+import { formatPurchaseOrderMoney } from "@/lib/purchase-orders/money"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 import {
@@ -55,15 +56,6 @@ import {
   projectBrandFor,
   type ProjectBrand,
 } from "@/lib/project-branding"
-
-function money(value: number | null): string {
-  if (value === null) return "Amount TBD"
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(value)
-}
 
 function formatDate(value: string | null): string {
   if (!value) return "No due date"
@@ -104,7 +96,7 @@ function purchaseOrderTaskTitle(order: ProjectPurchaseOrderItem): string {
 
 function purchaseOrderTaskDescription(order: ProjectPurchaseOrderItem): string {
   const lines = order.lines.map((line) => {
-    const amount = money(line.amount)
+    const amount = formatPurchaseOrderMoney(line.amount)
     return `Line ${line.lineNumber}: ${line.description} (${amount})`
   })
 
@@ -251,9 +243,9 @@ function PurchaseOrderCard({
           </span>
           <span>{formatDate(order.dueDate)}</span>
         </div>
-        <p className="mt-3 text-sm font-medium">{money(order.amount)}</p>
+        <p className="mt-3 text-sm font-medium">{formatPurchaseOrderMoney(order.amount)}</p>
         {order.vendorAcknowledgement && (
-          <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+          <div className="mt-3 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
             <p className="font-medium">
               Vendor acknowledged receipt · {order.vendorAcknowledgement.responderName}
             </p>
@@ -305,8 +297,8 @@ function PurchaseOrderCard({
                   <span>
                     {line.quantity} {line.unit ?? ""}
                   </span>
-                  <span>{money(line.unitCost)}</span>
-                  <span className="font-medium">{money(line.amount)}</span>
+                  <span>{formatPurchaseOrderMoney(line.unitCost)}</span>
+                  <span className="font-medium">{formatPurchaseOrderMoney(line.amount)}</span>
                 </div>
               ))}
             </div>
@@ -410,10 +402,10 @@ function PurchaseOrderCard({
                   <td className="px-2 py-1 text-right">{line.quantity}</td>
                   <td className="px-2 py-1">{line.unit ?? "-"}</td>
                   <td className="px-2 py-1 text-right">
-                    {money(line.unitCost)}
+                    {formatPurchaseOrderMoney(line.unitCost)}
                   </td>
                   <td className="px-2 py-1 text-right font-semibold">
-                    {money(line.amount)}
+                    {formatPurchaseOrderMoney(line.amount)}
                   </td>
                 </tr>
               ))}
@@ -423,7 +415,7 @@ function PurchaseOrderCard({
                 <td colSpan={7} className="px-2 py-2 text-right">
                   Total
                 </td>
-                <td className="px-2 py-2 text-right">{money(order.amount)}</td>
+                <td className="px-2 py-2 text-right">{formatPurchaseOrderMoney(order.amount)}</td>
               </tr>
             </tfoot>
           </table>
@@ -552,7 +544,7 @@ export default async function ProjectPurchaseOrdersPage({
             <Badge variant="secondary">
               {openPurchaseOrders.length} open / draft
             </Badge>
-            <Badge variant="outline">{money(openTotal)}</Badge>
+            <Badge variant="outline">{formatPurchaseOrderMoney(openTotal)}</Badge>
           </div>
         </div>
       </div>

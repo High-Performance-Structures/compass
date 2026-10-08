@@ -1,3 +1,4 @@
+import { cache } from "react"
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
@@ -22,6 +23,7 @@ import {
 } from "@/lib/user-roles"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { ensureInternalContactForStaff } from "@/lib/internal-contact-provisioning"
 
 export type AuthUser = {
   readonly id: string
@@ -319,7 +321,44 @@ async function claimProjectAccessInvitations(
   return claimedInvitation
 }
 
+const LAST_LOGIN_WRITE_INTERVAL_MS = 15 * 60 * 1000
+
+export function lastLoginIsStale(lastLoginAt: string | null, now: string): boolean {
+  if (!lastLoginAt) return true
+  const previous = Date.parse(lastLoginAt)
+  return (
+    !Number.isFinite(previous) ||
+    Date.parse(now) - previous >= LAST_LOGIN_WRITE_INTERVAL_MS
+  )
+}
+
+/**
+ * Layouts, pages, and their helpers each resolve the current user, often
+ * several times per request. Memoize per request; the key includes the
+ * cookies that select the active organization or demo session so switching
+ * either within a request never returns a stale identity.
+ */
+const loadCurrentUserForRequest = cache(
+  (cookieKey: string): Promise<AuthUser | null> => {
+    void cookieKey // Only distinguishes cache entries.
+    return loadCurrentUser()
+  }
+)
+
 export async function getCurrentUser(): Promise<AuthUser | null> {
+  let activeOrg: string | null = null
+  let demoSession: string | null = null
+  try {
+    const cookieStore = await cookies()
+    activeOrg = cookieStore.get("compass-active-org")?.value ?? null
+    demoSession = cookieStore.get("compass-demo")?.value ?? null
+  } catch {
+    // cookies() may throw in non-request contexts
+  }
+  return loadCurrentUserForRequest(JSON.stringify([activeOrg, demoSession]))
+}
+
+async function loadCurrentUser(): Promise<AuthUser | null> {
   try {
     if (!isWorkOSConfigured()) {
       if (!isDevAuthFallbackAllowed()) return null
@@ -463,11 +502,14 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     if (claimedInvitation) {
       await setActiveOrgCookie(claimedInvitation.organizationId)
     }
-    await db
-      .update(users)
-      .set({ lastLoginAt: now })
-      .where(eq(users.id, dbUser.id))
-      .run()
+    // Recording activity on every request added a D1 write to each render.
+    if (lastLoginIsStale(dbUser.lastLoginAt, now)) {
+      await db
+        .update(users)
+        .set({ lastLoginAt: now })
+        .where(eq(users.id, dbUser.id))
+        .run()
+    }
 
     // query org memberships
     const orgMemberships = await db
@@ -483,6 +525,20 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         eq(organizations.id, organizationMembers.organizationId)
       )
       .where(eq(organizationMembers.userId, dbUser.id))
+
+    if (activatedPendingAccount) {
+      for (const membership of orgMemberships) {
+        if (membership.orgType !== "internal") continue
+        await ensureInternalContactForStaff(db, {
+          organizationId: membership.orgId,
+          userId: dbUser.id,
+          role: membership.memberRole,
+          name: dbUser.displayName ?? dbUser.email,
+          email: dbUser.email,
+          phone: dbUser.phone,
+        })
+      }
+    }
 
     let activeOrg: {
       readonly orgId: string

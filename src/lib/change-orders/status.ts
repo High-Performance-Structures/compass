@@ -106,6 +106,12 @@ export function isExternallyPublishedChangeOrderStatus(
   return APPROVAL_STATUSES.has(status)
 }
 
+export function isExecutedChangeOrderStatus(
+  status: ChangeOrderStatus
+): boolean {
+  return ["executed", "sage_pending", "synced", "closed"].includes(status)
+}
+
 export function canEditChangeOrderContent(input: {
   readonly status: ChangeOrderStatus
   readonly internal: boolean

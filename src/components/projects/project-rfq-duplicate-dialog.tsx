@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { duplicateRfqRequest } from "@/app/actions/project-operations"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -17,13 +18,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 export function ProjectRfqDuplicateDialog({
   projectId,
@@ -89,46 +83,53 @@ export function ProjectRfqDuplicateDialog({
           Duplicate
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <form onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Duplicate {rfqNumber ?? "RFQ"}</DialogTitle>
-            <DialogDescription>
+      <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] overflow-x-hidden sm:max-w-lg">
+        <form onSubmit={submit} className="min-w-0">
+          <DialogHeader className="min-w-0">
+            <DialogTitle className="break-words">
+              Duplicate {rfqNumber ?? "RFQ"}
+            </DialogTitle>
+            <DialogDescription className="break-words">
               Copy the full scope and document package into a private draft for
               another bidder. Their response will remain separate.
             </DialogDescription>
           </DialogHeader>
-          <div className="mt-5 grid gap-4">
+          <div className="mt-5 grid min-w-0 gap-4">
             {externalOptions.length > 0 && (
-              <label className="grid gap-1.5 text-sm font-medium">
-                Project vendor or subcontractor
-                <Select value={selectedId} onValueChange={selectRecipient}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose a recipient" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {externalOptions.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.companyName ?? option.name}
-                        {option.email ? ` · ${option.email}` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
+              <div className="grid min-w-0 gap-1.5 text-sm font-medium">
+                <span>Project vendor or subcontractor</span>
+                <SearchableCombobox
+                  ariaLabel="Project vendor or subcontractor"
+                  placeholder="Choose a recipient"
+                  searchPlaceholder="Search vendors or subcontractors..."
+                  value={selectedId}
+                  onValueChange={selectRecipient}
+                  options={externalOptions.map((option) => ({
+                    value: option.id,
+                    label: option.companyName
+                      ? `${option.companyName} · ${option.name}`
+                      : option.name,
+                    selectedLabel: option.companyName ?? option.name,
+                    description: option.email ?? undefined,
+                    keywords: option.name,
+                  }))}
+                />
+              </div>
             )}
-            <label className="grid gap-1.5 text-sm font-medium">
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium">
               Company or bidder name
               <Input
+                className="min-w-0"
                 value={requestedFrom}
                 onChange={(event) => setRequestedFrom(event.currentTarget.value)}
                 maxLength={240}
                 required
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium">
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium">
               Recipient email
               <Input
+                className="min-w-0"
                 type="email"
                 value={recipientEmail}
                 onChange={(event) => setRecipientEmail(event.currentTarget.value)}
@@ -137,7 +138,7 @@ export function ProjectRfqDuplicateDialog({
               />
             </label>
             {selectedRecipient && (
-              <div className="border-l-2 border-brand-hps-primary px-3 py-2 text-sm">
+              <div className="min-w-0 border-l-2 border-brand-hps-primary px-3 py-2 text-sm break-words">
                 <p className="font-medium">
                   {selectedRecipient.projectAccess
                     ? "Compass project access is active."
@@ -152,12 +153,12 @@ export function ProjectRfqDuplicateDialog({
               </div>
             )}
             {error && (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="min-w-0 text-sm text-destructive break-words">
                 {error}
               </p>
             )}
           </div>
-          <DialogFooter className="mt-5">
+          <DialogFooter className="mt-5 min-w-0">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>

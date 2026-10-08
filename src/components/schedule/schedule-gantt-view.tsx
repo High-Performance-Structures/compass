@@ -101,8 +101,12 @@ import {
   ganttWheelIntent,
   nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
+  revealBarScrollLeft,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
+
+// Stable empty list: a fresh [] per render rebuilt the whole Gantt chart.
+const NO_EXCEPTIONS: readonly WorkdayExceptionData[] = []
 
 type ViewMode = "Day" | "Week" | "Month" | "Year"
 
@@ -164,6 +168,23 @@ export function ScheduleGanttView({
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
+  // The list and chart mirror each other's vertical scroll. Each side ignores
+  // the scroll event caused by its own mirroring so they cannot fight.
+  const mirroredListTopRef = useRef<number | null>(null)
+  const mirroredGanttTopRef = useRef<number | null>(null)
+  const markMirrored = useCallback(
+    (ref: { current: number | null }, top: number): void => {
+      ref.current = top
+      // Scroll events dispatch before animation frames, so after two frames the
+      // echo has arrived. Clear the marker even if no echo came (clamped edge).
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (ref.current === top) ref.current = null
+        })
+      )
+    },
+    []
+  )
   const preferenceScopeKey = projectId ?? "unified"
   const scrollStorageKey = `compass:schedule-scroll:${preferenceScopeKey}`
   const projectById = useMemo(
@@ -434,13 +455,17 @@ export function ScheduleGanttView({
           taskList.scrollHeight,
           taskList.clientHeight
         )
-        if (Math.abs(taskList.scrollTop - synchronizedTop) > 1) {
+        if (mirroredGanttTopRef.current !== null) {
+          // This scroll was our own mirroring from the list; don't echo it back.
+          mirroredGanttTopRef.current = null
+        } else if (Math.abs(taskList.scrollTop - synchronizedTop) > 1) {
+          markMirrored(mirroredListTopRef, synchronizedTop)
           taskList.scrollTop = synchronizedTop
         }
       }
       rememberScrollPosition(position)
     },
-    [rememberScrollPosition]
+    [markMirrored, rememberScrollPosition]
   )
 
   const handleTaskListScroll = useCallback(
@@ -455,10 +480,12 @@ export function ScheduleGanttView({
           ganttContainer.scrollHeight,
           ganttContainer.clientHeight
         )
-        if (Math.abs(ganttContainer.scrollTop - synchronizedTop) > 1) {
+        if (mirroredListTopRef.current !== null) {
+          mirroredListTopRef.current = null
+        } else if (Math.abs(ganttContainer.scrollTop - synchronizedTop) > 1) {
+          markMirrored(mirroredGanttTopRef, synchronizedTop)
           ganttContainer.scrollTop = synchronizedTop
         }
-
       }
       rememberScrollPosition({
         left: ganttContainer?.scrollLeft ?? scrollPositionRef.current.left,
@@ -468,7 +495,7 @@ export function ScheduleGanttView({
           : {}),
       })
     },
-    [rememberScrollPosition]
+    [markMirrored, rememberScrollPosition]
   )
 
   const openTaskEditor = useCallback(
@@ -482,42 +509,25 @@ export function ScheduleGanttView({
     [tasks]
   )
 
+  // Selecting a row highlights its bar and, only if the bar is off-screen,
+  // slides the timeline sideways. The row is already level with its bar
+  // (vertical scroll is mirrored), so nothing moves vertically and repeated
+  // clicks on the same row are stable.
   const focusTaskOnTimeline = useCallback((task: ScheduleTaskData) => {
-    const container = ganttContainerRef.current
-    if (!container) return
-    const wrapper = container.querySelector<SVGGElement>(
-      `.bar-wrapper[data-id="${CSS.escape(task.id)}"]`
-    )
-    const bar = wrapper?.querySelector<SVGRectElement>(".bar")
-    if (!wrapper || !bar) return
-
-    container
-      .querySelectorAll(".bar-wrapper.schedule-focused")
-      .forEach((element) => element.classList.remove("schedule-focused"))
-    wrapper.classList.add("schedule-focused")
-
-    const x = Number(bar.getAttribute("x") ?? 0)
-    const width = Number(bar.getAttribute("width") ?? 0)
-    const y = Number(bar.getAttribute("y") ?? 0)
-    const height = Number(bar.getAttribute("height") ?? 0)
-    container.scrollTo({
-      left: Math.max(
-        0,
-        Math.min(
-          x + width / 2 - container.clientWidth / 2,
-          container.scrollWidth - container.clientWidth
-        )
-      ),
-      top: Math.max(
-        0,
-        Math.min(
-          y + height / 2 - container.clientHeight / 2,
-          container.scrollHeight - container.clientHeight
-        )
-      ),
-      behavior: "smooth",
-    })
     setFocusedTaskId(task.id)
+    const container = ganttContainerRef.current
+    const bar = container?.querySelector<SVGRectElement>(
+      `.bar-wrapper[data-id="${CSS.escape(task.id)}"] .bar`
+    )
+    if (!container || !bar) return
+    const left = revealBarScrollLeft({
+      barLeft: Number(bar.getAttribute("x") ?? 0),
+      barWidth: Number(bar.getAttribute("width") ?? 0),
+      scrollLeft: container.scrollLeft,
+      clientWidth: container.clientWidth,
+      scrollWidth: container.scrollWidth,
+    })
+    if (left !== null) container.scrollTo({ left, behavior: "smooth" })
   }, [])
 
   const filteredTasks = tasks
@@ -683,8 +693,11 @@ export function ScheduleGanttView({
     scrollToTodayRef.current?.()
   }, [displayItems])
 
+  // The list's own scroll area scrolls both ways: a minimum width keeps titles
+  // readable when the panel is narrow, and the horizontal scrollbar stays at
+  // the bottom of the visible panel instead of the end of a long table.
   const taskTable = (
-    <Table className="table-fixed">
+    <Table className="table-fixed min-w-[30rem]" containerClassName="overflow-visible">
       <TableHeader className="sticky top-0 z-10 bg-background">
         <TableRow className="h-[85px]">
           <TableHead className="text-xs">Title</TableHead>
@@ -717,7 +730,7 @@ export function ScheduleGanttView({
                       ({group.tasks.length})
                     </span>
                     {collapsed && (
-                      <span className="text-muted-foreground font-normal ml-auto text-[10px]">
+                      <span className="text-muted-foreground font-normal ml-auto text-xs">
                         {group.startDate.slice(5)} – {group.endDate.slice(5)}
                       </span>
                     )}
@@ -750,7 +763,7 @@ export function ScheduleGanttView({
               onClick={() => focusTaskOnTimeline(task)}
               title="Show this item on the timeline"
             >
-              <TableCell className="h-[48px] py-0 text-xs truncate max-w-[140px]">
+              <TableCell className="h-[48px] py-0 text-xs">
                 <span
                   className={cn(
                     "flex min-w-0 items-center gap-1.5",
@@ -759,7 +772,7 @@ export function ScheduleGanttView({
                 >
                   {multipleProjects && taskProject && (
                     <span
-                      className="inline-flex max-w-[72px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-[9px] font-medium"
+                      className="inline-flex max-w-[72px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-xs font-medium"
                       title={projectScheduleLabel(taskProject)}
                     >
                       <span
@@ -771,7 +784,10 @@ export function ScheduleGanttView({
                       </span>
                     </span>
                   )}
-                  <span className="truncate">{task.title}</span>
+                  {/* Two lines fit the 48px row, which must stay level with its bar. */}
+                  <span className="line-clamp-2 break-words leading-tight" title={task.title}>
+                    {task.title}
+                  </span>
                 </span>
               </TableCell>
               <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
@@ -854,7 +870,7 @@ export function ScheduleGanttView({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 px-1.5 text-[11px]"
+              className="h-6 px-1.5 text-xs"
               onClick={() => setEditingScheduleKey((editing) => !editing)}
             >
               {editingScheduleKey ? "Done" : "Edit"}
@@ -864,7 +880,7 @@ export function ScheduleGanttView({
             {DISPLAY_COLOR_OPTIONS.map((color) => (
               <div
                 key={color.value}
-                className="flex items-center gap-1.5 text-[11px] text-foreground"
+                className="flex items-center gap-1.5 text-xs text-foreground"
               >
                 {editingScheduleKey ? (
                   <Popover>
@@ -930,7 +946,7 @@ export function ScheduleGanttView({
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-2 h-6 px-1.5 text-[10px]"
+            className="mt-2 h-6 px-1.5 text-xs"
             onClick={() => {
               setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
               setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
@@ -938,7 +954,7 @@ export function ScheduleGanttView({
           >
             Reset personal colors
           </Button>
-          <div className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground">
+          <div className="mt-3 border-t pt-2 text-xs leading-snug text-muted-foreground">
             <p>Schedule item bars use their chosen display color; phase is grouping only.</p>
             <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
           </div>
@@ -1086,12 +1102,13 @@ export function ScheduleGanttView({
               <GanttChart
                 key={`mobile-gantt-${ganttRevision}`}
                 tasks={frappeTasks}
-                exceptions={multipleProjects ? [] : exceptions}
+                exceptions={multipleProjects ? NO_EXCEPTIONS : exceptions}
                 viewMode={viewMode}
                 columnWidth={columnWidth}
                 panMode={panMode}
                 onDateChange={handleDateChange}
                 criticalPathMode={showCriticalPath}
+                focusedTaskId={focusedTaskId}
                 displayColorPalette={displayColorPalette}
                 onZoom={handleZoom}
                 onTaskDoubleClick={openTaskEditor}
@@ -1127,12 +1144,13 @@ export function ScheduleGanttView({
               <GanttChart
                 key={`desktop-gantt-${ganttRevision}`}
                 tasks={frappeTasks}
-                exceptions={multipleProjects ? [] : exceptions}
+                exceptions={multipleProjects ? NO_EXCEPTIONS : exceptions}
                 viewMode={viewMode}
                 columnWidth={columnWidth}
                 panMode={panMode}
                 onDateChange={handleDateChange}
                 criticalPathMode={showCriticalPath}
+                focusedTaskId={focusedTaskId}
                 displayColorPalette={displayColorPalette}
                 onZoom={handleZoom}
                 onTaskDoubleClick={openTaskEditor}

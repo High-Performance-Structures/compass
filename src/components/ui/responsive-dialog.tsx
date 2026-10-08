@@ -105,7 +105,7 @@ export function ResponsiveDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "w-[calc(100%-2rem)] max-w-md max-h-[90vh] flex flex-col p-4 sm:p-6",
+          "w-[calc(100%-2rem)] max-w-md max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden p-4 sm:p-6",
           className
         )}
       >

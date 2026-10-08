@@ -1,25 +1,25 @@
 "use client"
 
 import * as React from "react"
+import { cn } from "@/lib/utils"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
-import { createDefaultConfig, RtkMeeting } from "@cloudflare/realtimekit-react-ui"
+import { RtkChatToggle, RtkParticipantsToggle, RtkMoreToggle, RtkPollsToggle, RtkFullscreenToggle, RtkMuteAllButton, RtkRecordingToggle } from "@cloudflare/realtimekit-react-ui"
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
-import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { createCompassMeetingConfig } from "@/components/voice/talk-meeting-config"
+import { TalkMeetingRenderer } from "@/components/voice/talk-meeting-renderer"
+import { TalkLeaveConfirmation } from "@/components/voice/talk-leave-confirmation"
+import { TalkCallControls } from "@/components/voice/talk-call-controls"
+import { CALL_NOTICE_INFO_MS, TalkCallNotice, type CallNotice, type CallNoticeAction } from "@/components/voice/talk-call-notice"
+import { TalkSettingsPanel } from "@/components/voice/talk-settings-panel"
+import { TalkSetup } from "@/components/voice/talk-setup"
+import { TalkPreview } from "@/components/voice/talk-preview"
+import { TalkNotesPanel } from "@/components/voice/talk-notes-panel"
+import { useTalkSettings } from "@/hooks/use-talk-settings"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
-
-type TranscriptEntry = {
-  readonly id: string
-  readonly name: string
-  readonly transcript: string
-  readonly isPartialTranscript: boolean
-  readonly date: Date
-}
-
-type VideoBackgroundAddonHandle = {
-  readonly unregister: () => void | Promise<void>
-}
+import { useMutedSpeechHint } from "@/hooks/use-muted-speech-hint"
 
 type ScreenShareStatus =
   | "idle"
@@ -32,204 +32,6 @@ type ScreenShareStatus =
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
 type MeetingMediaKind = "audio" | "video"
 
-const MEETING_BACKGROUND_IMAGES = [
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%2320170f'/%3E%3Cstop offset='.46' stop-color='%234f2f13'/%3E%3Cstop offset='1' stop-color='%233f7d4d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23a)' width='1600' height='900'/%3E%3Ccircle cx='1320' cy='160' r='260' fill='%23ffffff' opacity='.12'/%3E%3Cpath d='M0 760 C360 620 580 820 900 680 C1170 562 1320 620 1600 470 L1600 900 L0 900 Z' fill='%230b120d' opacity='.45'/%3E%3C/svg%3E",
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' x2='1'%3E%3Cstop stop-color='%230f172a'/%3E%3Cstop offset='.52' stop-color='%233f7d4d'/%3E%3Cstop offset='1' stop-color='%239c7426'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23b)' width='1600' height='900'/%3E%3Cpath d='M160 710 L520 350 L840 700 L1050 480 L1450 720 Z' fill='%23ffffff' opacity='.15'/%3E%3Cpath d='M0 720 H1600 V900 H0 Z' fill='%23050505' opacity='.38'/%3E%3C/svg%3E",
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect fill='%230f1a13' width='1600' height='900'/%3E%3Cpath d='M0 130 H1600' stroke='%233f7d4d' stroke-width='4' opacity='.35'/%3E%3Cpath d='M0 300 H1600M0 470 H1600M0 640 H1600' stroke='%23ffffff' stroke-width='2' opacity='.12'/%3E%3Cpath d='M280 0 V900M620 0 V900M960 0 V900M1300 0 V900' stroke='%23ffffff' stroke-width='2' opacity='.10'/%3E%3Ccircle cx='1250' cy='220' r='150' fill='%239c7426' opacity='.30'/%3E%3C/svg%3E",
-]
-
-function createCompassMeetingConfig(): UIConfig {
-  const base = createDefaultConfig()
-  return {
-    ...base,
-    designTokens: {
-      ...base.designTokens,
-      theme: "dark",
-      borderRadius: "rounded",
-      colors: {
-        ...base.designTokens?.colors,
-        brand: {
-          ...base.designTokens?.colors?.brand,
-          300: "#9bd3a8",
-          400: "#63b878",
-          500: "#3f7d4d",
-          600: "#32663e",
-          700: "#244d2d",
-        },
-        background: {
-          ...base.designTokens?.colors?.background,
-          1000: "#08110b",
-          900: "#0e1a12",
-          800: "#142419",
-          700: "#203626",
-          600: "#2d4a34",
-        },
-        text: "#f8fafc",
-        "text-on-brand": "#ffffff",
-        danger: "#ef4444",
-        success: "#22c55e",
-        warning: "#f59e0b",
-        "video-bg": "#050805",
-      },
-    },
-    config: {
-      ...base.config,
-      videoFit: "contain",
-      notification_sounds: {
-        ...base.config?.notification_sounds,
-        participant_joined: false,
-        participant_left: false,
-      },
-    },
-    root: {
-      ...base.root,
-      "div#controlbar-left": ["rtk-screen-share-toggle"],
-      "div#controlbar-center": [
-        "rtk-mic-toggle",
-        "rtk-camera-toggle",
-        "rtk-more-toggle",
-        "rtk-leave-button",
-      ],
-      "div#controlbar-right": [
-        "rtk-chat-toggle",
-        "rtk-polls-toggle",
-        "rtk-participants-toggle",
-        "rtk-caption-toggle",
-        "rtk-settings-toggle",
-      ],
-      "rtk-more-toggle.activeMoreMenu": [
-        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-mute-all-button", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-breakout-rooms-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        ["rtk-recording-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-debugger-toggle", { variant: "horizontal" }],
-      ],
-      "rtk-more-toggle.activeMoreMenu.md": [
-        ["rtk-chat-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-polls-toggle", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-participants-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        [
-          "rtk-caption-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-mute-all-button", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-breakout-rooms-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-      ],
-      "rtk-more-toggle.activeMoreMenu.sm": [
-        ["rtk-chat-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-polls-toggle", { variant: "horizontal", slot: "more-elements" }],
-        [
-          "rtk-participants-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        [
-          "rtk-caption-toggle",
-          { variant: "horizontal", slot: "more-elements" },
-        ],
-        ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
-        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
-      ],
-      "div#controlbar-mobile": [
-        "rtk-mic-toggle",
-        "rtk-camera-toggle",
-        "rtk-leave-button",
-        "rtk-more-toggle",
-      ],
-    },
-    styles: {
-      ...base.styles,
-      "rtk-controlbar": {
-        ...base.styles?.["rtk-controlbar"],
-        backgroundColor: "rgba(8, 17, 11, 0.92)",
-        border: "1px solid rgba(255, 255, 255, 0.18)",
-        boxShadow: "0 18px 50px rgba(0, 0, 0, 0.42)",
-      },
-      "rtk-controlbar-button": {
-        ...base.styles?.["rtk-controlbar-button"],
-        color: "#f8fafc",
-      },
-      "rtk-more-toggle": {
-        ...base.styles?.["rtk-more-toggle"],
-        color: "#f8fafc",
-      },
-      "rtk-settings-toggle": {
-        ...base.styles?.["rtk-settings-toggle"],
-        color: "#f8fafc",
-      },
-      "rtk-chat-toggle": {
-        ...base.styles?.["rtk-chat-toggle"],
-        color: "#f8fafc",
-      },
-      "rtk-participants-toggle": {
-        ...base.styles?.["rtk-participants-toggle"],
-        color: "#f8fafc",
-      },
-    },
-  }
-}
-
-function transcriptKey(entry: TranscriptEntry): string {
-  return entry.id.length > 0
-    ? entry.id
-    : `${entry.name}-${entry.date.toISOString()}-${entry.transcript}`
-}
-
-function mergeTranscript(
-  current: readonly TranscriptEntry[],
-  entry: TranscriptEntry
-): readonly TranscriptEntry[] {
-  const key = transcriptKey(entry)
-  const next = current.filter((item) => transcriptKey(item) !== key)
-  return [...next, entry].sort((a, b) => a.date.getTime() - b.date.getTime())
-}
-
-function transcriptText(entries: readonly TranscriptEntry[]): string {
-  return entries
-    .filter((entry) => !entry.isPartialTranscript)
-    .map((entry) => {
-      const time = entry.date.toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      })
-      return `[${time}] ${entry.name}: ${entry.transcript}`
-    })
-    .join("\n")
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
-}
-
-function linesToHtml(value: string): string {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map(escapeHtml)
-    .join("<br>")
-}
 
 function errorMessageForCause(cause: unknown): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -282,17 +84,10 @@ function realtimeKitErrorDetails(cause: unknown): Readonly<Record<string, unknow
   return { cause }
 }
 
-function safeDiagnosticJson(value: unknown): string {
-  const seen = new WeakSet<object>()
-  return JSON.stringify(value, (_key: string, item: unknown): unknown => {
-    if (item !== null && typeof item === "object") {
-      if (seen.has(item)) return "[Circular]"
-      seen.add(item)
-    }
-    return item
-  })
-}
+const MAX_REALTIMEKIT_DIAGNOSTICS = 50
 
+// Keep a bounded in-memory trail for support (window.__compassRealtimeKitDiagnostics).
+// Serializing the whole history into the DOM on every media event slowed long calls.
 function recordRealtimeKitDiagnostic(
   event: string,
   payload: Readonly<Record<string, unknown>>
@@ -302,41 +97,11 @@ function recordRealtimeKitDiagnostic(
     const diagnostics = Array.isArray(existing) ? existing : []
     const nextDiagnostics = [
       ...diagnostics,
-      { event, payload },
-    ]
+      { event, at: new Date().toISOString(), payload },
+    ].slice(-MAX_REALTIMEKIT_DIAGNOSTICS)
     Reflect.set(window, "__compassRealtimeKitDiagnostics", nextDiagnostics)
-    if (typeof document !== "undefined") {
-      document.documentElement.setAttribute(
-        "data-compass-realtimekit-diagnostics",
-        safeDiagnosticJson(nextDiagnostics)
-      )
-    }
   }
   console.info(`RealtimeKit diagnostic: ${event}`, payload)
-}
-
-async function runtimeAssetAvailable(path: string): Promise<boolean> {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 5000)
-  try {
-    const response = await fetch(path, {
-      method: "GET",
-      signal: controller.signal,
-    })
-    return response.ok
-  } catch {
-    return false
-  } finally {
-    window.clearTimeout(timeout)
-  }
-}
-
-async function videoBackgroundRuntimeAvailable(): Promise<boolean> {
-  const [tflite, tfliteSimd] = await Promise.all([
-    runtimeAssetAvailable("/tflite.wasm"),
-    runtimeAssetAvailable("/tflite-simd.wasm"),
-  ])
-  return tflite && tfliteSimd
 }
 
 function mediaDeviceLabel(kind: MeetingMediaKind): string {
@@ -348,23 +113,24 @@ function mediaPermissionMessage(
   cause: unknown
 ): string {
   const label = mediaDeviceLabel(kind)
-  if (cause instanceof DOMException) {
+  if (cause instanceof DOMException || cause instanceof Error) {
     if (cause.name === "NotFoundError") {
-      return `No ${label} was found. Connect one and try again.`
+      return `No ${label} was found. Connect one, choose System default in Background & Settings, and try again.`
     }
     if (cause.name === "NotReadableError" || cause.name === "AbortError") {
       return `The ${label} is unavailable or already in use by another app. Close the other app and try again.`
     }
     if (cause.name === "NotAllowedError" || cause.name === "SecurityError") {
-      return `Compass still cannot access your ${label}. Allow it for this site. If macOS just granted access, fully quit Brave with ⌘Q, reopen it, and rejoin Office Talk.`
+      return `Compass cannot access your ${label}. Allow it in this site’s browser permissions and your system privacy settings, then try again. If you just changed system access, fully quit and reopen the browser.`
     }
   }
 
-  return `Office Talk could not start your ${label}. If macOS just granted access, fully quit Brave with ⌘Q, reopen it, and rejoin Office Talk.`
+  return `Office Talk could not start your ${label}. Check the selected device and browser permissions, then try again.`
 }
 
 async function requestMediaTrack(
-  kind: MeetingMediaKind
+  kind: MeetingMediaKind,
+  deviceId: string
 ): Promise<MediaStreamTrack> {
   if (
     typeof navigator === "undefined" ||
@@ -373,10 +139,11 @@ async function requestMediaTrack(
     throw new Error("This browser does not support camera or microphone access.")
   }
 
+  const available = await navigator.mediaDevices.enumerateDevices()
+  const selected = available.some(device => device.deviceId === deviceId && device.kind === (kind === "audio" ? "audioinput" : "videoinput"))
+  const constraints = selected ? { deviceId: { exact: deviceId } } : true
   const stream = await navigator.mediaDevices.getUserMedia(
-    kind === "audio"
-      ? { audio: true, video: false }
-      : { audio: false, video: true }
+    kind === "audio" ? { audio: constraints, video: false } : { audio: false, video: constraints }
   )
   const tracks =
     kind === "audio" ? stream.getAudioTracks() : stream.getVideoTracks()
@@ -394,30 +161,24 @@ async function requestMediaTrack(
 
 export function RealtimeKitMeetingWindow({
   channelId,
+  userId,
 }: {
   readonly channelId: string
+  readonly userId: string
 }): React.ReactElement {
   const [meeting, initMeeting] = useRealtimeKitClient({ resetOnLeave: true })
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [meetingTitle, setMeetingTitle] = React.useState("Compass Talk")
-  const [meetingConfig, setMeetingConfig] = React.useState<UIConfig>(() =>
+  const [meetingConfig] = React.useState<UIConfig>(() =>
     createCompassMeetingConfig()
   )
-  const [notes, setNotes] = React.useState("")
-  const [notesStatus, setNotesStatus] = React.useState<string | null>(null)
-  const [activePanel, setActivePanel] = React.useState<"notes" | "transcript">(
-    "notes"
-  )
-  const [transcripts, setTranscripts] = React.useState<readonly TranscriptEntry[]>(
-    []
-  )
+  const [notesPanelOpen, setNotesPanelOpenState] = React.useState(true)
+  const [hasUnsavedNotes, setHasUnsavedNotes] = React.useState(false)
   const [transcriptEnabled, setTranscriptEnabled] = React.useState(false)
   const [screenShareStatus, setScreenShareStatus] =
     React.useState<ScreenShareStatus>("idle")
-  const [screenShareMessage, setScreenShareMessage] = React.useState<string | null>(
-    null
-  )
+  const [notice, setNotice] = React.useState<CallNotice | null>(null)
   const [audioEnabled, setAudioEnabled] = React.useState(false)
   const [videoEnabled, setVideoEnabled] = React.useState(false)
   const [audioStatus, setAudioStatus] =
@@ -426,18 +187,70 @@ export function RealtimeKitMeetingWindow({
     React.useState<MediaButtonStatus>("idle")
   const [pipStatus, setPipStatus] =
     React.useState<MediaButtonStatus>("idle")
-  const [backgroundStatus, setBackgroundStatus] = React.useState<string | null>(
-    null
-  )
+  const [joined, setJoined] = React.useState(false)
+  const [joining, setJoining] = React.useState(false)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [leaveOpen, setLeaveOpen] = React.useState(false)
+  const [leaving, setLeaving] = React.useState(false)
+  const [leaveError, setLeaveError] = React.useState<string | null>(null)
+  const [canEndMeeting, setCanEndMeeting] = React.useState(false)
+  const talk = useTalkSettings(meeting, userId)
   const [canScreenShare, setCanScreenShare] = React.useState(false)
   const [canUsePictureInPicture, setCanUsePictureInPicture] =
     React.useState(false)
   const [pictureInPictureActive, setPictureInPictureActive] =
     React.useState(false)
-  const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
+  const endingMeetingRef = React.useRef(false)
+
+  const showInfo = React.useCallback((text: string): void => {
+    setNotice({ tone: "info", text, action: null })
+  }, [])
+  const showError = React.useCallback(
+    (text: string, action: CallNoticeAction | null = null): void => {
+      setNotice({ tone: "error", text, action })
+    },
+    []
+  )
+  // Routine status clears itself; errors stay until dismissed or replaced.
+  React.useEffect(() => {
+    if (notice?.tone !== "info") return
+    const timer = window.setTimeout(() => {
+      setNotice((current) => (current === notice ? null : current))
+    }, CALL_NOTICE_INFO_MS)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
+  // Remember whether each person keeps Notes & Transcript open. New users start
+  // collapsed below the xl breakpoint so the video keeps the room.
+  const notesPanelKey = `compass:talk:notes-panel:v1:${userId}`
+  React.useEffect(() => {
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem(notesPanelKey)
+    } catch {
+      /* Storage unavailable: fall back to the window size. */
+    }
+    setNotesPanelOpenState(
+      stored === "open" ||
+        (stored === null &&
+          (typeof window.matchMedia !== "function" ||
+            window.matchMedia("(min-width: 1280px)").matches))
+    )
+  }, [notesPanelKey])
+  const setNotesPanelOpen = React.useCallback(
+    (open: boolean): void => {
+      setNotesPanelOpenState(open)
+      try {
+        localStorage.setItem(notesPanelKey, open ? "open" : "closed")
+      } catch {
+        /* The choice still applies to this call. */
+      }
+    },
+    [notesPanelKey]
+  )
 
   const getVoiceTracks = React.useCallback((): readonly MediaStreamTrack[] => {
     if (!meeting) return []
@@ -449,9 +262,14 @@ export function RealtimeKitMeetingWindow({
     return tracks
   }, [meeting])
   useVoiceActivityPublisher({
-    channelId: meeting ? channelId : null,
+    channelId: meeting && joined ? channelId : null,
     getTracks: getVoiceTracks,
   })
+
+  React.useEffect(() => {
+    if (!meeting) return
+    return () => { if (!meeting.self.roomJoined) meeting.self.cleanUpTracks() }
+  }, [meeting])
 
   const setRealtimeKitCaptions = React.useCallback((enabled: boolean): void => {
     const meetingElement =
@@ -471,31 +289,31 @@ export function RealtimeKitMeetingWindow({
       typeof navigator !== "undefined" &&
         typeof navigator.mediaDevices?.getDisplayMedia === "function"
     )
-    setCanUsePictureInPicture(
-      typeof document !== "undefined" && document.pictureInPictureEnabled
-    )
   }, [])
 
   React.useEffect(() => {
+    if (!meeting) return
+    const pip = meeting.participants.pip
     const updatePictureInPictureState = (): void => {
-      setPictureInPictureActive(Boolean(document.pictureInPictureElement))
+      setPictureInPictureActive(pip.isActive)
     }
-
-    document.addEventListener("enterpictureinpicture", updatePictureInPictureState)
-    document.addEventListener("leavepictureinpicture", updatePictureInPictureState)
+    const updatePermissions = (): void => {
+      setCanEndMeeting(meeting.self.permissions.kickParticipant)
+    }
+    setCanUsePictureInPicture(pip.isSupported() && meeting.self.config.pipMode)
     updatePictureInPictureState()
-
+    updatePermissions()
+    // The SDK's composite PiP video lives outside the renderer's shadow roots.
+    // Capture also observes the browser's non-bubbling PiP close event.
+    document.addEventListener("enterpictureinpicture", updatePictureInPictureState, true)
+    document.addEventListener("leavepictureinpicture", updatePictureInPictureState, true)
+    meeting.self.permissions.addListener("permissionsUpdate", updatePermissions)
     return () => {
-      document.removeEventListener(
-        "enterpictureinpicture",
-        updatePictureInPictureState
-      )
-      document.removeEventListener(
-        "leavepictureinpicture",
-        updatePictureInPictureState
-      )
+      document.removeEventListener("enterpictureinpicture", updatePictureInPictureState, true)
+      document.removeEventListener("leavepictureinpicture", updatePictureInPictureState, true)
+      meeting.self.permissions.removeListener("permissionsUpdate", updatePermissions)
     }
-  }, [])
+  }, [meeting])
 
   React.useEffect(() => {
     return () => {
@@ -576,9 +394,7 @@ export function RealtimeKitMeetingWindow({
       if (!initializedMeeting) {
         throw new Error("Cloudflare meeting did not initialize.")
       }
-      if (!initializedMeeting.self.roomJoined) {
-        await initializedMeeting.join()
-      }
+      setJoined(initializedMeeting.self.roomJoined)
     }
 
     void (async () => {
@@ -619,71 +435,6 @@ export function RealtimeKitMeetingWindow({
   React.useEffect(() => {
     if (!meeting) return
 
-    let isCurrent = true
-    void (async () => {
-      const runtimeAvailable = await videoBackgroundRuntimeAvailable()
-      if (!runtimeAvailable) {
-        recordRealtimeKitDiagnostic("background-runtime-unavailable", {
-          requiredAssets: ["/tflite.wasm", "/tflite-simd.wasm"],
-        })
-        if (isCurrent) {
-          setBackgroundStatus(
-            "Background effects are paused while the video ML runtime is added."
-          )
-        }
-        return
-      }
-
-      const [{ default: VideoBackgroundAddon }, { registerAddons }] =
-        await Promise.all([
-          import("@cloudflare/realtimekit-ui-addons/video-background"),
-          import("@cloudflare/realtimekit-ui"),
-        ])
-      if (!isCurrent) return
-
-      const backgroundAddon = await VideoBackgroundAddon.init({
-        meeting,
-        modes: ["blur", "virtual", "random", "none"],
-        randomCount: 3,
-        blurStrength: 45,
-        buttonLabel: "Background",
-        images: MEETING_BACKGROUND_IMAGES,
-      })
-      if (!isCurrent) {
-        await backgroundAddon.unregister()
-        return
-      }
-
-      addonRef.current = backgroundAddon
-      setBackgroundStatus(null)
-      setMeetingConfig(
-        registerAddons(
-          [backgroundAddon],
-          meeting,
-          createCompassMeetingConfig()
-        )
-      )
-    })().catch((cause: unknown) => {
-      recordRealtimeKitDiagnostic("background-addon-failed", {
-        error: realtimeKitErrorDetails(cause),
-      })
-      if (isCurrent) {
-        setBackgroundStatus("Background effects could not start in this browser.")
-      }
-    })
-
-    return () => {
-      isCurrent = false
-      const addon = addonRef.current
-      addonRef.current = null
-      if (addon) void addon.unregister()
-      setMeetingConfig(createCompassMeetingConfig())
-    }
-  }, [meeting])
-
-  React.useEffect(() => {
-    if (!meeting) return
-
     const handleAudioUpdate = (payload: {
       readonly audioEnabled: boolean
     }): void => {
@@ -716,9 +467,7 @@ export function RealtimeKitMeetingWindow({
       readonly screenShareEnabled: boolean
     }): void => {
       setScreenShareStatus(payload.screenShareEnabled ? "sharing" : "idle")
-      setScreenShareMessage(
-        payload.screenShareEnabled ? "Screen sharing is active." : null
-      )
+      if (payload.screenShareEnabled) showInfo("Screen sharing is active.")
       recordRealtimeKitDiagnostic("screen-share-update", {
         enabled: payload.screenShareEnabled,
       })
@@ -732,12 +481,10 @@ export function RealtimeKitMeetingWindow({
       setVideoStatus("idle")
       const kind = isRecord(payload) ? recordValue(payload, "kind") : null
       if (kind === "audio" || kind === "video") {
-        setScreenShareMessage(mediaPermissionMessage(kind, payload))
+        showError(mediaPermissionMessage(kind, payload), kind === "audio" ? "retry-audio" : "retry-video")
       } else if (kind === "screenshare") {
         setScreenShareStatus("blocked")
-        setScreenShareMessage(
-          "Screen sharing was blocked or canceled by the browser."
-        )
+        showInfo("Screen sharing was blocked or canceled by the browser.")
       }
     }
 
@@ -757,152 +504,96 @@ export function RealtimeKitMeetingWindow({
       meeting.self.off("screenShareUpdate", handleScreenShareUpdate)
       meeting.self.off("mediaPermissionError", handleMediaPermissionError)
     }
-  }, [meeting])
+  }, [meeting, showError, showInfo])
+
+  const closeMeetingWindow = React.useCallback((): void => {
+    window.close()
+    window.setTimeout(() => {
+      window.location.assign(`/dashboard/conversations/${channelId}`)
+    }, 150)
+  }, [channelId])
 
   React.useEffect(() => {
-    if (!meeting || !transcriptEnabled) return
-    const handleTranscript = (entry: TranscriptEntry): void => {
-      setTranscripts((current) => mergeTranscript(current, entry))
+    if (!meeting) return
+    const handleRoomLeft = (): void => {
+      if (!endingMeetingRef.current) return
+      endingMeetingRef.current = false
+      closeMeetingWindow()
     }
-    meeting.ai.on("transcript", handleTranscript)
-    setTranscripts([...meeting.ai.transcripts])
-    return () => {
-      meeting.ai.off("transcript", handleTranscript)
-    }
-  }, [meeting, transcriptEnabled])
+    meeting.self.on("roomLeft", handleRoomLeft)
+    return () => { meeting.self.off("roomLeft", handleRoomLeft) }
+  }, [meeting, closeMeetingWindow])
 
-  const savedTranscriptText = React.useMemo(
-    () => transcriptText(transcripts),
-    [transcripts]
-  )
-
-  const saveMeetingNotes = React.useCallback(async (): Promise<void> => {
-    const trimmed = notes.trim()
-    if (trimmed.length === 0) {
-      setNotesStatus("Add a note before saving.")
+  const leaveMeeting = React.useCallback(async (endForEveryone: boolean): Promise<void> => {
+    if (!meeting || leaving) return
+    // Use the SDK's host permission and server-authorized kickAll operation,
+    // matching its built-in End for Everyone choice. Recheck at confirmation.
+    if (endForEveryone && !meeting.self.permissions.kickParticipant) {
+      setLeaveError("You do not have permission to end this meeting for everyone.")
       return
     }
-
-    setNotesStatus("Saving notes...")
-    const result = await sendMessage({
-      channelId,
-      content: `### Meeting notes\n\n${trimmed}`,
-      contentHtml: `<section><h3>Meeting notes</h3><p>${linesToHtml(trimmed)}</p></section>`,
-    })
-    setNotesStatus(
-      result.success
-        ? "Saved to this conversation."
-        : result.error ?? "Failed to save notes."
-    )
-  }, [channelId, notes])
-
-  const saveTranscript = React.useCallback(async (): Promise<void> => {
-    if (savedTranscriptText.length === 0) {
-      setNotesStatus("No finalized transcript lines to save yet.")
-      return
-    }
-
-    setNotesStatus("Saving transcript...")
-    const result = await sendMessage({
-      channelId,
-      content: `### Meeting transcript\n\n${savedTranscriptText}`,
-      contentHtml: `<section><h3>Meeting transcript</h3><pre>${escapeHtml(savedTranscriptText)}</pre></section>`,
-    })
-    setNotesStatus(
-      result.success
-        ? "Transcript saved to this conversation."
-        : result.error ?? "Failed to save transcript."
-    )
-  }, [channelId, savedTranscriptText])
-
-  const toggleTranscriptCapture = React.useCallback((): void => {
-    const nextEnabled = !transcriptEnabled
-    setRealtimeKitCaptions(nextEnabled)
-    setNotesStatus(
-      nextEnabled
-        ? "Captions and transcript capture started for you."
-        : "Captions and transcript capture turned off for you."
-    )
-  }, [setRealtimeKitCaptions, transcriptEnabled])
-
-  const leaveMeeting = React.useCallback(async (): Promise<void> => {
+    setLeaving(true)
+    setLeaveError(null)
     try {
-      if (meeting?.self.screenShareEnabled) {
-        await meeting.self.disableScreenShare()
+      if (endForEveryone) {
+        // kickAll sends a request without a server acknowledgement. Keep the
+        // connection alive until roomLeft confirms that the host was removed.
+        endingMeetingRef.current = true
+        await meeting.participants.kickAll()
+        showInfo("Ending the meeting for everyone...")
+      } else {
+        if (meeting.self.roomJoined) await meeting.leave()
+        closeMeetingWindow()
       }
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture()
-      }
-      if (meeting?.self.roomJoined) {
-        await meeting.leave()
-      }
+      setLeaveOpen(false)
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("leave-meeting-failed", {
         error: realtimeKitErrorDetails(cause),
       })
+      endingMeetingRef.current = false
+      setLeaveError(errorMessageForCause(cause))
     } finally {
-      window.close()
-      window.setTimeout(() => {
-        window.location.assign(`/dashboard/conversations/${channelId}`)
-      }, 150)
+      setLeaving(false)
     }
-  }, [channelId, meeting])
+  }, [closeMeetingWindow, meeting, leaving, showInfo])
 
-  const togglePictureInPicture = React.useCallback(async (): Promise<void> => {
-    if (!canUsePictureInPicture) {
-      setScreenShareMessage("Picture-in-picture is not available in this browser.")
+  const togglePictureInPicture = React.useCallback((): void => {
+    if (!meeting || !canUsePictureInPicture) {
+      showError("Picture-in-picture is not available in this browser.")
       return
     }
-
-    setScreenShareMessage(null)
+    setNotice(null)
     try {
-      if (document.pictureInPictureElement) {
-        setPipStatus("stopping")
-        await document.exitPictureInPicture()
+      const pip = meeting.participants.pip
+      if (pip.isActive) {
+        pip.disable()
         setPictureInPictureActive(false)
-        setPipStatus("idle")
-        return
+      } else {
+        // Idempotent initialization prepares the SDK's participant canvas and
+        // media controls. Searching document videos misses shadow-DOM tiles.
+        pip.init()
+        pip.enable()
       }
-
-      const videos = Array.from(document.querySelectorAll("video"))
-      const activeVideo =
-        videos.find(
-          (video) =>
-            !video.disablePictureInPicture &&
-            video.videoWidth > 0 &&
-            video.videoHeight > 0
-        ) ??
-        videos.find((video) => !video.disablePictureInPicture) ??
-        null
-
-      if (!activeVideo) {
-        setScreenShareMessage("Turn video on before starting picture-in-picture.")
-        return
-      }
-
-      setPipStatus("starting")
-      await activeVideo.requestPictureInPicture()
-      setPictureInPictureActive(true)
       setPipStatus("idle")
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("picture-in-picture-failed", {
         error: realtimeKitErrorDetails(cause),
       })
       setPipStatus("error")
-      setScreenShareMessage(errorMessageForCause(cause))
+      showError(errorMessageForCause(cause))
     }
-  }, [canUsePictureInPicture])
+  }, [canUsePictureInPicture, meeting, showError])
 
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
-    setScreenShareMessage(null)
+    setNotice(null)
     try {
       if (meeting.self.screenShareEnabled) {
         setScreenShareStatus("stopping")
         await meeting.self.disableScreenShare()
         setScreenShareStatus("idle")
-        setScreenShareMessage(null)
+        setNotice(null)
         return
       }
 
@@ -911,25 +602,40 @@ export function RealtimeKitMeetingWindow({
       setScreenShareStatus(
         meeting.self.screenShareEnabled ? "sharing" : "idle"
       )
-      setScreenShareMessage(
-        meeting.self.screenShareEnabled
-          ? "Screen sharing is active."
-          : "Screen sharing did not start."
-      )
+      if (meeting.self.screenShareEnabled) showInfo("Screen sharing is active.")
+      else showError("Screen sharing did not start.", "retry-screen-share")
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("screen-share-failed", {
         error: realtimeKitErrorDetails(cause),
       })
       setScreenShareStatus("error")
-      setScreenShareMessage(errorMessageForCause(cause))
+      showError(errorMessageForCause(cause), "retry-screen-share")
     }
-  }, [meeting])
+  }, [meeting, showError, showInfo])
+
+  /** Let the SDK open the selected microphone itself (the path PiP uses). */
+  const enableAudioWithSdkCapture = React.useCallback(async (): Promise<MediaStreamTrack> => {
+    if (!meeting) throw new Error("The meeting is not ready.")
+    const available = await navigator.mediaDevices.enumerateDevices()
+    const selected = available.find(device =>
+      device.kind === "audioinput" && device.deviceId === talk.preferences.microphoneId
+    )
+    if (selected) await meeting.self.setDevice(selected)
+    await meeting.self.enableAudio()
+    if (!meeting.self.audioEnabled) {
+      meeting.self.rawAudioTrack?.stop()
+      throw new Error("RealtimeKit did not enable the microphone track.")
+    }
+    await talk.refreshDevices()
+    return meeting.self.rawAudioTrack
+  }, [meeting, talk])
 
   const toggleAudio = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
-    setScreenShareMessage(null)
+    setNotice(null)
     let requestedTrack: MediaStreamTrack | null = null
+    let microphoneFound = false
     try {
       if (meeting.self.audioEnabled) {
         setAudioStatus("stopping")
@@ -938,12 +644,29 @@ export function RealtimeKitMeetingWindow({
         audioTrackRef.current = null
       } else {
         setAudioStatus("starting")
-        requestedTrack = await requestMediaTrack("audio")
+        // The SDK silently returns when a participant cannot publish audio.
+        // Explain meeting permission separately from browser/device access.
+        if (
+          meeting.self.permissions.canProduceAudio === "NOT_ALLOWED" ||
+          (meeting.self.permissions.canProduceAudio === "CAN_REQUEST" &&
+            (meeting.self.stageStatus === "OFF_STAGE" || meeting.self.stageStatus === "REQUESTED_TO_JOIN_STAGE"))
+        ) {
+          setAudioStatus("error")
+          showError("This meeting does not currently allow your microphone. Ask the host to allow you to speak.")
+          return
+        }
+        requestedTrack = await requestMediaTrack("audio", talk.preferences.microphoneId)
+        microphoneFound = true
+        await talk.refreshDevices()
         await meeting.self.enableAudio(requestedTrack)
         if (!meeting.self.audioEnabled) {
+          // PiP uses SDK-owned capture. If a fresh application track cannot
+          // start audio, retry that same supported path without requiring PiP.
+          await meeting.self.disableAudio()
           requestedTrack.stop()
           requestedTrack = null
-          throw new Error("RealtimeKit did not enable the microphone track.")
+          requestedTrack = await enableAudioWithSdkCapture()
+          recordRealtimeKitDiagnostic("audio-sdk-capture-recovered", {})
         }
         audioTrackRef.current?.stop()
         audioTrackRef.current = requestedTrack
@@ -955,17 +678,51 @@ export function RealtimeKitMeetingWindow({
       requestedTrack?.stop()
       recordRealtimeKitDiagnostic("audio-toggle-failed", {
         error: realtimeKitErrorDetails(cause),
+        microphoneFound,
+        canProduceAudio: meeting.self.permissions.canProduceAudio,
+        stageStatus: meeting.self.stageStatus,
       })
       setAudioEnabled(meeting.self.audioEnabled)
       setAudioStatus("error")
-      setScreenShareMessage(mediaPermissionMessage("audio", cause))
+      if (microphoneFound) {
+        showError("Your browser found a microphone, but Office Talk could not turn it on.", "alternate-microphone")
+      } else {
+        showError(mediaPermissionMessage("audio", cause), "retry-audio")
+      }
     }
-  }, [meeting])
+  }, [enableAudioWithSdkCapture, meeting, showError, talk])
+
+  // The method the SDK's PiP controls use; offered when the normal path fails.
+  const tryAlternateMicrophone = React.useCallback(async (): Promise<void> => {
+    if (!meeting) return
+    setNotice(null)
+    setAudioStatus("starting")
+    try {
+      if (!meeting.self.audioEnabled) {
+        const track = await enableAudioWithSdkCapture()
+        audioTrackRef.current?.stop()
+        audioTrackRef.current = track
+      }
+      recordRealtimeKitDiagnostic("audio-alternate-capture", { enabled: meeting.self.audioEnabled })
+      setAudioEnabled(meeting.self.audioEnabled)
+      setAudioStatus("idle")
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("audio-alternate-capture-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      setAudioEnabled(meeting.self.audioEnabled)
+      setAudioStatus("error")
+      showError(
+        "The alternate method also could not turn on your microphone. Close other apps that may be using it, or open PiP and use its microphone button.",
+        "retry-audio"
+      )
+    }
+  }, [enableAudioWithSdkCapture, meeting, showError])
 
   const toggleVideo = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
-    setScreenShareMessage(null)
+    setNotice(null)
     let requestedTrack: MediaStreamTrack | null = null
     try {
       if (meeting.self.videoEnabled) {
@@ -975,12 +732,14 @@ export function RealtimeKitMeetingWindow({
         videoTrackRef.current = null
       } else {
         setVideoStatus("starting")
-        requestedTrack = await requestMediaTrack("video")
+        if (!await talk.applyBackground()) { setVideoStatus("idle"); return }
+        requestedTrack = await requestMediaTrack("video", talk.preferences.cameraId)
         await meeting.self.enableVideo(requestedTrack)
-        if (!meeting.self.videoEnabled) {
+        if (!meeting.self.videoEnabled || (talk.preferences.background.mode !== "none" && meeting.self.videoTrack === meeting.self.rawVideoTrack)) {
           requestedTrack.stop()
           requestedTrack = null
-          throw new Error("RealtimeKit did not enable the camera track.")
+          await meeting.self.disableVideo()
+          throw new Error("The camera background could not start. Choose Off or join without video.")
         }
         videoTrackRef.current?.stop()
         videoTrackRef.current = requestedTrack
@@ -995,18 +754,40 @@ export function RealtimeKitMeetingWindow({
       })
       setVideoEnabled(meeting.self.videoEnabled)
       setVideoStatus("error")
-      setScreenShareMessage(mediaPermissionMessage("video", cause))
+      showError(cause instanceof Error && cause.message.includes("background") ? cause.message : mediaPermissionMessage("video", cause), "retry-video")
     }
-  }, [meeting])
+  }, [meeting, showError, talk])
+
+  const handleNoticeAction = (action: CallNoticeAction): void => {
+    if (action === "alternate-microphone") void tryAlternateMicrophone()
+    else if (action === "retry-audio" || action === "unmute") {
+      if (!meeting?.self.audioEnabled) void toggleAudio()
+    } else if (action === "retry-video") {
+      if (!meeting?.self.videoEnabled) void toggleVideo()
+    } else void toggleScreenShare()
+  }
+
+  useMutedSpeechHint({
+    active: joined && talk.preferences.mutedSpeechHint && !audioEnabled && audioStatus === "idle",
+    microphoneId: talk.preferences.microphoneId,
+    onSpeech: () => {
+      // Never cover an error the person still needs to act on.
+      setNotice((current) =>
+        current?.tone === "error"
+          ? current
+          : { tone: "info", text: "You're muted. Unmute to talk.", action: "unmute" }
+      )
+    },
+  })
 
   const micButtonLabel =
     audioStatus === "starting"
-      ? "Mic..."
+      ? "Unmuting..."
       : audioStatus === "stopping"
         ? "Muting..."
         : audioEnabled
           ? "Mute"
-          : "Mic"
+          : "Unmute"
 
   const videoButtonLabel =
     videoStatus === "starting"
@@ -1035,12 +816,51 @@ export function RealtimeKitMeetingWindow({
           ? "Exit PiP"
           : "PiP"
 
-  const showMeetingControls = !error
+  const joinPreparedMeeting = async (): Promise<void> => {
+    if (!meeting || joining || talk.busy) return
+    setJoining(true)
+    setNotice(null)
+    try {
+      await talk.restoreDevices()
+      if (talk.preferences.joinWithCamera && !meeting.self.videoEnabled) {
+        await toggleVideo()
+        if (!meeting.self.videoEnabled) return
+      } else if (!talk.preferences.joinWithCamera && meeting.self.videoEnabled) {
+        await toggleVideo()
+      }
+      if (talk.preferences.joinWithMicrophone && !meeting.self.audioEnabled) {
+        await toggleAudio()
+        if (!meeting.self.audioEnabled) return
+      } else if (!talk.preferences.joinWithMicrophone && meeting.self.audioEnabled) {
+        await toggleAudio()
+      }
+      await meeting.join()
+      setJoined(true)
+    } catch (cause: unknown) {
+      showError(errorMessageForCause(cause))
+    } finally { setJoining(false) }
+  }
+
+  const settingsPanel = (
+    <TalkSettingsPanel preferences={talk.preferences} onChange={talk.update} devices={talk.devices}
+      onDeviceChange={(kind, id) => void talk.changeDevice(kind, id)}
+      onRefreshDevices={() => void talk.refreshDevices()} busy={talk.busy || joining} status={talk.status} />
+  )
+
+  if (!loading && !error && meeting && !joined) {
+    const mediaBusy = videoStatus === "starting" || videoStatus === "stopping" || audioStatus === "starting" || audioStatus === "stopping"
+    return <TalkSetup title={meetingTitle}
+      preview={<TalkPreview meeting={meeting} videoEnabled={videoEnabled} audioEnabled={audioEnabled} speakerId={talk.preferences.speakerId} />}
+      settings={settingsPanel} videoEnabled={videoEnabled} audioEnabled={audioEnabled}
+      busy={talk.busy || joining || mediaBusy} canJoin={talk.ready} joining={joining} error={notice?.tone === "error" ? notice.text : null}
+      onVideo={() => void toggleVideo()} onAudio={() => void toggleAudio()} onJoin={() => void joinPreparedMeeting()}
+      onCancel={() => { meeting.self.cleanUpTracks(); window.location.assign(`/dashboard/conversations/${channelId}`) }} />
+  }
 
   return (
     <main
       data-compass-meeting
-      className="fixed inset-0 z-[100] flex h-dvh min-h-dvh flex-col bg-slate-950 text-white"
+      className="dark fixed inset-0 z-[100] flex h-dvh min-h-dvh flex-col bg-background text-foreground"
     >
       <style>
         {`
@@ -1125,244 +945,82 @@ export function RealtimeKitMeetingWindow({
           }
         `}
       </style>
-      <header className="flex h-12 shrink-0 items-center justify-center border-b border-white/10 px-4 text-center">
-        <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{meetingTitle}</h1>
-          <p className="text-xs text-white/55">
-            Compass meeting with notes, transcript, and background effects
-          </p>
-        </div>
-      </header>
-      {screenShareMessage || backgroundStatus ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
-          {screenShareMessage ? <span>{screenShareMessage}</span> : null}
-          {backgroundStatus ? <span>{backgroundStatus}</span> : null}
-        </div>
+      {talk.status ? (
+        <p role="status" className="shrink-0 border-b border-border px-4 py-1.5 text-xs text-muted-foreground">
+          {talk.status}
+        </p>
       ) : null}
-      <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_5rem] overflow-hidden xl:grid-cols-[minmax(0,1fr)_5.75rem_20rem]">
+      <TalkLeaveConfirmation open={leaveOpen} busy={leaving} error={leaveError}
+        canEndMeeting={canEndMeeting} hasUnsavedNotes={hasUnsavedNotes}
+        onOpenChange={setLeaveOpen}
+        onLeave={() => void leaveMeeting(false)}
+        onEndMeeting={() => void leaveMeeting(true)} />
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="z-[130] max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Camera & Background</DialogTitle><DialogDescription>Update your background and devices without leaving the call.</DialogDescription></DialogHeader>
+          {meeting ? <TalkPreview meeting={meeting} videoEnabled={videoEnabled} audioEnabled={audioEnabled} speakerId={talk.preferences.speakerId} /> : null}
+          {settingsPanel}
+        </DialogContent>
+      </Dialog>
+      <section className={cn(
+        "grid min-h-0 flex-1 overflow-hidden",
+        notesPanelOpen
+          ? "grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min(16rem,32dvh))] xl:grid-cols-[minmax(0,1fr)_20rem] xl:grid-rows-1"
+          : "grid-cols-1 grid-rows-1"
+      )}>
         {loading ? (
-          <div className="col-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-3">
+          <div className="row-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-2">
             Opening secure meeting...
           </div>
         ) : error ? (
-          <div className="col-span-2 flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-3">
+          <div className="row-span-2 flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-2">
             {error}
           </div>
         ) : (
-          <div ref={meetingUiRef} className="min-w-0 bg-black">
-            <div className="relative min-h-0 flex-1">
-              <RtkMeeting
-                meeting={meeting}
-                config={meetingConfig}
-                applyDesignSystem
-                leaveOnUnmount
-                loadConfigFromPreset={false}
-                showSetupScreen={false}
-              />
+          <div ref={meetingUiRef} className="relative min-h-0 min-w-0 overflow-hidden bg-black">
+            <div className="h-full w-full">
+              {/* Fill keeps the SDK renderer inside its grid cell, leaving the call controls clickable. */}
+              <TalkMeetingRenderer meeting={meeting} config={meetingConfig}>
+                <TalkCallControls
+                  audioEnabled={audioEnabled} audioLabel={micButtonLabel}
+                  audioDisabled={!meeting || audioStatus === "starting" || audioStatus === "stopping"}
+                  onAudio={() => void toggleAudio()}
+                  videoEnabled={videoEnabled} videoLabel={videoButtonLabel}
+                  videoDisabled={!meeting || talk.busy || videoStatus === "starting" || videoStatus === "stopping"}
+                  onVideo={() => void toggleVideo()}
+                  canScreenShare={canScreenShare} screenShareLabel={screenShareButtonLabel}
+                  screenShareDisabled={!meeting || screenShareStatus === "starting" || screenShareStatus === "stopping"}
+                  onScreenShare={() => void toggleScreenShare()}
+                  pipLabel={pipButtonLabel}
+                  pipDisabled={!meeting || !canUsePictureInPicture || pipStatus === "starting" || pipStatus === "stopping"}
+                  onPip={() => void togglePictureInPicture()}
+                  onSettings={() => setSettingsOpen(true)}
+                  leaveDisabled={!meeting || leaving} onLeave={() => { setLeaveError(null); setLeaveOpen(true) }}
+                  notesPanelOpen={notesPanelOpen}
+                  onToggleNotesPanel={() => setNotesPanelOpen(!notesPanelOpen)}
+                  notice={notice ? (
+                    <TalkCallNotice notice={notice} onAction={handleNoticeAction} onDismiss={() => setNotice(null)} />
+                  ) : null}
+                >
+                  <RtkChatToggle meeting={meeting} variant="horizontal" />
+                  <RtkParticipantsToggle meeting={meeting} variant="horizontal" />
+                  <RtkMoreToggle>
+                    <RtkPollsToggle slot="more-elements" variant="horizontal" />
+                    <RtkFullscreenToggle slot="more-elements" variant="horizontal" targetElement={meetingUiRef.current ?? undefined} />
+                    {/* Host-only meeting controls; Plugins, Breakout Rooms, and Debugger are not offered to staff. */}
+                    {canEndMeeting ? <RtkMuteAllButton slot="more-elements" variant="horizontal" /> : null}
+                    {canEndMeeting ? <RtkRecordingToggle slot="more-elements" variant="horizontal" /> : null}
+                  </RtkMoreToggle>
+                </TalkCallControls>
+              </TalkMeetingRenderer>
             </div>
           </div>
         )}
-        {!loading && showMeetingControls ? (
-          <aside className="flex min-h-0 flex-col border-l border-white/10 bg-[#070b08]">
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3">
-              <button
-                type="button"
-                onClick={() => void toggleAudio()}
-                disabled={
-                  !meeting ||
-                  audioStatus === "starting" ||
-                  audioStatus === "stopping"
-                }
-                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                  audioEnabled
-                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                }`}
-              >
-                {micButtonLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleVideo()}
-                disabled={
-                  !meeting ||
-                  videoStatus === "starting" ||
-                  videoStatus === "stopping"
-                }
-                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                  videoEnabled
-                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                }`}
-              >
-                {videoButtonLabel}
-              </button>
-              {canScreenShare ? (
-                <button
-                  type="button"
-                  onClick={() => void toggleScreenShare()}
-                  disabled={
-                    !meeting ||
-                    screenShareStatus === "starting" ||
-                    screenShareStatus === "stopping"
-                  }
-                  className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                    screenShareStatus === "sharing"
-                      ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
-                      : "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                  }`}
-                >
-                  {screenShareButtonLabel}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void togglePictureInPicture()}
-                disabled={
-                  !meeting ||
-                  !canUsePictureInPicture ||
-                  pipStatus === "starting" ||
-                  pipStatus === "stopping"
-                }
-                className="rounded-sm border border-white/20 bg-white/[0.04] px-2 py-2 text-xs font-semibold leading-tight text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626] disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {pipButtonLabel}
-              </button>
-              {backgroundStatus ? (
-                <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-2 text-center text-xs font-semibold leading-tight text-white/55">
-                  Background Paused
-                </span>
-              ) : null}
-              <div className="min-h-3 flex-1" />
-              <button
-                type="button"
-                onClick={() => void leaveMeeting()}
-                disabled={!meeting}
-                className="rounded-sm border border-red-300/65 bg-red-500/25 px-2 py-2 text-xs font-semibold leading-tight text-red-50 transition-colors hover:border-red-200 hover:bg-red-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Leave
-              </button>
-            </div>
-          </aside>
-        ) : null}
-        {!loading && !error ? (
-          <aside className="col-span-2 min-h-0 max-h-[42dvh] border-t border-white/10 bg-[#08110b] xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0">
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="flex shrink-0 border-b border-white/10 p-2">
-                <button
-                  type="button"
-                  onClick={() => setActivePanel("notes")}
-                  className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                    activePanel === "notes"
-                      ? "bg-[#3f7d4d] text-white"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  Notes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActivePanel("transcript")}
-                  className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                    activePanel === "transcript"
-                      ? "bg-[#3f7d4d] text-white"
-                      : "text-white/70 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  Transcript
-                </button>
-              </div>
-              {activePanel === "notes" ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-                  <textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.currentTarget.value)}
-                    placeholder="Meeting notes..."
-                    className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-[#63b878]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void saveMeetingNotes()}
-                    className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860]"
-                  >
-                    Save Notes to Conversation
-                  </button>
-                  {notesStatus ? (
-                    <p className="text-xs text-white/55">{notesStatus}</p>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                    {!transcriptEnabled ? (
-                      <div className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/65">
-                        <p className="font-semibold text-white">
-                          Captions and transcript capture are off.
-                        </p>
-                        <p className="mt-1">
-                          Start it only after everyone knows the meeting is being
-                          transcribed.
-                        </p>
-                      </div>
-                    ) : null}
-                    {transcripts.length === 0 ? (
-                      <p className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/60">
-                        {transcriptEnabled
-                          ? "No transcript lines yet."
-                          : "No transcript has been captured for this meeting."}
-                      </p>
-                    ) : null}
-                    {transcripts.length > 0
-                      ? transcripts.map((entry) => (
-                          <div
-                            key={transcriptKey(entry)}
-                            className={`rounded-sm border p-2 text-sm ${
-                              entry.isPartialTranscript
-                                ? "border-white/10 bg-white/5 text-white/55"
-                                : "border-[#3f7d4d]/50 bg-[#3f7d4d]/10 text-white"
-                            }`}
-                          >
-                            <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/45">
-                              <span className="truncate font-medium">{entry.name}</span>
-                              <span>
-                                {entry.date.toLocaleTimeString([], {
-                                  hour: "numeric",
-                                  minute: "2-digit",
-                                })}
-                              </span>
-                            </div>
-                            <p>{entry.transcript}</p>
-                          </div>
-                        ))
-                      : null}
-                  </div>
-                  <div className="grid shrink-0 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={toggleTranscriptCapture}
-                      className={`rounded-sm px-3 py-2 text-sm font-semibold text-white transition-colors ${
-                        transcriptEnabled
-                          ? "border border-white/20 bg-white/10 hover:bg-white/15"
-                          : "bg-[#3f7d4d] hover:bg-[#4f9860]"
-                      }`}
-                    >
-                      {transcriptEnabled
-                        ? "Turn Captions Off"
-                        : "Turn Captions On"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void saveTranscript()}
-                      disabled={savedTranscriptText.length === 0}
-                      className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
-                    >
-                      Save Transcript to Conversation
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </aside>
+        {!loading && !error && meeting ? (
+          <TalkNotesPanel meeting={meeting} channelId={channelId} userId={userId}
+            open={notesPanelOpen} onClose={() => setNotesPanelOpen(false)}
+            transcriptEnabled={transcriptEnabled} onTranscriptEnabledChange={setRealtimeKitCaptions}
+            onUnsavedNotesChange={setHasUnsavedNotes} />
         ) : null}
       </section>
     </main>

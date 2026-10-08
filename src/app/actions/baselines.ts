@@ -14,6 +14,7 @@ import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { requirePermission } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import type { ScheduleBaselineData } from "@/lib/schedule/types"
 
@@ -22,6 +23,9 @@ export async function getBaselines(
 ): Promise<ScheduleBaselineData[]> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    return []
+  }
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()

@@ -12,7 +12,8 @@ import {
 import { getCloudflareContext } from "@/lib/db"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
-import { canUseExecutiveAdmin, canUseFieldDesk } from "@/lib/permissions"
+import { canUseFieldDesk } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type CherishValue =
@@ -271,10 +272,10 @@ export async function getCherishPulseReviewQueue(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) {
+    if (!(await canFeature(user, "cherish-review", "read"))) {
       return {
         success: false,
-        error: "Executive Admin access is required to review CHERISH responses.",
+        error: "CHERISH review permission is required to review responses.",
       }
     }
 
@@ -410,10 +411,10 @@ export async function getCherishPulseLeadershipStream(): Promise<
 > {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) {
+    if (!(await canFeature(user, "cherish-review", "read"))) {
       return {
         success: false,
-        error: "Executive Admin access is required to view private CHERISH concerns.",
+        error: "CHERISH review permission is required to view private concerns.",
       }
     }
 
@@ -478,10 +479,10 @@ export async function searchCherishPulseArchive(
 ): Promise<ActionResult<readonly CherishPulseReviewItem[]>> {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) {
+    if (!(await canFeature(user, "cherish-review", "read"))) {
       return {
         success: false,
-        error: "Executive Admin access is required to search CHERISH archives.",
+        error: "CHERISH review permission is required to search archives.",
       }
     }
 
@@ -579,10 +580,10 @@ export async function reviewCherishPulseResponse(
 ): Promise<ActionResult<{ readonly id: string; readonly reviewStatus: CherishPulseReviewStatus }>> {
   try {
     const user = await requireAuth()
-    if (!canUseExecutiveAdmin(user)) {
+    if (!(await canFeature(user, "cherish-review", "approve"))) {
       return {
         success: false,
-        error: "Executive Admin access is required to review CHERISH responses.",
+        error: "CHERISH review permission is required to review responses.",
       }
     }
 

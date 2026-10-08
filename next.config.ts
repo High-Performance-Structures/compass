@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
     // OpenNext sets this flag before its Next.js build. Keep the native SQLite
     // shim out of Workers without breaking production-mode local/E2E builds.
     turbopack: {
+        // Keep nested Git worktrees isolated from the parent checkout's lockfile.
+        root: process.cwd(),
         resolveAlias: {
             "@/lib/cloudflare-context":
                 process.env.NEXT_PRIVATE_STANDALONE === "true"
@@ -25,6 +27,11 @@ const nextConfig: NextConfig = {
     },
     transpilePackages: ["agent-core"],
     experimental: {
+        // Reuse recently visited pages on back/forward and repeat navigation
+        // instead of re-rendering them on the server each time. Server actions
+        // that call revalidatePath/refresh, and router.refresh(), still clear it.
+        staleTimes: { dynamic: 30, static: 300 },
+        serverActions: { bodySizeLimit: "26mb" },
         proxyClientMaxBodySize: "100mb",
         optimizePackageImports: [
             "@tabler/icons-react",

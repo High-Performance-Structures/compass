@@ -1,7 +1,10 @@
 import Link from "next/link"
 import { IconExternalLink, IconFileDescription, IconHistory } from "@tabler/icons-react"
 
-import type { AudienceDocument } from "@/app/actions/project-audience-preview"
+import type {
+  AudienceContractDocument,
+  AudienceDocument,
+} from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { projectDocumentCategoryLabel } from "@/lib/project-documents"
@@ -20,9 +23,11 @@ function dateLabel(value: string | null): string {
 
 export function ProjectAudienceDocumentLibrary({
   projectId,
+  contractDocuments,
   documents,
 }: {
   readonly projectId: string
+  readonly contractDocuments: readonly AudienceContractDocument[]
   readonly documents: readonly AudienceDocument[]
 }): React.ReactElement {
   const current = documents.filter((document) => document.status === "current")
@@ -44,6 +49,41 @@ export function ProjectAudienceDocumentLibrary({
         </div>
         <Badge variant="outline">Entire project team</Badge>
       </div>
+
+      {contractDocuments.length > 0 && (
+        <div className="mt-5 border-y">
+          {contractDocuments.map((document) => (
+            <article
+              key={document.id}
+              className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <IconFileDescription className="size-4 text-primary" />
+                  <h2 className="min-w-0 break-words font-medium [overflow-wrap:anywhere]">
+                    {document.title}
+                  </h2>
+                  <Badge>Executed contract</Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {document.packetNumber} · Version {document.versionNumber} · Executed {dateLabel(document.executedAt?.slice(0, 10) ?? null)}
+                </p>
+                {document.label && (
+                  <p className="mt-2 text-sm text-muted-foreground">{document.label}</p>
+                )}
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link
+                  href={`/api/projects/${projectId}/contracts/${document.id}/executed-document`}
+                  target="_blank"
+                >
+                  <IconExternalLink className="size-4" />Open contract
+                </Link>
+              </Button>
+            </article>
+          ))}
+        </div>
+      )}
 
       {current.length > 0 ? (
         <div className="mt-5 divide-y border-y">
@@ -76,9 +116,11 @@ export function ProjectAudienceDocumentLibrary({
           ))}
         </div>
       ) : (
-        <p className="mt-5 border-y py-8 text-center text-sm text-muted-foreground">
-          No current plans or specifications have been published yet.
-        </p>
+        contractDocuments.length === 0 && (
+          <p className="mt-5 border-y py-8 text-center text-sm text-muted-foreground">
+            No current plans, specifications, or executed contracts have been published yet.
+          </p>
+        )
       )}
 
       {superseded.length > 0 && (

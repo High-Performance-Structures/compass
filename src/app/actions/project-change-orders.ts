@@ -25,6 +25,7 @@ import {
   projectEstimates,
 } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import { executedDocumentSource } from "@/lib/contracts/executed-document-source"
 import {
   changeOrderCostLinesTotalCents,
   cleanChangeOrderCostLines,
@@ -36,6 +37,7 @@ import {
   canEditChangeOrderContent,
   canTransitionChangeOrder,
   isChangeOrderStatus,
+  isExecutedChangeOrderStatus,
   isExternallyPublishedChangeOrderStatus,
   type ChangeOrderStatus,
 } from "@/lib/change-orders/status"
@@ -70,6 +72,17 @@ export type ChangeOrderDocumentInput = {
   readonly url: string
   readonly notes: string | null
 }
+
+export type ChangeOrderExecutedDocumentInput = {
+  readonly url: string
+  readonly label: string
+  readonly attested: boolean
+}
+
+export type ChangeOrderExecutedDocumentReplacementInput =
+  ChangeOrderExecutedDocumentInput & {
+    readonly reason: string
+  }
 
 export type ProjectChangeOrderPhaseOption = {
   readonly value: string
@@ -135,6 +148,9 @@ export type ProjectChangeOrderItem = {
   readonly canExecuteRebaseline: boolean
   readonly foxitStatus: string
   readonly sageStatus: string
+  readonly executedDocumentAvailable: boolean
+  readonly executedDocumentLabel: string | null
+  readonly canManageExecutedDocument: boolean
   readonly submittedAt: string | null
   readonly createdAt: string
   readonly updatedAt: string
@@ -196,6 +212,7 @@ export type UpdateProjectChangeOrderInput = {
   readonly documents: readonly ChangeOrderDocumentInput[]
   readonly budgetTreatment: ChangeOrderBudgetTreatment
   readonly replacementEstimateId: string | null
+  readonly executedDocument: ChangeOrderExecutedDocumentInput | null
 }
 
 type ChangeOrderContext = {
@@ -255,6 +272,27 @@ function safeDocumentUrl(value: string): string {
     throw new Error("Document links must use HTTP or HTTPS")
   }
   return parsed.toString()
+}
+
+function cleanExecutedDocument(
+  input: ChangeOrderExecutedDocumentInput
+): { readonly url: string; readonly label: string } {
+  if (!input.attested) {
+    throw new Error(
+      "Confirm that the uploaded file is the complete, fully executed change order."
+    )
+  }
+  const url = requireText(input.url, "Executed document URL", 2_048)
+  const source = executedDocumentSource(url)
+  if (!source) {
+    throw new Error(
+      "The executed change order must use a secure Compass, Google Drive, or HTTPS document link."
+    )
+  }
+  return {
+    url: source.kind === "external" ? source.url : url,
+    label: requireText(input.label, "Executed document label", 200),
+  }
 }
 
 function cleanDocuments(
@@ -719,6 +757,12 @@ function viewModel(
       rebaseline.blockers.length === 0,
     foxitStatus: row.foxitStatus,
     sageStatus: row.sageStatus,
+    executedDocumentAvailable: row.executedDocumentUrl !== null,
+    executedDocumentLabel: row.executedDocumentLabel,
+    canManageExecutedDocument:
+      context.internal &&
+      context.canApprove &&
+      isExecutedChangeOrderStatus(status),
     submittedAt: row.submittedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -1358,6 +1402,25 @@ export async function updateProjectChangeOrder(
     const scheduleImpactDays = contentAllowed
       ? cleanScheduleImpactDays(input.scheduleImpactDays)
       : existing.scheduleImpactDays
+    let executedDocumentUrl = existing.executedDocumentUrl
+    let executedDocumentLabel = existing.executedDocumentLabel
+    if (
+      input.status === "executed" &&
+      !isExecutedChangeOrderStatus(existing.status)
+    ) {
+      if (audience === "owner" && !input.executedDocument) {
+        return {
+          success: false,
+          error:
+            "Upload or link the complete executed change order before marking it executed.",
+        }
+      }
+      if (input.executedDocument) {
+        const executedDocument = cleanExecutedDocument(input.executedDocument)
+        executedDocumentUrl = executedDocument.url
+        executedDocumentLabel = executedDocument.label
+      }
+    }
     if (input.status === "executed") {
       const executionLines =
         lines ??
@@ -1424,6 +1487,8 @@ export async function updateProjectChangeOrder(
             : existing.foxitStatus,
         executedAt:
           input.status === "executed" ? existing.executedAt ?? now : existing.executedAt,
+        executedDocumentUrl,
+        executedDocumentLabel,
         sageStatus:
           input.status === "sage_pending"
             ? "pending_manual_sync"
@@ -1565,6 +1630,106 @@ export async function updateProjectChangeOrder(
         error instanceof Error
           ? error.message
           : "Failed to update change order request",
+    }
+  }
+}
+
+export async function replaceExecutedProjectChangeOrderDocument(
+  projectId: string,
+  changeOrderId: string,
+  input: ChangeOrderExecutedDocumentReplacementInput
+): Promise<ChangeOrderActionResult> {
+  try {
+    const context = await changeOrderContext(projectId, "read")
+    await requireFeaturePermission(context.user, "change-orders", "approve")
+    if (!context.internal || !context.canApprove) {
+      return {
+        success: false,
+        error:
+          "Change-order approval permission is required to manage the executed document.",
+      }
+    }
+    const changeOrder = await context.db
+      .select()
+      .from(projectChangeOrders)
+      .where(
+        and(
+          eq(projectChangeOrders.id, changeOrderId),
+          eq(projectChangeOrders.projectId, projectId)
+        )
+      )
+      .get()
+    if (
+      !changeOrder ||
+      !isChangeOrderStatus(changeOrder.status) ||
+      !isExecutedChangeOrderStatus(changeOrder.status)
+    ) {
+      return {
+        success: false,
+        error: "Only an executed change order can receive an executed document.",
+      }
+    }
+    if (changeOrder.audience !== "owner") {
+      return {
+        success: false,
+        error: "Make the executed change order owner visible before publishing its document.",
+      }
+    }
+    const reason = requireText(input.reason, "Replacement reason", 1_000)
+    const document = cleanExecutedDocument(input)
+    if (
+      changeOrder.executedDocumentUrl === document.url &&
+      changeOrder.executedDocumentLabel === document.label
+    ) {
+      return {
+        success: false,
+        error: "Choose a different executed document or document label.",
+      }
+    }
+    const now = new Date().toISOString()
+    await context.db.batch([
+      context.db
+        .update(projectChangeOrders)
+        .set({
+          executedDocumentUrl: document.url,
+          executedDocumentLabel: document.label,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectChangeOrders.id, changeOrderId),
+            eq(projectChangeOrders.projectId, projectId)
+          )
+        ),
+      context.db.insert(projectChangeOrderHistory).values({
+        id: crypto.randomUUID(),
+        projectId,
+        changeOrderId,
+        eventType: changeOrder.executedDocumentUrl
+          ? "executed_document_replaced"
+          : "executed_document_added",
+        fromStatus: changeOrder.status,
+        toStatus: changeOrder.status,
+        actorUserId: context.user.id,
+        actorName: actorName(context.user),
+        actorRole: context.user.role,
+        note: reason,
+        metadataJson: JSON.stringify({
+          previousLabel: changeOrder.executedDocumentLabel,
+          replacementLabel: document.label,
+        }),
+        createdAt: now,
+      }),
+    ])
+    revalidateChangeOrderPaths(projectId)
+    return { success: true, id: changeOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to update the executed change-order document",
     }
   }
 }

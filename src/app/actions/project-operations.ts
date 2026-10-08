@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
+import { chunkD1Values } from "@/lib/d1-query"
 import { specificationJson } from "@/lib/selections/decisions"
 import {
   projectFinishSelections,
@@ -23,6 +24,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import {
@@ -56,6 +58,8 @@ import {
   parsePortalRfqPayload,
   type PortalRfqVendorResponse,
 } from "@/lib/rfqs/portal-response"
+import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
+import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
@@ -144,6 +148,14 @@ export type ProjectRfqScopeLineItem = {
   readonly notes: string | null
 }
 
+export type ProjectRfqCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+  readonly divisionLabel: string
+}
+
 export type ProjectRfqDocumentLinkItem = {
   readonly lineNumber: number
   readonly label: string
@@ -194,6 +206,8 @@ export type ProjectSageSyncItemKind =
 
 export type ProjectSageSyncItem = {
   readonly id: string
+  readonly sourceSystem: string | null
+  readonly sourceRecordType: string | null
   readonly kind: ProjectSageSyncItemKind
   readonly table: "project_operations" | "project_budget_applications" | "project_budget_lines"
   readonly title: string
@@ -206,6 +220,7 @@ export type ProjectSageSyncItem = {
   readonly dueDate: string | null
   readonly updatedAt: string
   readonly detail: string | null
+  readonly companyName: string | null
 }
 
 export type ProjectSageSyncQueue = {
@@ -710,6 +725,31 @@ function normalizeRfqScopeLines(
   ]
 }
 
+async function validateRfqScopeCostCodes(
+  db: ReturnType<typeof getDb>,
+  lines: readonly NormalizedRfqScopeLine[],
+  existingLines: readonly ProjectRfqScopeLineItem[] = []
+): Promise<void> {
+  if (lines.every((line) => !line.costCode && !line.phaseCode)) return
+
+  const activeRows = await db
+    .select({
+      code: sageCostCodes.code,
+      divisionCode: sageCostCodes.divisionCode,
+    })
+    .from(sageCostCodes)
+    .where(eq(sageCostCodes.active, true))
+  const issues = rfqScopeCodingErrors(
+    lines,
+    new Map(activeRows.map((row) => [row.code, row.divisionCode])),
+    new Set(activeRows.map((row) => row.divisionCode)),
+    existingLines
+  )
+  if (issues.length > 0) {
+    throw new Error(issues.join(" "))
+  }
+}
+
 function normalizeRfqDocumentLinks(
   links: readonly CreateRfqDocumentLinkInput[]
 ): readonly NormalizedRfqDocumentLink[] {
@@ -1034,6 +1074,7 @@ function operationToScheduleItem(
 export async function getProjectOperationsSummary(
   projectId: string
 ): Promise<ProjectOperationsSummary> {
+  const viewer = await requireAuth()
   const db = await verifyProjectAccess(projectId)
   const today = new Date().toISOString().slice(0, 10)
 
@@ -1078,18 +1119,22 @@ export async function getProjectOperationsSummary(
       (operation.dueDate !== null && operation.dueDate >= today)
   )
 
-  const nextScheduleItem = nextCompassTask
-    ? {
-        id: nextCompassTask.id,
-        title: nextCompassTask.title,
-        startDate: nextCompassTask.startDate,
-        endDate: nextCompassTask.endDateCalculated,
-        assignedTo: nextCompassTask.assignedTo,
-        source: "compass_schedule" as const,
-      }
-    : nextSageOperation
-      ? operationToScheduleItem(nextSageOperation)
-      : null
+  const canViewWorkingSchedule =
+    isInternalStaffRole(viewer.role) || viewer.role === "developer"
+  const nextScheduleItem = !canViewWorkingSchedule
+    ? null
+    : nextCompassTask
+      ? {
+          id: nextCompassTask.id,
+          title: nextCompassTask.title,
+          startDate: nextCompassTask.startDate,
+          endDate: nextCompassTask.endDateCalculated,
+          assignedTo: nextCompassTask.assignedTo,
+          source: "compass_schedule" as const,
+        }
+      : nextSageOperation
+        ? operationToScheduleItem(nextSageOperation)
+        : null
 
   return {
     openPurchaseOrderCount: openPurchaseOrders.length,
@@ -1150,21 +1195,21 @@ export async function getProjectTodos(
       )
     ),
   ]
-  const scheduleTaskIds = new Set(
-    candidateScheduleTaskIds.length === 0
-      ? []
-      : (
-          await db
-            .select({ id: scheduleTasks.id })
-            .from(scheduleTasks)
-            .where(
-              and(
-                eq(scheduleTasks.projectId, projectId),
-                inArray(scheduleTasks.id, candidateScheduleTaskIds)
-              )
-            )
-        ).map((task) => task.id)
-  )
+  // Large imported jobs link hundreds of to-dos; query in chunks to stay
+  // under D1's 100-bound-parameter limit.
+  const scheduleTaskIds = new Set<string>()
+  for (const ids of chunkD1Values(candidateScheduleTaskIds)) {
+    const rows = await db
+      .select({ id: scheduleTasks.id })
+      .from(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+    for (const row of rows) scheduleTaskIds.add(row.id)
+  }
 
   return operations.map((operation) =>
     toOperationItem(operation, scheduleTaskIds)
@@ -1245,6 +1290,8 @@ export async function getProjectSageSyncQueue(
     )
     .map((operation) => ({
       id: operation.id,
+      sourceSystem: operation.sourceSystem,
+      sourceRecordType: operation.sourceRecordType,
       kind: operationSyncKind(operation.sourceRecordType),
       table: "project_operations",
       title: operation.title,
@@ -1257,6 +1304,7 @@ export async function getProjectSageSyncQueue(
       dueDate: operation.dueDate ?? operation.startDate,
       updatedAt: operation.updatedAt,
       detail: operation.companyName ?? operation.assigneeName,
+      companyName: operation.companyName,
     }))
 
   const applicationItems: ProjectSageSyncItem[] = applicationRows
@@ -1266,6 +1314,8 @@ export async function getProjectSageSyncQueue(
     )
     .map((application) => ({
       id: application.id,
+      sourceSystem: null,
+      sourceRecordType: null,
       kind: "budget_application",
       table: "project_budget_applications",
       title: `Pay application ${application.applicationNumber}`,
@@ -1278,6 +1328,7 @@ export async function getProjectSageSyncQueue(
       dueDate: application.periodTo,
       updatedAt: application.updatedAt,
       detail: application.ownerVisible ? "Owner visible" : "Internal only",
+      companyName: null,
     }))
 
   const buildingApplicationIds = new Set(
@@ -1294,6 +1345,8 @@ export async function getProjectSageSyncQueue(
     .slice(0, 25)
     .map((line) => ({
       id: line.id,
+      sourceSystem: null,
+      sourceRecordType: null,
       kind: "budget_line",
       table: "project_budget_lines",
       title: line.description,
@@ -1306,6 +1359,7 @@ export async function getProjectSageSyncQueue(
       dueDate: null,
       updatedAt: line.updatedAt,
       detail: `${line.csiDivision} - ${line.csiDivisionName}`,
+      companyName: null,
     }))
 
   const pendingItems = [
@@ -1406,19 +1460,23 @@ export async function queueProjectOperationsForSageSync(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(projectOperations)
-      .set({
-        syncStatus: "queued_sage",
-        sageWriteStatus: "queued",
-        updatedAt: now,
-      })
-      .where(inArray(projectOperations.id, readyIds))
+    // Large jobs can have hundreds of ready items; stay under D1's
+    // 100-bound-parameter limit.
+    for (const ids of chunkD1Values(readyIds)) {
+      await db
+        .update(projectOperations)
+        .set({
+          syncStatus: "queued_sage",
+          sageWriteStatus: "queued",
+          updatedAt: now,
+        })
+        .where(inArray(projectOperations.id, ids))
 
-    await db
-      .update(projectPurchaseOrderLines)
-      .set({ syncStatus: "queued_sage", updatedAt: now })
-      .where(inArray(projectPurchaseOrderLines.operationId, readyIds))
+      await db
+        .update(projectPurchaseOrderLines)
+        .set({ syncStatus: "queued_sage", updatedAt: now })
+        .where(inArray(projectPurchaseOrderLines.operationId, ids))
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
@@ -1452,19 +1510,19 @@ export async function getProjectPurchaseOrders(
 
   if (rows.length === 0) return []
 
-  const lines = await db
-    .select()
-    .from(projectPurchaseOrderLines)
-    .where(
-      inArray(
-        projectPurchaseOrderLines.operationId,
-        rows.map((row) => row.id)
-      )
+  const lines: (typeof projectPurchaseOrderLines.$inferSelect)[] = []
+  for (const ids of chunkD1Values(rows.map((row) => row.id))) {
+    lines.push(
+      ...(await db
+        .select()
+        .from(projectPurchaseOrderLines)
+        .where(inArray(projectPurchaseOrderLines.operationId, ids))
+        .orderBy(
+          asc(projectPurchaseOrderLines.operationId),
+          asc(projectPurchaseOrderLines.lineNumber)
+        ))
     )
-    .orderBy(
-      asc(projectPurchaseOrderLines.operationId),
-      asc(projectPurchaseOrderLines.lineNumber)
-    )
+  }
 
   const [contactRows, vendorRows] = await Promise.all([
     db
@@ -1475,7 +1533,13 @@ export async function getProjectPurchaseOrders(
         email: projectContacts.email,
       })
       .from(projectContacts)
-      .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))),
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true),
+          inArray(projectContacts.contactType, ["supplier", "subcontractor"])
+        )
+      ),
     db
       .select({
         address: vendors.address,
@@ -1606,6 +1670,31 @@ export async function getProjectPurchaseOrderFormOptions(
   }
 }
 
+export async function getProjectRfqCostCodeOptions(
+  projectId: string
+): Promise<readonly ProjectRfqCostCodeOption[]> {
+  const db = await verifyProjectAccess(projectId, "rfqs")
+  const rows = await db
+    .select({
+      code: sageCostCodes.code,
+      displayLabel: sageCostCodes.displayLabel,
+      description: sageCostCodes.description,
+      divisionCode: sageCostCodes.divisionCode,
+      divisionLabel: sageCostCodes.divisionDisplayLabel,
+    })
+    .from(sageCostCodes)
+    .where(eq(sageCostCodes.active, true))
+    .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel))
+
+  return rows.map((row) => ({
+    value: row.code,
+    label: row.displayLabel,
+    description: row.description,
+    divisionCode: row.divisionCode,
+    divisionLabel: row.divisionLabel,
+  }))
+}
+
 export async function getProjectRfqs(
   projectId: string
 ): Promise<readonly ProjectRfqItem[]> {
@@ -1635,7 +1724,11 @@ export async function getProjectRfqs(
       })
       .from(projectContacts)
       .where(
-        and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true),
+          inArray(projectContacts.contactType, ["supplier", "subcontractor"])
+        )
       ),
     db
       .select({
@@ -2102,6 +2195,7 @@ export async function createRfqRequest(
       input.scopeItems,
       description ?? title
     )
+    await validateRfqScopeCostCodes(db, scopeItems)
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
     const primaryLine = scopeItems[0] ?? null
     const sourceRecordNumber = projectDocumentNumberFor(
@@ -2433,6 +2527,15 @@ export async function updateRfqRequest(
       input.scopeItems,
       description ?? title
     )
+    const previousScopeItems = parseRfqScopeItems(
+      parseJsonRecord(existing[0].sagePayloadJson),
+      existing[0].description
+    )
+    await validateRfqScopeCostCodes(
+      db,
+      scopeItems,
+      previousScopeItems
+    )
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
     const existingPayload = parseJsonRecord(existing[0].sagePayloadJson)
     const existingVendorResponse = parsePortalRfqPayload(
@@ -2569,6 +2672,23 @@ export async function deleteRfqRequest(
       return {
         success: false,
         error: "Only an unsent RFQ draft can be deleted. Close or void a shared RFQ instead.",
+      }
+    }
+
+    const [delivery, manualResponse] = await Promise.all([
+      db.select({ id: projectRfqEmailDeliveries.id })
+        .from(projectRfqEmailDeliveries)
+        .where(eq(projectRfqEmailDeliveries.rfqOperationId, rfqId))
+        .limit(1).then((rows) => rows[0] ?? null),
+      db.select({ id: projectRfqManualResponseEvents.id })
+        .from(projectRfqManualResponseEvents)
+        .where(eq(projectRfqManualResponseEvents.rfqOperationId, rfqId))
+        .limit(1).then((rows) => rows[0] ?? null),
+    ])
+    if (delivery || manualResponse) {
+      return {
+        success: false,
+        error: "This RFQ has delivery or response history. Void it to preserve that record.",
       }
     }
 

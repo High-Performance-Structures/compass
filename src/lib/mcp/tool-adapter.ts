@@ -16,6 +16,7 @@ import {
 } from "@/app/actions/dashboards"
 import { THEME_PRESETS } from "@/lib/theme/presets"
 import type { BridgeToolScope, BridgeToolMeta } from "@/lib/mcp/types"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 function getString(
   args: Record<string, unknown>,
@@ -61,7 +62,7 @@ const bridgeToolRegistry: Readonly<
     description:
       "Query the application database by type " +
       "(customers, vendors, projects, etc.)",
-    handler: async (_userId, _userRole, args) => {
+    handler: async (_userId, userRole, args) => {
       const { env } = await getCloudflareContext()
       const db = getDb(env.DB)
       const queryType = getString(args, "queryType")
@@ -120,6 +121,9 @@ const bridgeToolRegistry: Readonly<
           return { data: rows, count: rows.length }
         }
         case "schedule_tasks": {
+          if (!isInternalStaffRole(userRole) && userRole !== "developer") {
+            return { error: "Working schedule access is available to internal staff only" }
+          }
           const rows =
             await db.query.scheduleTasks.findMany({
               limit: cap,

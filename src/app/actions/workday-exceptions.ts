@@ -14,6 +14,7 @@ import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { requirePermission } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
 import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
@@ -143,6 +144,9 @@ export async function getWorkdayExceptions(
 ): Promise<WorkdayExceptionData[]> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
+  if (!isInternalStaffRole(user.role) && user.role !== "developer") {
+    return []
+  }
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()

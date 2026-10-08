@@ -38,6 +38,7 @@ export type SearchableComboboxProps = {
   readonly searchPlaceholder?: string
   readonly emptyMessage?: string
   readonly groupHeading?: string
+  readonly placeholderClassName?: string
   readonly disabled?: boolean
   readonly required?: boolean
   readonly className?: string
@@ -53,6 +54,7 @@ export function SearchableCombobox({
   searchPlaceholder = "Search...",
   emptyMessage = "No matching options.",
   groupHeading,
+  placeholderClassName,
   disabled = false,
   required = false,
   className,
@@ -86,7 +88,8 @@ export function SearchableCombobox({
           <span
             className={cn(
               "truncate",
-              selectedOption === null && "text-muted-foreground"
+              selectedOption === null &&
+                (placeholderClassName ?? "text-muted-foreground")
             )}
           >
             {selectedOption?.selectedLabel ??

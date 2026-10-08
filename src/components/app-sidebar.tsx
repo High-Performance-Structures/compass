@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   IconAddressBook,
   IconArchive,
@@ -30,6 +31,7 @@ import {
   IconShieldCheck,
   IconShoppingCart,
   IconShoppingCartQuestion,
+  IconSettings,
   IconTemplate,
   IconUsers,
   IconVideo,
@@ -45,10 +47,13 @@ import {
 } from "@/components/nav-main"
 import { NavFiles } from "@/components/nav-files"
 import { NavConversations } from "@/components/nav-conversations"
-import { NavUser } from "@/components/nav-user"
+import { SidebarCommunicationDock, SidebarDeskPhoto } from "@/components/nav-user"
+import { SidebarWorkspaceDrawer } from "@/components/sidebar-workspace-drawer"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
+import { ReleaseStageLabel } from "@/components/release-stage-label"
+import { HelpDrawer } from "@/components/help/help-drawer"
 import {
   useActiveProject,
   useProjectList,
@@ -67,9 +72,6 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
 
@@ -110,6 +112,7 @@ interface SidebarNavLinkSource {
   readonly internalOnly?: boolean
   readonly adminOnly?: boolean
   readonly executiveAdminOnly?: boolean
+  readonly projectArchiveOnly?: boolean
   readonly greetingCardsOnly?: boolean
 }
 
@@ -349,7 +352,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
     ],
   },
   {
-    title: "Communication",
+    title: "Conversations & Requests",
     icon: IconMessageCircle,
     items: [
       {
@@ -367,7 +370,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
     ],
   },
   {
-    title: "Office",
+    title: "Office Tools",
     icon: IconActivity,
     items: [
       {
@@ -399,7 +402,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
       },
       {
         kind: "subgroup",
-        title: "Executive Admin",
+        title: "Restricted Workflows",
         icon: IconShieldCheck,
         items: [
           {
@@ -414,7 +417,7 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
             title: "Project Archive",
             url: "/dashboard/executive-admin/project-archive",
             icon: IconArchive,
-            executiveAdminOnly: true,
+            projectArchiveOnly: true,
           },
         ],
       },
@@ -435,11 +438,13 @@ function isNavLinkVisible(
   canManageFeedback: boolean,
   canUseExecutiveAdmin: boolean,
   canPrepareGreetingCards: boolean,
+  canViewProjectArchive: boolean,
 ): boolean {
   return (
     (!item.internalOnly || canViewActivity) &&
     (!item.adminOnly || canManageFeedback) &&
     (!item.executiveAdminOnly || canUseExecutiveAdmin) &&
+    (!item.projectArchiveOnly || canViewProjectArchive) &&
     (!item.greetingCardsOnly || canPrepareGreetingCards)
   )
 }
@@ -484,6 +489,7 @@ function buildGroupChildren({
   canManageFeedback,
   canUseExecutiveAdmin,
   canPrepareGreetingCards,
+  canViewProjectArchive,
 }: {
   readonly items: ReadonlyArray<SidebarNavGroupChildSource>
   readonly activeProjectId: string | null
@@ -492,6 +498,7 @@ function buildGroupChildren({
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
   readonly canPrepareGreetingCards: boolean
+  readonly canViewProjectArchive: boolean
 }): ReadonlyArray<NavGroupChildItem> {
   const children: NavGroupChildItem[] = []
 
@@ -504,6 +511,7 @@ function buildGroupChildren({
           canManageFeedback,
           canUseExecutiveAdmin,
           canPrepareGreetingCards,
+          canViewProjectArchive,
         )
       ) {
         children.push(
@@ -532,6 +540,7 @@ function buildGroupChildren({
           canManageFeedback,
           canUseExecutiveAdmin,
           canPrepareGreetingCards,
+          canViewProjectArchive,
         )
       ) {
         subgroupLinks.push(
@@ -564,6 +573,7 @@ export function buildMainNavigation({
   canManageFeedback,
   canUseExecutiveAdmin,
   canPrepareGreetingCards = false,
+  canViewProjectArchive = canUseExecutiveAdmin,
 }: {
   readonly activeProjectId: string | null
   readonly projectConversationReturnHref?: string | null
@@ -571,6 +581,7 @@ export function buildMainNavigation({
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
   readonly canPrepareGreetingCards?: boolean
+  readonly canViewProjectArchive?: boolean
 }): ReadonlyArray<NavItem> {
   return NAV_GROUPS.flatMap((group) => {
     const items = buildGroupChildren({
@@ -581,6 +592,7 @@ export function buildMainNavigation({
       canManageFeedback,
       canUseExecutiveAdmin,
       canPrepareGreetingCards,
+      canViewProjectArchive,
     })
 
     return items.length > 0
@@ -610,12 +622,14 @@ function SidebarNav({
   canManageFeedback,
   canUseExecutiveAdmin,
   canPrepareGreetingCards,
+  canViewProjectArchive,
 }: {
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
   readonly canUseExecutiveAdmin: boolean
   readonly canPrepareGreetingCards: boolean
+  readonly canViewProjectArchive: boolean
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -645,6 +659,7 @@ function SidebarNav({
     canManageFeedback,
     canUseExecutiveAdmin,
     canPrepareGreetingCards,
+    canViewProjectArchive,
   })
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
@@ -662,7 +677,7 @@ function SidebarNav({
     ...staffMessageDeskNav,
     {
       kind: "group",
-      title: "Planning",
+      title: "Tasks & Schedule",
       icon: IconCalendarStats,
       items: projectScopedPlanningNav,
     },
@@ -687,13 +702,14 @@ function SidebarNav({
           items={navMain}
           groupHeaders={{
             Projects: (
-              <div className="px-2 pt-1 pb-2">
+              <div className="px-2 py-1">
                 <ProjectQuickSwitcher
                   projects={projects}
                   currentProjectId={activeProjectId}
                   targetSection={projectTargetSection}
-                  placeholder="Select project..."
-                  className="h-9 w-full border-sidebar-border/70 bg-sidebar-accent/35 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  placeholder="Choose a project"
+                  placeholderClassName="text-sidebar-foreground/90"
+                  className="h-8 w-full cursor-pointer border-sidebar-foreground/30 bg-sidebar-accent/35 px-2 text-sidebar-foreground shadow-sm transition-colors hover:border-sidebar-foreground/50 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:border-sidebar-ring focus-visible:ring-sidebar-ring/50 disabled:cursor-not-allowed"
                 />
               </div>
             ),
@@ -713,6 +729,10 @@ export function AppSidebar({
   canManageFeedback = false,
   canUseExecutiveAdmin = false,
   canPrepareGreetingCards = false,
+  canViewProjectArchive = false,
+  canUseOfficeTalk = false,
+  canUseDirectMessages = false,
+  canViewHelp = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser | null
@@ -723,9 +743,13 @@ export function AppSidebar({
   readonly canManageFeedback?: boolean
   readonly canUseExecutiveAdmin?: boolean
   readonly canPrepareGreetingCards?: boolean
+  readonly canViewProjectArchive?: boolean
+  readonly canUseOfficeTalk?: boolean
+  readonly canUseDirectMessages?: boolean
+  readonly canViewHelp?: boolean
 }) {
-  const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
+  const { state, isMobile, setOpen } = useSidebar()
   const pathname = usePathname()
 
   if (pathname.startsWith("/dashboard/field")) return null
@@ -742,23 +766,36 @@ export function AppSidebar({
           canManageFeedback={canManageFeedback}
           canUseExecutiveAdmin={canUseExecutiveAdmin}
           canPrepareGreetingCards={canPrepareGreetingCards}
+          canViewProjectArchive={canViewProjectArchive}
         />
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border/60">
-        {isMobile && (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={openFeedbackDialog}
-              >
-                <IconMessageCircle />
+      <SidebarFooter className="gap-0 p-0!">
+        <SidebarWorkspaceDrawer
+          collapsed={!isMobile && state === "collapsed"}
+          onExpand={() => setOpen(true)}
+          preferenceKey={user ? `compass-sidebar-drawer-pinned:${user.email}` : null}
+          communicationDock={<SidebarCommunicationDock canUseOfficeTalk={canUseOfficeTalk} canUseDirectMessages={canUseDirectMessages} />}
+        >
+          <div className="flex items-center gap-2 px-1">
+            <SidebarDeskPhoto user={user} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              {canViewHelp ? <HelpDrawer
+                triggerLabel="Help"
+                triggerClassName="flex h-6 w-full items-center justify-start gap-1.5 rounded-md px-1 text-xs font-normal text-sidebar-foreground hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring [&>svg]:size-3.5"
+              /> : null}
+              <button type="button" onClick={openFeedbackDialog} className="flex h-6 items-center gap-1.5 rounded-md px-1 text-xs hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+                <IconMessageReport className="size-3.5 shrink-0" aria-hidden="true" />
                 <span>Feedback</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
+              </button>
+              <Link href="/dashboard/settings" className="flex h-6 items-center gap-1.5 rounded-md px-1 text-xs hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+                <IconSettings className="size-3.5 shrink-0" aria-hidden="true" />
+                <span>Settings</span>
+              </Link>
+            </div>
+          </div>
+        </SidebarWorkspaceDrawer>
         {channelId !== null && <VoicePanel />}
-        <NavUser user={user} />
+        <ReleaseStageLabel />
       </SidebarFooter>
     </Sidebar>
   )

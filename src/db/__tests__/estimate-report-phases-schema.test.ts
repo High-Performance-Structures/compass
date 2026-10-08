@@ -24,7 +24,7 @@ describe("custom estimate report phase persistence", () => {
     try {
       db.exec(`CREATE TABLE project_estimate_lines (${columns.map((column) => `${column} TEXT`).join(", ")})`)
       db.prepare(`INSERT INTO project_estimate_lines (${columns.join(", ")}) SELECT ${projection}`).run()
-      expect(db.prepare("SELECT template_line_id, report_phase_id, division_code FROM project_estimate_lines").get()).toMatchObject({ template_line_id: null, report_phase_id: null, division_code: "sample" })
+      expect(db.prepare("SELECT template_line_id, assembly_id, report_phase_id, division_code FROM project_estimate_lines").get()).toMatchObject({ template_line_id: null, assembly_id: null, report_phase_id: null, division_code: "sample" })
     } finally { db.close() }
   })
 
