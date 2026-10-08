@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  isMappedDepartment,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
@@ -42,9 +43,26 @@ describe("phaseForJobStatus", () => {
     }
   })
 
+  it("leaves material order statuses off the map", () => {
+    for (const id of ["ordered", "partial_order", "price_sheet_sent", "shipping_tbd", "awaiting_payment"]) {
+      expect(phaseForJobStatus(id, null)).toBeNull()
+    }
+  })
+
   it("matches custom statuses by their label", () => {
     expect(phaseForJobStatus("custom-123", "under construction")).toBe("construction")
     expect(phaseForJobStatus("custom-456", "Office remodel")).toBeNull()
+  })
+})
+
+describe("isMappedDepartment", () => {
+  it("keeps HPS and Open Range construction and design jobs and leaves Nu-Tech off", () => {
+    expect(isMappedDepartment({ department: null, projectId: "p1", projectNumber: "H-430-1900" })).toBe(true)
+    expect(isMappedDepartment({ department: null, projectId: "p2", projectNumber: "O-202-595" })).toBe(true)
+    expect(isMappedDepartment({ department: null, projectId: "p3", projectNumber: "D-18-00" })).toBe(true)
+    expect(isMappedDepartment({ department: null, projectId: "p4", projectNumber: "N-830-8220" })).toBe(false)
+    expect(isMappedDepartment({ department: "N", projectId: "p5", projectNumber: "H-1" })).toBe(false)
+    expect(isMappedDepartment({ department: null, projectId: "p6", projectNumber: null })).toBe(true)
   })
 })
 

@@ -9,9 +9,14 @@ block, with a side panel of quick information and links into each job.
   which reuses `getProjects()` for visibility, so the map never shows a job the
   person cannot open. Schedule progress, past-due and stalled counts are
   aggregated in SQL.
+- **Scope**: HPS and Open Range (construction and design) projects. Nu-Tech
+  jobs are left off, using the project department or job-number prefix
+  (`isMappedDepartment`).
 - **Phase** comes from the job status (`phaseForJobStatus` in
-  `src/lib/portfolio-map/model.ts`). Warranty, complete, closed, refused and
-  inactive jobs are not shown. Custom statuses match a standard status by label.
+  `src/lib/portfolio-map/model.ts`). Warranty, complete, closed, refused,
+  inactive and material-order statuses (ordered, partial order, price sheet
+  sent, shipping TBD, awaiting payment) are not shown. Custom statuses match a
+  standard status by label.
 - **Location** is town-level, without geocoding: the public city field, then
   the address, then a trailing "- Town" in the project name, matched against a
   table of Colorado places (`colorado-places.json`, from OpenStreetMap). Jobs

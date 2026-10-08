@@ -1,4 +1,5 @@
 import placesData from "./colorado-places.json"
+import { resolvedProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 
 export const PORTFOLIO_PHASES = [
@@ -32,8 +33,10 @@ export type PortfolioMapJob = {
 }
 
 /**
- * Job statuses grouped into the map's pipeline phases. Statuses not listed
- * (warranty, complete, closed, refused, inactive) are not shown on the map.
+ * Job statuses grouped into the map's pipeline phases. Statuses not listed are
+ * not shown: warranty, complete, closed, refused, inactive, and the material
+ * order statuses (ordered, partial order, price sheet sent, shipping TBD,
+ * awaiting payment).
  */
 const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   intake: "estimating",
@@ -43,7 +46,6 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   estimating: "estimating",
   estimate_sent: "estimating",
   takeoff: "estimating",
-  price_sheet_sent: "estimating",
   design_proposal: "design",
   design_proposal_sent: "design",
   design_proposal_signed: "design",
@@ -58,14 +60,22 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   awarded: "precon",
   awaiting_funding: "precon",
   awaiting_groundbreaking: "precon",
-  ordered: "precon",
-  partial_order: "precon",
-  shipping_tbd: "precon",
-  awaiting_payment: "precon",
   bracing_out: "construction",
   under_construction: "construction",
   current: "construction",
   punchlist: "closeout",
+}
+
+/**
+ * The map covers HPS and Open Range (construction and design) projects;
+ * Nu-Tech jobs are left off. Projects without a recognizable department stay.
+ */
+export function isMappedDepartment(project: {
+  readonly department: string | null
+  readonly projectId: string
+  readonly projectNumber: string | null
+}): boolean {
+  return resolvedProjectDepartment(project) !== "N"
 }
 
 function normalizeLabel(value: string): string {

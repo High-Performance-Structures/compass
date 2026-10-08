@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
+  isMappedDepartment,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
@@ -32,11 +33,11 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const user = await getCurrentUser()
     if (!user?.organizationId) return EMPTY
     const visible = await getProjects()
-    const phased = visible.flatMap((project) => {
+    const candidates = visible.flatMap((project) => {
       const phase = phaseForJobStatus(project.jobStatusId, project.jobStatusLabel)
       return phase ? [{ project, phase }] : []
     })
-    if (phased.length === 0) return EMPTY
+    if (candidates.length === 0) return EMPTY
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return EMPTY
@@ -48,6 +49,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
       db
         .select({
           id: projects.id,
+          department: projects.department,
           address: projects.address,
           publicLocationCity: projects.publicLocationCity,
         })
@@ -84,6 +86,13 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     ])
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
+    const phased = candidates.filter(({ project }) =>
+      isMappedDepartment({
+        department: locationById.get(project.id)?.department ?? null,
+        projectId: project.id,
+        projectNumber: project.projectNumber,
+      }),
+    )
     const statsById = new Map(taskStats.map((row) => [row.projectId, row]))
     const nextById = new Map<string, { readonly title: string; readonly startDate: string }>()
     for (const task of upcoming) {
