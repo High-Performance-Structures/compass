@@ -104,7 +104,7 @@ function NotificationsList({
                     <p className="truncate text-sm font-medium">
                       {item.title}
                     </p>
-                    <span className="text-[11px] font-medium text-primary">
+                    <span className="text-xs font-medium text-primary">
                       {notificationActionLabel(item)}
                     </span>
                   </div>
@@ -114,7 +114,7 @@ function NotificationsList({
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{relativeTime(item.createdAt)}</span>
                     {!item.readAt && (
-                      <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
                         New
                       </span>
                     )}
@@ -216,6 +216,8 @@ export function NotificationsPopover({
     mountedRef.current = true
     void loadNotifications(true)
     const intervalId = window.setInterval(() => {
+      // Hidden tabs skip the poll; returning to the tab refreshes immediately.
+      if (document.visibilityState !== "visible") return
       void loadNotifications(false)
     }, 15_000)
     function refreshWhenVisible(): void {
@@ -300,7 +302,7 @@ export function NotificationsPopover({
         <IconBell className="size-4" />
       </BadgeIndicator>
       {unreadCount > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground">
+        <span className="absolute -right-0.5 -top-0.5 rounded-full bg-primary px-1 text-xs font-semibold leading-4 text-primary-foreground">
           {unreadCount > 9 ? "9+" : unreadCount}
         </span>
       )}

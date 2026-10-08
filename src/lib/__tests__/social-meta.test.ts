@@ -169,7 +169,7 @@ describe("Meta Page discovery", () => {
         return Response.json({
           data: [{
             id: "page-hps",
-            name: "High Performance Structures, Inc.",
+            name: "High Performance Structures Inc.",
             access_token: "hps-page-token",
             instagram_business_account: {
               id: "instagram-hps",
@@ -207,7 +207,7 @@ describe("Meta Page discovery", () => {
 
     expect(candidates).toEqual([{
       pageId: "page-hps",
-      pageName: "High Performance Structures, Inc.",
+      pageName: "High Performance Structures Inc.",
       pageAccessToken: "hps-page-token",
       instagramAccountId: "instagram-hps",
       instagramUsername: "hpscolorado",

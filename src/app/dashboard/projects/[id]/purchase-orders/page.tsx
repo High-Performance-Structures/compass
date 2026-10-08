@@ -245,7 +245,7 @@ function PurchaseOrderCard({
         </div>
         <p className="mt-3 text-sm font-medium">{formatPurchaseOrderMoney(order.amount)}</p>
         {order.vendorAcknowledgement && (
-          <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+          <div className="mt-3 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
             <p className="font-medium">
               Vendor acknowledged receipt · {order.vendorAcknowledgement.responderName}
             </p>

@@ -489,7 +489,7 @@ function ProviderConfigSection({
       </div>
 
       {/* description */}
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {info.description}
       </p>
 
@@ -497,20 +497,20 @@ function ProviderConfigSection({
       {activeType === "anthropic-oauth" && (
         <div className="space-y-2">
           {/* Help text */}
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Requires an active Claude Pro/Max subscription. Uses your Claude Code CLI credentials.
             Alternatively, use &quot;Anthropic (API Key)&quot; with an API key from console.anthropic.com.
           </p>
 
           {oauth.step === "connected" && (
-            <div className="flex items-center justify-between rounded-md border border-green-500/20 bg-green-500/5 px-3 py-2">
+            <div className="flex items-center justify-between rounded-md border border-success/20 bg-success/5 px-3 py-2">
               <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500" />
-                <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                <div className="h-2 w-2 rounded-full bg-success" />
+                <span className="text-xs font-medium text-success">
                   Connected
                 </span>
                 {oauth.expiresAt && (
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     expires{" "}
                     {new Date(
                       oauth.expiresAt
@@ -543,7 +543,7 @@ function ProviderConfigSection({
 
           {oauth.step === "connecting" && (
             <div className="space-y-2">
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Authorize in the browser tab that opened,
                 then paste the code below.
               </p>
@@ -593,7 +593,7 @@ function ProviderConfigSection({
           <div className="space-y-2">
             {info.needsApiKey && (
               <div className="space-y-1">
-                <Label className="text-[11px]">
+                <Label className="text-xs">
                   API Key
                 </Label>
                 <div className="relative">
@@ -640,7 +640,7 @@ function ProviderConfigSection({
 
             {info.needsBaseUrl && (
               <div className="space-y-1">
-                <Label className="text-[11px]">
+                <Label className="text-xs">
                   Base URL
                 </Label>
                 <Input
@@ -936,7 +936,7 @@ function ModelPicker({
                         </div>
                         <Badge
                           variant="secondary"
-                          className="text-[10px] px-1.5 py-0 h-4 mt-1 font-normal"
+                          className="text-xs px-1.5 py-0 h-4 mt-1 font-normal"
                         >
                           {formatOutputCost(
                             model.completionCost
@@ -1002,7 +1002,7 @@ function UsageSection({
 
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-md border p-2.5">
-          <p className="text-muted-foreground text-[10px]">
+          <p className="text-muted-foreground text-xs">
             Requests
           </p>
           <p className="text-lg font-semibold">
@@ -1010,7 +1010,7 @@ function UsageSection({
           </p>
         </div>
         <div className="rounded-md border p-2.5">
-          <p className="text-muted-foreground text-[10px]">
+          <p className="text-muted-foreground text-xs">
             Tokens
           </p>
           <p className="text-lg font-semibold">
@@ -1018,7 +1018,7 @@ function UsageSection({
           </p>
         </div>
         <div className="rounded-md border p-2.5">
-          <p className="text-muted-foreground text-[10px]">
+          <p className="text-muted-foreground text-xs">
             Est. Cost
           </p>
           <p className="text-lg font-semibold">
@@ -1029,7 +1029,7 @@ function UsageSection({
 
       {metrics.dailyBreakdown.length > 0 && (
         <div className="rounded-md border p-3">
-          <p className="text-muted-foreground text-[10px] mb-2">
+          <p className="text-muted-foreground text-xs mb-2">
             Daily token usage
           </p>
           <ChartContainer
@@ -1050,14 +1050,14 @@ function UsageSection({
                 tickFormatter={(v: string) =>
                   v.slice(5)
                 }
-                className="text-[10px]"
+                className="text-xs"
               />
               <YAxis
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={formatTokenCount}
                 width={40}
-                className="text-[10px]"
+                className="text-xs"
               />
               <ChartTooltip
                 content={<ChartTooltipContent />}
@@ -1074,7 +1074,7 @@ function UsageSection({
 
       {metrics.modelBreakdown.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-muted-foreground text-[10px]">
+          <p className="text-muted-foreground text-xs">
             By model
           </p>
           <div className="space-y-1">
@@ -1086,7 +1086,7 @@ function UsageSection({
                 <span className="truncate max-w-[60%]">
                   {m.modelId}
                 </span>
-                <span className="text-muted-foreground text-[10px] shrink-0">
+                <span className="text-muted-foreground text-xs shrink-0">
                   {m.requests} req &middot;{" "}
                   {formatTokenCount(m.tokens)} tok
                   &middot; ${m.cost}
@@ -1241,7 +1241,7 @@ export function AIModelTab() {
             </span>
             <Badge
               variant="secondary"
-              className="text-[10px] px-1.5 py-0"
+              className="text-xs px-1.5 py-0"
             >
               {activeConfig.provider}
             </Badge>
@@ -1292,7 +1292,7 @@ export function AIModelTab() {
                   )
                 }
               />
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>$0</span>
                 <span>
                   {costCeiling !== null &&

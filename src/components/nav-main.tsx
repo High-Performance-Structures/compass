@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconChevronRight, type Icon } from "@tabler/icons-react"
+import type { Icon } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
@@ -22,6 +22,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
+
+
+// The full-width menu is text only; icons appear in the collapsed rail, where
+// they are the only thing that can show. Groups open without a caret: their
+// items are indented along the submenu guide line.
+const COLLAPSED_ONLY_ICON = "hidden group-data-[collapsible=icon]:block"
 
 export interface NavLinkItem {
   readonly kind: "link"
@@ -137,7 +143,7 @@ function NavLink({
   )
   const content = (
     <>
-      {item.icon && <item.icon />}
+      {item.icon && !nested ? <item.icon className={COLLAPSED_ONLY_ICON} /> : null}
       <span>{item.title}</span>
     </>
   )
@@ -231,6 +237,8 @@ function AnimatedCollapsibleContent({
     animation.onfinish = () => {
       if (cancelled) return
       node.style.height = open ? "auto" : "0px"
+      // Release the animated height so nested sections can grow the open menu.
+      animation.cancel()
     }
 
     return () => {
@@ -294,9 +302,8 @@ function NavSubmenu({
               if (state === "collapsed") setOpen(true)
             }}
           >
-            <item.icon />
+            <item.icon className={COLLAPSED_ONLY_ICON} />
             <span>{item.title}</span>
-            <IconChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <AnimatedCollapsibleContent open={open}>
@@ -350,9 +357,7 @@ function NavNestedSubmenu({
         <CollapsibleTrigger asChild>
           <SidebarMenuSubButton asChild isActive={hasActiveItem}>
             <button type="button" aria-label={item.title}>
-              <item.icon />
               <span>{item.title}</span>
-              <IconChevronRight className="ml-auto transition-transform group-data-[state=open]/nested-collapsible:rotate-90" />
             </button>
           </SidebarMenuSubButton>
         </CollapsibleTrigger>
@@ -367,9 +372,8 @@ function NavNestedSubmenu({
                       disabled
                       aria-label={`${child.title} — ${child.note}`}
                     >
-                      <child.icon />
                       <span>{child.title}</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-sidebar-foreground/60">
+                      <span className="ml-auto shrink-0 text-xs text-sidebar-foreground/60">
                         {child.note}
                       </span>
                     </button>

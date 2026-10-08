@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { useRouter } from "next/navigation"
 import {
   saveSelectionRequest,
@@ -15,6 +15,13 @@ import type {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +49,7 @@ export function SelectionRequestForm({
     [error, setError] = React.useState<string | null>(null)
   const {
     register,
+    control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<SelectionRequestInput>({
@@ -71,13 +79,21 @@ export function SelectionRequestForm({
     >
       <label className="grid gap-1 text-sm">
         Request type
-        <select
-          className="h-9 rounded-md border bg-background px-2"
-          {...register("kind")}
-        >
-          <option value="pricing">Request pricing</option>
-          <option value="alternative">Propose an alternative</option>
-        </select>
+        <Controller
+          control={control}
+          name="kind"
+          render={({ field }) => (
+            <Select value={field.value} onValueChange={field.onChange}>
+              <SelectTrigger aria-label="Request type" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pricing">Request pricing</SelectItem>
+                <SelectItem value="alternative">Propose an alternative</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+        />
       </label>
       <label className="grid gap-1 text-sm">
         What are you considering?

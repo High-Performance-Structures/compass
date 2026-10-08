@@ -240,7 +240,7 @@ export default async function EstimateTemplatePage({
                             </div>
                           )}
                           {normalized.templateReview && (
-                            <div className="mt-4 border-l-2 border-amber-500 px-3 py-2 text-sm">
+                            <div className="mt-4 border-l-2 border-warning px-3 py-2 text-sm">
                               <p className="font-medium">Review before sending</p>
                               {normalized.templateReview.unresolvedPlaceholders.length > 0 && (
                                 <p className="mt-1 text-muted-foreground">

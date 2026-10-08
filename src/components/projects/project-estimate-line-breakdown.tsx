@@ -31,13 +31,6 @@ import {
 } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
 
 function money(cents: number): string {
@@ -210,12 +203,14 @@ export function ProjectEstimateLineBreakdown({
     // The shared editor follows the breakdown list, so bring it into view after
     // React populates it with the selected item's values.
     window.requestAnimationFrame(() => {
-      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-      editorRef.current
-        ?.querySelector<HTMLInputElement>(
-          `#breakdown-description-${line.id}`
-        )
-        ?.focus({ preventScroll: true })
+      const description = editorRef.current
+        ?.querySelector<HTMLInputElement>(`#breakdown-description-${line.id}`)
+      // Reveal the focused field even when the form exceeds a mobile viewport.
+      ;(description ?? editorRef.current)?.scrollIntoView({
+        behavior: "smooth",
+        block: description ? "center" : "start",
+      })
+      description?.focus({ preventScroll: true })
     })
   }
 
@@ -380,8 +375,9 @@ export function ProjectEstimateLineBreakdown({
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1.5">
-                <Label>CSI division</Label>
-                <Select
+                <Label htmlFor="breakdown-division">CSI division</Label>
+                <SearchableCombobox
+                  id="breakdown-division"
                   value={draft.divisionCode}
                   onValueChange={(value) =>
                     setDraft({
@@ -391,18 +387,16 @@ export function ProjectEstimateLineBreakdown({
                       description: "",
                     })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose division first" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {divisions.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={divisions.map(([value, label]) => ({
+                    value,
+                    label,
+                    keywords: value,
+                  }))}
+                  ariaLabel="Breakdown CSI division"
+                  placeholder="Choose division first"
+                  searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
+                  emptyMessage="No matching divisions."
+                />
               </div>
               <div className="space-y-1.5 md:col-span-1 xl:col-span-3">
                 <Label>Cost code</Label>

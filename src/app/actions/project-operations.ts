@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectSelectionProcurementLinks } from "@/db/schema-selection-decisions"
+import { chunkD1Values } from "@/lib/d1-query"
 import { specificationJson } from "@/lib/selections/decisions"
 import {
   projectFinishSelections,
@@ -1194,21 +1195,21 @@ export async function getProjectTodos(
       )
     ),
   ]
-  const scheduleTaskIds = new Set(
-    candidateScheduleTaskIds.length === 0
-      ? []
-      : (
-          await db
-            .select({ id: scheduleTasks.id })
-            .from(scheduleTasks)
-            .where(
-              and(
-                eq(scheduleTasks.projectId, projectId),
-                inArray(scheduleTasks.id, candidateScheduleTaskIds)
-              )
-            )
-        ).map((task) => task.id)
-  )
+  // Large imported jobs link hundreds of to-dos; query in chunks to stay
+  // under D1's 100-bound-parameter limit.
+  const scheduleTaskIds = new Set<string>()
+  for (const ids of chunkD1Values(candidateScheduleTaskIds)) {
+    const rows = await db
+      .select({ id: scheduleTasks.id })
+      .from(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+    for (const row of rows) scheduleTaskIds.add(row.id)
+  }
 
   return operations.map((operation) =>
     toOperationItem(operation, scheduleTaskIds)
@@ -1459,19 +1460,23 @@ export async function queueProjectOperationsForSageSync(
     }
 
     const now = new Date().toISOString()
-    await db
-      .update(projectOperations)
-      .set({
-        syncStatus: "queued_sage",
-        sageWriteStatus: "queued",
-        updatedAt: now,
-      })
-      .where(inArray(projectOperations.id, readyIds))
+    // Large jobs can have hundreds of ready items; stay under D1's
+    // 100-bound-parameter limit.
+    for (const ids of chunkD1Values(readyIds)) {
+      await db
+        .update(projectOperations)
+        .set({
+          syncStatus: "queued_sage",
+          sageWriteStatus: "queued",
+          updatedAt: now,
+        })
+        .where(inArray(projectOperations.id, ids))
 
-    await db
-      .update(projectPurchaseOrderLines)
-      .set({ syncStatus: "queued_sage", updatedAt: now })
-      .where(inArray(projectPurchaseOrderLines.operationId, readyIds))
+      await db
+        .update(projectPurchaseOrderLines)
+        .set({ syncStatus: "queued_sage", updatedAt: now })
+        .where(inArray(projectPurchaseOrderLines.operationId, ids))
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
@@ -1505,19 +1510,19 @@ export async function getProjectPurchaseOrders(
 
   if (rows.length === 0) return []
 
-  const lines = await db
-    .select()
-    .from(projectPurchaseOrderLines)
-    .where(
-      inArray(
-        projectPurchaseOrderLines.operationId,
-        rows.map((row) => row.id)
-      )
+  const lines: (typeof projectPurchaseOrderLines.$inferSelect)[] = []
+  for (const ids of chunkD1Values(rows.map((row) => row.id))) {
+    lines.push(
+      ...(await db
+        .select()
+        .from(projectPurchaseOrderLines)
+        .where(inArray(projectPurchaseOrderLines.operationId, ids))
+        .orderBy(
+          asc(projectPurchaseOrderLines.operationId),
+          asc(projectPurchaseOrderLines.lineNumber)
+        ))
     )
-    .orderBy(
-      asc(projectPurchaseOrderLines.operationId),
-      asc(projectPurchaseOrderLines.lineNumber)
-    )
+  }
 
   const [contactRows, vendorRows] = await Promise.all([
     db

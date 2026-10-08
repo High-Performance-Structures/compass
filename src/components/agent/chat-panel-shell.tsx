@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import dynamic from "next/dynamic"
 import { usePathname } from "next/navigation"
 import { MessageSquare, PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -8,12 +9,26 @@ import { cn } from "@/lib/utils"
 import {
   useChatPanel,
 } from "./chat-provider"
-import { ChatView } from "./chat-view"
 import { isNative } from "@/lib/native/platform"
+import { prefetchWhenIdle } from "@/lib/client/prefetch-when-idle"
+
+// The chat view brings markdown, code highlighting, and diagram rendering.
+// Load it on first open instead of with every dashboard page.
+const loadChatView = () => import("./chat-view")
+const ChatView = dynamic(
+  () => loadChatView().then((module) => module.ChatView),
+  { ssr: false }
+)
 
 export function ChatPanelShell() {
   const pathname = usePathname()
   const { isOpen, close, toggle } = useChatPanel()
+  // Stay mounted after the first open so the closing animation keeps its content.
+  const [hasOpened, setHasOpened] = useState(isOpen)
+  useEffect(() => {
+    if (isOpen) setHasOpened(true)
+  }, [isOpen])
+  useEffect(() => prefetchWhenIdle(loadChatView), [])
 
   // resize state (panel mode only)
   const [panelWidth, setPanelWidth] = useState(420)
@@ -155,7 +170,7 @@ export function ChatPanelShell() {
           <PanelRightClose className="size-4" />
         </Button>
 
-        <ChatView variant="panel" />
+        {hasOpened ? <ChatView variant="panel" /> : null}
       </div>
 
       {isOpen && (

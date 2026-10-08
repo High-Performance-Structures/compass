@@ -161,7 +161,7 @@ export default function Home(): React.JSX.Element {
 					/>
 					<span
 						className={
-							"text-[11px] font-medium uppercase " +
+							"text-xs font-medium uppercase " +
 							"tracking-[0.3em] text-[#E8E4DC]"
 						}
 					>
@@ -174,7 +174,7 @@ export default function Home(): React.JSX.Element {
 						target="_blank"
 						rel="noopener noreferrer"
 						className={
-							"hidden items-center gap-2 text-[11px] " +
+							"hidden items-center gap-2 text-xs " +
 							"uppercase tracking-[0.15em] " +
 							"text-[#E8E4DC]/35 transition-colors " +
 							"duration-300 hover:text-[#E8E4DC]/70 " +
@@ -190,7 +190,7 @@ export default function Home(): React.JSX.Element {
 					<Link
 						href="/dashboard"
 						className={
-							"text-[11px] uppercase " +
+							"text-xs uppercase " +
 							"tracking-[0.2em] " +
 							"text-[#E8E4DC]/50 " +
 							"transition-colors duration-300 " +
@@ -342,7 +342,7 @@ export default function Home(): React.JSX.Element {
 									key={d}
 									className={
 										"absolute font-mono " +
-										"text-[10px] " +
+										"text-xs " +
 										"tracking-[0.2em] " +
 										"text-[#E8E4DC]/20"
 									}
@@ -369,7 +369,7 @@ export default function Home(): React.JSX.Element {
 						className={
 							"anim-up mb-6 inline-flex " +
 							"items-center gap-2 font-mono " +
-							"text-[11px] uppercase " +
+							"text-xs uppercase " +
 							"tracking-[0.3em] text-[#00C896] " +
 							"md:mb-8"
 						}
@@ -485,7 +485,7 @@ export default function Home(): React.JSX.Element {
 					>
 						<span
 							className={
-								"text-[10px] uppercase " +
+								"text-xs uppercase " +
 								"tracking-[0.2em] " +
 								"text-[#E8E4DC]/25"
 							}
@@ -510,7 +510,7 @@ export default function Home(): React.JSX.Element {
 								/>
 								<span
 									className={
-										"text-[10px] " +
+										"text-xs " +
 										"uppercase " +
 										"tracking-[0.1em]"
 									}
@@ -537,7 +537,7 @@ export default function Home(): React.JSX.Element {
 				>
 					<p
 						className={
-							"mb-4 font-mono text-[11px] " +
+							"mb-4 font-mono text-xs " +
 							"uppercase tracking-[0.3em] " +
 							"text-[#00C896]/70"
 						}
@@ -615,7 +615,7 @@ export default function Home(): React.JSX.Element {
 									className={
 										"mb-4 block " +
 										"font-mono " +
-										"text-[11px] " +
+										"text-xs " +
 										"text-[#E8E4DC]/15"
 									}
 								>
@@ -698,7 +698,7 @@ export default function Home(): React.JSX.Element {
 					>
 						<p
 							className={
-								"mb-4 font-mono text-[11px] " +
+								"mb-4 font-mono text-xs " +
 								"uppercase tracking-[0.3em] " +
 								"text-[#00C896]/70"
 							}
@@ -815,7 +815,7 @@ export default function Home(): React.JSX.Element {
 											key={m}
 											className={
 												"font-mono " +
-												"text-[9px] " +
+												"text-xs " +
 												"uppercase " +
 												"tracking-wider " +
 												"text-[#E8E4DC]/15"
@@ -850,7 +850,7 @@ export default function Home(): React.JSX.Element {
 											"w-20 shrink-0 " +
 											"text-right " +
 											"font-mono " +
-											"text-[10px] " +
+											"text-xs " +
 											"text-[#E8E4DC]/25"
 										}
 									>
@@ -934,7 +934,7 @@ export default function Home(): React.JSX.Element {
 										"left-1/2 " +
 										"-translate-x-1/2 " +
 										"font-mono " +
-										"text-[8px] " +
+										"text-xs " +
 										"uppercase " +
 										"text-[#00C896]/50"
 									}
@@ -988,7 +988,7 @@ export default function Home(): React.JSX.Element {
 					<div className="relative max-w-2xl">
 						<p
 							className={
-								"mb-4 font-mono text-[11px] " +
+								"mb-4 font-mono text-xs " +
 								"uppercase tracking-[0.3em] " +
 								"text-[#00C896]/60"
 							}
@@ -1115,7 +1115,7 @@ export default function Home(): React.JSX.Element {
 			>
 				<span
 					className={
-						"text-[10px] uppercase " +
+						"text-xs uppercase " +
 						"tracking-[0.15em] " +
 						"text-[#E8E4DC]/25"
 					}
@@ -1124,7 +1124,7 @@ export default function Home(): React.JSX.Element {
 				</span>
 				<div
 					className={
-						"flex items-center gap-4 text-[10px] " +
+						"flex items-center gap-4 text-xs " +
 						"uppercase tracking-[0.15em] text-[#E8E4DC]/35"
 					}
 				>

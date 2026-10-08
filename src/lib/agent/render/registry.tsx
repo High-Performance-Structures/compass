@@ -94,27 +94,27 @@ function badgeStatusColor(status: string): string {
     case "completed":
     case "paid":
     case "active":
-      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+      return "bg-success/10 text-success  "
     case "in progress":
     case "in_progress":
     case "sent":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+      return "bg-info/10 text-info  "
     case "pending":
     case "draft":
     case "not started":
     case "not_started":
-      return "bg-gray-100 text-gray-700 dark:bg-gray-800/60 dark:text-gray-300"
+      return "bg-muted text-foreground  "
     case "overdue":
     case "delayed":
     case "cancelled":
     case "canceled":
-      return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+      return "bg-destructive/10 text-destructive  "
     case "warning":
     case "at risk":
     case "at_risk":
-      return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+      return "bg-warning/10 text-warning  "
     default:
-      return "bg-gray-100 text-gray-700 dark:bg-gray-800/60 dark:text-gray-300"
+      return "bg-muted text-foreground  "
   }
 }
 
@@ -124,27 +124,27 @@ function badgeDotColor(status: string): string {
     case "completed":
     case "paid":
     case "active":
-      return "bg-emerald-500"
+      return "bg-success"
     case "in progress":
     case "in_progress":
     case "sent":
-      return "bg-blue-500"
+      return "bg-info"
     case "pending":
     case "draft":
     case "not started":
     case "not_started":
-      return "bg-gray-400"
+      return "bg-muted-foreground"
     case "overdue":
     case "delayed":
     case "cancelled":
     case "canceled":
-      return "bg-red-500"
+      return "bg-destructive"
     case "warning":
     case "at risk":
     case "at_risk":
-      return "bg-amber-500"
+      return "bg-warning"
     default:
-      return "bg-gray-400"
+      return "bg-muted-foreground"
   }
 }
 
@@ -510,8 +510,8 @@ function FormComponent({
           <div
             className={`text-sm px-3 py-2 rounded ${
               feedback.type === "success"
-                ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
-                : "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                ? "bg-success/10 text-success  "
+                : "bg-destructive/10 text-destructive  "
             }`}
           >
             {feedback.message}
@@ -837,17 +837,17 @@ export const components: {
   Badge: ({ props }) => {
     const colorMap: Record<string, string> = {
       success:
-        "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+        "bg-success/10 text-success  ",
       warning:
-        "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+        "bg-warning/10 text-warning  ",
       danger:
-        "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+        "bg-destructive/10 text-destructive  ",
     }
     const dotMap: Record<string, string> = {
-      success: "bg-emerald-500",
-      warning: "bg-amber-500",
-      danger: "bg-red-500",
-      default: "bg-gray-400",
+      success: "bg-success",
+      warning: "bg-warning",
+      danger: "bg-destructive",
+      default: "bg-muted-foreground",
     }
     const v = props.variant ?? "default"
     const colors = colorMap[v] ?? ""
@@ -871,11 +871,11 @@ export const components: {
       props.type === "error" ? "destructive" : "default"
     const custom =
       props.type === "success"
-        ? "border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950 dark:text-green-100"
+        ? "border-success/30 bg-success/10 text-success   "
         : props.type === "warning"
-          ? "border-yellow-200 bg-yellow-50 text-yellow-900 dark:border-yellow-800 dark:bg-yellow-950 dark:text-yellow-100"
+          ? "border-warning/30 bg-warning/10 text-warning   "
           : props.type === "info"
-            ? "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-100"
+            ? "border-info/30 bg-info/10 text-info   "
             : ""
 
     return (
@@ -897,10 +897,10 @@ export const components: {
     )
     const pctColor =
       value >= 75
-        ? "text-emerald-600 dark:text-emerald-400"
+        ? "text-success "
         : value >= 40
-          ? "text-amber-600 dark:text-amber-400"
-          : "text-red-600 dark:text-red-400"
+          ? "text-warning "
+          : "text-destructive "
 
     return (
       <div className="space-y-2">
@@ -934,7 +934,7 @@ export const components: {
           {Array.from({ length: max }).map((_, i) => (
             <span
               key={i}
-              className={`text-lg ${i < props.value ? "text-yellow-400" : "text-muted"}`}
+              className={`text-lg ${i < props.value ? "text-warning" : "text-muted"}`}
             >
               *
             </span>
@@ -1128,17 +1128,17 @@ export const components: {
     const statusBadge = (status: string) => {
       const colors: Record<string, string> = {
         added:
-          "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+          "bg-success/10 text-success  ",
         modified:
-          "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+          "bg-info/10 text-info  ",
         removed:
-          "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+          "bg-destructive/10 text-destructive  ",
         renamed:
-          "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+          "bg-warning/10 text-warning  ",
       }
       return (
         <span
-          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${colors[status] ?? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}
+          className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium uppercase ${colors[status] ?? "bg-muted text-foreground  "}`}
         >
           {status}
         </span>
@@ -1160,13 +1160,13 @@ export const components: {
             let cls = "px-4"
             if (line.startsWith("+")) {
               cls +=
-                " bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                " bg-success/10 text-success  "
             } else if (line.startsWith("-")) {
               cls +=
-                " bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-300"
+                " bg-destructive/10 text-destructive  "
             } else if (line.startsWith("@@")) {
               cls +=
-                " bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                " bg-info/10 text-info  "
             }
             return (
               <div key={i} className={cls}>
@@ -1195,7 +1195,7 @@ export const components: {
               props.commitMessage) && (
               <div className="flex items-center gap-2 text-xs">
                 {props.commitSha && (
-                  <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">
+                  <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">
                     {props.commitSha}
                   </code>
                 )}
@@ -1208,10 +1208,10 @@ export const components: {
             )}
             {props.stats && (
               <div className="flex gap-3 text-xs">
-                <span className="text-emerald-600 dark:text-emerald-400">
+                <span className="text-success">
                   +{props.stats.additions}
                 </span>
-                <span className="text-red-600 dark:text-red-400">
+                <span className="text-destructive">
                   -{props.stats.deletions}
                 </span>
               </div>
@@ -1232,10 +1232,10 @@ export const components: {
                     {file.filename}
                   </span>
                   {statusBadge(file.status)}
-                  <span className="text-emerald-600 dark:text-emerald-400">
+                  <span className="text-success">
                     +{file.additions}
                   </span>
-                  <span className="text-red-600 dark:text-red-400">
+                  <span className="text-destructive">
                     -{file.deletions}
                   </span>
                   <span className="text-muted-foreground">
@@ -1257,9 +1257,9 @@ export const components: {
     const positive = props.change != null && props.change > 0
     const negative = props.change != null && props.change < 0
     const changeColor = positive
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-success "
       : negative
-        ? "text-red-600 dark:text-red-400"
+        ? "text-destructive "
         : "text-muted-foreground"
     const borderColor = positive
       ? "border-l-emerald-500"
@@ -1504,10 +1504,10 @@ export const components: {
         : 0
     const pctColor =
       pct >= 75
-        ? "text-emerald-600 dark:text-emerald-400"
+        ? "text-success "
         : pct >= 40
-          ? "text-amber-600 dark:text-amber-400"
-          : "text-red-600 dark:text-red-400"
+          ? "text-warning "
+          : "text-destructive "
     const overdue =
       props.daysRemaining != null &&
       props.daysRemaining < 0
@@ -1559,7 +1559,7 @@ export const components: {
           )}
           {props.daysRemaining != null && (
             <div
-              className={`text-xs ${overdue ? "text-red-600 dark:text-red-400 font-medium" : "text-muted-foreground"}`}
+              className={`text-xs ${overdue ? "text-destructive  font-medium" : "text-muted-foreground"}`}
             >
               {overdue
                 ? `${Math.abs(props.daysRemaining)} days overdue`
@@ -1582,10 +1582,10 @@ export const components: {
     ) => {
       const pctColor =
         t.percentComplete >= 75
-          ? "text-emerald-600 dark:text-emerald-400"
+          ? "text-success "
           : t.percentComplete >= 40
-            ? "text-amber-600 dark:text-amber-400"
-            : "text-red-600 dark:text-red-400"
+            ? "text-warning "
+            : "text-destructive "
 
       return (
         <div

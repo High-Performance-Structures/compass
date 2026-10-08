@@ -80,7 +80,7 @@ export function ProjectGoogleCalendarCard({
       </div>
 
       {!status.ownerConfigured ? (
-        <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <p className="mt-4 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
           An administrator must connect and designate the organization Google Calendar account in Settings before a project calendar can be enabled.
         </p>
       ) : null}

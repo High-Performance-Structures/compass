@@ -12,13 +12,21 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-29"
+  "lastReviewed": "2026-10-06"
 }
 ---
+
+## Scrolling Long Pages and Forms {#scrolling-long-pages}
+
+A scrollbar appears when a page, document editor, form, or panel has more content than fits on screen. You can drag the scrollbar to return to earlier content; it stays available without hovering over the page. Wide tables and navigation rows also show a horizontal scrollbar when there is more content to the side. When you open an estimate line editor or move between fields, only the content scrolls; the workspace frame stays in place. You should not need to refresh to get back to earlier content.
 
 ## Open a Project {#open-project}
 
 Select **Projects**, choose the appropriate department and status view, then search by project number, client, name, or address. The project overview and navigation show only the tools allowed by your role and assignment.
+
+## Find Project Financials {#project-financials}
+
+Expand **Projects** in the left menu, then expand **Project Financials** to reach Financial Overview, Estimates, Project Budget, Bills & Pay Applications, Purchase Orders, and Change Orders. If several menu sections are open, scroll inside the left menu to reach later sections. Opening another section keeps the remaining menu items reachable. The Compass icon at the bottom opens a compact drawer: hover over it or click/tap it to see your photo, **Help**, **Feedback**, **Settings**, and communication controls. Choose **Pin** to leave the drawer open, or **Unpin** to return to a temporary drawer. The pin preference is remembered in this browser. Select the photo to change or reset it. The photo stays compact with crisp edges when you widen the sidebar, and the menu scrollbar remains available above the drawer.
 
 ## Keep Project Context {#keep-context}
 

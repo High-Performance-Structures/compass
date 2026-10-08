@@ -2,6 +2,7 @@
 
 import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 import { getDb } from "@/db"
 import {
@@ -128,6 +129,7 @@ export type ProjectInformation = {
     readonly clientStatus: ProjectClientStatus
     readonly jobStatusId: string
     readonly status: string
+    readonly portfolioMapVisibility: PortfolioMapVisibility
   }
   readonly jobStatuses: readonly ProjectProfileJobStatus[]
   readonly interactionTypes: readonly ProjectInteractionTypeOption[]
@@ -367,6 +369,7 @@ export async function getProjectInformation(
         clientStatus: projects.clientStatus,
         jobStatusId: projects.jobStatusId,
         status: projects.status,
+        portfolioMapVisibility: projects.portfolioMapVisibility,
       })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
@@ -1614,6 +1617,71 @@ export async function updateProjectJobStatus(input: {
   } catch (error) {
     console.error("Unable to update project job status", error)
     return { success: false, error: "Unable to update project status." }
+  }
+}
+
+export async function updateProjectMapVisibility(input: {
+  readonly projectId: string
+  readonly visibility: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const { db, organizationId, user } = await projectProfileContext(
+      input.projectId,
+      "update",
+    )
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
+      return { success: false, error: "Demo data cannot be changed." }
+    }
+    const visibility = input.visibility
+    if (!isPortfolioMapVisibility(visibility)) {
+      return { success: false, error: "Choose a portfolio map setting." }
+    }
+
+    const existingRows = await db
+      .select({ visibility: projects.portfolioMapVisibility })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    const existing = existingRows[0]
+    if (!existing) return { success: false, error: "Project not found." }
+    if (existing.visibility === visibility) return { success: true }
+
+    const updatedAt = nowIso()
+    await db.batch([
+      db
+        .update(projects)
+        .set({ portfolioMapVisibility: visibility, updatedAt })
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            eq(projects.organizationId, organizationId),
+          ),
+        ),
+      db.insert(projectProfileAuditEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        projectId: input.projectId,
+        actorUserId: user.id,
+        eventType: "project_map_visibility_updated",
+        entityType: "project",
+        entityId: input.projectId,
+        beforeJson: JSON.stringify({ portfolioMapVisibility: existing.visibility }),
+        afterJson: JSON.stringify({ portfolioMapVisibility: visibility }),
+        createdAt: updatedAt,
+      }),
+    ])
+
+    revalidateProjectProfile(input.projectId)
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to update portfolio map visibility", error)
+    return { success: false, error: "Unable to update the portfolio map setting." }
   }
 }
 

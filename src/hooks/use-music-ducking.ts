@@ -51,7 +51,7 @@ export function useVoiceActivityPublisher({
   getTracks,
 }: {
   readonly channelId: string | null
-  readonly getTracks: () => readonly MediaStreamTrack[]
+  readonly getTracks: () => readonly (MediaStreamTrack | undefined)[]
 }): void {
   React.useEffect(() => {
     if (!channelId || typeof BroadcastChannel === "undefined") return
@@ -71,8 +71,11 @@ export function useVoiceActivityPublisher({
     }
 
     const syncMeters = (): void => {
+      // RealtimeKit can mark a peer unmuted before its subscribed track arrives.
+      // Skip pending tracks; the next sample will pick them up once available.
       const tracks = getTracks().filter(
-        (track) => track.kind === "audio" && track.readyState === "live"
+        (track): track is MediaStreamTrack =>
+          track !== undefined && track.kind === "audio" && track.readyState === "live"
       )
       const liveTrackIds = new Set(tracks.map((track) => track.id))
 
