@@ -41,7 +41,8 @@ function isSchedulePortfolioProject(
   project: SchedulePortfolioProject,
 ): boolean {
   const status = projectJobStatusBucket(project)
-  return status === "active" || status === "warranty"
+  // Internal projects (such as the office record) hold office to-dos and events.
+  return status === "active" || status === "warranty" || status === "internal"
 }
 
 export function schedulePortfolioProjects<

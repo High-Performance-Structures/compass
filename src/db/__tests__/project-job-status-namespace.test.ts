@@ -36,6 +36,10 @@ const namespaceMigration = readFileSync(
   resolve(process.cwd(), "drizzle/0108_project_job_status_label_namespace.sql"),
   "utf8",
 )
+const internalStatusMigration = readFileSync(
+  resolve(process.cwd(), "drizzle/0192_internal_job_status_and_map_visibility.sql"),
+  "utf8",
+)
 const underWarrantyMigration = readFileSync(
   resolve(process.cwd(), "drizzle/0144_project_under_warranty_job_status.sql"),
   "utf8",
@@ -444,6 +448,10 @@ describe("project job-status label namespace migration", () => {
       ).toThrow(/Project job status/)
       database.exec(underWarrantyMigration)
       database.exec(underWarrantyMigration)
+      expect(() =>
+        database.exec("UPDATE projects SET job_status_id = 'internal' WHERE id = 'project-org-2'"),
+      ).toThrow(/Project job status/)
+      database.exec(internalStatusMigration)
 
       expect(() => database.exec("UPDATE projects SET job_status_id = 'org-1-custom' WHERE id = 'project-org-2'")).toThrow(/Project job status/)
       expect(() => database.exec("UPDATE projects SET organization_id = NULL, job_status_id = 'org-1-custom' WHERE id = 'project-org-2'")).toThrow(/Project job status/)

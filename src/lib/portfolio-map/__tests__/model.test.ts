@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   isMappedDepartment,
-  isOfficeRecord,
+  portfolioPhaseFor,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
@@ -24,6 +24,7 @@ function job(overrides: Partial<PortfolioMapJob> & Pick<PortfolioMapJob, "id">):
     nextTaskTitle: null,
     nextTaskStart: null,
     health: "ok",
+    visibility: "default",
     ...overrides,
   }
 }
@@ -67,12 +68,27 @@ describe("isMappedDepartment", () => {
   })
 })
 
-describe("isOfficeRecord", () => {
-  it("recognizes the internal office record", () => {
-    expect(isOfficeRecord("H-OFFICE")).toBe(true)
-    expect(isOfficeRecord("H-OFFICE-2026")).toBe(true)
-    expect(isOfficeRecord("H-430-1900")).toBe(false)
-    expect(isOfficeRecord(null)).toBe(false)
+describe("portfolioPhaseFor", () => {
+  const rule = {
+    projectId: "p1",
+    projectNumber: "H-430-1900",
+    department: null,
+    jobStatusId: "under_construction",
+    jobStatusLabel: "Under Construction",
+    visibility: "default",
+  } as const
+
+  it("follows status and department by default", () => {
+    expect(portfolioPhaseFor(rule)).toBe("construction")
+    expect(portfolioPhaseFor({ ...rule, jobStatusId: "internal", jobStatusLabel: "Internal" })).toBeNull()
+    expect(portfolioPhaseFor({ ...rule, projectNumber: "N-830-8220" })).toBeNull()
+  })
+
+  it("lets the per-project override hide or show a job", () => {
+    expect(portfolioPhaseFor({ ...rule, visibility: "hidden" })).toBeNull()
+    expect(portfolioPhaseFor({ ...rule, projectNumber: "N-830-8220", visibility: "shown" })).toBe("construction")
+    expect(portfolioPhaseFor({ ...rule, jobStatusId: "internal", jobStatusLabel: "Internal", visibility: "shown" })).toBe("precon")
+    expect(portfolioPhaseFor({ ...rule, jobStatusId: "under_warranty", jobStatusLabel: "Under Warranty", visibility: "shown" })).toBe("closeout")
   })
 })
 

@@ -1,8 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import type * as React from "react"
-import { X } from "lucide-react"
+import { useRouter } from "next/navigation"
+import * as React from "react"
+import { EyeOff, X } from "lucide-react"
+import { updateProjectMapVisibility } from "@/app/actions/project-profile"
 import { Button } from "@/components/ui/button"
 import { formatDateKeyShort } from "@/components/dashboard/portfolio-map/portfolio-dates"
 import {
@@ -15,7 +17,8 @@ import {
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
-import type { PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import type { PortfolioHiddenJob, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export type PortfolioSelection =
   | { readonly kind: "none" }
@@ -25,6 +28,7 @@ export type PortfolioSelection =
 type PortfolioPanelProps = {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
+  readonly hidden: readonly PortfolioHiddenJob[]
   readonly selection: PortfolioSelection
   readonly onSelectJob: (jobId: string) => void
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
@@ -45,6 +49,30 @@ function HealthTag({ job }: { readonly job: PortfolioMapJob }): React.ReactEleme
   )
 }
 
+/** Save a project's map setting, then reload the dashboard data. */
+function useMapVisibility(): {
+  readonly pending: boolean
+  readonly message: string | null
+  readonly change: (projectId: string, visibility: PortfolioMapVisibility, after?: () => void) => void
+} {
+  const router = useRouter()
+  const [pending, startTransition] = React.useTransition()
+  const [message, setMessage] = React.useState<string | null>(null)
+  const change = (projectId: string, visibility: PortfolioMapVisibility, after?: () => void): void => {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await updateProjectMapVisibility({ projectId, visibility })
+      if (!result.success) {
+        setMessage(result.error)
+        return
+      }
+      after?.()
+      router.refresh()
+    })
+  }
+  return { pending, message, change }
+}
+
 function CloseButton({ onClear }: { readonly onClear: () => void }): React.ReactElement {
   return (
     <Button type="button" variant="outline" size="icon" aria-label="Close" onClick={onClear}>
@@ -60,6 +88,7 @@ function JobDetail({
   readonly job: PortfolioMapJob
   readonly onClear: () => void
 }): React.ReactElement {
+  const visibility = useMapVisibility()
   const phaseIndex = PORTFOLIO_PHASES.findIndex((phase) => phase.id === job.phase)
   const phaseLabel = PORTFOLIO_PHASES[phaseIndex]?.label ?? job.statusLabel
   const base = `/dashboard/projects/${encodeURIComponent(job.id)}`
@@ -128,13 +157,55 @@ function JobDetail({
           <Link href={`${base}/daily-logs`}>Daily logs</Link>
         </Button>
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+        <span>{job.visibility === "shown" ? "Always shown on the map" : "Shown by its status"}</span>
+        <span className="flex gap-1">
+          {job.visibility === "shown" ? (
+            <Button type="button" variant="ghost" size="sm" disabled={visibility.pending}
+              onClick={() => visibility.change(job.id, "default")}>
+              Use default
+            </Button>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" disabled={visibility.pending}
+            onClick={() => visibility.change(job.id, "hidden", onClear)}>
+            <EyeOff aria-hidden="true" />
+            Hide from map
+          </Button>
+        </span>
+      </div>
+      {visibility.message ? <p role="alert" className="text-xs text-destructive">{visibility.message}</p> : null}
     </div>
+  )
+}
+
+function HiddenJobs({ hidden }: { readonly hidden: readonly PortfolioHiddenJob[] }): React.ReactElement | null {
+  const visibility = useMapVisibility()
+  if (hidden.length === 0) return null
+  return (
+    <details className="text-xs text-muted-foreground">
+      <summary className="cursor-pointer py-1 hover:text-foreground">
+        {hidden.length === 1 ? "1 job is hidden from the map." : `${hidden.length} jobs are hidden from the map.`}
+      </summary>
+      <ul className="mt-1">
+        {hidden.map((job) => (
+          <li key={job.id} className="flex min-h-9 items-center justify-between gap-3 border-b border-border px-1 text-foreground">
+            <span className="truncate">{job.name}</span>
+            <Button type="button" variant="ghost" size="sm" disabled={visibility.pending}
+              onClick={() => visibility.change(job.id, job.restoreVisibility)}>
+              Show on map
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {visibility.message ? <p role="alert" className="text-destructive">{visibility.message}</p> : null}
+    </details>
   )
 }
 
 export function PortfolioPanel({
   jobs,
   unplaced,
+  hidden,
   selection,
   onSelectJob,
   onSelectPhase,
@@ -222,6 +293,7 @@ export function PortfolioPanel({
           </ul>
         </div>
       ) : null}
+      <HiddenJobs hidden={hidden} />
       {unplaced.length > 0 ? (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer py-1 hover:text-foreground">

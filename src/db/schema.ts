@@ -725,6 +725,12 @@ export const projects = sqliteTable("projects", {
   // Public-facing copy must not reuse the internal project name or full address.
   publicTitle: text("public_title"),
   publicLocationCity: text("public_location_city"),
+  /** Portfolio map override: "default" follows status and department rules. */
+  portfolioMapVisibility: text("portfolio_map_visibility", {
+    enum: ["default", "shown", "hidden"],
+  })
+    .notNull()
+    .default("default"),
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),

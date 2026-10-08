@@ -7,13 +7,14 @@ import { getCloudflareContext } from "@/lib/db"
 import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
-  isMappedDepartment,
-  isOfficeRecord,
-  phaseForJobStatus,
+  defaultPortfolioPhase,
+  isPortfolioMapVisibility,
   portfolioHealth,
+  portfolioPhaseFor,
   resolveTown,
   spreadSharedTowns,
   type PortfolioMapJob,
+  type PortfolioProjectRule,
 } from "@/lib/portfolio-map/model"
 
 const TIME_ZONE = "America/Denver"
@@ -24,13 +25,20 @@ export type PortfolioUnplacedJob = {
   readonly projectNumber: string | null
 }
 
+export type PortfolioHiddenJob = PortfolioUnplacedJob & {
+  /** The setting that puts the job back: "default" when its status would show it. */
+  readonly restoreVisibility: "default" | "shown"
+}
+
 export type PortfolioMapData = {
   readonly jobs: readonly PortfolioMapJob[]
   /** Jobs in a mapped phase whose town could not be resolved. */
   readonly unplaced: readonly PortfolioUnplacedJob[]
+  /** Jobs someone removed from the map with the per-project override. */
+  readonly hidden: readonly PortfolioHiddenJob[]
 }
 
-const EMPTY: PortfolioMapData = { jobs: [], unplaced: [] }
+const EMPTY: PortfolioMapData = { jobs: [], unplaced: [], hidden: [] }
 
 /**
  * Jobs for the office portfolio map. Visibility follows getProjects(), so the
@@ -41,11 +49,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const user = await getCurrentUser()
     if (!user?.organizationId) return EMPTY
     const visible = await getProjects()
-    const candidates = visible.flatMap((project) => {
-      const phase = phaseForJobStatus(project.jobStatusId, project.jobStatusLabel)
-      return phase ? [{ project, phase }] : []
-    })
-    if (candidates.length === 0) return EMPTY
+    if (visible.length === 0) return EMPTY
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return EMPTY
@@ -60,6 +64,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           department: projects.department,
           address: projects.address,
           publicLocationCity: projects.publicLocationCity,
+          mapVisibility: projects.portfolioMapVisibility,
         })
         .from(projects)
         .where(eq(projects.organizationId, orgId)),
@@ -94,14 +99,30 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     ])
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
-    const phased = candidates.filter(({ project }) =>
-      !isOfficeRecord(project.projectNumber) &&
-      isMappedDepartment({
-        department: locationById.get(project.id)?.department ?? null,
+    const hidden: PortfolioHiddenJob[] = []
+    const phased = visible.flatMap((project) => {
+      const location = locationById.get(project.id)
+      const stored = location?.mapVisibility ?? "default"
+      const rule: PortfolioProjectRule = {
         projectId: project.id,
         projectNumber: project.projectNumber,
-      }),
-    )
+        department: location?.department ?? null,
+        jobStatusId: project.jobStatusId,
+        jobStatusLabel: project.jobStatusLabel,
+        visibility: isPortfolioMapVisibility(stored) ? stored : "default",
+      }
+      if (rule.visibility === "hidden") {
+        hidden.push({
+          id: project.id,
+          name: projectDisplayName(project),
+          projectNumber: project.projectNumber,
+          restoreVisibility: defaultPortfolioPhase(rule) ? "default" : "shown",
+        })
+        return []
+      }
+      const phase = portfolioPhaseFor(rule)
+      return phase ? [{ project, phase, visibility: rule.visibility }] : []
+    })
     const statsById = new Map(taskStats.map((row) => [row.projectId, row]))
     const nextById = new Map<string, { readonly title: string; readonly startDate: string }>()
     for (const task of upcoming) {
@@ -109,7 +130,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     }
 
     const unplaced: PortfolioUnplacedJob[] = []
-    const jobs: PortfolioMapJob[] = phased.map(({ project, phase }) => {
+    const jobs: PortfolioMapJob[] = phased.map(({ project, phase, visibility }) => {
       const location = locationById.get(project.id)
       const town = resolveTown({
         publicLocationCity: location?.publicLocationCity ?? null,
@@ -141,9 +162,10 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         nextTaskTitle: next?.title ?? null,
         nextTaskStart: next?.startDate ?? null,
         health: portfolioHealth(pastDueCount, stalledCount),
+        visibility,
       }
     })
-    return { jobs: spreadSharedTowns(jobs), unplaced }
+    return { jobs: spreadSharedTowns(jobs), unplaced, hidden }
   } catch (error) {
     console.error("Portfolio map data failed", error)
     return EMPTY
