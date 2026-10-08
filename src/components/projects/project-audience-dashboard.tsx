@@ -8,6 +8,8 @@ import { getProjectChangeOrders } from "@/app/actions/project-change-orders"
 import { ProjectAudienceDashboardView } from "@/components/projects/project-audience-dashboard-view"
 import { audienceDashboardDate } from "@/lib/project-audience-dashboard"
 import type { ProjectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
+import { getVendorJobMap } from "@/lib/portfolio-map/vendor"
+import { VendorJobMap } from "@/components/projects/vendor-job-map"
 
 export async function ProjectAudienceDashboard({
   data,
@@ -18,7 +20,7 @@ export async function ProjectAudienceDashboard({
 }): Promise<React.ReactElement> {
   // Keep the same audience-aware readers used by the destination pages. A failed
   // optional summary must not block project navigation or look like a zero count.
-  const [changes, budget, selections] = await Promise.allSettled([
+  const [changes, budget, selections, vendorJobs] = await Promise.allSettled([
     getProjectChangeOrders(data.project.id, data.audience),
     data.audience === "owner"
       ? getProjectBudgetSummary(data.project.id, "owner")
@@ -26,7 +28,12 @@ export async function ProjectAudienceDashboard({
     data.audience === "owner"
       ? getSelectionWorkspace(data.project.id, "owner")
       : Promise.resolve(null),
+    // Only the jobs already in this vendor's project switcher.
+    data.audience === "sub_vendor" && data.projectOptions.length > 1
+      ? getVendorJobMap(data.projectOptions.map((option) => option.id))
+      : Promise.resolve([]),
   ])
+  const jobs = vendorJobs.status === "fulfilled" ? vendorJobs.value : []
   const date = audienceDashboardDate(new Date())
   return (
     <ProjectAudienceDashboardView
@@ -39,6 +46,11 @@ export async function ProjectAudienceDashboard({
       messageShortcut={messageShortcut}
       today={date.today}
       greeting={date.greeting}
+      jobMap={
+        jobs.length > 1 ? (
+          <VendorJobMap jobs={jobs} currentProjectId={data.project.id} />
+        ) : null
+      }
       financials={{
         changeOrders: changes.status === "fulfilled" ? changes.value : null,
         applications:

@@ -63,3 +63,22 @@ three.js and the scene load only when the section nears the viewport, in a
 separate chunk. The scene renders on interaction only. Phones, reduced motion,
 and browsers without WebGL 2 use the 2-D pipeline view; people can switch
 between Map and Pipeline, and the choice is remembered per browser.
+
+## Sub/vendor "Your jobs" map
+
+Sub/vendors with two or more active jobs see a smaller version of the map on
+their dashboard overview (`VendorJobMap`).
+
+- **Which jobs:** only the projects already in the viewer's project switcher
+  (`projectOptions`, resolved server-side from their project memberships).
+  `getVendorJobMap()` is a server-only loader, not a server action, so a
+  client cannot request other project ids. Staff previews show only the
+  current project, so the map stays hidden there.
+- **Phase:** from job status alone (`phaseForJobStatus`); the office
+  department filter and per-project map overrides do not apply. Complete,
+  closed, internal, and order statuses are left out.
+- **What the panel shows:** town, phase, and the vendor's own next scheduled
+  items and commitment count, loaded on selection through
+  `getProjectAudiencePreview(id, "sub_vendor")`. That is the vendor
+  dashboard's own reader, so the panel never shows more than that dashboard.
+  No office signals (progress, health, past-due counts) are sent.
