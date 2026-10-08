@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 import {
   IconAddressBook,
   IconArrowLeft,
@@ -479,17 +480,18 @@ function RegistrySelectField({
   return (
     <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
       {label}
-      <select
-        name={name}
-        defaultValue={value}
-        className="h-9 rounded-md border border-input bg-background px-3 text-sm font-normal text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <Select name={name} defaultValue={value}>
+        <SelectTrigger className="w-full bg-background font-normal text-foreground">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </label>
   )
 }
@@ -1568,18 +1570,18 @@ export function ProjectsHub({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select name="sageJobStatusId" required>
-                      <SelectTrigger aria-label="Sage job status">
-                        <SelectValue placeholder="Job status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PROJECT_JOB_STATUS_DEFINITIONS.map((option) => (
-                          <SelectItem key={option.id} value={option.id}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableComboboxField
+                      name="sageJobStatusId"
+                      required
+                      options={PROJECT_JOB_STATUS_DEFINITIONS.map((option) => ({
+                        value: option.id,
+                        label: option.label,
+                      }))}
+                      ariaLabel="Sage job status"
+                      placeholder="Job status"
+                      searchPlaceholder="Search job statuses..."
+                      emptyMessage="No matching job statuses."
+                    />
                     <Select name="sageJobType" required>
                       <SelectTrigger aria-label="Sage job type">
                         <SelectValue placeholder="Job type" />

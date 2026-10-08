@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
+import { SearchableCombobox, SearchableComboboxField } from "@/components/searchable-combobox"
 import {
   IconCalculator,
   IconCheck,
@@ -28,6 +29,13 @@ import {
   generateNuTechAirliteWorkbook,
   saveNuTechOrderItem,
 } from "@/app/actions/nutech-order-items"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -52,9 +60,6 @@ import {
   type NuTechQuantitySource,
   type NuTechTakeoffAcknowledgementStatus,
 } from "@/lib/nutech/workflow"
-
-const SELECT_CLASS =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
 
 function formText(formData: FormData, name: string): string {
   const value = formData.get(name)
@@ -425,83 +430,85 @@ export function NuTechOrderWorkspace({
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="nutech-customer-type">Customer type</Label>
-                <select
-                  id="nutech-customer-type"
-                  name="customerType"
-                  className={SELECT_CLASS}
+                <Select name="customerType"
                   value={customerType}
-                  onChange={(event) =>
-                    setCustomerType(customerTypeValue(event.target.value))
-                  }
+                  onValueChange={(value) => setCustomerType(customerTypeValue(value))}
                 >
-                  {NUTECH_CUSTOMER_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-customer-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUTECH_CUSTOMER_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-pricing-mode">Pricing</Label>
-                <select
-                  id="nutech-pricing-mode"
-                  name="pricingMode"
-                  className={SELECT_CLASS}
+                <Select name="pricingMode"
                   value={pricingMode}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setPricingMode(
-                      event.target.value === "cash_discount"
-                        ? "cash_discount"
-                        : "standard"
+                      value === "cash_discount" ? "cash_discount" : "standard"
                     )
                   }
                 >
-                  {NUTECH_PRICING_MODE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-pricing-mode" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUTECH_PRICING_MODE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
                   Cash discount means cash, wire, or check.
                 </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-quantity-source">Quantity source</Label>
-                <select
-                  id="nutech-quantity-source"
-                  name="quantitySource"
-                  className={SELECT_CLASS}
+                <Select name="quantitySource"
                   value={quantitySource}
-                  onChange={(event) => onQuantitySourceChange(event.target.value)}
+                  onValueChange={onQuantitySourceChange}
                 >
-                  {NUTECH_QUANTITY_SOURCE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-quantity-source" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUTECH_QUANTITY_SOURCE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-takeoff-status">
                   Takeoff acknowledgement
                 </Label>
-                <select
-                  id="nutech-takeoff-status"
-                  name="takeoffAcknowledgementStatus"
-                  className={SELECT_CLASS}
+                <Select name="takeoffAcknowledgementStatus"
                   value={takeoffStatus}
+                  onValueChange={(value) => setTakeoffStatus(takeoffStatusValue(value))}
                   disabled={quantitySource === "customer_provided"}
-                  onChange={(event) =>
-                    setTakeoffStatus(takeoffStatusValue(event.target.value))
-                  }
                 >
-                  {NUTECH_TAKEOFF_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-takeoff-status" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUTECH_TAKEOFF_STATUS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {quantitySource === "customer_provided" && (
                   <input
                     type="hidden"
@@ -544,24 +551,28 @@ export function NuTechOrderWorkspace({
               <div className="grid gap-3 md:grid-cols-[minmax(16rem,1fr)_9rem_auto] md:items-end">
                 <div className="space-y-2">
                   <Label htmlFor="nutech-product">Catalog product</Label>
-                  <select
+                  <SearchableCombobox
                     id="nutech-product"
-                    className={SELECT_CLASS}
+                    className="h-9"
                     value={selectedProductId}
-                    onChange={(event) => setSelectedProductId(event.target.value)}
-                  >
-                    {workspace.catalogProducts.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.manufacturerSku} · {product.name} · {money(
-                          nuTechCustomerPriceCents(
-                            product,
-                            customerType,
-                            pricingMode
-                          ) / 100
-                        )}/{product.priceUnit}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={(value) => {
+                      if (value !== "") setSelectedProductId(value)
+                    }}
+                    options={workspace.catalogProducts.map((product) => ({
+                      value: product.id,
+                      label: `${product.manufacturerSku} · ${product.name}`,
+                      selectedLabel: `${product.manufacturerSku} · ${product.name} · ${money(
+                        nuTechCustomerPriceCents(product, customerType, pricingMode) / 100
+                      )}/${product.priceUnit}`,
+                      description: `${money(
+                        nuTechCustomerPriceCents(product, customerType, pricingMode) / 100
+                      )}/${product.priceUnit}`,
+                    }))}
+                    ariaLabel="Catalog product"
+                    placeholder="Choose a product"
+                    searchPlaceholder="Search SKU or product..."
+                    emptyMessage="No matching products."
+                  />
                   {selectedProduct && (
                     <p className="text-xs text-muted-foreground">
                       Order in multiples of {selectedProduct.minimumOrderIncrement} · {selectedProduct.packageLabel}
@@ -680,33 +691,37 @@ export function NuTechOrderWorkspace({
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="nutech-scope">Order scope</Label>
-                <select
-                  id="nutech-scope"
-                  name="scopeType"
-                  className={SELECT_CLASS}
+                <Select name="scopeType"
                   defaultValue={order?.scopeType ?? "block_sale"}
                 >
-                  {NUTECH_SCOPE_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-scope" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUTECH_SCOPE_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-delivery-method">Fulfillment</Label>
-                <select
-                  id="nutech-delivery-method"
-                  name="deliveryMethod"
-                  className={SELECT_CLASS}
+                <Select name="deliveryMethod"
                   defaultValue={order?.deliveryMethod ?? "delivery"}
                 >
-                  {NUTECH_DELIVERY_METHOD_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-delivery-method" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NUTECH_DELIVERY_METHOD_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-requested-delivery">
@@ -721,18 +736,17 @@ export function NuTechOrderWorkspace({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-status">Workflow status</Label>
-                <select
+                <SearchableComboboxField
                   id="nutech-status"
                   name="orderStatus"
-                  className={SELECT_CLASS}
+                  className="h-9"
                   defaultValue={order?.orderStatus ?? "intake"}
-                >
-                  {availableOrderStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={availableOrderStatusOptions}
+                  ariaLabel="Workflow status"
+                  placeholder="Choose status"
+                  searchPlaceholder="Search statuses..."
+                  emptyMessage="No matching statuses."
+                />
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -802,23 +816,26 @@ export function NuTechOrderWorkspace({
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="nutech-airlite-po">Linked Airlite PO</Label>
-                <select
+                <SearchableComboboxField
                   id="nutech-airlite-po"
                   name="airlitePurchaseOrderOperationId"
-                  className={SELECT_CLASS}
+                  className="h-9"
                   defaultValue={order?.airlitePurchaseOrderOperationId ?? ""}
-                >
-                  <option value="">Choose a Compass purchase order</option>
-                  {workspace.purchaseOrders.map((purchaseOrder) => (
-                    <option key={purchaseOrder.id} value={purchaseOrder.id}>
-                      {purchaseOrder.number ?? "Unnumbered"} · {purchaseOrder.title}
-                      {purchaseOrder.companyName
-                        ? ` · ${purchaseOrder.companyName}`
-                        : ""}
-                      {` · ${money(purchaseOrder.amount)}`}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "", label: "No linked purchase order" },
+                    ...workspace.purchaseOrders.map((purchaseOrder) => ({
+                      value: purchaseOrder.id,
+                      label: `${purchaseOrder.number ?? "Unnumbered"} · ${purchaseOrder.title}`,
+                      description: [purchaseOrder.companyName, money(purchaseOrder.amount)]
+                        .filter(Boolean)
+                        .join(" · "),
+                    })),
+                  ]}
+                  ariaLabel="Linked Airlite PO"
+                  placeholder="Choose a Compass purchase order"
+                  searchPlaceholder="Search purchase orders..."
+                  emptyMessage="No matching purchase orders."
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-vendor-confirmation">
@@ -846,18 +863,20 @@ export function NuTechOrderWorkspace({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-invoice-status">Invoice status</Label>
-                <select
-                  id="nutech-invoice-status"
-                  name="vendorInvoiceStatus"
-                  className={SELECT_CLASS}
+                <Select name="vendorInvoiceStatus"
                   defaultValue={order?.vendorInvoiceStatus ?? "not_received"}
                 >
-                  {availableVendorInvoiceStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="nutech-invoice-status" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableVendorInvoiceStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-invoice-received">Invoice received</Label>

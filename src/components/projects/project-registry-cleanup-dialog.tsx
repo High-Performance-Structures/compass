@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { archiveProjectFromRegistry, getProjectMergeChoices, getProjectMergeImpact, mergeDuplicateProjects, type ProjectMergeChoice } from "@/app/actions/project-duplicates"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { ProjectMergeImpact } from "@/lib/project-merge-impact"
 
 function label(project: ProjectMergeChoice): string {
@@ -76,12 +76,12 @@ export function ProjectRegistryCleanupDialog(): React.ReactElement {
       <DialogContent className="max-h-[calc(100vh-2rem)] min-w-0 grid-cols-[minmax(0,1fr)] overflow-x-hidden overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>Registry cleanup</DialogTitle><DialogDescription>Select any registry project, then merge all of its linked records into an active project or move it to the recoverable archive.</DialogDescription></DialogHeader>
         <div className="min-w-0 space-y-4">
-          <div className="space-y-2"><Label>Project to merge or remove</Label><Select value={sourceId} onValueChange={(value) => { setSourceId(value); setConfirmed(false) }}><SelectTrigger className="w-full min-w-0"><SelectValue /></SelectTrigger><SelectContent className="max-w-[calc(100vw-2rem)]">{sources.map((item) => <SelectItem key={item.id} value={item.id}>{label(item)}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>Project to merge or remove</Label><SearchableCombobox value={sourceId} onValueChange={(value) => { if (value === "" || value === sourceId) return; setSourceId(value); setConfirmed(false) }} options={sources.map((item) => ({ value: item.id, label: label(item) }))} ariaLabel="Project to merge or remove" placeholder="Choose a project" searchPlaceholder="Search projects..." emptyMessage="No matching projects." /></div>
           <div className="grid gap-3 sm:grid-cols-2">
             <button type="button" className={`border p-3 text-left ${mode === "merge" ? "border-primary bg-primary/5" : ""}`} onClick={() => { setMode("merge"); setConfirmed(false) }}><span className="font-medium">Merge into a project</span><span className="mt-1 block text-xs text-muted-foreground">Move linked documents, activity, financials, contacts, and other records atomically.</span></button>
           <button type="button" className={`border p-3 text-left ${mode === "remove" ? "border-destructive bg-destructive/5" : ""}`} onClick={() => { setMode("remove"); setConfirmed(false) }}><span className="font-medium">Remove from registry</span><span className="mt-1 block text-xs text-muted-foreground">Keep a recoverable record in Project Archive and retire its number.</span></button>
           </div>
-          {mode === "merge" ? <div className="space-y-2"><Label>Project to keep</Label><Select value={destinationId} onValueChange={(value) => { setDestinationId(value); setConfirmed(false) }}><SelectTrigger className="w-full min-w-0"><SelectValue placeholder="Choose any active project" /></SelectTrigger><SelectContent className="max-w-[calc(100vw-2rem)]">{destinations.filter((item) => item.id !== sourceId).map((item) => <SelectItem key={item.id} value={item.id}>{label(item)}</SelectItem>)}</SelectContent></Select>{impact ? <p className="text-xs text-muted-foreground">{impact.totalRecordCount} linked record{impact.totalRecordCount === 1 ? "" : "s"} will move. The transfer is atomic.</p> : null}</div> : null}
+          {mode === "merge" ? <div className="space-y-2"><Label>Project to keep</Label><SearchableCombobox value={destinationId} onValueChange={(value) => { setDestinationId(value); setConfirmed(false) }} options={destinations.filter((item) => item.id !== sourceId).map((item) => ({ value: item.id, label: label(item) }))} ariaLabel="Project to keep" placeholder="Choose any active project" searchPlaceholder="Search active projects..." emptyMessage="No matching projects." />{impact ? <p className="text-xs text-muted-foreground">{impact.totalRecordCount} linked record{impact.totalRecordCount === 1 ? "" : "s"} will move. The transfer is atomic.</p> : null}</div> : null}
           <label className="flex items-start gap-3 border-t pt-4 text-sm"><Checkbox checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} /><span>I confirm that {source ? label(source) : "this project"} will {mode === "merge" ? "be removed after its linked records move to the selected project" : "leave the active registry and remain recoverable by authorized staff"}.</span></label>
         </div>
         <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" variant={mode === "remove" ? "destructive" : "default"} disabled={!confirmed || isPending || (mode === "merge" && (!destinationId || destinationId === sourceId))} onClick={submit}>{mode === "remove" ? <IconTrash className="size-4" /> : <IconArrowMerge className="size-4" />}{isPending ? "Working…" : mode === "remove" ? "Remove project" : "Merge projects"}</Button></DialogFooter>

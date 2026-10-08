@@ -18,6 +18,13 @@ import {
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectTodoEditDialog } from "@/components/projects/project-todo-edit-dialog"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -143,29 +150,35 @@ function StatusControl({
       <label className="sr-only" htmlFor={`todo-status-control-${item.id}`}>
         Status for {item.title}
       </label>
-      <select
-        id={`todo-status-control-${item.id}`}
+      <Select
         value={status}
         disabled={pending}
-        onChange={(event) => {
-          const value = event.target.value
+        onValueChange={(value) => {
           if (isSelectableProjectTodoStatus(value)) {
             changeStatus(value)
           }
         }}
-        className="h-8 rounded-md border bg-background px-2 text-xs"
       >
-        {status === "blocked" && (
-          <option value="blocked" disabled hidden>
-            Blocked (legacy)
-          </option>
-        )}
-        {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
-          <option key={selectableStatus} value={selectableStatus}>
-            {projectTodoStatusLabel(selectableStatus)}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger
+          id={`todo-status-control-${item.id}`}
+          size="sm"
+          className="h-8 px-2 text-xs"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {status === "blocked" && (
+            <SelectItem value="blocked" disabled>
+              Blocked (legacy)
+            </SelectItem>
+          )}
+          {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
+            <SelectItem key={selectableStatus} value={selectableStatus}>
+              {projectTodoStatusLabel(selectableStatus)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {error && (
         <p className="mt-1 max-w-56 text-xs text-destructive">{error}</p>
       )}

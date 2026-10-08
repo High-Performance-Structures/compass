@@ -639,19 +639,22 @@ export function ProjectContractPacketWorkspacePanel({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Select
+            <SearchableCombobox
+              className="h-9 w-[220px]"
               value={packet.id}
-              onValueChange={(value) => router.push(`/dashboard/projects/${projectId}/contracts?packetId=${value}`)}
-            >
-              <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {workspace.packets.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.packetNumber} · v{item.versionNumber} · {statusLabel(item.status)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              onValueChange={(value) => {
+                if (value === "" || value === packet.id) return
+                router.push(`/dashboard/projects/${projectId}/contracts?packetId=${value}`)
+              }}
+              options={workspace.packets.map((item) => ({
+                value: item.id,
+                label: `${item.packetNumber} · v${item.versionNumber} · ${statusLabel(item.status)}`,
+              }))}
+              ariaLabel="Contract packet"
+              placeholder="Choose a packet"
+              searchPlaceholder="Search packets..."
+              emptyMessage="No matching packets."
+            />
             <Button variant="outline" onClick={duplicate} disabled={pending || !workspace.canEdit}>
               <IconCopy className="size-4" />Duplicate version
             </Button>

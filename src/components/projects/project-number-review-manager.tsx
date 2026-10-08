@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAlertTriangle,
   IconArrowMerge,
@@ -314,26 +315,25 @@ export function ProjectNumberReviewManager({
               {issues.length > 1 ? (
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="number-review-project">Project to review</Label>
-                  <Select
+                  <SearchableCombobox
+                    id="number-review-project"
                     value={selected.project.id}
                     onValueChange={(projectId) => {
+                      if (projectId === selected.project.id) return
                       const next = issues.find(
                         (item) => item.project.id === projectId,
                       )
                       if (next) selectIssue(next)
                     }}
-                  >
-                    <SelectTrigger id="number-review-project" className="w-full min-w-0">
-                      <SelectValue className="min-w-0 truncate" />
-                    </SelectTrigger>
-                    <SelectContent className="max-w-[calc(100vw-2rem)]">
-                      {issues.map((item) => (
-                        <SelectItem key={item.project.id} value={item.project.id}>
-                          {projectLabel(item.project)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={issues.map((item) => ({
+                      value: item.project.id,
+                      label: projectLabel(item.project),
+                    }))}
+                    ariaLabel="Project to review"
+                    placeholder="Choose a project"
+                    searchPlaceholder="Search projects..."
+                    emptyMessage="No matching projects."
+                  />
                 </div>
               ) : null}
 

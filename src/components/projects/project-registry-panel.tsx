@@ -19,6 +19,13 @@ import {
   type ProjectRegistry,
 } from "@/app/actions/project-registry"
 import { provisionProjectDriveFolder } from "@/app/actions/projects"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -293,22 +300,22 @@ export function ProjectRegistryPanel({
         <div className="grid grid-cols-1 gap-3 rounded-md border bg-muted/25 p-3 sm:grid-cols-[minmax(0,16rem)_1fr]">
           <div className="space-y-1.5">
             <Label htmlFor={`${projectId}-status`}>Project status</Label>
-            <select
-              id={`${projectId}-status`}
-              name="status"
-              defaultValue={registry.project.status}
-              className="border-input bg-background h-8 w-full rounded-md border px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              {PROJECT_STATUS_OPTIONS.map((option) => (
-                <option
-                  key={option.value}
-                  value={option.value}
-                  title={option.description}
-                >
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Select name="status" defaultValue={registry.project.status}>
+              <SelectTrigger id={`${projectId}-status`} size="sm" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROJECT_STATUS_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    title={option.description}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="self-end text-xs leading-5 text-muted-foreground">
             Status changes are admin-only and move the project between the
@@ -338,32 +345,46 @@ export function ProjectRegistryPanel({
             <Label htmlFor={`${projectId}-ownerUpdateChannel`}>
               Owner update channel
             </Label>
-            <select
-              id={`${projectId}-ownerUpdateChannel`}
+            <Select
               name="ownerUpdateChannel"
               defaultValue={registry.project.ownerUpdateChannel}
-              className="border-input bg-background h-8 w-full rounded-md border px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <option value="compass">Compass portal</option>
-              <option value="telegram">Compass + Telegram intake</option>
-              <option value="email">Compass + email digest</option>
-            </select>
+              <SelectTrigger
+                id={`${projectId}-ownerUpdateChannel`}
+                size="sm"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="compass">Compass portal</SelectItem>
+                <SelectItem value="telegram">Compass + Telegram intake</SelectItem>
+                <SelectItem value="email">Compass + email digest</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor={`${projectId}-ownerUpdateCadence`}>
               Owner cadence
             </Label>
-            <select
-              id={`${projectId}-ownerUpdateCadence`}
+            <Select
               name="ownerUpdateCadence"
               defaultValue={registry.project.ownerUpdateCadence}
-              className="border-input bg-background h-8 w-full rounded-md border px-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="milestone">Milestone only</option>
-            </select>
+              <SelectTrigger
+                id={`${projectId}-ownerUpdateCadence`}
+                size="sm"
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="milestone">Milestone only</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
