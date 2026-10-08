@@ -15,6 +15,11 @@ const result = spawnSync(command, args, {
 	env: {
 		...process.env,
 		ELECTRON: "true",
+		// Keep local runs from covering the screen; CI and anyone debugging
+		// visually (COMPASS_E2E_VISIBLE_WINDOWS=true) get normal windows.
+		...(!process.env.CI && process.env.COMPASS_E2E_VISIBLE_WINDOWS !== "true"
+			? { COMPASS_E2E_INVISIBLE_WINDOWS: "true" }
+			: {}),
 	},
 	stdio: "inherit",
 })
