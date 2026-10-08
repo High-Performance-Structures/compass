@@ -132,8 +132,9 @@ export function PortfolioSection({
       {mapUnavailable && view === "map" ? (
         <p className="text-xs text-muted-foreground">The 3D map isn&apos;t available in this browser, so the pipeline view is shown.</p>
       ) : null}
+      {/* Map and panel share one fixed height; the panel scrolls instead of growing the row. */}
       <div className="flex flex-wrap gap-0 border border-border">
-        <div className={cn("min-w-0 flex-[999_1_40rem]", showMap ? "h-[34rem]" : "min-h-[24rem]")}>
+        <div className="h-[34rem] min-w-0 flex-[999_1_40rem]">
           {showMap ? (
             nearViewport ? (
               <PortfolioTerrain
@@ -156,7 +157,7 @@ export function PortfolioSection({
             />
           )}
         </div>
-        <aside aria-label="Job details" className="min-w-0 flex-[1_1_20rem] border-l border-border bg-card">
+        <aside aria-label="Job details" className="max-h-[34rem] min-w-0 flex-[1_1_20rem] overflow-y-auto border-l border-border bg-card">
           <PortfolioPanel
             jobs={jobs}
             unplacedCount={unplacedCount}

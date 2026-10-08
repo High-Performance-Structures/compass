@@ -223,8 +223,9 @@ export function PortfolioPanel({
       ) : null}
       {unplacedCount > 0 ? (
         <p className="text-xs text-muted-foreground">
-          {unplacedCount} {unplacedCount === 1 ? "job is" : "jobs are"} not on the map yet. Add a town to the
-          project&apos;s address to place {unplacedCount === 1 ? "it" : "them"}.
+          {unplacedCount === 1
+            ? "1 job is not on the map yet. Add a town to the project’s address to place it."
+            : `${unplacedCount} jobs are not on the map yet. Add a town to the projects’ addresses to place them.`}
         </p>
       ) : null}
     </div>
