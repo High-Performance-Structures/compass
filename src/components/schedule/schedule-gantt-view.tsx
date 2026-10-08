@@ -397,11 +397,10 @@ export function ScheduleGanttView({
       scrollPositionRef.current = position
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (position.anchorDate && scrollToDateRef.current) {
-            scrollToDateRef.current(position.anchorDate)
-          } else {
-            container.scrollLeft = position.left
-          }
+          // Restore the numeric viewport synchronously. Recomputing from the
+          // anchor date can clamp to zero in mobile WebKit while the Gantt
+          // content is still laying out, losing the position we just saved.
+          container.scrollLeft = position.left
           container.scrollTop = position.top
           if (taskListRef.current) {
             taskListRef.current.scrollTop = synchronizedScrollTop(
