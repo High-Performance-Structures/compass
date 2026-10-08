@@ -18,6 +18,14 @@ import {
   type ProjectFollowUpOwner,
   type ProjectInformation,
 } from "@/app/actions/project-profile"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
@@ -34,6 +42,7 @@ import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-
 import { projectNumberAndName } from "@/lib/project-display-name"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
+const UNASSIGNED_OWNER = "__unassigned__"
 
 function suffixFromProjectNumber(projectNumber: string | null): string {
   if (!projectNumber) return ""
@@ -317,36 +326,43 @@ export function ProjectInformationWorkspace({
           </div>
           <div className="space-y-2">
             <Label htmlFor="client-status">Client status</Label>
-            <select id="client-status" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={clientStatus} onChange={(event) => setClientStatus(event.target.value === "lead" ? "lead" : "customer")}>
-              <option value="lead">Lead</option>
-              <option value="customer">Customer</option>
-            </select>
+            <Select value={clientStatus} onValueChange={(value) => setClientStatus(value === "lead" ? "lead" : "customer")}>
+              <SelectTrigger id="client-status" className="h-9 w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lead">Lead</SelectItem>
+                <SelectItem value="customer">Customer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="project-department">
               Department <span className="text-destructive" aria-hidden="true">*</span>
             </Label>
-            <select
-              id="project-department"
-              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            <Select
               value={department}
-              onChange={(event) => {
-                const value = event.target.value
+              onValueChange={(value) =>
                 setDepartment(
                   value === "O" || value === "H" || value === "N" || value === "D"
                     ? value
                     : "",
                 )
-              }}
+              }
               required
-              aria-describedby="project-department-help"
             >
-              <option value="">Choose department</option>
-              <option value="O">ORC</option>
-              <option value="H">HPS</option>
-              <option value="N">Nu-Tech</option>
-              <option value="D">Design</option>
-            </select>
+              <SelectTrigger
+                id="project-department"
+                className="h-9 w-full"
+                aria-describedby="project-department-help"
+              >
+                <SelectValue placeholder="Choose department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="O">ORC</SelectItem>
+                <SelectItem value="H">HPS</SelectItem>
+                <SelectItem value="N">Nu-Tech</SelectItem>
+                <SelectItem value="D">Design</SelectItem>
+              </SelectContent>
+            </Select>
             <p id="project-department-help" className="text-xs text-muted-foreground">
               Controls department-specific workflows, including which connected social accounts receive posts.
             </p>
@@ -385,23 +401,31 @@ export function ProjectInformationWorkspace({
           </div>
           <div className="space-y-2">
             <Label htmlFor="job-status">Approved job status</Label>
-            <select id="job-status" aria-describedby="job-status-help" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={jobStatusId} onChange={(event) => setJobStatusId(event.target.value)}>
-              {information.jobStatuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
-            </select>
+            <SearchableCombobox
+              id="job-status"
+              className="h-9"
+              ariaDescribedBy="job-status-help"
+              value={jobStatusId}
+              // The picker's empty reset must not clear the project's status.
+              onValueChange={(value) => {
+                if (value !== "") setJobStatusId(value)
+              }}
+              options={information.jobStatuses.map((status) => ({ value: status.id, label: status.label }))}
+              ariaLabel="Approved job status"
+              placeholder="Choose job status"
+              searchPlaceholder="Search job statuses..."
+              emptyMessage="No matching job statuses."
+            />
             <p id="job-status-help" className="text-xs text-muted-foreground">
               Choose the approved operational stage for this project. {canManageJobStatuses ? "If a shared stage is genuinely missing, add it in the administrator-only section below." : "Only registry managers can add a shared status."}
             </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="map-visibility">Portfolio map</Label>
-            <select
-              id="map-visibility"
-              aria-describedby="map-visibility-help"
-              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            <Select
               value={mapVisibility}
               disabled={mapPending}
-              onChange={(event) => {
-                const next = event.target.value
+              onValueChange={(next) => {
                 if (!isPortfolioMapVisibility(next)) return
                 const previous = mapVisibility
                 setMapVisibility(next)
@@ -418,10 +442,19 @@ export function ProjectInformationWorkspace({
                 })
               }}
             >
-              <option value="default">Follow job status (default)</option>
-              <option value="shown">Always show on the map</option>
-              <option value="hidden">Hide from the map</option>
-            </select>
+              <SelectTrigger
+                id="map-visibility"
+                className="h-9 w-full"
+                aria-describedby="map-visibility-help"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Follow job status (default)</SelectItem>
+                <SelectItem value="shown">Always show on the map</SelectItem>
+                <SelectItem value="hidden">Hide from the map</SelectItem>
+              </SelectContent>
+            </Select>
             <p id="map-visibility-help" className="text-xs text-muted-foreground" role="status" aria-live="polite">
               {mapMessage ?? "By default, active HPS and Open Range jobs appear on the dashboard map; Internal and Nu-Tech jobs do not."}
             </p>
@@ -473,7 +506,21 @@ export function ProjectInformationWorkspace({
           <p className="mt-1 text-sm text-muted-foreground">Set the next explicit follow-up; the queue also calculates status-based staleness from meaningful touches.</p>
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={saveFollowUp}>
             <div className="space-y-2"><Label htmlFor="follow-up-at">Next follow-up</Label><Input id="follow-up-at" type="datetime-local" value={followUpAt} onChange={(event) => setFollowUpAt(event.target.value)} required /></div>
-            <div className="space-y-2"><Label htmlFor="follow-up-owner">Owner</Label><select id="follow-up-owner" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={followUpOwnerId} onChange={(event) => setFollowUpOwnerId(event.target.value)}><option value="">Unassigned</option>{followUpOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.displayName}</option>)}</select></div>
+            <div className="space-y-2"><Label htmlFor="follow-up-owner">Owner</Label><SearchableCombobox
+              id="follow-up-owner"
+              className="h-9"
+              // "" means unassigned; the picker needs a non-empty value for it.
+              value={followUpOwnerId || UNASSIGNED_OWNER}
+              onValueChange={(value) => setFollowUpOwnerId(value === UNASSIGNED_OWNER ? "" : value)}
+              options={[
+                { value: UNASSIGNED_OWNER, label: "Unassigned" },
+                ...followUpOwners.map((owner) => ({ value: owner.id, label: owner.displayName })),
+              ]}
+              ariaLabel="Follow-up owner"
+              placeholder="Unassigned"
+              searchPlaceholder="Search staff..."
+              emptyMessage="No matching staff."
+            /></div>
             <div className="flex flex-wrap gap-2 sm:col-span-2"><Button type="submit" disabled={pending}>Set follow-up</Button>{information.followUp && <Button type="button" variant="outline" disabled={pending} onClick={clearFollowUp}>Clear follow-up</Button>}</div>
           </form>
           {information.followUp && <p className="mt-4 text-sm">Current: <strong>{new Date(information.followUp.nextFollowUpAt).toLocaleString()}</strong>{information.followUp.ownerName ? ` · ${information.followUp.ownerName}` : " · Unassigned"}</p>}
@@ -486,13 +533,36 @@ export function ProjectInformationWorkspace({
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="interaction-contact">Client contact</Label>
-                <select id="interaction-contact" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={interactionContactId} onChange={(event) => setInteractionContactId(event.target.value)} required>
-                  <option value="">Choose a client contact</option>
-                  {information.clientContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.displayName}</option>)}
-                </select>
+                <SearchableCombobox
+                  id="interaction-contact"
+                  className="h-9"
+                  value={interactionContactId}
+                  onValueChange={setInteractionContactId}
+                  options={information.clientContacts.map((contact) => ({ value: contact.id, label: contact.displayName }))}
+                  ariaLabel="Client contact"
+                  placeholder="Choose a client contact"
+                  searchPlaceholder="Search client contacts..."
+                  emptyMessage="No matching client contacts."
+                  required
+                />
               </div>
-              <div className="space-y-2"><Label htmlFor="interaction-type">Type</Label><select id="interaction-type" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={interactionType} onChange={(event) => setInteractionType(event.target.value)}>{information.interactionTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}<option value={CUSTOM_INTERACTION_TYPE_OPTION}>Add another interaction type…</option></select></div>
-              <div className="space-y-2"><Label htmlFor="interaction-direction">Direction</Label><select id="interaction-direction" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={direction} onChange={(event) => setDirection(event.target.value === "inbound" ? "inbound" : "outbound")}><option value="outbound">Outbound</option><option value="inbound">Inbound</option></select></div>
+              <div className="space-y-2"><Label htmlFor="interaction-type">Type</Label><SearchableCombobox
+                id="interaction-type"
+                className="h-9"
+                value={interactionType}
+                onValueChange={(value) => {
+                  if (value !== "") setInteractionType(value)
+                }}
+                options={[
+                  ...information.interactionTypes.map((type) => ({ value: type.id, label: type.label })),
+                  { value: CUSTOM_INTERACTION_TYPE_OPTION, label: "Add another interaction type…", keywords: "custom new other" },
+                ]}
+                ariaLabel="Interaction type"
+                placeholder="Choose type"
+                searchPlaceholder="Search interaction types..."
+                emptyMessage="No matching interaction types."
+              /></div>
+              <div className="space-y-2"><Label htmlFor="interaction-direction">Direction</Label><Select value={direction} onValueChange={(value) => setDirection(value === "inbound" ? "inbound" : "outbound")}><SelectTrigger id="interaction-direction" className="h-9 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="outbound">Outbound</SelectItem><SelectItem value="inbound">Inbound</SelectItem></SelectContent></Select></div>
               <div className="space-y-2"><Label htmlFor="interaction-time">When</Label><Input id="interaction-time" type="datetime-local" value={interactionTime} onChange={(event) => setInteractionTime(event.target.value)} required /></div>
             </div>
             {interactionType === CUSTOM_INTERACTION_TYPE_OPTION && <div className="space-y-2"><Label htmlFor="custom-interaction-type">Custom interaction type</Label><Input id="custom-interaction-type" value={customInteractionTypeLabel} onChange={(event) => setCustomInteractionTypeLabel(event.target.value)} maxLength={60} placeholder="For example: Design review" aria-describedby="custom-interaction-type-help" required /><p id="custom-interaction-type-help" className="text-xs text-muted-foreground">After the first logged interaction, this choice becomes available on every project in your organization.</p></div>}

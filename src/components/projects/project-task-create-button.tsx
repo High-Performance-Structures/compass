@@ -4,6 +4,13 @@ import * as React from "react"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { useRouter } from "next/navigation"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   IconCheck,
   IconListCheck,
   IconPlus,
@@ -266,11 +273,9 @@ export function ProjectTaskCreateButton({
               <Label htmlFor={`task-type-${sourceRecordId ?? sourceLabel}`}>
                 Type
               </Label>
-              <select
-                id={`task-type-${sourceRecordId ?? sourceLabel}`}
+              <Select
                 value={taskType}
-                onChange={(event) => {
-                  const value = event.target.value
+                onValueChange={(value) => {
                   if (
                     value === "staff_task" ||
                     value === "subcontractor_task" ||
@@ -280,29 +285,39 @@ export function ProjectTaskCreateButton({
                     setTaskType(value)
                   }
                 }}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="staff_task">Internal staff to-do</option>
-                <option value="subcontractor_task">Subcontractor to-do</option>
-                <option value="supplier_task">Supplier to-do</option>
-                <option value="schedule_task">Schedule follow-up</option>
-              </select>
+                <SelectTrigger
+                  id={`task-type-${sourceRecordId ?? sourceLabel}`}
+                  className="h-10 w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="staff_task">Internal staff to-do</SelectItem>
+                  <SelectItem value="subcontractor_task">Subcontractor to-do</SelectItem>
+                  <SelectItem value="supplier_task">Supplier to-do</SelectItem>
+                  <SelectItem value="schedule_task">Schedule follow-up</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor={`task-priority-${sourceRecordId ?? sourceLabel}`}>
                 Priority
               </Label>
-              <select
-                id={`task-priority-${sourceRecordId ?? sourceLabel}`}
-                value={priority}
-                onChange={(event) => setPriority(event.target.value)}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-                <option value="low">Low</option>
-              </select>
+              <Select value={priority} onValueChange={setPriority}>
+                <SelectTrigger
+                  id={`task-priority-${sourceRecordId ?? sourceLabel}`}
+                  className="h-10 w-full"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

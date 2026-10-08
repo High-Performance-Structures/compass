@@ -34,6 +34,8 @@ export type SearchableComboboxProps = {
   readonly onValueChange: (value: string) => void
   readonly id?: string
   readonly ariaLabel: string
+  /** Id of help text read with the control, like aria-describedby on a native select. */
+  readonly ariaDescribedBy?: string
   readonly placeholder: string
   readonly searchPlaceholder?: string
   readonly emptyMessage?: string
@@ -50,6 +52,7 @@ export function SearchableCombobox({
   onValueChange,
   id,
   ariaLabel,
+  ariaDescribedBy,
   placeholder,
   searchPlaceholder = "Search...",
   emptyMessage = "No matching options.",
@@ -78,6 +81,7 @@ export function SearchableCombobox({
           role="combobox"
           aria-expanded={open}
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedBy}
           aria-required={required}
           disabled={disabled || options.length === 0}
           className={cn(
