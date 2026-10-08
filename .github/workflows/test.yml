@@ -86,6 +86,9 @@ jobs:
       - name: Prepare deterministic E2E database
         run: bun run test:e2e:prepare
 
+      - name: Install Playwright ffmpeg
+        run: bunx playwright install ffmpeg
+
       - name: Install Electron runtime dependencies
         run: |
           sudo apt-get update
@@ -129,6 +132,9 @@ jobs:
 
       - name: Prepare deterministic E2E database
         run: bun run test:e2e:prepare
+
+      - name: Install Playwright ffmpeg
+        run: bunx playwright install ffmpeg
 
       - name: Install Playwright browsers
         run: bunx playwright install chromium

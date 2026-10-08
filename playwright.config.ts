@@ -10,7 +10,7 @@ const localBaseURL = `http://127.0.0.1:${process.env.PORT ?? "3000"}`
 const baseURL = externalBaseUrl ?? localBaseURL
 const desktopBaseURL = externalBaseUrl ?? baseURL
 const localServerCommand = process.env.CI && !isElectron()
-  ? "COMPASS_E2E=true node node_modules/next/dist/bin/next start"
+  ? "node node_modules/next/dist/bin/next start"
   : "node node_modules/next/dist/bin/next dev --webpack"
 
 // Web-specific projects
