@@ -22,6 +22,9 @@ block, with a side panel of quick information and links into each job.
   table of Colorado places (`colorado-places.json`, from OpenStreetMap). Jobs
   that cannot be placed are counted in the panel instead of guessed. Jobs in the
   same town are fanned out on a small ring.
+- **Names** use `projectDisplayName()`: the stored name without the job number
+  repeated at its start; the job number is shown as a secondary label. Public
+  titles are for social media and are not used.
 - **Health**: past due when a schedule item ended before today below 100%;
   at risk when an item is in progress with 0% complete.
 

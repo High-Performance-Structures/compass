@@ -4,6 +4,7 @@ import { projects, scheduleTasks } from "@/db/schema"
 import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
   isMappedDepartment,
@@ -114,7 +115,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
       const next = nextById.get(project.id)
       return {
         id: project.id,
-        name: project.name,
+        name: projectDisplayName(project),
         projectNumber: project.projectNumber,
         phase,
         statusLabel: project.jobStatusLabel,
