@@ -372,6 +372,39 @@ describe("Talk joining workflow", () => {
     expect(mocks.meeting.leave).not.toHaveBeenCalled()
   })
 
+  it("attaches PiP tile listeners after setup join and removes them on teardown", async () => {
+    await render()
+    await click("Join meeting")
+
+    const meetingRenderer = container.querySelector<HTMLElement>("[data-meeting-mode]")
+    const meetingUi = meetingRenderer?.parentElement?.parentElement
+    if (!meetingUi) throw new Error("Missing joined meeting UI")
+    const removeEventListener = vi.spyOn(meetingUi, "removeEventListener")
+    const video = document.createElement("video")
+    const requestPictureInPicture = vi.fn(async () => video)
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 1280 },
+      videoHeight: { configurable: true, value: 720 },
+      requestPictureInPicture: { configurable: true, value: requestPictureInPicture }
+    })
+    meetingUi.appendChild(video)
+    video.dispatchEvent(new CustomEvent("tileLoad", {
+      bubbles: true,
+      composed: true,
+      detail: {
+        participant: { id: mocks.self.id },
+        videoElement: video
+      }
+    }))
+
+    await click("PiP")
+    expect(requestPictureInPicture).toHaveBeenCalledOnce()
+
+    await act(async () => root.render(null))
+    expect(removeEventListener).toHaveBeenCalledWith("tileLoad", expect.any(Function))
+    expect(removeEventListener).toHaveBeenCalledWith("tileUnload", expect.any(Function))
+  })
+
   it("asks before leaving and lets a participant cancel or leave only themselves", async () => {
     await render()
     await click("Join meeting")

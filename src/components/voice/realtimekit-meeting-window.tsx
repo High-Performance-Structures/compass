@@ -333,12 +333,12 @@ export function RealtimeKitMeetingWindow({
   }, [])
 
   React.useEffect(() => {
-    if (!meeting || loading || error) return
+    if (!joined || !meeting || loading || error) return
     const meetingUi = meetingUiRef.current
     if (!meetingUi) return
 
     return pipTileRegistryRef.current.attach(meetingUi)
-  }, [error, loading, meeting])
+  }, [error, joined, loading, meeting])
 
   React.useEffect(() => {
     if (!meeting || loading || error) return
