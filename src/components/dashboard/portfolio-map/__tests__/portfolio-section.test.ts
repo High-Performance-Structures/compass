@@ -42,24 +42,25 @@ describe("PortfolioSection", () => {
   }
 
   it("falls back to the pipeline and opens a job's quick info with links into the job", async () => {
-    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplacedCount: 1 })))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [{ id: "p9", name: "Twinkle Rd - Rogers Residence", projectNumber: "O-1" }] })))
     expect(container.textContent).toContain("1 BUILDING · 1 IN PIPELINE · 0 CLOSING OUT")
     expect(container.textContent).toContain("NEEDS ATTENTION · 1")
     expect(container.textContent).toContain("1 job is not on the map yet")
+    expect(container.querySelector('a[href="/dashboard/projects/p9/information"]')?.textContent).toContain("Twinkle Rd - Rogers Residence")
 
     await click("Granby Residence")
     expect(container.textContent).toContain("H-430-1900")
     expect(container.textContent).toContain("Footing inspection · Oct 9")
     expect(container.textContent).toContain("1 item")
     const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"))
-    expect(hrefs).toEqual(["/dashboard/projects/p1", "/dashboard/projects/p1/schedule", "/dashboard/projects/p1/daily-logs"])
+    expect(hrefs).toEqual(expect.arrayContaining(["/dashboard/projects/p1", "/dashboard/projects/p1/schedule", "/dashboard/projects/p1/daily-logs"]))
 
     await click("PIPELINE")
     expect(localStorage.getItem("compass:portfolio-view:v1")).toBe("pipeline")
   })
 
   it("renders nothing when there are no mapped jobs", async () => {
-    await act(async () => root.render(React.createElement(PortfolioSection, { jobs: [], unplacedCount: 0 })))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs: [], unplaced: [] })))
     expect(container.innerHTML).toBe("")
   })
 })

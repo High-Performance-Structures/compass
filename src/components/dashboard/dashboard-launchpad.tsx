@@ -1322,7 +1322,7 @@ export function DashboardLaunchpad({
         />
       </div>
 
-      <PortfolioSection jobs={portfolio.jobs} unplacedCount={portfolio.unplacedCount} />
+      <PortfolioSection jobs={portfolio.jobs} unplaced={portfolio.unplaced} />
 
       {mode === "office" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.5fr)_minmax(15rem,0.5fr)]">

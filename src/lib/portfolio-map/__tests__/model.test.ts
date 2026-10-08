@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   isMappedDepartment,
+  isOfficeRecord,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
@@ -66,6 +67,15 @@ describe("isMappedDepartment", () => {
   })
 })
 
+describe("isOfficeRecord", () => {
+  it("recognizes the internal office record", () => {
+    expect(isOfficeRecord("H-OFFICE")).toBe(true)
+    expect(isOfficeRecord("H-OFFICE-2026")).toBe(true)
+    expect(isOfficeRecord("H-430-1900")).toBe(false)
+    expect(isOfficeRecord(null)).toBe(false)
+  })
+})
+
 describe("resolveTown", () => {
   it("prefers the public city field", () => {
     expect(resolveTown({ publicLocationCity: "Estes Park", address: "1 Main St, Lyons, CO", name: "X" })?.town).toBe("Estes Park")
@@ -80,6 +90,11 @@ describe("resolveTown", () => {
 
   it("falls back to the town at the end of the project name", () => {
     expect(resolveTown({ publicLocationCity: null, address: null, name: "O-170-2684 County Ln 7 - Salida" })?.town).toBe("Salida")
+  })
+
+  it("reads addresses written without commas", () => {
+    expect(resolveTown({ publicLocationCity: null, address: "1234 Twinkle Rd Guffey CO 80820", name: "X" })?.town).toBe("Guffey")
+    expect(resolveTown({ publicLocationCity: null, address: "88 County Rd 5 Estes Park Colorado", name: "X" })?.town).toBe("Estes Park")
   })
 
   it("returns null rather than guessing", () => {

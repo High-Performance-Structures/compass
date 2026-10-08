@@ -78,6 +78,12 @@ export function isMappedDepartment(project: {
   return resolvedProjectDepartment(project) !== "N"
 }
 
+/** The internal office record (H-OFFICE) is not a job and stays off the map. */
+export function isOfficeRecord(projectNumber: string | null): boolean {
+  const normalized = (projectNumber ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+  return normalized === "h-office" || normalized.startsWith("h-office-")
+}
+
 function normalizeLabel(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
 }
@@ -145,19 +151,32 @@ export function resolveTown(input: {
   readonly address: string | null
   readonly name: string
 }): ResolvedTown | null {
-  const candidates: string[] = []
-  if (input.publicLocationCity) candidates.push(input.publicLocationCity)
-  if (input.address) candidates.push(...input.address.split(/[,\n]/).reverse())
+  const found = (key: string): ResolvedTown | null => {
+    const place = key ? PLACES.get(key) : undefined
+    return place ? { town: titleCase(key), lon: place[0], lat: place[1] } : null
+  }
+  if (input.publicLocationCity) {
+    const town = found(placeKey(input.publicLocationCity))
+    if (town) return town
+  }
+  if (input.address) {
+    const parts = input.address.split(/[,\n]/).reverse()
+    for (const part of parts) {
+      const town = found(placeKey(part))
+      if (town) return town
+    }
+    // Addresses written without commas ("12 Twinkle Rd Guffey CO 80820"):
+    // try the last one to three words before the state and ZIP.
+    const words = placeKey(input.address).split(" ")
+    for (let size = 3; size >= 1; size -= 1) {
+      if (words.length <= size) continue
+      const town = found(words.slice(-size).join(" "))
+      if (town) return town
+    }
+  }
   const nameParts = input.name.split(/\s+[-–—]\s+/)
   const nameTown = nameParts.length > 1 ? nameParts[nameParts.length - 1] : undefined
-  if (nameTown) candidates.push(nameTown)
-  for (const candidate of candidates) {
-    const key = placeKey(candidate)
-    if (!key) continue
-    const place = PLACES.get(key)
-    if (place) return { town: titleCase(key), lon: place[0], lat: place[1] }
-  }
-  return null
+  return nameTown ? found(placeKey(nameTown)) : null
 }
 
 export function portfolioHealth(pastDueCount: number, stalledCount: number): PortfolioHealth {
