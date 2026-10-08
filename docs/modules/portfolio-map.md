@@ -18,7 +18,9 @@ block, with a side panel of quick information and links into each job.
   set `portfolio_map_visibility` to `default` (follow status and department),
   `shown` (always on the map; statuses without a phase appear in closeout for
   warranty/complete jobs, pre-construction otherwise) or `hidden`. Hidden jobs
-  are listed in the panel with "Show on map". Changes are audited.
+  are listed in the panel with "Show on map". "Add a project to the map" in
+  the panel searches projects kept off the map by status or department
+  (loaded on demand) and sets them to always show. Changes are audited.
 - **Phase** comes from the job status (`phaseForJobStatus` in
   `src/lib/portfolio-map/model.ts`). Closeout covers punch list and warranty
   work. Complete, closed, refused, inactive, internal and material-order statuses (ordered, partial order, price sheet

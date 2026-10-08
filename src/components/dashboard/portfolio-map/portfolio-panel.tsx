@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import * as React from "react"
 import { EyeOff, X } from "lucide-react"
 import { updateProjectMapVisibility } from "@/app/actions/project-profile"
+import { listProjectsToAddToMap } from "@/app/actions/portfolio-map"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { formatDateKeyShort } from "@/components/dashboard/portfolio-map/portfolio-dates"
 import {
@@ -17,7 +19,11 @@ import {
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
-import type { PortfolioHiddenJob, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import type {
+  PortfolioAddableProject,
+  PortfolioHiddenJob,
+  PortfolioUnplacedJob,
+} from "@/lib/portfolio-map/load"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export type PortfolioSelection =
@@ -178,6 +184,88 @@ function JobDetail({
   )
 }
 
+const ADD_RESULT_LIMIT = 8
+
+/**
+ * Put a project that its status or department keeps off the map onto it
+ * ("Always show"). The list loads the first time this is opened.
+ */
+function AddToMap(): React.ReactElement {
+  const visibility = useMapVisibility()
+  const [projects, setProjects] = React.useState<readonly PortfolioAddableProject[] | null>(null)
+  const [loading, startLoading] = React.useTransition()
+  const [query, setQuery] = React.useState("")
+  const [added, setAdded] = React.useState<readonly string[]>([])
+
+  const load = (): void => {
+    if (projects !== null || loading) return
+    startLoading(async () => {
+      setProjects(await listProjectsToAddToMap())
+    })
+  }
+
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const matches = (projects ?? [])
+    .filter((project) => !added.includes(project.id))
+    .filter((project) => {
+      const haystack = `${project.name} ${project.projectNumber ?? ""} ${project.statusLabel}`.toLowerCase()
+      return terms.every((term) => haystack.includes(term))
+    })
+
+  return (
+    <details
+      className="text-xs text-muted-foreground"
+      onToggle={(event) => {
+        if (event.currentTarget.open) load()
+      }}
+    >
+      <summary className="cursor-pointer py-1 hover:text-foreground">Add a project to the map</summary>
+      <div className="mt-2 flex flex-col gap-2">
+        <Input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by name, number or status"
+          aria-label="Search projects to add to the map"
+          className="h-8 text-xs"
+        />
+        {projects === null || loading ? (
+          <p>Loading projects…</p>
+        ) : terms.length === 0 ? (
+          <p>{projects.length} projects are off the map by their status. Type to find one.</p>
+        ) : matches.length === 0 ? (
+          <p>No matching projects.</p>
+        ) : (
+          <ul>
+            {matches.slice(0, ADD_RESULT_LIMIT).map((project) => (
+              <li key={project.id} className="flex min-h-9 items-center justify-between gap-3 border-b border-border px-1 text-foreground">
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{project.name}</span>
+                  <span className="truncate font-mono text-muted-foreground">
+                    {project.projectNumber ? `${project.projectNumber} · ` : ""}{project.statusLabel}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={visibility.pending}
+                  onClick={() =>
+                    visibility.change(project.id, "shown", () => setAdded((ids) => [...ids, project.id]))
+                  }
+                >
+                  Add
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {visibility.message ? <p role="alert" className="text-destructive">{visibility.message}</p> : null}
+      </div>
+    </details>
+  )
+}
+
 function HiddenJobs({ hidden }: { readonly hidden: readonly PortfolioHiddenJob[] }): React.ReactElement | null {
   const visibility = useMapVisibility()
   if (hidden.length === 0) return null
@@ -294,6 +382,7 @@ export function PortfolioPanel({
         </div>
       ) : null}
       <HiddenJobs hidden={hidden} />
+      <AddToMap />
       {unplaced.length > 0 ? (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer py-1 hover:text-foreground">
