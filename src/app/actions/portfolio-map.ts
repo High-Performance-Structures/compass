@@ -1,7 +1,7 @@
 "use server"
 
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
-import { vendorJobScope, type VendorJobScope } from "@/lib/portfolio-map/vendor-model"
+import { vendorJobScope, type VendorJobScope } from "@/lib/portfolio-map/audience-model"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
   getPortfolioAddableProjects,

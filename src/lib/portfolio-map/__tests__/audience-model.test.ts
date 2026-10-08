@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { vendorJobScope, vendorMapJobs, type VendorJobRow } from "@/lib/portfolio-map/vendor-model"
+import { audienceMapJobs, ownerPhaseSteps, ownerScheduleProgress, vendorJobScope, type AudienceJobRow } from "@/lib/portfolio-map/audience-model"
 
-function row(overrides: Partial<VendorJobRow> = {}): VendorJobRow {
+function row(overrides: Partial<AudienceJobRow> = {}): AudienceJobRow {
   return {
     id: "p1",
     name: "H-430-1900 Ezell Residence",
@@ -14,9 +14,9 @@ function row(overrides: Partial<VendorJobRow> = {}): VendorJobRow {
   }
 }
 
-describe("vendorMapJobs", () => {
+describe("audienceMapJobs", () => {
   it("places assigned jobs by town without office-only signals", () => {
-    const [job] = vendorMapJobs([row()])
+    const [job] = audienceMapJobs([row()])
     expect(job?.town).toBe("Granby")
     expect(job?.lat).not.toBeNull()
     expect(job?.progress).toBeNull()
@@ -26,12 +26,12 @@ describe("vendorMapJobs", () => {
   })
 
   it("leaves out complete and internal jobs", () => {
-    expect(vendorMapJobs([row({ jobStatusId: "complete", statusLabel: "Complete" })])).toEqual([])
-    expect(vendorMapJobs([row({ jobStatusId: "internal", statusLabel: "Internal" })])).toEqual([])
+    expect(audienceMapJobs([row({ jobStatusId: "complete", statusLabel: "Complete" })])).toEqual([])
+    expect(audienceMapJobs([row({ jobStatusId: "internal", statusLabel: "Internal" })])).toEqual([])
   })
 
   it("keeps a job with no known town so it can be listed", () => {
-    const [job] = vendorMapJobs([row({ address: null, name: "Mystery job" })])
+    const [job] = audienceMapJobs([row({ address: null, name: "Mystery job" })])
     expect(job?.town).toBeNull()
   })
 })
@@ -55,5 +55,21 @@ describe("vendorJobScope", () => {
     }, "2026-10-08")
     expect(scope.upcoming.map((entry) => entry.id)).toEqual(["a", "b", "c"])
     expect(scope.commitmentCount).toBe(2)
+  })
+})
+
+describe("owner relief helpers", () => {
+  it("weights progress by workdays", () => {
+    expect(ownerScheduleProgress([
+      { percentComplete: 100, workdays: 1 },
+      { percentComplete: 0, workdays: 3 },
+    ])).toBe(25)
+    expect(ownerScheduleProgress([])).toBeNull()
+  })
+
+  it("marks earlier phases done and later ones upcoming", () => {
+    const steps = ownerPhaseSteps("permitting")
+    expect(steps.map((step) => step.state)).toEqual(["done", "done", "current", "upcoming", "upcoming", "upcoming"])
+    expect(steps[5]?.label).toBe("Finishing up")
   })
 })

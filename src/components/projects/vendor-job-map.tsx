@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { projectAudienceActiveProjectCookieName } from "@/lib/project-audience-active-project"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { PORTFOLIO_PHASES, type PortfolioMapJob } from "@/lib/portfolio-map/model"
-import type { VendorJobScope } from "@/lib/portfolio-map/vendor-model"
+import type { VendorJobScope } from "@/lib/portfolio-map/audience-model"
 import { cn } from "@/lib/utils"
 
 // three.js loads only when the map is shown.

@@ -71,7 +71,7 @@ their dashboard overview (`VendorJobMap`).
 
 - **Which jobs:** only the projects already in the viewer's project switcher
   (`projectOptions`, resolved server-side from their project memberships).
-  `getVendorJobMap()` is a server-only loader, not a server action, so a
+  `getAudienceJobMap()` is a server-only loader, not a server action, so a
   client cannot request other project ids. Staff previews show only the
   current project, so the map stays hidden there.
 - **Phase:** from job status alone (`phaseForJobStatus`); the office
@@ -82,3 +82,18 @@ their dashboard overview (`VendorJobMap`).
   `getProjectAudiencePreview(id, "sub_vendor")`. That is the vendor
   dashboard's own reader, so the panel never shows more than that dashboard.
   No office signals (progress, health, past-due counts) are sent.
+
+## Owner "Where things stand" relief
+
+Owners see their project on the same relief, zoomed to its town
+(`OwnerSiteRelief`), beside an owner-worded stage stepper (Pricing, Design,
+Permits, Getting ready to build, Under construction, Finishing up) and a
+"scheduled work complete" bar.
+
+- **General area only:** the pin is the town center from `resolveTown`, never
+  the site address, and the panel says so. Without a resolvable town the
+  section is not shown.
+- **Progress:** `ownerScheduleProgress()` averages percent complete across
+  the owner-visible schedule items already on the dashboard, weighted by
+  workdays. No office-only schedule rows are read.
+- Phones and reduced motion show the stepper and progress without the map.

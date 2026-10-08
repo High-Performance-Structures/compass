@@ -16,6 +16,8 @@ type PortfolioTerrainProps = {
   readonly onSelectJob: (jobId: string | null) => void
   readonly onHoverJob: (jobId: string | null) => void
   readonly onUnavailable: () => void
+  /** Open zoomed to the selected job instead of the statewide view. */
+  readonly focusSelectedOnLoad?: boolean
 }
 
 function supportsWebGL2(): boolean {
@@ -39,6 +41,7 @@ export default function PortfolioTerrain({
   onSelectJob,
   onHoverJob,
   onUnavailable,
+  focusSelectedOnLoad = false,
 }: PortfolioTerrainProps): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -47,6 +50,8 @@ export default function PortfolioTerrain({
   const [ready, setReady] = React.useState(false)
   const callbacks = React.useRef({ onSelectJob, onHoverJob, onUnavailable })
   callbacks.current = { onSelectJob, onHoverJob, onUnavailable }
+  // Read once when the scene starts.
+  const focusOnLoad = React.useRef(focusSelectedOnLoad)
 
   React.useEffect(() => {
     const canvas = canvasRef.current
@@ -70,6 +75,7 @@ export default function PortfolioTerrain({
       callbacks.current.onUnavailable()
       return
     }
+    if (focusOnLoad.current) scene.focusSelectedWhenPlaced()
     sceneRef.current = scene
     return () => {
       sceneRef.current = null

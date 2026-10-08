@@ -4,15 +4,16 @@ import { projectJobStatuses, projects } from "@/db/schema"
 import { getCloudflareContext } from "@/lib/db"
 import { projectJobStatusLabel } from "@/lib/project-profile"
 import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
-import { vendorMapJobs } from "@/lib/portfolio-map/vendor-model"
+import { audienceMapJobs } from "@/lib/portfolio-map/audience-model"
 
 /**
- * Map jobs for the sub/vendor dashboard. Callers pass the project ids the
- * viewer already has in their project switcher (resolved server-side for that
- * viewer), so the map never reveals a job they could not already open.
- * Server-only: not a server action, so clients cannot pass arbitrary ids.
+ * Map jobs for the owner and sub/vendor dashboards. Callers pass project ids
+ * the viewer already has (their project switcher or the current project,
+ * resolved server-side for that viewer), so the map never reveals a job they
+ * could not already open. Server-only: not a server action, so clients cannot
+ * pass arbitrary ids.
  */
-export async function getVendorJobMap(
+export async function getAudienceJobMap(
   projectIds: readonly string[],
 ): Promise<readonly PortfolioMapJob[]> {
   if (projectIds.length === 0) return []
@@ -38,7 +39,7 @@ export async function getVendorJobMap(
         ),
       )
       .where(inArray(projects.id, [...projectIds]))
-    return vendorMapJobs(
+    return audienceMapJobs(
       rows.map(({ customJobStatusLabel, ...row }) => ({
         ...row,
         statusLabel: projectJobStatusLabel({
