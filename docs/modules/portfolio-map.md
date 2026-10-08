@@ -20,8 +20,8 @@ block, with a side panel of quick information and links into each job.
   warranty/complete jobs, pre-construction otherwise) or `hidden`. Hidden jobs
   are listed in the panel with "Show on map". Changes are audited.
 - **Phase** comes from the job status (`phaseForJobStatus` in
-  `src/lib/portfolio-map/model.ts`). Warranty, complete, closed, refused,
-  inactive and material-order statuses (ordered, partial order, price sheet
+  `src/lib/portfolio-map/model.ts`). Closeout covers punch list and warranty
+  work. Complete, closed, refused, inactive, internal and material-order statuses (ordered, partial order, price sheet
   sent, shipping TBD, awaiting payment) are not shown. Custom statuses match a
   standard status by label.
 - **Location** is town-level, without geocoding, in this order: the public

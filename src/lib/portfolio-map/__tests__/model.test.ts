@@ -37,10 +37,11 @@ describe("phaseForJobStatus", () => {
     expect(phaseForJobStatus("awaiting_groundbreaking", "Awaiting Groundbreaking")).toBe("precon")
     expect(phaseForJobStatus("under_construction", "Under Construction")).toBe("construction")
     expect(phaseForJobStatus("punchlist", "Punchlist")).toBe("closeout")
+    expect(phaseForJobStatus("under_warranty", "Under Warranty")).toBe("closeout")
   })
 
-  it("leaves finished, refused and inactive jobs off the map", () => {
-    for (const id of ["under_warranty", "complete", "closed", "bid_refused", "inactive"]) {
+  it("leaves finished, refused, inactive and internal jobs off the map", () => {
+    for (const id of ["complete", "closed", "bid_refused", "inactive", "internal"]) {
       expect(phaseForJobStatus(id, null)).toBeNull()
     }
   })
