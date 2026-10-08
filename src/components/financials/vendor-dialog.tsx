@@ -7,6 +7,7 @@ import type {
   VendorDirectoryCompany,
   VendorContactItem,
 } from "@/app/actions/vendors"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -16,13 +17,6 @@ import {
 } from "@/components/ui/responsive-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 type ContactDraft = {
   readonly key: string
@@ -201,21 +195,23 @@ export function VendorDialog({
               <Label htmlFor="vendor-category" className="text-xs">
                 Category *
               </Label>
-              <Select value={category} onValueChange={setCategory} disabled={locked}>
-                <SelectTrigger
-                  id="vendor-category"
-                  className="h-9"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((categoryOption) => (
-                    <SelectItem key={categoryOption} value={categoryOption}>
-                      {categoryOption}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                id="vendor-category"
+                className="h-9"
+                value={category}
+                onValueChange={(value) => {
+                  if (value !== "") setCategory(value)
+                }}
+                disabled={locked}
+                options={categories.map((categoryOption) => ({
+                  value: categoryOption,
+                  label: categoryOption,
+                }))}
+                ariaLabel="Vendor category"
+                placeholder="Choose category"
+                searchPlaceholder="Search categories..."
+                emptyMessage="No matching categories."
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

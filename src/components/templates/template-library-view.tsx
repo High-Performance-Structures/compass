@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useMemo, useState, useTransition } from "react"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconArrowLeft,
   IconCircleCheck,
@@ -33,13 +34,6 @@ import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import { templateDetailHref } from "@/lib/templates/template-detail-route"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { EstimateTemplateCreateDialog } from "./estimate-template-create-dialog"
 import { EstimateTextTemplateLibrary } from "./estimate-text-template-library"
 import { ContractTemplateLibrary } from "./contract-template-library"
@@ -104,25 +98,22 @@ function CategoryControl({
 
   return (
     <div>
-      <Select
+      <SearchableCombobox
         disabled={pending}
         value={category}
+        // Each choice saves immediately; ignore the picker's empty reset and
+        // re-picks of the current category.
         onValueChange={(value) => {
+          if (value === "" || value === category) return
           setCategory(value)
           save(value)
         }}
-      >
-        <SelectTrigger aria-label={`Category for ${template.name}`}>
-          <SelectValue placeholder="Category" />
-        </SelectTrigger>
-        <SelectContent>
-          {TEMPLATE_CATEGORIES.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        options={TEMPLATE_CATEGORIES.map((option) => ({ value: option, label: option }))}
+        ariaLabel={`Category for ${template.name}`}
+        placeholder="Category"
+        searchPlaceholder="Search categories..."
+        emptyMessage="No matching categories."
+      />
     </div>
   )
 }
@@ -311,17 +302,18 @@ export function TemplateLibraryView({
           </TabsList>
           <TabsContent value="project-content" className="mt-5">
             <div className="mb-5 border-y py-3 sm:max-w-sm">
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger aria-label="Filter templates by category">
-                  <SelectValue placeholder="All categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All categories</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>{category}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                value={categoryFilter}
+                onValueChange={(value) => setCategoryFilter(value || "all")}
+                options={[
+                  { value: "all", label: "All categories" },
+                  ...categories.map((category) => ({ value: category, label: category })),
+                ]}
+                ariaLabel="Filter templates by category"
+                placeholder="All categories"
+                searchPlaceholder="Search categories..."
+                emptyMessage="No matching categories."
+              />
             </div>
 
             {filtered.length === 0 ? (

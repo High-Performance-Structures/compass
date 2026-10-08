@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconDotsVertical,
   IconMail,
@@ -38,13 +39,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -303,28 +297,28 @@ export function PeopleTable({
           className="w-full sm:max-w-sm"
         />
         <div className="flex items-center gap-2">
-          <Select
+          <SearchableCombobox
+            className="h-9 w-full sm:w-[180px]"
             value={
-              (table.getColumn("role")?.getFilterValue() as string) ?? "all"
+              // The column holds "" when unfiltered; the picker shows that as "all".
+              (table.getColumn("role")?.getFilterValue() as string) || "all"
             }
             onValueChange={(value) =>
               table
                 .getColumn("role")
-                ?.setFilterValue(value === "all" ? "" : value)
+                ?.setFilterValue(value === "all" || value === "" ? "" : value)
             }
-          >
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Filter by role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Roles</SelectItem>
-              {USER_ROLE_OPTIONS.filter((option) => users.some((user) => user.role === option.value)).map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={[
+              { value: "all", label: "All Roles" },
+              ...USER_ROLE_OPTIONS.filter((option) =>
+                users.some((user) => user.role === option.value)
+              ),
+            ]}
+            ariaLabel="Filter by role"
+            placeholder="Filter by role"
+            searchPlaceholder="Search roles..."
+            emptyMessage="No matching roles."
+          />
         </div>
       </div>
 

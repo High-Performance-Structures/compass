@@ -79,19 +79,21 @@ export default async function ActivityPage({
           </p>
         </div>
         <form className="flex flex-wrap items-center gap-2">
-          <select
+          <SearchableComboboxField
             name="category"
             defaultValue={params.category ?? ""}
-            aria-label="Filter activity by category"
-            className="h-9 border bg-background px-3 text-sm"
-          >
-            <option value="">All activity</option>
-            {ACTIVITY_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {CATEGORY_LABELS[category]}
-              </option>
-            ))}
-          </select>
+            ariaLabel="Filter activity by category"
+            placeholder="All activity"
+            searchPlaceholder="Search categories..."
+            className="h-9 min-w-48"
+            options={[
+              { value: "", label: "All activity" },
+              ...ACTIVITY_CATEGORIES.map((category) => ({
+                value: category,
+                label: CATEGORY_LABELS[category],
+              })),
+            ]}
+          />
           <SearchableComboboxField
             name="project"
             defaultValue={params.project ?? ""}
