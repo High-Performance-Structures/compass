@@ -1,4 +1,5 @@
 import placesData from "./colorado-places.json"
+import zipsData from "./colorado-zips.json"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 
@@ -124,12 +125,37 @@ const PLACES: ReadonlyMap<string, PlaceEntry> = new Map(
   ),
 )
 
-const STATE_OR_ZIP = /\b(co|colorado|usa|us)\b|\b\d{5}(?:-\d{4})?\b/gi
+type ZipEntry = readonly [number, number, string]
+
+function isZipEntry(value: unknown): value is ZipEntry {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number" &&
+    typeof value[2] === "string"
+  )
+}
+
+/** Census ZIP code areas in Colorado: center point and the nearest town's name. */
+const ZIPS: ReadonlyMap<string, ZipEntry> = new Map(
+  Object.entries(zipsData).flatMap(([zip, entry]): [string, ZipEntry][] =>
+    isZipEntry(entry) ? [[zip, entry]] : [],
+  ),
+)
+
+const COLORADO_ZIP = /\b(8[01]\d{3})(?:-\d{4})?\b/
+
+const ZIP_CODE = /\b\d{5}(?:-\d{4})?\b/g
+// Only a trailing state or country is dropped, so towns like "Colorado
+// Springs" and "Colorado City" keep their full names.
+const TRAILING_STATE = /(?:\s+(?:co|colo|colorado|usa|us))+$/
 
 function placeKey(candidate: string): string {
-  return normalizeLabel(
-    candidate.replace(STATE_OR_ZIP, " ").replace(/^\s*(town|city) of\s+/i, ""),
-  )
+  return normalizeLabel(candidate.replace(ZIP_CODE, " "))
+    .replace(/^(?:town|city) of\s+/, "")
+    .replace(TRAILING_STATE, "")
+    .trim()
 }
 
 function titleCase(value: string): string {
@@ -143,8 +169,9 @@ export type ResolvedTown = {
 }
 
 /**
- * Town-level location without geocoding: the public city field, then each
- * part of the address (last first), then the "… - Town" suffix of the name.
+ * Town-level location without geocoding: the public city field, then the town
+ * in the site address, then its ZIP code, then the "… - Town" suffix of the
+ * project name.
  */
 export function resolveTown(input: {
   readonly publicLocationCity: string | null
@@ -173,6 +200,10 @@ export function resolveTown(input: {
       const town = found(words.slice(-size).join(" "))
       if (town) return town
     }
+    // Then the ZIP code, labeled with its nearest town.
+    const zip = COLORADO_ZIP.exec(input.address)?.[1]
+    const zipEntry = zip ? ZIPS.get(zip) : undefined
+    if (zipEntry) return { town: zipEntry[2], lon: zipEntry[0], lat: zipEntry[1] }
   }
   const nameParts = input.name.split(/\s+[-–—]\s+/)
   const nameTown = nameParts.length > 1 ? nameParts[nameParts.length - 1] : undefined

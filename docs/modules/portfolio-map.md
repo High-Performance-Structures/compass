@@ -17,11 +17,19 @@ block, with a side panel of quick information and links into each job.
   inactive and material-order statuses (ordered, partial order, price sheet
   sent, shipping TBD, awaiting payment) are not shown. Custom statuses match a
   standard status by label.
-- **Location** is town-level, without geocoding: the public city field, then
-  the address, then a trailing "- Town" in the project name, matched against a
-  table of Colorado places (`colorado-places.json`, from OpenStreetMap). Jobs
-  that cannot be placed are counted in the panel instead of guessed. Jobs in the
-  same town are fanned out on a small ring.
+- **Location** is town-level, without geocoding, in this order: the public
+  town/city field; the town in the site address (with or without commas); the
+  site address's Colorado ZIP code (`colorado-zips.json`, Census Bureau ZCTA
+  gazetteer, public domain, labeled with the nearest town); then a trailing
+  "- Town" in the project name. Towns come from OpenStreetMap
+  (`colorado-places.json`). Only a trailing state is ignored, so "Colorado
+  Springs" keeps its name. Jobs that cannot be placed are listed in the panel,
+  each linking to its project information page, instead of guessed. Jobs in the
+  same town are fanned out on a small ring. The internal office record
+  (H-OFFICE) is not shown.
+- **Freshness**: job data is read on every dashboard load, so a newly added
+  address or town appears on the next visit (a reload bypasses the browser's
+  30-second page cache).
 - **Names** use `projectDisplayName()`: the stored name without the job number
   repeated at its start; the job number is shown as a secondary label. Public
   titles are for social media and are not used.

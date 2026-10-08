@@ -153,6 +153,27 @@ function toY(meters: number): number {
   return ((meters - 1000) / 3400) * VERTICAL_SCALE
 }
 
+/**
+ * Drop labels whose approximate box overlaps one already placed, in priority
+ * order. Hidden landmark labels reappear as the camera zooms in.
+ */
+export function placeWithoutOverlap(labels: readonly SceneLabel[]): readonly SceneLabel[] {
+  const boxes: { left: number; right: number; top: number; bottom: number }[] = []
+  const placed: SceneLabel[] = []
+  for (const label of labels) {
+    const stem = label.tone === "landmark" ? 14 : 24
+    const width = Math.max(label.title.length, label.sub.length) * 8 + 14
+    const box = { left: label.x - 4, right: label.x + width, top: label.y - stem - 34, bottom: label.y + 4 }
+    const collides = boxes.some(
+      (other) => box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top,
+    )
+    if (collides) continue
+    boxes.push(box)
+    placed.push(label)
+  }
+  return placed
+}
+
 const TOP_VERTEX = `
 varying float vH; varying vec3 vN; varying float vDepth;
 void main() {
@@ -662,13 +683,8 @@ export class PortfolioScene {
 
   private emitLabels(): void {
     const labels: SceneLabel[] = []
-    for (const landmark of this.landmarks) {
-      const screen = this.project(landmark.point)
-      if (screen.onScreen) {
-        labels.push({ key: landmark.title, x: screen.x, y: screen.y, title: landmark.title, sub: landmark.sub, tone: "landmark" })
-      }
-    }
     const { selectedJobId, hoveredJobId } = this.highlight
+    // Job labels first so they win any overlap with landmark labels.
     for (const marker of this.markers) {
       const selected = marker.job.id === selectedJobId
       if (!selected && marker.job.id !== hoveredJobId) continue
@@ -683,10 +699,17 @@ export class PortfolioScene {
         tone: selected ? "selected" : "hover",
       })
     }
-    const signature = JSON.stringify(labels)
+    for (const landmark of this.landmarks) {
+      const screen = this.project(landmark.point)
+      if (screen.onScreen) {
+        labels.push({ key: landmark.title, x: screen.x, y: screen.y, title: landmark.title, sub: landmark.sub, tone: "landmark" })
+      }
+    }
+    const placed = placeWithoutOverlap(labels)
+    const signature = JSON.stringify(placed)
     if (signature === this.labelSignature) return
     this.labelSignature = signature
-    this.callbacks.onLabels(labels)
+    this.callbacks.onLabels(placed)
   }
 
   dispose(): void {

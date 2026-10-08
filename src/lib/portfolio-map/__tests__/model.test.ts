@@ -97,6 +97,23 @@ describe("resolveTown", () => {
     expect(resolveTown({ publicLocationCity: null, address: "88 County Rd 5 Estes Park Colorado", name: "X" })?.town).toBe("Estes Park")
   })
 
+  it("keeps state words that are part of a town's name", () => {
+    expect(resolveTown({ publicLocationCity: "Colorado Springs", address: null, name: "X" })?.town).toBe("Colorado Springs")
+    expect(resolveTown({ publicLocationCity: null, address: "13020 Crump Rd., Colorado Springs, CO 80908", name: "X" })?.town).toBe("Colorado Springs")
+    expect(resolveTown({ publicLocationCity: null, address: "1 Main St Colorado City CO 81019", name: "X" })?.town).toBe("Colorado City")
+    expect(resolveTown({ publicLocationCity: "Granby, Colorado", address: null, name: "X" })?.town).toBe("Granby")
+  })
+
+  it("falls back to the ZIP code when the town is not recognized", () => {
+    const town = resolveTown({ publicLocationCity: null, address: "40 Hwy 34, Grnby CO 80446", name: "X" })
+    expect(town?.town).toBe("Granby")
+    expect(town?.lat).toBeGreaterThan(40)
+  })
+
+  it("ignores ZIP codes outside Colorado", () => {
+    expect(resolveTown({ publicLocationCity: null, address: "1 Main St, Boise, ID 83702", name: "X" })).toBeNull()
+  })
+
   it("returns null rather than guessing", () => {
     expect(resolveTown({ publicLocationCity: null, address: "PO Box 12", name: "Warehouse" })).toBeNull()
   })
