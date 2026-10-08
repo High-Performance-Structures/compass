@@ -1,4 +1,5 @@
 import placesData from "./colorado-places.json"
+import zipsData from "./colorado-zips.json"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 
@@ -78,6 +79,12 @@ export function isMappedDepartment(project: {
   return resolvedProjectDepartment(project) !== "N"
 }
 
+/** The internal office record (H-OFFICE) is not a job and stays off the map. */
+export function isOfficeRecord(projectNumber: string | null): boolean {
+  const normalized = (projectNumber ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+  return normalized === "h-office" || normalized.startsWith("h-office-")
+}
+
 function normalizeLabel(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
 }
@@ -118,12 +125,37 @@ const PLACES: ReadonlyMap<string, PlaceEntry> = new Map(
   ),
 )
 
-const STATE_OR_ZIP = /\b(co|colorado|usa|us)\b|\b\d{5}(?:-\d{4})?\b/gi
+type ZipEntry = readonly [number, number, string]
+
+function isZipEntry(value: unknown): value is ZipEntry {
+  return (
+    Array.isArray(value) &&
+    value.length === 3 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number" &&
+    typeof value[2] === "string"
+  )
+}
+
+/** Census ZIP code areas in Colorado: center point and the nearest town's name. */
+const ZIPS: ReadonlyMap<string, ZipEntry> = new Map(
+  Object.entries(zipsData).flatMap(([zip, entry]): [string, ZipEntry][] =>
+    isZipEntry(entry) ? [[zip, entry]] : [],
+  ),
+)
+
+const COLORADO_ZIP = /\b(8[01]\d{3})(?:-\d{4})?\b/
+
+const ZIP_CODE = /\b\d{5}(?:-\d{4})?\b/g
+// Only a trailing state or country is dropped, so towns like "Colorado
+// Springs" and "Colorado City" keep their full names.
+const TRAILING_STATE = /(?:\s+(?:co|colo|colorado|usa|us))+$/
 
 function placeKey(candidate: string): string {
-  return normalizeLabel(
-    candidate.replace(STATE_OR_ZIP, " ").replace(/^\s*(town|city) of\s+/i, ""),
-  )
+  return normalizeLabel(candidate.replace(ZIP_CODE, " "))
+    .replace(/^(?:town|city) of\s+/, "")
+    .replace(TRAILING_STATE, "")
+    .trim()
 }
 
 function titleCase(value: string): string {
@@ -137,27 +169,45 @@ export type ResolvedTown = {
 }
 
 /**
- * Town-level location without geocoding: the public city field, then each
- * part of the address (last first), then the "… - Town" suffix of the name.
+ * Town-level location without geocoding: the public city field, then the town
+ * in the site address, then its ZIP code, then the "… - Town" suffix of the
+ * project name.
  */
 export function resolveTown(input: {
   readonly publicLocationCity: string | null
   readonly address: string | null
   readonly name: string
 }): ResolvedTown | null {
-  const candidates: string[] = []
-  if (input.publicLocationCity) candidates.push(input.publicLocationCity)
-  if (input.address) candidates.push(...input.address.split(/[,\n]/).reverse())
+  const found = (key: string): ResolvedTown | null => {
+    const place = key ? PLACES.get(key) : undefined
+    return place ? { town: titleCase(key), lon: place[0], lat: place[1] } : null
+  }
+  if (input.publicLocationCity) {
+    const town = found(placeKey(input.publicLocationCity))
+    if (town) return town
+  }
+  if (input.address) {
+    const parts = input.address.split(/[,\n]/).reverse()
+    for (const part of parts) {
+      const town = found(placeKey(part))
+      if (town) return town
+    }
+    // Addresses written without commas ("12 Twinkle Rd Guffey CO 80820"):
+    // try the last one to three words before the state and ZIP.
+    const words = placeKey(input.address).split(" ")
+    for (let size = 3; size >= 1; size -= 1) {
+      if (words.length <= size) continue
+      const town = found(words.slice(-size).join(" "))
+      if (town) return town
+    }
+    // Then the ZIP code, labeled with its nearest town.
+    const zip = COLORADO_ZIP.exec(input.address)?.[1]
+    const zipEntry = zip ? ZIPS.get(zip) : undefined
+    if (zipEntry) return { town: zipEntry[2], lon: zipEntry[0], lat: zipEntry[1] }
+  }
   const nameParts = input.name.split(/\s+[-–—]\s+/)
   const nameTown = nameParts.length > 1 ? nameParts[nameParts.length - 1] : undefined
-  if (nameTown) candidates.push(nameTown)
-  for (const candidate of candidates) {
-    const key = placeKey(candidate)
-    if (!key) continue
-    const place = PLACES.get(key)
-    if (place) return { town: titleCase(key), lon: place[0], lat: place[1] }
-  }
-  return null
+  return nameTown ? found(placeKey(nameTown)) : null
 }
 
 export function portfolioHealth(pastDueCount: number, stalledCount: number): PortfolioHealth {

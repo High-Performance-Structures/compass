@@ -29,7 +29,7 @@ export function PortfolioPipeline({
   onSelectPhase,
 }: PortfolioPipelineProps): React.ReactElement {
   return (
-    <div className="h-full overflow-x-auto bg-card">
+    <div className="h-full overflow-auto bg-card">
       <ol className="grid min-h-full min-w-[56rem] grid-cols-6">
         {PORTFOLIO_PHASES.map((phase) => {
           const phaseJobs = jobs.filter((job) => job.phase === phase.id)

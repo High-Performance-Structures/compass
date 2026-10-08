@@ -15,6 +15,7 @@ import {
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
+import type { PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
 
 export type PortfolioSelection =
   | { readonly kind: "none" }
@@ -23,7 +24,7 @@ export type PortfolioSelection =
 
 type PortfolioPanelProps = {
   readonly jobs: readonly PortfolioMapJob[]
-  readonly unplacedCount: number
+  readonly unplaced: readonly PortfolioUnplacedJob[]
   readonly selection: PortfolioSelection
   readonly onSelectJob: (jobId: string) => void
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
@@ -133,7 +134,7 @@ function JobDetail({
 
 export function PortfolioPanel({
   jobs,
-  unplacedCount,
+  unplaced,
   selection,
   onSelectJob,
   onSelectPhase,
@@ -221,11 +222,27 @@ export function PortfolioPanel({
           </ul>
         </div>
       ) : null}
-      {unplacedCount > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {unplacedCount} {unplacedCount === 1 ? "job is" : "jobs are"} not on the map yet. Add a town to the
-          project&apos;s address to place {unplacedCount === 1 ? "it" : "them"}.
-        </p>
+      {unplaced.length > 0 ? (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer py-1 hover:text-foreground">
+            {unplaced.length === 1
+              ? "1 job is not on the map yet: it needs a site address with a town."
+              : `${unplaced.length} jobs are not on the map yet: they need a site address with a town.`}
+          </summary>
+          <ul className="mt-1">
+            {unplaced.map((job) => (
+              <li key={job.id}>
+                <Link
+                  href={`/dashboard/projects/${encodeURIComponent(job.id)}/information`}
+                  className="flex min-h-9 items-center justify-between gap-3 border-b border-border px-1 text-foreground hover:bg-accent"
+                >
+                  <span className="truncate">{job.name}</span>
+                  <span className="shrink-0 font-mono text-muted-foreground">{job.projectNumber ?? "Add address →"}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
     </div>
   )

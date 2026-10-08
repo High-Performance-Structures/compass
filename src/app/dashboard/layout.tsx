@@ -54,7 +54,6 @@ import {
   DEVELOPER_MODE_COOKIE,
   developerModeFromCookie,
 } from "@/lib/developer-mode"
-import { ReleaseStageLabel } from "@/components/release-stage-label"
 
 export default async function DashboardLayout({
   children,
@@ -179,7 +178,6 @@ export default async function DashboardLayout({
         <MobileBottomNav canUseFieldDesk={canUseCompassFieldDesk} />
         <NativeShell />
         <PushNotificationRegistrar />
-        <ReleaseStageLabel />
         <Toaster position="bottom-right" />
       </SidebarProvider>
       </FeedbackWidget>

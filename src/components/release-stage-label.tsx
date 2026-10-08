@@ -7,7 +7,7 @@ export function ReleaseStageLabel(): JSX.Element {
   const native = useNative()
 
   return (
-    <p className="pointer-events-none fixed bottom-3 left-0 right-0 hidden text-center text-xs text-muted-foreground/60 md:block">
+    <p className="px-3 pb-2 pt-1 font-mono text-xs uppercase tracking-[0.16em] text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
       {native ? "Mobile preview" : "Beta build"}
     </p>
   )

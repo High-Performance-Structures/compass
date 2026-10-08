@@ -7,6 +7,7 @@ import { PortfolioPanel, type PortfolioSelection } from "@/components/dashboard/
 import { PortfolioPipeline } from "@/components/dashboard/portfolio-map/portfolio-pipeline"
 import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfolio-scene"
 import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
+import type { PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
 
 // three.js and the terrain scene load only when the map is about to be seen.
 const PortfolioTerrain = dynamic(
@@ -35,10 +36,10 @@ function defaultView(): PortfolioView {
 
 export function PortfolioSection({
   jobs,
-  unplacedCount,
+  unplaced,
 }: {
   readonly jobs: readonly PortfolioMapJob[]
-  readonly unplacedCount: number
+  readonly unplaced: readonly PortfolioUnplacedJob[]
 }): React.ReactElement | null {
   const sectionRef = React.useRef<HTMLElement | null>(null)
   const [view, setView] = React.useState<PortfolioView>("pipeline")
@@ -95,7 +96,7 @@ export function PortfolioSection({
     [hoveredJobId, selection],
   )
 
-  if (jobs.length === 0 && unplacedCount === 0) return null
+  if (jobs.length === 0 && unplaced.length === 0) return null
 
   const showMap = view === "map" && !mapUnavailable
   const building = jobs.filter((job) => job.phase === "construction").length
@@ -132,8 +133,9 @@ export function PortfolioSection({
       {mapUnavailable && view === "map" ? (
         <p className="text-xs text-muted-foreground">The 3D map isn&apos;t available in this browser, so the pipeline view is shown.</p>
       ) : null}
+      {/* Map and panel share one fixed height; the panel scrolls instead of growing the row. */}
       <div className="flex flex-wrap gap-0 border border-border">
-        <div className={cn("min-w-0 flex-[999_1_40rem]", showMap ? "h-[34rem]" : "min-h-[24rem]")}>
+        <div className="h-[34rem] min-w-0 flex-[999_1_40rem]">
           {showMap ? (
             nearViewport ? (
               <PortfolioTerrain
@@ -156,10 +158,10 @@ export function PortfolioSection({
             />
           )}
         </div>
-        <aside aria-label="Job details" className="min-w-0 flex-[1_1_20rem] border-l border-border bg-card">
+        <aside aria-label="Job details" className="max-h-[34rem] min-w-0 flex-[1_1_20rem] overflow-y-auto border-l border-border bg-card">
           <PortfolioPanel
             jobs={jobs}
-            unplacedCount={unplacedCount}
+            unplaced={unplaced}
             selection={selection}
             onSelectJob={selectJob}
             onSelectPhase={selectPhase}

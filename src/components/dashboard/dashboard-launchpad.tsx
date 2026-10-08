@@ -11,7 +11,6 @@ import {
 import Image from "next/image"
 import Link from "next/link"
 import {
-  IconAlertTriangle,
   IconArrowRight,
   IconBuilding,
   IconBuildingSkyscraper,
@@ -29,7 +28,6 @@ import {
   IconPhoto,
   IconPhotoEdit,
   IconReceipt,
-  IconSunrise,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -44,6 +42,7 @@ import { Button } from "@/components/ui/button"
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invitation"
 import { PortfolioSection } from "@/components/dashboard/portfolio-map/portfolio-section"
+import { DashboardCountsStrip, type DashboardCount } from "@/components/dashboard/dashboard-counts-strip"
 import type { PortfolioMapData } from "@/lib/portfolio-map/load"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
@@ -578,27 +577,27 @@ function DeskHero({
   }
 
   return (
-    <section className="grid min-h-52 overflow-hidden border-y border-border/70 bg-background sm:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
-      <div className="group/desk-photo relative min-h-40 overflow-hidden bg-muted after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:z-10 after:w-16 after:bg-gradient-to-r after:from-transparent after:to-background">
+    <section aria-label="Greeting" className="flex min-w-0 flex-wrap items-center gap-4">
+      <div className="group/desk-photo relative size-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
         {deskPhotoUrl && !deskPhotoFailed ? (
           <Image
             src={deskPhotoUrl}
             alt={`${firstName}'s desk`}
             fill
-            sizes="(min-width: 1024px) 260px, 50vw"
+            sizes="64px"
             unoptimized
             className="object-cover"
             onError={() => setDeskPhotoFailed(true)}
           />
         ) : (
-          <div className="flex h-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-brand-nutech-gold/10">
-            <IconHome2 className="size-10 text-primary/60" />
+          <div className="flex h-full items-center justify-center">
+            <IconHome2 className="size-6 text-primary/60" aria-hidden="true" />
           </div>
         )}
         {user ? (
-          <label className="pointer-events-none absolute bottom-3 left-3 flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition hover:bg-black/70 group-hover/desk-photo:pointer-events-auto group-hover/desk-photo:opacity-100 group-focus-within/desk-photo:pointer-events-auto group-focus-within/desk-photo:opacity-100">
-            <IconPhotoEdit className="size-3.5" />
-            Change desk photo
+          <label className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/55 text-white opacity-0 transition group-hover/desk-photo:opacity-100 group-focus-within/desk-photo:opacity-100">
+            <IconPhotoEdit className="size-4" aria-hidden="true" />
+            <span className="sr-only">Change desk photo</span>
             <input
               type="file"
               accept="image/*"
@@ -609,52 +608,44 @@ function DeskHero({
         ) : null}
       </div>
 
-      <div className="flex min-w-0 flex-col justify-center px-5 py-4">
-        <p className="text-xs text-muted-foreground">{formatLongDate(today)}</p>
-        <h1 className="mt-1 font-serif text-2xl font-semibold tracking-tight">
-          <span>{greetingForNow(timeZone)},</span>{" "}
-          <span className="italic sm:block">{firstName}</span>
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Here is what needs your attention today.
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="font-mono text-xs uppercase tracking-[0.14em] text-primary">
+          {formatLongDate(today)}
         </p>
-        {deskPhotoMessage ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            {deskPhotoMessage}
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          {greetingForNow(timeZone)},{" "}
+          <span className="font-serif font-medium italic text-primary">{firstName}</span>
+        </h1>
+        {deskPhotoMessage || isStatusPending || statusMessage ? (
+          <p className="text-xs text-muted-foreground">
+            {isStatusPending ? "Saving status..." : statusMessage ?? deskPhotoMessage}
           </p>
         ) : null}
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              if (isDeskStatus(value)) handleStatusChange(value)
-            }}
-          >
-            <SelectTrigger className="h-8 w-36 bg-background text-xs">
-              <span
-                className={cn(
-                  "size-2 rounded-full",
-                  deskStatusDotClass(status)
-                )}
-              />
-              <SelectValue>{DESK_STATUS_LABELS[status]}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(DESK_STATUS_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isStatusPending || statusMessage ? (
-            <span className="text-xs text-muted-foreground">
-              {isStatusPending ? "Saving status..." : statusMessage}
-            </span>
-          ) : null}
-        </div>
       </div>
+
+      <Select
+        value={status}
+        onValueChange={(value) => {
+          if (isDeskStatus(value)) handleStatusChange(value)
+        }}
+      >
+        <SelectTrigger className="h-8 w-36 bg-background text-xs" aria-label="Your status">
+          <span
+            className={cn(
+              "size-2 rounded-full",
+              deskStatusDotClass(status)
+            )}
+          />
+          <SelectValue>{DESK_STATUS_LABELS[status]}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {Object.entries(DESK_STATUS_LABELS).map(([value, label]) => (
+            <SelectItem key={value} value={value}>
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </section>
   )
 }
@@ -904,61 +895,6 @@ function OfficePresence({
             No team availability has been set yet.
           </p>
         ) : null}
-      </div>
-    </section>
-  )
-}
-
-function OfficeAlerts({
-  overview,
-}: {
-  readonly overview: DashboardOverview
-}): React.ReactElement {
-  const alerts = [
-    {
-      label: "Open RFIs",
-      value: overview.metrics.openRfis,
-      href: "/dashboard/office-alerts?queue=rfis",
-      icon: <IconMessageCircleQuestion className="size-4" />,
-    },
-    {
-      label: "Draft owner updates",
-      value: overview.metrics.draftOwnerUpdates,
-      href: "/dashboard/office-alerts?queue=owner-updates",
-      icon: <IconClipboardText className="size-4" />,
-    },
-    {
-      label: "Photos to review",
-      value: overview.metrics.photosToReview,
-      href: "/dashboard/office-alerts?queue=photos",
-      icon: <IconPhoto className="size-4" />,
-    },
-  ]
-
-  return (
-    <section className="border-y border-border/70 bg-background">
-      <div className="flex min-h-14 items-center gap-2 px-4 py-3">
-        <IconAlertTriangle className="size-4 text-[#9d832c]" />
-        <DashboardTooltipTitle description="Items that may need escalation">
-          <h2 className="text-sm font-semibold">Office alerts</h2>
-        </DashboardTooltipTitle>
-      </div>
-      <div className="divide-y border-t">
-        {alerts.map((alert) => (
-          <Link
-            key={alert.label}
-            href={alert.href}
-            className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          >
-            <span className="text-muted-foreground">{alert.icon}</span>
-            <span className="flex-1 text-sm">{alert.label}</span>
-            <span className="font-semibold tabular-nums text-primary">{alert.value}</span>
-            <IconChevronRight
-              className="size-4 shrink-0 text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
-              aria-hidden="true"
-            />
-          </Link>
-        ))}
       </div>
     </section>
   )
@@ -1258,45 +1194,51 @@ export function DashboardLaunchpad({
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
     deskStatusForPresenceMessage(initialDeskStatusMessage)
   )
+  const pastDueWork = portfolio.jobs.reduce((total, job) => total + job.pastDueCount, 0)
+  const counts: readonly DashboardCount[] = [
+    { label: "Open RFIs", value: overview.metrics.openRfis, href: "/dashboard/office-alerts?queue=rfis", urgent: false },
+    { label: "Draft owner updates", value: overview.metrics.draftOwnerUpdates, href: "/dashboard/office-alerts?queue=owner-updates", urgent: false },
+    { label: "Photos to review", value: overview.metrics.photosToReview, href: "/dashboard/office-alerts?queue=photos", urgent: false },
+    { label: "Past due work", value: pastDueWork, href: "/dashboard/schedule", urgent: true },
+  ]
   return (
     <TooltipProvider>
-      <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
-      <div className="flex flex-col gap-3 border-b pb-3 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-center">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <IconSunrise className="size-4 text-brand-nutech-gold" />
-            <DashboardTooltipTitle description="A focused start to the workday">
-              <p className="text-sm font-semibold">Morning launchpad</p>
-            </DashboardTooltipTitle>
+      <main className="mx-auto w-full max-w-[1500px] space-y-6 p-3 sm:p-4 lg:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <DeskHero
+          user={user}
+          today={overview.today}
+          timeZone={overview.timeZone}
+          status={deskStatus}
+          onStatusChange={setDeskStatus}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Dashboard view" className="grid grid-cols-2 border border-border">
+            <button
+              type="button"
+              aria-pressed={mode === "office"}
+              onClick={() => setMode("office")}
+              className={cn(
+                "flex h-8 items-center justify-center gap-2 px-3 font-mono text-xs uppercase tracking-[0.12em] transition-colors",
+                mode === "office" ? "bg-foreground text-background" : "hover:bg-accent"
+              )}
+            >
+              <IconBuilding className="size-4" aria-hidden="true" />
+              Office
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === "project"}
+              onClick={() => setMode("project")}
+              className={cn(
+                "flex h-8 items-center justify-center gap-2 px-3 font-mono text-xs uppercase tracking-[0.12em] transition-colors",
+                mode === "project" ? "bg-foreground text-background" : "hover:bg-accent"
+              )}
+            >
+              <IconBuildingSkyscraper className="size-4" aria-hidden="true" />
+              Projects
+            </button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 border bg-muted/30 p-0.5">
-          <button
-            type="button"
-            onClick={() => setMode("office")}
-            className={cn(
-              "flex h-8 items-center justify-center gap-2 px-4 text-sm font-medium transition-colors",
-              mode === "office" && "bg-background text-foreground shadow-sm"
-            )}
-          >
-            <IconBuilding className="size-4" />
-            Office
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("project")}
-            className={cn(
-              "flex h-8 items-center justify-center gap-2 px-4 text-sm font-medium transition-colors",
-              mode === "project" && "bg-background text-foreground shadow-sm"
-            )}
-          >
-            <IconBuildingSkyscraper className="size-4" />
-            Projects
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 lg:justify-end">
           {canManageOfficeMaintenance ? (
             <OfficeMaintenanceDrawer projects={overview.projects} />
           ) : null}
@@ -1306,43 +1248,44 @@ export function DashboardLaunchpad({
 
       <CherishStoryInvitation items={cherishRecognitions} />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1.28fr)]">
-        <DeskHero
-          user={user}
-          today={overview.today}
-          timeZone={overview.timeZone}
-          status={deskStatus}
-          onStatusChange={setDeskStatus}
-        />
-        <Horizon
-          overview={overview}
-          mode={mode}
-          officeCalendarEvents={officeCalendarEvents}
-          officeProjectId={officeProjectId}
-        />
-      </div>
+      <DashboardCountsStrip counts={counts} />
 
-      <PortfolioSection jobs={portfolio.jobs} unplacedCount={portfolio.unplacedCount} />
+      <PortfolioSection jobs={portfolio.jobs} unplaced={portfolio.unplaced} />
 
       {mode === "office" ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.5fr)_minmax(15rem,0.5fr)]">
-          <OfficeTaskList
-            overview={overview}
-            officeCalendarEvents={officeCalendarEvents}
-            officeProjectId={officeProjectId}
-          />
-          <OfficePresence
-            initialAvailability={initialTeamAvailability}
-            user={user}
-            status={deskStatus}
-          />
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <OfficeAlerts overview={overview} />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
+          <div className="flex min-w-0 flex-col gap-6">
+            <OfficeTaskList
+              overview={overview}
+              officeCalendarEvents={officeCalendarEvents}
+              officeProjectId={officeProjectId}
+            />
             <QuickDock canPrepareGreetingCards={canPrepareGreetingCards} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-6">
+            <Horizon
+              overview={overview}
+              mode={mode}
+              officeCalendarEvents={officeCalendarEvents}
+              officeProjectId={officeProjectId}
+            />
+            <OfficePresence
+              initialAvailability={initialTeamAvailability}
+              user={user}
+              status={deskStatus}
+            />
           </div>
         </div>
       ) : (
-        <ProjectWorkspace overview={overview} />
+        <div className="flex flex-col gap-6">
+          <Horizon
+            overview={overview}
+            mode={mode}
+            officeCalendarEvents={officeCalendarEvents}
+            officeProjectId={officeProjectId}
+          />
+          <ProjectWorkspace overview={overview} />
+        </div>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">

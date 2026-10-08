@@ -8,6 +8,7 @@ import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
 import {
   isMappedDepartment,
+  isOfficeRecord,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
@@ -17,13 +18,19 @@ import {
 
 const TIME_ZONE = "America/Denver"
 
+export type PortfolioUnplacedJob = {
+  readonly id: string
+  readonly name: string
+  readonly projectNumber: string | null
+}
+
 export type PortfolioMapData = {
   readonly jobs: readonly PortfolioMapJob[]
   /** Jobs in a mapped phase whose town could not be resolved. */
-  readonly unplacedCount: number
+  readonly unplaced: readonly PortfolioUnplacedJob[]
 }
 
-const EMPTY: PortfolioMapData = { jobs: [], unplacedCount: 0 }
+const EMPTY: PortfolioMapData = { jobs: [], unplaced: [] }
 
 /**
  * Jobs for the office portfolio map. Visibility follows getProjects(), so the
@@ -88,6 +95,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
     const phased = candidates.filter(({ project }) =>
+      !isOfficeRecord(project.projectNumber) &&
       isMappedDepartment({
         department: locationById.get(project.id)?.department ?? null,
         projectId: project.id,
@@ -100,7 +108,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
       if (!nextById.has(task.projectId)) nextById.set(task.projectId, task)
     }
 
-    let unplacedCount = 0
+    const unplaced: PortfolioUnplacedJob[] = []
     const jobs: PortfolioMapJob[] = phased.map(({ project, phase }) => {
       const location = locationById.get(project.id)
       const town = resolveTown({
@@ -108,7 +116,9 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         address: location?.address ?? null,
         name: project.name,
       })
-      if (!town) unplacedCount += 1
+      if (!town) {
+        unplaced.push({ id: project.id, name: projectDisplayName(project), projectNumber: project.projectNumber })
+      }
       const stats = statsById.get(project.id)
       const pastDueCount = Number(stats?.pastDue ?? 0)
       const stalledCount = Number(stats?.stalled ?? 0)
@@ -133,7 +143,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         health: portfolioHealth(pastDueCount, stalledCount),
       }
     })
-    return { jobs: spreadSharedTowns(jobs), unplacedCount }
+    return { jobs: spreadSharedTowns(jobs), unplaced }
   } catch (error) {
     console.error("Portfolio map data failed", error)
     return EMPTY

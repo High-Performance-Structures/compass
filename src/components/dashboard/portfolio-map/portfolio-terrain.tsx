@@ -160,7 +160,9 @@ export default function PortfolioTerrain({
           RESET
         </button>
       </div>
-      <ul className="pointer-events-none absolute bottom-3 left-4 flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-white/70">
+      {/* Legend and credits share one wrapping bar so they never overlap. */}
+      <div className="pointer-events-none absolute inset-x-4 bottom-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-1.5">
+      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-white/70">
         {PORTFOLIO_PHASES.map((phase) => (
           <li key={phase.id} className="flex items-center gap-1.5">
             <span className="size-2" style={{ background: phaseColor(phase.id) }} aria-hidden="true" />
@@ -168,9 +170,10 @@ export default function PortfolioTerrain({
           </li>
         ))}
       </ul>
-      <p className="pointer-events-none absolute bottom-3 right-4 text-right font-mono text-xs tracking-[0.06em] text-white/50">
+      <p className="ml-auto text-right font-mono text-xs tracking-[0.06em] text-white/50">
         Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) · Roads © OpenStreetMap contributors
       </p>
+      </div>
       {!ready ? (
         <p className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs tracking-[0.16em] text-white/70">
           LOADING TERRAIN…
