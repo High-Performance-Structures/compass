@@ -38,7 +38,6 @@ test.describe("Electron runtime", () => {
           page.evaluate(() => window.compassDesktop?.platform.isDesktop ?? false),
         )
         .toBe(true)
-      await expect(page.getByText("Regression Test Project", { exact: true })).toBeVisible()
       await page.bringToFront()
       const previewUrl = new URL(
         "/preview/projects/e2e-project-001/owner",

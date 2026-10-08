@@ -121,6 +121,7 @@ describe("desktop E2E workflow fixtures", () => {
     expect(config).not.toContain('"COMPASS_E2E=true node')
     expect(config).toContain('"node node_modules/next/dist/bin/next start"')
     expect(config).toContain('"node node_modules/next/dist/bin/next dev --webpack"')
+    expect(config).toContain("LOCAL_DB_PATH: process.env.LOCAL_DB_PATH")
   })
 
   it("opens the preview through a native anchor gesture", () => {

@@ -84,6 +84,7 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         env: {
           COMPASS_E2E: "true",
+          LOCAL_DB_PATH: process.env.LOCAL_DB_PATH ?? ".e2e/compass.db",
           WORKOS_API_KEY: "placeholder-e2e",
           WORKOS_CLIENT_ID: "placeholder-e2e",
         },
