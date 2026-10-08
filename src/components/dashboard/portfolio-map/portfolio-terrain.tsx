@@ -9,6 +9,13 @@ import {
   type SceneLabel,
 } from "@/components/dashboard/portfolio-map/portfolio-scene"
 import { PHASE_COLOR_TOKEN, phaseColor, themeColorHex } from "@/components/dashboard/portfolio-map/portfolio-style"
+import {
+  LAYER_COLOR_TOKEN,
+  PortfolioLayerControl,
+  PortfolioLayerLegend,
+  type PortfolioLayerState,
+} from "@/components/dashboard/portfolio-map/portfolio-layers"
+import type { TravelChargeSettings } from "@/lib/portfolio-map/travel-zones"
 
 type PortfolioTerrainProps = {
   readonly jobs: readonly PortfolioMapJob[]
@@ -18,6 +25,12 @@ type PortfolioTerrainProps = {
   readonly onUnavailable: () => void
   /** Open zoomed to the selected job instead of the statewide view. */
   readonly focusSelectedOnLoad?: boolean
+  /** Zone and mountain layers; omitted where travel charges do not apply (owner and vendor maps). */
+  readonly layers?: {
+    readonly state: PortfolioLayerState
+    readonly settings: TravelChargeSettings
+    readonly onChange: (next: PortfolioLayerState) => void
+  }
 }
 
 function supportsWebGL2(): boolean {
@@ -42,6 +55,7 @@ export default function PortfolioTerrain({
   onHoverJob,
   onUnavailable,
   focusSelectedOnLoad = false,
+  layers,
 }: PortfolioTerrainProps): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -102,6 +116,27 @@ export default function PortfolioTerrain({
   React.useEffect(() => {
     sceneRef.current?.setHighlight(highlight)
   }, [highlight])
+
+  const layerState = layers?.state
+  const layerSettings = layers?.settings
+  React.useEffect(() => {
+    if (!layerState || !layerSettings) return
+    sceneRef.current?.setLayers({
+      zones: layerState.zones
+        ? {
+            home: layerSettings.homeBase,
+            edgesMiles: layerSettings.zones.flatMap((zone) => (zone.maxMiles === null ? [] : [zone.maxMiles])),
+            color: themeColorHex(LAYER_COLOR_TOKEN.zones, 0.15),
+          }
+        : null,
+      elevation: layerState.elevation
+        ? {
+            bandsFeet: layerSettings.mountainBands.map((band) => band.minElevationFt),
+            color: themeColorHex(LAYER_COLOR_TOKEN.elevation, 0.2),
+          }
+        : null,
+    })
+  }, [layerState, layerSettings])
 
   return (
     <div ref={containerRef} className="relative h-full min-h-[420px] w-full overflow-hidden bg-black">
@@ -166,8 +201,14 @@ export default function PortfolioTerrain({
           RESET
         </button>
       </div>
+      {layers ? <PortfolioLayerControl state={layers.state} onChange={layers.onChange} /> : null}
       {/* Legend and credits share one wrapping bar so they never overlap. */}
       <div className="pointer-events-none absolute inset-x-4 bottom-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-1.5">
+      {layers ? (
+        <div className="basis-full">
+          <PortfolioLayerLegend state={layers.state} settings={layers.settings} />
+        </div>
+      ) : null}
       <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-white/70">
         {PORTFOLIO_PHASES.map((phase) => (
           <li key={phase.id} className="flex items-center gap-1.5">

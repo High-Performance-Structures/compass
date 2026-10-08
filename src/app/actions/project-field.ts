@@ -17,6 +17,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { geocodeProjectAddress, type CoordinatePair } from "@/lib/geo/site-lookup"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import { isDemoUser } from "@/lib/demo"
@@ -153,13 +154,6 @@ type PhotoReviewFolder = {
   readonly label: string
   readonly url: string
   readonly photoCount: number | null
-}
-
-type CoordinatePair = {
-  readonly latitude: number
-  readonly longitude: number
-  readonly label: string | null
-  readonly query: string
 }
 
 export type ProjectDailyLogPhoto = {
@@ -761,111 +755,6 @@ function normalizedLogDate(value: string): string {
   const trimmed = value.trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
   throw new Error("Enter a valid daily log date.")
-}
-
-function addressLooksStateQualified(value: string): boolean {
-  return /\b[A-Z]{2}\b/.test(value) || /\bColorado\b/i.test(value)
-}
-
-function geocodeQueries(address: string): readonly string[] {
-  const trimmed = address.trim()
-  if (trimmed.length === 0) return []
-  if (addressLooksStateQualified(trimmed)) return [trimmed]
-  return [trimmed, `${trimmed}, Colorado`]
-}
-
-async function geocodeProjectAddress(
-  address: string
-): Promise<CoordinatePair | null> {
-  for (const query of geocodeQueries(address)) {
-    const coordinates = await geocodeWithCensus(query)
-    if (coordinates) return coordinates
-  }
-
-  for (const query of geocodeQueries(address)) {
-    const coordinates = await geocodeWithNominatim(query)
-    if (coordinates) return coordinates
-  }
-
-  return null
-}
-
-async function geocodeWithCensus(
-  address: string
-): Promise<CoordinatePair | null> {
-  const url = new URL(
-    "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
-  )
-  url.searchParams.set("address", address)
-  url.searchParams.set("benchmark", "Public_AR_Current")
-  url.searchParams.set("format", "json")
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Compass project management weather lookup",
-    },
-  })
-  if (!response.ok) return null
-
-  const parsed: unknown = await response.json()
-  if (!isRecord(parsed)) return null
-
-  const result = recordValue(parsed, "result")
-  if (!result) return null
-
-  const matches = arrayValue(result, "addressMatches")
-  const firstMatch = matches.find(isRecord)
-  if (!firstMatch) return null
-
-  const coordinates = recordValue(firstMatch, "coordinates")
-  if (!coordinates) return null
-
-  const longitude = numberValue(coordinates, "x")
-  const latitude = numberValue(coordinates, "y")
-  if (latitude === null || longitude === null) return null
-
-  const label = stringValue(firstMatch, "matchedAddress")
-  return { latitude, longitude, label, query: address }
-}
-
-async function geocodeWithNominatim(
-  address: string
-): Promise<CoordinatePair | null> {
-  const url = new URL("https://nominatim.openstreetmap.org/search")
-  url.searchParams.set("q", address)
-  url.searchParams.set("format", "jsonv2")
-  url.searchParams.set("limit", "1")
-  url.searchParams.set("countrycodes", "us")
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Compass project management weather lookup",
-    },
-  })
-  if (!response.ok) return null
-
-  const parsed: unknown = await response.json()
-  if (!Array.isArray(parsed)) return null
-
-  const firstMatch = parsed.find(isRecord)
-  if (!firstMatch) return null
-
-  const latitudeText = stringValue(firstMatch, "lat")
-  const longitudeText = stringValue(firstMatch, "lon")
-  if (!latitudeText || !longitudeText) return null
-
-  const latitude = Number(latitudeText)
-  const longitude = Number(longitudeText)
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-
-  return {
-    latitude,
-    longitude,
-    label: stringValue(firstMatch, "display_name"),
-    query: address,
-  }
 }
 
 function fahrenheitFromCelsius(value: number | null): number | null {

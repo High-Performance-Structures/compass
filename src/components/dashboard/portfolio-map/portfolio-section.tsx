@@ -7,7 +7,13 @@ import { PortfolioPanel, type PortfolioSelection } from "@/components/dashboard/
 import { PortfolioPipeline } from "@/components/dashboard/portfolio-map/portfolio-pipeline"
 import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfolio-scene"
 import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
-import type { PortfolioHiddenJob, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import type { PortfolioHiddenJob, PortfolioTravelData, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import {
+  NO_LAYERS,
+  readStoredLayers,
+  storeLayers,
+  type PortfolioLayerState,
+} from "@/components/dashboard/portfolio-map/portfolio-layers"
 
 // three.js and the terrain scene load only when the map is about to be seen.
 const PortfolioTerrain = dynamic(
@@ -38,10 +44,12 @@ export function PortfolioSection({
   jobs,
   unplaced,
   hidden,
+  travel,
 }: {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
   readonly hidden: readonly PortfolioHiddenJob[]
+  readonly travel: PortfolioTravelData | null
 }): React.ReactElement | null {
   const sectionRef = React.useRef<HTMLElement | null>(null)
   const [view, setView] = React.useState<PortfolioView>("pipeline")
@@ -49,9 +57,11 @@ export function PortfolioSection({
   const [nearViewport, setNearViewport] = React.useState(false)
   const [selection, setSelection] = React.useState<PortfolioSelection>({ kind: "none" })
   const [hoveredJobId, setHoveredJobId] = React.useState<string | null>(null)
+  const [layerState, setLayerState] = React.useState<PortfolioLayerState>(NO_LAYERS)
 
   React.useEffect(() => {
     setView(readStoredView() ?? defaultView())
+    setLayerState(readStoredLayers())
   }, [])
 
   React.useEffect(() => {
@@ -88,6 +98,15 @@ export function PortfolioSection({
   }, [])
   const clear = React.useCallback((): void => setSelection({ kind: "none" }), [])
   const handleUnavailable = React.useCallback((): void => setMapUnavailable(true), [])
+  const changeLayers = React.useCallback((next: PortfolioLayerState): void => {
+    setLayerState(next)
+    storeLayers(next)
+  }, [])
+  const travelSettings = travel?.settings
+  const layers = React.useMemo(
+    () => (travelSettings ? { state: layerState, settings: travelSettings, onChange: changeLayers } : undefined),
+    [changeLayers, layerState, travelSettings],
+  )
 
   const highlight = React.useMemo<SceneHighlight>(
     () => ({
@@ -146,6 +165,7 @@ export function PortfolioSection({
                 onSelectJob={selectJob}
                 onHoverJob={setHoveredJobId}
                 onUnavailable={handleUnavailable}
+                layers={layers}
               />
             ) : (
               <div className="h-full bg-black" />
@@ -165,6 +185,7 @@ export function PortfolioSection({
             jobs={jobs}
             unplaced={unplaced}
             hidden={hidden}
+            travel={travel}
             selection={selection}
             onSelectJob={selectJob}
             onSelectPhase={selectPhase}
