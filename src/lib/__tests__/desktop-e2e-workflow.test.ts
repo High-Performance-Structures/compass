@@ -123,15 +123,14 @@ describe("desktop E2E workflow fixtures", () => {
     expect(config).toContain('"node node_modules/next/dist/bin/next dev --webpack"')
   })
 
-  it("opens the preview through a native user gesture", () => {
+  it("opens the preview through a native anchor gesture", () => {
     const source = electronRuntimeSpec()
 
     expect(source).not.toContain("const openedWindow = await page.evaluate")
     expect(source).toContain('"--disable-popup-blocking"')
-    expect(source).toContain('getByRole("button", { name: "Project actions" })')
-    expect(source).toContain('getByRole("menuitem", { name: "Owner preview" })')
-    expect(source).toContain("sendInputEvent")
+    expect(source).toContain('dataset.e2ePreviewLink = "true"')
+    expect(source).toContain('target = "compass-project-audience-preview"')
+    expect(source).toContain('app.waitForEvent("window"')
     expect(source).not.toContain("Promise.race([")
-    expect(source).toContain("app.windows().length")
   })
 })
