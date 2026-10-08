@@ -34,6 +34,13 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { ChangeOrderBudgetTreatment } from "@/lib/change-orders/rebaseline"
 
@@ -266,28 +273,33 @@ export function ProjectChangeOrderCreateForm({
           {internal && (
             <div className="grid gap-4 border-y py-4 sm:grid-cols-2">
               <Field label="Budget treatment">
-                <select
-                  id="change-order-budget-treatment"
+                <Select
                   name="budgetTreatment"
-                  className={DOCUMENT_SELECT_CLASS}
                   value={budgetTreatment}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value
+                  onValueChange={(value) =>
                     setBudgetTreatment(
                       value === "baseline_replacement"
                         ? "baseline_replacement"
                         : "additive"
                     )
-                  }}
+                  }
                 >
-                  <option value="additive">Budget adjustment</option>
-                  <option
-                    value="baseline_replacement"
-                    disabled={!currentBaseline}
+                  <SelectTrigger
+                    id="change-order-budget-treatment"
+                    className={DOCUMENT_SELECT_CLASS}
                   >
-                    Preconstruction baseline replacement
-                  </option>
-                </select>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="additive">Budget adjustment</SelectItem>
+                    <SelectItem
+                      value="baseline_replacement"
+                      disabled={!currentBaseline}
+                    >
+                      Preconstruction baseline replacement
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-muted-foreground">
                   {budgetTreatment === "baseline_replacement"
                     ? "Uses the revised estimate as the new budget without adding this change order twice."
@@ -296,23 +308,26 @@ export function ProjectChangeOrderCreateForm({
               </Field>
               {budgetTreatment === "baseline_replacement" && (
                 <Field label="Replacement estimate">
-                  <select
-                    id="change-order-replacement-estimate"
+                  <Select
                     name="replacementEstimateId"
-                    className={DOCUMENT_SELECT_CLASS}
                     value={replacementEstimateId}
                     required
-                    onChange={(event) =>
-                      setReplacementEstimateId(event.currentTarget.value)
-                    }
+                    onValueChange={setReplacementEstimateId}
                   >
-                    <option value="">Choose a revised estimate</option>
-                    {replacementOptions.map((estimate) => (
-                      <option key={estimate.id} value={estimate.id}>
-                        {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      id="change-order-replacement-estimate"
+                      className={DOCUMENT_SELECT_CLASS}
+                    >
+                      <SelectValue placeholder="Choose a revised estimate" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {replacementOptions.map((estimate) => (
+                        <SelectItem key={estimate.id} value={estimate.id}>
+                          {estimate.estimateNumber} v{estimate.versionNumber} · {estimate.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-muted-foreground">
                     Current baseline: {currentBaseline
                       ? `${currentBaseline.estimateNumber} v${currentBaseline.versionNumber}`
@@ -341,27 +356,33 @@ export function ProjectChangeOrderCreateForm({
           {internal && (
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Audience">
-                <select
-                  id="change-order-audience"
-                  name="audience"
-                  className={DOCUMENT_SELECT_CLASS}
-                  defaultValue="internal"
-                >
-                  <option value="internal">Internal only</option>
-                  <option value="owner">Owner visible when approved</option>
-                  <option value="sub_vendor">Sub/vendor request</option>
-                </select>
+                <Select name="audience" defaultValue="internal">
+                  <SelectTrigger
+                    id="change-order-audience"
+                    className={DOCUMENT_SELECT_CLASS}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="internal">Internal only</SelectItem>
+                    <SelectItem value="owner">Owner visible when approved</SelectItem>
+                    <SelectItem value="sub_vendor">Sub/vendor request</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
               <Field label="Save as">
-                <select
-                  id="change-order-initial-status"
-                  name="initialStatus"
-                  className={DOCUMENT_SELECT_CLASS}
-                  defaultValue="draft"
-                >
-                  <option value="draft">Draft</option>
-                  <option value="submitted">Submitted for triage</option>
-                </select>
+                <Select name="initialStatus" defaultValue="draft">
+                  <SelectTrigger
+                    id="change-order-initial-status"
+                    className={DOCUMENT_SELECT_CLASS}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="submitted">Submitted for triage</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
           )}

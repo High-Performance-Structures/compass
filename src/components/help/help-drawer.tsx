@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import {
@@ -29,7 +30,6 @@ import {
 } from "@/components/help/help-ui-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Sheet,
@@ -39,6 +39,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+
+// Markdown and code highlighting load when a guide opens, not with the sidebar.
+const MarkdownRenderer = dynamic(
+  () => import("@/components/ui/markdown-renderer").then((module) => module.MarkdownRenderer),
+  { ssr: false }
+)
 
 export function HelpDrawer({
   triggerClassName,

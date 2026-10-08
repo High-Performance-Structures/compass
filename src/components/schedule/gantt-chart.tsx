@@ -18,11 +18,15 @@ import {
   ganttWheelIntent,
   normalizeWheelDelta,
   paddingToIncludeDate,
+  revealBarScrollLeft,
   type GanttScrollAxis,
 } from "@/lib/schedule/gantt-scroll"
 import "./gantt.css"
 
 type ViewMode = "Day" | "Week" | "Month" | "Year"
+
+// Stable default: a fresh [] per render would rebuild the whole chart.
+const NO_EXCEPTIONS: readonly WorkdayExceptionData[] = []
 
 export interface GanttScrollPosition {
   readonly left: number
@@ -165,6 +169,8 @@ interface GanttChartProps {
   readOnly?: boolean
   panMode?: boolean
   criticalPathMode?: boolean
+  /** Highlighted item; applied without rebuilding the chart. */
+  focusedTaskId?: string | null
   displayColorPalette?: DisplayColorPalette
   onDateChange?: (
     task: FrappeTask,
@@ -187,12 +193,13 @@ interface GanttChartProps {
 
 export function GanttChart({
   tasks,
-  exceptions = [],
+  exceptions = NO_EXCEPTIONS,
   viewMode,
   columnWidth,
   readOnly = false,
   panMode = false,
   criticalPathMode = false,
+  focusedTaskId = null,
   displayColorPalette,
   onDateChange,
   onProgressChange,
@@ -211,6 +218,8 @@ export function GanttChart({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ganttRef = useRef<any>(null)
   const [loaded, setLoaded] = useState(false)
+  // Bumped after each Frappe render so DOM-level decorations can be reapplied.
+  const [renderVersion, setRenderVersion] = useState(0)
   const latestTasksRef = useRef(tasks)
   latestTasksRef.current = tasks
   const interactionCallbacksRef = useRef({
@@ -556,28 +565,20 @@ export function GanttChart({
           const barLeft = Number(bar.getAttribute("x"))
           const barWidth = Number(bar.getAttribute("width"))
           if (!Number.isFinite(barLeft) || !Number.isFinite(barWidth)) return
-          const safeLeft = container.scrollLeft + 32
-          const safeRight =
-            container.scrollLeft + container.clientWidth - 32
-          const barRight = barLeft + barWidth
-          if (barRight >= safeLeft && barLeft <= safeRight) return
-          const centeredLeft =
-            barLeft + barWidth / 2 - container.clientWidth / 2
-          container.scrollTo({
-            left: Math.max(
-              0,
-              Math.min(
-                centeredLeft,
-                container.scrollWidth - container.clientWidth
-              )
-            ),
-            behavior: "auto",
+          const left = revealBarScrollLeft({
+            barLeft,
+            barWidth,
+            scrollLeft: container.scrollLeft,
+            clientWidth: container.clientWidth,
+            scrollWidth: container.scrollWidth,
           })
+          if (left !== null) container.scrollTo({ left, behavior: "auto" })
         })
         interactionCallbacksRef.current.onContainerReady?.(activeContainer)
       }
 
       setLoaded(true)
+      setRenderVersion((version) => version + 1)
     }
 
     initGantt()
@@ -602,6 +603,26 @@ export function GanttChart({
     onDateChange,
     onProgressChange,
   ])
+
+  useEffect(() => {
+    const root = containerRef.current
+    if (!root) return
+    for (const element of root.querySelectorAll(".bar-wrapper.schedule-focused")) {
+      element.classList.remove("schedule-focused")
+    }
+    for (const element of root.querySelectorAll(".grid-row.schedule-focused-row")) {
+      element.classList.remove("schedule-focused-row")
+    }
+    if (!focusedTaskId) return
+    root
+      .querySelector(`.bar-wrapper[data-id="${CSS.escape(focusedTaskId)}"]`)
+      ?.classList.add("schedule-focused")
+    // Frappe draws one grid row per task, in task order.
+    const rowIndex = latestTasksRef.current.findIndex((task) => task.id === focusedTaskId)
+    if (rowIndex >= 0) {
+      root.querySelectorAll(".gantt .grid-row")[rowIndex]?.classList.add("schedule-focused-row")
+    }
+  }, [focusedTaskId, renderVersion])
 
   useEffect(() => {
     const wrapper = wrapperRef.current

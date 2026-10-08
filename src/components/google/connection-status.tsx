@@ -79,7 +79,7 @@ export function GoogleDriveConnectionStatus() {
             {status?.connected ? (
               <Badge
                 variant="outline"
-                className="gap-1 text-green-600 border-green-200"
+                className="gap-1 text-success border-success/30"
               >
                 <IconCheck size={12} />
                 Connected

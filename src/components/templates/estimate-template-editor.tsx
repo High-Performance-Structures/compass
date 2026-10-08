@@ -22,17 +22,11 @@ import {
   type EstimateTemplateEditorLine,
 } from "@/app/actions/estimate-templates"
 import { Badge } from "@/components/ui/badge"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
 type LineDraft = {
@@ -442,45 +436,43 @@ export function EstimateTemplateEditorPanel({
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-1.5">
-                  <Label>CSI division</Label>
-                  <Select
+                  <Label htmlFor="template-line-division">CSI division</Label>
+                  <SearchableCombobox
+                    id="template-line-division"
                     value={line.divisionCode}
                     onValueChange={(divisionCode) =>
                       setLine({ ...line, divisionCode, costCode: "" })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose division" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {divisions.map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={divisions.map(([value, label]) => ({
+                      value,
+                      label,
+                      keywords: value,
+                    }))}
+                    ariaLabel="Template line CSI division"
+                    placeholder="Choose division"
+                    searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
+                    emptyMessage="No matching divisions."
+                  />
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
-                  <Label>Cost code</Label>
-                  <Select
+                  <Label htmlFor="template-line-cost-code">Cost code</Label>
+                  <SearchableCombobox
+                    id="template-line-cost-code"
                     value={line.costCode}
                     onValueChange={(costCode) =>
                       setLine({ ...line, costCode })
                     }
                     disabled={!line.divisionCode}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose cost code" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableCostCodes.map((costCode) => (
-                        <SelectItem key={costCode.value} value={costCode.value}>
-                          {costCode.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={availableCostCodes.map((costCode) => ({
+                      value: costCode.value,
+                      label: costCode.label,
+                      keywords: costCode.value,
+                    }))}
+                    ariaLabel="Template line cost code"
+                    placeholder="Choose cost code"
+                    searchPlaceholder="Search Sage cost codes..."
+                    emptyMessage="No matching Sage cost codes."
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="templateUnit">Unit</Label>
@@ -561,31 +553,31 @@ export function EstimateTemplateEditorPanel({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Tax treatment</Label>
-                  <Select
+                  <Label htmlFor="template-line-tax">Tax treatment</Label>
+                  <SearchableCombobox
+                    id="template-line-tax"
                     value={line.taxCode || "project-default"}
                     onValueChange={(value) =>
                       setLine({
                         ...line,
-                        taxCode: value === "project-default" ? "" : value,
+                        taxCode:
+                          value === "project-default" || value === "" ? "" : value,
                       })
                     }
                     disabled={!line.taxable}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Project tax entity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="project-default">
-                        Use project tax entity
-                      </SelectItem>
-                      {editor.taxCodes.map((taxCode) => (
-                        <SelectItem key={taxCode.value} value={taxCode.value}>
-                          {taxCode.label} · {percent(taxCode.rateBasisPoints)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: "project-default", label: "Use project tax entity", keywords: "default inherit" },
+                      ...editor.taxCodes.map((taxCode) => ({
+                        value: taxCode.value,
+                        label: taxCode.label,
+                        description: percent(taxCode.rateBasisPoints),
+                      })),
+                    ]}
+                    ariaLabel="Template line tax treatment"
+                    placeholder="Use project tax entity"
+                    searchPlaceholder="Search Sage tax entities..."
+                    emptyMessage="No matching Sage tax entities."
+                  />
                 </div>
                 <div className="flex items-center gap-2 pt-6">
                   <Checkbox

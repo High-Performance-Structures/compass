@@ -244,7 +244,7 @@ export default async function OwnerBudgetPage({
 
           {reconciliationRequired && (
             <div
-              className="mt-5 border-l-4 border-l-amber-500 bg-amber-50 px-4 py-3 text-amber-950 print:hidden dark:bg-amber-950 dark:text-amber-50"
+              className="mt-5 border-l-4 border-l-amber-500 bg-warning/10 px-4 py-3 text-warning print:hidden"
               role="status"
             >
               <p className="text-sm font-semibold">

@@ -1297,7 +1297,7 @@ export function ProjectsHub({
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex size-10 items-center justify-center rounded-full border border-emerald-800/30 bg-emerald-800/10 text-emerald-900">
+              <span className="inline-flex size-10 items-center justify-center rounded-full border border-success/30 bg-success/10 text-success">
                 <IconCompass className="size-5" />
               </span>
               <div>

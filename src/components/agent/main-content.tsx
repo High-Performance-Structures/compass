@@ -23,8 +23,8 @@ export function MainContent({
         needsFixedHeight
             ? "flex-1 overflow-hidden"
             : isSchedule
-              ? "flex-1 overflow-x-auto overflow-y-auto pb-14 md:pb-0"
-              : "flex-1 overflow-x-hidden overflow-y-auto pb-14 md:pb-0",
+              ? "compass-content-scroll flex-1 overflow-x-auto overflow-y-auto pb-14 md:pb-0"
+              : "compass-content-scroll flex-1 overflow-x-hidden overflow-y-auto pb-14 md:pb-0",
         classNameProp
       )}
     >

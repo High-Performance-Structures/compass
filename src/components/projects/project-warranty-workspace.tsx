@@ -497,7 +497,7 @@ export function ProjectWarrantyWorkspace({
         <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} label="Print warranty requests" /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
       </div>
       {!workspace.project.warrantyEnabled && workspace.viewerIsInternal && (
-        <p className="border-b bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-50 sm:px-6">
+        <p className="border-b bg-warning/10 px-4 py-3 text-sm text-warning sm:px-6">
           Staff can prepare claims, but the owner workspace remains hidden until this project enters Warranty or Service status.
         </p>
       )}

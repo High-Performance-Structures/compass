@@ -1,3 +1,4 @@
+import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { groupEstimateAssemblies, type EstimateAssembly } from "@/lib/estimates/assemblies"
 import type { EstimateReportPhase } from "@/lib/estimates/report-phases"
@@ -110,15 +111,15 @@ Material: All material is guaranteed to be as specified. All materials brought t
 
 Concrete Washout: Owner/builder agrees to provide on-site resources and location for concrete washout. If concrete washout is not to be on site owner/builder agrees to pay any and all necessary fees due to offsite concrete washout within scope of work to be completed by High Performance Structures, inc.
 
-Scope of Work: Scope of work for this estimate is based upon Architectural Drawings Drafted by _________ with a drawing date of __________ and Structural Drawings drafted and engineered by _____________ with a drawing date of ____________. Any deviation in work from the scope of work determined in this estimate (including due to but not limited to, changes after construction commencement, site conditions, etc.) will require a new estimate or incur a change order if it takes place during the High Performance Structures, Inc. construction process.
+Scope of Work: Scope of work for this estimate is based upon Architectural Drawings Drafted by _________ with a drawing date of __________ and Structural Drawings drafted and engineered by _____________ with a drawing date of ____________. Any deviation in work from the scope of work determined in this estimate (including due to but not limited to, changes after construction commencement, site conditions, etc.) will require a new estimate or incur a change order if it takes place during the High Performance Structures Inc. construction process.
 
-On Site Facilities: Owner/Builder to provide on site restroom facilities prior to the arrival of High Performance Structures, Inc. Crew. If restroom facilities are not onsite prior to the arrival High Performance Structures, inc. crew, owner/builder recognizes this will incur delays and agrees to pay for any man hours incurred due to offsite restroom facilities at a man hour rate of $65/man/hour per the discretion of High Performance Structures, inc.
+On Site Facilities: Owner/Builder to provide on site restroom facilities prior to the arrival of High Performance Structures Inc. Crew. If restroom facilities are not onsite prior to the arrival High Performance Structures, inc. crew, owner/builder recognizes this will incur delays and agrees to pay for any man hours incurred due to offsite restroom facilities at a man hour rate of $65/man/hour per the discretion of High Performance Structures, inc.
 
 Site Conditions: Estimate is prepared based upon plan conditions and site conditions discussed with the Owner/Builder. If site conditions differ from plan conditions or those previously discussed with Owner/Builder previously, pricing is subject to change to meet need via change order before or after construction commencement.
 
 On Site Resources: Estimate is prepared under the assumption of on-site electricity and water. Owner/Builder agrees to pay any additional charges incurred as a result of lacking these resources on site including, but not limited to, generator use (fuel, wear, rental, etc.), bringing water on-site, etc.
 
-Safety Conditions: High Performance Structures, Inc. is dedicated to the safety of its team members. Safe job sites also contribute to efficient and precise work, benefiting the Owner/Builder. Owner/Builder agrees that the site will adhere to OSHA safety standards. If OSHA safety standards are not met, Owner/Builder is aware that this may be brought to their attention and will be required by the Owner/Builder to make adjustments in order for High Performance Structures, Inc. to continue working. High Performance Structures, Inc. is not responsible for any delays or additional charges incurred as a result of on-site safety violations.
+Safety Conditions: High Performance Structures Inc. is dedicated to the safety of its team members. Safe job sites also contribute to efficient and precise work, benefiting the Owner/Builder. Owner/Builder agrees that the site will adhere to OSHA safety standards. If OSHA safety standards are not met, Owner/Builder is aware that this may be brought to their attention and will be required by the Owner/Builder to make adjustments in order for High Performance Structures Inc. to continue working. High Performance Structures Inc. is not responsible for any delays or additional charges incurred as a result of on-site safety violations.
 
 Pricing: The prices stated in the categories above will remain firm for 30 days after the Print Date above. If performance of this agreement extends beyond this 30-day period, you agree to pay Contractor's then current pricing ("Price") for any Work performed after that 30-day period. The Prices are based only on the terms and conditions expressly stated in this agreement. The Prices exclude any and all terms and conditions not expressly stated herein, including, without limitation, any obligation by Contractor to name you or any third-party as an additional insured on its insurance policy; to provide per project aggregate insurance coverage for the work; to participate in any owner controlled, wrap, or similar insurance program; to indemnify or defend you or any third-party from any claims actions and /or lawsuits of any kind or nature whatsoever. Any terms or conditions required by you by contract or otherwise in addition to or inconsistent with those expressly stated in this agreement will result in additional charge and/or higher Prices. Any additional work performed is subject to Contractor's then current pricing (unless Contractor otherwise agrees in writing) and to this agreement. Contractor will notify owner of any changes in Pricing prior to commencement of work.
 
@@ -127,7 +128,7 @@ All material is guaranteed to be as specified. All work to be completed in a wor
 Payment Terms: 20% Due at contract signing, additional will be billed monthly and due within 10 days after bill is sent. Note: A Finance Charge is charged on any unpaid balance after 30 days from the date of invoice, and is computed by a "Periodic Rate" of 2% per month, which is an ANNUAL PERCENTAGE RATE of 24% applied to the unpaid balance. Client agrees to pay any and all associated attorney fees and legal fees to collect this debt for work completed.
 
 Contractor:
-High Performance Structures, Inc. by
+High Performance Structures Inc. by
 
 ________________________________ _______________________
 Martine Y. Vogel, President                     Date`
@@ -157,7 +158,7 @@ Client Signature: __________________________________________ Date: _____________
 
 Nu-Tech Signature: ________________________________________ Date: ________________`
 
-const CONSULTATION_INDEMNIFICATION = `The consultation advice given by High Performance Structures, Inc. consists of suggestions from installation experience, but does not take the place of advice or inspections from engineers or building departments. All consultation advice is information about best practices and standards and should not be construed as approval from an engineer. Thus, in seeking consultation advice, there is recognition and acknowledgement of this Indemnification Agreement:
+const CONSULTATION_INDEMNIFICATION = `The consultation advice given by High Performance Structures Inc. consists of suggestions from installation experience, but does not take the place of advice or inspections from engineers or building departments. All consultation advice is information about best practices and standards and should not be construed as approval from an engineer. Thus, in seeking consultation advice, there is recognition and acknowledgement of this Indemnification Agreement:
 
 The Indemnifying Party agrees to indemnify and hold the Indemnified Party harmless from and against any and all claims, liability, loss, expenses, suits, damages, judgments, demands, and costs (including reasonable legal fees and expenses) arising out of (i) the acts or omissions of the Indemnifying Party; or (ii) any accident, injury or death to persons, or loss of or damage to property, or fines and penalties which may result, in whole or in part, by reason of description except to the extent that such damage is due solely and directly to the negligence of the Indemnified Party.
 
@@ -332,11 +333,7 @@ export function clientEstimatePhases(input: {
       return left[0].localeCompare(right[0])
     })
     .map(([key, sourceLines]) => {
-      const lines = [...sourceLines].sort((left, right) => {
-        const sortOrder = left.sortOrder - right.sortOrder
-        if (sortOrder !== 0) return sortOrder
-        return left.costCode.localeCompare(right.costCode)
-      })
+      const lines = [...sourceLines].sort(compareEstimateLineOrder)
       const divisionCode = lines[0]?.divisionCode ?? ""
       const divisionName = lines[0]?.divisionName ?? `Phase ${divisionCode}`
       const customDescription = input.phaseDescriptions[divisionCode]?.trim()

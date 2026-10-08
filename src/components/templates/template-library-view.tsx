@@ -291,7 +291,7 @@ export function TemplateLibraryView({
           )}
           <span className="text-muted-foreground">{readyCount} verified and usable</span>
           {developerModeEnabled && (
-            <span className="font-medium text-amber-700 dark:text-amber-300">
+            <span className="font-medium text-warning">
               Archived Buildertrend templates excluded
             </span>
           )}
@@ -362,7 +362,7 @@ export function TemplateLibraryView({
                         : ""}
                     </p>
                     <div className="mt-2 flex items-center gap-2 text-sm">
-                      {ready ? <IconCircleCheck className="size-4 text-emerald-600" /> : <IconClockHour4 className="size-4 text-amber-600" />}
+                      {ready ? <IconCircleCheck className="size-4 text-success" /> : <IconClockHour4 className="size-4 text-warning" />}
                       {developerModeEnabled
                         ? reviewLabel(template.reviewStatus)
                         : ready

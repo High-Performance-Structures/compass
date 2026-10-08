@@ -50,7 +50,11 @@ export const organizationMembers = sqliteTable("organization_members", {
     .references(() => users.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
   joinedAt: text("joined_at").notNull(),
-})
+}, (table) => [
+  // Resolved on every authenticated request (current user's memberships).
+  index("organization_members_user_idx").on(table.userId),
+  index("organization_members_org_user_idx").on(table.organizationId, table.userId),
+])
 
 export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   id: text("id").primaryKey(),
@@ -721,6 +725,12 @@ export const projects = sqliteTable("projects", {
   // Public-facing copy must not reuse the internal project name or full address.
   publicTitle: text("public_title"),
   publicLocationCity: text("public_location_city"),
+  /** Portfolio map override: "default" follows status and department rules. */
+  portfolioMapVisibility: text("portfolio_map_visibility", {
+    enum: ["default", "shown", "hidden"],
+  })
+    .notNull()
+    .default("default"),
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),
@@ -2539,7 +2549,11 @@ export const projectMembers = sqliteTable("project_members", {
     .references(() => users.id, { onDelete: "cascade" }),
   role: text("role").notNull(),
   assignedAt: text("assigned_at").notNull(),
-})
+}, (table) => [
+  // Project access checks filter by project, by user, or both.
+  index("project_members_user_idx").on(table.userId),
+  index("project_members_project_user_idx").on(table.projectId, table.userId),
+])
 
 export const projectAccessInvitations = sqliteTable(
   "project_access_invitations",

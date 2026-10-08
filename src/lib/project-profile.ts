@@ -225,6 +225,9 @@ export const PROJECT_JOB_STATUS_DEFINITIONS = [
   { id: "current", label: "Current", followUpCadenceDays: 7 },
   { id: "punchlist", label: "Punchlist", followUpCadenceDays: 7 },
   { id: "under_warranty", label: "Under Warranty", followUpCadenceDays: null },
+  // Office records, Compass development and test projects: kept out of work
+  // reporting (portfolio map, counts) but available in the Project Hub.
+  { id: "internal", label: "Internal", followUpCadenceDays: null },
   { id: "complete", label: "Complete", followUpCadenceDays: null },
   { id: "closed", label: "Closed", followUpCadenceDays: null },
   { id: "bid_refused", label: "Bid Refused", followUpCadenceDays: null },
@@ -288,6 +291,7 @@ export type ProjectJobStatusBucket =
   | "warranty"
   | "complete"
   | "inactive"
+  | "internal"
   | "archive"
   | "other"
 
@@ -317,6 +321,8 @@ export function projectJobStatusBucket(input: {
 }): ProjectJobStatusBucket {
   const id = input.jobStatusId.trim().toLowerCase()
   const label = input.jobStatusLabel.trim().toLowerCase()
+
+  if (id === "internal" || label === "internal") return "internal"
 
   if (
     id.includes("warranty")

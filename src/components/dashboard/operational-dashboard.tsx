@@ -615,7 +615,7 @@ function DashboardRoleWorkspaceControl({
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 py-1.5">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <IconBriefcase className="size-4 text-emerald-800" />
+        <IconBriefcase className="size-4 text-success" />
         <p className="text-sm font-semibold">Role</p>
         <Select
           value={activeRoleId}
@@ -950,7 +950,7 @@ function CherishPulse(): React.ReactElement {
     <div className="min-w-0 rounded-lg border bg-background p-3">
       <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border bg-background p-1.5 text-emerald-800">
+            <span className="rounded-md border bg-background p-1.5 text-success">
               <IconUserHeart className="size-4" />
             </span>
             <p className="text-sm font-semibold">Thursday Pulse</p>
@@ -963,7 +963,7 @@ function CherishPulse(): React.ReactElement {
               <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
                 This week
               </p>
-              <Badge className="bg-emerald-700">Reliability</Badge>
+              <Badge className="bg-success">Reliability</Badge>
             </div>
             <h2 className="mt-2 text-lg font-semibold tracking-tight">
               Who helped keep something moving?
@@ -976,9 +976,9 @@ function CherishPulse(): React.ReactElement {
                 <span
                   key={value}
                   className={cn(
-                    "rounded-sm border px-2 py-0.5 text-[11px] font-medium",
+                    "rounded-sm border px-2 py-0.5 text-xs font-medium",
                     value === "Reliability"
-                      ? "border-emerald-700 bg-emerald-700 text-white"
+                      ? "border-success bg-success text-success-foreground"
                       : "bg-muted/40 text-muted-foreground"
                   )}
                 >
@@ -1041,7 +1041,7 @@ function CherishPulse(): React.ReactElement {
                 className={cn(
                   "mt-2 text-xs",
                   submitMessage.startsWith("Saved")
-                    ? "text-emerald-700"
+                    ? "text-success"
                     : "text-destructive"
                 )}
               >
@@ -1144,7 +1144,7 @@ function CherishPulse(): React.ReactElement {
                   <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                     {response.message}
                   </p>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {response.submittedByName ?? "Team member"} · {formatShortDate(response.createdAt)}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -1176,7 +1176,7 @@ function CherishPulse(): React.ReactElement {
                     "text-xs",
                     reviewMessage.startsWith("Approved") ||
                       reviewMessage.startsWith("Archived")
-                      ? "text-emerald-700"
+                      ? "text-success"
                       : "text-destructive"
                   )}
                 >

@@ -12,6 +12,13 @@ import { toast } from "sonner"
 import { updateProjectRfi } from "@/app/actions/project-rfis"
 import { createMentionSuggestion } from "@/components/conversations/mention-suggestion"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 function mentionedUserIds(document: JSONContent): readonly string[] {
   const ids = new Set<string>()
@@ -130,29 +137,29 @@ export function ProjectRfiResponseComposer({
         Type @ and a name to notify a Compass user. Every response remains attached to this RFI.
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
-        <select
-          aria-label="RFI status"
-          value={selectedStatus}
-          onChange={(event) => setSelectedStatus(event.currentTarget.value)}
-          className="h-9 rounded-md border bg-background px-3 text-sm"
-        >
-          <option value="new">New</option>
-          <option value="in_progress">In progress</option>
-          <option value="info_needed">Additional information needed</option>
-          <option value="complete">Complete</option>
-          <option value="void">Void</option>
-        </select>
-        <select
-          aria-label="RFI audience"
-          value={selectedAudience}
-          onChange={(event) => setSelectedAudience(event.currentTarget.value)}
-          className="h-9 rounded-md border bg-background px-3 text-sm"
-        >
-          <option value="internal">Internal only</option>
-          <option value="sub_vendor">Sub/vendor visible</option>
-          <option value="owner">Owner visible</option>
-          <option value="public">Owner and sub/vendor visible</option>
-        </select>
+        <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+          <SelectTrigger aria-label="RFI status" className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="new">New</SelectItem>
+            <SelectItem value="in_progress">In progress</SelectItem>
+            <SelectItem value="info_needed">Additional information needed</SelectItem>
+            <SelectItem value="complete">Complete</SelectItem>
+            <SelectItem value="void">Void</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={selectedAudience} onValueChange={setSelectedAudience}>
+          <SelectTrigger aria-label="RFI audience" className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="internal">Internal only</SelectItem>
+            <SelectItem value="sub_vendor">Sub/vendor visible</SelectItem>
+            <SelectItem value="owner">Owner visible</SelectItem>
+            <SelectItem value="public">Owner and sub/vendor visible</SelectItem>
+          </SelectContent>
+        </Select>
         <Button
           type="button"
           variant="outline"

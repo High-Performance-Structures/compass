@@ -238,6 +238,10 @@ function Sidebar({
           data-slot="sidebar"
           data-mobile="true"
           className="bg-sidebar text-sidebar-foreground w-[--sidebar-width-mobile] max-w-[85vw] p-0 border-0"
+          onEscapeKeyDown={(event) => {
+            // Let an open utility drawer consume Escape before the mobile sheet.
+            if (document.activeElement?.closest('[data-slot="sidebar-workspace-drawer"][data-open="true"][data-pinned="false"]')) event.preventDefault()
+          }}
           side={side}
           showClose={false}
         >
@@ -659,7 +663,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-1.5 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [data-mobile=true]_&:[&>svg]:size-5",
+  "peer/menu-button flex w-full items-center gap-1.5 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 group-has-data-[sidebar=menu-action]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-[inset_2px_0_0_var(--sidebar-primary)] data-[state=open]:hover:bg-sidebar-accent data-[state=open]:hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [data-mobile=true]_&:[&>svg]:size-5",
   {
     variants: {
       variant: {

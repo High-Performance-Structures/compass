@@ -170,7 +170,7 @@ export function FileContextMenu({
                 <>
                   <IconStarFilled
                     size={16}
-                    className="mr-2 text-amber-400"
+                    className="mr-2 text-warning"
                   />
                   Unstar
                 </>

@@ -39,13 +39,13 @@ type MemberGroupProps = {
 function getStatusColor(status: string): string {
   switch (status) {
     case "online":
-      return "bg-green-500"
+      return "bg-success"
     case "idle":
-      return "bg-yellow-500"
+      return "bg-warning"
     case "dnd":
-      return "bg-red-500"
+      return "bg-destructive"
     default:
-      return "bg-gray-400"
+      return "bg-muted-foreground"
   }
 }
 
@@ -73,10 +73,10 @@ function getRoleBadgeVariant(
 
 function RoleIcon({ role }: { readonly role: string }) {
   if (role === "owner") {
-    return <IconCrown className="h-3 w-3 text-yellow-500" />
+    return <IconCrown className="h-3 w-3 text-warning" />
   }
   if (role === "moderator") {
-    return <IconShield className="h-3 w-3 text-blue-500" />
+    return <IconShield className="h-3 w-3 text-info" />
   }
   return null
 }
@@ -86,7 +86,7 @@ function MemberGroup({ title, members, statusColor }: MemberGroupProps) {
 
   return (
     <div className="mb-4">
-      <h3 className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {title} — {members.length}
       </h3>
       <ul className="space-y-0.5">
@@ -126,7 +126,7 @@ function MemberGroup({ title, members, statusColor }: MemberGroupProps) {
                 )}
               </div>
               {(member.role === "owner" || member.role === "moderator") && (
-                <Badge variant={getRoleBadgeVariant(member.role)} className="text-[10px]">
+                <Badge variant={getRoleBadgeVariant(member.role)} className="text-xs">
                   {member.role}
                 </Badge>
               )}
@@ -180,7 +180,9 @@ function MemberListContent({
     // 10-second polling interval when sidebar is open
     let pollInterval: ReturnType<typeof setInterval> | null = null
     if (isOpen) {
-      pollInterval = setInterval(fetchMembers, 10_000)
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === "visible") void fetchMembers()
+      }, 10_000)
     }
 
     return () => {

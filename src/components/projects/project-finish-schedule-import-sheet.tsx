@@ -158,7 +158,7 @@ export function ProjectFinishScheduleImportSheet({
                 <dd>{activePreview.compassProjectNumber ?? "Not found"}</dd>
               </dl>
               {activePreview.warnings.length > 0 && (
-                <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-amber-800 dark:text-amber-300">
+                <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-warning">
                   {activePreview.warnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
@@ -173,7 +173,7 @@ export function ProjectFinishScheduleImportSheet({
             </p>
           )}
           {state.kind === "complete" && (
-            <p className="text-sm text-emerald-700 dark:text-emerald-300" role="status">
+            <p className="text-sm text-success" role="status">
               Import complete: {state.message}
             </p>
           )}

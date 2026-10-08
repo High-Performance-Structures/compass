@@ -107,7 +107,7 @@ export function ProjectEstimateAssemblyEditor({ projectId, estimateId, assembly,
           <div className="max-h-72 space-y-4 overflow-y-auto">
             {[...groups.entries()].map(([divisionCode, items]) => (
               <div key={divisionCode}>
-                <label className="flex items-center gap-2 border-b pb-2 text-sm font-medium">
+                <label className="flex items-center gap-2 border-b bg-estimate-section px-3 py-2 text-sm font-medium">
                   <input type="checkbox" disabled={pending} checked={items.every((line) => selected.has(line.id))} onChange={(event) => {
                     const checked = event.target.checked
                     setSelected((previous) => {
@@ -131,7 +131,7 @@ export function ProjectEstimateAssemblyEditor({ projectId, estimateId, assembly,
             ))}
             {filtered.length === 0 && <p className="text-sm text-muted-foreground">{lines.length === 0 ? "Save the assembly, then add estimate lines to it." : "No matching estimate items."}</p>}
           </div>
-          <div className="flex justify-between border-t pt-3 font-medium" aria-live="polite"><span>{selected.size} items · Assembly subtotal</span><span>{money(subtotal)}</span></div>
+          <div className="flex justify-between border-t bg-estimate-subtotal p-3 font-medium" aria-live="polite"><span>{selected.size} items · Assembly subtotal</span><span>{money(subtotal)}</span></div>
           {movedCount > 0 && <p className="text-sm text-muted-foreground">Saving will move {movedCount} selected items from their current assemblies into this assembly.</p>}
           <div className="flex flex-wrap justify-between gap-2">
             <div>{assembly && <Button type="button" variant="destructive" disabled={pending} onClick={remove}>Delete assembly</Button>}</div>
