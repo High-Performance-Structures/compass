@@ -171,3 +171,59 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     return EMPTY
   }
 }
+
+export type PortfolioAddableProject = {
+  readonly id: string
+  readonly name: string
+  readonly projectNumber: string | null
+  readonly statusLabel: string
+}
+
+/**
+ * Projects the person can open that are off the map only because of their
+ * status or department (not hidden by hand). Loaded on demand by "Add a
+ * project to the map" so the dashboard does not carry the full list.
+ */
+export async function getPortfolioAddableProjects(): Promise<readonly PortfolioAddableProject[]> {
+  try {
+    const user = await getCurrentUser()
+    if (!user?.organizationId) return []
+    const visible = await getProjects()
+    if (visible.length === 0) return []
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return []
+    const rows = await getDb(env.DB)
+      .select({
+        id: projects.id,
+        department: projects.department,
+        mapVisibility: projects.portfolioMapVisibility,
+      })
+      .from(projects)
+      .where(eq(projects.organizationId, user.organizationId))
+    const rowById = new Map(rows.map((row) => [row.id, row]))
+    return visible
+      .flatMap((project): PortfolioAddableProject[] => {
+        const row = rowById.get(project.id)
+        const stored = row?.mapVisibility ?? "default"
+        const rule: PortfolioProjectRule = {
+          projectId: project.id,
+          projectNumber: project.projectNumber,
+          department: row?.department ?? null,
+          jobStatusId: project.jobStatusId,
+          jobStatusLabel: project.jobStatusLabel,
+          visibility: isPortfolioMapVisibility(stored) ? stored : "default",
+        }
+        if (rule.visibility !== "default" || portfolioPhaseFor(rule) !== null) return []
+        return [{
+          id: project.id,
+          name: projectDisplayName(project),
+          projectNumber: project.projectNumber,
+          statusLabel: project.jobStatusLabel,
+        }]
+      })
+      .sort((a, b) => a.name.localeCompare(b.name))
+  } catch (error) {
+    console.error("Portfolio addable projects failed", error)
+    return []
+  }
+}

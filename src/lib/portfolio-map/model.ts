@@ -37,8 +37,9 @@ export type PortfolioMapJob = {
 }
 
 /**
- * Job statuses grouped into the map's pipeline phases. Statuses not listed are
- * not shown: warranty, complete, closed, refused, inactive, and the material
+ * Job statuses grouped into the map's pipeline phases. Closeout covers punch
+ * list and warranty work. Statuses not listed are not shown: complete,
+ * closed, refused, inactive, internal, and the material
  * order statuses (ordered, partial order, price sheet sent, shipping TBD,
  * awaiting payment).
  */
@@ -68,6 +69,7 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   under_construction: "construction",
   current: "construction",
   punchlist: "closeout",
+  under_warranty: "closeout",
 }
 
 /**

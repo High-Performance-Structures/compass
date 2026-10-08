@@ -8,6 +8,12 @@ import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
 vi.mock("next/dynamic", () => ({ default: () => () => null }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("@/app/actions/project-profile", () => ({ updateProjectMapVisibility: vi.fn(async () => ({ success: true })) }))
+vi.mock("@/app/actions/portfolio-map", () => ({
+  listProjectsToAddToMap: vi.fn(async () => [
+    { id: "p20", name: "Breckenridge Residence", projectNumber: "H-300-1", statusLabel: "Complete" },
+    { id: "p21", name: "Nu-Tech Order", projectNumber: "N-830-8220", statusLabel: "Ordered" },
+  ]),
+}))
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { readonly href: string; readonly children: React.ReactNode }) =>
     React.createElement("a", { href, ...rest }, children),
@@ -64,6 +70,29 @@ describe("PortfolioSection", () => {
 
     await click("PIPELINE")
     expect(localStorage.getItem("compass:portfolio-view:v1")).toBe("pipeline")
+  })
+
+  it("adds a project that its status keeps off the map", async () => {
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [] })))
+    const details = [...container.querySelectorAll("details")].find((item) => item.textContent?.includes("Add a project to the map"))
+    if (!details) throw new Error("Add to map not found")
+    await act(async () => {
+      details.open = true
+      details.dispatchEvent(new Event("toggle"))
+      await Promise.resolve()
+    })
+    expect(container.textContent).toContain("2 projects are off the map by their status")
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Search projects to add to the map"]')
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set
+    await act(async () => {
+      setValue?.call(input, "breck")
+      input?.dispatchEvent(new Event("input", { bubbles: true }))
+    })
+    expect(container.textContent).toContain("Breckenridge Residence")
+    expect(container.textContent).not.toContain("Nu-Tech Order")
+    await click("Add")
+    const actions = await import("@/app/actions/project-profile")
+    expect(actions.updateProjectMapVisibility).toHaveBeenCalledWith({ projectId: "p20", visibility: "shown" })
   })
 
   it("renders nothing when there are no mapped jobs", async () => {
