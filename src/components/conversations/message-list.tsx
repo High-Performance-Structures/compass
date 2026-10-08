@@ -98,6 +98,10 @@ export function MessageList({
   const historyRequestIdRef = React.useRef(0)
   const scrollIntentIdRef = React.useRef(0)
   const viewportGenerationRef = React.useRef(0)
+  const previousChannelIdRef = React.useRef<string | null>(null)
+  const isChannelTransition =
+    previousChannelIdRef.current !== null &&
+    previousChannelIdRef.current !== channelId
 
   // get last message id for real-time polling
   const lastMessageId = React.useMemo(() => {
@@ -112,9 +116,14 @@ export function MessageList({
 
   React.useEffect(() => {
     if (newMessages.length === 0) return
+    if (isChannelTransition) return
 
     // filter out already consumed messages
-    const unconsumed = newMessages.filter((msg) => !consumedNewMessagesRef.current.has(msg.id))
+    const unconsumed = newMessages.filter(
+      (msg) =>
+        msg.channelId === channelId &&
+        !consumedNewMessagesRef.current.has(msg.id),
+    )
     if (unconsumed.length === 0) return
 
     // mark as consumed
@@ -132,7 +141,7 @@ export function MessageList({
       }
     })
     setRealtimeCommitId((previous) => previous + 1)
-  }, [newMessages])
+  }, [channelId, isChannelTransition, newMessages])
 
   const getScrollViewport = React.useCallback((): HTMLElement | null => {
     return scrollViewportRef.current
@@ -159,7 +168,14 @@ export function MessageList({
 
   // sync when server re-fetches (router.refresh)
   React.useEffect(() => {
-    const shouldScrollToNewest = atNewestEdgeRef.current
+    const channelChanged =
+      previousChannelIdRef.current !== null &&
+      previousChannelIdRef.current !== channelId
+    previousChannelIdRef.current = channelId
+    if (channelChanged) {
+      consumedNewMessagesRef.current.clear()
+    }
+    const shouldScrollToNewest = channelChanged || atNewestEdgeRef.current
     historyRequestIdRef.current += 1
     prependScrollRef.current = null
     pendingNewestScrollRef.current = false
@@ -199,7 +215,7 @@ export function MessageList({
         viewportGenerationRef.current += 1
       }
     }
-  }, [getScrollViewport, initialMessages, scrollToNewest])
+  }, [channelId, getScrollViewport, initialMessages, scrollToNewest])
 
   React.useLayoutEffect(() => {
     const viewport = getScrollViewport()

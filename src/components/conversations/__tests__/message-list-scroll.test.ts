@@ -28,7 +28,8 @@ vi.mock("@/hooks/use-realtime-channel", () => ({
 }))
 
 vi.mock("@/components/conversations/message-item", () => ({
-  MessageItem: () => React.createElement("div", null, "Message"),
+  MessageItem: ({ message }: { readonly message: { readonly id: string } }) =>
+    React.createElement("div", { "data-message-id": message.id }, "Message"),
 }))
 
 vi.mock("@/components/conversations/typing-indicator", () => ({
@@ -327,5 +328,138 @@ describe("MessageList scrolling", () => {
 
     expect(viewport.scrollTop).toBe(0)
     expect(scrollTo).not.toHaveBeenCalled()
+  })
+
+  it("opens a directly selected channel at its newest edge after a prior channel was scrolled up", async () => {
+    const message = (id: string, channelId: string) => ({
+      id,
+      channelId,
+      threadId: null,
+      content: id,
+      contentHtml: null,
+      editedAt: null,
+      deletedAt: null,
+      isPinned: false,
+      replyCount: 0,
+      lastReplyAt: null,
+      createdAt: "2026-09-09T12:00:00.000Z",
+      user: null,
+    })
+
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-1",
+          currentUserId: null,
+          initialMessages: [message("message-1", "channel-1")],
+        }),
+      )
+    })
+
+    const viewport = host.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    )
+    expect(viewport).not.toBeNull()
+    if (!viewport) throw new Error("Expected the direct-navigation viewport")
+
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 1_000 },
+    })
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    })
+
+    viewport.scrollTop = 0
+    await act(async () => viewport.dispatchEvent(new Event("scroll")))
+    scrollTo.mockClear()
+
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-2",
+          currentUserId: null,
+          initialMessages: [message("message-2", "channel-2")],
+        }),
+      )
+    })
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    })
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 900, behavior: "smooth" })
+  })
+
+  it("does not carry realtime messages from a previous channel into direct navigation", async () => {
+    const message = (id: string, channelId: string) => ({
+      id,
+      channelId,
+      threadId: null,
+      content: id,
+      contentHtml: null,
+      editedAt: null,
+      deletedAt: null,
+      isPinned: false,
+      replyCount: 0,
+      lastReplyAt: null,
+      createdAt: "2026-09-09T12:00:00.000Z",
+      user: null,
+    })
+    const channelOneMessages = [message("message-1", "channel-1")]
+    const channelTwoMessages = [message("message-2", "channel-2")]
+
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-1",
+          currentUserId: null,
+          initialMessages: channelOneMessages,
+        }),
+      )
+    })
+
+    realtimeState.messages = [message("realtime-1", "channel-1")]
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-1",
+          currentUserId: null,
+          initialMessages: channelOneMessages,
+        }),
+      )
+    })
+    expect(host.querySelector('[data-message-id="realtime-1"]')).not.toBeNull()
+
+    realtimeState.messages = [
+      ...realtimeState.messages,
+      message("realtime-2", "channel-2"),
+    ]
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-2",
+          currentUserId: null,
+          initialMessages: channelTwoMessages,
+        }),
+      )
+    })
+    expect(host.querySelector('[data-message-id="realtime-2"]')).not.toBeNull()
+
+    realtimeState.messages = [
+      ...realtimeState.messages,
+      message("realtime-3", "channel-2"),
+    ]
+    await act(async () => {
+      root.render(
+        React.createElement(MessageList, {
+          channelId: "channel-2",
+          currentUserId: null,
+          initialMessages: channelTwoMessages,
+        }),
+      )
+    })
+
+    expect(host.querySelector('[data-message-id="realtime-1"]')).toBeNull()
+    expect(host.querySelector('[data-message-id="realtime-3"]')).not.toBeNull()
   })
 })
