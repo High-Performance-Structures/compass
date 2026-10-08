@@ -33,6 +33,7 @@ import {
   teamAccessSectionForRole,
   type TeamAccessSection,
 } from "@/lib/team-access-section"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 const SECTION_OPTIONS = [
   { value: "internal", label: "Internal Team", description: "Staff accounts and invitations" },
@@ -204,7 +205,7 @@ export function TeamTab({ initialSection }: { readonly initialSection: TeamAcces
               ariaLabel="Choose project for selected accounts"
               options={projects.map((project) => ({
                 value: project.id,
-                label: project.projectNumber ? `${project.projectNumber} · ${project.name}` : project.name,
+                label: project.projectNumber ? projectNumberAndName(project, " · ") : project.name,
               }))}
               value={selectedProjectId}
               onValueChange={setSelectedProjectId}

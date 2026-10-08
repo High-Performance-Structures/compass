@@ -24,6 +24,7 @@ import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { Badge } from "@/components/ui/badge"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export default async function ProjectContactsPage({
   params,
@@ -48,7 +49,7 @@ export default async function ProjectContactsPage({
     const project = projectList.find((item) => item.id === id)
     if (project) {
       projectLabel = project.projectNumber
-        ? `${project.projectNumber} - ${project.name}`
+        ? projectNumberAndName(project, " - ")
         : project.name
     }
   } catch (error) {
