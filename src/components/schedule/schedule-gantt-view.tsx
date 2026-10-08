@@ -127,6 +127,13 @@ interface ScheduleGanttViewProps {
   readonly onGroupByPhaseChange?: (grouped: boolean) => void
 }
 
+// Local calendar date (YYYY-MM-DD) so "today" matches the viewer's day.
+function localIsoDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 export function ScheduleGanttView({
   projectId,
   tasks,
@@ -168,8 +175,6 @@ export function ScheduleGanttView({
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
-  // Set once scrollToToday exists; used when there is no remembered position.
-  const openAtTodayRef = useRef<(() => void) | null>(null)
   // The chart can rebuild once while loading; keep opening on today until then.
   const openAtTodayUntilRef = useRef(0)
   // The list and chart mirror each other's vertical scroll. Each side ignores
@@ -432,12 +437,10 @@ export function ScheduleGanttView({
       const openAtToday = !remembered || performance.now() < openAtTodayUntilRef.current
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (openAtToday && openAtTodayRef.current) {
-            openAtTodayRef.current()
-            return
-          }
-          if (position.anchorDate && scrollToDateRef.current) {
-            scrollToDateRef.current(position.anchorDate)
+          // Opening only moves the timeline sideways; rows and focus stay put.
+          const anchorDate = openAtToday ? localIsoDate(new Date()) : position.anchorDate
+          if (anchorDate && scrollToDateRef.current) {
+            scrollToDateRef.current(anchorDate)
           } else {
             container.scrollLeft = position.left
           }
@@ -711,9 +714,6 @@ export function ScheduleGanttView({
     scrollToTodayRef.current?.()
   }, [displayItems, markMirrored])
 
-  useEffect(() => {
-    openAtTodayRef.current = scrollToToday
-  }, [scrollToToday])
 
   // The list's own scroll area scrolls both ways: a minimum width keeps titles
   // readable when the panel is narrow, and the horizontal scrollbar stays at

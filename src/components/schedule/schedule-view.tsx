@@ -216,7 +216,9 @@ export function ScheduleView({
     SCHEDULE_VIEW_PRESETS.find((value) => value === requestedPreset) ?? "all"
   const requestedGroup = searchParams.get("group")
   // The all-projects schedule groups by project unless the link says otherwise.
-  const defaultGroup: ScheduleGroupMode = scheduleProjects.length > 1 ? "project" : "none"
+  // Keyed on globalMode, which stays fixed while projects are selected, so the
+  // default never flips mid-navigation and rewrites the URL.
+  const defaultGroup: ScheduleGroupMode = globalMode ? "project" : "none"
   const initialGroup =
     SCHEDULE_GROUP_MODES.find((value) => value === requestedGroup) ?? defaultGroup
   const requestedColumns = (searchParams.get("columns") ?? "")
