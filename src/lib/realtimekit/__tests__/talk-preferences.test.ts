@@ -46,13 +46,14 @@ describe("Talk preferences", () => {
     }
     expect(parseTalkPreferences(JSON.stringify(saved))).toEqual({
       ...saved,
-      backgroundCleanup: "standard"
+      backgroundCleanup: "standard",
+      mutedSpeechHint: false
     })
     expect(
       parseTalkPreferences(
         JSON.stringify({ ...saved, backgroundCleanup: "strong" })
       )
-    ).toEqual({ ...saved, backgroundCleanup: "strong" })
+    ).toEqual({ ...saved, backgroundCleanup: "strong", mutedSpeechHint: false })
   })
   it("does not restore arbitrary URLs or missing personal images", () => {
     const saved = {
