@@ -69,6 +69,7 @@ export function ProjectAudienceDashboardView({
   today,
   greeting,
   selectionSummary = { kind: "unavailable" },
+  mapSection = null,
 }: {
   readonly data: ProjectAudiencePreview
   readonly financials: AudienceDashboardFinancials
@@ -76,6 +77,8 @@ export function ProjectAudienceDashboardView({
   readonly today: string
   readonly selectionSummary?: SelectionDashboardSummary
   readonly greeting: string
+  /** Owner relief or sub/vendor "Your jobs" map, shown under the header. */
+  readonly mapSection?: React.ReactNode
 }): React.ReactElement {
   const owner = data.audience === "owner"
   const route = owner ? "owner" : "sub-vendor"
@@ -197,6 +200,8 @@ export function ProjectAudienceDashboardView({
             />
           )}
         </div>
+
+        {mapSection}
 
         <div className="-mt-px">
           <ProjectCommunicationInstructions

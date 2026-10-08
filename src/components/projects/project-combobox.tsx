@@ -6,6 +6,7 @@ import {
   SearchableCombobox,
   type SearchableComboboxOption,
 } from "@/components/searchable-combobox"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export type ProjectComboboxOption = {
   readonly id: string
@@ -73,7 +74,7 @@ export function ProjectCombobox({
       value: project.id,
       label: project.projectNumber ?? project.name,
       selectedLabel: project.projectNumber
-        ? `${project.projectNumber} - ${project.name}`
+        ? projectNumberAndName(project, " - ")
         : project.name,
       description: projectDescription(project) ?? undefined,
       keywords: project.clientName ?? undefined,
