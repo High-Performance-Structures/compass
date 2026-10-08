@@ -52,6 +52,7 @@ import { SidebarWorkspaceDrawer } from "@/components/sidebar-workspace-drawer"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
+import { ReleaseStageLabel } from "@/components/release-stage-label"
 import { HelpDrawer } from "@/components/help/help-drawer"
 import {
   useActiveProject,
@@ -794,6 +795,7 @@ export function AppSidebar({
           </div>
         </SidebarWorkspaceDrawer>
         {channelId !== null && <VoicePanel />}
+        <ReleaseStageLabel />
       </SidebarFooter>
     </Sidebar>
   )
