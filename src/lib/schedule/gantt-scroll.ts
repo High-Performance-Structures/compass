@@ -106,18 +106,19 @@ export function clampGanttScrollOffset(
   )
 }
 
+/**
+ * The list and the chart share the same header height and 48px rows, so the
+ * same pixel offset shows the same row in both panes. Mapping by percentage
+ * instead drifts whenever the panes differ in total height (for example the
+ * list's Add row), and the drift grows as the user scrolls down.
+ */
 export function synchronizedScrollTop(
   sourceTop: number,
-  sourceScrollHeight: number,
-  sourceClientHeight: number,
   targetScrollHeight: number,
   targetClientHeight: number
 ): number {
-  const sourceRange = Math.max(0, sourceScrollHeight - sourceClientHeight)
   const targetRange = Math.max(0, targetScrollHeight - targetClientHeight)
-  if (sourceRange === 0 || targetRange === 0) return 0
-  const progress = Math.min(1, Math.max(0, sourceTop / sourceRange))
-  return progress * targetRange
+  return Math.min(targetRange, Math.max(0, sourceTop))
 }
 
 export function paddingToIncludeDate(
