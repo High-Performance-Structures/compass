@@ -1246,7 +1246,8 @@ export function DashboardLaunchpad({
         </div>
       </div>
 
-      <CherishStoryInvitation items={cherishRecognitions} />
+      {/* Only stands out when there is a story to watch. */}
+      <CherishStoryInvitation items={cherishRecognitions} quietWhenRead />
 
       <DashboardCountsStrip counts={counts} />
 
