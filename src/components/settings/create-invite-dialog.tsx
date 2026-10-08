@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { createInvite } from "@/app/actions/invites"
 import { USER_ROLE_OPTIONS, userRoleDescription } from "@/lib/user-roles"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -136,18 +137,17 @@ export function CreateInviteDialog({
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Role</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {USER_ROLE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                value={role}
+                onValueChange={(value) => {
+                  if (value !== "") setRole(value)
+                }}
+                options={USER_ROLE_OPTIONS}
+                ariaLabel="Role"
+                placeholder="Select a role"
+                searchPlaceholder="Search roles..."
+                emptyMessage="No matching roles."
+              />
               <p className="text-xs text-muted-foreground">
                 {userRoleDescription(role)}
               </p>
