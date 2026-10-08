@@ -2,24 +2,10 @@ import {
   expect,
   test,
   _electron as electron,
-  type Video,
 } from "@playwright/test"
 
 function isElectron(): boolean {
   return process.env.ELECTRON === "true" || process.env.ELECTRON_TEST === "true"
-}
-
-type AttemptResult =
-  | { readonly success: true }
-  | { readonly success: false; readonly error: unknown }
-
-async function attempt(action: () => Promise<void>): Promise<AttemptResult> {
-  try {
-    await action()
-    return { success: true }
-  } catch (error) {
-    return { success: false, error }
-  }
 }
 
 test.describe("Electron runtime", () => {
@@ -29,22 +15,13 @@ test.describe("Electron runtime", () => {
     // macOS runners can spend longer preparing the bundled Electron process
     // than Playwright's default 30-second window-event timeout.
     test.setTimeout(120_000)
-    const videoDir = testInfo.outputPath("videos")
     const appUrl = new URL(
       "/dashboard/projects/e2e-project-001",
       process.env.PLAYWRIGHT_BASE_URL ??
         `http://127.0.0.1:${process.env.PORT ?? "3000"}`,
     ).toString()
-    let mainVideo: Video | null = null
-    let previewVideo: Video | null = null
-    let testFailure: unknown = null
     const app = await electron.launch({
       args: ["--disable-popup-blocking", "dist-electron/electron/main.js"],
-      recordVideo: {
-        dir: videoDir,
-        size: { width: 1180, height: 800 },
-        showActions: { position: "top-right" },
-      },
       env: {
         ...process.env,
         ELECTRON_DEV_SERVER_URL: appUrl,
@@ -53,7 +30,6 @@ test.describe("Electron runtime", () => {
 
     try {
       const page = await app.firstWindow({ timeout: 90_000 })
-      mainVideo = page.video()
       await page.waitForURL(/\/dashboard/)
       await page.waitForLoadState("domcontentloaded")
 
@@ -80,13 +56,9 @@ test.describe("Electron runtime", () => {
       }, previewUrl)
       const previewTrigger = page.locator('a[data-e2e-preview-link="true"]')
       await expect(previewTrigger).toBeVisible()
+      const previewWindowPromise = app.waitForEvent("window", { timeout: 90_000 })
       await previewTrigger.click()
-      await expect.poll(() => app.windows().length).toBeGreaterThan(1)
-      const previewWindow = app
-        .windows()
-        .find((window) => window !== page)
-      if (!previewWindow) throw new Error("Preview Electron window not found")
-      previewVideo = previewWindow.video()
+      const previewWindow = await previewWindowPromise
       await expect(previewWindow).toHaveURL(
         /\/preview\/projects\/e2e-project-001\/owner$/,
       )
@@ -144,33 +116,8 @@ test.describe("Electron runtime", () => {
           ),
         )
         .toBe(true)
-    } catch (error) {
-      testFailure = error
+    } finally {
+      await app.close()
     }
-
-    async function preserveFirstFailure(action: () => Promise<void>): Promise<void> {
-      const result = await attempt(action)
-      if (!result.success && testFailure === null) testFailure = result.error
-    }
-
-    await preserveFirstFailure(() => app.close())
-    if (mainVideo) {
-      await preserveFirstFailure(async () => {
-        await testInfo.attach("desktop-main-window-recording", {
-          path: await mainVideo.path(),
-          contentType: "video/webm",
-        })
-      })
-    }
-    if (previewVideo) {
-      await preserveFirstFailure(async () => {
-        await testInfo.attach("desktop-preview-window-recording", {
-          path: await previewVideo.path(),
-          contentType: "video/webm",
-        })
-      })
-    }
-
-    if (testFailure !== null) throw testFailure
   })
 })
