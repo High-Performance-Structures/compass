@@ -1,7 +1,8 @@
 "use client"
 
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import * as React from "react"
-import { useForm } from "react-hook-form"
+import { Controller, useForm } from "react-hook-form"
 import { useRouter } from "next/navigation"
 import {
   publishSelectionDecision,
@@ -26,6 +27,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
+const NO_CHANGE_ORDER = "__no_change_order__"
+
 export function SelectionPublishForm({
   item,
   workspace,
@@ -38,7 +41,7 @@ export function SelectionPublishForm({
     [confirmation, setConfirmation] =
       React.useState<PublishSelectionInput | null>(null),
     [pending, start] = React.useTransition()
-  const { register, handleSubmit, watch } = useForm<PublishSelectionInput>({
+  const { register, control, handleSubmit, watch } = useForm<PublishSelectionInput>({
     defaultValues: selectionPublicationInput(item),
   })
   function save(values: PublishSelectionInput): void {
@@ -90,17 +93,31 @@ export function SelectionPublishForm({
           </label>
           <label className="grid gap-1 text-sm">
             Related change order
-            <select
-              className="h-9 min-w-0 rounded-md border bg-background px-2"
-              {...register("changeOrderId")}
-            >
-              <option value="">No change order</option>
-              {workspace.changeOrders.map((change) => (
-                <option key={change.id} value={change.id}>
-                  {change.label}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name="changeOrderId"
+              render={({ field }) => (
+                <SearchableCombobox
+                  className="h-9 min-w-0 text-sm"
+                  // "" means no change order; the picker needs a non-empty value for it.
+                  value={field.value ? field.value : NO_CHANGE_ORDER}
+                  onValueChange={(value) =>
+                    field.onChange(value === NO_CHANGE_ORDER || value === "" ? "" : value)
+                  }
+                  options={[
+                    { value: NO_CHANGE_ORDER, label: "No change order" },
+                    ...workspace.changeOrders.map((change) => ({
+                      value: change.id,
+                      label: change.label,
+                    })),
+                  ]}
+                  ariaLabel="Related change order"
+                  placeholder="No change order"
+                  searchPlaceholder="Search change orders..."
+                  emptyMessage="No matching change orders."
+                />
+              )}
+            />
           </label>
         </div>
         <label className="grid gap-1 text-sm">

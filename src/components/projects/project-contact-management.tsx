@@ -42,6 +42,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -58,10 +59,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -1017,35 +1015,32 @@ export function ProjectContactEditor({
                   <div className="grid gap-3 border-t pt-4">
                     <div className="grid gap-2">
                       <Label>Contact person</Label>
-                      <Select
+                      <SearchableCombobox
                         value={
                           input.vendorContactId ??
                           (legacyVendorPerson ? "legacy-person" : "company-only")
                         }
-                        onValueChange={applyVendorContact}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose a person" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="company-only">
-                            No specific person (company assignment only)
-                          </SelectItem>
-                          {legacyVendorPerson && (
-                            <SelectItem value="legacy-person">
-                              {legacyVendorPerson} · imported contact
-                            </SelectItem>
-                          )}
-                          {selectedVendor.vendorContacts.map((vendorContact) => (
-                            <SelectItem key={vendorContact.id} value={vendorContact.id}>
-                              {vendorContact.name}
-                              {vendorContact.title ? ` · ${vendorContact.title}` : ""}
-                              {vendorContact.email ? ` · ${vendorContact.email}` : ""}
-                              {vendorContact.isPrimary ? " · Primary" : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        // The picker's empty reset must not overwrite the contact details.
+                        onValueChange={(value) => {
+                          if (value !== "") applyVendorContact(value)
+                        }}
+                        options={[
+                          { value: "company-only", label: "No specific person (company assignment only)" },
+                          ...(legacyVendorPerson
+                            ? [{ value: "legacy-person", label: legacyVendorPerson, description: "Imported contact" }]
+                            : []),
+                          ...selectedVendor.vendorContacts.map((vendorContact) => ({
+                            value: vendorContact.id,
+                            label: vendorContact.isPrimary ? `${vendorContact.name} · Primary` : vendorContact.name,
+                            description: [vendorContact.title, vendorContact.email].filter(Boolean).join(" · ") || undefined,
+                            keywords: vendorContact.email ?? undefined,
+                          })),
+                        ]}
+                        ariaLabel="Contact person"
+                        placeholder="Choose a person"
+                        searchPlaceholder="Search by name, title or email..."
+                        emptyMessage="No matching people."
+                      />
                       <p className="text-xs text-muted-foreground">
                         Select a person when project access or email invitations are needed.
                         Company-only assignments cannot be invited.
@@ -1137,27 +1132,25 @@ export function ProjectContactEditor({
                 {selectedCustomer && (
                   <div className="grid gap-2 border-t pt-4">
                     <Label>Client contact person</Label>
-                    <Select
+                    <SearchableCombobox
                       value={input.customerContactId ?? "company-only"}
-                      onValueChange={applyCustomerContact}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a person" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="company-only">
-                          No specific person (company assignment only)
-                        </SelectItem>
-                        {selectedCustomer.customerContacts.map((person) => (
-                          <SelectItem key={person.id} value={person.id}>
-                            {person.name}
-                            {person.title ? ` · ${person.title}` : ""}
-                            {person.email ? ` · ${person.email}` : ""}
-                            {person.isPrimary ? " · Primary" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onValueChange={(value) => {
+                        if (value !== "") applyCustomerContact(value)
+                      }}
+                      options={[
+                        { value: "company-only", label: "No specific person (company assignment only)" },
+                        ...selectedCustomer.customerContacts.map((person) => ({
+                          value: person.id,
+                          label: person.isPrimary ? `${person.name} · Primary` : person.name,
+                          description: [person.title, person.email].filter(Boolean).join(" · ") || undefined,
+                          keywords: person.email ?? undefined,
+                        })),
+                      ]}
+                      ariaLabel="Client contact person"
+                      placeholder="Choose a person"
+                      searchPlaceholder="Search by name, title or email..."
+                      emptyMessage="No matching people."
+                    />
                     <p className="text-xs text-muted-foreground">
                       Select a directory person when this project needs a named
                       owner contact. Existing company-linked invitation behavior
@@ -1299,13 +1292,16 @@ export function ProjectContactEditor({
               )}
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-role">Project role</Label>
-                <Select
+                <SearchableCombobox
+                  id="project-contact-role"
                   value={
                     customRoleSelected
                       ? CUSTOM_PROJECT_ROLE_VALUE
                       : input.role
                   }
                   onValueChange={(value) => {
+                    // An empty value is the picker's own reset; keep the current role.
+                    if (value === "") return
                     if (value === CUSTOM_PROJECT_ROLE_VALUE) {
                       setCustomRoleSelected(true)
                       if (isPresetProjectRole(input.role)) updateInput("role", "")
@@ -1314,34 +1310,24 @@ export function ProjectContactEditor({
                     setCustomRoleSelected(false)
                     updateInput("role", value)
                   }}
-                >
-                  <SelectTrigger id="project-contact-role" className="w-full">
-                    <SelectValue placeholder="Choose a project role..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Project team</SelectLabel>
-                      {PROJECT_WORKFLOW_ROLE_LENSES.map((role) => (
-                        <SelectItem key={role.id} value={role.label}>
-                          {role.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectSeparator />
-                    <SelectGroup>
-                      <SelectLabel>External</SelectLabel>
-                      {EXTERNAL_PROJECT_ROLES.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {role}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                    <SelectSeparator />
-                    <SelectItem value={CUSTOM_PROJECT_ROLE_VALUE}>
-                      Other / custom role...
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    ...PROJECT_WORKFLOW_ROLE_LENSES.map((role) => ({
+                      value: role.label,
+                      label: role.label,
+                      description: "Project team",
+                    })),
+                    ...EXTERNAL_PROJECT_ROLES.map((role) => ({
+                      value: role,
+                      label: role,
+                      description: "External",
+                    })),
+                    { value: CUSTOM_PROJECT_ROLE_VALUE, label: "Other / custom role...", keywords: "custom other new" },
+                  ]}
+                  ariaLabel="Project role"
+                  placeholder="Choose a project role..."
+                  searchPlaceholder="Search roles..."
+                  emptyMessage="No matching roles."
+                />
                 {customRoleSelected && (
                   <Input
                     id="project-contact-custom-role"
@@ -1393,22 +1379,25 @@ export function ProjectContactEditor({
               )}
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-csi">Estimating division</Label>
-                <Select
+                <SearchableCombobox
+                  id="project-contact-csi"
                   value={input.csiDivision || "unassigned"}
-                  onValueChange={applyDivision}
-                >
-                  <SelectTrigger id="project-contact-csi" className="w-full">
-                    <SelectValue placeholder="Choose a division..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">No division</SelectItem>
-                    {sageOptions.divisions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onValueChange={(value) => {
+                    if (value !== "") applyDivision(value)
+                  }}
+                  options={[
+                    { value: "unassigned", label: "No division" },
+                    ...sageOptions.divisions.map((option) => ({
+                      value: option.value,
+                      label: option.label,
+                      keywords: option.value,
+                    })),
+                  ]}
+                  ariaLabel="Estimating division"
+                  placeholder="Choose a division..."
+                  searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
+                  emptyMessage="No matching divisions."
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-cost-code">Cost code</Label>

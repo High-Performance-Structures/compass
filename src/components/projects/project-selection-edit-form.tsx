@@ -15,13 +15,6 @@ import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -225,26 +218,19 @@ export function ProjectSelectionEditForm({
                 />
               </Field>
               <Field label="Status">
-                <Select
+                <SearchableCombobox
+                  className={DOCUMENT_SELECT_CLASS}
                   value={selectionStatus}
                   onValueChange={(value) => {
-                    const next = STATUS_OPTIONS.find(
-                      (option) => option.value === value
-                    )
+                    const next = STATUS_OPTIONS.find((option) => option.value === value)
                     if (next) setSelectionStatus(next.value)
                   }}
-                >
-                  <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={STATUS_OPTIONS}
+                  ariaLabel="Selection status"
+                  placeholder="Choose status"
+                  searchPlaceholder="Search statuses..."
+                  emptyMessage="No matching statuses."
+                />
               </Field>
             </div>
 

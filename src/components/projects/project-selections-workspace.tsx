@@ -25,15 +25,9 @@ import {
   DeveloperOnly,
   useDeveloperMode,
 } from "@/components/developer-mode-provider"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import type { ProjectBrand } from "@/lib/project-branding"
 
 type SelectionFilterState = {
@@ -616,70 +610,76 @@ export function ProjectSelectionsWorkspace({
             <span className="text-xs font-medium text-muted-foreground">
               Division
             </span>
-            <Select value={filters.division} onValueChange={changeDivision}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All divisions" />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value={ALL}>All divisions</SelectItem>
-                {divisionOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label} ({divisionCounts.get(option.value) ?? 0})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              value={filters.division}
+              // An empty value is the picker's reset: show all divisions.
+              onValueChange={(picked) => changeDivision(picked || ALL)}
+              options={[
+                { value: ALL, label: "All divisions" },
+                ...divisionOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  description: `${divisionCounts.get(option.value) ?? 0} selections`,
+                  keywords: option.value,
+                })),
+              ]}
+              ariaLabel="Filter by division"
+              placeholder="All divisions"
+              searchPlaceholder="Search divisions..."
+              emptyMessage="No matching divisions."
+            />
           </label>
 
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">
               Cost code
             </span>
-            <Select
+            <SearchableCombobox
               value={filters.costCode}
-              onValueChange={(value) =>
-                setFilters((current) => ({ ...current, costCode: value }))
+              onValueChange={(picked) =>
+                setFilters((current) => ({ ...current, costCode: picked || ALL }))
               }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All cost codes" />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value={ALL}>All cost codes</SelectItem>
-                {costCodeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label} ({costCodeCounts.get(option.value) ?? 0})
-                    {developerModeEnabled && option.needsSageReview
-                      ? " - needs Sage review"
-                      : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: ALL, label: "All cost codes" },
+                ...costCodeOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  description: [
+                    `${costCodeCounts.get(option.value) ?? 0} selections`,
+                    developerModeEnabled && option.needsSageReview ? "needs Sage review" : null,
+                  ].filter(Boolean).join(" · "),
+                  keywords: option.value,
+                })),
+              ]}
+              ariaLabel="Filter by cost code"
+              placeholder="All cost codes"
+              searchPlaceholder="Search cost codes..."
+              emptyMessage="No matching cost codes."
+            />
           </label>
 
           <label className="space-y-1.5">
             <span className="text-xs font-medium text-muted-foreground">
               Room
             </span>
-            <Select
+            <SearchableCombobox
               value={filters.roomName}
-              onValueChange={(value) =>
-                setFilters((current) => ({ ...current, roomName: value }))
+              onValueChange={(picked) =>
+                setFilters((current) => ({ ...current, roomName: picked || ALL }))
               }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All rooms" />
-              </SelectTrigger>
-              <SelectContent className="max-h-80">
-                <SelectItem value={ALL}>All rooms</SelectItem>
-                {summary.rooms.map((room) => (
-                  <SelectItem key={room.roomName} value={room.roomName}>
-                    {room.roomName} ({room.selections.length})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: ALL, label: "All rooms" },
+                ...summary.rooms.map((room) => ({
+                  value: room.roomName,
+                  label: room.roomName,
+                  description: `${room.selections.length} selections`,
+                })),
+              ]}
+              ariaLabel="Filter by room"
+              placeholder="All rooms"
+              searchPlaceholder="Search rooms..."
+              emptyMessage="No matching rooms."
+            />
           </label>
 
           <div className="flex items-end">

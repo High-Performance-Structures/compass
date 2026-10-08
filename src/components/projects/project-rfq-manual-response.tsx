@@ -17,6 +17,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type Decision = "quote" | "decline"
 type Source = "email" | "phone" | "other"
@@ -108,23 +115,30 @@ export function ProjectRfqManualResponse({
             </DialogHeader>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><Label htmlFor={`rfq-source-${rfq.id}`}>Received via</Label>
-                <select id={`rfq-source-${rfq.id}`} value={source} onChange={(event) => {
-                  const value = event.currentTarget.value
+                <Select value={source} onValueChange={(value) => {
                   if (value === "email" || value === "phone" || value === "other") setSource(value)
-                }} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
-                  <option value="email">Email</option><option value="phone">Phone</option><option value="other">Other</option>
-                </select>
+                }}>
+                  <SelectTrigger id={`rfq-source-${rfq.id}`} className="h-10 w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="phone">Phone</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5"><Label htmlFor={`rfq-received-${rfq.id}`}>Received on</Label>
                 <Input id={`rfq-received-${rfq.id}`} type="date" value={receivedDate} onChange={(event) => setReceivedDate(event.currentTarget.value)} required />
               </div>
               <div className="space-y-1.5"><Label htmlFor={`rfq-decision-${rfq.id}`}>Vendor decision</Label>
-                <select id={`rfq-decision-${rfq.id}`} value={decision} onChange={(event) => {
-                  const value = event.currentTarget.value
+                <Select value={decision} onValueChange={(value) => {
                   if (value === "quote" || value === "decline") setDecision(value)
-                }} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
-                  <option value="quote">Quoted</option><option value="decline">Declined</option>
-                </select>
+                }}>
+                  <SelectTrigger id={`rfq-decision-${rfq.id}`} className="h-10 w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="quote">Quoted</SelectItem>
+                    <SelectItem value="decline">Declined</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5"><Label htmlFor={`rfq-responder-${rfq.id}`}>Vendor contact or company</Label>
                 <Input id={`rfq-responder-${rfq.id}`} value={responderName} onChange={(event) => setResponderName(event.currentTarget.value)} required />
