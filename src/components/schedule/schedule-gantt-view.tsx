@@ -168,6 +168,10 @@ export function ScheduleGanttView({
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
+  // Set once scrollToToday exists; used when there is no remembered position.
+  const openAtTodayRef = useRef<(() => void) | null>(null)
+  // The chart can rebuild once while loading; keep opening on today until then.
+  const openAtTodayUntilRef = useRef(0)
   // The list and chart mirror each other's vertical scroll. Each side ignores
   // the scroll event caused by its own mirroring so they cannot fight.
   const mirroredListTopRef = useRef<number | null>(null)
@@ -420,8 +424,18 @@ export function ScheduleGanttView({
       }
 
       scrollPositionRef.current = position
+      // Nothing remembered yet: open on today instead of the portfolio's
+      // earliest task (which could be years back).
+      const remembered =
+        position.anchorDate !== undefined || position.left !== 0 || position.top !== 0
+      if (!remembered) openAtTodayUntilRef.current = performance.now() + 3000
+      const openAtToday = !remembered || performance.now() < openAtTodayUntilRef.current
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          if (openAtToday && openAtTodayRef.current) {
+            openAtTodayRef.current()
+            return
+          }
           if (position.anchorDate && scrollToDateRef.current) {
             scrollToDateRef.current(position.anchorDate)
           } else {
@@ -674,13 +688,17 @@ export function ScheduleGanttView({
 
     const taskList = taskListRef.current
     if (taskList) {
-      taskList.scrollTop = synchronizedScrollTop(
+      const listTop = synchronizedScrollTop(
         ganttTop,
         ganttContainer.scrollHeight,
         ganttContainer.clientHeight,
         taskList.scrollHeight,
         taskList.clientHeight
       )
+      // Mark this as mirroring so the list's scroll echo does not reset the
+      // chart and cancel the smooth horizontal move to today.
+      markMirrored(mirroredListTopRef, listTop)
+      taskList.scrollTop = listTop
     }
 
     const targetItem = displayItems[rowIndex]
@@ -691,7 +709,11 @@ export function ScheduleGanttView({
     // Start the smooth horizontal movement last. Assigning scrollTop after
     // scrollTo({ behavior: "smooth" }) cancels that animation in browsers.
     scrollToTodayRef.current?.()
-  }, [displayItems])
+  }, [displayItems, markMirrored])
+
+  useEffect(() => {
+    openAtTodayRef.current = scrollToToday
+  }, [scrollToToday])
 
   // The list's own scroll area scrolls both ways: a minimum width keeps titles
   // readable when the panel is narrow, and the horizontal scrollbar stays at

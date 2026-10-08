@@ -215,8 +215,10 @@ export function ScheduleView({
   const initialPreset =
     SCHEDULE_VIEW_PRESETS.find((value) => value === requestedPreset) ?? "all"
   const requestedGroup = searchParams.get("group")
+  // The all-projects schedule groups by project unless the link says otherwise.
+  const defaultGroup: ScheduleGroupMode = scheduleProjects.length > 1 ? "project" : "none"
   const initialGroup =
-    SCHEDULE_GROUP_MODES.find((value) => value === requestedGroup) ?? "none"
+    SCHEDULE_GROUP_MODES.find((value) => value === requestedGroup) ?? defaultGroup
   const requestedColumns = (searchParams.get("columns") ?? "")
     .split(",")
     .filter((value): value is ScheduleListColumn =>
@@ -350,7 +352,7 @@ export function ScheduleView({
     setOrDelete("assignee", filters.assignedTo)
     setOrDelete("q", filters.search)
     setOrDelete("preset", preset === "all" ? "" : preset)
-    setOrDelete("group", groupMode === "none" ? "" : groupMode)
+    setOrDelete("group", groupMode === defaultGroup ? "" : groupMode)
     setOrDelete(
       "columns",
       visibleColumns.length === SCHEDULE_LIST_COLUMNS.length
@@ -366,6 +368,7 @@ export function ScheduleView({
       })
     }
   }, [
+    defaultGroup,
     filters,
     groupMode,
     orderMode,
