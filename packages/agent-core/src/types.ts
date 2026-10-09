@@ -1,8 +1,19 @@
 export interface ProviderConfig {
-  readonly type: "anthropic" | "openrouter" | "ollama" | "custom"
+  readonly type: "anthropic" | "openrouter" | "ollama" | "custom" | "openai"
   readonly apiKey?: string
   readonly baseUrl?: string
   readonly modelOverrides?: Readonly<Record<string, string>>
+}
+
+/** Providers reached through the Anthropic SDK (Messages format). */
+export type AnthropicFormatProvider = ProviderConfig & {
+  readonly type: Exclude<ProviderConfig["type"], "openai">
+}
+
+export function isAnthropicFormatProvider(
+  provider: ProviderConfig,
+): provider is AnthropicFormatProvider {
+  return provider.type !== "openai"
 }
 
 export interface AgentContext {

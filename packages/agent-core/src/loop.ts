@@ -1,8 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk"
 import type { Tool } from "@anthropic-ai/sdk/resources/messages/messages"
 import { createClient } from "./client"
+import { isAnthropicFormatProvider } from "./types"
 import type { ProviderConfig, SSEData } from "./types"
+import { runOpenAIAgent } from "./openai-loop"
 import type { ToolDef } from "./tools"
+import { createToolRegistry } from "./tool-registry"
 import type { McpClientManager } from "./mcp/types"
 
 interface AgentOptions {
@@ -22,8 +25,30 @@ interface AgentOptions {
 export async function* runAgent(
   opts: AgentOptions
 ): AsyncGenerator<SSEData> {
-  const client = createClient(opts.provider)
   const maxTurns = opts.maxTurns ?? 25
+  const registry = createToolRegistry(opts.tools, opts.mcpClientManager)
+  const resolvedModel =
+    opts.provider.modelOverrides?.[opts.model] ?? opts.model
+
+  // OpenAI does not speak Anthropic's Messages format, so it gets its own loop.
+  if (!isAnthropicFormatProvider(opts.provider)) {
+    if (!opts.provider.apiKey) {
+      yield { type: "error", error: "The OpenAI provider has no API key." }
+      return
+    }
+    yield* runOpenAIAgent({
+      apiKey: opts.provider.apiKey,
+      baseUrl: opts.provider.baseUrl,
+      model: resolvedModel,
+      systemPrompt: opts.systemPrompt,
+      messages: opts.messages,
+      registry,
+      maxTurns,
+    })
+    return
+  }
+
+  const client = createClient(opts.provider)
 
   // Mutable messages array for the agentic loop
   const messages: Anthropic.MessageParam[] = opts.messages.map(
@@ -33,39 +58,11 @@ export async function* runAgent(
     })
   )
 
-  // Build tool map for execution and API tool definitions
-  const toolMap = new Map<
-    string,
-    (input: unknown) => Promise<string> | string
-  >()
-  const apiTools: Tool[] = []
-
-  // Register direct tools first (they take priority)
-  if (opts.tools) {
-    for (const tool of opts.tools) {
-      toolMap.set(tool.name, tool.run)
-      apiTools.push({
-        name: tool.name,
-        description: tool.description,
-        input_schema:
-          tool.input_schema as Tool.InputSchema,
-      })
-    }
-  }
-
-  // Register MCP tools (skip if already provided as direct)
-  const mcpManager = opts.mcpClientManager
-  if (mcpManager) {
-    for (const tool of mcpManager.listTools()) {
-      if (toolMap.has(tool.name)) continue
-      apiTools.push({
-        name: tool.name,
-        description: tool.description,
-        input_schema:
-          tool.input_schema as Tool.InputSchema,
-      })
-    }
-  }
+  const apiTools: Tool[] = registry.apiTools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    input_schema: { type: "object", ...t.input_schema },
+  }))
 
   // OAuth endpoint requires mcp_ prefix on tool names
   const effectiveTools: Tool[] = opts.isOAuth
@@ -78,9 +75,6 @@ export async function* runAgent(
     turn++
 
     try {
-      const resolvedModel =
-        opts.provider.modelOverrides?.[opts.model] ?? opts.model
-
       const stream = client.messages.stream({
         model: resolvedModel,
         max_tokens: 8192,
@@ -160,74 +154,18 @@ export async function* runAgent(
             ? block.name.slice(4)
             : block.name
 
-        const runFn = toolMap.get(toolName)
-
-        // Route: direct tool -> MCP manager -> unknown
-        if (!runFn && !mcpManager) {
-          const errorResult = JSON.stringify({
-            error: `Unknown tool: ${toolName}`,
-          })
-          yield {
-            type: "tool_result",
-            toolCallId: block.id,
-            output: errorResult,
-          }
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: errorResult,
-            is_error: true,
-          })
-          continue
+        const outcome = await registry.execute(toolName, block.input)
+        yield {
+          type: "tool_result",
+          toolCallId: block.id,
+          output: outcome.output,
         }
-
-        try {
-          let result: string
-          if (runFn) {
-            result = await runFn(block.input)
-          } else if (mcpManager) {
-            result = await mcpManager.callTool(
-              toolName,
-              block.input
-            )
-          } else {
-            result = JSON.stringify({
-              error: `Unknown tool: ${toolName}`,
-            })
-          }
-          let parsed: unknown
-          try {
-            parsed = JSON.parse(result)
-          } catch {
-            parsed = result
-          }
-          yield {
-            type: "tool_result",
-            toolCallId: block.id,
-            output: parsed,
-          }
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: result,
-          })
-        } catch (err) {
-          const errorMsg =
-            err instanceof Error
-              ? err.message
-              : String(err)
-          yield {
-            type: "tool_result",
-            toolCallId: block.id,
-            output: { error: errorMsg },
-          }
-          toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
-            content: JSON.stringify({ error: errorMsg }),
-            is_error: true,
-          })
-        }
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: outcome.content,
+          ...(outcome.isError ? { is_error: true } : {}),
+        })
       }
 
       messages.push({ role: "user", content: toolResults })

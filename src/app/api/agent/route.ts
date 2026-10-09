@@ -410,7 +410,8 @@ export async function POST(
   )
   const resolvedModel = resolveRuntimeModelId(
     configuredModel,
-    runtimeProviderType
+    runtimeProviderType,
+    envRecord.OPENAI_MODEL
   )
 
   const stream = runAgent({
