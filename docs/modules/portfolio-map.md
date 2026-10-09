@@ -14,10 +14,13 @@ block, with a side panel of quick information and links into each job.
   (`isMappedDepartment`). Projects with the built-in **Internal** job status
   (office records, Compass development and test projects) are left off too;
   the Project Hub has an Internal view for them.
+- **Phases**, in order: Design, Estimating, Negotiation (contract docs
+  through awarded and awaiting funding), Permitting (including awaiting
+  groundbreaking), Under construction, Closeout (punch list and warranty).
 - **Per-project override**: the project information page and the map panel
   set `portfolio_map_visibility` to `default` (follow status and department),
   `shown` (always on the map; statuses without a phase appear in closeout for
-  warranty/complete jobs, pre-construction otherwise) or `hidden`. Hidden jobs
+  warranty/complete jobs, estimating otherwise) or `hidden`. Hidden jobs
   are listed in the panel with "Show on map". "Add a project to the map" in
   the panel searches projects kept off the map by status or department
   (loaded on demand) and sets them to always show. Changes are audited.
@@ -86,8 +89,8 @@ their dashboard overview (`VendorJobMap`).
 ## Owner "Where things stand" relief
 
 Owners see their project on the same relief, zoomed to its town
-(`OwnerSiteRelief`), beside an owner-worded stage stepper (Pricing, Design,
-Permits, Getting ready to build, Under construction, Finishing up) and a
+(`OwnerSiteRelief`), beside an owner-worded stage stepper (Design, Pricing,
+Contract, Permits, Under construction, Finishing up) and a
 "scheduled work complete" bar.
 
 - **General area only:** the pin is the town center from `resolveTown`, never

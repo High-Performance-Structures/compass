@@ -98,7 +98,7 @@ export const OWNER_PHASE_LABEL: Readonly<Record<PortfolioPhaseId, string>> = {
   estimating: "Pricing",
   design: "Design",
   permitting: "Permits",
-  precon: "Getting ready to build",
+  negotiation: "Contract",
   construction: "Under construction",
   closeout: "Finishing up",
 }

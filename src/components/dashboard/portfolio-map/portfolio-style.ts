@@ -6,7 +6,7 @@ export const PHASE_COLOR_TOKEN: Readonly<Record<PortfolioPhaseId, string>> = {
   estimating: "--muted-foreground",
   design: "--info",
   permitting: "--chart-3",
-  precon: "--chart-4",
+  negotiation: "--chart-4",
   construction: "--success",
   closeout: "--chart-5",
 }
