@@ -6,7 +6,7 @@ import { IconArrowLeft } from "@tabler/icons-react"
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
 import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
-import { warrantyAssigneeNames } from "@/lib/warranty/assignee-names"
+import { warrantyAssigneeOptions } from "@/lib/warranty/assignee"
 import { Button } from "@/components/ui/button"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
@@ -26,7 +26,7 @@ export default async function ProjectWarrantyPage({
     redirectIfFeaturePermissionDenied(error)
     throw error
   })
-  const assigneeNames = warrantyAssigneeNames(assigneeOptions)
+  const warrantyOptions = warrantyAssigneeOptions(assigneeOptions)
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
@@ -38,7 +38,7 @@ export default async function ProjectWarrantyPage({
       <div className="overflow-hidden rounded-lg border">
         <ProjectWarrantyWorkspace
           workspace={workspace}
-          assigneeNames={assigneeNames}
+          assigneeOptions={warrantyOptions}
         />
       </div>
     </main>

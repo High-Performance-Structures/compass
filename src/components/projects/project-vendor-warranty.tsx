@@ -2,40 +2,32 @@ import type * as React from "react"
 import { notFound } from "next/navigation"
 
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
-import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
-import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
-import { warrantyAssigneeOptions } from "@/lib/warranty/assignee"
+import { getVendorWarrantyWorkspace } from "@/app/actions/project-warranty-vendor"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
-import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
+import { VendorWarrantyList } from "@/components/projects/vendor-warranty-list"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
 }
 
-export async function ProjectAudienceWarranty({
+/** The sub/vendor Warranty page: only claims assigned to them or their company. */
+export async function ProjectVendorWarranty({
   projectId,
 }: {
   readonly projectId: string
 }): Promise<React.ReactElement> {
   let preview: Awaited<ReturnType<typeof getProjectAudiencePreview>>
-  let workspace: Awaited<ReturnType<typeof getProjectWarrantyWorkspace>>
+  let workspace: Awaited<ReturnType<typeof getVendorWarrantyWorkspace>>
   try {
     ;[preview, workspace] = await Promise.all([
-      getProjectAudiencePreview(projectId, "owner"),
-      getProjectWarrantyWorkspace(projectId),
+      getProjectAudiencePreview(projectId, "sub_vendor"),
+      getVendorWarrantyWorkspace(projectId),
     ])
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     notFound()
   }
-  // Staff previewing the owner view get the same assignee choices as the staff
-  // page; owners never see the edit form, only "Assigned: …".
-  const assigneeOptions = preview.viewerIsInternal
-    ? await getProjectTaskAssigneeOptions(projectId)
-        .then(warrantyAssigneeOptions)
-        .catch(() => [])
-    : []
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: preview.project.id,
     audience: preview.audience,
@@ -46,7 +38,7 @@ export async function ProjectAudienceWarranty({
 
   return (
     <ProjectAudiencePreviewShell
-      audience="owner"
+      audience="sub_vendor"
       projectId={preview.project.id}
       projectName={preview.project.name}
       projectNumber={preview.project.projectNumber}
@@ -55,11 +47,11 @@ export async function ProjectAudienceWarranty({
       viewerIsInternal={preview.viewerIsInternal}
       messageShortcut={messageShortcut}
       activeSection="warranty"
-      warrantyEnabled={workspace.project.warrantyEnabled}
+      warrantyEnabled={preview.project.warrantyEnabled}
     >
-      <main className="min-h-screen bg-[oklch(0.96_0.018_115)] px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl overflow-hidden rounded-lg border">
-          <ProjectWarrantyWorkspace workspace={workspace} assigneeOptions={assigneeOptions} />
+      <main className="min-h-screen bg-background px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+          <VendorWarrantyList projectId={projectId} workspace={workspace} />
         </div>
       </main>
     </ProjectAudiencePreviewShell>
