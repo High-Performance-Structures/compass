@@ -14,6 +14,7 @@ import {
   scheduleTasks,
 } from "@/db/schema"
 import { sageBridgeStatus } from "@/db/schema-sage"
+import { selectSocialReminderProject, socialReadinessErrors } from "@/lib/social/readiness"
 import { socialPosts } from "@/db/schema-social"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -132,6 +133,7 @@ export type DashboardOverview = {
     readonly needed: boolean
     readonly projectId: string | null
     readonly projectLabel: string | null
+    readonly setupRequired: boolean
   }
   readonly sageBridge: {
     readonly configured: boolean
@@ -179,6 +181,7 @@ function emptyOverview(): DashboardOverview {
       needed: true,
       projectId: null,
       projectLabel: null,
+      setupRequired: false,
     },
     sageBridge: {
       configured: false,
@@ -303,6 +306,9 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
           name: projects.name,
           projectNumber: projects.projectNumber,
           clientName: projects.clientName,
+          department: projects.department,
+          publicTitle: projects.publicTitle,
+          publicLocationCity: projects.publicLocationCity,
           status: projects.status,
           sageJobId: projects.sageJobId,
           sageJobNumber: projects.sageJobNumber,
@@ -651,9 +657,9 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const safeDefaultRoleId = allowedRoleIds.includes(defaultRoleId)
       ? defaultRoleId
       : (allowedRoleIds[0] ?? "project-manager")
-    const suggestedSocialProject = dashboardProjects.find(
-      (project) => !isClosedStatus(project.status),
-    ) ?? null
+    const suggestedSocialProject = selectSocialReminderProject(
+      projectRows.filter((project) => !isClosedStatus(project.status)),
+    )
     const bridgeLastSeenAt = bridgeHeartbeatRows[0]?.lastSeenAt ?? null
     const bridgeOnline = isSageBridgeHeartbeatOnline(bridgeLastSeenAt)
     const bridgeMessage = !sageBridgeConfig.configured
@@ -687,6 +693,8 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       socialReminder: {
         needed: socialRowsThisWeek.length === 0,
         projectId: suggestedSocialProject?.id ?? null,
+        setupRequired: suggestedSocialProject !== null
+          && socialReadinessErrors(suggestedSocialProject).length > 0,
         projectLabel: suggestedSocialProject
           ? projectLabel(suggestedSocialProject)
           : null,
