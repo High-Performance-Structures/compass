@@ -7,7 +7,9 @@ import {
   SAGE_SQUARE_MERCHANT_FEE_ACCOUNT_NUMBER,
   sageSquarePaymentPayloadSchema,
   sageSquareInitialOperationStatus,
+  squareBridgeOrderAmounts,
   squareProcessingFeeExpenseCents,
+  validateSquarePaymentFundingType,
 } from "@/lib/sage/square-payment"
 import {
   SQUARE_WEBHOOK_NOTIFICATION_URL,
@@ -139,6 +141,101 @@ describe("Square payment webhook", () => {
     expect(squareProcessingFeeExpenseCents([])).toBe(0)
   })
 
+  it("separates the approved 2% credit fee from the Sage receivable", () => {
+    expect(
+      squareBridgeOrderAmounts(
+        {
+          id: "order-1",
+          location_id: "location-1",
+          reference_id: "sage-ar-invoice:123",
+          total_money: { amount: 704004, currency: "USD" },
+          service_charges: [
+            {
+              uid: "hps-credit-card-fee",
+              name: "Credit card fee (2%)",
+              percentage: "2",
+              calculation_phase: "TOTAL_PHASE",
+              taxable: false,
+              scope: "ORDER",
+              applied_money: { amount: 13804, currency: "USD" },
+              total_money: { amount: 13804, currency: "USD" },
+              total_tax_money: { amount: 0, currency: "USD" },
+            },
+          ],
+        },
+        "CREDIT"
+      )
+    ).toEqual({ ownerPaymentCents: 690200, clientPaidFeeCents: 13804 })
+  })
+
+  it("rejects client fees on debit and ACH routes", () => {
+    expect(() =>
+      squareBridgeOrderAmounts(
+        {
+          id: "order-1",
+          location_id: "location-1",
+          reference_id: "sage-ar-invoice:123",
+          total_money: { amount: 704004, currency: "USD" },
+          service_charges: [
+            {
+              uid: "hps-credit-card-fee",
+              name: "Credit card fee (2%)",
+            },
+          ],
+        },
+        "DEBIT"
+      )
+    ).toThrow("unexpectedly contains a service charge")
+  })
+
+  it("checks Square's reported card funding type after payment", () => {
+    const payment = {
+      id: "payment-1",
+      order_id: "order-1",
+      location_id: "location-1",
+      status: "COMPLETED",
+      created_at: "2026-09-21T00:00:00.000Z",
+      updated_at: "2026-09-21T00:00:01.000Z",
+      source_type: "CARD",
+      amount_money: { amount: 10200, currency: "USD" },
+      total_money: { amount: 10200, currency: "USD" },
+      card_details: {
+        card: { card_type: "CREDIT", prepaid_type: "NOT_PREPAID" },
+      },
+    }
+    expect(() =>
+      validateSquarePaymentFundingType(payment, "CREDIT")
+    ).not.toThrow()
+    expect(() =>
+      validateSquarePaymentFundingType(
+        {
+          ...payment,
+          card_details: {
+            card: { card_type: "DEBIT", prepaid_type: "NOT_PREPAID" },
+          },
+        },
+        "CREDIT"
+      )
+    ).toThrow("refund the 2% fee")
+    expect(() =>
+      validateSquarePaymentFundingType(
+        {
+          ...payment,
+          card_details: {
+            card: { card_type: "DEBIT", prepaid_type: "PREPAID" },
+          },
+        },
+        "DEBIT"
+      )
+    ).toThrow("prepaid")
+    expect(() =>
+      validateSquarePaymentFundingType(
+        { ...payment, source_type: "BANK_ACCOUNT", card_details: undefined },
+        "ACH"
+      )
+    ).not.toThrow()
+  })
+
   it("uses stable Sage invoice and Square payment identities in Compass", () => {
     expect(squareOwnerReceivableIds("401", "payment-1")).toEqual({
       invoiceId: "sage-square-invoice-401",
@@ -167,13 +264,33 @@ describe("Square payment webhook", () => {
         sageInvoiceNumber: "H-403-4378",
         department: "HPS",
         ownerPaymentCents: 690200,
+        clientPaidFeeCents: 0,
         depositAccountNumber: 10000,
         merchantFeeAccountNumber: 62020,
       })
     ).toBe(
       "Square received $6,902.00 for Sage invoice H-403-4378 (HPS). " +
-        "In Sage 3-3-2 Electronic Receipts, use Post—not Process and Post—apply the full amount to this invoice, and use account 10000 — FSB Project Checking. " +
+        "In Sage 3-3-2 Electronic Receipts, use Post—not Process and Post—apply $6,902.00 to this invoice, and use account 10000 — FSB Project Checking. " +
         "Compass is retaining the Square fee reconciliation for account 62020 — Merchant Service Fees. This is a posting step, not a second payment approval."
+    )
+  })
+
+  it("gives separate Sage instructions for a client-paid credit fee", () => {
+    expect(
+      manualReceiptNotificationBody({
+        organizationId: "org-1",
+        projectId: "project-1",
+        operationId: "operation-1",
+        squarePaymentId: "payment-1",
+        sageInvoiceNumber: "H-403-4378",
+        department: "HPS",
+        ownerPaymentCents: 690200,
+        clientPaidFeeCents: 13804,
+        depositAccountNumber: 10000,
+        merchantFeeAccountNumber: 62020,
+      })
+    ).toContain(
+      "$7,040.04 for Sage invoice H-403-4378 (HPS): $6,902.00 invoice principal plus a $138.04 client-paid credit card fee."
     )
   })
 })

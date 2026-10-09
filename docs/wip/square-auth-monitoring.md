@@ -42,7 +42,8 @@ by subsequent checks instead of being marked delivered in a local file.
 
 The monitor does not rotate tokens, publish invoices, approve payments, or
 post receipts. Recovery verifies API access, not completion of outstanding
-financial work. Billing remains gated by Sage's exact `SQUARE:READY` value.
+financial work. Billing remains gated by Sage's exact `SQUARE:CREDIT`,
+`SQUARE:DEBIT`, or `SQUARE:ACH` value.
 A Locations check does not prove every write permission or webhook delivery;
 invoice/payment execution errors remain separate workflow exceptions.
 

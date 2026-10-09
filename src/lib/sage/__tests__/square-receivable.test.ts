@@ -178,6 +178,8 @@ describe("Square owner receivable projection", () => {
       invoiceTaxCents: 0,
       paymentCompletedAt: "2026-09-08T22:00:00.000Z",
       paymentAmountCents: 690200,
+      ownerPaymentCents: 690200,
+      clientPaidFeeCents: 0,
       processingFeeCents: 20326,
     };
     const invoke = (): Promise<unknown> =>
@@ -231,5 +233,64 @@ describe("Square owner receivable projection", () => {
       processing_fee_cents: 20326,
       net_amount_cents: 669874,
     });
+  });
+
+  it("keeps a client-paid card fee outside the Sage invoice allocation", async () => {
+    const env = { DB: createD1(sqlite) };
+    await Reflect.apply(upsertSquareOwnerReceivable, undefined, [
+      env,
+      {
+        organizationId: "org-1",
+        projectId: "project-1",
+        customerId: "customer-1",
+        customerName: "Example Client",
+        sageJobShortName: "H-100",
+        sageInvoiceId: "500",
+        sageInvoiceNumber: "H-100-0001",
+        squareInvoiceId: "invoice-credit",
+        squarePaymentId: "payment-credit",
+        invoiceIssueDate: "2026-09-01",
+        invoiceDueDate: "2026-09-08",
+        invoiceTotalCents: 690200,
+        invoiceTaxCents: 0,
+        paymentCompletedAt: "2026-09-08T22:00:00.000Z",
+        paymentAmountCents: 704004,
+        ownerPaymentCents: 690200,
+        clientPaidFeeCents: 13804,
+        processingFeeCents: 20746,
+      },
+      "2026-09-08T22:01:00.000Z",
+    ]);
+
+    expect(
+      sqlite
+        .prepare(
+          `SELECT total, amount_paid, amount_due, status FROM invoices`,
+        )
+        .get(),
+    ).toEqual({
+      total: 6902,
+      amount_paid: 6902,
+      amount_due: 0,
+      status: "paid",
+    });
+    expect(
+      sqlite
+        .prepare(
+          `SELECT amount, gross_amount_cents, processing_fee_cents, net_amount_cents
+           FROM payments`,
+        )
+        .get(),
+    ).toEqual({
+      amount: 7040.04,
+      gross_amount_cents: 704004,
+      processing_fee_cents: 20746,
+      net_amount_cents: 683258,
+    });
+    expect(
+      sqlite
+        .prepare(`SELECT allocation_cents FROM invoice_payment_allocations`)
+        .get(),
+    ).toEqual({ allocation_cents: 690200 });
   });
 });
