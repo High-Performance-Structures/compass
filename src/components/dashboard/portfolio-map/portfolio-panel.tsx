@@ -105,9 +105,11 @@ function TravelRows({
 }): React.ReactElement {
   const mountain =
     travel.elevationFt === null
-      ? travel.approximate
+      ? travel.siteLookup === "no_address"
         ? "Needs a site address"
-        : "Elevation pending"
+        : travel.siteLookup === "not_found"
+          ? "Address not found by lookup"
+          : "Elevation pending"
       : `${travel.elevationFt.toLocaleString("en-US")} ft${
           travel.mountainBand === null
             ? " · no mountain charge"
@@ -140,7 +142,11 @@ function TravelRows({
         </span>
       </dd>
       <dt className="text-muted-foreground">Site elevation</dt>
-      <dd className="text-right">{mountain}</dd>
+      <dd className="text-right">
+        {travel.siteNote && travel.elevationFt !== null && !travel.custom.includes("elevation") ? "≈ " : ""}
+        {mountain}
+        {travel.siteNote ? <span className="block text-xs text-muted-foreground">{travel.siteNote}</span> : null}
+      </dd>
     </>
   )
 }
@@ -224,7 +230,11 @@ function JobDetail({
           href={`${base}/information#zone-charges`}
           className="-mt-3 self-end text-xs text-primary underline-offset-4 hover:underline"
         >
-          {travel.custom.length > 0 ? "Review zone charges for this job" : "Adjust zone charges for this job"}
+          {travel.elevationFt === null && travel.siteLookup === "not_found"
+            ? "Enter the site elevation for this job"
+            : travel.custom.length > 0
+              ? "Review zone charges for this job"
+              : "Adjust zone charges for this job"}
         </Link>
       ) : null}
       <div className="mt-auto flex flex-wrap gap-2 pt-2">
