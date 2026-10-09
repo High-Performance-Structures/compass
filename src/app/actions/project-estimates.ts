@@ -18,6 +18,7 @@ import { cookies } from "next/headers"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
+import { rateBookEntries } from "@/db/schema-rate-book"
 import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess } from "@/lib/estimates/access"
 import {
   projectBudgetLines,
@@ -228,6 +229,9 @@ export type ProjectEstimateLineCostItem = {
   readonly lineTotalCents: number
   readonly totalCostCents: number
   readonly sortOrder: number
+  /** Rate book entry and version that filled this item, if any. */
+  readonly rateBookEntryId: string | null
+  readonly rateBookVersion: number | null
 }
 
 export type ProjectEstimateBasisItem = {
@@ -405,6 +409,9 @@ export type ProjectEstimateLineCostItemInput = {
   readonly markupPercent: number | null
   readonly taxable: boolean
   readonly taxEntityId: string | null
+  /** Set when the item was filled from the rate book. */
+  readonly rateBookEntryId?: string | null
+  readonly rateBookVersion?: number | null
 }
 
 export type ProjectEstimateBuilderFeeInput = {
@@ -773,6 +780,8 @@ function estimateLineItem(
       lineTotalCents: item.lineTotalCents,
       totalCostCents: item.totalCostCents,
       sortOrder: item.sortOrder,
+      rateBookEntryId: item.rateBookEntryId,
+      rateBookVersion: item.rateBookVersion,
     })),
   }
 }
@@ -2871,6 +2880,25 @@ async function refreshEstimateLineFromCostItems(
     .run()
 }
 
+async function resolveRateBookReference(
+  db: CompassDb,
+  organizationId: string | null,
+  entryId: string | null,
+  version: number | null
+): Promise<{ readonly rateBookEntryId: string | null; readonly rateBookVersion: number | null }> {
+  if (!entryId || !organizationId) return { rateBookEntryId: null, rateBookVersion: null }
+  const entry = await db
+    .select({ id: rateBookEntries.id, version: rateBookEntries.version })
+    .from(rateBookEntries)
+    .where(and(eq(rateBookEntries.id, entryId), eq(rateBookEntries.organizationId, organizationId)))
+    .limit(1)
+    .then((rows) => rows[0])
+  if (!entry) return { rateBookEntryId: null, rateBookVersion: null }
+  const usedVersion =
+    version !== null && Number.isInteger(version) && version >= 1 && version <= entry.version ? version : entry.version
+  return { rateBookEntryId: entry.id, rateBookVersion: usedVersion }
+}
+
 export async function saveProjectEstimateLineCostItem(
   projectId: string,
   estimateId: string,
@@ -2955,9 +2983,18 @@ export async function saveProjectEstimateLineCostItem(
       throw new Error("Unit must be 40 characters or fewer.")
     }
 
+    // A rate book reference must point at this organization's entry.
+    const rateBookRef = await resolveRateBookReference(
+      access.db,
+      access.organizationId,
+      input.rateBookEntryId ?? null,
+      input.rateBookVersion ?? null
+    )
+
     const now = new Date().toISOString()
     const id = costItemId ?? crypto.randomUUID()
     const values = {
+      ...rateBookRef,
       divisionCode: catalogItem.divisionCode,
       divisionName: catalogItem.divisionDescription,
       costCode: catalogItem.code,
