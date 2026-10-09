@@ -46,7 +46,14 @@ export const accountDeletionRequests = sqliteTable(
     status: text("status").notNull().default("pending"),
     requestedAt: text("requested_at").notNull(),
     processingStartedAt: text("processing_started_at"),
+    processingStartedBy: text("processing_started_by").references(
+      () => users.id,
+      { onDelete: "set null" }
+    ),
     completedAt: text("completed_at"),
+    completedBy: text("completed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     cancelledAt: text("cancelled_at"),
     updatedAt: text("updated_at").notNull(),
   },
