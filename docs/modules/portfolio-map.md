@@ -141,3 +141,24 @@ Only the viewer's own unread items with a project are stacked. Data comes from
 `getNotificationCenter()` through `useNotificationInbox`. The layer loads it
 only while the layer is on and the map is shown. The tiles are built in
 `portfolio-message-stacks.ts`.
+
+## Owner and sub/vendor dashboards
+
+The owner and sub/vendor launchpads follow the office dashboard's order:
+greeting, counts strip (their workspace alerts), the map, the five-day
+horizon, then priorities beside the project team and quick dock, and finally
+"from the site" (photos, latest update, email/text instructions).
+
+Clicking the project (owner) or a job (sub/vendor) fills the right-hand panel
+(`AudienceJobPanel`) with only what that workspace may see:
+
+- **Owner:** stage stepper and progress, **Unread on your project**, coming
+  up (owner-visible schedule), latest owner update, and owner sections.
+- **Sub/vendor:** phase, **Unread for this job**, their next items and
+  commitments (through the vendor dashboard reader), and vendor sections.
+
+Both maps have a **Messages** toggle that stacks unread tiles on the job(s).
+Unread items are loaded per project with the workspace's audience scope
+(`getNotificationCenter({ projectId, audience })`), which checks the viewer's
+project membership server-side. Section links come from
+`lib/project-audience-links.ts`, the same list as the dashboard's quick dock.
