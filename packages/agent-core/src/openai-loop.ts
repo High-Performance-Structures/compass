@@ -38,6 +38,7 @@ export interface OpenAIAgentOptions {
   readonly apiKey: string
   readonly baseUrl?: string
   readonly model: string
+  readonly reasoningEffort?: string
   readonly systemPrompt: string
   readonly messages: ReadonlyArray<{
     readonly role: "user" | "assistant"
@@ -140,6 +141,9 @@ export async function* runOpenAIAgent(
           stream: true,
           stream_options: { include_usage: true },
           max_completion_tokens: 8192,
+          ...(opts.reasoningEffort
+            ? { reasoning_effort: opts.reasoningEffort }
+            : {}),
           ...(tools.length > 0 ? { tools } : {}),
         }),
       })

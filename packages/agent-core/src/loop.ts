@@ -40,6 +40,7 @@ export async function* runAgent(
       apiKey: opts.provider.apiKey,
       baseUrl: opts.provider.baseUrl,
       model: resolvedModel,
+      reasoningEffort: opts.provider.reasoningEffort,
       systemPrompt: opts.systemPrompt,
       messages: opts.messages,
       registry,
