@@ -83,7 +83,7 @@ These areas do not expose the team's entire photo library or Drive folder. A dow
 
 When warranty service is enabled, **Warranty** lets you submit an issue, choose its location, category, and priority, describe the problem, and attach supporting photos or documents. Submit one claim per distinct issue so each can be scheduled and resolved clearly.
 
-Open a claim to follow its status, planned visit, attachments, and owner-visible resolution. Use **Confirm resolution** only after verifying the work. If the option is available, withdraw or delete only a claim that is genuinely unnecessary; do not remove a claim merely to correct or hide unresolved work. Contact the project team when the claim needs clarification.
+Open a claim to follow its status, planned visit, attachments, and owner-visible resolution. When the project team assigns the claim to a trade partner, that partner can post the visit date and progress notes, which appear in the claim's updates. Use **Confirm resolution** only after verifying the work. If the option is available, withdraw or delete only a claim that is genuinely unnecessary; do not remove a claim merely to correct or hide unresolved work. Contact the project team when the claim needs clarification.
 
 ## Protect Access and Get Help {#access-help}
 

@@ -200,7 +200,9 @@ export function ProjectAudiencePreviewShell({
       ? warrantyEnabled
         ? [...OWNER_NAVIGATION, OWNER_WARRANTY_NAVIGATION]
         : OWNER_NAVIGATION
-      : SUB_VENDOR_NAVIGATION
+      : warrantyEnabled
+        ? [...SUB_VENDOR_NAVIGATION, OWNER_WARRANTY_NAVIGATION]
+        : SUB_VENDOR_NAVIGATION
 
   return (
     <div
