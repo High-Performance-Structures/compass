@@ -118,3 +118,23 @@ audit history. `applyTravelOverride()` in `travel-overrides.ts` applies them
 after `jobTravelCharge()`. The map panel marks such jobs "Custom for this job"
 and links to the section. Adjustments stay inside the office-only travel data
 and never reach owner or vendor views.
+
+## Messages layer
+
+Layers → **Messages** stacks one thin tile per unread bell item on each job
+(colored by kind: messages, project mail, RFIs, schedule, other). The bell and
+the layer are two views of the same inbox:
+
+- Clicking a bell item still opens the item itself; it never opens the map.
+- Clicking a job on the map shows **Unread for this job** at the top of the
+  panel, with the bell's own rows: Open (same destination as the bell),
+  Mark read, and Done. Either view's changes update the other immediately
+  (`compass:notifications-changed` event).
+- Each project section in the office bell has **Show on map**, which opens
+  `/dashboard?layer=messages&job=<id>` with the layer on and the map zoomed
+  to that job.
+
+Only the viewer's own unread items with a project are stacked. Data comes from
+`getNotificationCenter()` through `useNotificationInbox`. The layer loads it
+only while the layer is on and the map is shown. The tiles are built in
+`portfolio-message-stacks.ts`.
