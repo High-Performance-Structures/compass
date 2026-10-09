@@ -291,14 +291,14 @@ export function ProjectInformationWorkspace({
       />
 
       {message && (
-        <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm" role="status">
+        <p className="border-l-2 border-l-primary pl-3 text-sm" role="status">
           {message}
         </p>
       )}
 
       <ProjectGoogleCalendarCard projectId={information.project.id} />
 
-      <form className="rounded-lg border bg-card p-4 sm:p-5" onSubmit={saveProfile}>
+      <form className="border-t pt-5" onSubmit={saveProfile}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-semibold">Core project record</h2>
@@ -482,7 +482,7 @@ export function ProjectInformationWorkspace({
       </form>
 
       {canManageJobStatuses && (
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Add an organization-specific status</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Add a genuinely missing shared stage only after your organization has
@@ -498,7 +498,7 @@ export function ProjectInformationWorkspace({
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Client follow-up</h2>
           <p className="mt-1 text-sm text-muted-foreground">Set the next explicit follow-up; the queue also calculates status-based staleness from meaningful touches.</p>
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={saveFollowUp}>
@@ -523,11 +523,11 @@ export function ProjectInformationWorkspace({
           {information.followUp && <p className="mt-4 text-sm">Current: <strong>{new Date(information.followUp.nextFollowUpAt).toLocaleString()}</strong>{information.followUp.ownerName ? ` · ${information.followUp.ownerName}` : " · Unassigned"}</p>}
         </section>
 
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Log client interaction</h2>
           <p className="mt-1 text-sm text-muted-foreground">Calls, emails, texts, meetings, site visits, documents/submittals sent to clients, and custom interaction types count as meaningful contact.</p>
           <form className="mt-4 grid gap-3" onSubmit={saveInteraction}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="interaction-contact">Client contact</Label>
                 <SearchableCombobox
@@ -570,26 +570,26 @@ export function ProjectInformationWorkspace({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Project notes</h2>
           <form className="mt-3 space-y-2" onSubmit={saveNote}><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a project note…" rows={3} required /><Button type="submit" disabled={pending}>Add note</Button></form>
-          <div className="mt-4 space-y-3">{information.notes.length === 0 ? <p className="text-sm text-muted-foreground">No project notes yet.</p> : information.notes.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-wrap text-sm">{item.body}</p><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeNote(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.createdAt).toLocaleString()}</p></article>)}</div>
+          <div className="mt-4">{information.notes.length === 0 ? <p className="text-sm text-muted-foreground">No project notes yet.</p> : information.notes.map((item) => <article className="border-b py-3 first:border-t" key={item.id}><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-wrap text-sm">{item.body}</p><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeNote(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.createdAt).toLocaleString()}</p></article>)}</div>
         </section>
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Meaningful interaction history</h2>
-          <div className="mt-4 space-y-3">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()}{developerModeEnabled ? ` · ${item.source}` : ""}</p></article>)}</div>
+          <div className="mt-4">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="border-b py-3 first:border-t" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()}{developerModeEnabled ? ` · ${item.source}` : ""}</p></article>)}</div>
         </section>
       </div>
 
       {developerModeEnabled && information.syncOperations.length > 0 && (
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">External synchronization</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Project edits are retained in Compass. Pending or failed Google synchronization is visible here for safe retry.
           </p>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 divide-y border-y">
             {information.syncOperations.map((operation) => (
-              <div key={operation.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+              <div key={operation.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                 <span>{operation.operation.replaceAll("_", " ")}</span>
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={operation.status === "failed" ? "destructive" : operation.status === "completed" ? "default" : "secondary"}>{operation.status}</Badge>
