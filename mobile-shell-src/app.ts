@@ -32,6 +32,7 @@ import {
 import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
 import { conversationChannelIdFromNotificationHref } from "../src/lib/conversations/notification-route"
+import { fieldMessageHtml, isLongFieldMessage } from "../src/lib/field/message-format"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
 import {
   appendOptimisticDirectMessage,
@@ -192,6 +193,17 @@ function shortDate(value: string): string {
   if (!value) return ""
   const date = new Date(`${value.slice(0, 10)}T12:00:00`)
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date)
+}
+
+// Long messages start collapsed; remember the ones opened so a background
+// refresh does not fold them again.
+const expandedMessageIds = new Set<string>()
+
+function messageBodyHtml(id: string, content: string): string {
+  const body = fieldMessageHtml(content)
+  if (!isLongFieldMessage(content)) return `<p class="message-body">${body}</p>`
+  const expanded = expandedMessageIds.has(id)
+  return `<p class="message-body ${expanded ? "" : "collapsed"}">${body}</p><button class="message-more" type="button" data-message-more="${escapeHtml(id)}" aria-expanded="${expanded}">${expanded ? "Show less" : "Show more"}</button>`
 }
 
 function packetKey(projectId: string): string { return `${PACKET_PREFIX}.${projectId}` }
@@ -422,7 +434,7 @@ function activeDirectConversationView(channelId: string): string {
     .slice(-12)
     .map(
       (message) =>
-        `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`
+        `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div>${messageBodyHtml(message.id, message.content)}</div>`
     )
     .join("")
 
@@ -459,7 +471,7 @@ function messagesView(): string {
         ${messageActionError ? `<p class="attachment-error" role="alert">${escapeHtml(messageActionError)}</p>` : ""}
       </div>${newDirectMessage}`
   }
-  const messages = packet.messages.map((message) => `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`).join("")
+  const messages = packet.messages.map((message) => `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div>${messageBodyHtml(message.id, message.content)}</div>`).join("")
   return picker + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><details class="project-message-tools"><summary>Message the project team</summary><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>Project team message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team">${escapeHtml(projectMessageDraft)}</textarea><button class="primary" type="submit">${online ? "Send message" : "Save message for sync"}</button></form></details>${newDirectMessage}`
 }
 
@@ -564,7 +576,7 @@ function render(): void {
     { value: "projects", symbol: "P", label: "Projects" },
     { value: "today", symbol: "T", label: "Today" },
     { value: "log", symbol: "L", label: "Log" },
-    { value: "documents", symbol: "D", label: "Documents" },
+    { value: "documents", symbol: "D", label: "Docs" },
     { value: "chat", symbol: "M", label: "Messages" },
     { value: "cherish", symbol: "C", label: "Cherish" },
   ]
@@ -617,6 +629,16 @@ function isTab(value: string | undefined): value is Tab {
 }
 
 function bindEvents(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-message-more]").forEach((button) => button.addEventListener("click", () => {
+    const id = button.dataset.messageMore ?? ""
+    const body = button.previousElementSibling
+    const expanded = !expandedMessageIds.has(id)
+    if (expanded) expandedMessageIds.add(id)
+    else expandedMessageIds.delete(id)
+    body?.classList.toggle("collapsed", !expanded)
+    button.setAttribute("aria-expanded", String(expanded))
+    button.textContent = expanded ? "Show less" : "Show more"
+  }))
   document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((button) => button.addEventListener("click", () => {
     if (isTab(button.dataset.tab)) activeTab = button.dataset.tab
     render()

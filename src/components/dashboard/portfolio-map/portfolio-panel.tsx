@@ -22,8 +22,11 @@ import {
 import type {
   PortfolioAddableProject,
   PortfolioHiddenJob,
+  PortfolioJobTravel,
+  PortfolioTravelData,
   PortfolioUnplacedJob,
 } from "@/lib/portfolio-map/load"
+import { formatRateCents, rateLabel } from "@/lib/portfolio-map/travel-zones"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export type PortfolioSelection =
@@ -35,6 +38,8 @@ type PortfolioPanelProps = {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
   readonly hidden: readonly PortfolioHiddenJob[]
+  /** Office staff only; null hides the zone charge rows. */
+  readonly travel: PortfolioTravelData | null
   readonly selection: PortfolioSelection
   readonly onSelectJob: (jobId: string) => void
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
@@ -87,11 +92,64 @@ function CloseButton({ onClear }: { readonly onClear: () => void }): React.React
   )
 }
 
+/** Zone and mountain charge rows for one job. */
+function TravelRows({
+  travel,
+  homeLabel,
+}: {
+  readonly travel: PortfolioJobTravel
+  readonly homeLabel: string
+}): React.ReactElement {
+  const mountain =
+    travel.elevationFt === null
+      ? travel.approximate
+        ? "Needs a site address"
+        : "Elevation pending"
+      : `${travel.elevationFt.toLocaleString("en-US")} ft${
+          travel.mountainBand === null
+            ? " · no mountain charge"
+            : ` · band ${travel.mountainBand} · ${
+                travel.mountainRateCents === null
+                  ? "rate not set"
+                  : travel.mountainRateCents === 0
+                    ? "no charge"
+                    : `+${formatRateCents(travel.mountainRateCents)}/man-hr`
+              }`
+        }`
+  return (
+    <>
+      <dt className="text-muted-foreground">Zone</dt>
+      <dd className="text-right">
+        <span className="tabular-nums">
+          Zone {travel.zone} ·{" "}
+          <span className="whitespace-nowrap">
+            {travel.zoneRateCents === null || travel.zoneRateCents === 0
+              ? rateLabel(travel.zoneRateCents).toLowerCase()
+              : `+${formatRateCents(travel.zoneRateCents)}/man-hr`}
+          </span>
+        </span>
+        {travel.lodgingAndPerDiem ? <span className="block text-xs text-muted-foreground">+ lodging and per diem</span> : null}
+        <span className="block text-xs text-muted-foreground">
+          {travel.approximate ? "≈" : ""}
+          {travel.miles} mi from {homeLabel}
+          {travel.approximate ? " (town center)" : ""}
+        </span>
+      </dd>
+      <dt className="text-muted-foreground">Site elevation</dt>
+      <dd className="text-right">{mountain}</dd>
+    </>
+  )
+}
+
 function JobDetail({
   job,
+  travel,
+  homeLabel,
   onClear,
 }: {
   readonly job: PortfolioMapJob
+  readonly travel: PortfolioJobTravel | null
+  readonly homeLabel: string
   readonly onClear: () => void
 }): React.ReactElement {
   const visibility = useMapVisibility()
@@ -151,6 +209,7 @@ function JobDetail({
         <dd className="text-right" style={job.pastDueCount > 0 ? { color: "var(--destructive)" } : undefined}>
           {job.pastDueCount === 0 ? "None" : `${job.pastDueCount} ${job.pastDueCount === 1 ? "item" : "items"}`}
         </dd>
+        {travel ? <TravelRows travel={travel} homeLabel={homeLabel} /> : null}
       </dl>
       <div className="mt-auto flex flex-wrap gap-2 pt-2">
         <Button asChild className="flex-[1_1_9rem]">
@@ -294,6 +353,7 @@ export function PortfolioPanel({
   jobs,
   unplaced,
   hidden,
+  travel,
   selection,
   onSelectJob,
   onSelectPhase,
@@ -301,7 +361,16 @@ export function PortfolioPanel({
 }: PortfolioPanelProps): React.ReactElement {
   if (selection.kind === "job") {
     const job = jobs.find((item) => item.id === selection.jobId)
-    if (job) return <JobDetail job={job} onClear={onClear} />
+    if (job) {
+      return (
+        <JobDetail
+          job={job}
+          travel={travel?.byJobId[job.id] ?? null}
+          homeLabel={travel?.settings.homeBase.label ?? ""}
+          onClear={onClear}
+        />
+      )
+    }
   }
 
   if (selection.kind === "phase") {

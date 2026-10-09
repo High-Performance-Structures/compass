@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAlertCircle,
   IconArrowRight,
@@ -617,29 +618,21 @@ function DashboardRoleWorkspaceControl({
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <IconBriefcase className="size-4 text-success" />
         <p className="text-sm font-semibold">Role</p>
-        <Select
+        <SearchableCombobox
+          className="h-8 w-[220px] bg-background"
+          popoverClassName="min-w-[15rem]"
           value={activeRoleId}
           onValueChange={(value) => {
             if (!isProjectWorkflowRoleId(value)) return
             if (!workflowRoleIsAllowed(value, allowedRoleIds)) return
             onActiveRoleChange(value)
           }}
-        >
-          <SelectTrigger
-            size="sm"
-            className="h-8 w-[220px] bg-background"
-            aria-label="Select role dashboard"
-          >
-            <SelectValue placeholder={activeRole.label} />
-          </SelectTrigger>
-          <SelectContent align="start">
-            {availableRoles.map((role) => (
-              <SelectItem key={role.id} value={role.id}>
-                {role.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={availableRoles.map((role) => ({ value: role.id, label: role.label }))}
+          ariaLabel="Select role dashboard"
+          placeholder={activeRole.label}
+          searchPlaceholder="Search roles..."
+          emptyMessage="No matching roles."
+        />
         <span className="text-xs text-muted-foreground">
           {canUseDeveloperMode ? "Admin" : "Role based"}
         </span>

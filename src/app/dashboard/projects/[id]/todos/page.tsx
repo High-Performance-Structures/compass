@@ -13,6 +13,7 @@ import { ProjectTodosView } from "@/components/projects/project-todos-view"
 import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 import { canFeature } from "@/lib/permission-enforcement"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export default async function ProjectTodosPage({
   params,
@@ -35,7 +36,7 @@ export default async function ProjectTodosPage({
   if (!project) notFound()
 
   const projectLabel = project.projectNumber
-    ? `${project.projectNumber} — ${project.name}`
+    ? projectNumberAndName(project, " — ")
     : project.name
   const initialItemId =
     typeof query.item === "string" ? query.item : query.item?.[0] ?? null

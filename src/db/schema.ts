@@ -734,11 +734,32 @@ export const projects = sqliteTable("projects", {
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),
+  /**
+   * Geocoded site and its ground elevation, cached for zone and mountain
+   * charges. `siteLocationAddress` is the address that was looked up, so an
+   * edited address is located again.
+   */
+  siteLatitude: real("site_latitude"),
+  siteLongitude: real("site_longitude"),
+  siteElevationFt: integer("site_elevation_ft"),
+  siteLocationAddress: text("site_location_address"),
+  siteLocationStatus: text("site_location_status", { enum: ["found", "not_found"] }),
+  siteLocatedAt: text("site_located_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [
   uniqueIndex("projects_organization_id_unique").on(table.organizationId, table.id),
 ])
+
+/** Zone and mountain charge rates (JSON validated by travelChargeSettingsSchema). */
+export const travelChargeSettings = sqliteTable("travel_charge_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  settingsJson: text("settings_json").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+})
 
 export const projectNumberReservations = sqliteTable(
   "project_number_reservations",

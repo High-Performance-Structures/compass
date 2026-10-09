@@ -20,6 +20,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { channelNotificationRecipients } from "@/lib/notifications/audience"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -270,7 +271,7 @@ export async function sendProjectMessage(input: {
         ? selectedContactNames[0]
         : recipientLabel(input.recipient)
     const projectLabel = project?.projectNumber
-      ? `${project.projectNumber} - ${project.name}`
+      ? projectNumberAndName(project, " - ")
       : project?.name ?? channel.name
     const priority = input.priority === "high" ? "high" : "normal"
     const importantPrefix = priority === "high" ? "Important: " : ""

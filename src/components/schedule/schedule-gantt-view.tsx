@@ -127,6 +127,52 @@ interface ScheduleGanttViewProps {
   readonly onGroupByPhaseChange?: (grouped: boolean) => void
 }
 
+// Local calendar date (YYYY-MM-DD) so "today" matches the viewer's day.
+function localIsoDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/**
+ * Scroll sync is pixel-for-pixel, so both panes must be able to scroll the
+ * same distance. The list ends with an Add row the chart has no row for.
+ * Frappe positions its SVG absolutely, so padding cannot extend the chart's
+ * scroll area; an invisible spacer as tall as the list does. Heights are read
+ * from the list table and the SVG, never from scrollHeight, so the spacer
+ * cannot feed back into its own measurement. Returns a cleanup.
+ */
+function matchGanttPaneHeights(
+  taskList: HTMLElement,
+  ganttContainer: HTMLElement
+): () => void {
+  const spacer = document.createElement("div")
+  spacer.setAttribute("aria-hidden", "true")
+  spacer.dataset.ganttScrollSpacer = ""
+  spacer.style.cssText =
+    "position:absolute;top:0;left:0;width:1px;pointer-events:none;visibility:hidden"
+  ganttContainer.appendChild(spacer)
+
+  const listContent = taskList.firstElementChild
+  const apply = (): void => {
+    const svg = ganttContainer.querySelector("svg")
+    const listHeight = listContent?.getBoundingClientRect().height ?? 0
+    const chartHeight = svg?.getBoundingClientRect().height ?? 0
+    spacer.style.height = `${Math.max(listHeight, chartHeight)}px`
+    taskList.style.paddingBottom = `${Math.max(0, chartHeight - listHeight)}px`
+  }
+  apply()
+  const observer = new ResizeObserver(apply)
+  if (listContent) observer.observe(listContent)
+  const svg = ganttContainer.querySelector("svg")
+  if (svg) observer.observe(svg)
+  return () => {
+    observer.disconnect()
+    spacer.remove()
+    taskList.style.paddingBottom = ""
+  }
+}
+
 export function ScheduleGanttView({
   projectId,
   tasks,
@@ -163,11 +209,21 @@ export function ScheduleGanttView({
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
+  const paneHeightCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(
+    () => () => {
+      paneHeightCleanupRef.current?.()
+      paneHeightCleanupRef.current = null
+    },
+    []
+  )
   const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
   const scrollStorageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
+  // The chart can rebuild once while loading; keep opening on today until then.
+  const openAtTodayUntilRef = useRef(0)
   // The list and chart mirror each other's vertical scroll. Each side ignores
   // the scroll event caused by its own mirroring so they cannot fight.
   const mirroredListTopRef = useRef<number | null>(null)
@@ -383,7 +439,15 @@ export function ScheduleGanttView({
   const handleGanttContainerReady = useCallback(
     (container: HTMLElement | null) => {
       ganttContainerRef.current = container
+      paneHeightCleanupRef.current?.()
+      paneHeightCleanupRef.current = null
       if (!container) return
+      if (taskListRef.current) {
+        paneHeightCleanupRef.current = matchGanttPaneHeights(
+          taskListRef.current,
+          container
+        )
+      }
 
       let position = scrollPositionRef.current
       if (scrollRestoredProjectRef.current !== projectId) {
@@ -420,10 +484,18 @@ export function ScheduleGanttView({
       }
 
       scrollPositionRef.current = position
+      // Nothing remembered yet: open on today instead of the portfolio's
+      // earliest task (which could be years back).
+      const remembered =
+        position.anchorDate !== undefined || position.left !== 0 || position.top !== 0
+      if (!remembered) openAtTodayUntilRef.current = performance.now() + 3000
+      const openAtToday = !remembered || performance.now() < openAtTodayUntilRef.current
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (position.anchorDate && scrollToDateRef.current) {
-            scrollToDateRef.current(position.anchorDate)
+          // Opening only moves the timeline sideways; rows and focus stay put.
+          const anchorDate = openAtToday ? localIsoDate(new Date()) : position.anchorDate
+          if (anchorDate && scrollToDateRef.current) {
+            scrollToDateRef.current(anchorDate)
           } else {
             container.scrollLeft = position.left
           }
@@ -431,8 +503,6 @@ export function ScheduleGanttView({
           if (taskListRef.current) {
             taskListRef.current.scrollTop = synchronizedScrollTop(
               position.top,
-              container.scrollHeight,
-              container.clientHeight,
               taskListRef.current.scrollHeight,
               taskListRef.current.clientHeight
             )
@@ -450,8 +520,6 @@ export function ScheduleGanttView({
       if (taskList && ganttContainer) {
         const synchronizedTop = synchronizedScrollTop(
           position.top,
-          ganttContainer.scrollHeight,
-          ganttContainer.clientHeight,
           taskList.scrollHeight,
           taskList.clientHeight
         )
@@ -475,8 +543,6 @@ export function ScheduleGanttView({
       if (ganttContainer) {
         const synchronizedTop = synchronizedScrollTop(
           top,
-          event.currentTarget.scrollHeight,
-          event.currentTarget.clientHeight,
           ganttContainer.scrollHeight,
           ganttContainer.clientHeight
         )
@@ -674,13 +740,15 @@ export function ScheduleGanttView({
 
     const taskList = taskListRef.current
     if (taskList) {
-      taskList.scrollTop = synchronizedScrollTop(
+      const listTop = synchronizedScrollTop(
         ganttTop,
-        ganttContainer.scrollHeight,
-        ganttContainer.clientHeight,
         taskList.scrollHeight,
         taskList.clientHeight
       )
+      // Mark this as mirroring so the list's scroll echo does not reset the
+      // chart and cancel the smooth horizontal move to today.
+      markMirrored(mirroredListTopRef, listTop)
+      taskList.scrollTop = listTop
     }
 
     const targetItem = displayItems[rowIndex]
@@ -691,7 +759,8 @@ export function ScheduleGanttView({
     // Start the smooth horizontal movement last. Assigning scrollTop after
     // scrollTo({ behavior: "smooth" }) cancels that animation in browsers.
     scrollToTodayRef.current?.()
-  }, [displayItems])
+  }, [displayItems, markMirrored])
+
 
   // The list's own scroll area scrolls both ways: a minimum width keeps titles
   // readable when the panel is narrow, and the horizontal scrollbar stays at

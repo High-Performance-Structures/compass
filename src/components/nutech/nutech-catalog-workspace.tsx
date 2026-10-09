@@ -16,11 +16,9 @@ import {
   mapNuTechProductToSageCostCode,
   type NuTechCatalogWorkspace,
 } from "@/app/actions/nutech-catalog"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-
-const SELECT_CLASS =
-  "h-8 w-full min-w-56 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -230,21 +228,35 @@ export function NuTechCatalogWorkspacePanel({
                     </td>
                     <td className="px-3 py-2 align-top">
                       {workspace.canImport ? (
-                        <select
-                          className={SELECT_CLASS}
-                          value={product.sageCostCodeId ?? ""}
-                          disabled={isPending}
-                          onChange={(event) =>
-                            mapSageCostCode(product.id, event.target.value)
+                        <SearchableCombobox
+                          className="h-9"
+                          // A code missing from the list shows as unmapped
+                          // instead of letting the picker's reset unmap it.
+                          value={
+                            workspace.sageCostCodes.some(
+                              (costCode) => costCode.id === product.sageCostCodeId
+                            )
+                              ? (product.sageCostCodeId ?? "")
+                              : ""
                           }
-                        >
-                          <option value="">Not mapped</option>
-                          {workspace.sageCostCodes.map((costCode) => (
-                            <option key={costCode.id} value={costCode.id}>
-                              {costCode.displayLabel}
-                            </option>
-                          ))}
-                        </select>
+                          disabled={isPending}
+                          onValueChange={(value) => {
+                            if (value !== (product.sageCostCodeId ?? "")) {
+                              mapSageCostCode(product.id, value)
+                            }
+                          }}
+                          options={[
+                            { value: "", label: "Not mapped" },
+                            ...workspace.sageCostCodes.map((costCode) => ({
+                              value: costCode.id,
+                              label: costCode.displayLabel,
+                            })),
+                          ]}
+                          ariaLabel={`Sage cost code for ${product.name}`}
+                          placeholder="Not mapped"
+                          searchPlaceholder="Search cost codes..."
+                          emptyMessage="No matching cost codes."
+                        />
                       ) : (
                         <span className="text-muted-foreground">
                           {product.sageCostCodeLabel ?? "Not mapped"}

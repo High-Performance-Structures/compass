@@ -7,6 +7,13 @@ import { IconBrandGithub, IconExternalLink, IconRefresh } from "@tabler/icons-re
 import { toast } from "sonner"
 
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   runFeedbackAdminMaintenance,
   setFeedbackFeaturePriorityApproval,
   setFeedbackGithubIssueCreationApproval,
@@ -187,15 +194,27 @@ function RequestEditor({
         <div className="grid gap-3 md:grid-cols-3">
           <label className="space-y-1 text-xs font-medium">
             Status
-            <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={status} onChange={(event) => setStatus(knownFeedbackStatus(event.target.value))}>
-              {FEEDBACK_DESK_STATUSES.map((value) => <option key={value} value={value}>{feedbackStatusLabel(value)}</option>)}
-            </select>
+            <SearchableCombobox
+              className="h-9"
+              value={status}
+              onValueChange={(value) => {
+                if (value !== "") setStatus(knownFeedbackStatus(value))
+              }}
+              options={FEEDBACK_DESK_STATUSES.map((value) => ({ value, label: feedbackStatusLabel(value) }))}
+              ariaLabel="Status"
+              placeholder="Choose status"
+              searchPlaceholder="Search statuses..."
+              emptyMessage="No matching statuses."
+            />
           </label>
           <label className="space-y-1 text-xs font-medium">
             Priority
-            <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={priority} onChange={(event) => setPriority(knownFeedbackPriority(event.target.value))}>
-              {FEEDBACK_PRIORITIES.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            <Select value={priority} onValueChange={(value) => setPriority(knownFeedbackPriority(value))}>
+              <SelectTrigger aria-label="Priority" className="w-full font-normal"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FEEDBACK_PRIORITIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
           <label className="space-y-1 text-xs font-medium">
             Owner
@@ -344,14 +363,17 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{ overview: FeedbackAdm
       <Card>
         <CardHeader className="gap-3">
           <div><CardTitle className="text-base">Request queue</CardTitle><CardDescription>Select one request to review and update. Filters keep the active list short; no request is removed by filtering.</CardDescription></div>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={view} onChange={(event) => setView(knownFeedbackDeskQueueViewId(event.target.value))}>
-              {queueViews.map((queueView) => <option key={queueView.id} value={queueView.id}>{queueView.label} ({queueView.count})</option>)}
-            </select>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[minmax(13rem,1.4fr)_repeat(4,minmax(0,1fr))]">
+            <Select value={view} onValueChange={(value) => setView(knownFeedbackDeskQueueViewId(value))}>
+              <SelectTrigger aria-label="Queue view" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {queueViews.map((queueView) => <SelectItem key={queueView.id} value={queueView.id}>{queueView.label} ({queueView.count})</SelectItem>)}
+              </SelectContent>
+            </Select>
             <input className="h-9 rounded-md border bg-background px-3 text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search request titles" type="search" />
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={kind} onChange={(event) => setKind(event.target.value)}><option value="all">All types</option>{availableKinds.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{availableStatuses.map((value) => <option key={value} value={value}>{feedbackStatusLabel(value)}</option>)}</select>
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={github} onChange={(event) => setGithub(knownFeedbackDeskQueueGithubFilter(event.target.value))}><option value="all">All GitHub states</option><option value="linked">GitHub linked</option><option value="review">GitHub review needed</option><option value="approved">New issue approved</option></select>
+            <Select value={kind} onValueChange={setKind}><SelectTrigger aria-label="Request type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{availableKinds.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+            <SearchableCombobox className="h-9" value={status} onValueChange={(value) => setStatus(value || "all")} options={[{ value: "all", label: "All statuses" }, ...availableStatuses.map((value) => ({ value, label: feedbackStatusLabel(value) }))]} ariaLabel="Filter by status" placeholder="All statuses" searchPlaceholder="Search statuses..." emptyMessage="No matching statuses." />
+            <Select value={github} onValueChange={(value) => setGithub(knownFeedbackDeskQueueGithubFilter(value))}><SelectTrigger aria-label="GitHub state" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All GitHub states</SelectItem><SelectItem value="linked">GitHub linked</SelectItem><SelectItem value="review">GitHub review needed</SelectItem><SelectItem value="approved">New issue approved</SelectItem></SelectContent></Select>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">

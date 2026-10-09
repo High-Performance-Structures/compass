@@ -1,8 +1,9 @@
 import { and, asc, eq, gte, lt, sql } from "drizzle-orm"
 import { getDb } from "@/db"
-import { projects, scheduleTasks } from "@/db/schema"
+import { projects, scheduleTasks, travelChargeSettings } from "@/db/schema"
 import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { getCloudflareContext } from "@/lib/db"
 import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
@@ -16,6 +17,14 @@ import {
   type PortfolioMapJob,
   type PortfolioProjectRule,
 } from "@/lib/portfolio-map/model"
+import { locateSites, needsSiteLookup, SITE_LOOKUPS_PER_LOAD } from "@/lib/portfolio-map/site-locations"
+import {
+  DEFAULT_TRAVEL_CHARGE_SETTINGS,
+  jobTravelCharge,
+  parseTravelChargeSettings,
+  type JobTravelCharge,
+  type TravelChargeSettings,
+} from "@/lib/portfolio-map/travel-zones"
 
 const TIME_ZONE = "America/Denver"
 
@@ -30,15 +39,33 @@ export type PortfolioHiddenJob = PortfolioUnplacedJob & {
   readonly restoreVisibility: "default" | "shown"
 }
 
+export type PortfolioJobTravel = JobTravelCharge & {
+  /** Ground elevation at the located site; null until the address is located. */
+  readonly elevationFt: number | null
+}
+
+/** Office-only: zone and mountain charges. Never sent to owner or vendor views. */
+export type PortfolioTravelData = {
+  readonly settings: TravelChargeSettings
+  readonly byJobId: Readonly<Record<string, PortfolioJobTravel>>
+}
+
 export type PortfolioMapData = {
   readonly jobs: readonly PortfolioMapJob[]
+  /** Null for people outside the office staff. */
+  readonly travel: PortfolioTravelData | null
   /** Jobs in a mapped phase whose town could not be resolved. */
   readonly unplaced: readonly PortfolioUnplacedJob[]
   /** Jobs someone removed from the map with the per-project override. */
   readonly hidden: readonly PortfolioHiddenJob[]
 }
 
-const EMPTY: PortfolioMapData = { jobs: [], unplaced: [], hidden: [] }
+const EMPTY: PortfolioMapData = {
+  jobs: [],
+  travel: null,
+  unplaced: [],
+  hidden: [],
+}
 
 /**
  * Jobs for the office portfolio map. Visibility follows getProjects(), so the
@@ -51,13 +78,13 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const visible = await getProjects()
     if (visible.length === 0) return EMPTY
 
-    const { env } = await getCloudflareContext()
+    const { env, ctx } = await getCloudflareContext()
     if (!env?.DB) return EMPTY
     const db = getDb(env.DB)
     const orgId = user.organizationId
     const today = dateKeyInTimeZone(new Date(), TIME_ZONE)
 
-    const [locations, taskStats, upcoming] = await Promise.all([
+    const [locations, taskStats, upcoming, storedSettings] = await Promise.all([
       db
         .select({
           id: projects.id,
@@ -65,6 +92,12 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           address: projects.address,
           publicLocationCity: projects.publicLocationCity,
           mapVisibility: projects.portfolioMapVisibility,
+          siteLatitude: projects.siteLatitude,
+          siteLongitude: projects.siteLongitude,
+          siteElevationFt: projects.siteElevationFt,
+          siteLocationAddress: projects.siteLocationAddress,
+          siteLocationStatus: projects.siteLocationStatus,
+          siteLocatedAt: projects.siteLocatedAt,
         })
         .from(projects)
         .where(eq(projects.organizationId, orgId)),
@@ -96,7 +129,13 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           ),
         )
         .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder)),
+      db
+        .select({ settingsJson: travelChargeSettings.settingsJson })
+        .from(travelChargeSettings)
+        .where(eq(travelChargeSettings.organizationId, orgId))
+        .limit(1),
     ])
+    const settings = parseStoredSettings(storedSettings[0]?.settingsJson)
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
     const hidden: PortfolioHiddenJob[] = []
@@ -165,10 +204,50 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         visibility,
       }
     })
-    return { jobs: spreadSharedTowns(jobs), unplaced, hidden }
+    // Fan out same-town jobs, then put jobs with a located site on the site itself.
+    const now = Date.now()
+    const showTravel = isInternalStaffRole(user.role)
+    const byJobId: Record<string, PortfolioJobTravel> = {}
+    const placedJobs = spreadSharedTowns(jobs).map((job) => {
+      const location = locationById.get(job.id)
+      const site =
+        location?.siteLocationStatus === "found" &&
+        location.siteLocationAddress === (location.address?.trim() ?? "") &&
+        location.siteLatitude !== null &&
+        location.siteLongitude !== null
+          ? { lat: location.siteLatitude, lon: location.siteLongitude, elevationFt: location.siteElevationFt }
+          : null
+      const lat = site?.lat ?? job.lat
+      const lon = site?.lon ?? job.lon
+      if (showTravel && lat !== null && lon !== null) {
+        const elevationFt = site?.elevationFt ?? null
+        byJobId[job.id] = {
+          ...jobTravelCharge({ lat, lon, elevationFt, approximate: site === null, settings }),
+          elevationFt,
+        }
+      }
+      return site ? { ...job, lat: site.lat, lon: site.lon } : job
+    })
+    const toLocate = placedJobs
+      .flatMap((job) => {
+        const location = locationById.get(job.id)
+        return location && needsSiteLookup(location, now) ? [location] : []
+      })
+      .slice(0, SITE_LOOKUPS_PER_LOAD)
+    if (toLocate.length > 0) ctx.waitUntil(locateSites(db, orgId, toLocate))
+    return { jobs: placedJobs, travel: showTravel ? { settings, byJobId } : null, unplaced, hidden }
   } catch (error) {
     console.error("Portfolio map data failed", error)
     return EMPTY
+  }
+}
+
+function parseStoredSettings(json: string | undefined): TravelChargeSettings {
+  if (!json) return DEFAULT_TRAVEL_CHARGE_SETTINGS
+  try {
+    return parseTravelChargeSettings(JSON.parse(json))
+  } catch {
+    return DEFAULT_TRAVEL_CHARGE_SETTINGS
   }
 }
 

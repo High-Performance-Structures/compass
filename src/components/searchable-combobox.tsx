@@ -34,6 +34,8 @@ export type SearchableComboboxProps = {
   readonly onValueChange: (value: string) => void
   readonly id?: string
   readonly ariaLabel: string
+  /** Id of help text read with the control, like aria-describedby on a native select. */
+  readonly ariaDescribedBy?: string
   readonly placeholder: string
   readonly searchPlaceholder?: string
   readonly emptyMessage?: string
@@ -50,6 +52,7 @@ export function SearchableCombobox({
   onValueChange,
   id,
   ariaLabel,
+  ariaDescribedBy,
   placeholder,
   searchPlaceholder = "Search...",
   emptyMessage = "No matching options.",
@@ -78,6 +81,7 @@ export function SearchableCombobox({
           role="combobox"
           aria-expanded={open}
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedBy}
           aria-required={required}
           disabled={disabled || options.length === 0}
           className={cn(
@@ -150,12 +154,22 @@ export function SearchableComboboxField({
   name,
   defaultValue = "",
   required = false,
+  onValueChange,
   ...props
 }: Omit<SearchableComboboxProps, "value" | "onValueChange"> & {
   readonly name: string
   readonly defaultValue?: string
+  /** Optional notice of each change, for forms that show fields conditionally. */
+  readonly onValueChange?: (value: string) => void
 }): React.ReactElement {
   const [value, setValue] = React.useState(defaultValue)
+  const handleValueChange = React.useCallback(
+    (next: string): void => {
+      setValue(next)
+      onValueChange?.(next)
+    },
+    [onValueChange]
+  )
 
   React.useEffect(() => {
     setValue(defaultValue)
@@ -163,11 +177,26 @@ export function SearchableComboboxField({
 
   return (
     <>
-      <input type="hidden" name={name} value={value} />
+      {required ? (
+        // A hidden input skips constraint validation, so a required field
+        // posts through a visually hidden text input instead. The browser
+        // then blocks submission and prompts, as a native select would.
+        <input
+          name={name}
+          value={value}
+          onChange={() => undefined}
+          required
+          tabIndex={-1}
+          aria-hidden="true"
+          className="sr-only"
+        />
+      ) : (
+        <input type="hidden" name={name} value={value} />
+      )}
       <SearchableCombobox
         {...props}
         value={value}
-        onValueChange={setValue}
+        onValueChange={handleValueChange}
         required={required}
       />
     </>
