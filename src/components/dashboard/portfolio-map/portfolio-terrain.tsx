@@ -113,7 +113,7 @@ export default function PortfolioTerrain({
         estimating: themeColorHex(PHASE_COLOR_TOKEN.estimating, 0.45),
         design: themeColorHex(PHASE_COLOR_TOKEN.design, 0.4),
         permitting: themeColorHex(PHASE_COLOR_TOKEN.permitting, 0.3),
-        precon: themeColorHex(PHASE_COLOR_TOKEN.precon, 0.4),
+        negotiation: themeColorHex(PHASE_COLOR_TOKEN.negotiation, 0.4),
         construction: themeColorHex(PHASE_COLOR_TOKEN.construction, 0.35),
         closeout: themeColorHex(PHASE_COLOR_TOKEN.closeout, 0.2),
       },
