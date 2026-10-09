@@ -17,7 +17,8 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { geocodeProjectAddress, type CoordinatePair } from "@/lib/geo/site-lookup"
+import { addressState, geocodeProjectAddress, type CoordinatePair, type GeocodeResult } from "@/lib/geo/site-lookup"
+import { resolveTown } from "@/lib/portfolio-map/model"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import { isDemoUser } from "@/lib/demo"
@@ -1734,6 +1735,10 @@ export async function updateProjectDailyLog(
   }
 }
 
+function located(result: GeocodeResult): CoordinatePair | null {
+  return result.status === "found" ? result.coordinates : null
+}
+
 export async function getProjectWeatherSnapshot(
   projectId: string,
   input?: { readonly logDate?: string }
@@ -1761,7 +1766,18 @@ export async function getProjectWeatherSnapshot(
       }
     }
 
-    const coordinates = await geocodeProjectAddress(address)
+    // Weather is regional, so a town or ZIP center stands in for a rural
+    // address the geocoders don't know.
+    const state = addressState(address)
+    const town =
+      state === null || state === "CO"
+        ? resolveTown({ publicLocationCity: null, address, name: project.name })
+        : null
+    const coordinates =
+      located(await geocodeProjectAddress(address)) ??
+      (town
+        ? { latitude: town.lat, longitude: town.lon, label: `${town.town}, CO (town center)`, query: address, precision: "town" }
+        : null)
     if (!coordinates) {
       return {
         success: false,

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { COLORADO_BOUNDS, fetchElevationFeet, geocodeProjectAddress } from "@/lib/geo/site-lookup"
+import { fetchElevationFeet, geocodeProjectAddress } from "@/lib/geo/site-lookup"
 
 /** Few per dashboard load: the public geocoders ask for light, sequential use. */
 export const SITE_LOOKUPS_PER_LOAD = 5
@@ -39,7 +39,10 @@ export async function locateSites(
     const address = row.address?.trim() ?? ""
     if (!address) continue
     try {
-      const found = await geocodeProjectAddress(address, COLORADO_BOUNDS)
+      const result = await geocodeProjectAddress(address)
+      // A busy map service is not "not found": leave the row for a later load.
+      if (result.status === "unavailable") continue
+      const found = result.status === "found" ? result.coordinates : null
       const elevation = found ? await fetchElevationFeet(found.latitude, found.longitude) : null
       await db
         .update(projects)
@@ -50,6 +53,7 @@ export async function locateSites(
           siteLocationAddress: address,
           siteLocationStatus: found ? "found" : "not_found",
           siteLocatedAt: new Date().toISOString(),
+          siteLocationNote: found && found.precision !== "address" ? found.label : null,
         })
         .where(and(eq(projects.id, row.id), eq(projects.organizationId, organizationId)))
     } catch (error) {

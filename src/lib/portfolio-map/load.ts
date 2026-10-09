@@ -40,7 +40,14 @@ export type PortfolioHiddenJob = PortfolioUnplacedJob & {
 }
 
 /** The job's charge with any per-job adjustments applied (see travel-overrides). */
-export type PortfolioJobTravel = EffectiveTravelCharge
+/** Where the site lookup stands: found, tried and not matched, not tried yet, or no address to try. */
+export type SiteLookupState = "found" | "not_found" | "pending" | "no_address"
+
+export type PortfolioJobTravel = EffectiveTravelCharge & {
+  readonly siteLookup: SiteLookupState
+  /** How the site was placed when not from its own number, e.g. "Near 1062 CR 8952". */
+  readonly siteNote: string | null
+}
 
 /** Office-only: zone and mountain charges. Never sent to owner or vendor views. */
 export type PortfolioTravelData = {
@@ -96,6 +103,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           siteLocationAddress: projects.siteLocationAddress,
           siteLocationStatus: projects.siteLocationStatus,
           siteLocatedAt: projects.siteLocatedAt,
+          siteLocationNote: projects.siteLocationNote,
         })
         .from(projects)
         .where(eq(projects.organizationId, orgId)),
@@ -228,10 +236,18 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           : null
       const lat = site?.lat ?? job.lat
       const lon = site?.lon ?? job.lon
+      const address = location?.address?.trim() ?? ""
+      const siteLookup: SiteLookupState = site
+        ? "found"
+        : address.length === 0
+          ? "no_address"
+          : location?.siteLocationStatus === "not_found" && location.siteLocationAddress === address
+            ? "not_found"
+            : "pending"
       if (showTravel && lat !== null && lon !== null) {
         const elevationFt = site?.elevationFt ?? null
         const row = overrideById.get(job.id)
-        byJobId[job.id] = applyTravelOverride(
+        const charge = applyTravelOverride(
           { ...jobTravelCharge({ lat, lon, elevationFt, approximate: site === null, settings }), elevationFt },
           row
             ? {
@@ -247,6 +263,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
             : null,
           settings,
         )
+        byJobId[job.id] = { ...charge, siteLookup, siteNote: site ? (location?.siteLocationNote ?? null) : null }
       }
       return site ? { ...job, lat: site.lat, lon: site.lon } : job
     })
