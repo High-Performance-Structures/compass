@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation"
-import Link from "next/link"
 
 import {
   getProjectTemplateContent,
@@ -10,11 +9,11 @@ import { getEstimateTemplateEditor } from "@/app/actions/estimate-templates"
 import { EstimateTemplateEditorPanel } from "@/components/templates/estimate-template-editor"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { normalizeTemplateBidPackage } from "@/lib/templates/template-bid-package"
 import { groupTemplateChecklistItems } from "@/lib/templates/template-checklist-hierarchy"
 import { resolveTemplateDetailId } from "@/lib/templates/template-detail-route"
 import { buildTemplateSelectionHierarchy } from "@/lib/templates/template-selection-hierarchy"
+import { PageHeader } from "@/components/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -43,28 +42,26 @@ export default async function EstimateTemplatePage({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="shrink-0 border-b px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">{preview.name}</h1>
+        <PageHeader
+          className="mb-0"
+          back={{ href: "/dashboard/templates", label: "Templates" }}
+          title={preview.name}
+          meta={
+            <DeveloperOnly>
+              {`Version ${preview.currentVersionNumber ?? "draft"}`}
+            </DeveloperOnly>
+          }
+          actions={
+            <>
               <Badge variant="outline">
                 {preview.templateKind === "project" ? "Project" : "Assembly"}
               </Badge>
               {preview.tradeCategory && (
                 <Badge variant="secondary">{preview.tradeCategory}</Badge>
               )}
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {preview.tradeCategory ?? "Other"}
-              <DeveloperOnly>
-                {` · version ${preview.currentVersionNumber ?? "draft"}`}
-              </DeveloperOnly>
-            </p>
-          </div>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/templates">Back to templates</Link>
-          </Button>
-        </div>
+            </>
+          }
+        />
       </header>
       <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
         <div className="space-y-8">

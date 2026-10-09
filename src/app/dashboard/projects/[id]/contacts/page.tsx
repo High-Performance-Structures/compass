@@ -75,11 +75,6 @@ export default async function ProjectContactsPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconAddressBook className="size-5 text-primary" />}
         title="Project Contacts"
-        description={
-          <>
-            Customers, vendors, and internal team members for this project.
-          </>
-        }
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

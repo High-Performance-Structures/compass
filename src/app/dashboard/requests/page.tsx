@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { PageHeader } from "@/components/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -26,28 +27,24 @@ export default async function RequestsPage({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-4 md:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-primary">Compass Feedback Desk</p>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {showingAll ? "All requests" : "My requests"}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Follow each request from receipt through implementation.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant={!showingAll ? "secondary" : "ghost"} size="sm" asChild>
-            <Link href="/dashboard/requests">My requests</Link>
-          </Button>
-          {result.success && result.canViewAll && (
-            <Button variant={showingAll ? "secondary" : "ghost"} size="sm" asChild>
-              <Link href="/dashboard/requests?scope=all">All requests</Link>
+      <PageHeader
+        className="mb-0"
+        eyebrow="Compass Feedback Desk"
+        title={showingAll ? "All requests" : "My requests"}
+        actions={
+          <>
+            <Button variant={!showingAll ? "secondary" : "ghost"} size="sm" asChild>
+              <Link href="/dashboard/requests">My requests</Link>
             </Button>
-          )}
-          <RequestRefreshControl scope={scope} />
-        </div>
-      </div>
+            {result.success && result.canViewAll && (
+              <Button variant={showingAll ? "secondary" : "ghost"} size="sm" asChild>
+                <Link href="/dashboard/requests?scope=all">All requests</Link>
+              </Button>
+            )}
+            <RequestRefreshControl scope={scope} />
+          </>
+        }
+      />
 
       {!result.success && (
         <Card>

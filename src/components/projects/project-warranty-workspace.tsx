@@ -43,6 +43,7 @@ import {
   WARRANTY_CLAIM_PRIORITIES,
   WARRANTY_CLAIM_STATUSES,
 } from "@/lib/warranty/status"
+import { PageHeader } from "@/components/page-header"
 
 const CATEGORIES = [
   "Exterior",
@@ -484,18 +485,16 @@ export function ProjectWarrantyWorkspace({
 }): React.ReactElement {
   return (
     <section className="bg-background">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b px-4 py-5 sm:px-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <IconShieldCheck className="size-5 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold">Warranty claims</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Submit issues, attach evidence, schedule visits, and track resolution.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} label="Print warranty requests" /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
-      </div>
+      <PageHeader
+        className="mb-0 border-b px-4 py-5 sm:px-6"
+        icon={<IconShieldCheck className="size-5 text-muted-foreground" />}
+        title="Warranty claims"
+        actions={
+          <>
+            <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} label="Print warranty requests" /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
+          </>
+        }
+      />
       {!workspace.project.warrantyEnabled && workspace.viewerIsInternal && (
         <p className="border-b bg-warning/10 px-4 py-3 text-sm text-warning sm:px-6">
           Staff can prepare claims, but the owner workspace remains hidden until this project enters Warranty or Service status.

@@ -23,14 +23,9 @@ export default async function ProjectNuTechOrderPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconTool className="size-5 text-brand-nutech-gold-foreground" />}
         title="Nu-Tech Order Process"
-        description={
-          <>
-            {workspace.projectNumber ? `${workspace.projectNumber} · ` : ""}
-            {workspace.projectName}
-            {workspace.clientName ? ` · ${workspace.clientName}` : ""}
-            {workspace.address ? ` · ${workspace.address}` : ""}
-          </>
-        }
+        eyebrow={[workspace.projectNumber, workspace.projectName, workspace.clientName]
+          .filter(Boolean)
+          .join(" · ")}
         actions={
           <ProjectContextSwitcher
             currentProjectId={id}

@@ -43,6 +43,7 @@ import {
   normalizeWorkCalendarSearch,
   scheduleItemHref,
 } from "@/lib/work-calendar"
+import { PageHeader } from "@/components/page-header"
 
 type TodoFilter = "active" | "completed" | "archived" | "all"
 
@@ -239,15 +240,12 @@ export function ProjectTodosView({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{projectLabel}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">To-dos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Edit, assign, complete, or archive project work in one place.
-          </p>
-        </div>
-        {canManage && (
+      <PageHeader
+        className="mb-0"
+        eyebrow={projectLabel}
+        title="To-dos"
+        actions={
+          canManage ? (
           <ProjectTaskCreateButton
             projectId={projectId}
             sourceLabel="Project"
@@ -264,8 +262,9 @@ export function ProjectTodosView({
             defaultOpen={initialCreateOpen}
             quickAddEnabled
           />
-        )}
-      </header>
+          ) : null
+        }
+      />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full lg:max-w-xl">

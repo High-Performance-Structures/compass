@@ -217,7 +217,6 @@ export default async function ProjectSectionPickerPage({
         className="mb-0"
         icon={target.icon}
         title={target.title}
-        description={target.description}
       />
 
       <section className="rounded-lg border bg-muted/30 p-4">

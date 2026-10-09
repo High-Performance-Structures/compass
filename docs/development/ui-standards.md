@@ -109,10 +109,18 @@ one at a time.
 
 - Each dashboard page starts with one header row built with the shared
   `PageHeader` component (`src/components/page-header.tsx`): optional back
-  link, icon or department logo, title, one-line description, and the page's
-  actions aligned to the right. Do not hand-build page titles. Avoid stacking a
-  second toolbar or launch strip above the content when its controls can join
-  that header row.
+  link, optional small grey label above the title (`eyebrow`, for context such
+  as the project number or desk name), icon or department logo, title, and the
+  page's actions aligned to the right. Do not hand-build page titles. Avoid
+  stacking a second toolbar or launch strip above the content when its
+  controls can join that header row.
+- The title names the page ("Work calendar", "Feedback Desk"), never a
+  sentence. All page titles use the header's one size.
+- No explanation line under the title. If a note helps someone use the page,
+  put it next to the thing it explains. Record facts that belong to the title,
+  such as "Submitted Oct 3 · Owner: Dana", go in the header's `meta` line.
+- Section and summary areas use thin rules (`border-b`, ruled `gap-px`
+  strips) rather than rounded cards, following the 20% bubble rule.
 - Dense workspace toolbars (Schedule) stay on one compact row and let the
   workspace scroll sideways at narrow widths. Fit them by shortening labels on
   smaller screens, keeping the full name as the accessible name and tooltip,

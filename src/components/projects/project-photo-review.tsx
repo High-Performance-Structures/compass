@@ -2,10 +2,8 @@
 
 import * as React from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  IconArrowLeft,
   IconCompass,
   IconCompassFilled,
   IconChevronLeft,
@@ -63,6 +61,7 @@ import {
   photoImageSourceForRetry,
 } from "@/lib/photos/image-retry"
 import { adjacentPhoto } from "@/lib/photos/carousel"
+import { PageHeader } from "@/components/page-header"
 
 type VisibilityFilter =
   | "all"
@@ -656,66 +655,60 @@ export function ProjectPhotoReview({
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <Button asChild variant="ghost" size="sm" className="-ml-2">
-              <Link href={`/dashboard/projects/${library.project.id}`}>
-                <IconArrowLeft className="size-4" />
-                Project
-              </Link>
-            </Button>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-              Photo Review
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {projectLabel(library)} · Review dates, phases, and visibility.
-            </p>
-            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>
-                <strong className="font-semibold text-foreground">
-                  {counts.total}
-                </strong>{" "}
-                photos
-              </span>
-              <span>
-                <strong className="font-semibold text-foreground">
-                  {counts.needsReview}
-                </strong>{" "}
-                need review
-              </span>
-              <span>
-                <strong className="font-semibold text-foreground">
-                  {counts.owner}
-                </strong>{" "}
-                owner-visible
-              </span>
-              <span>
-                <strong className="font-semibold text-foreground">
-                  {counts.subVendor}
-                </strong>{" "}
-                subs/vendors
-              </span>
-              <span>
-                <strong className="font-semibold text-foreground">
-                  {counts.internal}
-                </strong>{" "}
-                internal
-              </span>
-            </p>
-          </div>
-          <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            <Button type="button" onClick={openUploadSheet}>
-              <IconUpload className="size-4" />
-              Upload photos
-            </Button>
-            <ProjectContextSwitcher
-              currentProjectId={library.project.id}
-              targetSection="photos"
-              placeholder="Switch photo project..."
-              className="w-full sm:w-[280px]"
-            />
-          </div>
-        </div>
+        <PageHeader
+          className="mb-0"
+          back={{ href: `/dashboard/projects/${library.project.id}`, label: "Project" }}
+          eyebrow={projectLabel(library)}
+          title="Photo Review"
+          meta={
+                <span className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span>
+                    <strong className="font-semibold text-foreground">
+                      {counts.total}
+                    </strong>{" "}
+                    photos
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-foreground">
+                      {counts.needsReview}
+                    </strong>{" "}
+                    need review
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-foreground">
+                      {counts.owner}
+                    </strong>{" "}
+                    owner-visible
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-foreground">
+                      {counts.subVendor}
+                    </strong>{" "}
+                    subs/vendors
+                  </span>
+                  <span>
+                    <strong className="font-semibold text-foreground">
+                      {counts.internal}
+                    </strong>{" "}
+                    internal
+                  </span>
+                </span>
+          }
+          actions={
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                <Button type="button" onClick={openUploadSheet}>
+                  <IconUpload className="size-4" />
+                  Upload photos
+                </Button>
+                <ProjectContextSwitcher
+                  currentProjectId={library.project.id}
+                  targetSection="photos"
+                  placeholder="Switch photo project..."
+                  className="w-full sm:w-[280px]"
+                />
+              </div>
+          }
+        />
 
         <section className="border-y py-3">
           <div className="space-y-3">

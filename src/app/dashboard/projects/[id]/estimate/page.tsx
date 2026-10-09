@@ -32,7 +32,6 @@ export default async function ProjectEstimatePage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconCalculator className="size-5 text-primary" />}
         title="Estimate"
-        description="Department-specific client estimate, contract basis, approval, and budget handoff."
         actions={
           <>
             {workspace.department === "N" && (

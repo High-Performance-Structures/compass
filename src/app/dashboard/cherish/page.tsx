@@ -37,7 +37,6 @@ export default async function CherishPage({
         className="mb-0 border-b pb-5"
         icon={<IconHeartHandshake className="size-6 text-primary" />}
         title="CHERISH"
-        description="Share recognition, celebrate a project win, and revisit the moments your company has cherished."
       />
 
       <section className="py-5" aria-labelledby="share-cherish-heading">

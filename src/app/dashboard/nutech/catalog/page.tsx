@@ -15,7 +15,6 @@ export default async function NuTechCatalogPage(): Promise<React.ReactElement> {
         back={{ href: "/dashboard/nutech", label: "Nu-Tech orders" }}
         icon={<IconPackages className="size-5 text-brand-nutech-gold-foreground" />}
         title="Product Catalog"
-        description="Versioned Airlite costs, published customer prices, manufacturer-form rows, and deliberate Sage cost-code mappings."
       />
       <NuTechCatalogWorkspacePanel workspace={workspace} />
     </div>

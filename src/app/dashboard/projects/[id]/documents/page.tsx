@@ -27,12 +27,6 @@ export default async function ProjectDocumentsPage({
       <PageHeader
         icon={<IconFiles className="size-5 text-primary" />}
         title="Plans & Documents"
-        description={
-          <>
-            Publish the coordinated construction set for {workspace.project.projectNumber ?? workspace.project.name}.
-            Every published plan is visible to owners, assigned subcontractors, and internal staff.
-          </>
-        }
         actions={
           <>
             <Button variant="outline" asChild>

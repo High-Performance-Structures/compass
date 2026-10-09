@@ -24,7 +24,6 @@ export default async function ProjectPayApplicationPage({
         back={{ href: `/dashboard/projects/${id}/financials`, label: "Project financials" }}
         icon={<IconFileDollar className="size-5 text-primary" />}
         title="G702 / G703 Pay Application"
-        description="Enter current work, stored materials, and retainage against the locked contract budget."
       />
       <ProjectOwnerPayApplicationEditor projectId={id} application={application} />
     </div>

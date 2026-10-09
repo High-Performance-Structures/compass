@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/page-header"
 
 const STATE_LABELS: Readonly<Record<ProjectFollowUpQueueItem["state"], string>> = {
   overdue: "Overdue",
@@ -70,11 +71,7 @@ export function ProjectFollowUpQueue({
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Client Follow-up</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Active leads and jobs</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Prioritized by meaningful client touch, a staff-set next follow-up, and the governed job-status cadence. Internal technical activity does not reset this clock.</p>
-      </div>
+      <PageHeader className="mb-0" title="Client follow-up" />
       <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
         <label className="space-y-1 text-sm"><span className="font-medium">Follow-up state</span><Select value={stateFilter} onValueChange={(value) => { const next = followUpStateFilter(value); if (next !== null) setStateFilter(next) }}><SelectTrigger aria-label="Follow-up state" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All states</SelectItem>{Object.entries(STATE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></label>
         <label className="space-y-1 text-sm"><span className="font-medium">Client status</span><Select value={clientFilter} onValueChange={(value) => { const next = clientStatusFilter(value); if (next !== null) setClientFilter(next) }}><SelectTrigger aria-label="Client status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Leads and customers</SelectItem><SelectItem value="lead">Leads</SelectItem><SelectItem value="customer">Customers</SelectItem></SelectContent></Select></label>

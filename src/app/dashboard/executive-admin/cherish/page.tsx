@@ -21,7 +21,6 @@ export default async function CherishReviewPage(): Promise<React.ReactElement> {
         className="mb-0 border-b pb-5"
         icon={<IconHeartHandshake className="size-5 text-[var(--department-primary)]" />}
         title="CHERISH review"
-        description="Approve shout-outs and project wins for the team stream, acknowledge private concerns, or archive submissions that should not be shared."
         meta={
           <span className="flex items-center gap-1.5">
             <IconLock className="size-3.5" /> Restricted to staff granted CHERISH review access

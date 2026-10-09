@@ -28,7 +28,6 @@ export default async function GreetingCardsPage(): Promise<React.ReactElement> {
         className="mb-0 border-b pb-5"
         icon={<IconMail className="size-6 text-primary" />}
         title="Greeting Cards"
-        description="Prepare mailed handwritten cards or HPS e-cards for clients, subcontractors, vendors, employees, and other business relationships. Every delivery and optional digital gift requires an authorized staff approval and a separate release action."
       />
 
       <section className="py-5" aria-label="Greeting-card requests">

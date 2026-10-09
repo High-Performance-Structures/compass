@@ -11,6 +11,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { getHelpGuide } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { PageHeader } from "@/components/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -63,21 +64,17 @@ export default async function HelpGuidePage({
       </div>
 
       <header className="mt-5 border-b border-border pb-6">
-        <div className="max-w-3xl">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">
-            <IconBook2 className="size-4" />
-            {guide.category}
-          </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal text-foreground">
-            {guide.title}
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">
-            {guide.summary}
-          </p>
-          <p className="mt-3 text-xs text-muted-foreground">
-            {guide.readingMinutes} minute read · Reviewed {reviewedDate(guide.lastReviewed)}
-          </p>
-        </div>
+        <PageHeader
+          className="mb-0 max-w-3xl"
+          eyebrow={guide.category}
+          icon={<IconBook2 className="size-5 text-primary" />}
+          title={guide.title}
+          meta={`${guide.readingMinutes} minute read · Reviewed ${reviewedDate(guide.lastReviewed)}`}
+        />
+        {/* The summary is the article's opening paragraph, not a header line. */}
+        <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">
+          {guide.summary}
+        </p>
       </header>
 
       <HelpArticle

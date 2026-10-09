@@ -83,12 +83,6 @@ export default async function ProjectSelectionsPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<ProjectBrandLogo brand={brand} size={32} className="h-8 w-8 object-contain" />}
         title="Finish Selections"
-        description={
-          <>
-            {label} room selections, supplier links, cost codes, and RFQ-ready
-            items.
-          </>
-        }
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

@@ -147,7 +147,6 @@ export default async function OwnerBudgetPage({
             className="mb-0 border-b pb-4"
             icon={<IconFileDollar className="size-5 text-primary" />}
             title="Budget / G703"
-            description="Your approved Schedule of Values and current payment progress."
             actions={
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <IconLock className="size-4" />

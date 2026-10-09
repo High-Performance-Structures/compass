@@ -31,7 +31,6 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
         back={{ href: "/dashboard", label: "Dashboard" }}
         icon={<IconDatabase className="size-6 text-muted-foreground" />}
         title="Buildertrend cutover coverage"
-        description="A module is complete only when its captured count is attested, or a signed capture confirms that Buildertrend contained zero records. Existing records without that final check remain partial. Evidence for live or unclassified projects becomes stale after seven days."
       />
 
       <section className="grid gap-px border bg-border sm:grid-cols-4">
@@ -67,6 +66,12 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Project lifecycle inventory</h2>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          A module is complete only when its captured count is attested, or a
+          signed capture confirms that Buildertrend contained zero records.
+          Existing records without that final check remain partial. Evidence
+          for live or unclassified projects becomes stale after seven days.
+        </p>
         <div className="flex flex-wrap gap-2">
           {coverage.statusCounts.map((item) => (
             <Badge key={item.status} variant="outline">

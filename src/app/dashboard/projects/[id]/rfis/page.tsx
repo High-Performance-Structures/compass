@@ -160,12 +160,7 @@ export default async function ProjectRfisPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconMessageQuestion className="size-5 text-primary" />}
         title="RFIs"
-        description={
-          <>
-            {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-            {project?.name ?? "Project"} questions, answers, and visibility.
-          </>
-        }
+        eyebrow={`${project?.projectNumber ? `${project.projectNumber} - ` : ""}${project?.name ?? "Project"}`}
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

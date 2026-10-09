@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { PageHeader } from "@/components/page-header"
 
 const CHANNELS = [
   { key: "orc", label: "ORC / Design" },
@@ -321,20 +322,12 @@ export function ProjectVideoReview({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b pb-5">
-        <div>
-          <p className="text-muted-foreground text-sm">
-            {workspace.project.projectNumber ?? workspace.project.name}
-          </p>
-          <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold">
-            <IconVideo /> Project videos
-          </h1>
-          <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
-            Review videos received by text, control their audience, and publish
-            them to the correct company YouTube channel.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        eyebrow={workspace.project.projectNumber ?? workspace.project.name}
+        icon={<IconVideo className="size-5 text-primary" />}
+        title="Project videos"
+      />
 
       <ProjectVideoUpload
         projectId={workspace.project.id}

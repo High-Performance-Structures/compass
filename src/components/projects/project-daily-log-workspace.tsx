@@ -13,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  IconArrowLeft,
   IconCalendarStats,
   IconChevronLeft,
   IconChevronRight,
@@ -80,6 +79,7 @@ import {
 } from "@/lib/photos/upload-limits"
 import { waitForPrintLayout } from "@/lib/print/readiness"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/page-header"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
 
@@ -1222,68 +1222,58 @@ export function ProjectDailyLogWorkspace({
     <>
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <Button asChild variant="ghost" size="sm" className="-ml-2">
-              <Link href={`/dashboard/projects/${workspace.project.id}`}>
-                <IconArrowLeft className="size-4" />
-                Project
-              </Link>
-            </Button>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-              Daily Logs
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {projectLabel}
-              {workspace.project.clientName
-                ? ` · ${workspace.project.clientName}`
-                : ""}{" "}
-              · Review field notes, attached photos, and owner update readiness.
-            </p>
-          </div>
-          <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            <ProjectContextSwitcher
-              currentProjectId={workspace.project.id}
-              targetSection="daily-logs"
-              placeholder="Switch daily log project..."
-              className="w-full sm:w-[280px]"
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant={showNewLog ? "secondary" : "default"}
-                size="sm"
-                onClick={() => setShowNewLog((current) => !current)}
-              >
-                <IconPlus className="size-4" />
-                New daily log
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
-                  <IconPhoto className="size-4" />
-                  Photo review
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                variant={showPrintOptions ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setShowPrintOptions((current) => !current)}
-              >
-                <IconPrinter className="size-4" />
-                Print
-              </Button>
-              <Button
-                size="sm"
-                onClick={draftOwnerUpdate}
-                disabled={isPending || ownerUpdateSelectedIds.length === 0}
-              >
-                <IconMailForward className="size-4" />
-                Draft owner update
-              </Button>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          className="mb-0"
+          back={{ href: `/dashboard/projects/${workspace.project.id}`, label: "Project" }}
+          eyebrow={`${projectLabel}${workspace.project.clientName ? ` · ${workspace.project.clientName}` : ""}`}
+          title="Daily Logs"
+          actions={
+            <>
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                <ProjectContextSwitcher
+                  currentProjectId={workspace.project.id}
+                  targetSection="daily-logs"
+                  placeholder="Switch daily log project..."
+                  className="w-full sm:w-[280px]"
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant={showNewLog ? "secondary" : "default"}
+                    size="sm"
+                    onClick={() => setShowNewLog((current) => !current)}
+                  >
+                    <IconPlus className="size-4" />
+                    New daily log
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
+                      <IconPhoto className="size-4" />
+                      Photo review
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={showPrintOptions ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => setShowPrintOptions((current) => !current)}
+                  >
+                    <IconPrinter className="size-4" />
+                    Print
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={draftOwnerUpdate}
+                    disabled={isPending || ownerUpdateSelectedIds.length === 0}
+                  >
+                    <IconMailForward className="size-4" />
+                    Draft owner update
+                  </Button>
+                </div>
+              </div>
+            </>
+          }
+        />
 
         <div className="grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 lg:grid-cols-6">
           <LogMetric

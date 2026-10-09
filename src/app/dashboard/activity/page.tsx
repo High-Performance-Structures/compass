@@ -7,10 +7,7 @@ import { getProjects } from "@/app/actions/projects"
 import { Badge } from "@/components/ui/badge"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { getCurrentUser } from "@/lib/auth"
-import {
-  ACTIVITY_CATEGORIES,
-  type ActivityCategory,
-} from "@/lib/activity-log"
+import { ACTIVITY_CATEGORIES, type ActivityCategory } from "@/lib/activity-log"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PageHeader } from "@/components/page-header"
 
@@ -71,7 +68,6 @@ export default async function ActivityPage({
         className="mb-0 border-b pb-5"
         icon={<IconActivity className="size-5 text-muted-foreground" />}
         title="Activity"
-        description="Recent staff, owner, subcontractor, and supplier actions in Compass."
         actions={
             <form className="flex flex-wrap items-center gap-2">
               <SearchableComboboxField
