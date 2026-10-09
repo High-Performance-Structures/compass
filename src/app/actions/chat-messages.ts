@@ -13,6 +13,10 @@ import {
   inArray,
 } from "drizzle-orm"
 import { marked } from "marked"
+import {
+  markChannelNotificationsRead,
+  markThreadNotificationsRead,
+} from "@/lib/notifications/clear-on-read"
 import { getDb } from "@/db"
 import {
   messages,
@@ -1274,6 +1278,24 @@ export async function removeReaction(messageId: string, emoji: string) {
   }
 }
 
+/** The viewer opened a thread: clear bell notifications for its replies. */
+export async function markThreadRead(
+  parentMessageId: string
+): Promise<{ readonly success: boolean; readonly error?: string }> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: "Unauthorized" }
+    const { env } = await getCloudflareContext()
+    await markThreadNotificationsRead(getDb(env.DB), user.id, parentMessageId)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to mark thread read",
+    }
+  }
+}
+
 export async function markChannelRead(
   channelId: string,
   lastMessageId: string
@@ -1288,6 +1310,18 @@ export async function markChannelRead(
     const db = getDb(env.DB)
 
     const now = new Date().toISOString()
+
+    // The newest message on screen must belong to this channel; its time is
+    // the read cutoff for clearing bell notifications.
+    const lastMessage = await db
+      .select({ createdAt: messages.createdAt })
+      .from(messages)
+      .where(and(eq(messages.id, lastMessageId), eq(messages.channelId, channelId)))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!lastMessage) {
+      return { success: false, error: "Message not found" }
+    }
 
     // upsert read state
     const existing = await db
@@ -1323,7 +1357,9 @@ export async function markChannelRead(
       })
     }
 
-    revalidatePath("/dashboard")
+    // Best effort: the read state above is what matters if this fails.
+    await markChannelNotificationsRead(db, user.id, channelId, lastMessage.createdAt)
+      .catch((error: unknown) => console.error("channel_notification_clear_failed", error instanceof Error ? error.message : error))
     return { success: true }
   } catch (err) {
     return {

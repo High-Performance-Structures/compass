@@ -56,6 +56,7 @@ describe("notification bell recipient routing", () => {
       INSERT INTO notification_recipients VALUES ('recipient-staff', 'event-a', 'staff-a', 1, NULL, NULL, '2026-09-06T00:00:00Z');
       INSERT INTO notification_recipients VALUES ('recipient-staff-other-org', 'event-other-org', 'staff-a', 1, NULL, NULL, '2026-09-06T01:00:00Z');
       INSERT INTO notification_recipients VALUES ('recipient-vendor', 'event-a', 'owner-a', 1, NULL, NULL, '2026-09-06T00:00:00Z');
+      ALTER TABLE notification_events ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message';
     `)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: database.d1 } })
     mocks.requireAuth.mockResolvedValue({
@@ -119,7 +120,8 @@ describe("notification bell recipient routing", () => {
         INSERT INTO notification_recipients VALUES ('recipient-other-project', 'event-other-project', 'external-a', 1, NULL, NULL, '2026-09-07T09:00:00Z');
         INSERT INTO notification_recipients VALUES ('recipient-other-org', 'event-other-org', 'external-a', 1, NULL, NULL, '2026-09-07T08:00:00Z');
         INSERT INTO project_members VALUES ('member-a', 'project-a', 'external-a', '${projectRole}', '2026-09-01T00:00:00Z');
-      `)
+        ALTER TABLE notification_events ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message';
+    `)
       mocks.getCloudflareContext.mockResolvedValue({
         env: { DB: database.d1 },
       })
@@ -167,6 +169,7 @@ describe("notification bell recipient routing", () => {
       CREATE TABLE notification_events (id TEXT PRIMARY KEY, organization_id TEXT, title TEXT, body TEXT, href TEXT, priority TEXT, event_type TEXT, project_id TEXT);
       CREATE TABLE notification_recipients (id TEXT PRIMARY KEY, event_id TEXT, user_id TEXT, in_app INTEGER, dismissed_at TEXT, read_at TEXT, created_at TEXT);
       INSERT INTO project_members VALUES ('member-a', 'project-a', 'external-a', 'subcontractor', '2026-09-01T00:00:00Z');
+      ALTER TABLE notification_events ADD COLUMN source_type TEXT NOT NULL DEFAULT 'message';
     `)
     mocks.getCloudflareContext.mockResolvedValue({ env: { DB: database.d1 } })
     mocks.requireAuth.mockResolvedValue({

@@ -7,7 +7,8 @@ import { Separator } from "@/components/ui/separator"
 import { MessageItem } from "./message-item"
 import { TypingIndicator } from "./typing-indicator"
 import { Button } from "@/components/ui/button"
-import { getMessages } from "@/app/actions/chat-messages"
+import { getMessages, markChannelRead } from "@/app/actions/chat-messages"
+import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel"
 
 type MessageData = {
@@ -70,6 +71,33 @@ export function MessageList({
 
   // real-time updates
   const { newMessages, typingUsers } = useRealtimeChannel(channelId, lastMessageId)
+
+  // Seeing the newest message marks the channel read (unread badge and bell).
+  // Only while the tab is visible, and settled briefly so a burst of arriving
+  // messages sends one request.
+  const lastReportedReadRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!lastMessageId) return
+    let timer: number | null = null
+    const report = (): void => {
+      if (document.visibilityState !== "visible") return
+      if (lastReportedReadRef.current === lastMessageId) return
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        lastReportedReadRef.current = lastMessageId
+        void markChannelRead(channelId, lastMessageId).then((result) => {
+          if (result.success) announceNotificationsChanged()
+          else lastReportedReadRef.current = null
+        })
+      }, 800)
+    }
+    report()
+    document.addEventListener("visibilitychange", report)
+    return () => {
+      document.removeEventListener("visibilitychange", report)
+      if (timer !== null) window.clearTimeout(timer)
+    }
+  }, [channelId, lastMessageId])
 
   // consume new messages from real-time polling
   const consumedNewMessagesRef = React.useRef<Set<string>>(new Set())
