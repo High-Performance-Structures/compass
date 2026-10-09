@@ -5,6 +5,7 @@ import {
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
+  townAt,
   spreadSharedTowns,
   type PortfolioMapJob,
 } from "../model"
@@ -90,6 +91,14 @@ describe("portfolioPhaseFor", () => {
     expect(portfolioPhaseFor({ ...rule, projectNumber: "N-830-8220", visibility: "shown" })).toBe("construction")
     expect(portfolioPhaseFor({ ...rule, jobStatusId: "internal", jobStatusLabel: "Internal", visibility: "shown" })).toBe("precon")
     expect(portfolioPhaseFor({ ...rule, jobStatusId: "under_warranty", jobStatusLabel: "Under Warranty", visibility: "shown" })).toBe("closeout")
+  })
+})
+
+describe("townAt", () => {
+  it("names the town a point is in, and nothing in the countryside", () => {
+    expect(townAt(39.2252, -106.002)).toBe("Fairplay")
+    expect(townAt(39.2839, -106.0626)).toBe("Alma")
+    expect(townAt(39.255, -106.03)).toBeNull()
   })
 })
 

@@ -242,6 +242,26 @@ export function resolveTown(input: {
   return nameTown ? found(placeKey(nameTown)) : null
 }
 
+const TOWN_RADIUS_KM = 2.5
+// Cities, towns and villages; scattered localities don't mark a town.
+const TOWN_MAX_RANK = 2
+
+/**
+ * The town whose center is nearest a point and within about 2.5 km of it,
+ * or null in the countryside. Used to tell when a street match is really in
+ * another town ("Main Street" in Fairplay for an Alma address).
+ */
+export function townAt(latitude: number, longitude: number): string | null {
+  const kmPerLon = 111.32 * Math.cos((latitude * Math.PI) / 180)
+  let best: { readonly name: string; readonly km: number } | null = null
+  for (const [name, [lon, lat, rank]] of PLACES) {
+    if (rank > TOWN_MAX_RANK) continue
+    const km = Math.hypot((lat - latitude) * 110.57, (lon - longitude) * kmPerLon)
+    if (km <= TOWN_RADIUS_KM && (!best || km < best.km)) best = { name, km }
+  }
+  return best ? titleCase(best.name) : null
+}
+
 export function portfolioHealth(pastDueCount: number, stalledCount: number): PortfolioHealth {
   if (pastDueCount > 0) return "late"
   if (stalledCount > 0) return "risk"
