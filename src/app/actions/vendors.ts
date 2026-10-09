@@ -35,6 +35,7 @@ export type InternalDirectoryContact = {
   readonly role: string | null
   readonly email: string | null
   readonly phone: string | null
+  readonly cellPhone: string | null
   readonly sourceLabel: string
   readonly accessStatus: "active" | "invited" | "no_access"
   readonly sageEmployeeId: string | null
@@ -207,6 +208,7 @@ export async function getInternalDirectoryContacts(): Promise<
       jobTitle: internalContacts.jobTitle,
       email: internalContacts.email,
       phone: internalContacts.phone,
+      cellPhone: internalContacts.cellPhone,
       sourceSystem: internalContacts.sourceSystem,
       sageEmployeeId: internalContacts.sageEmployeeId,
       sageEmployeeNumber: internalContacts.sageEmployeeNumber,
@@ -240,6 +242,7 @@ export async function getInternalDirectoryContacts(): Promise<
         (contact.membershipRole ? userRoleLabel(contact.membershipRole) : null),
       email: contact.email,
       phone: contact.phone,
+      cellPhone: contact.cellPhone,
       sourceLabel: contact.sourceSystem,
       sageEmployeeId: contact.sageEmployeeId,
       sageEmployeeNumber: contact.sageEmployeeNumber,

@@ -126,7 +126,8 @@ function InternalContactsTable({
       { id: "name", header: "Name" },
       { id: "company", header: "Company" },
       { id: "role", header: "Role" },
-      { id: "contact", header: "Contact" },
+      { id: "email", header: "Email" },
+      { id: "phone", header: "Phone" },
       { id: "access", header: "Compass access" },
       ...(developerModeEnabled ? [{ id: "source", header: "Source" }] : []),
       ...(onSageEdit || onSageLink ? [{ id: "actions", header: "Actions" }] : []),
@@ -190,11 +191,21 @@ function InternalContactsTable({
                       ) : (
                         <span>No email</span>
                       )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    <div className="flex flex-col gap-0.5 whitespace-nowrap">
                       {contact.phone ? (
                         <a href={`tel:${contact.phone}`} className="hover:underline">
                           {contact.phone}
                         </a>
                       ) : null}
+                      {contact.cellPhone ? (
+                        <a href={`tel:${contact.cellPhone}`} className="hover:underline">
+                          Mobile: {contact.cellPhone}
+                        </a>
+                      ) : null}
+                      {!contact.phone && !contact.cellPhone ? <span>—</span> : null}
                     </div>
                   </td>
                   <td className="px-3 py-2">

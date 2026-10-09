@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-24"
+  "lastReviewed": "2026-10-09"
 }
 ---
 
@@ -29,6 +29,8 @@ Open **Contacts**, choose the relevant customer, vendor, or internal directory, 
 Use one directory record when the same company works on several projects. Use separate person records when individuals need separate accounts. Do not create placeholder users for “TBD,” and do not recreate employees as customers or vendors.
 
 Clients, vendors, and internal people are separate Contacts views. A client or vendor company can contain several named people. Open the company action menu to view those people. Staff can have separate permissions to edit each directory under **Settings > Permissions**. An external user sees only a person explicitly linked to their own Compass account, not the full directory.
+
+The **Internal** directory has separate **Email** and **Phone** columns. The Phone column shows stored employee phone and mobile numbers, including Sage-synced values; select a number to call it. A dash means neither number is available.
 
 For a Sage-linked record, choose **Propose Sage edit** rather than directly changing its contact fields. Request a current Sage refresh first; the read must be recent. The proposal appears in **Sage review** for an authorized reviewer other than the proposer. When Sage contact sync is enabled, approval queues a Sage update, and Compass updates the contact only after the bridge reads it back. Approval is unavailable while writes are paused. If Sage changed in the meantime, the proposal is held as a conflict. Employee home addresses are never shown in project contact lists and require a separate confidential-contact permission for staff review.
 
