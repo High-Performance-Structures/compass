@@ -18,7 +18,7 @@ import {
 // three.js and the terrain scene load only when the map is about to be seen.
 const PortfolioTerrain = dynamic(
   () => import("@/components/dashboard/portfolio-map/portfolio-terrain"),
-  { ssr: false, loading: () => <div className="h-full min-h-[420px] bg-black" /> },
+  { ssr: false, loading: () => <div className="h-full min-h-[420px]" /> },
 )
 
 type PortfolioView = "map" | "pipeline"
@@ -168,7 +168,7 @@ export function PortfolioSection({
                 layers={layers}
               />
             ) : (
-              <div className="h-full bg-black" />
+              <div className="h-full" />
             )
           ) : (
             <PortfolioPipeline

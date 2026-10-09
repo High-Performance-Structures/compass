@@ -65,16 +65,16 @@ export function PortfolioLayerControl({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
-        className="flex min-h-11 items-center gap-2 border border-white/15 bg-black/70 px-3 font-mono text-xs tracking-[0.12em] text-white/85 transition-colors hover:bg-black/90 focus-visible:outline-2 focus-visible:outline-offset-2"
+        className="flex min-h-11 items-center gap-2 border border-border bg-background/85 px-3 font-mono text-xs tracking-[0.12em] text-foreground backdrop-blur transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2"
       >
         <Layers className="size-4" aria-hidden="true" />
         LAYERS{activeCount > 0 ? ` · ${activeCount}` : ""}
       </button>
       {open ? (
-        <ul id={panelId} className="flex w-64 flex-col border border-white/15 bg-black/85">
+        <ul id={panelId} className="flex w-64 flex-col border border-border bg-popover text-popover-foreground">
           {LAYERS.map((layer) => (
             <li key={layer.id}>
-              <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-white/85 hover:bg-white/5">
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-foreground hover:bg-accent">
                 <input
                   type="checkbox"
                   className="size-4 accent-current"
@@ -88,7 +88,7 @@ export function PortfolioLayerControl({
                 />
                 <span className="flex flex-col">
                   <span className="text-sm">{layer.label}</span>
-                  <span className="text-xs text-white/55">{layer.hint}</span>
+                  <span className="text-xs text-muted-foreground">{layer.hint}</span>
                 </span>
               </label>
             </li>
@@ -116,13 +116,13 @@ export function PortfolioLayerLegend({
 }): React.ReactElement | null {
   if (!state.zones && !state.elevation) return null
   return (
-    <div className="inline-flex max-w-full flex-col gap-1 border border-white/10 bg-black/70 px-3 py-1.5 font-mono text-xs tracking-[0.06em] text-white/75">
+    <div className="inline-flex max-w-full flex-col gap-1 border border-border bg-background/85 px-3 py-1.5 font-mono text-xs tracking-[0.06em] text-foreground backdrop-blur">
       {state.zones ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <span className="text-white/55">ZONES FROM {settings.homeBase.label.toUpperCase()} · /MAN-HR</span>
+          <span className="text-muted-foreground">ZONES FROM {settings.homeBase.label.toUpperCase()} · /MAN-HR</span>
           {settings.zones.map((zone, index) => (
             <span key={index} className="flex items-center gap-1.5 whitespace-nowrap tabular-nums">
-              <span className="size-2.5 border border-white/30" style={{ background: zoneSwatch(index) }} aria-hidden="true" />
+              <span className="size-2.5 border border-foreground/30" style={{ background: zoneSwatch(index) }} aria-hidden="true" />
               {index}: {zoneRangeLabel(settings.zones, index)} {rateLabel(zone.ratePerManHourCents).toLowerCase()}
               {zone.lodgingAndPerDiem ? " + lodging + per diem" : ""}
             </span>
@@ -131,7 +131,7 @@ export function PortfolioLayerLegend({
       ) : null}
       {state.elevation ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <span className="text-white/55">MOUNTAIN · SITE ELEVATION · /MAN-HR</span>
+          <span className="text-muted-foreground">MOUNTAIN · SITE ELEVATION · /MAN-HR</span>
           {settings.mountainBands.length === 0 ? (
             <span>No elevation bands set</span>
           ) : (

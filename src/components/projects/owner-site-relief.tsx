@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 // three.js loads only when the map is shown.
 const PortfolioTerrain = dynamic(
   () => import("@/components/dashboard/portfolio-map/portfolio-terrain"),
-  { ssr: false, loading: () => <div className="h-full min-h-[320px] bg-black" /> },
+  { ssr: false, loading: () => <div className="h-full min-h-[320px]" /> },
 )
 
 function canShowMap(): boolean {
