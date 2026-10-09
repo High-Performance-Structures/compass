@@ -67,6 +67,7 @@ export function OwnerSiteRelief({
               onHoverJob={noop}
               onUnavailable={hideMap}
               focusSelectedOnLoad
+              showPhaseKey={false}
             />
           </div>
         ) : null}

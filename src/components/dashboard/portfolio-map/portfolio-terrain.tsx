@@ -31,6 +31,8 @@ type PortfolioTerrainProps = {
   readonly onUnavailable: () => void
   /** Open zoomed to the selected job instead of the statewide view. */
   readonly focusSelectedOnLoad?: boolean
+  /** The office phase key under the map; the owner view uses its own stepper instead. */
+  readonly showPhaseKey?: boolean
   /** Messages layer: unread item kinds per job id, or null when the layer is off. */
   readonly messageStacks?: MessageStacks | null
   /** Zone and mountain layers; omitted where travel charges do not apply (owner and vendor maps). */
@@ -63,6 +65,7 @@ export default function PortfolioTerrain({
   onHoverJob,
   onUnavailable,
   focusSelectedOnLoad = false,
+  showPhaseKey = true,
   layers,
   messageStacks = null,
 }: PortfolioTerrainProps): React.ReactElement {
@@ -113,7 +116,7 @@ export default function PortfolioTerrain({
         estimating: themeColorHex(PHASE_COLOR_TOKEN.estimating, 0.45),
         design: themeColorHex(PHASE_COLOR_TOKEN.design, 0.4),
         permitting: themeColorHex(PHASE_COLOR_TOKEN.permitting, 0.3),
-        precon: themeColorHex(PHASE_COLOR_TOKEN.precon, 0.4),
+        negotiation: themeColorHex(PHASE_COLOR_TOKEN.negotiation, 0.4),
         construction: themeColorHex(PHASE_COLOR_TOKEN.construction, 0.35),
         closeout: themeColorHex(PHASE_COLOR_TOKEN.closeout, 0.2),
       },
@@ -239,14 +242,16 @@ export default function PortfolioTerrain({
           <PortfolioLayerLegend state={layers.state} settings={layers.settings} />
         </div>
       ) : null}
-      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">
-        {PORTFOLIO_PHASES.map((phase) => (
-          <li key={phase.id} className="flex items-center gap-1.5">
-            <span className="size-2" style={{ background: phaseColor(phase.id) }} aria-hidden="true" />
-            {phase.label.toUpperCase()}
-          </li>
-        ))}
-      </ul>
+      {showPhaseKey ? (
+        <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">
+          {PORTFOLIO_PHASES.map((phase) => (
+            <li key={phase.id} className="flex items-center gap-1.5">
+              <span className="size-2" style={{ background: phaseColor(phase.id) }} aria-hidden="true" />
+              {phase.label.toUpperCase()}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <p className="ml-auto text-right font-mono text-xs tracking-[0.06em] text-muted-foreground">
         Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) · Roads © OpenStreetMap contributors
       </p>
