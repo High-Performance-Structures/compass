@@ -19,7 +19,11 @@ export function DashboardCountsStrip({
   return (
     <nav
       aria-label="Work that needs attention"
-      className="grid grid-cols-2 border-y border-border sm:grid-cols-4"
+      className={cn(
+        "grid grid-cols-2 border-y border-border",
+        // Fill the row whatever the number of counts (owners have three).
+        counts.length <= 1 ? "sm:grid-cols-1" : counts.length === 2 ? "sm:grid-cols-2" : counts.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-4",
+      )}
     >
       {counts.map((count, index) => {
         const alarming = count.urgent && count.value > 0

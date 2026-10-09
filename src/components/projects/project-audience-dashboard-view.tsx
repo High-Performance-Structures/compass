@@ -255,8 +255,8 @@ export function ProjectAudienceDashboardView({
           </section>
         </div>
 
-        <div className="grid gap-5 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)_minmax(0,0.85fr)]">
-          <div>
+        <div className="grid gap-5 py-5 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)]">
+          <div className="lg:row-span-2">
             {owner && (
               <section
                 aria-label="Selection decisions"
@@ -403,7 +403,7 @@ export function ProjectAudienceDashboardView({
           </section>
 
           <aside
-            className="grid gap-6 border-t pt-5 sm:grid-cols-2 lg:col-span-2 2xl:col-span-1 2xl:block 2xl:border-t-0 2xl:border-l 2xl:pt-0 2xl:pl-5"
+            className="flex flex-col gap-6 border-t pt-5 lg:col-start-2 lg:border-l lg:pl-5"
             aria-label="Workspace shortcuts"
           >
             <section>
@@ -435,7 +435,7 @@ export function ProjectAudienceDashboardView({
                 </p>
               )}
             </section>
-            <section className="2xl:mt-6">
+            <section>
               <h2 className="mb-3 text-sm font-semibold">Quick dock</h2>
               {quickLinks.map((link) => (
                 <Link

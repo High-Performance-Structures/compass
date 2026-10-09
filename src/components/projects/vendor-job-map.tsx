@@ -186,6 +186,7 @@ export function VendorJobMap({
               onHoverJob={setHoveredId}
               onUnavailable={hideMap}
               messageStacks={messageStacks}
+              focusSelectedOnLoad={jobs.length === 1}
             />
           </div>
         ) : null}

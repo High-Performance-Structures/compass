@@ -28,6 +28,7 @@ export function AudienceJobPanel({
   heading,
   stage,
   messages,
+  messagesTitle,
   upcoming,
   upcomingEmpty,
   latest,
@@ -37,6 +38,7 @@ export function AudienceJobPanel({
   /** Stage/progress block (owner stepper) or phase line (vendor). */
   readonly stage?: React.ReactNode
   readonly messages: PortfolioJobMessages | null
+  readonly messagesTitle?: string
   /** Null while loading. */
   readonly upcoming: readonly AudiencePanelItem[] | null
   readonly upcomingEmpty: string
@@ -47,7 +49,7 @@ export function AudienceJobPanel({
     <div className="flex flex-col gap-4 p-5">
       {heading}
       {stage}
-      {messages ? <PortfolioJobMessageList messages={messages} /> : null}
+      {messages ? <PortfolioJobMessageList messages={messages} title={messagesTitle} /> : null}
       <section aria-label="Coming up">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Coming up</h3>
         {upcoming === null ? (
