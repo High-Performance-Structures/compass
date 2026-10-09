@@ -61,6 +61,31 @@ describe("resolveRuntimeProvider", () => {
     })
   })
 
+  it("prefers the shared OpenAI key over older shared keys when no row exists", () => {
+    const result = resolveRuntimeProvider(null, {
+      OPENAI_API_KEY: "shared-openai-key",
+      OPENROUTER_API_KEY: "stale-openrouter-key",
+    })
+
+    expect(result).toEqual({
+      success: true,
+      providerType: "openai",
+      provider: { type: "openai", apiKey: "shared-openai-key" },
+    })
+  })
+
+  it("uses the shared OpenAI secret for a stored OpenAI provider without a key", () => {
+    const result = resolveRuntimeProvider(
+      { type: "openai", apiKey: null, baseUrl: null, modelOverrides: null },
+      { OPENAI_API_KEY: "shared-openai-key" }
+    )
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.provider).toMatchObject({ type: "openai", apiKey: "shared-openai-key" })
+    }
+  })
+
   it("returns a useful configuration error instead of an unauthenticated client", () => {
     const result = resolveRuntimeProvider(
       {
@@ -111,5 +136,21 @@ describe("selectRuntimeModel", () => {
     expect(
       selectRuntimeModel(null, "anthropic/claude-sonnet-4")
     ).toBe("anthropic/claude-sonnet-4")
+  })
+})
+
+describe("resolveRuntimeModelId for OpenAI", () => {
+  it("uses OPENAI_MODEL over the admin model setting", () => {
+    expect(resolveRuntimeModelId("deepseek/deepseek-chat-v3.1", "openai", "gpt-test")).toBe("gpt-test")
+  })
+
+  it("reduces an OpenRouter openai/ ID to its native name", () => {
+    expect(resolveRuntimeModelId("openai/gpt-test", "openai")).toBe("gpt-test")
+  })
+
+  it("leaves other providers unaffected by OPENAI_MODEL", () => {
+    expect(resolveRuntimeModelId("deepseek/deepseek-chat-v3.1", "openrouter", "gpt-test")).toBe(
+      "deepseek/deepseek-chat-v3.1"
+    )
   })
 })
