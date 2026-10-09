@@ -190,7 +190,7 @@ export function ProjectSocialWorkspace({
           <>
             <Button asChild variant="outline">
               <Link href={`/dashboard/projects/${workspace.project.id}/information`}>
-                Edit public project identity
+                {workspace.project.privacyReady ? "Edit public project identity" : "Complete project social setup"}
               </Link>
             </Button>
           </>
@@ -272,10 +272,17 @@ export function ProjectSocialWorkspace({
         </div>
 
         <div className="mt-5">
-          <Label>Department destinations</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label>Department destinations</Label>
+            <Link href="/dashboard/settings?section=integrations" className="text-sm underline">
+              Manage social connections
+            </Link>
+          </div>
           {workspace.accounts.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              No social accounts are connected for this department. An administrator can connect them in Settings → Integrations.
+              {workspace.project.department
+                ? "No social accounts are connected for this department. An administrator can connect them in Settings → Integrations."
+                : "Choose the project department to see its connected social accounts."}
             </p>
           ) : (
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -291,6 +298,9 @@ export function ProjectSocialWorkspace({
                   <span className="min-w-0">
                     <span className="block font-medium">{platformLabel(account.platform)}</span>
                     <span className="block truncate text-xs text-muted-foreground">{account.accountName}</span>
+                    {account.publishingIssue ? (
+                      <span className="mt-1 block text-xs text-warning">{account.publishingIssue}</span>
+                    ) : null}
                   </span>
                 </label>
               ))}
@@ -322,7 +332,7 @@ export function ProjectSocialWorkspace({
           </div>
           {workspace.photos.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Mark approved photos as public-shareable in Photo review before using them here.
+              Mark approved photos as public-shareable in <Link href={`/dashboard/projects/${workspace.project.id}/photos`} className="underline">Photo review</Link> before using them here.
             </p>
           ) : (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">

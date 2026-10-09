@@ -25,6 +25,7 @@ import {
   type ProjectDepartment,
 } from "@/lib/project-branding"
 import { recordActivityEvent } from "@/lib/activity-log"
+import { socialPublishingIssue, socialReadinessErrors } from "@/lib/social/readiness"
 import { environmentString, getSocialConfig, socialTokenSalt } from "@/lib/social/config"
 import { createSignedSocialPhotoUrl } from "@/lib/social/media-signing"
 import {
@@ -42,7 +43,6 @@ import {
   normalizeHashtags,
   socialCopyPrivacyViolations,
   socialPostText,
-  validatePublicProjectIdentity,
 } from "@/lib/social/privacy"
 import {
   socialPlatform,
@@ -85,6 +85,7 @@ export type SocialPostWorkspace = {
     readonly id: string
     readonly platform: SocialPlatform
     readonly accountName: string
+    readonly publishingIssue: string | null
   }[]
   readonly photos: readonly {
     readonly id: string
@@ -144,18 +145,6 @@ function parseHashtags(value: string): readonly string[] {
   }
 }
 
-function publicIdentityErrors(project: SocialContext["project"]): readonly string[] {
-  if (!project.publicTitle || !project.publicLocationCity) {
-    return ["Add a privacy-safe public title and town/city before creating a post."]
-  }
-  return validatePublicProjectIdentity({
-    publicTitle: project.publicTitle,
-    locationCity: project.publicLocationCity,
-    internalProjectName: project.name,
-    clientName: project.clientName,
-  })
-}
-
 function socialProjectDepartment(
   project: SocialContext["project"],
 ): ProjectDepartment | null {
@@ -164,14 +153,6 @@ function socialProjectDepartment(
     projectId: project.id,
     projectNumber: project.projectNumber,
   })
-}
-
-function socialReadinessErrors(project: SocialContext["project"]): readonly string[] {
-  const errors = [...publicIdentityErrors(project)]
-  if (!socialProjectDepartment(project)) {
-    errors.push("Choose the project department before creating or publishing social posts.")
-  }
-  return errors
 }
 
 async function socialContext(
@@ -220,6 +201,7 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
       id: socialAccounts.id,
       platform: socialAccounts.platform,
       accountName: socialAccounts.accountName,
+      lastError: socialAccounts.lastError,
     }).from(socialAccounts).where(and(
       eq(socialAccounts.organizationId, context.organizationId),
       department === null
@@ -319,7 +301,12 @@ export async function getSocialPostWorkspace(projectId: string): Promise<SocialP
     })(),
     accounts: accountRows.flatMap((account) => {
       const platform = socialPlatform(account.platform)
-      return platform ? [{ ...account, platform }] : []
+      return platform ? [{
+        id: account.id,
+        accountName: account.accountName,
+        platform,
+        publishingIssue: socialPublishingIssue({ platform, lastError: account.lastError }),
+      }] : []
     }),
     photos: photoRows,
     posts: postRows.map((post) => {
