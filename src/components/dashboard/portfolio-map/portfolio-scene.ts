@@ -23,10 +23,19 @@ import {
   ShaderMaterial,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderer,
   type Object3D,
 } from "three"
 import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
+import {
+  MAX_ELEVATION_BANDS,
+  MAX_ZONE_EDGES,
+  TOP_FRAGMENT,
+  TOP_VERTEX,
+  WALL_FRAGMENT,
+  WALL_VERTEX,
+} from "@/components/dashboard/portfolio-map/portfolio-shaders"
 
 export const TERRAIN_URL = "/maps/colorado-terrain-v1.json"
 
@@ -43,6 +52,20 @@ export type SceneJobColors = {
   readonly phase: Readonly<Record<PortfolioPhaseId, number>>
   readonly risk: number
   readonly late: number
+}
+
+/** Optional overlays shaded onto the terrain surface. */
+export type SceneLayers = {
+  readonly zones: {
+    readonly home: { readonly label: string; readonly lat: number; readonly lon: number }
+    /** Outer edge of each bounded zone in whole miles (the last zone is open-ended). */
+    readonly edgesMiles: readonly number[]
+    readonly color: number
+  } | null
+  readonly elevation: {
+    readonly bandsFeet: readonly number[]
+    readonly color: number
+  } | null
 }
 
 export type SceneHighlight = {
@@ -174,58 +197,6 @@ export function placeWithoutOverlap(labels: readonly SceneLabel[]): readonly Sce
   return placed
 }
 
-const TOP_VERTEX = `
-varying float vH; varying vec3 vN; varying float vDepth;
-void main() {
-  vH = position.y; vN = normal;
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  vDepth = -mv.z;
-  gl_Position = projectionMatrix * mv;
-}`
-
-/* Elevation and depth shading, faint contour lines and a fine grain. */
-const TOP_FRAGMENT = `
-uniform float uMaxH; uniform float uNear; uniform float uFar; uniform vec3 uLow; uniform vec3 uHigh;
-varying float vH; varying vec3 vN; varying float vDepth;
-void main() {
-  vec3 n = normalize(vN);
-  float light = clamp(dot(n, normalize(vec3(-0.5, 0.75, 0.35))), 0.0, 1.0);
-  float e = clamp(vH / uMaxH, 0.0, 1.0);
-  float d = clamp((vDepth - uNear) / (uFar - uNear), 0.0, 1.0);
-  vec3 col = mix(uLow, uHigh, e * 0.45 + light * 0.55);
-  col *= mix(1.2, 0.45, d);
-  float cf = vH * 18.0;
-  float c = abs(fract(cf - 0.5) - 0.5) / max(fwidth(cf), 0.0001);
-  col += (1.0 - min(c, 1.0)) * 0.05;
-  float gr = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-  col += (gr - 0.5) * 0.03;
-  gl_FragColor = vec4(col, 1.0);
-}`
-
-const WALL_VERTEX = `
-varying float vY; varying vec3 vN; varying float vDepth;
-void main() {
-  vY = position.y; vN = normal;
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  vDepth = -mv.z;
-  gl_Position = projectionMatrix * mv;
-}`
-
-/* Carved-block walls: lit by face direction, with faint strata. */
-const WALL_FRAGMENT = `
-uniform float uBase; uniform float uTop; uniform float uNear; uniform float uFar;
-varying float vY; varying vec3 vN; varying float vDepth;
-void main() {
-  float t = clamp((vY - uBase) / (uTop - uBase), 0.0, 1.0);
-  float face = 0.6 + 0.55 * abs(dot(normalize(vN), normalize(vec3(-0.6, 0.0, 0.8))));
-  vec3 col = mix(vec3(0.20, 0.235, 0.22), vec3(0.36, 0.41, 0.39), t) * face;
-  float strata = smoothstep(0.42, 0.5, abs(fract(vY * 9.0) - 0.5));
-  col += strata * 0.03;
-  float d = clamp((vDepth - uNear) / (uFar - uNear), 0.0, 1.0);
-  col *= mix(1.1, 0.75, d);
-  gl_FragColor = vec4(col, 1.0);
-}`
-
 /**
  * The portfolio terrain map. Owns the WebGL renderer and renders only when
  * something changes (interaction, camera motion, highlight), never in a loop.
@@ -241,6 +212,9 @@ export class PortfolioScene {
   private readonly jobObjects: Object3D[] = []
   private readonly view: View = { ...DEFAULT_VIEW }
   private grid: TerrainGrid | null = null
+  private topMaterial: ShaderMaterial | null = null
+  private layers: SceneLayers = { zones: null, elevation: null }
+  private layerLabels: { readonly key: string; readonly title: string; readonly sub: string; readonly point: Vector3 }[] = []
   private markers: Marker[] = []
   private landmarks: { readonly title: string; readonly sub: string; readonly point: Vector3 }[] = []
   private focusSelectedPending = false
@@ -293,6 +267,7 @@ export class PortfolioScene {
       this.grid = data.grid
       this.buildTerrain(data)
       if (this.pendingJobs) this.setJobs(this.pendingJobs.jobs, this.pendingJobs.colors)
+      this.applyLayers()
       this.callbacks.onReady()
       this.requestRender()
     } catch (error) {
@@ -350,6 +325,17 @@ export class PortfolioScene {
           uMaxH: { value: maxH },
           uLow: { value: new Color(0x111914) },
           uHigh: { value: new Color(0x7f938b) },
+          uGeo: { value: new Vector4(g.west, g.east, g.north, g.south) },
+          uSize: { value: new Vector2(W, D) },
+          uZonesOn: { value: 0 },
+          uHome: { value: new Vector2(0, 0) },
+          uZoneEdges: { value: new Array<number>(MAX_ZONE_EDGES).fill(0) },
+          uZoneEdgeCount: { value: 0 },
+          uZoneColor: { value: new Color(0xffffff) },
+          uElevOn: { value: 0 },
+          uBandY: { value: new Array<number>(MAX_ELEVATION_BANDS).fill(0) },
+          uBandCount: { value: 0 },
+          uElevColor: { value: new Color(0xffffff) },
         },
         vertexShader: TOP_VERTEX,
         fragmentShader: TOP_FRAGMENT,
@@ -359,6 +345,7 @@ export class PortfolioScene {
       }),
     )
     this.scene.add(new Mesh(geometry, topMaterial))
+    this.topMaterial = topMaterial
 
     // Walls from the carved edge down to a flat base.
     const gx = (i: number): number => (i / (g.w - 1) - 0.5) * W
@@ -529,6 +516,61 @@ export class PortfolioScene {
   /** Fly to the selected job once its marker exists (used by single-job views). */
   focusSelectedWhenPlaced(): void {
     this.focusSelectedPending = true
+  }
+
+  setLayers(layers: SceneLayers): void {
+    this.layers = layers
+    this.applyLayers()
+  }
+
+  private applyLayers(): void {
+    const material = this.topMaterial
+    if (!material || !this.grid) return
+    const u = material.uniforms
+    const { zones, elevation } = this.layers
+    this.layerLabels = []
+    if (zones) {
+      const edges = zones.edgesMiles.slice(0, MAX_ZONE_EDGES)
+      u.uZonesOn.value = 1
+      u.uHome.value.set(zones.home.lon, zones.home.lat)
+      u.uZoneEdges.value = [...edges, ...new Array<number>(MAX_ZONE_EDGES - edges.length).fill(0)]
+      u.uZoneEdgeCount.value = edges.length
+      u.uZoneColor.value.setHex(zones.color)
+      const homeXZ = this.worldXZ(zones.home.lon, zones.home.lat)
+      this.layerLabels.push({
+        key: "layer:home",
+        title: zones.home.label.toUpperCase(),
+        sub: "HOME BASE",
+        point: new Vector3(homeXZ[0], this.heightAt(zones.home.lon, zones.home.lat) + 0.02, homeXZ[1]),
+      })
+      // Ring distance labels on the south side of each ring.
+      edges.forEach((miles, index) => {
+        const lat = zones.home.lat - miles / 69.05
+        const xz = this.worldXZ(zones.home.lon, lat)
+        this.layerLabels.push({
+          key: `layer:ring:${index}`,
+          title: `${miles} MI`,
+          sub: `END OF ZONE ${index}`,
+          point: new Vector3(xz[0], this.heightAt(zones.home.lon, lat) + 0.02, xz[1]),
+        })
+      })
+    } else {
+      u.uZonesOn.value = 0
+    }
+    if (elevation) {
+      const bands = elevation.bandsFeet.slice(0, MAX_ELEVATION_BANDS)
+      u.uElevOn.value = 1
+      u.uBandY.value = [
+        ...bands.map((feet) => toY(feet * 0.3048)),
+        ...new Array<number>(MAX_ELEVATION_BANDS - bands.length).fill(0),
+      ]
+      u.uBandCount.value = bands.length
+      u.uElevColor.value.setHex(elevation.color)
+    } else {
+      u.uElevOn.value = 0
+    }
+    this.labelSignature = ""
+    this.requestRender()
   }
 
   setHighlight(next: SceneHighlight): void {
@@ -711,6 +753,12 @@ export class PortfolioScene {
         sub: marker.job.town ? marker.job.town.toUpperCase() : "",
         tone: selected ? "selected" : "hover",
       })
+    }
+    for (const label of this.layerLabels) {
+      const screen = this.project(label.point)
+      if (screen.onScreen) {
+        labels.push({ key: label.key, x: screen.x, y: screen.y, title: label.title, sub: label.sub, tone: "landmark" })
+      }
     }
     for (const landmark of this.landmarks) {
       const screen = this.project(landmark.point)

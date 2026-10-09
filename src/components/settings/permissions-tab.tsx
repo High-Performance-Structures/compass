@@ -3,6 +3,7 @@
 import * as React from "react"
 import { IconLockCog, IconUsersGroup } from "@tabler/icons-react"
 
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   getPermissionOverrideContext,
   updateRolePermissionOverride,
@@ -492,18 +493,18 @@ export function PermissionsTab(): React.ReactElement {
           <span className="text-xs font-medium text-muted-foreground">
             Review role
           </span>
-          <Select value={selectedRole} onValueChange={setSelectedRole}>
-            <SelectTrigger className="w-[260px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="max-h-[360px]">
-              {USER_ROLE_OPTIONS.map((role) => (
-                <SelectItem key={role.value} value={role.value}>
-                  {role.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableCombobox
+            className="w-[260px]"
+            value={selectedRole}
+            onValueChange={(value) => {
+              if (value !== "") setSelectedRole(value)
+            }}
+            options={USER_ROLE_OPTIONS}
+            ariaLabel="Review role"
+            placeholder="Choose a role"
+            searchPlaceholder="Search roles..."
+            emptyMessage="No matching roles."
+          />
         </div>
       </div>
 
@@ -517,22 +518,20 @@ export function PermissionsTab(): React.ReactElement {
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <span className="text-xs font-medium text-muted-foreground">Staff member</span>
-            <Select
+            <SearchableCombobox
               value={selectedStaffId}
               onValueChange={setSelectedStaffId}
-              disabled={staff.length === 0}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Choose staff" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[320px]">
-                {staff.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.name} · {member.email}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={staff.map((member) => ({
+                value: member.id,
+                label: member.name,
+                selectedLabel: `${member.name} · ${member.email}`,
+                description: member.email,
+              }))}
+              ariaLabel="Staff member"
+              placeholder="Choose staff"
+              searchPlaceholder="Search staff..."
+              emptyMessage="No matching staff."
+            />
           </div>
         </div>
         <div className="mt-4 divide-y">
@@ -672,22 +671,15 @@ export function PermissionsTab(): React.ReactElement {
             <span className="text-xs font-medium text-muted-foreground">
               Review team
             </span>
-            <Select
+            <SearchableCombobox
               value={selectedTeamId}
               onValueChange={setSelectedTeamId}
-              disabled={teams.length === 0}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="No teams yet" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[320px]">
-                {teams.map((team) => (
-                  <SelectItem key={team.id} value={team.id}>
-                    {team.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={teams.map((team) => ({ value: team.id, label: team.name }))}
+              ariaLabel="Review team"
+              placeholder={teams.length === 0 ? "No teams yet" : "Choose a team"}
+              searchPlaceholder="Search teams..."
+              emptyMessage="No matching teams."
+            />
           </div>
           <div className="space-y-2 text-sm">
             {TEAM_OVERRIDE_CHOICES.map((choice) => (

@@ -6,6 +6,13 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   IconArrowLeft,
   IconCalendarStats,
   IconChevronLeft,
@@ -1457,16 +1464,20 @@ export function ProjectDailyLogWorkspace({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <Select
                 value={filter}
-                onChange={(event) => setFilter(filterValue(event.target.value))}
-                className="h-9 rounded-md border bg-background px-3 text-sm"
+                onValueChange={(value) => setFilter(filterValue(value))}
               >
-                <option value="all">All logs</option>
-                <option value="needs_review">Needs review</option>
-                <option value="approved">Approved</option>
-                <option value="owner_visible">Owner visible</option>
-              </select>
+                <SelectTrigger aria-label="Filter daily logs" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All logs</SelectItem>
+                  <SelectItem value="needs_review">Needs review</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="owner_visible">Owner visible</SelectItem>
+                </SelectContent>
+              </Select>
               <Button variant="outline" size="sm" onClick={selectVisibleLogs}>
                 Select shown
               </Button>

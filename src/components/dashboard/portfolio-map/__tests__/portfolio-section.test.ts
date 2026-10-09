@@ -50,7 +50,7 @@ describe("PortfolioSection", () => {
   }
 
   it("falls back to the pipeline and opens a job's quick info with links into the job", async () => {
-    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [{ id: "p9", name: "Twinkle Rd - Rogers Residence", projectNumber: "O-1" }], hidden: [{ id: "p7", name: "Compass Developer", projectNumber: "H-DEV", restoreVisibility: "shown" }] })))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [{ id: "p9", name: "Twinkle Rd - Rogers Residence", projectNumber: "O-1" }], hidden: [{ id: "p7", name: "Compass Developer", projectNumber: "H-DEV", restoreVisibility: "shown" }], travel: null })))
     expect(container.textContent).toContain("1 BUILDING · 1 IN PIPELINE · 0 CLOSING OUT")
     expect(container.textContent).toContain("NEEDS ATTENTION · 1")
     expect(container.textContent).toContain("1 job is not on the map yet")
@@ -73,7 +73,7 @@ describe("PortfolioSection", () => {
   })
 
   it("adds a project that its status keeps off the map", async () => {
-    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [] })))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
     const details = [...container.querySelectorAll("details")].find((item) => item.textContent?.includes("Add a project to the map"))
     if (!details) throw new Error("Add to map not found")
     await act(async () => {
@@ -96,7 +96,7 @@ describe("PortfolioSection", () => {
   })
 
   it("renders nothing when there are no mapped jobs", async () => {
-    await act(async () => root.render(React.createElement(PortfolioSection, { jobs: [], unplaced: [], hidden: [] })))
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs: [], unplaced: [], hidden: [], travel: null })))
     expect(container.innerHTML).toBe("")
   })
 })

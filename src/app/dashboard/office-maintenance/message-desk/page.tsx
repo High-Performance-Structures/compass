@@ -8,6 +8,13 @@ import {
   submitCreateStaffMessage,
   submitRouteGotoTextToMessageDesk,
 } from "@/app/actions/staff-message-desk"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
@@ -64,10 +71,15 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
           <form action={submitCreateStaffMessage} className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium">
               Source
-              <select name="sourceType" required defaultValue="call" className={fieldClassName()}>
-                <option value="call">Incoming call</option>
-                <option value="message">Incoming message</option>
-              </select>
+              <Select name="sourceType" required defaultValue="call">
+                <SelectTrigger className="h-10 w-full font-normal">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="call">Incoming call</SelectItem>
+                  <SelectItem value="message">Incoming message</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
               Assign to one staff member

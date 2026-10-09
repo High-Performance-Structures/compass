@@ -735,25 +735,25 @@ export function ProjectPhotoReview({
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Visibility
                 </span>
-                <Select
+                <SearchableCombobox
                   value={visibilityFilter}
                   onValueChange={(value) =>
-                    setVisibilityFilter(visibilityFilterValue(value))
+                    setVisibilityFilter(visibilityFilterValue(value || "all"))
                   }
-                >
-                  <SelectTrigger aria-label="Visibility" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All photos</SelectItem>
-                    <SelectItem value="internal">Internal only</SelectItem>
-                    <SelectItem value="owner">Owner visible</SelectItem>
-                    <SelectItem value="subs_vendors">Subs/vendors</SelectItem>
-                    <SelectItem value="public">Public/shareable</SelectItem>
-                    <SelectItem value="needs_review">Needs review</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: "all", label: "All photos" },
+                    { value: "internal", label: "Internal only" },
+                    { value: "owner", label: "Owner visible" },
+                    { value: "subs_vendors", label: "Subs/vendors" },
+                    { value: "public", label: "Public/shareable" },
+                    { value: "needs_review", label: "Needs review" },
+                    { value: "approved", label: "Approved" },
+                  ]}
+                  ariaLabel="Visibility"
+                  placeholder="All photos"
+                  searchPlaceholder="Search visibility..."
+                  emptyMessage="No matching options."
+                />
               </label>
               <label className="w-full space-y-1 text-sm sm:w-60">
                 <span className="text-xs font-medium uppercase text-muted-foreground">

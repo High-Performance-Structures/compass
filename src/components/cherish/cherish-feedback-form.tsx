@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   submitCherishPulseResponse,
   type CherishPulseResponseType,
@@ -118,7 +119,7 @@ export function CherishFeedbackForm({
           <label className="mb-1.5 block text-sm font-medium">
             CHERISH value
           </label>
-          <Select
+          <SearchableCombobox
             value={cherishValue}
             onValueChange={(value) => {
               const nextValue = CHERISH_VALUES.find(
@@ -126,18 +127,12 @@ export function CherishFeedbackForm({
               )
               if (nextValue) setCherishValue(nextValue)
             }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CHERISH_VALUES.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={CHERISH_VALUES.map((value) => ({ value, label: value }))}
+            ariaLabel="CHERISH value"
+            placeholder="Choose a value"
+            searchPlaceholder="Search values..."
+            emptyMessage="No matching values."
+          />
         </div>
 
         <div>
@@ -172,19 +167,22 @@ export function CherishFeedbackForm({
           <label className="mb-1.5 block text-sm font-medium">
             Who should see this?
           </label>
-          <Select value={recipientId} onValueChange={setRecipientId}>
-            <SelectTrigger aria-describedby="cherish-recipient-description">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={COMPANY_RECIPIENT}>Whole company</SelectItem>
-              {recipients.map((recipient) => (
-                <SelectItem key={recipient.id} value={recipient.id}>
-                  {recipient.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableCombobox
+            ariaDescribedBy="cherish-recipient-description"
+            value={recipientId}
+            onValueChange={(value) => setRecipientId(value || COMPANY_RECIPIENT)}
+            options={[
+              { value: COMPANY_RECIPIENT, label: "Whole company" },
+              ...recipients.map((recipient) => ({
+                value: recipient.id,
+                label: recipient.name,
+              })),
+            ]}
+            ariaLabel="Who should see this?"
+            placeholder="Whole company"
+            searchPlaceholder="Search people..."
+            emptyMessage="No matching people."
+          />
           <p
             id="cherish-recipient-description"
             className="mt-1.5 text-xs text-muted-foreground"

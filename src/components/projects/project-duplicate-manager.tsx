@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAlertTriangle,
   IconArrowMerge,
@@ -384,9 +385,11 @@ export function ProjectDuplicateManager({
               {visibleCandidates.length > 1 ? (
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="duplicate-candidate">Potential match</Label>
-                  <Select
+                  <SearchableCombobox
+                    id="duplicate-candidate"
                     value={candidateKey(selectedCandidate)}
                     onValueChange={(value) => {
+                      if (value === "" || value === candidateKey(selectedCandidate)) return
                       const next = visibleCandidates.find(
                         (candidate) => candidateKey(candidate) === value,
                       )
@@ -396,29 +399,15 @@ export function ProjectDuplicateManager({
                       setReplacementProjectNumber("")
                       setConfirmed(false)
                     }}
-                  >
-                    <SelectTrigger
-                      id="duplicate-candidate"
-                      className="w-full min-w-0"
-                      title={`${projectLabel(selectedCandidate, selectedCandidate.first.id)} / ${projectLabel(selectedCandidate, selectedCandidate.second.id)}`}
-                    >
-                      <SelectValue className="min-w-0 truncate" />
-                    </SelectTrigger>
-                    <SelectContent
-                      position="popper"
-                      align="start"
-                      className="max-w-[calc(100vw-2rem)]"
-                    >
-                      {visibleCandidates.map((candidate) => (
-                        <SelectItem
-                          key={candidateKey(candidate)}
-                          value={candidateKey(candidate)}
-                        >
-                          {projectLabel(candidate, candidate.first.id)} / {projectLabel(candidate, candidate.second.id)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={visibleCandidates.map((candidate) => ({
+                      value: candidateKey(candidate),
+                      label: `${projectLabel(candidate, candidate.first.id)} / ${projectLabel(candidate, candidate.second.id)}`,
+                    }))}
+                    ariaLabel="Potential match"
+                    placeholder="Choose a potential match"
+                    searchPlaceholder="Search projects..."
+                    emptyMessage="No matching projects."
+                  />
                 </div>
               ) : null}
 

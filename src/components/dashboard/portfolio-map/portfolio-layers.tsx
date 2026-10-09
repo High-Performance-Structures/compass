@@ -1,0 +1,149 @@
+"use client"
+
+import * as React from "react"
+import { Layers } from "lucide-react"
+import {
+  rateLabel,
+  zoneRangeLabel,
+  type TravelChargeSettings,
+} from "@/lib/portfolio-map/travel-zones"
+
+export type PortfolioLayerId = "zones" | "elevation"
+export type PortfolioLayerState = Readonly<Record<PortfolioLayerId, boolean>>
+
+export const NO_LAYERS: PortfolioLayerState = { zones: false, elevation: false }
+
+/** Overlay colors (theme tokens); the scene lifts them for the dark terrain. */
+export const LAYER_COLOR_TOKEN: Readonly<Record<PortfolioLayerId, string>> = {
+  zones: "--warning",
+  elevation: "--info",
+}
+
+const LAYERS: readonly { readonly id: PortfolioLayerId; readonly label: string; readonly hint: string }[] = [
+  { id: "zones", label: "Zone charges", hint: "Distance rings from home base" },
+  { id: "elevation", label: "Mountain charge", hint: "Ground above each elevation band" },
+]
+
+const STORAGE_KEY = "compass:portfolio-layers:v1"
+
+export function readStoredLayers(): PortfolioLayerState {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null")
+    if (typeof parsed !== "object" || parsed === null) return NO_LAYERS
+    return {
+      zones: "zones" in parsed && parsed.zones === true,
+      elevation: "elevation" in parsed && parsed.elevation === true,
+    }
+  } catch {
+    return NO_LAYERS
+  }
+}
+
+export function storeLayers(state: PortfolioLayerState): void {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    // The choice still applies to this visit.
+  }
+}
+
+/** Layer toggles, shown over the map's top-left corner. */
+export function PortfolioLayerControl({
+  state,
+  onChange,
+}: {
+  readonly state: PortfolioLayerState
+  readonly onChange: (next: PortfolioLayerState) => void
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  const panelId = React.useId()
+  const activeCount = LAYERS.filter((layer) => state[layer.id]).length
+  return (
+    <div className="absolute left-4 top-4 flex flex-col items-start gap-1.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-11 items-center gap-2 border border-white/15 bg-black/70 px-3 font-mono text-xs tracking-[0.12em] text-white/85 transition-colors hover:bg-black/90 focus-visible:outline-2 focus-visible:outline-offset-2"
+      >
+        <Layers className="size-4" aria-hidden="true" />
+        LAYERS{activeCount > 0 ? ` · ${activeCount}` : ""}
+      </button>
+      {open ? (
+        <ul id={panelId} className="flex w-64 flex-col border border-white/15 bg-black/85">
+          {LAYERS.map((layer) => (
+            <li key={layer.id}>
+              <label className="flex min-h-11 cursor-pointer items-center gap-3 px-3 py-2 text-white/85 hover:bg-white/5">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-current"
+                  checked={state[layer.id]}
+                  onChange={(event) => onChange({ ...state, [layer.id]: event.target.checked })}
+                />
+                <span
+                  className="size-2.5 shrink-0"
+                  style={{ background: `var(${LAYER_COLOR_TOKEN[layer.id]})` }}
+                  aria-hidden="true"
+                />
+                <span className="flex flex-col">
+                  <span className="text-sm">{layer.label}</span>
+                  <span className="text-xs text-white/55">{layer.hint}</span>
+                </span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+function zoneSwatch(index: number): string {
+  // Mirrors the shader: zone 0 is untinted, then the tint grows with each zone.
+  return index === 0
+    ? "transparent"
+    : `color-mix(in oklab, var(${LAYER_COLOR_TOKEN.zones}) ${15 + index * 18}%, transparent)`
+}
+
+/** Rates for the visible layers, one compact line each, above the phase legend. */
+export function PortfolioLayerLegend({
+  state,
+  settings,
+}: {
+  readonly state: PortfolioLayerState
+  readonly settings: TravelChargeSettings
+}): React.ReactElement | null {
+  if (!state.zones && !state.elevation) return null
+  return (
+    <div className="inline-flex max-w-full flex-col gap-1 border border-white/10 bg-black/70 px-3 py-1.5 font-mono text-xs tracking-[0.06em] text-white/75">
+      {state.zones ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <span className="text-white/55">ZONES FROM {settings.homeBase.label.toUpperCase()} · /MAN-HR</span>
+          {settings.zones.map((zone, index) => (
+            <span key={index} className="flex items-center gap-1.5 whitespace-nowrap tabular-nums">
+              <span className="size-2.5 border border-white/30" style={{ background: zoneSwatch(index) }} aria-hidden="true" />
+              {index}: {zoneRangeLabel(settings.zones, index)} {rateLabel(zone.ratePerManHourCents).toLowerCase()}
+              {zone.lodgingAndPerDiem ? " + lodging + per diem" : ""}
+            </span>
+          ))}
+        </p>
+      ) : null}
+      {state.elevation ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <span className="text-white/55">MOUNTAIN · SITE ELEVATION · /MAN-HR</span>
+          {settings.mountainBands.length === 0 ? (
+            <span>No elevation bands set</span>
+          ) : (
+            settings.mountainBands.map((band, index) => (
+              <span key={index} className="whitespace-nowrap tabular-nums">
+                {band.minElevationFt.toLocaleString("en-US")}+ ft{" "}
+                {rateLabel(band.ratePerManHourCents).toLowerCase()}
+              </span>
+            ))
+          )}
+        </p>
+      ) : null}
+    </div>
+  )
+}

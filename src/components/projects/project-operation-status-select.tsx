@@ -7,6 +7,7 @@ import {
   updateProjectOperationStatus,
   type ProjectOperationKind,
 } from "@/app/actions/project-operations"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   PURCHASE_ORDER_STATUS_OPTIONS,
@@ -65,26 +66,32 @@ export function ProjectOperationStatusSelect({
       >
         Status
       </label>
-      <select
+      <SearchableCombobox
         id={`${operationKind}-status-${operationId}`}
+        className="h-8 px-2 text-xs font-medium"
         value={selectedStatus}
         disabled={isPending}
-        onChange={(event) => changeStatus(event.target.value)}
-        className="h-8 w-full rounded-md border bg-background px-2 text-xs font-medium"
-        aria-label={`Change ${operationKind === "purchase_order" ? "purchase order" : "RFQ"} status`}
-      >
-        {hasImportedStatus && (
-          <option value={selectedStatus}>
-            {selectedStatus.replaceAll("_", " ")}
-            {developerModeEnabled ? " (imported)" : ""}
-          </option>
-        )}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        // Each choice saves immediately; ignore the picker's empty reset and
+        // re-picks of the current status.
+        onValueChange={(value) => {
+          if (value !== "" && value !== selectedStatus) changeStatus(value)
+        }}
+        options={[
+          ...(hasImportedStatus
+            ? [
+                {
+                  value: selectedStatus,
+                  label: `${selectedStatus.replaceAll("_", " ")}${developerModeEnabled ? " (imported)" : ""}`,
+                },
+              ]
+            : []),
+          ...options,
+        ]}
+        ariaLabel={`Change ${operationKind === "purchase_order" ? "purchase order" : "RFQ"} status`}
+        placeholder="Choose status"
+        searchPlaceholder="Search statuses..."
+        emptyMessage="No matching statuses."
+      />
       {error && (
         <p className="mt-1 text-xs text-destructive" role="alert">
           {error}

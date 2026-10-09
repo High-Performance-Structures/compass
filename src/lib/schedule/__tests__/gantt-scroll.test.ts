@@ -131,9 +131,14 @@ describe("Gantt dominant-axis scrolling", () => {
     expect(canScrollGanttAxis(300, 1_000, 400, 64)).toBe(true)
   })
 
-  it("maps independently sized scroll panes to the same relative row", () => {
-    expect(synchronizedScrollTop(450, 1_100, 200, 900, 100)).toBe(400)
-    expect(synchronizedScrollTop(900, 1_100, 200, 900, 100)).toBe(800)
+  it("keeps the same row level in both panes at every scroll depth", () => {
+    // List 2,094px tall (with its Add row), chart 2,061px, both 826px visible:
+    // a percentage mapping put the chart 31px behind at 1,200px.
+    expect(synchronizedScrollTop(400, 2_061, 826)).toBe(400)
+    expect(synchronizedScrollTop(1_200, 2_061, 826)).toBe(1_200)
+    // Clamp to what the target can actually scroll.
+    expect(synchronizedScrollTop(1_268, 2_061, 826)).toBe(1_235)
+    expect(synchronizedScrollTop(-10, 2_061, 826)).toBe(0)
   })
 
   it("extends the timeline enough for Today to be reachable", () => {
