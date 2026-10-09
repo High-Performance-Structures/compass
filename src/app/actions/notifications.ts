@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -10,6 +10,7 @@ import {
   notificationPreferences,
   notificationRecipients,
   projectMembers,
+  projects,
 } from "@/db/schema"
 import { getCurrentUser, requireAuth, type AuthUser } from "@/lib/auth"
 import { recipientNotificationHref } from "@/lib/conversations/notification-route"
@@ -31,6 +32,7 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { projectNumberAndName } from "@/lib/project-display-name"
 import { isValidTimeZone } from "@/lib/work-calendar"
 
 export type NotificationPreferenceState = {
@@ -68,7 +70,9 @@ export type NotificationCenterItem = {
   readonly href: string
   readonly priority: string
   readonly eventType: string
+  readonly sourceType: string
   readonly projectId: string | null
+  readonly projectLabel: string | null
   readonly readAt: string | null
   readonly createdAt: string
 }
@@ -502,7 +506,10 @@ export async function getNotificationCenter(
         href: notificationEvents.href,
         priority: notificationEvents.priority,
         eventType: notificationEvents.eventType,
+        sourceType: notificationEvents.sourceType,
         projectId: notificationEvents.projectId,
+        projectName: projects.name,
+        projectNumber: projects.projectNumber,
         readAt: notificationRecipients.readAt,
         createdAt: notificationRecipients.createdAt,
       })
@@ -511,11 +518,17 @@ export async function getNotificationCenter(
         notificationEvents,
         eq(notificationEvents.id, notificationRecipients.eventId)
       )
+      .leftJoin(projects, eq(projects.id, notificationEvents.projectId))
       .where(
         and(
           eq(notificationRecipients.userId, user.id),
           eq(notificationRecipients.inApp, true),
           isNull(notificationRecipients.dismissedAt),
+          // Read items drop out of the bell after a month on their own.
+          or(
+            isNull(notificationRecipients.readAt),
+            gt(notificationRecipients.readAt, readRetentionCutoff())
+          ),
           notificationEventScopeCondition(scope)
         )
       )
@@ -526,8 +539,11 @@ export async function getNotificationCenter(
       success: true,
       data: {
         unreadCount: rows.filter((row) => row.readAt === null).length,
-        items: rows.map((row) => ({
+        items: rows.map(({ projectName, projectNumber, ...row }) => ({
           ...row,
+          projectLabel: projectName
+            ? projectNumberAndName({ name: projectName, projectNumber })
+            : null,
           href: recipientNotificationHref(row.href, user.role),
         })),
       },
@@ -619,6 +635,97 @@ export async function markAllNotificationsRead(
         error instanceof Error
           ? error.message
           : "Failed to mark notifications read",
+    }
+  }
+}
+
+const READ_RETENTION_DAYS = 30
+
+function readRetentionCutoff(): string {
+  return new Date(Date.now() - READ_RETENTION_DAYS * 86_400_000).toISOString()
+}
+
+/**
+ * Done / Undo for bell items. `dismissed` hides them from the bell; Undo
+ * restores them. Only the viewer's own rows within the current scope change.
+ */
+export async function setNotificationsDismissed(
+  recipientIds: readonly string[],
+  dismissed: boolean,
+  requestedScope?: NotificationCenterScope
+): Promise<NotificationActionResult> {
+  try {
+    if (
+      !Array.isArray(recipientIds) ||
+      recipientIds.length === 0 ||
+      recipientIds.length > 100 ||
+      recipientIds.some((id) => typeof id !== "string")
+    ) {
+      return { success: false, error: "Choose up to 100 notifications." }
+    }
+    const user = await requireAuth()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const scope = await resolveNotificationCenterScope(db, user, requestedScope)
+    const now = new Date().toISOString()
+    const scopedEventIds = db
+      .select({ id: notificationEvents.id })
+      .from(notificationEvents)
+      .where(notificationEventScopeCondition(scope))
+    for (let start = 0; start < recipientIds.length; start += 50) {
+      await db
+        .update(notificationRecipients)
+        .set(
+          dismissed
+            ? { dismissedAt: now, readAt: now }
+            : { dismissedAt: null }
+        )
+        .where(
+          and(
+            inArray(notificationRecipients.id, [...recipientIds.slice(start, start + 50)]),
+            eq(notificationRecipients.userId, user.id),
+            inArray(notificationRecipients.eventId, scopedEventIds)
+          )
+        )
+    }
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update notifications",
+    }
+  }
+}
+
+/** Clear read: hides every read bell item in the current scope. */
+export async function dismissReadNotifications(
+  requestedScope?: NotificationCenterScope
+): Promise<NotificationActionResult> {
+  try {
+    const user = await requireAuth()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const scope = await resolveNotificationCenterScope(db, user, requestedScope)
+    const scopedEventIds = db
+      .select({ id: notificationEvents.id })
+      .from(notificationEvents)
+      .where(notificationEventScopeCondition(scope))
+    await db
+      .update(notificationRecipients)
+      .set({ dismissedAt: new Date().toISOString() })
+      .where(
+        and(
+          eq(notificationRecipients.userId, user.id),
+          isNotNull(notificationRecipients.readAt),
+          isNull(notificationRecipients.dismissedAt),
+          inArray(notificationRecipients.eventId, scopedEventIds)
+        )
+      )
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to clear notifications",
     }
   }
 }
