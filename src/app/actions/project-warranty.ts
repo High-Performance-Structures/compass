@@ -308,7 +308,7 @@ export async function getProjectWarrantyWorkspace(
       status: claim.status,
       claimantUserId: claim.claimantUserId,
       claimantName: claim.claimantName,
-      assignedUserId: claim.assignedUserId,
+      assignedUserId: context.viewerIsInternal ? claim.assignedUserId : null,
       assignedName: claim.assignedName,
       acknowledgedAt: claim.acknowledgedAt,
       scheduledFor: claim.scheduledFor,
