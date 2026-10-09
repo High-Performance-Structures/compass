@@ -1,12 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import Link from "next/link"
-import {
-  IconArrowLeft,
-  IconInbox,
-  IconMailForward,
-  IconMessage,
-} from "@tabler/icons-react"
+import { IconInbox, IconMailForward, IconMessage } from "@tabler/icons-react"
 
 import {
   getStaffMessageAssignees,
@@ -30,6 +24,7 @@ import { TrashInboundSmsButton } from "@/components/goto/trash-inbound-sms-butto
 import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/page-header"
 
 function receivedLabel(value: string): string {
   const parsed = new Date(value)
@@ -51,24 +46,13 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-5 p-4 lg:p-6">
-      <header className="border-b pb-4">
-        <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2">
-          <Link href="/dashboard/projects">
-            <IconArrowLeft className="size-4" />
-            Project Hub
-          </Link>
-        </Button>
-        <div className="flex items-center gap-2">
-          <IconInbox className="size-6 text-muted-foreground" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Inbound activity review
-          </h1>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Route email and text messages that Compass could not assign
-          confidently. The original intake record remains available for audit.
-        </p>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        back={{ href: "/dashboard/projects", label: "Project Hub" }}
+        icon={<IconInbox className="size-6 text-muted-foreground" />}
+        title="Inbound activity review"
+        description="Route email and text messages that Compass could not assign confidently. The original intake record remains available for audit."
+      />
 
       <section className="space-y-3">
         <div className="flex items-center gap-2 border-b pb-2">

@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { projectBrandFor } from "@/lib/project-branding"
 import { budgetPaymentBreakdown } from "@/lib/project-budget-snapshot"
+import { PageHeader } from "@/components/page-header"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -142,23 +143,18 @@ export default async function OwnerBudgetPage({
     >
       <main className="min-h-screen bg-muted/20 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <IconFileDollar className="size-5 text-primary" />
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  Budget / G703
-                </h1>
-              </div>
-              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                Your approved Schedule of Values and current payment progress.
+          <PageHeader
+            className="mb-0 border-b pb-4"
+            icon={<IconFileDollar className="size-5 text-primary" />}
+            title="Budget / G703"
+            description="Your approved Schedule of Values and current payment progress."
+            actions={
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <IconLock className="size-4" />
+                Approved owner financials
               </p>
-            </div>
-            <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <IconLock className="size-4" />
-              Approved owner financials
-            </p>
-          </div>
+            }
+          />
 
           {budget.applications.length > 0 && (
             <section className="mt-5 border bg-background p-4">

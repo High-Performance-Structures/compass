@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/office-alerts"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/page-header"
 
 type AlertQueue = "rfis" | "photos" | "owner-updates"
 
@@ -196,21 +197,20 @@ export default async function OfficeAlertsPage({
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 p-3 sm:p-4 lg:p-5">
-      <header className="border-b pb-4">
-        <div className="flex items-center gap-2">
-          {activeQueue === "rfis" ? (
-            <IconMessageCircleQuestion className="size-5 text-[#9d832c]" />
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        icon={
+          activeQueue === "rfis" ? (
+            <IconMessageCircleQuestion className="size-5 text-brand-nutech-gold" />
           ) : activeQueue === "photos" ? (
-            <IconPhoto className="size-5 text-[#2f5963]" />
+            <IconPhoto className="size-5 text-brand-compass-blue" />
           ) : (
-            <IconClipboardText className="size-5 text-[#3f7d4d]" />
-          )}
-          <h1 className="text-2xl font-semibold tracking-tight">Office alerts</h1>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Review outstanding items across every project you can access.
-        </p>
-      </header>
+            <IconClipboardText className="size-5 text-brand-hps-field" />
+          )
+        }
+        title="Office alerts"
+        description="Review outstanding items across every project you can access."
+      />
 
       <nav className="grid gap-px border bg-border sm:grid-cols-3" aria-label="Office alert queues">
         {tabs.map((tab) => (

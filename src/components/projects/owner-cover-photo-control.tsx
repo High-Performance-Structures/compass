@@ -288,7 +288,7 @@ export function OwnerCoverPhotoControl({
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border bg-[#17231c] text-white shadow-sm">
+    <section className="overflow-hidden rounded-lg border bg-brand-hps-ink text-white shadow-sm">
       <div className="relative min-h-[370px]">
         {coverUrl ? (
           <Image
@@ -312,7 +312,7 @@ export function OwnerCoverPhotoControl({
                   <Button
                     variant="secondary"
                     size="sm"
-                    className="bg-white/90 text-[#17231c] hover:bg-white"
+                    className="bg-white/90 text-brand-hps-ink hover:bg-white"
                   >
                     <IconPhotoEdit className="size-4" />
                     Change cover
@@ -424,7 +424,7 @@ export function OwnerCoverPhotoControl({
 
           <div className="flex flex-col gap-6">
             <div className="max-w-3xl">
-              <Badge className="bg-white/90 text-[#17231c] hover:bg-white">
+              <Badge className="bg-white/90 text-brand-hps-ink hover:bg-white">
                 {workspaceLabel}
               </Badge>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">
