@@ -14,6 +14,8 @@ import {
 
 import type { ProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { ProjectAudienceDashboardPhoto } from "@/components/projects/project-audience-dashboard-photo"
+import { DashboardCountsStrip, type DashboardCount } from "@/components/dashboard/dashboard-counts-strip"
+import { audienceQuickLinks } from "@/lib/project-audience-links"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
@@ -100,96 +102,48 @@ export function ProjectAudienceDashboardView({
         : []
     })
     .slice(0, 6)
-  const quickLinks: readonly {
-    readonly label: string
-    readonly section: ProjectAudienceWorkspaceSection
-    readonly icon: React.ReactElement
-  }[] = [
-    {
-      label: owner ? "Selections & Decisions" : "Approved selections",
-      section: "selections",
-      icon: <IconFileText className="size-4" />,
-    },
-    ...(owner
-      ? ([
-          {
-            label: "Budget / G703",
-            section: "budget",
-            icon: <IconFileDollar className="size-4" />,
-          },
-          {
-            label: "Owner updates",
-            section: "updates",
-            icon: <IconFileText className="size-4" />,
-          },
-        ] satisfies readonly {
-          readonly label: string
-          readonly section: ProjectAudienceWorkspaceSection
-          readonly icon: React.ReactElement
-        }[])
-      : ([
-          {
-            label: "Respond to RFQs",
-            section: "rfqs",
-            icon: <IconFileDollar className="size-4" />,
-          },
-          {
-            label: "Commitments",
-            section: "commitments",
-            icon: <IconFileText className="size-4" />,
-          },
-          {
-            label: "RFIs & answers",
-            section: "rfis",
-            icon: <IconFileText className="size-4" />,
-          },
-        ] satisfies readonly {
-          readonly label: string
-          readonly section: ProjectAudienceWorkspaceSection
-          readonly icon: React.ReactElement
-        }[])),
-    {
-      label: "Change requests",
-      section: "change-orders",
-      icon: <IconFileText className="size-4" />,
-    },
-    {
-      label: "Project documents",
-      section: "documents",
-      icon: <IconFolder className="size-4" />,
-    },
-    {
-      label: "Project photos",
-      section: "photos",
-      icon: <IconPhoto className="size-4" />,
-    },
-    ...(owner && data.project.warrantyEnabled
-      ? ([
-          {
-            label: "Warranty requests",
-            section: "warranty",
-            icon: <IconShieldCheck className="size-4" />,
-          },
-        ] satisfies readonly {
-          readonly label: string
-          readonly section: ProjectAudienceWorkspaceSection
-          readonly icon: React.ReactElement
-        }[])
-      : []),
-  ]
+  // Up to four workspace alerts, shown like the office dashboard's counts.
+  const counts: readonly DashboardCount[] = model.alerts.slice(0, 4).map((alert) => ({
+    label: alert.title,
+    value: alert.count,
+    href: alert.href,
+    urgent: false,
+  }))
+  // Same permitted sections as the map panel (lib/project-audience-links).
+  const QUICK_LINK_ICONS: Partial<Record<ProjectAudienceWorkspaceSection, React.ReactElement>> = {
+    budget: <IconFileDollar className="size-4" />,
+    rfqs: <IconFileDollar className="size-4" />,
+    documents: <IconFolder className="size-4" />,
+    photos: <IconPhoto className="size-4" />,
+    warranty: <IconShieldCheck className="size-4" />,
+  }
+  const quickLinks = audienceQuickLinks({ owner, warrantyEnabled: data.project.warrantyEnabled }).map((link) => ({
+    ...link,
+    icon: QUICK_LINK_ICONS[link.section] ?? <IconFileText className="size-4" />,
+  }))
   return (
     <main
       className="min-h-screen bg-background"
       aria-label={owner ? "Owner dashboard" : "Partner dashboard"}
     >
       <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
-          <div>
-            <h2 className="text-sm font-semibold">Your project launchpad</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {owner
-                ? "Your home, your team, and what comes next"
-                : "Your scope, your schedule, and your project team"}
+        {/* Same anatomy as the office dashboard: greeting, counts, map, then work. */}
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-mono text-xs uppercase tracking-[0.14em] text-primary">
+              {new Intl.DateTimeFormat("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                timeZone: "UTC",
+              }).format(new Date(`${today}T12:00:00Z`))}
+            </p>
+            <h1 className="mt-2 font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
+              {greeting}, <span className="italic text-primary">{firstName}</span>
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {data.project.projectNumber ? `${data.project.projectNumber} · ` : ""}
+              {data.project.name}
             </p>
           </div>
           {!owner && (
@@ -201,84 +155,15 @@ export function ProjectAudienceDashboardView({
           )}
         </div>
 
+        {counts.length > 0 ? (
+          <div className="mt-5">
+            <DashboardCountsStrip counts={counts} />
+          </div>
+        ) : null}
+
         {mapSection}
 
-        <div className="-mt-px">
-          <ProjectCommunicationInstructions
-            projectId={data.project.id}
-            projectNumber={data.project.projectNumber}
-            textPhoneNumber={data.project.textPhoneNumber}
-            compact
-          />
-        </div>
-
-        <section
-          className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b py-4 text-xs"
-          aria-label={owner ? "Latest owner update" : "Project activity"}
-        >
-          <span className="font-medium uppercase tracking-wide text-primary">
-            {owner ? "Latest update" : "Project activity"}
-          </span>
-          <p className="min-w-0 flex-1 basis-48">
-            {owner
-              ? (latestUpdate?.title ??
-                "Your project team’s published updates will appear here.")
-              : (recentAnswer?.title ??
-                "Keep questions, quotes, and commitments moving with your project team.")}
-          </p>
-          <Link
-            className="text-primary hover:underline"
-            href={
-              owner && latestUpdate
-                ? ownerUpdatePreviewHref(data.project.id, latestUpdate.id)
-                : (recentAnswer?.href ??
-                  href(owner ? "updates" : "conversations"))
-            }
-          >
-            {owner
-              ? "View updates"
-              : recentAnswer
-                ? "Read response"
-                : "Conversations"}{" "}
-            →
-          </Link>
-        </section>
-
-        <div className="grid gap-5 border-b py-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.42fr)]">
-          <section
-            className="grid min-h-64 grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
-            aria-label="Project greeting"
-          >
-            <ProjectAudienceDashboardPhoto
-              key={`${data.project.id}:${route}:${photos.map((photo) => `${photo.id}:${photo.src}`).join("|")}`}
-              photos={photos}
-            />
-            <div className="flex min-w-0 flex-col justify-center py-6 pl-2 pr-1 sm:pl-4">
-              <p className="text-xs text-primary">
-                {new Intl.DateTimeFormat("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  timeZone: "UTC",
-                }).format(new Date(`${today}T12:00:00Z`))}
-              </p>
-              <h1 className="mt-3 font-serif text-2xl font-semibold tracking-tight sm:text-3xl">
-                {greeting}, <span className="block italic">{firstName}</span>
-              </h1>
-              <span className="my-4 h-px w-7 bg-primary" />
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Here is what needs your attention{" "}
-                {owner ? "on your project" : "for your work"} today.
-              </p>
-              <Link
-                href={href("photos")}
-                className="mt-4 text-xs text-primary hover:underline"
-              >
-                View project photos →
-              </Link>
-            </div>
-          </section>
-
+        <div className="border-y">
           <section className="min-w-0 py-4" aria-label="Five-day horizon">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -522,19 +407,6 @@ export function ProjectAudienceDashboardView({
             aria-label="Workspace shortcuts"
           >
             <section>
-              <h2 className="mb-3 text-sm font-semibold">Workspace alerts</h2>
-              {model.alerts.map((alert) => (
-                <Link
-                  key={alert.title}
-                  href={alert.href}
-                  className="flex justify-between gap-3 border-t py-3 text-xs hover:text-primary"
-                >
-                  <span>{alert.title}</span>
-                  <span className="text-primary tabular-nums">
-                    {alert.count} ›
-                  </span>
-                </Link>
-              ))}
               {(financials.changeOrders === null ||
                 (owner && financials.applications === null)) && (
                 <p className="py-3 text-xs text-muted-foreground" role="status">
@@ -579,6 +451,61 @@ export function ProjectAudienceDashboardView({
             </section>
           </aside>
         </div>
+        <section aria-label="From the site" className="grid gap-5 border-t py-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+          <section
+            className="min-h-56"
+            aria-label="Project photos"
+          >
+            <ProjectAudienceDashboardPhoto
+              key={`${data.project.id}:${route}:${photos.map((photo) => `${photo.id}:${photo.src}`).join("|")}`}
+              photos={photos}
+            />
+          </section>
+          <div className="flex min-w-0 flex-col">
+        <section
+          className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b pb-4 text-xs"
+          aria-label={owner ? "Latest owner update" : "Project activity"}
+        >
+          <span className="font-medium uppercase tracking-wide text-primary">
+            {owner ? "Latest update" : "Project activity"}
+          </span>
+          <p className="min-w-0 flex-1 basis-48">
+            {owner
+              ? (latestUpdate?.title ??
+                "Your project team’s published updates will appear here.")
+              : (recentAnswer?.title ??
+                "Keep questions, quotes, and commitments moving with your project team.")}
+          </p>
+          <Link
+            className="text-primary hover:underline"
+            href={
+              owner && latestUpdate
+                ? ownerUpdatePreviewHref(data.project.id, latestUpdate.id)
+                : (recentAnswer?.href ??
+                  href(owner ? "updates" : "conversations"))
+            }
+          >
+            {owner
+              ? "View updates"
+              : recentAnswer
+                ? "Read response"
+                : "Conversations"}{" "}
+            →
+          </Link>
+        </section>
+
+        <div className="-mt-px">
+          <ProjectCommunicationInstructions
+            projectId={data.project.id}
+            projectNumber={data.project.projectNumber}
+            textPhoneNumber={data.project.textPhoneNumber}
+            compact
+          />
+        </div>
+
+          </div>
+        </section>
+
         <footer className="border-t pt-4">
           <div className="flex flex-wrap justify-between gap-3 text-xs text-muted-foreground">
             <span>
