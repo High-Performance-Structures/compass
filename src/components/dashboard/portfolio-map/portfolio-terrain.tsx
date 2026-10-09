@@ -8,7 +8,13 @@ import {
   type SceneHighlight,
   type SceneLabel,
 } from "@/components/dashboard/portfolio-map/portfolio-scene"
-import { PHASE_COLOR_TOKEN, phaseColor, themeColorHex } from "@/components/dashboard/portfolio-map/portfolio-style"
+import {
+  MESSAGE_KIND_COLOR_TOKEN,
+  PHASE_COLOR_TOKEN,
+  phaseColor,
+  themeColorHex,
+} from "@/components/dashboard/portfolio-map/portfolio-style"
+import type { MessageStacks } from "@/lib/notifications/message-stacks"
 import {
   LAYER_COLOR_TOKEN,
   PortfolioLayerControl,
@@ -25,6 +31,8 @@ type PortfolioTerrainProps = {
   readonly onUnavailable: () => void
   /** Open zoomed to the selected job instead of the statewide view. */
   readonly focusSelectedOnLoad?: boolean
+  /** Messages layer: unread item kinds per job id, or null when the layer is off. */
+  readonly messageStacks?: MessageStacks | null
   /** Zone and mountain layers; omitted where travel charges do not apply (owner and vendor maps). */
   readonly layers?: {
     readonly state: PortfolioLayerState
@@ -56,6 +64,7 @@ export default function PortfolioTerrain({
   onUnavailable,
   focusSelectedOnLoad = false,
   layers,
+  messageStacks = null,
 }: PortfolioTerrainProps): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -116,6 +125,16 @@ export default function PortfolioTerrain({
   React.useEffect(() => {
     sceneRef.current?.setHighlight(highlight)
   }, [highlight])
+
+  React.useEffect(() => {
+    sceneRef.current?.setMessageStacks(messageStacks, {
+      message: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.message, 0.25),
+      mail: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.mail, 0.3),
+      rfi: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.rfi, 0.15),
+      schedule: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.schedule, 0.3),
+      other: themeColorHex(MESSAGE_KIND_COLOR_TOKEN.other, 0.3),
+    })
+  }, [messageStacks, ready])
 
   const layerState = layers?.state
   const layerSettings = layers?.settings

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { PortfolioJobMessageList, type PortfolioJobMessages } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
 import { useRouter } from "next/navigation"
 import * as React from "react"
 import { EyeOff, X } from "lucide-react"
@@ -44,6 +45,8 @@ type PortfolioPanelProps = {
   readonly onSelectJob: (jobId: string) => void
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
   readonly onClear: () => void
+  /** Messages layer on: the selected job's unread items; null otherwise. */
+  readonly jobMessages?: PortfolioJobMessages | null
 }
 
 const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
@@ -153,11 +156,13 @@ function JobDetail({
   travel,
   homeLabel,
   onClear,
+  messages,
 }: {
   readonly job: PortfolioMapJob
   readonly travel: PortfolioJobTravel | null
   readonly homeLabel: string
   readonly onClear: () => void
+  readonly messages: PortfolioJobMessages | null
 }): React.ReactElement {
   const visibility = useMapVisibility()
   const phaseIndex = PORTFOLIO_PHASES.findIndex((phase) => phase.id === job.phase)
@@ -174,6 +179,8 @@ function JobDetail({
         <CloseButton onClear={onClear} />
       </div>
       <HealthTag job={job} />
+      {/* With the Messages layer on, the job's unread items come first. */}
+      {messages ? <PortfolioJobMessageList messages={messages} /> : null}
       <div className="flex flex-col gap-2">
         <span className={LABEL}>PIPELINE</span>
         <ol className="grid grid-cols-6 gap-1" aria-label={`Phase: ${phaseLabel}`}>
@@ -377,6 +384,7 @@ export function PortfolioPanel({
   onSelectJob,
   onSelectPhase,
   onClear,
+  jobMessages = null,
 }: PortfolioPanelProps): React.ReactElement {
   if (selection.kind === "job") {
     const job = jobs.find((item) => item.id === selection.jobId)
@@ -387,6 +395,7 @@ export function PortfolioPanel({
           travel={travel?.byJobId[job.id] ?? null}
           homeLabel={travel?.settings.homeBase.label ?? ""}
           onClear={onClear}
+          messages={jobMessages}
         />
       )
     }

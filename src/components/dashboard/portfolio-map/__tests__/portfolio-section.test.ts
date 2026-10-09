@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
 
 vi.mock("next/dynamic", () => ({ default: () => () => null }))
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
 vi.mock("@/app/actions/project-profile", () => ({ updateProjectMapVisibility: vi.fn(async () => ({ success: true })) }))
 vi.mock("@/app/actions/portfolio-map", () => ({
   listProjectsToAddToMap: vi.fn(async () => [
