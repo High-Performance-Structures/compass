@@ -1,17 +1,19 @@
 import { resolveProjectRouteId } from "@/lib/project-route-id"
-import { and, eq } from "drizzle-orm"
+import { and, eq, or } from "drizzle-orm"
 import { type NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers, projectVideos } from "@/db/schema"
+import { projectVideos } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
+import type { ProjectAudience } from "@/lib/project-audience-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
-import { assertProjectAccess } from "@/lib/project-access"
+  assertProjectAccess,
+  getActiveOrganization,
+  getProjectAudienceAccessRecord,
+} from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 function audienceValue(value: string | null): ProjectAudience | null {
@@ -44,28 +46,36 @@ export async function GET(
     )
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const project = await assertProjectAccess(db, user, projectId)
-    if (!project.organizationId) {
+    const organization = await getActiveOrganization(db, user)
+    const internal =
+      (organization?.type === "internal" || organization?.type === "demo") &&
+      isInternalStaffRole(user.role)
+    if (!internal && (!requestedAudience || organization?.type !== "client")) {
       return new Response("Video not found", { status: 404 })
     }
-    const internal = isInternalStaffRole(user.role)
-    if (!internal) {
-      if (!requestedAudience) {
-        return new Response("Video not found", { status: 404 })
-      }
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
+    const project = internal
+      ? await assertProjectAccess(db, user, projectId)
+      : requestedAudience === null
+        ? null
+        : await getProjectAudienceAccessRecord(
+            db,
+            user,
+            projectId,
+            requestedAudience
           )
-        )
-        .limit(1)
-      if (!canUseProjectAudience(membership?.role ?? null, requestedAudience)) {
-        return new Response("Video not found", { status: 404 })
-      }
+    if (!project?.organizationId) {
+      return new Response("Video not found", { status: 404 })
+    }
+    if (!internal) {
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: project.organizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: videoId,
+        resourceType: "video",
+      })
+      if (!granted) return new Response("Video not found", { status: 404 })
     }
     const [video] = await db
       .select({
@@ -79,22 +89,30 @@ export async function GET(
       })
       .from(projectVideos)
       .where(
-        and(
-          eq(projectVideos.id, videoId),
-          eq(projectVideos.projectId, projectId)
-        )
+        internal || requestedAudience === null
+          ? and(
+              eq(projectVideos.id, videoId),
+              eq(projectVideos.projectId, projectId)
+            )
+          : and(
+              eq(projectVideos.id, videoId),
+              eq(projectVideos.projectId, projectId),
+              eq(projectVideos.publishStatus, "published"),
+              or(
+                eq(projectVideos.compassAudience, requestedAudience),
+                eq(projectVideos.compassAudience, "public")
+              )
+            )
       )
       .limit(1)
-    const allowedExternally =
-      video?.publishStatus === "published" &&
-      (video.audience === requestedAudience || video.audience === "public")
-    if (!video || (!internal && !allowedExternally)) {
+    if (!video) {
       return new Response("Video not found", { status: 404 })
     }
     // YouTube's published copy is transcoded for reliable browser audio/video.
     // Keep this authenticated Compass URL stable so existing Daily Log links
     // also benefit from the compatible playback copy.
     if (
+      internal &&
       video.publishStatus === "published" &&
       video.youtubeUrl &&
       video.audience !== "staff" &&

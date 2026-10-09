@@ -105,6 +105,8 @@ export function OwnerUpdateDocument({
               projectId={document.project.id}
               updateId={document.update.id}
               status={document.update.status}
+              revision={document.update.revision}
+              updatedAt={document.update.updatedAt}
               emailSubject={emailSubject}
               emailPreview={emailPreview}
               updatePath={updateUrl}

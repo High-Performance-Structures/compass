@@ -2,7 +2,6 @@ import { and, eq, isNotNull } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers } from "@/db/schema"
 import { projectDocuments } from "@/db/schema-documents"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -11,8 +10,10 @@ import {
   getExportMimeType,
   isGoogleNativeFile,
 } from "@/lib/google/mapper"
-import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
@@ -32,32 +33,23 @@ export async function GET(
     const user = await getCurrentUser()
     if (!user) return new Response("Unauthorized", { status: 401 })
     const { id: rawProjectId, documentId } = await params
-    const projectId = await resolveProjectRouteId(rawProjectId)
-    if (!projectId) return new Response("Document not found", { status: 404 })
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await assertProjectAccess(db, user, projectId)
-
-    const viewerIsInternal = isInternalStaffRole(user.role)
+    const organization = await getActiveOrganization(db, user)
+    const viewerIsInternal =
+      (organization?.type === "internal" || organization?.type === "demo") &&
+      isInternalStaffRole(user.role)
+    if (!organization) {
+      return new Response("Document not found", { status: 404 })
+    }
     if (!viewerIsInternal) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
-      const role = membership?.role ?? null
-      if (
-        !canUseProjectAudience(role, "owner") &&
-        !canUseProjectAudience(role, "sub_vendor")
-      ) {
-        return new Response("Document not found", { status: 404 })
-      }
+      return new Response("Document not found", { status: 404 })
+    }
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Document not found", { status: 404 })
+    const projectAccess = await assertProjectAccess(db, user, projectId)
+    if (!projectAccess.organizationId) {
+      return new Response("Document not found", { status: 404 })
     }
 
     const document = await db
@@ -91,6 +83,7 @@ export async function GET(
     const drive = await getProjectDocumentDriveContext({
       db,
       env,
+      organizationId: projectAccess.organizationId,
     })
     let response: Response
     let contentType = document.sourceMimeType

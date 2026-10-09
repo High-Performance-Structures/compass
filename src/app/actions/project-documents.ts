@@ -168,7 +168,11 @@ async function projectDriveClient(
   readonly googleEmail: string
   readonly sharedDriveId: string | null
 }> {
-  return getProjectDocumentDriveContext({ db: access.db, env: access.env })
+  return getProjectDocumentDriveContext({
+    db: access.db,
+    env: access.env,
+    organizationId: access.organizationId,
+  })
 }
 
 async function listFolderFiles(

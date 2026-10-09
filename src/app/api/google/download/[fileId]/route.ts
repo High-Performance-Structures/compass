@@ -19,7 +19,10 @@ import {
   getExportExtension,
 } from "@/lib/google/mapper"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import { assertProjectAccess } from "@/lib/project-access"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 
 export async function GET(
@@ -31,9 +34,17 @@ export async function GET(
     if (!user) {
       return new Response("Unauthorized", { status: 401 })
     }
+    const { env } = await getCloudflareContext()
+    const envRecord = env as unknown as Record<string, string>
+    const db = getDb(env.DB)
+    const organization = await getActiveOrganization(db, user)
     // External users must use project-specific download routes that verify
-    // membership and record visibility before resolving a storage ID.
+    // membership and record visibility before resolving a storage ID. The
+    // organization row is authoritative; the auth DTO can be stale.
     if (
+      !organization ||
+      organization.type !== "internal" ||
+      !user.organizationId ||
       !isInternalStaffRole(user.role) ||
       !can(user, "document", "read")
     ) {
@@ -44,14 +55,12 @@ export async function GET(
     const projectId = request.nextUrl.searchParams.get("projectId")
     let allowedParentId: string | null = null
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
 
     const auth = await db
       .select()
       .from(googleAuth)
+      .where(eq(googleAuth.organizationId, user.organizationId))
       .limit(1)
       .then(rows => rows[0] ?? null)
     if (!auth) {

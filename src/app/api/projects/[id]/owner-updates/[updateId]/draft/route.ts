@@ -3,7 +3,12 @@ import {
   publishOwnerProjectUpdate,
   updateOwnerProjectUpdateDraft,
 } from "@/app/actions/project-field"
-import { ownerUpdateDraftEditSchema } from "@/lib/owner-updates/draft-recovery"
+import { requireAuth } from "@/lib/auth"
+import {
+  assertOwnerUpdateProjectAccess,
+  assertOwnerUpdateRouteAccess,
+} from "@/lib/owner-updates/access"
+import { parseOwnerUpdateDraftWrite } from "@/lib/owner-updates/draft-recovery"
 import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
 export async function PUT(
@@ -17,6 +22,32 @@ export async function PUT(
     }>
   }
 ): Promise<Response> {
+  let user: Awaited<ReturnType<typeof requireAuth>>
+  try {
+    user = await requireAuth()
+  } catch {
+    return Response.json(
+      { success: false, error: "Authentication is required." },
+      { status: 401 }
+    )
+  }
+
+  let db: Awaited<ReturnType<typeof assertOwnerUpdateRouteAccess>>
+  try {
+    db = await assertOwnerUpdateRouteAccess(user)
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Permission denied: internal staff access is required",
+      },
+      { status: 403 }
+    )
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -27,7 +58,7 @@ export async function PUT(
     )
   }
 
-  const parsed = ownerUpdateDraftEditSchema.safeParse(body)
+  const parsed = parseOwnerUpdateDraftWrite(body)
   if (!parsed.success) {
     return Response.json(
       { success: false, error: "The draft contains invalid data." },
@@ -38,6 +69,17 @@ export async function PUT(
   const { id: rawProjectId, updateId } = await params
   const id = await resolveProjectRouteId(rawProjectId)
   if (!id) return Response.json({ success: false, error: "Project not found." }, { status: 404 })
+  try {
+    await assertOwnerUpdateProjectAccess(db, user, id)
+  } catch (error) {
+    return Response.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Project not found.",
+      },
+      { status: 403 }
+    )
+  }
   const intent =
     new URL(request.url).searchParams.get("intent") === "publish"
       ? "publish"
@@ -50,7 +92,7 @@ export async function PUT(
         updateId,
         parsed.data
       ),
-    publish: () => publishOwnerProjectUpdate(id, updateId),
+    publish: (version) => publishOwnerProjectUpdate(id, updateId, version),
   })
 
   return Response.json(result, { status: result.success ? 200 : 400 })

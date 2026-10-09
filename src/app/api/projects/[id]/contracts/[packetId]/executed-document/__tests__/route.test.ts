@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   resolveProjectRouteId: vi.fn(),
   assertProjectAccess: vi.fn(),
+  getActiveOrganization: vi.fn(),
   getProjectDocumentDriveContext: vi.fn(),
   isDriveItemWithinProjectFolder: vi.fn(),
   isGoogleNativeFile: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/lib/project-route-id", () => ({
 }))
 vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
+  getActiveOrganization: mocks.getActiveOrganization,
 }))
 vi.mock("@/lib/google/project-document-drive", () => ({
   getProjectDocumentDriveContext: mocks.getProjectDocumentDriveContext,
@@ -95,6 +97,9 @@ describe("GET executed contract document", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuth.mockResolvedValue(owner)
+    mocks.getActiveOrganization.mockImplementation(async (_db, user) =>
+      user.role === "admin" ? { id: "org-internal", type: "internal" } : null
+    )
     mocks.resolveProjectRouteId.mockResolvedValue("project-1")
     mocks.getCloudflareContext.mockResolvedValue({
       env: {
@@ -103,7 +108,10 @@ describe("GET executed contract document", () => {
         FOXIT_ESIGN_CLIENT_SECRET: "client-secret",
       },
     })
-    mocks.assertProjectAccess.mockResolvedValue({ id: "project-1" })
+    mocks.assertProjectAccess.mockResolvedValue({
+      id: "project-1",
+      organizationId: "org-client",
+    })
     mocks.getProjectDocumentDriveContext.mockResolvedValue({
       client: {
         getFile: mocks.getFile,
@@ -129,27 +137,16 @@ describe("GET executed contract document", () => {
     )
   })
 
-  it.each(["client", "owner"])(
-    "serves a project Drive contract to an authorized %s",
-    async (membershipRole) => {
-      configureDb([
-        { role: membershipRole },
-        executedDrivePacket,
-        { folderId: "project-folder-1" },
-      ])
+  it("denies an external project member before loading the contract", async () => {
+    configureDb([])
 
-      const response = await requestDocument()
+    const response = await requestDocument()
 
-      expect(response.status).toBe(200)
-      expect(await response.text()).toBe("contract-bytes")
-      expect(mocks.isDriveItemWithinProjectFolder).toHaveBeenCalledWith(
-        expect.objectContaining({
-          itemId: "drive-contract-1",
-          projectFolderId: "project-folder-1",
-        })
-      )
-    }
-  )
+    expect(response.status).toBe(404)
+    expect(mocks.resolveProjectRouteId).not.toHaveBeenCalled()
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.getProjectDocumentDriveContext).not.toHaveBeenCalled()
+  })
 
   it.each(["subcontractor", "supplier", "member"])(
     "denies a %s before loading the contract",
@@ -197,20 +194,12 @@ describe("GET executed contract document", () => {
     expect(await response.text()).toBe("foxit-contract")
   })
 
-  it("redirects an authorized owner to another secure saved location", async () => {
-    configureDb([
-      { role: "client" },
-      {
-        ...executedDrivePacket,
-        signaturePackageUrl: "https://documents.example.com/executed.pdf",
-      },
-    ])
+  it("denies an external owner before redirecting to another saved location", async () => {
+    configureDb([])
 
     const response = await requestDocument()
 
-    expect(response.status).toBe(302)
-    expect(response.headers.get("location")).toBe(
-      "https://documents.example.com/executed.pdf"
-    )
+    expect(response.status).toBe(404)
+    expect(mocks.getProjectDocumentDriveContext).not.toHaveBeenCalled()
   })
 })

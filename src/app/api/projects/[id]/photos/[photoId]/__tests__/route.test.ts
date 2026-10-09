@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   resolveProjectRouteId: vi.fn(),
   assertProjectAccess: vi.fn(),
+  getProjectAudienceAccessRecord: vi.fn(),
+  hasActiveExternalProjectResourceGrant: vi.fn(),
+  getActiveOrganization: vi.fn(),
   decrypt: vi.fn(),
   parseServiceAccountKey: vi.fn(),
   downloadFile: vi.fn(),
@@ -24,6 +27,12 @@ vi.mock("@/lib/project-route-id", () => ({
 }))
 vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
+  getProjectAudienceAccessRecord: mocks.getProjectAudienceAccessRecord,
+  getActiveOrganization: mocks.getActiveOrganization,
+}))
+vi.mock("@/lib/project-external-resource-access", () => ({
+  hasActiveExternalProjectResourceGrant:
+    mocks.hasActiveExternalProjectResourceGrant,
 }))
 vi.mock("@/lib/crypto", () => ({ decrypt: mocks.decrypt }))
 vi.mock("@/lib/google/config", () => ({
@@ -47,6 +56,8 @@ import { GET } from "../route"
 const baseUser = {
   id: "viewer-1",
   email: "viewer@example.com",
+  isActive: true,
+  organizationType: "internal",
   role: "client",
 } as const
 
@@ -92,11 +103,31 @@ function configureDb({
 }): void {
   mocks.requireAuth.mockResolvedValue({ ...baseUser, role: viewerRole })
   mocks.resolveProjectRouteId.mockResolvedValue(project.id)
+  mocks.getActiveOrganization.mockResolvedValue({
+    id: "org-1",
+    type:
+      viewerRole === "client" ||
+      viewerRole === "subcontractor" ||
+      viewerRole === "supplier"
+        ? "client"
+        : "internal",
+  })
   if (projectAccessError) {
     mocks.assertProjectAccess.mockRejectedValue(projectAccessError)
   } else {
     mocks.assertProjectAccess.mockResolvedValue(project)
   }
+  mocks.getProjectAudienceAccessRecord.mockImplementation(
+    (_db, _user, _projectId, audience: "owner" | "sub_vendor") => {
+      if (projectAccessError || membershipRole === null) return Promise.resolve(null)
+      const allowed =
+        (audience === "owner" && (membershipRole === "client" || membershipRole === "owner")) ||
+        (audience === "sub_vendor" &&
+          (membershipRole === "subcontractor" || membershipRole === "supplier"))
+      return Promise.resolve(allowed ? project : null)
+    }
+  )
+  mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
   mocks.getCloudflareContext.mockResolvedValue({
     env: {
       DB: "db",
@@ -113,13 +144,7 @@ function configureDb({
   mocks.getDb.mockReturnValue({
     select() {
       selectCount += 1
-      if (viewerRole !== "admin" && selectCount === 1) {
-        return query(membershipRole === null ? null : { role: membershipRole })
-      }
-      if (viewerRole !== "admin" && selectCount === 2) {
-        return query(visiblePhoto)
-      }
-      if (viewerRole === "admin" && selectCount === 1) {
+      if (selectCount === 1) {
         return query(visiblePhoto)
       }
       return query({ serviceAccountKeyEncrypted: "encrypted" })
@@ -155,7 +180,22 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).toHaveBeenCalledWith("drive@example.com", "drive-photo-1")
   })
 
-  it("serves an approved owner-visible photo only to an owner member", async () => {
+  it("denies an external role when the authoritative organization is internal", async () => {
+    configureDb({
+      viewerRole: "client",
+      membershipRole: "client",
+      visiblePhoto: photo,
+    })
+    mocks.getActiveOrganization.mockResolvedValue({ id: "org-1", type: "internal" })
+
+    const response = await getPhoto("owner")
+
+    expect(response.status).toBe(404)
+    expect(mocks.getProjectAudienceAccessRecord).not.toHaveBeenCalled()
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it("denies an approved owner-visible photo to a member without an exact resource grant", async () => {
     configureDb({
       viewerRole: "client",
       membershipRole: "client",
@@ -164,11 +204,11 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("owner")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved owner-visible photo to a member with the owner role", async () => {
+  it("denies an approved owner-visible photo to an owner-role member without an exact resource grant", async () => {
     configureDb({
       viewerRole: "client",
       membershipRole: "owner",
@@ -177,11 +217,11 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("owner")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved sub/vendor-visible photo only to a partner member", async () => {
+  it("denies an approved sub/vendor-visible photo to a partner member without an exact resource grant", async () => {
     configureDb({
       viewerRole: "subcontractor",
       membershipRole: "subcontractor",
@@ -190,11 +230,11 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("sub_vendor")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved sub/vendor-visible photo to a member with the supplier role", async () => {
+  it("denies an approved sub/vendor-visible photo to a supplier without an exact resource grant", async () => {
     configureDb({
       viewerRole: "supplier",
       membershipRole: "supplier",
@@ -203,8 +243,8 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("sub_vendor")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -239,14 +279,16 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("owner")
 
-    // Access-helper rejection must have the same not-found semantics as the
-    // route's other external denial paths, without touching photo or Drive.
+    // Exact audience access rejection must have the same not-found semantics
+    // as the route's other external denial paths, without touching photo or Drive.
     expect(response.status).toBe(404)
-    expect(mocks.assertProjectAccess).toHaveBeenCalledWith(
+    expect(mocks.getProjectAudienceAccessRecord).toHaveBeenCalledWith(
       expect.objectContaining({ select: expect.any(Function) }),
       expect.objectContaining({ id: "viewer-1", role: "client" }),
-      resolvedProjectId
+      resolvedProjectId,
+      "owner"
     )
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 })

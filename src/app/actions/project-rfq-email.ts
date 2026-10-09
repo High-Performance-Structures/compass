@@ -153,7 +153,11 @@ export async function sendProjectRfqEmail(
     if (!access.project.googleDriveFolderId) {
       return { success: false, error: "This project needs a Drive folder before its RFQ files can be shared." }
     }
-    const drive = await getProjectDocumentDriveContext({ db: access.db, env: access.env })
+    const drive = await getProjectDocumentDriveContext({
+      db: access.db,
+      env: access.env,
+      organizationId: access.organizationId,
+    })
     const documents: RfqEmailDocument[] = []
     const fileIds: string[] = []
     for (const link of payload.documentLinks) {

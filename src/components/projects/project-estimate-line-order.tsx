@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useId, useState, useTransition, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
 import {
   closestCenter, DndContext, KeyboardSensor, MouseSensor, TouchSensor,
   useSensor, useSensors, type DragEndEvent,
@@ -61,11 +60,14 @@ export function ProjectEstimateLineOrder({ projectId, estimateId, updatedAt, gro
   readonly editable: boolean
   readonly renderItem: (item: ProjectEstimateLineItem) => ReactNode
 }): React.ReactElement {
-  const router = useRouter()
   const contextId = useId()
   const [orderedItems, setOrderedItems] = useState(items)
+  const [currentUpdatedAt, setCurrentUpdatedAt] = useState(updatedAt)
   const [pending, startTransition] = useTransition()
-  useEffect(() => { setOrderedItems(items) }, [items])
+  useEffect(() => {
+    setOrderedItems(items)
+    setCurrentUpdatedAt(updatedAt)
+  }, [items, updatedAt])
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
@@ -73,24 +75,25 @@ export function ProjectEstimateLineOrder({ projectId, estimateId, updatedAt, gro
   )
   function save(next: readonly ProjectEstimateLineItem[]): void {
     if (pending || !editable) return
-    const previousIds = items.map((item) => item.id)
+    const previousItems = orderedItems
+    const previousIds = orderedItems.map((item) => item.id)
     const orderedIds = next.map((item) => item.id)
     if (sameEstimateLineOrder(previousIds, orderedIds)) return
     setOrderedItems(next)
     startTransition(async () => {
       try {
         const result = await reorderProjectEstimateLines(projectId, estimateId, {
-          group, expectedUpdatedAt: updatedAt, previousIds, orderedIds,
+          group, expectedUpdatedAt: currentUpdatedAt, previousIds, orderedIds,
         })
         if (!result.success) {
-          setOrderedItems(items)
+          setOrderedItems(previousItems)
           toast.error(result.error)
           return
         }
+        setCurrentUpdatedAt(result.updatedAt)
         toast.success("Item order saved")
-        router.refresh()
       } catch {
-        setOrderedItems(items)
+        setOrderedItems(previousItems)
         toast.error("Unable to save item order. Try again.")
       }
     })

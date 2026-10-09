@@ -115,6 +115,8 @@ const stockColorExemptPrefixes = ["src/components/ai/", "src/app/print/"]
 const stockColorExemptFiles = new Set([
   "src/components/files/file-icon.tsx",
   "src/components/voice/realtimekit-meeting-dialog.tsx",
+  // The always-dark RealtimeKit meeting window intentionally owns its
+  // provider-specific palette rather than using the app theme tokens.
   "src/components/voice/realtimekit-meeting-window.tsx",
 ])
 

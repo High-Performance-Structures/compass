@@ -19,5 +19,5 @@ export default async function ConversationMeetingPage({
     )
   }
   const { channelId } = await params
-  return <RealtimeKitMeetingWindow channelId={channelId} userId={user.id} />
+  return <RealtimeKitMeetingWindow channelId={channelId} />
 }

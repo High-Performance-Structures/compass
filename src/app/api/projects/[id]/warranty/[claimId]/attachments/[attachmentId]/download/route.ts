@@ -3,15 +3,18 @@ import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers } from "@/db/schema"
+
 import {
   projectWarrantyClaimAttachments,
   projectWarrantyClaims,
 } from "@/db/schema-warranty"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
+
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { getWarrantyDriveContext } from "@/lib/warranty/google-drive"
 import { isOwnerVisibleWarrantyClaim } from "@/lib/warranty/status"
@@ -32,28 +35,21 @@ export async function GET(
     const user = await getCurrentUser()
     if (!user) return new Response("Unauthorized", { status: 401 })
     const { id: rawProjectId, claimId, attachmentId } = await params
-    const projectId = await resolveProjectRouteId(rawProjectId)
-    if (!projectId) return new Response("Attachment not found", { status: 404 })
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    await assertProjectAccess(db, user, projectId)
-    const viewerIsInternal = isInternalStaffRole(user.role)
-    if (!viewerIsInternal) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
-      if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
-        return new Response("File not found", { status: 404 })
-      }
+    const organization = await getActiveOrganization(db, user)
+    const viewerIsInternal =
+      (organization?.type === "internal" || organization?.type === "demo") &&
+      isInternalStaffRole(user.role)
+    if (!organization) {
+      return new Response("File not found", { status: 404 })
     }
+    if (!viewerIsInternal) {
+      return new Response("File not found", { status: 404 })
+    }
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Attachment not found", { status: 404 })
+    await assertProjectAccess(db, user, projectId)
     const row = await db
       .select({
         fileName: projectWarrantyClaimAttachments.fileName,

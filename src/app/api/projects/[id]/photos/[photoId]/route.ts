@@ -3,10 +3,7 @@ import { and, eq, or } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import {
-  dailyLogPhotos,
-  projectMembers,
-} from "@/db/schema"
+import { dailyLogPhotos } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
@@ -21,11 +18,13 @@ import {
   getExportMimeType,
   isGoogleNativeFile,
 } from "@/lib/google/mapper"
+import type { ProjectAudience } from "@/lib/project-audience-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
-import { assertProjectAccess } from "@/lib/project-access"
+  assertProjectAccess,
+  getActiveOrganization,
+  getProjectAudienceAccessRecord,
+} from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
@@ -76,29 +75,33 @@ export async function GET(
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const project = await assertProjectAccess(db, user, projectId)
+    const organization = await getActiveOrganization(db, user)
+    const viewerIsInternal =
+      (organization?.type === "internal" || organization?.type === "demo") &&
+      isInternalStaffRole(user.role)
+    if (!viewerIsInternal && (audience === null || organization?.type !== "client")) {
+      return new Response("Photo not found", { status: 404 })
+    }
+    const project = viewerIsInternal
+      ? await assertProjectAccess(db, user, projectId)
+      : audience === null
+        ? null
+        : await getProjectAudienceAccessRecord(db, user, projectId, audience)
+    if (!project) return new Response("Photo not found", { status: 404 })
     if (!project.organizationId) {
       return new Response("Photo not found", { status: 404 })
     }
 
-    const viewerIsInternal = isInternalStaffRole(user.role)
     if (!viewerIsInternal) {
-      if (audience === null) {
-        return new Response("Photo not found", { status: 404 })
-      }
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-      if (!canUseProjectAudience(membership?.role ?? null, audience)) {
-        return new Response("Photo not found", { status: 404 })
-      }
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: project.organizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: photoId,
+        resourceType: "photo",
+      })
+      if (!granted) return new Response("Photo not found", { status: 404 })
     }
 
     const visibility =
@@ -111,6 +114,7 @@ export async function GET(
             eq(dailyLogPhotos.subVendorVisible, true),
             eq(dailyLogPhotos.publicShareable, true)
           )
+
     const [photo] = await db
       .select({
         driveFileId: dailyLogPhotos.driveFileId,

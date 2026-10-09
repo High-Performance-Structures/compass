@@ -1574,6 +1574,7 @@ export const ownerProjectUpdates = sqliteTable("owner_project_updates", {
   recalledBy: text("recalled_by").references(() => users.id, {
     onDelete: "set null",
   }),
+  revision: integer("revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
@@ -2576,6 +2577,48 @@ export const projectMembers = sqliteTable("project_members", {
   index("project_members_project_user_idx").on(table.projectId, table.userId),
 ])
 
+export const projectExternalResourceGrants = sqliteTable(
+  "project_external_resource_grants",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    grantedBy: text("granted_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    grantedAt: text("granted_at").notNull(),
+    revokedBy: text("revoked_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("project_external_resource_grants_active_unique")
+      .on(
+        table.projectId,
+        table.resourceType,
+        table.resourceId,
+        table.recipientUserId
+      )
+      .where(sql`${table.revokedAt} IS NULL`),
+    index("project_external_resource_grants_recipient_idx").on(
+      table.recipientUserId,
+      table.projectId,
+      table.resourceType,
+      table.resourceId
+    ),
+  ]
+)
+
 export const projectAccessInvitations = sqliteTable(
   "project_access_invitations",
   {
@@ -3071,6 +3114,10 @@ export type NewProjectDuplicateDecision =
   typeof projectDuplicateDecisions.$inferInsert
 export type ProjectExternalLink = typeof projectExternalLinks.$inferSelect
 export type NewProjectExternalLink = typeof projectExternalLinks.$inferInsert
+export type ProjectExternalResourceGrant =
+  typeof projectExternalResourceGrants.$inferSelect
+export type NewProjectExternalResourceGrant =
+  typeof projectExternalResourceGrants.$inferInsert
 export type DailyLog = typeof dailyLogs.$inferSelect
 export type NewDailyLog = typeof dailyLogs.$inferInsert
 export type DailyLogPhoto = typeof dailyLogPhotos.$inferSelect

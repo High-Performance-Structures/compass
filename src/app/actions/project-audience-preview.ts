@@ -17,8 +17,10 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
+  organizations,
   ownerProjectUpdates,
   projectContacts,
+  projectExternalResourceGrants,
   projectMembers,
   projectOperations,
   projectRfis,
@@ -33,16 +35,19 @@ import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
-import { assertProjectAccess } from "@/lib/project-access"
 import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
+  assertProjectAccess,
+  getProjectAudienceAccessRecord,
+  projectAudienceRoles,
+} from "@/lib/project-access"
+import type { ProjectAudience } from "@/lib/project-audience-access"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { shouldIncludeOwnerUpdateHistory } from "@/lib/project-audience-preview-policy"
+
 import {
   isPortalVisiblePurchaseOrderStatus,
   parsePortalPurchaseOrderPayload,
@@ -273,16 +278,12 @@ type AudienceProjectRow = AudienceProjectOption & {
 }
 
 function visibleAudienceProjectOptions(
-  rows: readonly AudienceProjectRow[],
-  audience: ProjectAudience
+  rows: readonly AudienceProjectRow[]
 ): readonly AudienceProjectOption[] {
   const seenProjectIds = new Set<string>()
 
   return rows.flatMap((row) => {
-    if (
-      seenProjectIds.has(row.id) ||
-      !canUseProjectAudience(row.projectRole, audience)
-    ) {
+    if (seenProjectIds.has(row.id)) {
       return []
     }
 
@@ -317,30 +318,48 @@ async function loadAudienceProjectOptions(input: {
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+    .innerJoin(organizations, eq(organizations.id, projects.organizationId))
     .where(
       and(
         eq(projectMembers.userId, input.userId),
+        inArray(projectMembers.role, projectAudienceRoles(input.audience)),
+        eq(organizations.isActive, true),
         organizationFilter
       )
     )
     .orderBy(asc(projects.projectNumber), asc(projects.name))
 
-  return visibleAudienceProjectOptions(rows, input.audience)
+  return visibleAudienceProjectOptions(rows)
 }
 
 export async function getProjectAudienceOptions(
   audience: ProjectAudience
 ): Promise<readonly AudienceProjectOption[]> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
-  if (isInternalStaffRole(user.role)) return []
+  if (!user.isActive || !user.organizationId) return []
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const [organization] = await db
+    .select({ id: organizations.id, type: organizations.type })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+  if (!organization) return []
+  if (organization.type !== "client") return []
+  if (isInternalStaffRole(user.role) || user.role === "developer") return []
+  requirePermission(user, "project", "read")
+
   return loadAudienceProjectOptions({
     db,
     userId: user.id,
     audience,
+    organizationId: user.organizationId,
   })
 }
 
@@ -361,30 +380,37 @@ async function verifyProjectAccess(
   }
 }> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  if (!user.isActive || !user.organizationId) {
+    throw new Error("Project not found")
+  }
+  const [organization] = await db
+    .select({ id: organizations.id, type: organizations.type })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, user.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .limit(1)
+  if (!organization) throw new Error("Project not found")
 
-  const project = await assertProjectAccess(db, user, projectId)
+  const viewerIsInternal =
+    (organization.type === "internal" || organization.type === "demo") &&
+    isInternalStaffRole(user.role)
+  if (!viewerIsInternal && organization.type !== "client") {
+    throw new Error("Project not found")
+  }
+  requirePermission(user, "project", "read")
+  const project = viewerIsInternal
+    ? await assertProjectAccess(db, user, projectId)
+    : await getProjectAudienceAccessRecord(db, user, projectId, audience)
+  if (!project) throw new Error("Project not found")
   if (!project.organizationId) {
     throw new Error("Project organization is missing")
-  }
-  const viewerIsInternal = isInternalStaffRole(user.role)
-  if (!viewerIsInternal) {
-    const membership = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, user.id)
-        )
-      )
-      .get()
-    if (!canUseProjectAudience(membership?.role ?? null, audience)) {
-      throw new Error("Project not found")
-    }
   }
 
   return {
@@ -438,6 +464,7 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
+  await requireAuth()
   const { db, env, organizationId, viewerIsInternal, viewer } =
     await verifyProjectAccess(projectId, audience)
 
@@ -513,51 +540,75 @@ export async function getProjectAudiencePreview(
       ? sql<boolean>`canonical.owner_visible IS 1 OR canonical.public_shareable IS 1`
       : sql<boolean>`canonical.sub_vendor_visible IS 1 OR canonical.public_shareable IS 1`
 
-  const photoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      fileName: dailyLogPhotos.fileName,
-      driveFileId: dailyLogPhotos.driveFileId,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      mimeType: dailyLogPhotos.mimeType,
-      caption: dailyLogPhotos.caption,
-      capturedAt: dailyLogPhotos.capturedAt,
-      createdAt: dailyLogPhotos.createdAt,
-      logDate: dailyLogs.logDate,
-      logWorkCompleted: dailyLogs.workCompleted,
-      logIssues: dailyLogs.issues,
-      logNotes: dailyLogs.notes,
-      photoKind: dailyLogPhotos.photoKind,
-      schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
-    })
-    .from(dailyLogPhotos)
-    .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
-    .where(
-      and(
-        eq(dailyLogPhotos.projectId, projectId),
-        eq(dailyLogPhotos.reviewStatus, "approved"),
-        visibilityFilter,
-        dailyLogPhotoCollectionEligibility(),
-        not(sql<boolean>`EXISTS (
-          SELECT 1
-          FROM daily_log_photo_aliases AS alias
-          JOIN daily_log_photos AS canonical
-            ON canonical.id IS alias.canonical_photo_id
-          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
-            AND alias.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.mime_type LIKE 'image/%'
-            AND canonical.drive_file_id IS NOT NULL
-            AND (
-              canonical.drive_file_id IS NOT NULL
-              OR canonical.thumbnail_url IS NOT NULL
-            )
-            AND canonical.review_status IS 'approved'
-            AND (${canonicalVisibilityFilter})
-        )`),
-      )
-    )
-    .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+  const photoFields = {
+    id: dailyLogPhotos.id,
+    fileName: dailyLogPhotos.fileName,
+    driveFileId: dailyLogPhotos.driveFileId,
+    thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+    mimeType: dailyLogPhotos.mimeType,
+    caption: dailyLogPhotos.caption,
+    capturedAt: dailyLogPhotos.capturedAt,
+    createdAt: dailyLogPhotos.createdAt,
+    logDate: dailyLogs.logDate,
+    logWorkCompleted: dailyLogs.workCompleted,
+    logIssues: dailyLogs.issues,
+    logNotes: dailyLogs.notes,
+    photoKind: dailyLogPhotos.photoKind,
+    schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
+  }
+  const photoRows = viewerIsInternal
+    ? await db
+        .select(photoFields)
+        .from(dailyLogPhotos)
+        .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            visibilityFilter,
+            dailyLogPhotoCollectionEligibility(),
+            not(sql<boolean>`EXISTS (
+              SELECT 1
+              FROM daily_log_photo_aliases AS alias
+              JOIN daily_log_photos AS canonical
+                ON canonical.id IS alias.canonical_photo_id
+              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                AND alias.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.mime_type LIKE 'image/%'
+                AND canonical.drive_file_id IS NOT NULL
+                AND (canonical.drive_file_id IS NOT NULL OR canonical.thumbnail_url IS NOT NULL)
+                AND canonical.review_status IS 'approved'
+                AND (${canonicalVisibilityFilter})
+            )`),
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+    : await db
+        .select(photoFields)
+        .from(dailyLogPhotos)
+        .innerJoin(
+          projectExternalResourceGrants,
+          and(
+            eq(projectExternalResourceGrants.organizationId, organizationId),
+            eq(projectExternalResourceGrants.projectId, projectId),
+            eq(projectExternalResourceGrants.resourceType, "photo"),
+            eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+            eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+            isNull(projectExternalResourceGrants.revokedAt)
+          )
+        )
+        .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            isNotNull(dailyLogPhotos.driveFileId),
+            visibilityFilter,
+            dailyLogPhotoCollectionEligibility()
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
   const publishedSchedule = await db
     .select({ snapshotData: schedulePublications.snapshotData })
@@ -744,7 +795,7 @@ export async function getProjectAudiencePreview(
   )
 
   const ownerUpdateRows =
-    audience === "owner"
+    shouldIncludeOwnerUpdateHistory(viewerIsInternal, audience)
       ? await db
           .select({
             id: ownerProjectUpdates.id,
@@ -1099,37 +1150,39 @@ export async function getProjectAudiencePreview(
       }
     })
 
-  // Published construction documents use one whole-project audience. Owners,
-  // assigned subcontractors, and internal previews receive the same set.
+  // Published construction documents remain staff-only until their exact
+  // external resource grant taxonomy is available.
   const [documentRows, contractDocumentRows] = await Promise.all([
-    db
-      .select({
-        id: projectDocuments.id,
-        category: projectDocuments.category,
-        title: projectDocuments.title,
-        description: projectDocuments.description,
-        documentDate: projectDocuments.documentDate,
-        revision: projectDocuments.revision,
-        status: projectDocuments.status,
-        downloadable: projectDocuments.downloadable,
-        sourceFileName: projectDocuments.sourceFileName,
-        publishedAt: projectDocuments.publishedAt,
-      })
-      .from(projectDocuments)
-      .where(
-        and(
-          eq(projectDocuments.projectId, projectId),
-          eq(projectDocuments.audience, "project_team"),
-          inArray(projectDocuments.status, ["current", "superseded"]),
-          isNotNull(projectDocuments.publishedAt)
-        )
-      )
-      .orderBy(
-        asc(projectDocuments.category),
-        desc(projectDocuments.documentDate),
-        asc(projectDocuments.title)
-      ),
-    audience === "owner"
+    viewerIsInternal
+      ? db
+          .select({
+            id: projectDocuments.id,
+            category: projectDocuments.category,
+            title: projectDocuments.title,
+            description: projectDocuments.description,
+            documentDate: projectDocuments.documentDate,
+            revision: projectDocuments.revision,
+            status: projectDocuments.status,
+            downloadable: projectDocuments.downloadable,
+            sourceFileName: projectDocuments.sourceFileName,
+            publishedAt: projectDocuments.publishedAt,
+          })
+          .from(projectDocuments)
+          .where(
+            and(
+              eq(projectDocuments.projectId, projectId),
+              eq(projectDocuments.audience, "project_team"),
+              inArray(projectDocuments.status, ["current", "superseded"]),
+              isNotNull(projectDocuments.publishedAt)
+            )
+          )
+          .orderBy(
+            asc(projectDocuments.category),
+            desc(projectDocuments.documentDate),
+            asc(projectDocuments.title)
+          )
+      : Promise.resolve([]),
+    viewerIsInternal && audience === "owner"
       ? db
           .select({
             id: contractPackets.id,

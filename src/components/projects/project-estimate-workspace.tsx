@@ -276,7 +276,6 @@ export function ProjectEstimateWorkspacePanel({
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
 
-  const lastLoadedHeader = useRef<string | null>(null)
   const persistedHeader = JSON.stringify([
     estimate?.id, estimate?.defaultTaxEntityId, estimate?.termsTemplateId,
     estimate?.contractTerms, estimate?.introductionTemplateId, estimate?.introductionText,
@@ -284,6 +283,10 @@ export function ProjectEstimateWorkspacePanel({
     estimate?.companySignerContactId, estimate?.companySignerName, estimate?.companySignerTitle,
     estimate?.companySignerEmail, estimate?.companySignerInitials,
   ])
+  // The state above already reflects the initial server payload. Mark that
+  // payload as loaded immediately so a delayed effect cannot erase edits made
+  // during hydration in slower WebKit sessions.
+  const lastLoadedHeader = useRef<string | null>(persistedHeader)
   useEffect(() => {
     // Line-order saves refresh the workspace. Equivalent signer arrays from the
     // server must not reset unfinished header fields in another input area.
