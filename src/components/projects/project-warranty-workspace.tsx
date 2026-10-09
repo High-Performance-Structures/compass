@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { warrantyAssigneeChoices } from "@/lib/warranty/assignee-names"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { warrantyReport } from "@/lib/print/audience-record-reports"
@@ -359,7 +360,7 @@ function ClaimActions({
               ariaLabel={`Assign ${claim.claimNumber}`}
               options={[
                 { value: "", label: "Unassigned" },
-                ...assigneeNames.map((name) => ({ value: name, label: name })),
+                ...warrantyAssigneeChoices(assigneeNames, claim.assignedName).map((name) => ({ value: name, label: name })),
               ]}
               placeholder="Unassigned"
               searchPlaceholder="Type an assignee name..."

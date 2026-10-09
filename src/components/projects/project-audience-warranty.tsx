@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 
 import { getProjectAudiencePreview } from "@/app/actions/project-audience-preview"
 import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import { warrantyAssigneeNames } from "@/lib/warranty/assignee-names"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
@@ -27,6 +29,13 @@ export async function ProjectAudienceWarranty({
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     notFound()
   }
+  // Staff previewing the owner view get the same assignee choices as the staff
+  // page; owners never see the edit form, only "Assigned: …".
+  const assigneeNames = preview.viewerIsInternal
+    ? await getProjectTaskAssigneeOptions(projectId)
+        .then(warrantyAssigneeNames)
+        .catch(() => [])
+    : []
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: preview.project.id,
     audience: preview.audience,
@@ -50,7 +59,7 @@ export async function ProjectAudienceWarranty({
     >
       <main className="min-h-screen bg-[oklch(0.96_0.018_115)] px-4 py-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl overflow-hidden rounded-lg border">
-          <ProjectWarrantyWorkspace workspace={workspace} />
+          <ProjectWarrantyWorkspace workspace={workspace} assigneeNames={assigneeNames} />
         </div>
       </main>
     </ProjectAudiencePreviewShell>

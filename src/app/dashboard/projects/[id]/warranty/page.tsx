@@ -6,6 +6,7 @@ import { IconArrowLeft } from "@tabler/icons-react"
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
 import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
+import { warrantyAssigneeNames } from "@/lib/warranty/assignee-names"
 import { Button } from "@/components/ui/button"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
@@ -25,14 +26,7 @@ export default async function ProjectWarrantyPage({
     redirectIfFeaturePermissionDenied(error)
     throw error
   })
-  const assigneeNames = Array.from(
-    new Set(
-      [
-        ...assigneeOptions.projectContacts,
-        ...assigneeOptions.directoryContacts,
-      ].map((option) => option.name.trim()).filter(Boolean)
-    )
-  ).sort((left, right) => left.localeCompare(right))
+  const assigneeNames = warrantyAssigneeNames(assigneeOptions)
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
