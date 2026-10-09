@@ -1,11 +1,14 @@
 import { getCloudflareContext } from "@/lib/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
+import { getDb } from "@/db"
+import { resolveAgentUser } from "@/lib/agent/agent-user"
 import {
-  getCustomThemes,
-  setUserThemePreference,
-  saveCustomTheme,
-  getCustomThemeById,
-} from "@/app/actions/themes"
+  getCustomThemeForUser,
+  listCustomThemesForUser,
+  saveCustomThemeForUser,
+  setThemePreferenceForUser,
+} from "@/lib/theme/user-themes"
+import { revalidatePath } from "next/cache"
 import { THEME_PRESETS, findPreset } from "@/lib/theme/presets"
 import type {
   ThemeDefinition,
@@ -23,6 +26,17 @@ export async function POST(req: Request): Promise<Response> {
 
   const auth = await validateAgentAuth(req, envRecord)
   if (!auth.valid) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  // The agent calls this route with a bearer token only, so the user comes
+  // from the verified token rather than the (absent) session cookie.
+  const db = getDb(env.DB)
+  const user = await resolveAgentUser(db, auth)
+  if (!user) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -49,15 +63,14 @@ export async function POST(req: Request): Promise<Response> {
           isPreset: true,
         }))
 
-        const customResult = await getCustomThemes()
-        const customs = customResult.success
-          ? customResult.data.map((c) => ({
-              id: c.id,
-              name: c.name,
-              description: c.description,
-              isPreset: false,
-            }))
-          : []
+        const customs = (
+          await listCustomThemesForUser(db, user.id)
+        ).map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          isPreset: false,
+        }))
 
         return new Response(
           JSON.stringify({ themes: [...presets, ...customs] }),
@@ -79,7 +92,11 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
-        const result = await setUserThemePreference(themeId)
+        const result = await setThemePreferenceForUser(
+          db,
+          user.id,
+          themeId,
+        )
         if (!result.success) {
           return new Response(
             JSON.stringify({ error: result.error }),
@@ -90,6 +107,7 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
+        revalidatePath("/", "layout")
         return new Response(
           JSON.stringify({
             success: true,
@@ -176,11 +194,11 @@ export async function POST(req: Request): Promise<Response> {
           },
         }
 
-        const saveResult = await saveCustomTheme(
+        const saveResult = await saveCustomThemeForUser(db, user.id, {
           name,
           description,
-          JSON.stringify(theme),
-        )
+          themeData: JSON.stringify(theme),
+        })
         if (!saveResult.success) {
           return new Response(
             JSON.stringify({ error: saveResult.error }),
@@ -193,6 +211,7 @@ export async function POST(req: Request): Promise<Response> {
 
         const savedTheme = { ...theme, id: saveResult.id }
 
+        revalidatePath("/", "layout")
         return new Response(
           JSON.stringify({
             success: true,
@@ -217,7 +236,7 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
-        const existing = await getCustomThemeById(themeId)
+        const existing = await getCustomThemeForUser(db, user.id, themeId)
         if (!existing.success) {
           return new Response(
             JSON.stringify({ error: existing.error }),
@@ -285,12 +304,12 @@ export async function POST(req: Request): Promise<Response> {
           },
         }
 
-        const saveResult = await saveCustomTheme(
+        const saveResult = await saveCustomThemeForUser(db, user.id, {
           name,
           description,
-          JSON.stringify(merged),
-          themeId,
-        )
+          themeData: JSON.stringify(merged),
+          existingId: themeId,
+        })
         if (!saveResult.success) {
           return new Response(
             JSON.stringify({ error: saveResult.error }),
@@ -301,6 +320,7 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
+        revalidatePath("/", "layout")
         return new Response(
           JSON.stringify({
             success: true,

@@ -288,6 +288,7 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
         "JARVIS_BRIDGE_ORGANIZATION_ID",
         "JARVIS_SERVICE_USER_ID",
         "JARVIS_AGENT_BRIDGE_ENABLED",
+        "ASK_JARVIS_RELAY_ENABLED",
     ]) {
         const value = process.env[key]
         if (value) Reflect.set(localEnv, key, value)
