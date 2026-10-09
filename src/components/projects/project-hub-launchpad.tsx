@@ -115,9 +115,9 @@ function departmentForProject(project: ProjectListItem): DepartmentFilter {
 }
 
 function departmentAccent(department: DepartmentFilter): string {
-  if (department === "O" || department === "D") return "border-l-[#6f471f]"
-  if (department === "H") return "border-l-[#3f7d4d]"
-  if (department === "N") return "border-l-[#9d832c]"
+  if (department === "O" || department === "D") return "border-l-brand-orc-brown"
+  if (department === "H") return "border-l-brand-hps-field"
+  if (department === "N") return "border-l-brand-nutech-gold"
   return "border-l-muted-foreground"
 }
 
@@ -150,7 +150,7 @@ function ProjectHealth({
 
   if (health.openRfiCount > 0) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-[#8a3a2e]">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-brand-compass-red">
         <IconAlertTriangle className="size-3.5" />
         {health.openRfiCount} pending RFI{health.openRfiCount === 1 ? "" : "s"}
       </span>
@@ -159,7 +159,7 @@ function ProjectHealth({
 
   if (health.openPoCount > 0) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-[#715d1c]">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-brand-nutech-gold-foreground">
         <IconAlertTriangle className="size-3.5" />
         {health.openPoCount} open PO{health.openPoCount === 1 ? "" : "s"}
       </span>

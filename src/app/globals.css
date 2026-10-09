@@ -34,6 +34,15 @@
 	--color-brand-compass-red: var(--brand-compass-red);
 	--color-brand-stone: var(--brand-stone);
 	--color-brand-youtube-surface: var(--brand-youtube-surface);
+	--color-brand-hps-field: var(--brand-hps-field);
+	--color-brand-hps-ink: var(--brand-hps-ink);
+	--color-brand-compass-violet: var(--brand-compass-violet);
+	--color-call-accent: var(--call-accent);
+	--color-call-accent-hover: var(--call-accent-hover);
+	--color-call-accent-border: var(--call-accent-border);
+	--color-call-accent-border-strong: var(--call-accent-border-strong);
+	--color-call-accent-surface: var(--call-accent-surface);
+	--color-call-focus: var(--call-focus);
 	--font-sans: var(--font-sans);
 	--font-mono: var(--font-mono);
 	--font-serif: var(--font-serif);
@@ -126,6 +135,19 @@
 	--brand-compass-red: #8a3a2e;
 	--brand-stone: #d3cabd;
 	--brand-youtube-surface: #ffffff;
+	/* Field green marks HPS work in calendars, alerts, and department accents. */
+	--brand-hps-field: #3f7d4d;
+	/* Deep green surface for always-dark photo and media panels. */
+	--brand-hps-ink: #17231c;
+	--brand-compass-violet: #5f4b8b;
+	/* Talk and voice controls sit on an always-dark call surface, so these
+	   stay the same in light and dark themes. */
+	--call-accent: #3f7d4d;
+	--call-accent-hover: #4f9860;
+	--call-accent-border: #9bd3a8;
+	--call-accent-border-strong: #c1e5c9;
+	--call-accent-surface: #203626;
+	--call-focus: #63b878;
 	--background: #f3f1ec;
 	--foreground: #24211d;
 	--card: #ffffff;

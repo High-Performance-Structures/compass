@@ -1031,7 +1031,7 @@ function ProjectWorkspace({
 
       <section className="min-w-0 border-y border-border/70 bg-background">
         <div className="flex items-center gap-2 px-4 py-3">
-          <IconMessageCircleQuestion className="size-4 text-[#9d832c]" />
+          <IconMessageCircleQuestion className="size-4 text-brand-nutech-gold" />
           <div>
             <h2 className="text-sm font-semibold">Decision queue</h2>
             <p className="text-xs text-muted-foreground">Open RFIs requiring follow-up</p>
