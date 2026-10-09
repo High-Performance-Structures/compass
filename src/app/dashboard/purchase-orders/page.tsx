@@ -16,7 +16,6 @@ export default async function PurchaseOrderProjectPickerPage() {
         className="mb-0"
         icon={<IconShoppingCart className="size-5 text-muted-foreground" />}
         title="Purchase Orders"
-        description="Choose a project before preparing or reviewing a P.O."
       />
 
       <section className="clarity-panel border-l-[6px] border-l-brand-hps-primary p-4">

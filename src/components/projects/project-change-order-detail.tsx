@@ -1,6 +1,6 @@
 import type * as React from "react"
 import Link from "next/link"
-import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react"
+import { IconExternalLink } from "@tabler/icons-react"
 
 import type {
   ProjectChangeOrderFormOptions,
@@ -13,13 +13,13 @@ import {
 } from "@/components/developer-mode-provider"
 import { ProjectChangeOrderProvenance } from "@/components/projects/project-change-order-provenance"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   changeOrderDisplayStatus,
   changeOrderStatusLabel,
   isChangeOrderStatus,
   isExecutedChangeOrderStatus,
 } from "@/lib/change-orders/status"
+import { PageHeader } from "@/components/page-header"
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("en-US", {
@@ -55,45 +55,40 @@ export function ProjectChangeOrderDetail({
 }): React.ReactElement {
   return (
     <div className="space-y-5">
-      <Button asChild variant="ghost" size="sm" className="-ml-2">
-        <Link href={backHref}>
-          <IconArrowLeft className="size-4" />
-          Change orders
-        </Link>
-      </Button>
-      <header className="border-b pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">
-              {item.changeOrderNumber}
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold">{item.title}</h1>
-            {item.sourceType === "buildertrend_import" ? (
-              <ProjectChangeOrderProvenance />
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Requested by {item.requesterName}
-                {item.requesterCompany ? ` · ${item.requesterCompany}` : ""}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge>{changeOrderDisplayStatus(item.status, item.sourceType)}</Badge>
-            <Badge variant="outline">{money(item.amountCents)}</Badge>
-            <Badge variant="outline">
-              {item.scheduleImpactDays === null
-                ? "Schedule impact not set"
-                : `${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`}
-            </Badge>
-            <Badge variant="secondary">
-              {item.sourceType === "buildertrend_import" ? "Audience: " : ""}{item.audience}
-            </Badge>
-            {item.budgetTreatment === "baseline_replacement" && (
-              <Badge variant="outline">Baseline replacement</Badge>
-            )}
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        back={{ href: backHref, label: "Change orders" }}
+        eyebrow={item.changeOrderNumber}
+        title={item.title}
+        // Who asked for it is a record fact, so it stays with the title.
+        meta={
+          item.sourceType === "buildertrend_import" ? (
+            <ProjectChangeOrderProvenance />
+          ) : (
+            <>
+              Requested by {item.requesterName}
+              {item.requesterCompany ? ` · ${item.requesterCompany}` : ""}
+            </>
+          )
+        }
+        actions={
+          <>
+                <Badge>{changeOrderDisplayStatus(item.status, item.sourceType)}</Badge>
+                <Badge variant="outline">{money(item.amountCents)}</Badge>
+                <Badge variant="outline">
+                  {item.scheduleImpactDays === null
+                    ? "Schedule impact not set"
+                    : `${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`}
+                </Badge>
+                <Badge variant="secondary">
+                  {item.sourceType === "buildertrend_import" ? "Audience: " : ""}{item.audience}
+                </Badge>
+                {item.budgetTreatment === "baseline_replacement" && (
+                  <Badge variant="outline">Baseline replacement</Badge>
+                )}
+          </>
+        }
+      />
 
       <ProjectChangeOrderEditForm
         item={item}

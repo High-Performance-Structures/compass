@@ -76,6 +76,7 @@ import {
   type ProjectHubStatusFilter,
   type ProjectHubStatusFilterOption,
 } from "@/lib/project-hub-status-filter"
+import { PageHeader } from "@/components/page-header"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
 type ProjectLayout = "cards" | "list"
@@ -592,24 +593,22 @@ export function ProjectHubLaunchpad({
 
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
-      <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">Project Hub</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Active jobs and the issues that need attention
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canManageProjects ? (
-            <OfficeMaintenanceDrawer projects={projects} />
-          ) : null}
-          {canManageProjects ? (
-            <ProjectIntakeDrawer assignees={intakeAssignees} />
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        title="Project Hub"
+        actions={
+          <>
+            <div className="flex flex-wrap gap-2">
+              {canManageProjects ? (
+                <OfficeMaintenanceDrawer projects={projects} />
+              ) : null}
+              {canManageProjects ? (
+                <ProjectIntakeDrawer assignees={intakeAssignees} />
+              ) : null}
+            </div>
+          </>
+        }
+      />
 
       <ProjectDuplicateManager
         candidates={currentDuplicateCandidates}

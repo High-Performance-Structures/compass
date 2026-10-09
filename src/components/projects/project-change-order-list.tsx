@@ -12,6 +12,7 @@ import { HISTORICAL_CHANGE_ORDER_TEXT_CONTEXT } from "@/lib/change-orders/proven
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
+import { PageHeader } from "@/components/page-header"
 
 function money(cents: number | null): string {
   if (cents === null) return "Amount not determined"
@@ -42,30 +43,28 @@ export function ProjectChangeOrderList({
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <IconFileInvoice className="size-5 text-muted-foreground" />
-            <h1 className="text-xl font-semibold">Change orders</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Request, review, price, approve, and track scope, cost, and budget changes.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={openCount > 0 ? "secondary" : "outline"}>
-            {openCount} active
-          </Badge>
-          {canCreate && (
-            <ProjectChangeOrderCreateForm
-              projectId={projectId}
-              detailBaseHref={detailBaseHref}
-              internal={internal}
-              formOptions={formOptions}
-            />
-          )}
-        </div>
-      </div>
+      <PageHeader
+        className="mb-0 border-b pb-3"
+        icon={<IconFileInvoice className="size-5 text-muted-foreground" />}
+        title="Change orders"
+        actions={
+          <>
+            <div className="flex items-center gap-2">
+              <Badge variant={openCount > 0 ? "secondary" : "outline"}>
+                {openCount} active
+              </Badge>
+              {canCreate && (
+                <ProjectChangeOrderCreateForm
+                  projectId={projectId}
+                  detailBaseHref={detailBaseHref}
+                  internal={internal}
+                  formOptions={formOptions}
+                />
+              )}
+            </div>
+          </>
+        }
+      />
 
       {items.some((item) => item.sourceType === "buildertrend_import") ? (
         <p className="text-xs text-muted-foreground">

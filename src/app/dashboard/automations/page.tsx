@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { PageHeader } from "@/components/page-header"
 
 type ScriptStatus = "google-native" | "bridge-candidate" | "retire-later"
 
@@ -161,33 +162,27 @@ export default async function AutomationsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-3 sm:p-4 lg:p-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-normal">
-              Automation Center
-            </h1>
+      <PageHeader
+        className="mb-0"
+        title="Automation Center"
+        actions={
+          <>
             <Badge variant="outline">Google transition layer</Badge>
-          </div>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Google scripts, triggers, and handoffs.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/dashboard/settings">
-              <IconShieldLock className="size-4" />
-              Settings
-            </Link>
-          </Button>
-          <Button asChild>
-            <Link href="/dashboard/projects">
-              <IconFolderPlus className="size-4" />
-              Projects
-            </Link>
-          </Button>
-        </div>
-      </div>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/settings">
+                <IconShieldLock className="size-4" />
+                Settings
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/projects">
+                <IconFolderPlus className="size-4" />
+                Projects
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.75fr)]">
         <Card className="rounded-lg">

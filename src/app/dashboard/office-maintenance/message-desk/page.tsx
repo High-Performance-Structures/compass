@@ -48,7 +48,6 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
         back={{ href: "/dashboard/projects", label: "Office maintenance" }}
         icon={<IconPhone className="size-6 text-muted-foreground" />}
         title="Staff Message Desk"
-        description="Capture a call for one accountable staff member, or manually route an inbound text after review."
         actions={<Badge variant="secondary">{records.length} messages</Badge>}
       />
 

@@ -45,7 +45,6 @@ export default async function ProjectContactMatchReviewPage({
         back={{ href: `/dashboard/projects/${id}/contacts`, label: "Project contacts" }}
         icon={<IconGitMerge className="size-5 text-primary" />}
         title="Contact Match Review"
-        description="Match imported names to trusted contacts."
         actions={
           <>
             <Badge variant="outline">

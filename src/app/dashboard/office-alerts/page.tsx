@@ -209,7 +209,6 @@ export default async function OfficeAlertsPage({
           )
         }
         title="Office alerts"
-        description="Review outstanding items across every project you can access."
       />
 
       <nav className="grid gap-px border bg-border sm:grid-cols-3" aria-label="Office alert queues">

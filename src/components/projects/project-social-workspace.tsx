@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/page-header"
 
 function platformIcon(platform: string): React.ReactElement {
   if (platform === "instagram") return <IconBrandInstagram className="size-4" />
@@ -181,24 +182,20 @@ export function ProjectSocialWorkspace({
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Social publishing · {workspace.project.department
-              ? `Department ${workspace.project.department}`
-              : "Department not set"}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold">Project social posts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Draft from approved photos, review privacy-safe copy, then publish to this department’s accounts.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href={`/dashboard/projects/${workspace.project.id}/information`}>
-            Edit public project identity
-          </Link>
-        </Button>
-      </header>
+      <PageHeader
+        className="mb-0"
+        eyebrow={workspace.project.department ? `Department ${workspace.project.department}` : "Department not set"}
+        title="Social posts"
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/projects/${workspace.project.id}/information`}>
+                Edit public project identity
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       {!workspace.project.privacyReady ? (
         <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">

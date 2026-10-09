@@ -40,6 +40,7 @@ import { type ProjectDepartment } from "@/lib/project-branding"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { PageHeader } from "@/components/page-header"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
 const UNASSIGNED_OWNER = "__unassigned__"
@@ -267,31 +268,27 @@ export function ProjectInformationWorkspace({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Project Information
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {information.project.projectNumber
-              ? projectNumberAndName(information.project, " · ")
-              : information.project.name}
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Maintain the project record, meaningful client touches, and the next follow-up in one place.
-          </p>
-          {information.projectNumberAliases.length > 0 && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Previous project number{information.projectNumberAliases.length === 1 ? "" : "s"}: {information.projectNumberAliases.join(", ")}
-            </p>
-          )}
-        </div>
-        <Button asChild variant="outline">
-          <Link href={`/dashboard/projects/${information.project.id}/contacts`}>
-            Manage contacts and email addresses
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        className="mb-0"
+        eyebrow={
+          information.project.projectNumber
+            ? projectNumberAndName(information.project, " · ")
+            : information.project.name
+        }
+        title="Project Information"
+        meta={
+          information.projectNumberAliases.length > 0
+            ? `Previous project number${information.projectNumberAliases.length === 1 ? "" : "s"}: ${information.projectNumberAliases.join(", ")}`
+            : undefined
+        }
+        actions={
+          <Button asChild variant="outline">
+            <Link href={`/dashboard/projects/${information.project.id}/contacts`}>
+              Manage contacts and email addresses
+            </Link>
+          </Button>
+        }
+      />
 
       {message && (
         <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm" role="status">

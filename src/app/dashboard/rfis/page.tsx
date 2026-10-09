@@ -16,7 +16,6 @@ export default async function RfiProjectPickerPage() {
         className="mb-0"
         icon={<IconMessageQuestion className="size-5 text-muted-foreground" />}
         title="RFIs"
-        description="Choose a project before creating or answering an RFI."
       />
 
       <section className="clarity-panel border-l-[6px] border-l-brand-nutech-gold p-4">

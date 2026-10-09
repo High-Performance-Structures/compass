@@ -39,6 +39,7 @@ import { EstimateTextTemplateLibrary } from "./estimate-text-template-library"
 import { ContractTemplateLibrary } from "./contract-template-library"
 import type { ContractTemplateLibraryItem } from "@/app/actions/contract-templates"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PageHeader } from "@/components/page-header"
 
 export const TEMPLATE_CATEGORIES = [
   "Concrete",
@@ -253,28 +254,25 @@ export function TemplateLibraryView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="shrink-0 border-b px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="mb-1 flex items-center gap-2 text-sm text-muted-foreground">
-              <IconTemplate className="size-4" />
-              Project setup
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Template Library</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Reusable Compass content for project setup, schedules, tasks,
-              selections, and bid packages.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {canCreateEstimate && <EstimateTemplateCreateDialog />}
-            <Button asChild variant="outline">
-              <Link href="/dashboard/schedule">
-                <IconArrowLeft className="mr-2 size-4" />
-                Back to schedules
-              </Link>
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          className="mb-0"
+          eyebrow="Project setup"
+          icon={<IconTemplate className="size-5 text-primary" />}
+          title="Template Library"
+          actions={
+            <>
+              <div className="flex flex-wrap gap-2">
+                {canCreateEstimate && <EstimateTemplateCreateDialog />}
+                <Button asChild variant="outline">
+                  <Link href="/dashboard/schedule">
+                    <IconArrowLeft className="mr-2 size-4" />
+                    Back to schedules
+                  </Link>
+                </Button>
+              </div>
+            </>
+          }
+        />
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t pt-3 text-sm">
           <span>{templates.length} templates in Compass</span>
           {developerModeEnabled && (

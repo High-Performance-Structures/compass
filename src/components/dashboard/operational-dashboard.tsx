@@ -80,6 +80,7 @@ import {
 } from "@/lib/project-workflow-roles"
 import { cn } from "@/lib/utils"
 import { dashboardNavigation } from "@/lib/dashboard/navigation"
+import { PageHeader } from "@/components/page-header"
 
 type DashboardLayoutMode = "list" | "compass"
 type SignalTone = "green" | "amber" | "blue" | "red" | "neutral"
@@ -1576,47 +1577,46 @@ export function OperationalDashboard({
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 p-3 sm:p-4 lg:p-5">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-normal">
-              Dashboard
-            </h1>
-            <Badge variant="outline">HPS operations</Badge>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <ToggleGroup
-            type="single"
-            value={layoutMode}
-            onValueChange={(value) => {
-              if (value === "list" || value === "compass") {
-                setLayoutMode(value)
-              }
-            }}
-            variant="outline"
-            size="sm"
-            className="h-9"
-          >
-            <ToggleGroupItem value="list" aria-label="List dashboard">
-              <IconLayoutList className="size-4" />
-              List
-            </ToggleGroupItem>
-            {developerModeEnabled && (
-              <ToggleGroupItem value="compass" aria-label="Compass dashboard">
-                <IconTargetArrow className="size-4" />
-                Compass
-              </ToggleGroupItem>
-            )}
-          </ToggleGroup>
-          <Button asChild size="sm">
-            <Link href="/dashboard/projects">
-              <IconFolder className="size-4" />
-              Projects
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-0"
+        eyebrow="HPS operations"
+        title="Dashboard"
+        actions={
+          <>
+            <div className="flex flex-wrap gap-2">
+              <ToggleGroup
+                type="single"
+                value={layoutMode}
+                onValueChange={(value) => {
+                  if (value === "list" || value === "compass") {
+                    setLayoutMode(value)
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="h-9"
+              >
+                <ToggleGroupItem value="list" aria-label="List dashboard">
+                  <IconLayoutList className="size-4" />
+                  List
+                </ToggleGroupItem>
+                {developerModeEnabled && (
+                  <ToggleGroupItem value="compass" aria-label="Compass dashboard">
+                    <IconTargetArrow className="size-4" />
+                    Compass
+                  </ToggleGroupItem>
+                )}
+              </ToggleGroup>
+              <Button asChild size="sm">
+                <Link href="/dashboard/projects">
+                  <IconFolder className="size-4" />
+                  Projects
+                </Link>
+              </Button>
+            </div>
+          </>
+        }
+      />
 
       <DashboardRoleWorkspaceControl
         overview={overview}

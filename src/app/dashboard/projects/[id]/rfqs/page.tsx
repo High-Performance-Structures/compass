@@ -540,13 +540,7 @@ export default async function ProjectRfqsPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconShoppingCartQuestion className="size-5 text-primary" />}
         title="Requests for Quote"
-        description={
-          <>
-            {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-            {project?.name ?? "Project"} scopes, quote requests, and vendor
-            response tracking.
-          </>
-        }
+        eyebrow={`${project?.projectNumber ? `${project.projectNumber} - ` : ""}${project?.name ?? "Project"}`}
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

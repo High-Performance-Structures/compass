@@ -51,7 +51,6 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
         back={{ href: "/dashboard/projects", label: "Project Hub" }}
         icon={<IconInbox className="size-6 text-muted-foreground" />}
         title="Inbound activity review"
-        description="Route email and text messages that Compass could not assign confidently. The original intake record remains available for audit."
       />
 
       <section className="space-y-3">

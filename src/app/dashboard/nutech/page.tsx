@@ -36,7 +36,6 @@ export default async function NuTechOrdersPage(): Promise<React.ReactElement> {
         className="mb-0"
         icon={<IconTool className="size-5 text-brand-nutech-gold-foreground" />}
         title="Nu-Tech Orders"
-        description="Fox Blocks sales, staff takeoffs, bracing rentals, Airlite purchase orders, and vendor-invoice release tracking."
         actions={
           <>
             <Badge variant="secondary">{activeOrders.length} active</Badge>

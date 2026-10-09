@@ -70,7 +70,6 @@ export default async function ProjectFinancialsPage({
           back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
           icon={<IconFileDollar className="size-5 text-primary" />}
           title="Project Financials"
-          description="Current financial workflows and read-only historical owner billing records."
           actions={
             <ProjectContextSwitcher
               currentProjectId={id}

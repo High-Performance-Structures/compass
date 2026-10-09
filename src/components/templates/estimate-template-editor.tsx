@@ -28,6 +28,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { PageHeader } from "@/components/page-header"
 
 type LineDraft = {
   readonly id: string | null
@@ -236,41 +237,41 @@ export function EstimateTemplateEditorPanel({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="shrink-0 border-b px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {editor.name}
-              </h1>
-              <Badge variant="outline">Estimate template</Badge>
+        <PageHeader
+          className="mb-0"
+          eyebrow={
+            <span className="flex flex-wrap items-center gap-2">
+              Estimate template
               <Badge variant={editable ? "secondary" : "default"}>
                 v{editor.versionNumber} · {editor.versionStatus}
               </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Published versions populate independent project estimate drafts.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {editable ? (
-              <Button onClick={publish} disabled={pending || editor.lines.length === 0}>
-                <IconCircleCheck className="size-4" />
-                Review and publish
-              </Button>
-            ) : editor.canEdit ? (
-              <Button onClick={revise} disabled={pending}>
-                <IconCopy className="size-4" />
-                Create editable revision
-              </Button>
-            ) : null}
-            <Button asChild variant="outline">
-              <Link href="/dashboard/templates">
-                <IconArrowLeft className="size-4" />
-                Template Library
-              </Link>
-            </Button>
-          </div>
-        </div>
+            </span>
+          }
+          title={editor.name}
+          actions={
+            <>
+              <div className="flex flex-wrap gap-2">
+                {editable ? (
+                  <Button onClick={publish} disabled={pending || editor.lines.length === 0}>
+                    <IconCircleCheck className="size-4" />
+                    Review and publish
+                  </Button>
+                ) : editor.canEdit ? (
+                  <Button onClick={revise} disabled={pending}>
+                    <IconCopy className="size-4" />
+                    Create editable revision
+                  </Button>
+                ) : null}
+                <Button asChild variant="outline">
+                  <Link href="/dashboard/templates">
+                    <IconArrowLeft className="size-4" />
+                    Template Library
+                  </Link>
+                </Button>
+              </div>
+            </>
+          }
+        />
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">

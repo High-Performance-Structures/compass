@@ -63,6 +63,7 @@ import {
   SAGE_JOB_TYPE_OPTIONS,
 } from "@/lib/sage/client-project-write"
 import { projectDepartmentDisplayName } from "@/lib/project-branding"
+import { PageHeader } from "@/components/page-header"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
 type ProjectStatusBucket = ProjectJobStatusBucket
@@ -1297,26 +1298,11 @@ export function ProjectsHub({
       )}
       <section className="border-b bg-background">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex size-10 items-center justify-center rounded-full border border-success/30 bg-success/10 text-success">
-                <IconCompass className="size-5" />
-              </span>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
-                  Project hub
-                </p>
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  Choose the department, then the job.
-                </h1>
-              </div>
-            </div>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-              {projectDepartmentDisplayName("O")}; HPS; Nu-Tech; and Design projects stay visible from
-              one place, with search still cutting directly to the project when
-              you already know the number, address, or client.
-            </p>
-          </div>
+          <PageHeader
+            className="mb-0 min-w-0"
+            icon={<IconCompass className="size-5 text-primary" />}
+            title="Project hub"
+          />
 
           <div className="clarity-panel grid grid-cols-3 divide-x text-center">
             <div className="px-3 py-2">
