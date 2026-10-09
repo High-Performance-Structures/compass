@@ -13,6 +13,7 @@ import * as jarvisSchema from "./schema-jarvis"
 import * as sageSchema from "./schema-sage"
 import * as buildertrendSchema from "./schema-buildertrend"
 import * as estimatesSchema from "./schema-estimates"
+import * as rateBookSchema from "./schema-rate-book"
 import * as nuTechSchema from "./schema-nutech"
 import * as templateSchema from "./schema-templates"
 import * as warrantySchema from "./schema-warranty"
@@ -30,6 +31,7 @@ import * as correspondenceSourceSchema from "./schema-correspondence-source"
 import * as selectionDecisionSchema from "./schema-selection-decisions"
 
 const allSchemas = {
+  ...rateBookSchema,
   ...selectionDecisionSchema,
   ...correspondenceSchema,
   ...correspondenceEmailSchema,
