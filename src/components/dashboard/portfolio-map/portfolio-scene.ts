@@ -236,10 +236,11 @@ export class PortfolioScene {
   ) {
     // The scene's palette is authored in display (sRGB) values; skip linear conversion.
     ColorManagement.enabled = false
-    this.renderer = new WebGLRenderer({ canvas, antialias: true })
+    // Transparent canvas: the block floats on the page instead of a black box.
+    this.renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true })
     this.renderer.outputColorSpace = LinearSRGBColorSpace
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    this.renderer.setClearColor(0x0a0f0c, 1)
+    this.renderer.setClearColor(0x000000, 0)
     this.scene.add(new AmbientLight(0xffffff, 0.6 * Math.PI))
     const sun = new DirectionalLight(0xffffff, 0.75 * Math.PI)
     sun.position.set(-4, 8, 3)

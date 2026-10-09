@@ -42,7 +42,7 @@ function supportsWebGL2(): boolean {
 }
 
 const CONTROL_CLASS =
-  "flex size-11 items-center justify-center border border-white/15 bg-black/70 text-white/85 transition-colors hover:bg-black/90 focus-visible:outline-2 focus-visible:outline-offset-2"
+  "flex size-11 items-center justify-center border border-border bg-background/85 text-foreground backdrop-blur transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2"
 
 /**
  * Lazily loaded with three.js (see PortfolioSection), so the 3D engine never
@@ -139,7 +139,9 @@ export default function PortfolioTerrain({
   }, [layerState, layerSettings])
 
   return (
-    <div ref={containerRef} className="relative h-full min-h-[420px] w-full overflow-hidden bg-black">
+    <div className="flex h-full min-h-[420px] w-full flex-col">
+    {/* The scene sizes itself to this area; the key sits below it, off the terrain. */}
+    <div ref={containerRef} className="relative min-h-0 w-full flex-1 overflow-hidden">
       <canvas
         ref={canvasRef}
         aria-label="3D terrain map of Colorado with job markers. Use the job list for keyboard access."
@@ -154,25 +156,28 @@ export default function PortfolioTerrain({
           <span
             className={
               label.tone === "landmark"
-                ? "absolute bottom-0 left-0 h-3.5 w-px bg-white/45"
-                : "absolute bottom-0 left-0 h-6 w-px bg-white/70"
+                ? "absolute bottom-0 left-0 h-3.5 w-px bg-foreground/40"
+                : "absolute bottom-0 left-0 h-6 w-px bg-foreground/70"
             }
           />
+          {/* A light chip keeps labels readable over terrain in either theme. */}
           <div className={label.tone === "landmark" ? "pb-3.5 pl-2" : "pb-6 pl-2"}>
+            <div className="bg-background/75 px-1 backdrop-blur-[2px]">
             <p
               className={
                 label.tone === "selected"
-                  ? "whitespace-nowrap font-mono text-xs tracking-[0.14em] text-[var(--brand-nutech-gold)]"
+                  ? "whitespace-nowrap font-mono text-xs font-semibold tracking-[0.14em] text-primary"
                   : label.tone === "hover"
-                    ? "whitespace-nowrap font-mono text-xs tracking-[0.14em] text-white"
-                    : "whitespace-nowrap font-mono text-xs tracking-[0.14em] text-white/80"
+                    ? "whitespace-nowrap font-mono text-xs tracking-[0.14em] text-foreground"
+                    : "whitespace-nowrap font-mono text-xs tracking-[0.14em] text-foreground/85"
               }
             >
               {label.title}
             </p>
             {label.sub ? (
-              <p className="whitespace-nowrap font-mono text-xs tracking-[0.1em] text-white/60">{label.sub}</p>
+              <p className="whitespace-nowrap font-mono text-xs tracking-[0.1em] text-muted-foreground">{label.sub}</p>
             ) : null}
+            </div>
           </div>
         </div>
       ))}
@@ -202,14 +207,20 @@ export default function PortfolioTerrain({
         </button>
       </div>
       {layers ? <PortfolioLayerControl state={layers.state} onChange={layers.onChange} /> : null}
-      {/* Legend and credits share one wrapping bar so they never overlap. */}
-      <div className="pointer-events-none absolute inset-x-4 bottom-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-1.5">
+      {!ready ? (
+        <p className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs tracking-[0.16em] text-muted-foreground">
+          LOADING TERRAIN…
+        </p>
+      ) : null}
+    </div>
+      {/* Legend and credits share one wrapping bar below the map so they never cover it. */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-1.5 px-4 pb-3 pt-1.5">
       {layers ? (
         <div className="basis-full">
           <PortfolioLayerLegend state={layers.state} settings={layers.settings} />
         </div>
       ) : null}
-      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-white/70">
+      <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">
         {PORTFOLIO_PHASES.map((phase) => (
           <li key={phase.id} className="flex items-center gap-1.5">
             <span className="size-2" style={{ background: phaseColor(phase.id) }} aria-hidden="true" />
@@ -217,15 +228,10 @@ export default function PortfolioTerrain({
           </li>
         ))}
       </ul>
-      <p className="ml-auto text-right font-mono text-xs tracking-[0.06em] text-white/50">
+      <p className="ml-auto text-right font-mono text-xs tracking-[0.06em] text-muted-foreground">
         Elevation: AWS Terrain Tiles (USGS 3DEP, SRTM) · Roads © OpenStreetMap contributors
       </p>
       </div>
-      {!ready ? (
-        <p className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs tracking-[0.16em] text-white/70">
-          LOADING TERRAIN…
-        </p>
-      ) : null}
     </div>
   )
 }
