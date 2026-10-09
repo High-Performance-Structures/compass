@@ -177,7 +177,8 @@ for (const relativePath of sourceFiles) {
   }
   // Literal hex colors in class names bypass theming; use a named token from
   // globals.css. The RealtimeKit meeting window is an always-dark provider
-  // surface and intentionally keeps its own palette.
+  // surface and intentionally keeps its own palette; keep both color checks
+  // aligned when the CI script evolves.
   if (
     relativePath.endsWith(".tsx") &&
     relativePath !== "src/app/page.tsx" &&
