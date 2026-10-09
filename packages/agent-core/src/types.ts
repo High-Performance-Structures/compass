@@ -3,6 +3,9 @@ export interface ProviderConfig {
   readonly apiKey?: string
   readonly baseUrl?: string
   readonly modelOverrides?: Readonly<Record<string, string>>
+  /** OpenAI only: sent as reasoning_effort. Some models accept tools on
+   *  Chat Completions only with "none". */
+  readonly reasoningEffort?: string
 }
 
 /** Providers reached through the Anthropic SDK (Messages format). */

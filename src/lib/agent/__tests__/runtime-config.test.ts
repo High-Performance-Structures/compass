@@ -74,6 +74,25 @@ describe("resolveRuntimeProvider", () => {
     })
   })
 
+  it("passes OPENAI_REASONING_EFFORT to OpenAI providers only", () => {
+    const shared = resolveRuntimeProvider(null, {
+      OPENAI_API_KEY: "shared-openai-key",
+      OPENAI_REASONING_EFFORT: " none ",
+    })
+    const stored = resolveRuntimeProvider(
+      { type: "openai", apiKey: null, baseUrl: null, modelOverrides: null },
+      { OPENAI_API_KEY: "k", OPENAI_REASONING_EFFORT: "none" }
+    )
+    const openrouter = resolveRuntimeProvider(
+      { type: "openrouter", apiKey: "k", baseUrl: null, modelOverrides: null },
+      { OPENAI_REASONING_EFFORT: "none" }
+    )
+
+    expect(shared.success && shared.provider.reasoningEffort).toBe("none")
+    expect(stored.success && stored.provider.reasoningEffort).toBe("none")
+    expect(openrouter.success && openrouter.provider.reasoningEffort).toBeUndefined()
+  })
+
   it("uses the shared OpenAI secret for a stored OpenAI provider without a key", () => {
     const result = resolveRuntimeProvider(
       { type: "openai", apiKey: null, baseUrl: null, modelOverrides: null },

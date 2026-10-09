@@ -11,6 +11,7 @@ export interface AgentRuntimeSecrets {
   readonly ANTHROPIC_API_KEY?: string
   readonly OPENROUTER_API_KEY?: string
   readonly OPENAI_API_KEY?: string
+  readonly OPENAI_REASONING_EFFORT?: string
 }
 
 export type RuntimeProviderResult =
@@ -23,6 +24,13 @@ export type RuntimeProviderResult =
       readonly success: false
       readonly error: string
     }
+
+function openAIReasoningEffort(
+  secrets: AgentRuntimeSecrets
+): { readonly reasoningEffort?: string } {
+  const effort = secrets.OPENAI_REASONING_EFFORT?.trim()
+  return effort ? { reasoningEffort: effort } : {}
+}
 
 function requiresApiKey(type: ProviderConfig["type"]): boolean {
   return type !== "ollama"
@@ -82,6 +90,7 @@ export function resolveRuntimeProvider(
         provider: {
           type: "openai",
           apiKey: secrets.OPENAI_API_KEY,
+          ...openAIReasoningEffort(secrets),
         },
       }
     }
@@ -143,6 +152,7 @@ export function resolveRuntimeProvider(
       baseUrl: stored.baseUrl ?? undefined,
       modelOverrides:
         stored.modelOverrides ?? undefined,
+      ...(type === "openai" ? openAIReasoningEffort(secrets) : {}),
     },
   }
 }

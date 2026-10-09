@@ -87,6 +87,28 @@ describe("runOpenAIAgent", () => {
       ],
     })
     expect(body).not.toHaveProperty("tools")
+    expect(body).not.toHaveProperty("reasoning_effort")
+  })
+
+  it("sends reasoning_effort when one is configured", async () => {
+    const fetchImpl: FetchMock = vi.fn(async () =>
+      sseResponse([{ choices: [{ delta: { content: "Hi" }, finish_reason: "stop" }] }]),
+    )
+
+    await collect(
+      runOpenAIAgent({
+        apiKey: "sk-test",
+        model: "gpt-test",
+        reasoningEffort: "none",
+        systemPrompt: "",
+        messages: [{ role: "user", content: "Hi" }],
+        registry: createToolRegistry([setTheme], undefined),
+        maxTurns: 5,
+        fetchImpl,
+      }),
+    )
+
+    expect(sentBody(fetchImpl, 0)).toMatchObject({ reasoning_effort: "none" })
   })
 
   it("assembles a streamed tool call, runs it, and sends the result back", async () => {
