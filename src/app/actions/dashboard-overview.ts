@@ -9,6 +9,7 @@ import {
   notificationPreferences,
   ownerProjectUpdates,
   projectOperations,
+  projectJobStatuses,
   projectRfis,
   projects,
   scheduleTasks,
@@ -309,12 +310,18 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
           department: projects.department,
           publicTitle: projects.publicTitle,
           publicLocationCity: projects.publicLocationCity,
+          jobStatusId: projects.jobStatusId,
+          customJobStatusLabel: projectJobStatuses.label,
           status: projects.status,
           sageJobId: projects.sageJobId,
           sageJobNumber: projects.sageJobNumber,
           googleDriveFolderId: projects.googleDriveFolderId,
         })
         .from(projects)
+        .leftJoin(projectJobStatuses, and(
+          eq(projectJobStatuses.id, projects.jobStatusId),
+          eq(projectJobStatuses.organizationId, projects.organizationId),
+        ))
         .where(eq(projects.organizationId, orgId))
         .orderBy(asc(projects.projectNumber), asc(projects.name)),
       db
@@ -657,6 +664,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const safeDefaultRoleId = allowedRoleIds.includes(defaultRoleId)
       ? defaultRoleId
       : (allowedRoleIds[0] ?? "project-manager")
+    // Older rows may retain the default current job status after legacy closure.
     const suggestedSocialProject = selectSocialReminderProject(
       projectRows.filter((project) => !isClosedStatus(project.status)),
     )

@@ -1,4 +1,5 @@
 import { resolvedProjectDepartment } from "@/lib/project-branding"
+import { projectJobStatusBucket, projectJobStatusLabel } from "@/lib/project-profile"
 import { validatePublicProjectIdentity } from "@/lib/social/privacy"
 import type { SocialAccountSummary } from "@/lib/social/types"
 
@@ -32,9 +33,26 @@ export function socialReadinessErrors(project: SocialProjectIdentity): readonly 
 }
 
 // Preserve portfolio ordering, but never prefer missing setup to a ready project.
-export function selectSocialReminderProject<T extends SocialProjectIdentity>(
-  activeProjects: readonly T[],
+export function selectSocialReminderProject<T extends SocialProjectIdentity & {
+  readonly jobStatusId: string
+  readonly customJobStatusLabel: string | null
+  readonly status: string
+}>(
+  projects: readonly T[],
 ): T | null {
+  // Imported rows can retain a default current job status after legacy closure.
+  const activeProjects = projects.filter((project) =>
+    projectJobStatusBucket({
+      jobStatusId: project.status.trim().toLowerCase(),
+      jobStatusLabel: project.status,
+    }) === "active" && projectJobStatusBucket({
+      jobStatusId: project.jobStatusId,
+      jobStatusLabel: projectJobStatusLabel({
+        jobStatusId: project.jobStatusId,
+        customLabel: project.customJobStatusLabel,
+      }),
+    }) === "active",
+  )
   return activeProjects.find((project) => socialReadinessErrors(project).length === 0)
     ?? activeProjects[0]
     ?? null

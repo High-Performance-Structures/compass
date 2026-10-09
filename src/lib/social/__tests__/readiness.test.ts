@@ -10,6 +10,9 @@ const unconfiguredProject = {
   publicTitle: null,
   publicLocationCity: null,
   clientName: "Bagby",
+  jobStatusId: "current",
+  customJobStatusLabel: null,
+  status: "OPEN",
 }
 const readyProject = {
   ...unconfiguredProject,
@@ -22,6 +25,31 @@ const readyProject = {
 }
 
 describe("social setup reminders", () => {
+  it("excludes old projects even when they have a valid public identity", () => {
+    for (const status of ["OTHER", "COMPLETE", "INACTIVE", "ARCHIVE", "WARRANTY"]) {
+      const oldProject = { ...readyProject, status, jobStatusId: status.toLowerCase() }
+      expect(selectSocialReminderProject([oldProject, unconfiguredProject])).toBe(unconfiguredProject)
+      expect(selectSocialReminderProject([oldProject])).toBeNull()
+    }
+  })
+
+  it("excludes migrated old projects whose canonical status still defaults to current", () => {
+    for (const status of ["OTHER", "COMPLETE", "INACTIVE", "ARCHIVE", "WARRANTY"]) {
+      const oldProject = { ...readyProject, status }
+      expect(selectSocialReminderProject([oldProject, unconfiguredProject])).toBe(unconfiguredProject)
+      expect(selectSocialReminderProject([oldProject])).toBeNull()
+    }
+  })
+
+  it("uses custom lifecycle labels instead of the legacy OPEN status", () => {
+    for (const label of ["Warranty Service", "Paused", "Archived"]) {
+      const oldProject = { ...readyProject, jobStatusId: "custom-status-id", customJobStatusLabel: label }
+      expect(selectSocialReminderProject([oldProject, unconfiguredProject])).toBe(unconfiguredProject)
+    }
+    const unknownProject = { ...readyProject, jobStatusId: "missing-status-id" }
+    expect(selectSocialReminderProject([unknownProject])).toBeNull()
+  })
+
   it("does not send staff to an unconfigured first project when a ready project exists", () => {
     expect(selectSocialReminderProject([unconfiguredProject, readyProject])).toBe(readyProject)
   })
