@@ -10,6 +10,8 @@ import {
   getProjectInformation,
 } from "@/app/actions/project-profile"
 import { ProjectInformationWorkspace } from "@/components/projects/project-information-workspace"
+import { getProjectTravelCharge } from "@/app/actions/project-travel-charges"
+import { ProjectZoneCharges } from "@/components/projects/project-zone-charges"
 
 export default async function ProjectInformationPage({
   params,
@@ -18,20 +20,22 @@ export default async function ProjectInformationPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const [information, followUpOwners, currentUser] = await Promise.all([
+  const [information, followUpOwners, currentUser, zoneCharges] = await Promise.all([
     getProjectInformation(id),
     getProjectFollowUpOwners(id),
     getCurrentUser(),
+    getProjectTravelCharge(id),
   ])
   if (!information) notFound()
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-6">
       <ProjectInformationWorkspace
         information={information}
         followUpOwners={followUpOwners}
         canManageJobStatuses={canManageProjectRegistry(currentUser)}
       />
+      {zoneCharges ? <ProjectZoneCharges projectId={id} view={zoneCharges} /> : null}
     </div>
   )
 }

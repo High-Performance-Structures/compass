@@ -129,6 +129,7 @@ function TravelRows({
           </span>
         </span>
         {travel.lodgingAndPerDiem ? <span className="block text-xs text-muted-foreground">+ lodging and per diem</span> : null}
+        {travel.custom.length > 0 ? <span className="block text-xs font-medium text-primary">Custom for this job</span> : null}
         <span className="block text-xs text-muted-foreground">
           {travel.approximate ? "≈" : ""}
           {travel.miles} mi from {homeLabel}
@@ -211,6 +212,14 @@ function JobDetail({
         </dd>
         {travel ? <TravelRows travel={travel} homeLabel={homeLabel} /> : null}
       </dl>
+      {travel ? (
+        <Link
+          href={`${base}/information#zone-charges`}
+          className="-mt-3 self-end text-xs text-primary underline-offset-4 hover:underline"
+        >
+          {travel.custom.length > 0 ? "Review zone charges for this job" : "Adjust zone charges for this job"}
+        </Link>
+      ) : null}
       <div className="mt-auto flex flex-wrap gap-2 pt-2">
         <Button asChild className="flex-[1_1_9rem]">
           <Link href={base}>Open job →</Link>

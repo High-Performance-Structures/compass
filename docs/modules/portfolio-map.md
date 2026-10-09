@@ -97,3 +97,24 @@ Permits, Getting ready to build, Under construction, Finishing up) and a
   the owner-visible schedule items already on the dashboard, weighted by
   workdays. No office-only schedule rows are read.
 - Phones and reduced motion show the stepper and progress without the map.
+
+## Per-job zone charges
+
+Project Information has a **Zone charges for this job** section (office staff;
+editors are the same roles as Settings → Zone charges). Each value is
+optional, and a blank field keeps the organization default:
+
+- distance zone (charge as a different zone), custom zone rate
+- corrected site elevation (re-picks the mountain band), custom mountain rate
+- lodging and per diem: as the zone sets it / yes / no, plus lodging-per-night
+  and per-diem amounts
+- a note
+
+Adjustments live in `project_travel_charge_overrides` (migration 0194), apart
+from the cached site columns that the background lookup rewrites. Changing
+the defaults later does not change a job's adjustments. Every save and
+"Use the defaults" (which removes the row) is written to the project's
+audit history. `applyTravelOverride()` in `travel-overrides.ts` applies them
+after `jobTravelCharge()`. The map panel marks such jobs "Custom for this job"
+and links to the section. Adjustments stay inside the office-only travel data
+and never reach owner or vendor views.
