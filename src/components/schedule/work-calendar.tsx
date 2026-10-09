@@ -209,7 +209,7 @@ function kindTone(kind: WorkCalendarEntryKind): string {
     case "schedule":
       return "border-brand-compass-blue bg-card text-brand-compass-blue"
     case "event":
-      return "border-[#5f4b8b] bg-card text-[#5f4b8b]"
+      return "border-brand-compass-violet bg-card text-brand-compass-violet"
     case "task":
       return "border-brand-hps-primary bg-card text-brand-hps-primary"
     case "rfi":
@@ -222,15 +222,15 @@ function kindTone(kind: WorkCalendarEntryKind): string {
 function compactKindTone(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
-      return "border-l-[#2f5963]"
+      return "border-l-brand-compass-blue"
     case "event":
-      return "border-l-[#5f4b8b]"
+      return "border-l-brand-compass-violet"
     case "task":
-      return "border-l-[#3f7d4d]"
+      return "border-l-brand-hps-field"
     case "rfi":
-      return "border-l-[#9d832c]"
+      return "border-l-brand-nutech-gold"
     case "purchase_order":
-      return "border-l-[#6f471f]"
+      return "border-l-brand-orc-brown"
   }
 }
 

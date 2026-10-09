@@ -208,7 +208,7 @@ export function VoicePanel(): React.ReactElement {
               <button
                 type="button"
                 onClick={openMeetingWindow}
-                className="flex size-7 items-center justify-center rounded-md border border-[#9bd3a8]/45 bg-[#3f7d4d] text-white shadow-sm transition-colors hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                className="flex size-7 items-center justify-center rounded-md border border-call-accent-border/45 bg-call-accent text-white shadow-sm transition-colors hover:border-call-accent-border-strong hover:bg-call-accent-hover"
                 aria-label="Open video meeting"
               >
                 <IconVideo className="size-4" />
@@ -223,8 +223,8 @@ export function VoicePanel(): React.ReactElement {
                 type="button"
                 onClick={toggleNoiseSuppression}
                 className={cn(
-                  "flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:border-[#9bd3a8]/60 hover:bg-[#203626] hover:text-white",
-                  isNoiseSuppression && "border-[#9bd3a8]/60 bg-[#203626] text-white"
+                  "flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:border-call-accent-border/60 hover:bg-call-accent-surface hover:text-white",
+                  isNoiseSuppression && "border-call-accent-border/60 bg-call-accent-surface text-white"
                 )}
                 aria-label="Toggle noise suppression"
               >

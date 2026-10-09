@@ -199,11 +199,11 @@ export default async function OfficeAlertsPage({
       <header className="border-b pb-4">
         <div className="flex items-center gap-2">
           {activeQueue === "rfis" ? (
-            <IconMessageCircleQuestion className="size-5 text-[#9d832c]" />
+            <IconMessageCircleQuestion className="size-5 text-brand-nutech-gold" />
           ) : activeQueue === "photos" ? (
-            <IconPhoto className="size-5 text-[#2f5963]" />
+            <IconPhoto className="size-5 text-brand-compass-blue" />
           ) : (
-            <IconClipboardText className="size-5 text-[#3f7d4d]" />
+            <IconClipboardText className="size-5 text-brand-hps-field" />
           )}
           <h1 className="text-2xl font-semibold tracking-tight">Office alerts</h1>
         </div>

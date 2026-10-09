@@ -28,6 +28,12 @@ conventions; this document defines the user-visible behavior and visual rules.
 - Use shadcn/ui with the New York style and the shared UI primitives.
 - Use semantic theme tokens from `src/app/globals.css`; do not add literal
   product colors or stock Tailwind palette colors to product UI.
+  `bun run ui:check` rejects hex classes such as `text-[#9d832c]` in
+  components; use the named token (`text-brand-nutech-gold`) or add one to
+  `globals.css` first. Literal colors stay legitimate in HTML email bodies
+  (email clients ignore CSS variables), in saved color choices users pick
+  from, in CSS handed to third-party call SDKs, and on the public landing
+  page.
 - Keep information surfaces predominantly flat. Cards, badges, pills, and
   other bordered bubbles should occupy no more than roughly 20% of an
   informational layout.
@@ -180,12 +186,15 @@ one at a time.
 ## Controls and forms
 
 - Use React Hook Form with Zod for forms.
-- Use `SearchableCombobox` as the default value selector for searchable or
-  business-data choices. Search must include recognized identifiers and
-  secondary labels.
-- Do not add native `select` or new shadcn `Select` value pickers without a
-  documented accessibility or platform reason. Existing compact fixed selectors
-  may be migrated when their workflow is touched.
+- Choose the picker by list size and source:
+  - more than six options, or options that come from business data
+    (projects, people, statuses, catalogs): `SearchableCombobox`, or
+    `SearchableComboboxField` inside a plain form. Search must include
+    recognized identifiers and secondary labels.
+  - six or fewer fixed options: the compact shadcn `Select`.
+- Do not use native `<select>` in product UI; `bun run ui:check` rejects it.
+- Pickers that save on change must ignore the combobox's empty reset and
+  re-picks of the current value, so nothing saves or clears by accident.
 - Use `DropdownMenu` for commands/actions, not for selecting a value.
 - Keep live selector options sourced from current server results or component
   props and recompute dependent selectors when their parent changes.

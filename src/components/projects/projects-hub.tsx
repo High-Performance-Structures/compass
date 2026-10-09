@@ -965,8 +965,8 @@ function ProjectManagerEmbedDialog({
             <div className="w-full max-w-2xl overflow-hidden rounded-md border bg-card shadow-sm">
               <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2">
                 <div className="flex items-center gap-2">
-                  <span className="size-2 rounded-full bg-[#d14b3a]" />
-                  <span className="size-2 rounded-full bg-[#d8a742]" />
+                  <span className="size-2 rounded-full bg-brand-compass-red" />
+                  <span className="size-2 rounded-full bg-brand-nutech-gold" />
                   <span className="size-2 rounded-full bg-brand-hps-primary" />
                 </div>
                 <span className="text-xs font-medium text-muted-foreground">

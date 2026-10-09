@@ -66,7 +66,7 @@ const TranscriptRow = React.memo(function TranscriptRow({
       className={`rounded-sm border p-2 text-sm ${
         entry.isPartialTranscript
           ? "border-white/10 bg-white/5 text-white/55"
-          : "border-[#3f7d4d]/50 bg-[#3f7d4d]/10 text-white"
+          : "border-call-accent/50 bg-call-accent/10 text-white"
       }`}
     >
       <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/45">
@@ -232,7 +232,7 @@ export function TalkNotesPanel({
             onClick={() => setActivePanel("notes")}
             className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
               activePanel === "notes"
-                ? "bg-[#3f7d4d] text-white"
+                ? "bg-call-accent text-white"
                 : "text-white/70 hover:bg-white/10 hover:text-white"
             }`}
           >
@@ -243,7 +243,7 @@ export function TalkNotesPanel({
             onClick={() => setActivePanel("transcript")}
             className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
               activePanel === "transcript"
-                ? "bg-[#3f7d4d] text-white"
+                ? "bg-call-accent text-white"
                 : "text-white/70 hover:bg-white/10 hover:text-white"
             }`}
           >
@@ -261,12 +261,12 @@ export function TalkNotesPanel({
               onChange={(event) => setNotes(event.currentTarget.value)}
               placeholder="Meeting notes..."
               aria-label="Meeting notes"
-              className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-[#63b878]"
+              className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-call-focus"
             />
             <button
               type="button"
               onClick={() => void saveMeetingNotes()}
-              className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860]"
+              className="rounded-sm bg-call-accent px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-call-accent-hover"
             >
               Save Notes to Conversation
             </button>
@@ -316,7 +316,7 @@ export function TalkNotesPanel({
                 className={`rounded-sm px-3 py-2 text-sm font-semibold text-white transition-colors ${
                   transcriptEnabled
                     ? "border border-white/20 bg-white/10 hover:bg-white/15"
-                    : "bg-[#3f7d4d] hover:bg-[#4f9860]"
+                    : "bg-call-accent hover:bg-call-accent-hover"
                 }`}
               >
                 {transcriptEnabled
@@ -327,7 +327,7 @@ export function TalkNotesPanel({
                 type="button"
                 onClick={() => void saveTranscript()}
                 disabled={!hasFinalTranscript}
-                className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
+                className="rounded-sm bg-call-accent px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-call-accent-hover disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
               >
                 Save Transcript to Conversation
               </button>
