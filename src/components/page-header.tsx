@@ -16,6 +16,8 @@ type PageHeaderProps = {
   readonly back?: PageHeaderBack
   /** Page actions, aligned right on wide screens and wrapped below on narrow ones. */
   readonly actions?: ReactNode
+  /** A short secondary line under the description, such as an access note. */
+  readonly meta?: ReactNode
   readonly className?: string
 }
 
@@ -30,6 +32,7 @@ export function PageHeader({
   icon,
   back,
   actions,
+  meta,
   className,
 }: PageHeaderProps): JSX.Element {
   return (
@@ -51,6 +54,7 @@ export function PageHeader({
         {description ? (
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>
         ) : null}
+        {meta ? <div className="mt-2 text-xs text-muted-foreground">{meta}</div> : null}
       </div>
       {actions ? (
         <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">

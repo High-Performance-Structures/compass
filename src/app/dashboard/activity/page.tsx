@@ -12,6 +12,7 @@ import {
   type ActivityCategory,
 } from "@/lib/activity-log"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { PageHeader } from "@/components/page-header"
 
 const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {
   access: "Access",
@@ -66,59 +67,54 @@ export default async function ActivityPage({
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b pb-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <IconActivity className="size-5 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Activity
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Recent staff, owner, subcontractor, and supplier actions in Compass.
-          </p>
-        </div>
-        <form className="flex flex-wrap items-center gap-2">
-          <SearchableComboboxField
-            name="category"
-            defaultValue={params.category ?? ""}
-            ariaLabel="Filter activity by category"
-            placeholder="All activity"
-            searchPlaceholder="Search categories..."
-            className="h-9 min-w-48"
-            options={[
-              { value: "", label: "All activity" },
-              ...ACTIVITY_CATEGORIES.map((category) => ({
-                value: category,
-                label: CATEGORY_LABELS[category],
-              })),
-            ]}
-          />
-          <SearchableComboboxField
-            name="project"
-            defaultValue={params.project ?? ""}
-            ariaLabel="Filter activity by project"
-            placeholder="All projects"
-            searchPlaceholder="Search projects..."
-            className="h-9 min-w-56"
-            options={[
-              { value: "", label: "All projects" },
-              ...projects.map((project) => ({
-                value: project.id,
-                label: project.name,
-                description: project.projectNumber ?? undefined,
-                keywords: project.projectNumber ?? undefined,
-              })),
-            ]}
-          />
-          <button
-            type="submit"
-            className="h-9 border bg-background px-4 text-sm font-medium hover:bg-muted"
-          >
-            Apply
-          </button>
-        </form>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        icon={<IconActivity className="size-5 text-muted-foreground" />}
+        title="Activity"
+        description="Recent staff, owner, subcontractor, and supplier actions in Compass."
+        actions={
+            <form className="flex flex-wrap items-center gap-2">
+              <SearchableComboboxField
+                name="category"
+                defaultValue={params.category ?? ""}
+                ariaLabel="Filter activity by category"
+                placeholder="All activity"
+                searchPlaceholder="Search categories..."
+                className="h-9 min-w-48"
+                options={[
+                  { value: "", label: "All activity" },
+                  ...ACTIVITY_CATEGORIES.map((category) => ({
+                    value: category,
+                    label: CATEGORY_LABELS[category],
+                  })),
+                ]}
+              />
+              <SearchableComboboxField
+                name="project"
+                defaultValue={params.project ?? ""}
+                ariaLabel="Filter activity by project"
+                placeholder="All projects"
+                searchPlaceholder="Search projects..."
+                className="h-9 min-w-56"
+                options={[
+                  { value: "", label: "All projects" },
+                  ...projects.map((project) => ({
+                    value: project.id,
+                    label: project.name,
+                    description: project.projectNumber ?? undefined,
+                    keywords: project.projectNumber ?? undefined,
+                  })),
+                ]}
+              />
+              <button
+                type="submit"
+                className="h-9 border bg-background px-4 text-sm font-medium hover:bg-muted"
+              >
+                Apply
+              </button>
+            </form>
+        }
+      />
 
       <section className="divide-y border-b" aria-label="Compass activity">
         {events.map((event) => (

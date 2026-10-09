@@ -13,6 +13,7 @@ import { getNuTechOrderDashboard } from "@/app/actions/nutech-orders"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { nuTechOrderStatusLabel } from "@/lib/nutech/workflow"
+import { PageHeader } from "@/components/page-header"
 
 function dateLabel(value: string | null): string {
   if (!value) return "No delivery date"
@@ -31,24 +32,18 @@ export default async function NuTechOrdersPage(): Promise<React.ReactElement> {
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <IconTool className="size-5 text-brand-nutech-gold-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Nu-Tech Orders
-            </h1>
-          </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Fox Blocks sales, staff takeoffs, bracing rentals, Airlite purchase
-            orders, and vendor-invoice release tracking.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Badge variant="secondary">{activeOrders.length} active</Badge>
-          <Badge variant="outline">{orders.length} N projects</Badge>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-0"
+        icon={<IconTool className="size-5 text-brand-nutech-gold-foreground" />}
+        title="Nu-Tech Orders"
+        description="Fox Blocks sales, staff takeoffs, bracing rentals, Airlite purchase orders, and vendor-invoice release tracking."
+        actions={
+          <>
+            <Badge variant="secondary">{activeOrders.length} active</Badge>
+            <Badge variant="outline">{orders.length} N projects</Badge>
+          </>
+        }
+      />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">

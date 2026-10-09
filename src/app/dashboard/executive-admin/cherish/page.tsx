@@ -5,6 +5,7 @@ import { IconHeartHandshake, IconLock } from "@tabler/icons-react"
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { getCurrentUser } from "@/lib/auth"
 import { canFeature } from "@/lib/permission-enforcement"
+import { PageHeader } from "@/components/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -16,21 +17,17 @@ export default async function CherishReviewPage(): Promise<React.ReactElement> {
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6">
-      <header className="border-b pb-5">
-        <div className="flex items-center gap-2">
-          <IconHeartHandshake className="size-5 text-[var(--department-primary)]" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            CHERISH review
-          </h1>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Approve shout-outs and project wins for the team stream, acknowledge
-          private concerns, or archive submissions that should not be shared.
-        </p>
-        <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <IconLock className="size-3.5" /> Restricted to staff granted CHERISH review access
-        </p>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        icon={<IconHeartHandshake className="size-5 text-[var(--department-primary)]" />}
+        title="CHERISH review"
+        description="Approve shout-outs and project wins for the team stream, acknowledge private concerns, or archive submissions that should not be shared."
+        meta={
+          <span className="flex items-center gap-1.5">
+            <IconLock className="size-3.5" /> Restricted to staff granted CHERISH review access
+          </span>
+        }
+      />
 
       <section className="py-5" aria-label="CHERISH review queue">
         <CherishPulseStream canReview refreshKey={0} />
