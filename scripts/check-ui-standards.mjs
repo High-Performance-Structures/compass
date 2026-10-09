@@ -175,6 +175,22 @@ for (const relativePath of sourceFiles) {
       }
     })
   }
+  // Literal hex colors in class names bypass theming; use a named token from
+  // globals.css. The RealtimeKit meeting window is an always-dark provider
+  // surface and intentionally keeps its own palette.
+  if (
+    relativePath.endsWith(".tsx") &&
+    relativePath !== "src/app/page.tsx" &&
+    !stockColorExemptFiles.has(relativePath) &&
+    !stockColorExemptPrefixes.some((prefix) => relativePath.startsWith(prefix))
+  ) {
+    source.split("\n").forEach((line, index) => {
+      const hex = line.match(/(?<![\\w:-])(?:[a-z-]+:)*[a-z]+(?:-[a-z]+)*-\\[#[0-9a-fA-F]{3,8}\\]/)
+      if (hex) {
+        failures.push(`${relativePath}:${index + 1}: use a theme token instead of ${hex[0]}`)
+      }
+    })
+  }
   if (!source.includes("getPaginationRowModel")) continue
 
   const requiredPatterns = [
