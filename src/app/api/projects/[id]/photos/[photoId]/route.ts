@@ -19,6 +19,7 @@ import {
   isGoogleNativeFile,
 } from "@/lib/google/mapper"
 import type { ProjectAudience } from "@/lib/project-audience-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import {
   assertProjectAccess,
   getActiveOrganization,
@@ -77,7 +78,7 @@ export async function GET(
     const organization = await getActiveOrganization(db, user)
     const viewerIsInternal =
       (organization?.type === "internal" || organization?.type === "demo") &&
-      (isInternalStaffRole(user.role) || user.role === "developer")
+      isInternalStaffRole(user.role)
     if (!viewerIsInternal && (audience === null || organization?.type !== "client")) {
       return new Response("Photo not found", { status: 404 })
     }
@@ -91,6 +92,18 @@ export async function GET(
       return new Response("Photo not found", { status: 404 })
     }
 
+    if (!viewerIsInternal) {
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: project.organizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: photoId,
+        resourceType: "photo",
+      })
+      if (!granted) return new Response("Photo not found", { status: 404 })
+    }
+
     const visibility =
       audience === "owner"
         ? or(
@@ -101,6 +114,7 @@ export async function GET(
             eq(dailyLogPhotos.subVendorVisible, true),
             eq(dailyLogPhotos.publicShareable, true)
           )
+
     const [photo] = await db
       .select({
         driveFileId: dailyLogPhotos.driveFileId,

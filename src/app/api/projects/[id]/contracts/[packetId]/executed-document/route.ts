@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { projectMembers, projects } from "@/db/schema"
+import { projects } from "@/db/schema"
 import { contractPackets } from "@/db/schema-contracts"
 import { requireAuth } from "@/lib/auth"
 import { executedContractDocumentSource } from "@/lib/contracts/executed-document-source"
@@ -14,8 +14,7 @@ import {
 } from "@/lib/google/mapper"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
-import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
+import { assertProjectAccess, getActiveOrganization } from "@/lib/project-access"
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -38,32 +37,24 @@ export async function GET(
   try {
     const user = await requireAuth()
     const { id: rawProjectId, packetId } = await context.params
-    const projectId = await resolveProjectRouteId(rawProjectId)
-    if (!projectId) return new Response("Contract document not found", { status: 404 })
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const organization = await getActiveOrganization(db, user)
+    if (
+      !organization ||
+      organization.type !== "internal" ||
+      !isInternalStaffRole(user.role)
+    ) {
+      return new Response("Contract document not found", { status: 404 })
+    }
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Contract document not found", { status: 404 })
     const projectAccess = await assertProjectAccess(db, user, projectId)
     if (!projectAccess.organizationId) {
       return new Response("Contract document not found", { status: 404 })
     }
 
-    if (!isInternalStaffRole(user.role)) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
-      if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
-        return new Response("Contract document not found", { status: 404 })
-      }
-    }
 
     const packet = await db
       .select({

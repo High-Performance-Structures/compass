@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   resolveProjectRouteId: vi.fn(),
   assertProjectAccess: vi.fn(),
+  getActiveOrganization: vi.fn(),
   getProjectDocumentDriveContext: vi.fn(),
   isDriveItemWithinProjectFolder: vi.fn(),
   isGoogleNativeFile: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/lib/project-route-id", () => ({
 }))
 vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
+  getActiveOrganization: mocks.getActiveOrganization,
 }))
 vi.mock("@/lib/google/project-document-drive", () => ({
   getProjectDocumentDriveContext: mocks.getProjectDocumentDriveContext,
@@ -100,6 +102,9 @@ describe("GET executed change-order document", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAuth.mockResolvedValue(owner)
+    mocks.getActiveOrganization.mockImplementation(async (_db, user) =>
+      user.role === "admin" ? { id: "org-internal", type: "internal" } : null
+    )
     mocks.resolveProjectRouteId.mockResolvedValue("project-1")
     mocks.getCloudflareContext.mockResolvedValue({
       env: {
@@ -137,30 +142,16 @@ describe("GET executed change-order document", () => {
     )
   })
 
-  it.each(["client", "owner"])(
-    "serves the project Drive document to an authorized %s",
-    async (membershipRole) => {
-      configureDb([
-        { role: membershipRole },
-        {
-          ...executedDriveChangeOrder,
-          status: membershipRole === "owner" ? "closed" : "executed",
-        },
-        { folderId: "project-folder-1" },
-      ])
+  it("denies an external project member before loading the change order", async () => {
+    configureDb([])
 
-      const response = await requestDocument()
+    const response = await requestDocument()
 
-      expect(response.status).toBe(200)
-      expect(await response.text()).toBe("change-order-bytes")
-      expect(mocks.isDriveItemWithinProjectFolder).toHaveBeenCalledWith(
-        expect.objectContaining({
-          itemId: "drive-change-order-1",
-          projectFolderId: "project-folder-1",
-        })
-      )
-    }
-  )
+    expect(response.status).toBe(404)
+    expect(mocks.resolveProjectRouteId).not.toHaveBeenCalled()
+    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(mocks.getProjectDocumentDriveContext).not.toHaveBeenCalled()
+  })
 
   it.each(["subcontractor", "supplier", "member"])(
     "denies a %s before loading the change order",
@@ -219,20 +210,12 @@ describe("GET executed change-order document", () => {
     expect(await response.text()).toBe("foxit-change-order")
   })
 
-  it("redirects an authorized owner to another secure saved location", async () => {
-    configureDb([
-      { role: "client" },
-      {
-        ...executedDriveChangeOrder,
-        executedDocumentUrl: "https://documents.example.com/change-order.pdf",
-      },
-    ])
+  it("denies an external owner before redirecting to another saved location", async () => {
+    configureDb([])
 
     const response = await requestDocument()
 
-    expect(response.status).toBe(302)
-    expect(response.headers.get("location")).toBe(
-      "https://documents.example.com/change-order.pdf"
-    )
+    expect(response.status).toBe(404)
+    expect(mocks.getProjectDocumentDriveContext).not.toHaveBeenCalled()
   })
 })

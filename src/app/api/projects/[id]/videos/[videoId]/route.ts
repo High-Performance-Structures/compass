@@ -8,6 +8,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
 import type { ProjectAudience } from "@/lib/project-audience-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import {
   assertProjectAccess,
   getActiveOrganization,
@@ -48,7 +49,7 @@ export async function GET(
     const organization = await getActiveOrganization(db, user)
     const internal =
       (organization?.type === "internal" || organization?.type === "demo") &&
-      (isInternalStaffRole(user.role) || user.role === "developer")
+      isInternalStaffRole(user.role)
     if (!internal && (!requestedAudience || organization?.type !== "client")) {
       return new Response("Video not found", { status: 404 })
     }
@@ -64,6 +65,17 @@ export async function GET(
           )
     if (!project?.organizationId) {
       return new Response("Video not found", { status: 404 })
+    }
+    if (!internal) {
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: project.organizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: videoId,
+        resourceType: "video",
+      })
+      if (!granted) return new Response("Video not found", { status: 404 })
     }
     const [video] = await db
       .select({

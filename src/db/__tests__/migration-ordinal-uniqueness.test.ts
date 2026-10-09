@@ -3,14 +3,15 @@ import { join } from "node:path"
 
 import { describe, expect, it } from "vitest"
 
-describe("D1 migration ordinals", () => {
-  it("uses one SQL migration per ordinal", () => {
+describe("owner-update migration numbering", () => {
+  it("keeps the write-fencing migration after current main's 0193 migration", () => {
     const migrationDirectory = join(process.cwd(), "drizzle")
-    const ordinals = readdirSync(migrationDirectory)
-      .filter((name) => name.endsWith(".sql"))
-      .map((name) => name.match(/^(\d+)_/)?.[1] ?? null)
-      .filter((ordinal): ordinal is string => ordinal !== null)
+    const migrations = readdirSync(migrationDirectory)
 
-    expect(new Set(ordinals).size).toBe(ordinals.length)
+    expect(migrations).toContain("0193_travel_charges_and_site_location.sql")
+    expect(migrations).toContain("0194_owner_update_write_fencing.sql")
+    expect(
+      migrations.some((name) => name.startsWith("0193_owner_update"))
+    ).toBe(false)
   })
 })

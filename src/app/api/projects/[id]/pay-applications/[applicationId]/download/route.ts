@@ -5,7 +5,6 @@ import { NextRequest } from "next/server"
 import { getDb } from "@/db"
 import {
   projectBudgetApplications,
-  projectMembers,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
@@ -16,8 +15,7 @@ import {
   getGoogleCryptoSalt,
   parseServiceAccountKey,
 } from "@/lib/google/config"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertProjectAccess, getActiveOrganization } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
@@ -56,30 +54,23 @@ export async function GET(
   try {
     const user = await requireAuth()
     const { id: rawProjectId, applicationId } = await params
-    const projectId = await resolveProjectRouteId(rawProjectId)
-    if (!projectId) return new Response("Project not found", { status: 404 })
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const organization = await getActiveOrganization(db, user)
+    if (
+      !organization ||
+      organization.type !== "internal" ||
+      !isInternalStaffRole(user.role)
+    ) {
+      return new Response("Pay application not found", { status: 404 })
+    }
+    const projectId = await resolveProjectRouteId(rawProjectId)
+    if (!projectId) return new Response("Project not found", { status: 404 })
     const project = await assertProjectAccess(db, user, projectId)
     if (!project.organizationId) {
       return new Response("Pay application not found", { status: 404 })
     }
 
-    if (!isInternalStaffRole(user.role)) {
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-      if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
-        return new Response("Pay application not found", { status: 404 })
-      }
-    }
 
     const [application] = await db
       .select({

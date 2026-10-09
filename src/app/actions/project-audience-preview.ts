@@ -20,6 +20,7 @@ import {
   organizations,
   ownerProjectUpdates,
   projectContacts,
+  projectExternalResourceGrants,
   projectMembers,
   projectOperations,
   projectRfis,
@@ -539,51 +540,75 @@ export async function getProjectAudiencePreview(
       ? sql<boolean>`canonical.owner_visible IS 1 OR canonical.public_shareable IS 1`
       : sql<boolean>`canonical.sub_vendor_visible IS 1 OR canonical.public_shareable IS 1`
 
-  const photoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      fileName: dailyLogPhotos.fileName,
-      driveFileId: dailyLogPhotos.driveFileId,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      mimeType: dailyLogPhotos.mimeType,
-      caption: dailyLogPhotos.caption,
-      capturedAt: dailyLogPhotos.capturedAt,
-      createdAt: dailyLogPhotos.createdAt,
-      logDate: dailyLogs.logDate,
-      logWorkCompleted: dailyLogs.workCompleted,
-      logIssues: dailyLogs.issues,
-      logNotes: dailyLogs.notes,
-      photoKind: dailyLogPhotos.photoKind,
-      schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
-    })
-    .from(dailyLogPhotos)
-    .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
-    .where(
-      and(
-        eq(dailyLogPhotos.projectId, projectId),
-        eq(dailyLogPhotos.reviewStatus, "approved"),
-        visibilityFilter,
-        dailyLogPhotoCollectionEligibility(),
-        not(sql<boolean>`EXISTS (
-          SELECT 1
-          FROM daily_log_photo_aliases AS alias
-          JOIN daily_log_photos AS canonical
-            ON canonical.id IS alias.canonical_photo_id
-          WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
-            AND alias.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.project_id IS ${dailyLogPhotos.projectId}
-            AND canonical.mime_type LIKE 'image/%'
-            AND canonical.drive_file_id IS NOT NULL
-            AND (
-              canonical.drive_file_id IS NOT NULL
-              OR canonical.thumbnail_url IS NOT NULL
-            )
-            AND canonical.review_status IS 'approved'
-            AND (${canonicalVisibilityFilter})
-        )`),
-      )
-    )
-    .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+  const photoFields = {
+    id: dailyLogPhotos.id,
+    fileName: dailyLogPhotos.fileName,
+    driveFileId: dailyLogPhotos.driveFileId,
+    thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+    mimeType: dailyLogPhotos.mimeType,
+    caption: dailyLogPhotos.caption,
+    capturedAt: dailyLogPhotos.capturedAt,
+    createdAt: dailyLogPhotos.createdAt,
+    logDate: dailyLogs.logDate,
+    logWorkCompleted: dailyLogs.workCompleted,
+    logIssues: dailyLogs.issues,
+    logNotes: dailyLogs.notes,
+    photoKind: dailyLogPhotos.photoKind,
+    schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
+  }
+  const photoRows = viewerIsInternal
+    ? await db
+        .select(photoFields)
+        .from(dailyLogPhotos)
+        .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            visibilityFilter,
+            dailyLogPhotoCollectionEligibility(),
+            not(sql<boolean>`EXISTS (
+              SELECT 1
+              FROM daily_log_photo_aliases AS alias
+              JOIN daily_log_photos AS canonical
+                ON canonical.id IS alias.canonical_photo_id
+              WHERE alias.source_photo_id IS ${dailyLogPhotos.id}
+                AND alias.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.project_id IS ${dailyLogPhotos.projectId}
+                AND canonical.mime_type LIKE 'image/%'
+                AND canonical.drive_file_id IS NOT NULL
+                AND (canonical.drive_file_id IS NOT NULL OR canonical.thumbnail_url IS NOT NULL)
+                AND canonical.review_status IS 'approved'
+                AND (${canonicalVisibilityFilter})
+            )`),
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+    : await db
+        .select(photoFields)
+        .from(dailyLogPhotos)
+        .innerJoin(
+          projectExternalResourceGrants,
+          and(
+            eq(projectExternalResourceGrants.organizationId, organizationId),
+            eq(projectExternalResourceGrants.projectId, projectId),
+            eq(projectExternalResourceGrants.resourceType, "photo"),
+            eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+            eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+            isNull(projectExternalResourceGrants.revokedAt)
+          )
+        )
+        .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            isNotNull(dailyLogPhotos.driveFileId),
+            visibilityFilter,
+            dailyLogPhotoCollectionEligibility()
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
   const publishedSchedule = await db
     .select({ snapshotData: schedulePublications.snapshotData })
@@ -1125,37 +1150,39 @@ export async function getProjectAudiencePreview(
       }
     })
 
-  // Published construction documents use one whole-project audience. Owners,
-  // assigned subcontractors, and internal previews receive the same set.
+  // Published construction documents remain staff-only until their exact
+  // external resource grant taxonomy is available.
   const [documentRows, contractDocumentRows] = await Promise.all([
-    db
-      .select({
-        id: projectDocuments.id,
-        category: projectDocuments.category,
-        title: projectDocuments.title,
-        description: projectDocuments.description,
-        documentDate: projectDocuments.documentDate,
-        revision: projectDocuments.revision,
-        status: projectDocuments.status,
-        downloadable: projectDocuments.downloadable,
-        sourceFileName: projectDocuments.sourceFileName,
-        publishedAt: projectDocuments.publishedAt,
-      })
-      .from(projectDocuments)
-      .where(
-        and(
-          eq(projectDocuments.projectId, projectId),
-          eq(projectDocuments.audience, "project_team"),
-          inArray(projectDocuments.status, ["current", "superseded"]),
-          isNotNull(projectDocuments.publishedAt)
-        )
-      )
-      .orderBy(
-        asc(projectDocuments.category),
-        desc(projectDocuments.documentDate),
-        asc(projectDocuments.title)
-      ),
-    audience === "owner"
+    viewerIsInternal
+      ? db
+          .select({
+            id: projectDocuments.id,
+            category: projectDocuments.category,
+            title: projectDocuments.title,
+            description: projectDocuments.description,
+            documentDate: projectDocuments.documentDate,
+            revision: projectDocuments.revision,
+            status: projectDocuments.status,
+            downloadable: projectDocuments.downloadable,
+            sourceFileName: projectDocuments.sourceFileName,
+            publishedAt: projectDocuments.publishedAt,
+          })
+          .from(projectDocuments)
+          .where(
+            and(
+              eq(projectDocuments.projectId, projectId),
+              eq(projectDocuments.audience, "project_team"),
+              inArray(projectDocuments.status, ["current", "superseded"]),
+              isNotNull(projectDocuments.publishedAt)
+            )
+          )
+          .orderBy(
+            asc(projectDocuments.category),
+            desc(projectDocuments.documentDate),
+            asc(projectDocuments.title)
+          )
+      : Promise.resolve([]),
+    viewerIsInternal && audience === "owner"
       ? db
           .select({
             id: contractPackets.id,

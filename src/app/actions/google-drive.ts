@@ -63,7 +63,7 @@ function assertDriveStaffCandidate(user: AuthUser): void {
   if (
     !user.isActive ||
     !user.organizationId ||
-    (!isInternalStaffRole(user.role) && user.role !== "developer")
+    (!isInternalStaffRole(user.role))
   ) {
     throw new Error("Google Drive access requires active internal staff")
   }
