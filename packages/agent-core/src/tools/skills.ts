@@ -41,8 +41,8 @@ export function skillTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = installSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/skills/install",
-          args
+          "/api/compass/skills",
+          { action: "install", ...args }
         )
         return JSON.stringify(result)
       },
@@ -55,7 +55,8 @@ export function skillTools(dataSource: DataSource): ToolDef[] {
       input_schema: zodToJsonSchema(listSchema),
       run: async (): Promise<string> => {
         const result = await dataSource.fetch(
-          "/api/compass/skills/list"
+          "/api/compass/skills",
+          { action: "list" }
         )
         return JSON.stringify(result)
       },
@@ -68,8 +69,8 @@ export function skillTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = toggleSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/skills/toggle",
-          args
+          "/api/compass/skills",
+          { action: "toggle", ...args }
         )
         return JSON.stringify(result)
       },
@@ -84,8 +85,8 @@ export function skillTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = uninstallSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/skills/uninstall",
-          args
+          "/api/compass/skills",
+          { action: "uninstall", ...args }
         )
         return JSON.stringify(result)
       },

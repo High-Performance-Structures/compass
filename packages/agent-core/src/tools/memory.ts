@@ -47,8 +47,8 @@ export function memoryTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = rememberSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/memory/save",
-          args
+          "/api/compass/memory",
+          { action: "save", ...args }
         )
         return JSON.stringify(result)
       },
@@ -64,8 +64,8 @@ export function memoryTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = recallSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/memory/recall",
-          args
+          "/api/compass/memory",
+          { action: "search", ...args }
         )
         return JSON.stringify(result)
       },
