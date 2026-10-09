@@ -26,6 +26,7 @@ import { ActiveProjectSectionRedirect } from "@/components/projects/active-proje
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/page-header"
 
 type ProjectTarget = {
   readonly section: string
@@ -212,17 +213,12 @@ export default async function ProjectSectionPickerPage({
 
   return (
     <ProjectContextWatermarkShell>
-      <div className="max-w-3xl">
-        <div className="flex items-center gap-2">
-          {target.icon}
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {target.title}
-          </h1>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {target.description}
-        </p>
-      </div>
+      <PageHeader
+        className="mb-0"
+        icon={target.icon}
+        title={target.title}
+        description={target.description}
+      />
 
       <section className="rounded-lg border bg-muted/30 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">

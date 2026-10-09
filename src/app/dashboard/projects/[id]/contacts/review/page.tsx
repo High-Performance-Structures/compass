@@ -1,13 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { decodeProjectRouteId } from "@/lib/project-route-id"
-import {
-  IconArrowLeft,
-  IconAddressBook,
-  IconGitMerge,
-  IconShieldCheck,
-} from "@tabler/icons-react"
-import Link from "next/link"
+import { IconAddressBook, IconGitMerge, IconShieldCheck } from "@tabler/icons-react"
 import { redirect } from "next/navigation"
 
 import {
@@ -19,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { getCurrentUser } from "@/lib/auth"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { PageHeader } from "@/components/page-header"
 
 export default async function ProjectContactMatchReviewPage({
   params,
@@ -46,36 +41,24 @@ export default async function ProjectContactMatchReviewPage({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href={`/dashboard/projects/${id}/contacts`}
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <IconArrowLeft className="size-4" />
-            Project contacts
-          </Link>
-          <div className="mt-3 flex items-center gap-2">
-            <IconGitMerge className="size-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Contact Match Review
-            </h1>
-          </div>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Match imported names to trusted contacts.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">
-            <IconAddressBook className="mr-1 size-3" />
-            Source reconciliation
-          </Badge>
-          <Badge variant="secondary">
-            <IconShieldCheck className="mr-1 size-3" />
-            Admin review
-          </Badge>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: `/dashboard/projects/${id}/contacts`, label: "Project contacts" }}
+        icon={<IconGitMerge className="size-5 text-primary" />}
+        title="Contact Match Review"
+        description="Match imported names to trusted contacts."
+        actions={
+          <>
+            <Badge variant="outline">
+              <IconAddressBook className="mr-1 size-3" />
+              Source reconciliation
+            </Badge>
+            <Badge variant="secondary">
+              <IconShieldCheck className="mr-1 size-3" />
+              Admin review
+            </Badge>
+          </>
+        }
+      />
 
       {review ? (
         <ProjectContactMatchReviewPanel review={review} />

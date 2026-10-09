@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
-import { IconArrowLeft, IconInbox, IconPhone } from "@tabler/icons-react"
+import { IconInbox, IconPhone } from "@tabler/icons-react"
 
 import {
   getStaffMessageDesk,
@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
+import { PageHeader } from "@/components/page-header"
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -42,26 +43,14 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">
-      <header className="border-b pb-5">
-        <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2">
-          <Link href="/dashboard/projects">
-            <IconArrowLeft className="size-4" />
-            Office maintenance
-          </Link>
-        </Button>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <IconPhone className="size-6 text-muted-foreground" />
-              <h1 className="text-2xl font-semibold tracking-tight">Staff Message Desk</h1>
-            </div>
-            <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Capture a call for one accountable staff member, or manually route an inbound text after review.
-            </p>
-          </div>
-          <Badge variant="secondary">{records.length} messages</Badge>
-        </div>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        back={{ href: "/dashboard/projects", label: "Office maintenance" }}
+        icon={<IconPhone className="size-6 text-muted-foreground" />}
+        title="Staff Message Desk"
+        description="Capture a call for one accountable staff member, or manually route an inbound text after review."
+        actions={<Badge variant="secondary">{records.length} messages</Badge>}
+      />
 
       <section className="border-b pb-6" aria-labelledby="new-staff-message">
         <h2 id="new-staff-message" className="text-lg font-semibold">New call or message</h2>
