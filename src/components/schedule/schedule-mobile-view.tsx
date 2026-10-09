@@ -84,7 +84,7 @@ export function ScheduleMobileView({
   return (
     <div className="flex h-full flex-col">
       {/* month pill navigation */}
-      <div className="flex gap-2 overflow-x-auto border-b px-4 py-2 [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-2 overflow-x-auto border-b px-4 py-2">
         {MONTHS.map((month, i) => (
           <button
             key={month}

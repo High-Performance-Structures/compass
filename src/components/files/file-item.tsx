@@ -110,12 +110,12 @@ export const FolderCard = forwardRef<
         {file.starred ? (
           <IconStarFilled
             size={14}
-            className="text-amber-400"
+            className="text-warning"
           />
         ) : (
           <IconStar
             size={14}
-            className="text-muted-foreground hover:text-amber-400"
+            className="text-muted-foreground hover:text-warning"
           />
         )}
       </button>
@@ -191,12 +191,12 @@ export const FileCard = forwardRef<
             {file.starred ? (
               <IconStarFilled
                 size={14}
-                className="text-amber-400"
+                className="text-warning"
               />
             ) : (
               <IconStar
                 size={14}
-                className="text-muted-foreground hover:text-amber-400"
+                className="text-muted-foreground hover:text-warning"
               />
             )}
           </button>

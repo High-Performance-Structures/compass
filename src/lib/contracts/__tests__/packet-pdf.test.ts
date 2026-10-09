@@ -72,7 +72,7 @@ describe("contract packet PDF", () => {
       projectNumber: "H-001",
       projectAddress: "1 Main Street",
       brand: {
-        companyName: "High Performance Structures, Inc.",
+        companyName: "High Performance Structures Inc.",
         contactLines: ["PO Box 1813", "Woodland Park, CO 80866", "Tel: 719.900.8850"],
         logoBytes: new Uint8Array(Buffer.from(
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+AvV1AAAAAElFTkSuQmCC",

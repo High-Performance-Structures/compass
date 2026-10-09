@@ -14,7 +14,10 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import { assertProjectAccess } from "@/lib/project-access"
+import {
+  assertProjectAccess,
+  getActiveOrganization,
+} from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   MAX_PHOTO_UPLOAD_BATCH_BYTES,
@@ -54,7 +57,19 @@ export async function POST(
 ): Promise<NextResponse<UploadResult>> {
   try {
     const user = await requireAuth()
-    if (isDemoUser(user.id)) {
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const organization = await getActiveOrganization(db, user)
+    const viewerIsInternal =
+      (organization?.type === "internal" || organization?.type === "demo") &&
+      isInternalStaffRole(user.role)
+    if (!organization) {
+      return NextResponse.json(
+        { success: false, error: "Warranty uploads are not available." },
+        { status: 403 }
+      )
+    }
+    if (organization.type === "demo" || isDemoUser(user.id)) {
       return NextResponse.json(
         { success: false, error: "Demo mode is read-only." },
         { status: 403 }
@@ -65,8 +80,6 @@ export async function POST(
     if (!projectId) {
       return NextResponse.json({ success: false, error: "Project not found." }, { status: 404 })
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const access = await assertProjectAccess(db, user, projectId)
     if (!access.organizationId) {
       return NextResponse.json(
@@ -96,7 +109,6 @@ export async function POST(
         { status: 404 }
       )
     }
-    const viewerIsInternal = isInternalStaffRole(user.role)
     if (viewerIsInternal) {
       await requireFeaturePermission(user, "warranty-claims", "update")
     }

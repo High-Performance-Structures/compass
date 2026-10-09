@@ -154,7 +154,7 @@ export function FileMoveDialog({
                   >
                     <IconFolder
                       size={16}
-                      className="text-amber-500"
+                      className="text-warning"
                     />
                     {folder.name}
                   </button>
@@ -176,7 +176,7 @@ export function FileMoveDialog({
                 >
                   <IconFolder
                     size={16}
-                    className="text-amber-500"
+                    className="text-warning"
                   />
                   My Files (root)
                 </button>
@@ -197,7 +197,7 @@ export function FileMoveDialog({
                   >
                     <IconFolder
                       size={16}
-                      className="text-amber-500"
+                      className="text-warning"
                     />
                     {folder.name}
                   </button>

@@ -227,3 +227,26 @@ export function centeredTimelineScrollLeft(input: {
   )
   return Math.max(0, Math.min(desiredScrollLeft, maximumScrollLeft))
 }
+
+/**
+ * Horizontal scroll needed to bring a bar into view, or null when it is
+ * already visible. Returning null keeps repeated clicks on the same item from
+ * moving the timeline.
+ */
+export function revealBarScrollLeft(input: {
+  readonly barLeft: number
+  readonly barWidth: number
+  readonly scrollLeft: number
+  readonly clientWidth: number
+  readonly scrollWidth: number
+  readonly margin?: number
+}): number | null {
+  const margin = input.margin ?? 32
+  const barRight = input.barLeft + input.barWidth
+  const visibleLeft = input.scrollLeft + margin
+  const visibleRight = input.scrollLeft + input.clientWidth - margin
+  if (barRight >= visibleLeft && input.barLeft <= visibleRight) return null
+  const centered = input.barLeft + input.barWidth / 2 - input.clientWidth / 2
+  const maximumScrollLeft = Math.max(0, input.scrollWidth - input.clientWidth)
+  return Math.max(0, Math.min(centered, maximumScrollLeft))
+}

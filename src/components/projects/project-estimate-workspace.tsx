@@ -46,6 +46,13 @@ import {
   type ProjectEstimateTermsOption,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
+import {
+  ESTIMATE_WORK_SECTIONS,
+  isEstimateWorkSection,
+  type EstimateWorkSection,
+} from "@/lib/estimates/workspace-sections"
+import { ProjectEstimateLineOrder } from "@/components/projects/project-estimate-line-order"
+import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
 import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
@@ -100,7 +107,12 @@ function percent(basisPoints: number): string {
 }
 
 function SignatureRequiredMark(): React.ReactElement {
-  return <span className="text-destructive" aria-hidden="true"> *</span>
+  return (
+    <span className="text-destructive" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  )
 }
 
 function formText(formData: FormData, name: string): string | null {
@@ -216,9 +228,14 @@ export function ProjectEstimateWorkspacePanel({
   const [signatureMessage, setSignatureMessage] = useState<string | null>(null)
   const [manualAcceptanceAttested, setManualAcceptanceAttested] =
     useState(false)
-  const [buildView, setBuildView] = useState<"division" | "assembly">("division")
+  const [workSection, setWorkSection] = useState<EstimateWorkSection>("costs")
+  const [buildView, setBuildView] = useState<"division" | "assembly">(
+    "division"
+  )
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
-  const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(null)
+  const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(
+    null
+  )
   const lineEditorRef = useRef<HTMLFormElement>(null)
   const [startTemplateId, setStartTemplateId] = useState("")
   const [basisProjectDocumentId, setBasisProjectDocumentId] = useState("")
@@ -259,7 +276,22 @@ export function ProjectEstimateWorkspacePanel({
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
 
+  const persistedHeader = JSON.stringify([
+    estimate?.id, estimate?.defaultTaxEntityId, estimate?.termsTemplateId,
+    estimate?.contractTerms, estimate?.introductionTemplateId, estimate?.introductionText,
+    estimate?.closingTemplateId, estimate?.closingText, estimate?.clientSigners,
+    estimate?.companySignerContactId, estimate?.companySignerName, estimate?.companySignerTitle,
+    estimate?.companySignerEmail, estimate?.companySignerInitials,
+  ])
+  // The state above already reflects the initial server payload. Mark that
+  // payload as loaded immediately so a delayed effect cannot erase edits made
+  // during hydration in slower WebKit sessions.
+  const lastLoadedHeader = useRef<string | null>(persistedHeader)
   useEffect(() => {
+    // Line-order saves refresh the workspace. Equivalent signer arrays from the
+    // server must not reset unfinished header fields in another input area.
+    if (lastLoadedHeader.current === persistedHeader) return
+    lastLoadedHeader.current = persistedHeader
     setDefaultTaxEntityId(estimate?.defaultTaxEntityId ?? "")
     setTermsTemplateId(estimate?.termsTemplateId ?? "")
     setContractTerms(estimate?.contractTerms ?? "")
@@ -276,6 +308,7 @@ export function ProjectEstimateWorkspacePanel({
     })
     setCompanySignerInitials(estimate?.companySignerInitials ?? "")
   }, [
+    persistedHeader,
     estimate?.id,
     estimate?.defaultTaxEntityId,
     estimate?.termsTemplateId,
@@ -356,7 +389,7 @@ export function ProjectEstimateWorkspacePanel({
       groups.set(item.divisionCode, current)
     }
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([divisionCode, items]) => ({
-      key: divisionCode, assemblyId: null, name: `${divisionCode} · ${items[0]?.divisionName}`, description: null, items,
+      key: divisionCode, assemblyId: null, name: `${divisionCode} · ${items[0]?.divisionName}`, description: null, items: items.sort(compareEstimateLineOrder),
     }))
   }, [workspace.lines, workspace.assemblies, buildView])
   const selectedStartTemplate = estimateTemplates.find(
@@ -524,10 +557,15 @@ export function ProjectEstimateWorkspacePanel({
     setLine(nextLine)
     setInsertAfterLineId(insertionPoint)
     window.requestAnimationFrame(() => {
-      lineEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-      lineEditorRef.current
+      const description = lineEditorRef.current
         ?.querySelector<HTMLInputElement>("#estimateDescription")
-        ?.focus({ preventScroll: true })
+      // On narrow screens the form is taller than the viewport; reveal the
+      // focused field rather than leaving it below the visible form heading.
+      ;(description ?? lineEditorRef.current)?.scrollIntoView({
+        behavior: "smooth",
+        block: description ? "center" : "start",
+      })
+      description?.focus({ preventScroll: true })
     })
   }
 
@@ -733,32 +771,30 @@ export function ProjectEstimateWorkspacePanel({
                 <h3 className="font-medium">Start from template</h3>
               </div>
               <div className="mt-3 space-y-3">
-                <Select
+                <SearchableCombobox
                   value={startTemplateId}
                   onValueChange={setStartTemplateId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a published estimate template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {estimateTemplates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name} · {template.lineCount} lines
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={estimateTemplates.map((template) => ({
+                    value: template.id,
+                    label: template.name,
+                    description: `${template.lineCount} lines`,
+                  }))}
+                  ariaLabel="Estimate template"
+                  placeholder="Choose a published estimate template"
+                  searchPlaceholder="Search estimate templates..."
+                  emptyMessage="No matching templates."
+                />
                 <SearchableCombobox
                   value={startTaxEntityId}
                   onValueChange={setStartTaxEntityId}
                   options={[
-                    {
-                      value: "",
-                      label: "No project tax entity",
-                      keywords: "none clear non-taxable",
-                    },
-                    ...taxEntityOptions,
-                  ]}
+                {
+                  value: "",
+                  label: "No project tax entity",
+                  keywords: "none clear non-taxable",
+                },
+                ...taxEntityOptions,
+              ]}
                   ariaLabel="Project tax entity for the new estimate"
                   placeholder="Project tax entity, if applicable"
                   searchPlaceholder="Search Sage tax entities..."
@@ -766,7 +802,7 @@ export function ProjectEstimateWorkspacePanel({
                   groupHeading="Active Sage tax entities"
                 />
                 {selectedStartTemplate?.requiresProjectTaxEntity && (
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                  <p className="text-xs text-warning">
                     This template contains taxable lines. Select the project’s
                     tax entity before creating the draft.
                   </p>
@@ -843,7 +879,8 @@ export function ProjectEstimateWorkspacePanel({
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            <ProjectEstimateVersionControls
+            <div hidden={workSection !== "details"}>
+              <ProjectEstimateVersionControls
               projectId={projectId}
               estimates={workspace.estimates}
               activeEstimate={estimate}
@@ -851,6 +888,7 @@ export function ProjectEstimateWorkspacePanel({
               canDelete={workspace.canDelete}
               family={family}
             />
+            </div>
             <Button variant="outline" asChild>
               <Link
                 href={
@@ -882,17 +920,65 @@ export function ProjectEstimateWorkspacePanel({
         </div>
       </section>
 
-      <form className="clarity-panel-strong p-4" onSubmit={saveHeader}>
-        <div className="mb-4 flex items-center gap-2">
-          <IconFileDescription className="size-5 text-primary" />
-          <h2 className="font-semibold">Estimate and contract basis</h2>
-        </div>
+      <div className="flex flex-wrap items-center gap-3 border-y bg-estimate-subtotal px-4 py-3">
+        <Label htmlFor="estimate-work-section">Work on</Label>
+        <SearchableCombobox
+          id="estimate-work-section"
+          ariaLabel="Work on"
+          placeholder="Choose an area"
+          searchPlaceholder="Search estimate areas..."
+          className="w-full sm:w-80"
+          value={workSection}
+          options={ESTIMATE_WORK_SECTIONS}
+          onValueChange={(value) => {
+            if (isEstimateWorkSection(value)) setWorkSection(value)
+          }}
+        />
+        <p className="text-xs text-muted-foreground">
+          {
+            ESTIMATE_WORK_SECTIONS.find(
+              (section) => section.value === workSection
+            )?.description
+          }
+        </p>
+      </div>
+
+      {/* Keep every header field mounted: saving from any area submits the complete draft. */}
+      <form
+        className="clarity-panel-strong p-4"
+        hidden={
+          !["details", "signers", "contract", "text"].includes(workSection)
+        }
+        onSubmit={saveHeader}
+        onInvalid={(event) => {
+          event.preventDefault()
+          const field = event.target
+          if (
+            !(
+              field instanceof HTMLInputElement ||
+              field instanceof HTMLTextAreaElement
+            )
+          )
+            return
+          const section = field
+            .closest("[data-estimate-work-section]")
+            ?.getAttribute("data-estimate-work-section")
+          if (section && isEstimateWorkSection(section)) setWorkSection(section)
+          setMessage(field.validationMessage)
+          requestAnimationFrame(() => field.focus())
+        }}
+      >
         <p className="mb-4 text-xs text-muted-foreground">
           <span className="text-destructive" aria-hidden="true">*</span>{" "}
           Required before preparing the estimate for signature.
         </p>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-1.5">
+        <div
+          hidden={workSection !== "details"}
+          data-estimate-work-section="details"
+        >
+          <h2 className="mb-4 font-semibold">Estimate details</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1.5">
             <Label htmlFor="estimateNumber">Estimate number</Label>
             <Input
               id="estimateNumber"
@@ -901,7 +987,7 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
             />
           </div>
-          <div className="space-y-1.5 xl:col-span-2">
+            <div className="space-y-1.5 xl:col-span-2">
             <Label htmlFor="estimateTitle">Document name</Label>
             <Input
               id="estimateTitle"
@@ -910,7 +996,7 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
             />
           </div>
-          <div className="space-y-1.5">
+            <div className="space-y-1.5">
             <Label htmlFor="estimateDate">
               Estimate date<SignatureRequiredMark />
             </Label>
@@ -922,7 +1008,7 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
             />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+            <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="clientName">Client(s)</Label>
             <Input
               id="clientName"
@@ -931,7 +1017,7 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
             />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+            <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="clientMailingAddress">
               Prepared For mailing address
             </Label>
@@ -951,7 +1037,7 @@ export function ProjectEstimateWorkspacePanel({
               be customized for this estimate.
             </p>
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+            <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="sourceWorkbookUrl">Source CSI workbook</Label>
             <Input
               id="sourceWorkbookUrl"
@@ -961,8 +1047,49 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
             />
           </div>
-          <div className="border-t pt-4 md:col-span-2 xl:col-span-4">
-            <h3 className="text-sm font-semibold">Contract signers</h3>
+            <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="defaultTaxEntityId">Project tax entity</Label>
+            <input
+              type="hidden"
+              name="defaultTaxEntityId"
+              value={defaultTaxEntityId}
+            />
+            <SearchableCombobox
+              id="defaultTaxEntityId"
+              value={defaultTaxEntityId}
+              onValueChange={(value) => {
+                setDefaultTaxEntityId(value)
+                setLine((current) =>
+                  current.taxable && !current.taxEntityId
+                    ? { ...current, taxEntityId: value }
+                    : current
+                )
+              }}
+              disabled={!editable}
+              options={[
+                {
+                  value: "",
+                  label: "No project tax entity",
+                  keywords: "none clear non-taxable",
+                },
+                ...taxEntityOptions,
+              ]}
+              ariaLabel="Project tax entity"
+              placeholder="Select a Sage tax entity"
+              searchPlaceholder="Search Sage tax entities..."
+              emptyMessage="No matching Sage tax entities."
+              groupHeading="Active Sage tax entities"
+            />
+          </div>
+          </div>
+        </div>
+        <div
+          hidden={workSection !== "signers"}
+          data-estimate-work-section="signers"
+        >
+          <h2 className="mb-4 font-semibold">Contract signers</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="border-t pt-4 md:col-span-2 xl:col-span-4">
             <p className="mt-1 text-xs text-muted-foreground">
               Choose a project contact or type a name. These details are
               included in the prepared signature package. Add every client or
@@ -971,31 +1098,44 @@ export function ProjectEstimateWorkspacePanel({
               in the assigned fields.
             </p>
           </div>
-          <div className="space-y-3 md:col-span-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label>Client / owner signers<SignatureRequiredMark /></Label>
-              {editable && clientSigners.length < 10 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setClientSigners([
-                      ...clientSigners,
-                      { contactId: null, name: "", title: "", email: "", initials: "" },
-                    ])
-                  }
-                >
-                  <IconPlus className="size-4" />Add signer
-                </Button>
-              )}
-            </div>
-            {clientSigners.length === 0 && (
+            <div className="space-y-3 md:col-span-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label>
+                  Client / owner signers
+                  <SignatureRequiredMark />
+                </Label>
+                {editable && clientSigners.length < 10 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setClientSigners([
+                        ...clientSigners,
+                        {
+                          contactId: null,
+                          name: "",
+                          title: "",
+                          email: "",
+                          initials: "",
+                        },
+                      ])
+                    }
+                  >
+                    <IconPlus className="size-4" />
+                    Add signer
+                  </Button>
+                )}
+              </div>
+              {clientSigners.length === 0 && (
               <p className="text-xs text-muted-foreground">Add at least one client or owner signer.</p>
             )}
-            {clientSigners.map((signer, index) => (
-              <div key={`${estimate.id}-client-signer-${index}`} className="space-y-3 border-t pt-3">
-                <div className="flex items-end gap-2">
+              {clientSigners.map((signer, index) => (
+                <div
+                  key={`${estimate.id}-client-signer-${index}`}
+                  className="space-y-3 border-t pt-3"
+                >
+                  <div className="flex items-end gap-2">
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <Label htmlFor={`clientSignerName-${index}`}>
                       Signer {index + 1}<SignatureRequiredMark />
@@ -1029,26 +1169,45 @@ export function ProjectEstimateWorkspacePanel({
                     </Button>
                   )}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr_.55fr]">
-                  <div className="space-y-1.5">
+                  <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr_.55fr]">
+                    <div className="space-y-1.5">
                     <Label htmlFor={`clientSignerTitle-${index}`}>Title</Label>
                     <Input id={`clientSignerTitle-${index}`} value={signer.title} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} />
                   </div>
-                  <div className="space-y-1.5">
+                    <div className="space-y-1.5">
                     <Label htmlFor={`clientSignerEmail-${index}`}>
                       Email<SignatureRequiredMark />
                     </Label>
                     <Input id={`clientSignerEmail-${index}`} type="email" value={signer.email} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, email: event.target.value } : item))} />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`clientSignerInitials-${index}`}>Reference initials</Label>
-                    <Input id={`clientSignerInitials-${index}`} maxLength={6} value={signer.initials} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, initials: event.target.value.toUpperCase() } : item))} />
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`clientSignerInitials-${index}`}>
+                        Reference initials
+                      </Label>
+                      <Input
+                        id={`clientSignerInitials-${index}`}
+                        maxLength={6}
+                        value={signer.initials}
+                        disabled={!editable}
+                        onChange={(event) =>
+                          setClientSigners(
+                            clientSigners.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? {
+                                    ...item,
+                                    initials: event.target.value.toUpperCase(),
+                                  }
+                                : item
+                            )
+                          )
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3 md:col-span-2">
+              ))}
+            </div>
+            <div className="space-y-3 md:col-span-2">
             <div className="space-y-1.5">
               <Label htmlFor="companySignerName">
                 Company representative<SignatureRequiredMark />
@@ -1110,64 +1269,35 @@ export function ProjectEstimateWorkspacePanel({
               </div>
             </div>
           </div>
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="defaultTaxEntityId">Project tax entity</Label>
-            <input
-              type="hidden"
-              name="defaultTaxEntityId"
-              value={defaultTaxEntityId}
-            />
-            <SearchableCombobox
-              id="defaultTaxEntityId"
-              value={defaultTaxEntityId}
-              onValueChange={(value) => {
-                setDefaultTaxEntityId(value)
-                setLine((current) =>
-                  current.taxable && !current.taxEntityId
-                    ? { ...current, taxEntityId: value }
-                    : current
-                )
-              }}
-              disabled={!editable}
-              options={[
-                {
-                  value: "",
-                  label: "No project tax entity",
-                  keywords: "none clear non-taxable",
-                },
-                ...taxEntityOptions,
-              ]}
-              ariaLabel="Project tax entity"
-              placeholder="Select a Sage tax entity"
-              searchPlaceholder="Search Sage tax entities..."
-              emptyMessage="No matching Sage tax entities."
-              groupHeading="Active Sage tax entities"
-            />
           </div>
-          <div className="space-y-1.5 md:col-span-2">
+        </div>
+        <div
+          hidden={workSection !== "contract"}
+          data-estimate-work-section="contract"
+        >
+          <h2 className="mb-4 font-semibold">Contract terms</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="termsTemplateId">Contract terms template</Label>
-            <Select
-              name="termsTemplateId"
+            <input type="hidden" name="termsTemplateId" value={termsTemplateId} />
+            <SearchableCombobox
+              id="termsTemplateId"
               value={termsTemplateId}
               onValueChange={(value) => {
                 setTermsTemplateId(value)
+                // A cleared or missing template keeps the text already written.
+                if (value === "") return
                 setContractTerms(
                   selectedTemplateBody(workspace.termsTemplates, value)
                 )
               }}
               disabled={!editable}
-            >
-              <SelectTrigger id="termsTemplateId">
-                <SelectValue placeholder="Choose a terms template" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.termsTemplates.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={workspace.termsTemplates}
+              ariaLabel="Contract terms template"
+              placeholder="Choose a terms template"
+              searchPlaceholder="Search templates..."
+              emptyMessage="No matching templates."
+            />
             {workspace.termsTemplates.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 No {workspace.department}-department terms templates are
@@ -1175,73 +1305,7 @@ export function ProjectEstimateWorkspacePanel({
               </p>
             )}
           </div>
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="introductionTemplateId">
-              Introductory text template
-            </Label>
-            <Select
-              name="introductionTemplateId"
-              value={introductionTemplateId}
-              onValueChange={(value) => {
-                setIntroductionTemplateId(value)
-                setIntroductionText(
-                  selectedTemplateBody(workspace.introductionTemplates, value)
-                )
-              }}
-              disabled={!editable || workspace.introductionTemplates.length === 0}
-            >
-              <SelectTrigger id="introductionTemplateId">
-                <SelectValue placeholder="Choose introductory copy" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.introductionTemplates.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="closingTemplateId">Closing text template</Label>
-            <Select
-              name="closingTemplateId"
-              value={closingTemplateId}
-              onValueChange={(value) => {
-                setClosingTemplateId(value)
-                setClosingText(
-                  selectedTemplateBody(workspace.closingTemplates, value)
-                )
-              }}
-              disabled={!editable || workspace.closingTemplates.length === 0}
-            >
-              <SelectTrigger id="closingTemplateId">
-                <SelectValue placeholder="Choose closing copy" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspace.closingTemplates.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
-            <Label htmlFor="introductionText">
-              Client report introduction
-            </Label>
-            <Textarea
-              id="introductionText"
-              name="introductionText"
-              rows={4}
-              value={introductionText}
-              onChange={(event) => setIntroductionText(event.target.value)}
-              disabled={!editable}
-              placeholder="Optional editable text shown before the estimate detail."
-            />
-          </div>
-          <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+            <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
             <Label htmlFor="contractTerms">
               Pertinent contract terms<SignatureRequiredMark />
             </Label>
@@ -1255,7 +1319,72 @@ export function ProjectEstimateWorkspacePanel({
               placeholder="Use a template or draft the estimate-specific terms here."
             />
           </div>
-          <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+          </div>
+        </div>
+        <div hidden={workSection !== "text"} data-estimate-work-section="text">
+          <h2 className="mb-4 font-semibold">Introduction & closing</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="introductionTemplateId">
+              Introductory text template
+            </Label>
+            <input type="hidden" name="introductionTemplateId" value={introductionTemplateId} />
+            <SearchableCombobox
+              id="introductionTemplateId"
+              value={introductionTemplateId}
+              onValueChange={(value) => {
+                setIntroductionTemplateId(value)
+                // A cleared or missing template keeps the text already written.
+                if (value === "") return
+                setIntroductionText(
+                  selectedTemplateBody(workspace.introductionTemplates, value)
+                )
+              }}
+              disabled={!editable || workspace.introductionTemplates.length === 0}
+              options={workspace.introductionTemplates}
+              ariaLabel="Introductory text template"
+              placeholder="Choose introductory copy"
+              searchPlaceholder="Search templates..."
+              emptyMessage="No matching templates."
+            />
+          </div>
+            <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="closingTemplateId">Closing text template</Label>
+            <input type="hidden" name="closingTemplateId" value={closingTemplateId} />
+            <SearchableCombobox
+              id="closingTemplateId"
+              value={closingTemplateId}
+              onValueChange={(value) => {
+                setClosingTemplateId(value)
+                // A cleared or missing template keeps the text already written.
+                if (value === "") return
+                setClosingText(
+                  selectedTemplateBody(workspace.closingTemplates, value)
+                )
+              }}
+              disabled={!editable || workspace.closingTemplates.length === 0}
+              options={workspace.closingTemplates}
+              ariaLabel="Closing text template"
+              placeholder="Choose closing copy"
+              searchPlaceholder="Search templates..."
+              emptyMessage="No matching templates."
+            />
+          </div>
+            <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+            <Label htmlFor="introductionText">
+              Client report introduction
+            </Label>
+            <Textarea
+              id="introductionText"
+              name="introductionText"
+              rows={4}
+              value={introductionText}
+              onChange={(event) => setIntroductionText(event.target.value)}
+              disabled={!editable}
+              placeholder="Optional editable text shown before the estimate detail."
+            />
+          </div>
+            <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
             <Label htmlFor="closingText">Client report closing text</Label>
             <Textarea
               id="closingText"
@@ -1266,6 +1395,7 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
               placeholder="Optional editable text shown after the estimate detail."
             />
+          </div>
           </div>
         </div>
         {editable && (
@@ -1280,10 +1410,17 @@ export function ProjectEstimateWorkspacePanel({
         workspace={workspace}
         estimate={estimate}
         editable={editable}
+        workSection={workSection}
       />
 
-      <section className="clarity-panel-strong p-4">
-        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <section
+        className="clarity-panel-strong p-4"
+        hidden={workSection !== "costs" && workSection !== "fees"}
+      >
+        <div
+          hidden={workSection !== "costs"}
+          className="mb-4 flex flex-wrap items-start justify-between gap-3"
+        >
           <div>
             <h2 className="font-semibold">{buildView === "assembly" ? "Assembly estimate" : "CSI estimate"}</h2>
             <p className="text-xs text-muted-foreground">
@@ -1324,20 +1461,45 @@ export function ProjectEstimateWorkspacePanel({
             </div>
           )}
         </div>
-        <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div
+          hidden={workSection !== "costs"}
+          className="mb-4 flex flex-wrap items-end gap-3"
+        >
           <div className="space-y-1.5">
             <Label htmlFor="estimate-build-view">Build by</Label>
-            <SearchableCombobox id="estimate-build-view" className="w-full sm:w-56" ariaLabel="Build estimate by" placeholder="Choose build view" value={buildView} options={[{ value: "division", label: "Division / cost code" }, { value: "assembly", label: "Assembly" }]} onValueChange={(value) => { if (value === "division" || value === "assembly") setBuildView(value) }} />
+            <SearchableCombobox
+              id="estimate-build-view"
+              className="w-full sm:w-56"
+              ariaLabel="Build estimate by"
+              placeholder="Choose build view"
+              value={buildView}
+              options={[
+                { value: "division", label: "Division / cost code" },
+                { value: "assembly", label: "Assembly" },
+              ]}
+              onValueChange={(value) => {
+                if (value === "division" || value === "assembly")
+                  setBuildView(value)
+              }}
+            />
           </div>
-          {editable && <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={null} assemblies={workspace.assemblies} lines={workspace.lines} />}
+          {editable && (
+            <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={null} assemblies={workspace.assemblies} lines={workspace.lines} />
+          )}
           <p className="text-xs text-muted-foreground">Both views edit the same estimate. Choose the report format separately.</p>
         </div>
-        <p className="mb-4 text-xs text-muted-foreground">
+        <p
+          hidden={workSection !== "fees"}
+          className="mb-4 text-xs text-muted-foreground"
+        >
           Overhead, margin, and contingency are builder-fee percentages applied
           to eligible estimate items. They remain separate from Sage cost-code
           lines until their accounting mappings are assigned.
         </p>
-        <div className="mb-5 grid gap-4 border-y py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div
+          hidden={workSection !== "fees"}
+          className="mb-5 grid gap-4 border-y py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
+        >
           <form key={`markup-${estimate.id}-${estimate.updatedAt}`} onSubmit={applyLineMarkup}>
             <h3 className="text-sm font-semibold">Apply one line markup</h3>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -1395,70 +1557,107 @@ export function ProjectEstimateWorkspacePanel({
             )}
           </form>
         </div>
-        {groupedLines.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No estimate lines yet.</p>
-        ) : (
-          <div className="space-y-4">
-            {groupedLines.map((group) => {
-              const { items } = group
-              const subtotal = items.reduce(
+        <div hidden={workSection !== "costs"}>
+          {groupedLines.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No estimate lines yet.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {groupedLines.map((group) => {
+                const { items } = group
+                const subtotal = items.reduce(
                 (sum, item) => sum + item.lineTotalCents,
                 0
               )
-              return (
-                <div key={group.key} className="border-l-2 border-l-primary pl-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-2">
-                    <div className="min-w-0 flex-1 break-words">
-                      <h3 className="break-words text-sm font-semibold">
+                return (
+                  <div key={group.key} className="min-w-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-y bg-estimate-section px-3 py-3">
+                      <div className="min-w-0 flex-1 break-words">
+                        <h3 className="break-words text-sm font-semibold">
                         {group.name}
                       </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {items.length} cost-code {items.length === 1 ? "line" : "lines"}
-                        {group.description && ` · ${group.description}`}
-                      </p>
+                        <p className="text-xs text-muted-foreground">
+                          {items.length} cost-code{" "}
+                          {items.length === 1 ? "line" : "lines"}
+                          {group.description && ` · ${group.description}`}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        <p className="font-semibold">
+                          <span className="text-xs font-normal text-muted-foreground">
+                            Subtotal{" "}
+                          </span>
+                          {money(subtotal)}
+                        </p>
+                        {editable && buildView === "assembly" && (
+                          <>
+                            {group.assemblyId && (
+                              <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={workspace.assemblies.find((assembly) => assembly.id === group.assemblyId) ?? null} assemblies={workspace.assemblies} lines={workspace.lines} />
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                openLineEditor({
+                                  ...EMPTY_LINE,
+                                  assemblyId: group.assemblyId,
+                                })
+                              }
+                            >
+                              Add item
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <p className="font-semibold">{buildView === "assembly" && <span className="text-xs font-normal text-muted-foreground">Subtotal </span>}{money(subtotal)}</p>
-                      {editable && buildView === "assembly" && <>
-                        {group.assemblyId && <ProjectEstimateAssemblyEditor projectId={projectId} estimateId={estimate.id} assembly={workspace.assemblies.find((assembly) => assembly.id === group.assemblyId) ?? null} assemblies={workspace.assemblies} lines={workspace.lines} />}
-                        <Button type="button" size="sm" variant="outline" onClick={() => openLineEditor({ ...EMPTY_LINE, assemblyId: group.assemblyId })}>Add item</Button>
-                      </>}
-                    </div>
-                  </div>
-                  <div className="divide-y">
-                    {items.map((item) => (
-                      <div key={item.id} className="py-3">
-                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
-                          <div>
-                            <p className="text-sm font-medium">
+                    <ProjectEstimateLineOrder
+                      projectId={projectId}
+                      estimateId={estimate.id}
+                      updatedAt={estimate.updatedAt}
+                      group={buildView === "assembly"
+                        ? { type: "assembly", assemblyId: group.assemblyId }
+                        : { type: "division", divisionCode: group.key }}
+                      groupName={group.name}
+                      items={items}
+                      editable={editable && !isPending}
+                      renderItem={(item) => (
+                        <div className="py-3 pl-3 pr-3">
+                          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto]">
+                            <div>
+                              <p className="text-sm font-medium">
                               {item.costCode} · {item.costCodeName}
                             </p>
-                            {item.description.trim() !==
+                              {item.description.trim() !==
                               item.costCodeName.trim() && (
                               <p className="mt-0.5 text-sm text-muted-foreground">
                                 {item.description}
                               </p>
                             )}
-                            {item.reportPhaseId && <p className="mt-1 text-xs text-muted-foreground">
-                              Report phase: {workspace.reportPhases.find((phase) => phase.id === item.reportPhaseId)?.name ?? "Default CSI grouping"}
-                            </p>}
-                            {!mappedCostCodes.has(item.costCode) && (
+                              {item.reportPhaseId && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Report phase:{" "}
+                                  {workspace.reportPhases.find((phase) => phase.id === item.reportPhaseId)?.name ?? "Default CSI grouping"}
+                                </p>
+                              )}
+                              {!mappedCostCodes.has(item.costCode) && (
                               <Badge variant="outline" className="mt-1">
                                 Sage mapping required
                               </Badge>
                             )}
-                            {!item.includeInBuilderFee && (
+                              {!item.includeInBuilderFee && (
                               <Badge variant="outline" className="mt-1 ml-1">
                                 Builder fee excluded
                               </Badge>
                             )}
-                            <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-muted-foreground">
                               {item.costItems.length > 0
                                 ? `${item.costItems.length} cost-code breakdown · direct ${money(item.directCostCents)} · markup ${money(item.markupCents)} · tax ${money(item.taxCents)}`
                                 : `${item.quantity} ${item.unit} × ${money(item.unitCostCents)} · markup ${percent(item.markupRateBasisPoints)}${item.taxable ? ` · ${item.taxCode ?? "tax"} ${percent(item.taxRateBasisPoints)}` : " · non-taxable"}`}
                             </p>
-                          </div>
-                          <div className="flex items-center justify-end gap-2">
+                            </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                             <span className="font-medium">{money(item.lineTotalCents)}</span>
                             {editable && (
                               <>
@@ -1500,8 +1699,8 @@ export function ProjectEstimateWorkspacePanel({
                               </>
                             )}
                           </div>
-                        </div>
-                        <ProjectEstimateLineBreakdown
+                          </div>
+                          <ProjectEstimateLineBreakdown
                           projectId={projectId}
                           estimateId={estimate.id}
                           line={item}
@@ -1513,64 +1712,91 @@ export function ProjectEstimateWorkspacePanel({
                           defaultTaxEntityId={defaultTaxEntityId}
                           editable={editable}
                         />
-                      </div>
-                    ))}
+                        </div>
+                      )}
+                    />
                   </div>
-                </div>
-              )
-            })}
-            <div className="ml-auto max-w-sm space-y-2 border-t pt-3 text-sm">
-              <div className="flex justify-between gap-4">
+                )
+              })}
+              <div className="ml-auto max-w-sm space-y-2 border-t bg-estimate-subtotal p-3 text-sm">
+                <div className="flex justify-between gap-4">
                 <span>Project subtotal</span>
                 <span>{money(estimate.directCostCents + estimate.markupCents + estimate.taxCents)}</span>
               </div>
-              <div className="flex justify-between gap-4">
+                <div className="flex justify-between gap-4">
                 <span>Builder fee</span>
                 <span>{money(estimate.builderFeeCents)}</span>
               </div>
-              <div className="flex justify-between gap-4 font-semibold">
+                <div className="flex justify-between gap-4 font-semibold">
                 <span>Estimate total</span>
                 <span>{money(estimate.estimateTotalCents)}</span>
               </div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {editable && (
-          <form
+          {editable && (
+            <form
             ref={lineEditorRef}
-            className="mt-5 scroll-mt-6 border-t pt-4"
+            className="mt-5 max-w-5xl scroll-mt-6 border-t pt-4"
             onSubmit={saveLine}
           >
-            <h3 className="mb-3 text-sm font-semibold">
+              <h3 className="mb-3 text-sm font-semibold">
               {line.id
                 ? "Edit estimate line"
                 : insertAfterLineId
                   ? "Insert estimate line"
                   : "Add estimate line"}
             </h3>
-            <div className="mb-3 max-w-sm space-y-1.5">
-              <Label htmlFor="estimate-line-assembly">Assembly</Label>
-              <SearchableCombobox id="estimate-line-assembly" ariaLabel="Assembly" placeholder="Choose assembly" value={line.assemblyId ?? "none"} options={[{ value: "none", label: "Other work (no assembly)" }, ...workspace.assemblies.map((assembly) => ({ value: assembly.id, label: assembly.name, description: assembly.description ?? undefined }))]} onValueChange={(value) => setLine({ ...line, assemblyId: value === "none" ? null : value })} />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-1.5">
-                <Label>CSI division</Label>
-                <Select
-                  value={line.divisionCode}
+              <div className="mb-3 max-w-sm space-y-1.5">
+                <Label htmlFor="estimate-line-assembly">Assembly</Label>
+                <SearchableCombobox
+                  id="estimate-line-assembly"
+                  ariaLabel="Assembly"
+                  placeholder="Choose assembly"
+                  value={line.assemblyId ?? "none"}
+                  options={[
+                    { value: "none", label: "Other work (no assembly)" },
+                    ...workspace.assemblies.map((assembly) => ({
+                      value: assembly.id,
+                      label: assembly.name,
+                      description: assembly.description ?? undefined,
+                    })),
+                  ]}
                   onValueChange={(value) =>
-                    setLine({ ...line, divisionCode: value, costCode: "", reportPhaseId: "" })
+                    setLine({
+                      ...line,
+                      assemblyId: value === "none" ? null : value,
+                    })
                   }
-                >
-                  <SelectTrigger><SelectValue placeholder="Choose division first" /></SelectTrigger>
-                  <SelectContent>
-                    {divisions.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
-              <div className="space-y-1.5 xl:col-span-2">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="estimate-line-division">CSI division</Label>
+                  <SearchableCombobox
+                    id="estimate-line-division"
+                    value={line.divisionCode}
+                    onValueChange={(value) =>
+                      setLine({
+                        ...line,
+                        divisionCode: value,
+                        costCode: "",
+                        reportPhaseId: "",
+                      })
+                    }
+                    options={divisions.map(([value, label]) => ({
+                      value,
+                      label,
+                      keywords: value,
+                    }))}
+                    ariaLabel="CSI division"
+                    placeholder="Choose division first"
+                    searchPlaceholder="Search divisions, e.g. 03 or Concrete..."
+                    emptyMessage="No matching divisions."
+                  />
+                </div>
+                <div className="space-y-1.5 xl:col-span-2">
                 <Label>Cost code</Label>
                 <SearchableCombobox
                   ariaLabel="Estimate cost code"
@@ -1583,7 +1809,7 @@ export function ProjectEstimateWorkspacePanel({
                   emptyMessage="No matching Sage cost codes."
                 />
               </div>
-              <div className="space-y-1.5">
+                <div className="space-y-1.5">
                 <Label htmlFor="estimateUnit">Unit type</Label>
                 <EstimateUnitInput
                   id="estimateUnit"
@@ -1593,38 +1819,57 @@ export function ProjectEstimateWorkspacePanel({
                   onValueChange={(value) => setLine({ ...line, unit: value })}
                 />
               </div>
-              <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
-                <Label htmlFor="estimate-report-phase">Customer-facing report phase</Label>
-                <Select value={line.reportPhaseId || "__csi__"} onValueChange={(value) => setLine({ ...line, reportPhaseId: value === "__csi__" ? "" : value })}>
-                  <SelectTrigger id="estimate-report-phase"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__csi__">Default CSI grouping</SelectItem>
-                    {workspace.reportPhases.filter((phase) => phase.divisionCode === line.divisionCode).map((phase) => <SelectItem key={phase.id} value={phase.id}>{phase.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Create phases in Client report settings. CSI cost codes and calculations are unchanged.</p>
-              </div>
-              <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                  <Label htmlFor="estimate-report-phase">
+                    Customer-facing report phase
+                  </Label>
+                  <SearchableCombobox
+                    id="estimate-report-phase"
+                    value={line.reportPhaseId || "__csi__"}
+                    onValueChange={(value) =>
+                      setLine({
+                        ...line,
+                        reportPhaseId:
+                          value === "__csi__" || value === "" ? "" : value,
+                      })
+                    }
+                    options={[
+                      { value: "__csi__", label: "Default CSI grouping" },
+                      ...workspace.reportPhases
+                        .filter(
+                          (phase) => phase.divisionCode === line.divisionCode
+                        )
+                        .map((phase) => ({ value: phase.id, label: phase.name })),
+                    ]}
+                    ariaLabel="Customer-facing report phase"
+                    placeholder="Default CSI grouping"
+                    searchPlaceholder="Search report phases..."
+                    emptyMessage="No matching report phases."
+                    className="sm:max-w-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">Create phases in Client report settings. CSI cost codes and calculations are unchanged.</p>
+                </div>
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
                 <Label htmlFor="estimateDescription">Description</Label>
                 <Input id="estimateDescription" name="description" value={line.description} onChange={(event) => setLine({ ...line, description: event.target.value })} required />
               </div>
-              <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+                <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
                 <Label htmlFor="estimateSpecifications">Specifications / scope notes</Label>
                 <Textarea id="estimateSpecifications" name="specifications" value={line.specifications} onChange={(event) => setLine({ ...line, specifications: event.target.value })} rows={3} />
               </div>
-              <div className="space-y-1.5">
+                <div className="space-y-1.5">
                 <Label htmlFor="estimateQuantity">Quantity</Label>
                 <Input id="estimateQuantity" name="quantity" inputMode="decimal" value={line.quantity} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, quantity: event.target.value })} />
               </div>
-              <div className="space-y-1.5">
+                <div className="space-y-1.5">
                 <Label htmlFor="estimateUnitCost">Unit cost</Label>
                 <Input id="estimateUnitCost" name="unitCost" inputMode="decimal" value={line.unitCost} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, unitCost: event.target.value })} />
               </div>
-              <div className="space-y-1.5">
+                <div className="space-y-1.5">
                 <Label htmlFor="estimateMarkup">Line markup %</Label>
                 <Input id="estimateMarkup" name="markupPercent" inputMode="decimal" value={line.markupPercent} disabled={lineUsesCostBreakdown} onChange={(event) => setLine({ ...line, markupPercent: event.target.value })} />
               </div>
-              <div className="space-y-1.5">
+                <div className="space-y-1.5">
                 <Label>Tax entity</Label>
                 <SearchableCombobox
                   value={line.taxEntityId}
@@ -1647,15 +1892,15 @@ export function ProjectEstimateWorkspacePanel({
                   groupHeading="Active Sage tax entities"
                 />
               </div>
-              {lineUsesCostBreakdown && (
+                {lineUsesCostBreakdown && (
                 <p className="text-xs text-muted-foreground md:col-span-2 xl:col-span-4">
                   Quantity, unit, unit cost, markup, and tax are calculated from
                   this line&apos;s expanded cost-code breakdown. Edit those pricing
                   values inside the breakdown above.
                 </p>
               )}
-            </div>
-            {!lineUsesCostBreakdown && (
+              </div>
+              {!lineUsesCostBreakdown && (
               <div
                 className="mt-3 grid gap-2 border-y py-3 text-sm sm:grid-cols-4"
                 aria-live="polite"
@@ -1692,8 +1937,8 @@ export function ProjectEstimateWorkspacePanel({
                 )}
               </div>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-5">
-              <label className="flex items-center gap-2 text-sm">
+              <div className="mt-3 flex flex-wrap items-center gap-5">
+                <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={line.taxable}
                   disabled={lineUsesCostBreakdown}
@@ -1711,17 +1956,36 @@ export function ProjectEstimateWorkspacePanel({
                 />
                 Taxable line
               </label>
-              <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={line.ownerVisible} onCheckedChange={(checked) => setLine({ ...line, ownerVisible: checked === true })} />
                 Owner-visible
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox checked={line.includeInBuilderFee} onCheckedChange={(checked) => setLine({ ...line, includeInBuilderFee: checked === true })} />
-                Include cost in builder-fee calculation
-              </label>
-              <div className="ml-auto flex gap-2">
-                {(line.id || insertAfterLineId) && <Button type="button" variant="ghost" onClick={() => { setLine(EMPTY_LINE); setInsertAfterLineId(null) }}>Cancel</Button>}
-                <Button
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={line.includeInBuilderFee}
+                    onCheckedChange={(checked) =>
+                      setLine({
+                        ...line,
+                        includeInBuilderFee: checked === true,
+                      })
+                    }
+                  />
+                  Include cost in builder-fee calculation
+                </label>
+                <div className="ml-auto flex gap-2">
+                  {(line.id || insertAfterLineId) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setLine(EMPTY_LINE)
+                        setInsertAfterLineId(null)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
                   type="submit"
                   disabled={
                     isPending ||
@@ -1731,23 +1995,38 @@ export function ProjectEstimateWorkspacePanel({
                       !effectiveLineTaxEntity)
                   }
                 >
-                  <IconPlus className="size-4" /> {line.id ? "Save line" : insertAfterLineId ? "Insert line" : "Add line"}
-                </Button>
+                    <IconPlus className="size-4" />{" "}
+                    {line.id
+                      ? "Save line"
+                      : insertAfterLineId
+                        ? "Insert line"
+                        : "Add line"}
+                  </Button>
+                </div>
               </div>
-            </div>
-          </form>
-        )}
+            </form>
+          )}
+        </div>
       </section>
 
-      <section className="clarity-panel-strong p-4">
-        <h2 className="font-semibold">Plans, specifications, and estimate basis</h2>
+      <section
+        className="clarity-panel-strong p-4"
+        hidden={workSection !== "basis"}
+      >
+        <h2 className="font-semibold">
+          Plans, specifications, and estimate basis
+        </h2>
         <div className="mt-3 divide-y">
           {workspace.basisDocuments.map((document) => (
-            <div key={document.id} className="flex items-start justify-between gap-3 py-2 text-sm">
+            <div
+              key={document.id}
+              className="flex items-start justify-between gap-3 py-2 text-sm"
+            >
               <div>
                 <p className="font-medium">{document.title}</p>
                 <p className="text-xs text-muted-foreground">
-                  {statusLabel(document.documentType)} · {document.documentDate ?? "date not set"}
+                  {statusLabel(document.documentType)} ·{" "}
+                  {document.documentDate ?? "date not set"}
                   {document.revision ? ` · revision ${document.revision}` : ""}
                 </p>
                 {document.projectDocumentId && (
@@ -1757,7 +2036,9 @@ export function ProjectEstimateWorkspacePanel({
                 )}
               </div>
               <div className="flex shrink-0 gap-2">
-                {document.driveUrl && <Button variant="outline" size="sm" asChild><Link href={document.driveUrl} target="_blank">Open</Link></Button>}
+                {document.driveUrl && (
+                  <Button variant="outline" size="sm" asChild><Link href={document.driveUrl} target="_blank">Open</Link></Button>
+                )}
                 {editable && (
                   <Button
                     type="button"
@@ -1826,7 +2107,10 @@ export function ProjectEstimateWorkspacePanel({
         )}
       </section>
 
-      <section className="clarity-panel-strong p-4">
+      <section
+        className="clarity-panel-strong p-4"
+        hidden={workSection !== "approval"}
+      >
         <div className="flex items-start gap-3">
           <IconReceiptTax className="mt-0.5 size-5 text-primary" />
           <div className="flex-1">
@@ -1868,8 +2152,9 @@ export function ProjectEstimateWorkspacePanel({
             )}
             {editable && !estimate.contractTerms?.trim() && (
               <p className="mt-3 text-sm text-muted-foreground">
-                Contract terms are required. Add and save them above before
-                preparing the final signature package.
+                Contract terms are required. Add and save them under Contract
+                terms &amp; acknowledgements before preparing the final
+                signature package.
               </p>
             )}
             {signatureMessage && (
@@ -1950,7 +2235,7 @@ export function ProjectEstimateWorkspacePanel({
             )}
             {estimate.status === "accepted" && (
               <div className="mt-4 border-t pt-4 text-sm">
-                <p className="font-medium text-emerald-700">
+                <p className="font-medium text-success">
                   Accepted estimate is locked. Budget changes now require an executed change order.
                 </p>
                 <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">

@@ -30,6 +30,7 @@ const PROJECT_STATUS_BUCKET_OPTIONS: readonly {
   { bucket: "warranty", label: "Warranty" },
   { bucket: "complete", label: "Complete" },
   { bucket: "inactive", label: "Inactive" },
+  { bucket: "internal", label: "Internal" },
   { bucket: "archive", label: "Archive" },
   { bucket: "other", label: "Other" },
 ]

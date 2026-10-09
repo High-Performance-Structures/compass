@@ -1,7 +1,6 @@
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import Link from "next/link"
 import {
-  IconArrowLeft,
   IconClock,
   IconMessageQuestion,
 } from "@tabler/icons-react"
@@ -15,6 +14,7 @@ import {
   getProjectTaskAssigneeOptions,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { PageHeader } from "@/components/page-header"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
 import { ProjectRfiCommunicationActions } from "@/components/projects/project-rfi-communication-actions"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
@@ -156,36 +156,33 @@ export default async function ProjectRfisPage({
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-2">
-            <Link href={`/dashboard/projects/${id}`}>
-              <IconArrowLeft className="size-4" />
-              Project
-            </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <IconMessageQuestion className="size-5 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold tracking-tight">RFIs</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <PageHeader
+        back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
+        icon={<IconMessageQuestion className="size-5 text-primary" />}
+        title="RFIs"
+        description={
+          <>
             {project?.projectNumber ? `${project.projectNumber} - ` : ""}
             {project?.name ?? "Project"} questions, answers, and visibility.
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <ProjectQuickSwitcher
-            projects={projects}
-            currentProjectId={id}
-            targetSection="rfis"
-            placeholder="Switch RFI project..."
-            className="w-full sm:w-[300px]"
-          />
-          <Badge variant={openCount > 0 ? "secondary" : "outline"}>
-            {openCount} open
-          </Badge>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <ProjectQuickSwitcher
+                projects={projects}
+                currentProjectId={id}
+                targetSection="rfis"
+                placeholder="Switch RFI project..."
+                className="w-full sm:w-[300px]"
+              />
+              <Badge variant={openCount > 0 ? "secondary" : "outline"}>
+                {openCount} open
+              </Badge>
+            </div>
+          </>
+        }
+      />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">

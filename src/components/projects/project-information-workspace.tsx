@@ -14,6 +14,7 @@ import {
   retryProjectProfileSyncOperation,
   setProjectFollowUp,
   updateProjectInformation,
+  updateProjectMapVisibility,
   type ProjectFollowUpOwner,
   type ProjectInformation,
 } from "@/app/actions/project-profile"
@@ -28,6 +29,7 @@ import {
   projectNumberParts,
 } from "@/lib/project-profile"
 import { type ProjectDepartment } from "@/lib/project-branding"
+import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
@@ -77,6 +79,11 @@ export function ProjectInformationWorkspace({
   )
   const [clientStatus, setClientStatus] = useState(information.project.clientStatus)
   const [jobStatusId, setJobStatusId] = useState(information.project.jobStatusId)
+  const [mapVisibility, setMapVisibility] = useState<PortfolioMapVisibility>(
+    information.project.portfolioMapVisibility,
+  )
+  const [mapMessage, setMapMessage] = useState<string | null>(null)
+  const [mapPending, startMapTransition] = useTransition()
   const [addressSuffix, setAddressSuffix] = useState(
     suffixFromProjectNumber(information.project.projectNumber),
   )
@@ -382,6 +389,40 @@ export function ProjectInformationWorkspace({
             </select>
             <p id="job-status-help" className="text-xs text-muted-foreground">
               Choose the approved operational stage for this project. {canManageJobStatuses ? "If a shared stage is genuinely missing, add it in the administrator-only section below." : "Only registry managers can add a shared status."}
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="map-visibility">Portfolio map</Label>
+            <select
+              id="map-visibility"
+              aria-describedby="map-visibility-help"
+              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+              value={mapVisibility}
+              disabled={mapPending}
+              onChange={(event) => {
+                const next = event.target.value
+                if (!isPortfolioMapVisibility(next)) return
+                const previous = mapVisibility
+                setMapVisibility(next)
+                setMapMessage(null)
+                // Saves on its own, independent of the project information form.
+                startMapTransition(async () => {
+                  const result = await updateProjectMapVisibility({ projectId: information.project.id, visibility: next })
+                  if (!result.success) {
+                    setMapVisibility(previous)
+                    setMapMessage(result.error)
+                    return
+                  }
+                  setMapMessage("Portfolio map setting saved.")
+                })
+              }}
+            >
+              <option value="default">Follow job status (default)</option>
+              <option value="shown">Always show on the map</option>
+              <option value="hidden">Hide from the map</option>
+            </select>
+            <p id="map-visibility-help" className="text-xs text-muted-foreground" role="status" aria-live="polite">
+              {mapMessage ?? "By default, active HPS and Open Range jobs appear on the dashboard map; Internal and Nu-Tech jobs do not."}
             </p>
           </div>
           {information.project.projectNumber && (

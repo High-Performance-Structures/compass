@@ -106,7 +106,7 @@ export function SharedDrivePicker({
             >
               <IconFolder
                 size={16}
-                className="text-amber-500"
+                className="text-warning"
               />
               My Drive (root)
             </button>
@@ -121,7 +121,7 @@ export function SharedDrivePicker({
               >
                 <IconFolderShare
                   size={16}
-                  className="text-blue-500"
+                  className="text-info"
                 />
                 {drive.name}
               </button>

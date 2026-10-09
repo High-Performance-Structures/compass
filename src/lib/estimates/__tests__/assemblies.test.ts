@@ -25,6 +25,17 @@ describe("estimate assemblies", () => {
     expect(groups.flatMap((group) => group.lines)).toHaveLength(lines.length)
   })
 
+  it("uses the same saved item order in division and assembly reports", () => {
+    const reordered = lines.map((line) => ({ ...line, sortOrder: line.id === "footings" ? -1 : line.sortOrder }))
+    expect(groupEstimateAssemblies(assemblies, reordered)[0]?.lines[0]?.id).toBe("footings")
+    for (const mode of ["line_items", "division_summary", "assembly_items", "assembly_summary"] as const) {
+      const groups = clientEstimateReportGroups({ mode, assemblies, lines: reordered, phaseDescriptions: {} })
+      const group = groups.find((entry) => entry.lines.some((line) => line.id === "footings"))
+      expect(group?.lines[0]?.id).toBe("footings")
+      expect(groups.reduce((sum, entry) => sum + entry.subtotalCents, 0)).toBe(6000000)
+    }
+  })
+
   it("keeps orphaned assignments visible under Other work", () => {
     const groups = groupEstimateAssemblies([], lines)
     expect(groups).toHaveLength(1)

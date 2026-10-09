@@ -78,7 +78,7 @@ export function MobileFilterBar({
 
   return (
     <>
-      <div className="flex items-center gap-2 overflow-x-auto border-b p-2 md:hidden [&::-webkit-scrollbar]:hidden">
+      <div className="flex items-center gap-2 overflow-x-auto border-b p-2 md:hidden">
         {filters.map((filter) => (
           <FilterChip
             key={filter.id}

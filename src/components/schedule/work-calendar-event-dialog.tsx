@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
@@ -366,20 +367,23 @@ export function WorkCalendarEventDialog(
             {props.variant === "create" && props.googleDestinations.length > 0 ? (
               <div className="grid gap-2">
                 <Label htmlFor="work-calendar-event-destination">Calendar</Label>
-                <Select value={calendarSelectionId} onValueChange={setCalendarSelectionId}>
-                  <SelectTrigger id="work-calendar-event-destination">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={COMPASS_DESTINATION_VALUE}>Compass Work Calendar only</SelectItem>
-                    {props.googleDestinations.map((destination) => (
-                      <SelectItem key={destination.selectionId} value={destination.selectionId}>
-                        {destination.label}
-                        {destination.calendarScope === "organization" ? " (shared)" : " (personal)"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  id="work-calendar-event-destination"
+                  value={calendarSelectionId}
+                  onValueChange={(value) => setCalendarSelectionId(value || COMPASS_DESTINATION_VALUE)}
+                  options={[
+                    { value: COMPASS_DESTINATION_VALUE, label: "Compass Work Calendar only" },
+                    ...props.googleDestinations.map((destination) => ({
+                      value: destination.selectionId,
+                      label: destination.label,
+                      description: destination.calendarScope === "organization" ? "Shared" : "Personal",
+                    })),
+                  ]}
+                  ariaLabel="Calendar"
+                  placeholder="Compass Work Calendar only"
+                  searchPlaceholder="Search calendars..."
+                  emptyMessage="No matching calendars."
+                />
                 <p className="text-xs text-muted-foreground">
                   Google destinations also keep a linked Compass event for permissions and filtering.
                 </p>
@@ -404,31 +408,28 @@ export function WorkCalendarEventDialog(
                 <Label htmlFor={`work-calendar-event-type-${props.variant}`}>
                   Event type
                 </Label>
-                <Select
+                <SearchableCombobox
+                  id={`work-calendar-event-type-${props.variant}`}
                   value={eventType}
                   onValueChange={(value) => {
                     if (!isWorkCalendarEventType(value)) return
                     setEventType(value)
                     if (value !== "meeting") setCreateGoogleMeet(false)
                   }}
-                >
-                  <SelectTrigger
-                    id={`work-calendar-event-type-${props.variant}`}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="meeting">Meeting</SelectItem>
-                    <SelectItem value="appointment">Appointment</SelectItem>
-                    <SelectItem value="inspection">Inspection</SelectItem>
-                    <SelectItem value="delivery">Delivery</SelectItem>
-                    <SelectItem value="company_event">
-                      Company event
-                    </SelectItem>
-                    <SelectItem value="absence">Absence / time off</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
+                  options={[
+                    { value: "meeting", label: "Meeting" },
+                    { value: "appointment", label: "Appointment" },
+                    { value: "inspection", label: "Inspection" },
+                    { value: "delivery", label: "Delivery" },
+                    { value: "company_event", label: "Company event" },
+                    { value: "absence", label: "Absence / time off", keywords: "vacation pto out" },
+                    { value: "other", label: "Other" },
+                  ]}
+                  ariaLabel="Event type"
+                  placeholder="Choose event type"
+                  searchPlaceholder="Search event types..."
+                  emptyMessage="No matching event types."
+                />
               </div>
               <div className="grid gap-2">
                 <Label

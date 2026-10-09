@@ -1,3 +1,5 @@
+import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
+
 export type EstimateAssembly = {
   readonly id: string
   readonly name: string
@@ -6,6 +8,8 @@ export type EstimateAssembly = {
 }
 
 type AssemblyLine = {
+  readonly id: string
+  readonly costCode: string
   readonly assemblyId: string | null
   readonly sortOrder: number
   readonly lineTotalCents: number
@@ -27,7 +31,7 @@ export function groupEstimateAssemblies<T extends AssemblyLine>(
 ): readonly EstimateAssemblyGroup<T>[] {
   const buckets = new Map<string | null, T[]>([[null, []]])
   for (const assembly of assemblies) buckets.set(assembly.id, [])
-  for (const line of [...lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
+  for (const line of [...lines].sort(compareEstimateLineOrder)) {
     const bucket = buckets.get(line.assemblyId) ?? buckets.get(null)
     if (bucket) bucket.push(line)
   }

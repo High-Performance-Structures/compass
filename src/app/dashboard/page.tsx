@@ -13,6 +13,7 @@ import { getWorkCalendar } from "@/app/actions/work-calendar"
 import { DashboardLaunchpad } from "@/components/dashboard/dashboard-launchpad"
 import type { DashboardOfficeEvent } from "@/components/dashboard/dashboard-launchpad"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
+import { getPortfolioMapData } from "@/lib/portfolio-map/load"
 import {
   projectAudienceActiveProjectCookieName,
   resolveProjectAudienceActiveProject,
@@ -57,12 +58,14 @@ export default async function Page(): Promise<React.ReactElement> {
     teamAvailabilityResult,
     workCalendar,
     cherishResult,
+    portfolio,
   ] = await Promise.all([
     getDashboardOverview(),
     getCurrentUserPresence(),
     getOrganizationTeamAvailability(),
     getWorkCalendar(undefined, { eventsOnly: true }).catch(() => null),
     getActiveCherishStories(),
+    getPortfolioMapData(),
   ])
   const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
   const initialDeskStatusMessage = presenceResult.success
@@ -98,6 +101,7 @@ export default async function Page(): Promise<React.ReactElement> {
       officeProjectId={workCalendar?.defaultProjectId ?? null}
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
       canPrepareGreetingCards={canPrepareGreetingCards(currentUser)}
+      portfolio={portfolio}
       cherishRecognitions={
         cherishResult.success
           ? cherishResult.data

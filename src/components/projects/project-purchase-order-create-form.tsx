@@ -47,6 +47,13 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { reportStaleDeployment } from "@/lib/deployment/version"
 import {
   isStaleServerActionError,
@@ -630,10 +637,9 @@ function ProjectPurchaseOrderForm(
             </Field>
             <div className="space-y-2">
               <Field label="Ship to / delivery location">
-                <select
+                <Select
                   value={shipTo.choice}
-                  onChange={(event) => {
-                    const choice = event.target.value
+                  onValueChange={(choice) => {
                     if (choice === "jobsite") {
                       setShipTo((current) => ({ ...current, choice: "jobsite" }))
                     } else if (choice === "pickup") {
@@ -642,14 +648,18 @@ function ProjectPurchaseOrderForm(
                       setShipTo((current) => ({ ...current, choice: "other" }))
                     }
                   }}
-                  className={DOCUMENT_SELECT_CLASS}
                 >
-                  <option value="jobsite" disabled={jobsiteAddress === null}>
-                    Jobsite
-                  </option>
-                  <option value="pickup">Pick-Up</option>
-                  <option value="other">Other</option>
-                </select>
+                  <SelectTrigger aria-label="Ship to / delivery location" className={DOCUMENT_SELECT_CLASS}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jobsite" disabled={jobsiteAddress === null}>
+                      Jobsite
+                    </SelectItem>
+                    <SelectItem value="pickup">Pick-Up</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
               {shipTo.choice === "jobsite" && jobsiteAddress !== null && (
                 <Input
@@ -702,15 +712,16 @@ function ProjectPurchaseOrderForm(
               />
             </Field>
             <Field label="Priority">
-              <select
-                name="priority"
-                defaultValue={purchaseOrder?.priority ?? "normal"}
-                className={DOCUMENT_SELECT_CLASS}
-              >
-                <option value="normal">Normal priority</option>
-                <option value="high">High priority</option>
-                <option value="low">Low priority</option>
-              </select>
+              <Select name="priority" defaultValue={purchaseOrder?.priority ?? "normal"}>
+                <SelectTrigger aria-label="Priority" className={DOCUMENT_SELECT_CLASS}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal priority</SelectItem>
+                  <SelectItem value="high">High priority</SelectItem>
+                  <SelectItem value="low">Low priority</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
           </div>
         </div>

@@ -125,7 +125,7 @@ function ProjectFolderCard({
         </div>
         <div className="min-w-0 flex-1">
           {projectNumber && (
-            <p className="mb-1 truncate font-mono text-[11px] font-semibold text-muted-foreground">
+            <p className="mb-1 truncate font-mono text-xs font-semibold text-muted-foreground">
               {projectNumber}
             </p>
           )}
@@ -148,12 +148,12 @@ function ProjectFolderCard({
           {file.starred ? (
             <IconStarFilled
               size={14}
-              className="text-amber-400"
+              className="text-warning"
             />
           ) : (
             <IconStar
               size={14}
-              className="text-muted-foreground hover:text-amber-400"
+              className="text-muted-foreground hover:text-warning"
             />
           )}
         </button>
@@ -239,7 +239,7 @@ export function ProjectFileGroups({
               className="justify-between gap-3"
             >
               <span>{source.label}</span>
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                 0
               </span>
             </Button>
@@ -291,7 +291,7 @@ export function ProjectFileGroups({
               <span>{source.label}</span>
               <span
                 className={cn(
-                  "rounded bg-background/20 px-1.5 py-0.5 text-[11px]",
+                  "rounded bg-background/20 px-1.5 py-0.5 text-xs",
                   !isActive && "bg-muted text-muted-foreground"
                 )}
               >

@@ -214,12 +214,12 @@ export function CherishPulseStream({
                   </Badge>
                   <Badge variant="outline">{item.cherishValue}</Badge>
                   {item.visibility === "private" ? (
-                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <IconLock className="size-3" /> Leadership only
                     </span>
                   ) : null}
                   {item.audience.scope === "user" ? (
-                    <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
                       <IconLock className="size-3" /> Only {recipientName(item, recipients)}
                     </span>
                   ) : null}
@@ -227,7 +227,7 @@ export function CherishPulseStream({
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-5">
                   {item.message}
                 </p>
-                <p className="mt-2 text-[11px] text-muted-foreground">
+                <p className="mt-2 text-xs text-muted-foreground">
                   {submitterLabel(item)} ·{" "}
                   {formatDate(item.createdAt)}
                 </p>
@@ -258,7 +258,7 @@ export function CherishPulseStream({
             ))}
           </div>
           {message ? (
-            <p className="mt-3 border-l-2 border-emerald-700 pl-2 text-xs text-muted-foreground">
+            <p className="mt-3 border-l-2 border-success pl-2 text-xs text-muted-foreground">
               {message}
             </p>
           ) : null}
@@ -274,14 +274,14 @@ export function CherishPulseStream({
                     key={item.id}
                     className="border border-[#9d832c] p-3"
                   >
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <IconLock className="size-3" /> Leadership only ·{" "}
                       {formatDate(item.createdAt)}
                     </div>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-5">
                       {item.message}
                     </p>
-                    <p className="mt-2 text-[11px] text-muted-foreground">
+                    <p className="mt-2 text-xs text-muted-foreground">
                       {submitterLabel(item)}
                     </p>
                   </article>
@@ -331,16 +331,16 @@ export function CherishPulseStream({
                 <article key={item.id} className="border p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{item.cherishValue}</Badge>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {responseLabel(item)} · {formatDate(item.createdAt)}
                     </span>
                     {item.visibility === "private" ? (
-                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <IconLock className="size-3" /> Leadership only
                       </span>
                     ) : null}
                     {item.audience.scope === "user" ? (
-                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
                         <IconLock className="size-3" /> Only {recipientName(item, recipients)}
                       </span>
                     ) : null}
@@ -348,7 +348,7 @@ export function CherishPulseStream({
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-5">
                     {item.message}
                   </p>
-                  <p className="mt-2 text-[11px] text-muted-foreground">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     {submitterLabel(item)}
                   </p>
                 </article>
@@ -377,11 +377,11 @@ export function CherishPulseStream({
           {teamItems.map((item) => (
             <article
               key={item.id}
-              className="border-l-4 border-emerald-700 bg-muted/20 p-3"
+              className="border-l-4 border-success bg-muted/20 p-3"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{item.cherishValue}</Badge>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {responseLabel(item)} · {formatDate(item.createdAt)}
                 </span>
                 {item.audience.scope === "user" ? (
@@ -391,7 +391,7 @@ export function CherishPulseStream({
               <p className="mt-2 whitespace-pre-wrap text-sm leading-5">
                 {item.message}
               </p>
-              <p className="mt-2 text-[11px] text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 {item.isAnonymous
                   ? "Shared anonymously"
                   : `Shared by ${item.submittedByName ?? "a team member"}`}

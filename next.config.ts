@@ -27,6 +27,10 @@ const nextConfig: NextConfig = {
     },
     transpilePackages: ["agent-core"],
     experimental: {
+        // Reuse recently visited pages on back/forward and repeat navigation
+        // instead of re-rendering them on the server each time. Server actions
+        // that call revalidatePath/refresh, and router.refresh(), still clear it.
+        staleTimes: { dynamic: 30, static: 300 },
         serverActions: { bodySizeLimit: "26mb" },
         proxyClientMaxBodySize: "100mb",
         optimizePackageImports: [

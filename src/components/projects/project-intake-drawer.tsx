@@ -453,9 +453,9 @@ export function ProjectIntakeDrawer({
           </section>
 
           <div className="grid gap-2 border-y py-4 text-sm sm:grid-cols-3">
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Project created</span>
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Team workspace ready</span>
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Ready for review</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-success" /> Project created</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-success" /> Team workspace ready</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-success" /> Ready for review</span>
           </div>
 
           <SheetFooter className="px-0">

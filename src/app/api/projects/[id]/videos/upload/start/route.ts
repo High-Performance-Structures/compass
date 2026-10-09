@@ -9,6 +9,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { initiateProjectVideoWebsiteUpload } from "@/lib/email/project-video-attachments"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { assertActiveStaffOrganization } from "@/lib/project-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   isProjectVideoFile,
   MAX_PROJECT_VIDEO_UPLOAD_BYTES,
@@ -33,6 +35,17 @@ export async function POST(
   { params }: { readonly params: Promise<{ readonly id: string }> }
 ): Promise<Response> {
   try {
+    const user = await requireAuth()
+    if (
+      !user.isActive ||
+      !isInternalStaffRole(user.role)
+    ) {
+      throw new Error("Project video upload requires active internal staff")
+    }
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    await assertActiveStaffOrganization(db, user)
+    await requireFeaturePermission(user, "project-photos", "update")
     const body: unknown = await request.json()
     if (!isRecord(body)) {
       return NextResponse.json(
@@ -63,16 +76,12 @@ export async function POST(
       )
     }
 
-    const user = await requireAuth()
-    await requireFeaturePermission(user, "project-photos", "update")
     const organizationId = requireOrg(user)
     const { id: rawProjectId } = await params
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) {
       return NextResponse.json({ success: false, error: "Project not found." }, { status: 404 })
     }
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
@@ -114,6 +123,11 @@ export async function POST(
     )
   } catch (error) {
     console.error("Project video upload session failed", error)
+    const status =
+      error instanceof Error &&
+      error.message === "Active internal organization is required"
+        ? 403
+        : 500
     return NextResponse.json(
       {
         success: false,
@@ -122,7 +136,7 @@ export async function POST(
             ? error.message
             : "Compass could not start the video upload.",
       },
-      { status: 500 }
+      { status }
     )
   }
 }
