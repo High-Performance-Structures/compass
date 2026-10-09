@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   resolveProjectRouteId: vi.fn(),
   assertProjectAccess: vi.fn(),
   getProjectAudienceAccessRecord: vi.fn(),
+  hasActiveExternalProjectResourceGrant: vi.fn(),
   getActiveOrganization: vi.fn(),
   decrypt: vi.fn(),
   parseServiceAccountKey: vi.fn(),
@@ -28,6 +29,10 @@ vi.mock("@/lib/project-access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
   getProjectAudienceAccessRecord: mocks.getProjectAudienceAccessRecord,
   getActiveOrganization: mocks.getActiveOrganization,
+}))
+vi.mock("@/lib/project-external-resource-access", () => ({
+  hasActiveExternalProjectResourceGrant:
+    mocks.hasActiveExternalProjectResourceGrant,
 }))
 vi.mock("@/lib/crypto", () => ({ decrypt: mocks.decrypt }))
 vi.mock("@/lib/google/config", () => ({
@@ -122,6 +127,7 @@ function configureDb({
       return Promise.resolve(allowed ? project : null)
     }
   )
+  mocks.hasActiveExternalProjectResourceGrant.mockResolvedValue(false)
   mocks.getCloudflareContext.mockResolvedValue({
     env: {
       DB: "db",
@@ -189,7 +195,7 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
     expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved owner-visible photo only to an owner member", async () => {
+  it("denies an approved owner-visible photo to a member without an exact resource grant", async () => {
     configureDb({
       viewerRole: "client",
       membershipRole: "client",
@@ -198,13 +204,11 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("owner")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
-    expect(mocks.getProjectAudienceAccessRecord).toHaveBeenCalled()
-    expect(mocks.assertProjectAccess).not.toHaveBeenCalled()
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved owner-visible photo to a member with the owner role", async () => {
+  it("denies an approved owner-visible photo to an owner-role member without an exact resource grant", async () => {
     configureDb({
       viewerRole: "client",
       membershipRole: "owner",
@@ -213,11 +217,11 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("owner")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved sub/vendor-visible photo only to a partner member", async () => {
+  it("denies an approved sub/vendor-visible photo to a partner member without an exact resource grant", async () => {
     configureDb({
       viewerRole: "subcontractor",
       membershipRole: "subcontractor",
@@ -226,11 +230,11 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("sub_vendor")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
-  it("serves an approved sub/vendor-visible photo to a member with the supplier role", async () => {
+  it("denies an approved sub/vendor-visible photo to a supplier without an exact resource grant", async () => {
     configureDb({
       viewerRole: "supplier",
       membershipRole: "supplier",
@@ -239,8 +243,8 @@ describe("GET /api/projects/:id/photos/:photoId", () => {
 
     const response = await getPhoto("sub_vendor")
 
-    expect(response.status).toBe(200)
-    expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(404)
+    expect(mocks.downloadFile).not.toHaveBeenCalled()
   })
 
   it.each([

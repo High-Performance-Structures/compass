@@ -49,6 +49,12 @@ const internalUser = {
   role: "admin",
 } as const
 
+const developerUser = {
+  ...internalUser,
+  id: "developer-1",
+  role: "developer",
+} as const
+
 function createUpdateDatabase(changes: number) {
   const run = vi.fn().mockResolvedValue({ meta: { changes } })
   const where = vi.fn(() => ({ run }))
@@ -135,6 +141,22 @@ describe("generic Google Drive Server Action authorization", () => {
 
     expect(result).toMatchObject({ success: false })
     expect(mocks.requireAuth).toHaveBeenCalledTimes(1)
+    expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
+    expect(mocks.getDb).not.toHaveBeenCalled()
+    expect(mocks.getActiveOrganization).not.toHaveBeenCalled()
+    expect(mocks.requirePermission).not.toHaveBeenCalled()
+  })
+
+  it("denies a developer caller before permission or provider work", async () => {
+    mocks.requireAuth.mockResolvedValue(developerUser)
+    mocks.getActiveOrganization.mockResolvedValue({
+      id: "org-internal",
+      type: "internal",
+    })
+
+    const result = await listDriveFiles()
+
+    expect(result).toMatchObject({ success: false })
     expect(mocks.getCloudflareContext).not.toHaveBeenCalled()
     expect(mocks.getDb).not.toHaveBeenCalled()
     expect(mocks.getActiveOrganization).not.toHaveBeenCalled()
