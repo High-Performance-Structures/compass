@@ -1,5 +1,6 @@
 import type * as React from "react"
-import Image from "next/image"
+import { CompassMark } from "@/components/compass-mark"
+import { ReleaseStageLabel } from "@/components/release-stage-label"
 import Link from "next/link"
 import {
   IconPalette,
@@ -204,42 +205,43 @@ export function ProjectAudiencePreviewShell({
   return (
     <div
       className={cn(
-        "bg-muted/20 text-foreground md:grid md:grid-cols-[16rem_minmax(0,1fr)]",
+        "bg-muted/20 text-foreground md:grid md:grid-cols-[21.5rem_minmax(0,1fr)]",
         contentMode === "viewport"
           ? "h-dvh min-h-0 overflow-hidden"
           : "min-h-screen"
       )}
     >
       <aside className="sticky top-0 hidden h-dvh min-h-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
+        {/* Same brand placement as the office sidebar: Compass names the
+            product at the top, the company signs the bottom. */}
         <div className="border-b border-sidebar-border p-4">
-          <Link href={homeHref} className="flex items-center gap-3">
-            <span className="flex size-9 shrink-0 items-center justify-center">
-              <Image
-                src="/department-logos/hps-h-green.svg"
-                alt="High Performance Structures Inc."
-                width={36}
-                height={36}
-                className="size-9 rounded-[5px] object-contain"
-                priority
-                unoptimized
-              />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-xs font-semibold leading-tight">
-                High Performance Structures Inc.
+          <div className="flex items-center gap-3">
+            <Link
+              href={homeHref}
+              aria-label="Compass home"
+              className="shrink-0 text-sidebar-foreground transition-transform hover:scale-[1.03]"
+            >
+              <CompassMark className="size-8" />
+            </Link>
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <Link
+                href={homeHref}
+                className="text-base font-semibold uppercase tracking-[0.32em] text-sidebar-foreground"
+              >
+                Compass
+              </Link>
+              <span className="truncate font-mono text-xs tracking-[0.16em] text-sidebar-foreground/60">
+                HIGH PERFORMANCE STRUCTURES
               </span>
-              <span className="block truncate text-xs text-sidebar-foreground/65">
-                {audience === "owner" ? "Owner workspace" : "Partner workspace"}
-              </span>
-            </span>
-          </Link>
+            </div>
+          </div>
         </div>
 
         <div className="border-b border-sidebar-border p-3">
           {projectOptions.length > 1 ? (
             <div className="grid gap-1">
               <p className="px-2 text-xs text-sidebar-foreground/60">
-                Current project
+                {audience === "owner" ? "Owner workspace" : "Partner workspace"} · Current project
               </p>
               <ProjectAudienceSwitcher
                 projects={projectOptions}
@@ -252,7 +254,7 @@ export function ProjectAudiencePreviewShell({
           ) : (
             <div className="px-2 py-2">
               <p className="text-xs text-sidebar-foreground/60">
-                Current project
+                {audience === "owner" ? "Owner workspace" : "Partner workspace"} · Current project
               </p>
               <p className="mt-1 truncate text-sm font-medium">
                 {projectNumber ?? projectName}
@@ -288,6 +290,9 @@ export function ProjectAudiencePreviewShell({
         </nav>
 
         <ProjectAudienceSidebarProfile viewer={viewer} />
+        <div className="border-t border-sidebar-border pt-2">
+          <ReleaseStageLabel />
+        </div>
       </aside>
 
       <div
@@ -351,13 +356,16 @@ export function ProjectAudiencePreviewShell({
 
         <header className="sticky top-0 z-40 border-b bg-background/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3">
-            <Link href={homeHref} className="min-w-0">
-              <p className="truncate text-sm font-semibold">
-                {projectNumber ?? projectName}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {audience === "owner" ? "Owner Compass" : "Partner Compass"}
-              </p>
+            <Link href={homeHref} className="flex min-w-0 items-center gap-2.5">
+              <CompassMark className="size-7 shrink-0" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">
+                  {projectNumber ?? projectName}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {audience === "owner" ? "Owner Compass" : "Partner Compass"}
+                </span>
+              </span>
             </Link>
             <ProjectAudienceHeaderControls
               viewer={viewer}
