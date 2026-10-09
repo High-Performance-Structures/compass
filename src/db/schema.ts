@@ -761,6 +761,34 @@ export const travelChargeSettings = sqliteTable("travel_charge_settings", {
   updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
 })
 
+/**
+ * Per-job zone charge adjustments. Every value is optional; NULL keeps the
+ * organization default. Kept apart from the cached site columns on projects,
+ * which the background site lookup rewrites.
+ */
+export const projectTravelChargeOverrides = sqliteTable(
+  "project_travel_charge_overrides",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    zoneIndex: integer("zone_index"),
+    zoneRateCents: integer("zone_rate_cents"),
+    siteElevationFt: integer("site_elevation_ft"),
+    mountainRateCents: integer("mountain_rate_cents"),
+    lodging: text("lodging", { enum: ["default", "yes", "no"] }).notNull().default("default"),
+    lodgingPerNightCents: integer("lodging_per_night_cents"),
+    perDiemPerDayCents: integer("per_diem_per_day_cents"),
+    note: text("note"),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [index("project_travel_charge_overrides_org_idx").on(table.organizationId)],
+)
+
 export const projectNumberReservations = sqliteTable(
   "project_number_reservations",
   {

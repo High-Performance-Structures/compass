@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, lt, sql } from "drizzle-orm"
 import { getDb } from "@/db"
-import { projects, scheduleTasks, travelChargeSettings } from "@/db/schema"
+import { projects, projectTravelChargeOverrides, scheduleTasks, travelChargeSettings } from "@/db/schema"
+import { applyTravelOverride, type EffectiveTravelCharge } from "@/lib/portfolio-map/travel-overrides"
 import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -22,7 +23,6 @@ import {
   DEFAULT_TRAVEL_CHARGE_SETTINGS,
   jobTravelCharge,
   parseTravelChargeSettings,
-  type JobTravelCharge,
   type TravelChargeSettings,
 } from "@/lib/portfolio-map/travel-zones"
 
@@ -39,10 +39,8 @@ export type PortfolioHiddenJob = PortfolioUnplacedJob & {
   readonly restoreVisibility: "default" | "shown"
 }
 
-export type PortfolioJobTravel = JobTravelCharge & {
-  /** Ground elevation at the located site; null until the address is located. */
-  readonly elevationFt: number | null
-}
+/** The job's charge with any per-job adjustments applied (see travel-overrides). */
+export type PortfolioJobTravel = EffectiveTravelCharge
 
 /** Office-only: zone and mountain charges. Never sent to owner or vendor views. */
 export type PortfolioTravelData = {
@@ -84,7 +82,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const orgId = user.organizationId
     const today = dateKeyInTimeZone(new Date(), TIME_ZONE)
 
-    const [locations, taskStats, upcoming, storedSettings] = await Promise.all([
+    const [locations, taskStats, upcoming, storedSettings, overrideRows] = await Promise.all([
       db
         .select({
           id: projects.id,
@@ -134,8 +132,19 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         .from(travelChargeSettings)
         .where(eq(travelChargeSettings.organizationId, orgId))
         .limit(1),
+      // Per-job adjustments are optional: if they can't be read, the map
+      // still shows every job with the default charges.
+      db
+        .select()
+        .from(projectTravelChargeOverrides)
+        .where(eq(projectTravelChargeOverrides.organizationId, orgId))
+        .catch((error: unknown) => {
+          console.error("Per-job zone charges unavailable", error instanceof Error ? error.message : error)
+          return []
+        }),
     ])
     const settings = parseStoredSettings(storedSettings[0]?.settingsJson)
+    const overrideById = new Map(overrideRows.map((row) => [row.projectId, row]))
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
     const hidden: PortfolioHiddenJob[] = []
@@ -221,10 +230,23 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
       const lon = site?.lon ?? job.lon
       if (showTravel && lat !== null && lon !== null) {
         const elevationFt = site?.elevationFt ?? null
-        byJobId[job.id] = {
-          ...jobTravelCharge({ lat, lon, elevationFt, approximate: site === null, settings }),
-          elevationFt,
-        }
+        const row = overrideById.get(job.id)
+        byJobId[job.id] = applyTravelOverride(
+          { ...jobTravelCharge({ lat, lon, elevationFt, approximate: site === null, settings }), elevationFt },
+          row
+            ? {
+                zoneIndex: row.zoneIndex,
+                zoneRateCents: row.zoneRateCents,
+                siteElevationFt: row.siteElevationFt,
+                mountainRateCents: row.mountainRateCents,
+                lodging: row.lodging,
+                lodgingPerNightCents: row.lodgingPerNightCents,
+                perDiemPerDayCents: row.perDiemPerDayCents,
+                note: row.note,
+              }
+            : null,
+          settings,
+        )
       }
       return site ? { ...job, lat: site.lat, lon: site.lon } : job
     })
