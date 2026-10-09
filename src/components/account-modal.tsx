@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { AccountDeletionSection } from "@/components/account-deletion-section"
 import { getInitials } from "@/lib/utils"
 import { updateProfile, changePassword } from "@/app/actions/profile"
 import type { SidebarUser } from "@/lib/auth"
@@ -255,6 +256,10 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
               {isChangingPassword ? "Changing..." : "Change Password"}
             </Button>
           </div>
+
+          <Separator className="my-3" />
+
+          <AccountDeletionSection />
         </div>
 
         <DialogFooter className="gap-2 pt-2">
