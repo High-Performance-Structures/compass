@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { type ReactElement, type ReactNode } from "react"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAddressBook,
   IconCalendarStats,
@@ -20,13 +21,6 @@ import type { ProjectFieldSummary } from "@/app/actions/project-field"
 import type { ProjectOperationsSummary } from "@/app/actions/project-operations"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
 import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   PROJECT_WORKFLOW_ROLE_LENSES,
   isProjectWorkflowRoleId,
@@ -477,29 +471,21 @@ export function ProjectManagerWorkflowPanel({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Select
+            <SearchableCombobox
+              className="h-8 w-[240px] bg-background"
+              popoverClassName="min-w-[15rem]"
               value={activeRoleId}
               onValueChange={(value) => {
                 if (!isProjectWorkflowRoleId(value)) return
                 if (!allowedRoleIds.includes(value)) return
                 onActiveRoleChange(value)
               }}
-            >
-              <SelectTrigger
-                size="sm"
-                className="w-[240px] bg-background"
-                aria-label="Select role dashboard"
-              >
-                <SelectValue placeholder="Choose role view" />
-              </SelectTrigger>
-              <SelectContent align="start">
-                {availableRoles.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={availableRoles.map((role) => ({ value: role.id, label: role.label }))}
+              ariaLabel="Select role dashboard"
+              placeholder="Choose role view"
+              searchPlaceholder="Search roles..."
+              emptyMessage="No matching roles."
+            />
             <span className="text-xs text-muted-foreground">
               Viewing {activeRole.label}
             </span>

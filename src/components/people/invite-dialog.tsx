@@ -20,13 +20,6 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 interface InviteDialogProps {
   open: boolean
@@ -149,18 +142,17 @@ export function InviteDialog({
 
           <div className="space-y-2">
             <Label htmlFor="role">Role *</Label>
-            <Select value={role} onValueChange={setRole} disabled={loading}>
-              <SelectTrigger id="role">
-                <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
-              <SelectContent>
-                {USER_ROLE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              id="role"
+              value={role}
+              onValueChange={setRole}
+              disabled={loading}
+              options={USER_ROLE_OPTIONS}
+              ariaLabel="Role"
+              placeholder="Select a role"
+              searchPlaceholder="Search roles..."
+              emptyMessage="No matching roles."
+            />
             <p className="text-xs text-muted-foreground">
               {userRoleDescription(role)}
             </p>

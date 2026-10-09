@@ -3,6 +3,7 @@ import { z } from "zod/v4"
 
 import { getFieldProjectPacket } from "@/app/actions/field-mode"
 import { createChannel } from "@/app/actions/conversations"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 const requestSchema = z.object({
   projectId: z.string().min(1),
@@ -29,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const channelName = currentPacket.project.projectNumber
-      ? `${currentPacket.project.projectNumber} · ${currentPacket.project.name}`
+      ? projectNumberAndName(currentPacket.project, " · ")
       : currentPacket.project.name
     const result = await createChannel({
       name: channelName,

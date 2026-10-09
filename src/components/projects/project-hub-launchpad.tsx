@@ -5,6 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -406,26 +407,29 @@ function ProjectJobStatusSelect({
   }
 
   return (
-    <Select
+    <SearchableCombobox
+      className="h-6 w-auto max-w-full border-0 bg-secondary px-2 text-xs font-medium shadow-none"
       value={selectedStatusId}
-      onValueChange={changeStatus}
+      // Each choice saves immediately; ignore the picker's empty reset.
+      onValueChange={(value) => {
+        if (value !== "") changeStatus(value)
+      }}
       disabled={pending}
-    >
-      <SelectTrigger
-        size="sm"
-        className="h-6 max-w-full border-0 bg-secondary px-2 text-xs font-medium shadow-none"
-        aria-label={`Update status for ${project.name}`}
-      >
-        <SelectValue>{pending ? "Saving…" : selectedStatusLabel}</SelectValue>
-      </SelectTrigger>
-      <SelectContent position="popper" align="start">
-        {PROJECT_JOB_STATUS_DEFINITIONS.map((status) => (
-          <SelectItem key={status.id} value={status.id}>
-            {status.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      options={PROJECT_JOB_STATUS_DEFINITIONS.map((status) => ({
+        value: status.id,
+        label: status.label,
+        selectedLabel:
+          status.id === selectedStatusId
+            ? pending
+              ? "Saving…"
+              : selectedStatusLabel
+            : undefined,
+      }))}
+      ariaLabel={`Update status for ${project.name}`}
+      placeholder={selectedStatusLabel}
+      searchPlaceholder="Search job statuses..."
+      emptyMessage="No matching job statuses."
+    />
   )
 }
 

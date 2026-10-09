@@ -5,6 +5,14 @@ import Link from "next/link"
 import { IconArrowRight, IconMessageCircleQuestion } from "@tabler/icons-react"
 
 import type { MyFeedbackRequest } from "@/app/actions/feedback-requests"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -74,27 +82,36 @@ export function MyRequestsList({
               placeholder="Search request titles"
               type="search"
             />
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+            <SearchableCombobox
+              className="h-9"
               value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              <option value="active">Active requests</option>
-              <option value="all">All requests</option>
-              {availableStatuses.map((value) => (
-                <option key={value} value={value}>{feedbackStatusLabel(value)}</option>
-              ))}
-            </select>
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
-              value={kind}
-              onChange={(event) => setKind(event.target.value)}
-            >
-              <option value="all">All types</option>
-              {availableKinds.map((value) => (
-                <option key={value} value={value}>{value}</option>
-              ))}
-            </select>
+              onValueChange={(value) => setStatus(value || "active")}
+              options={[
+                { value: "active", label: "Active requests" },
+                { value: "all", label: "All requests" },
+                ...availableStatuses.map((value) => ({
+                  value,
+                  label: feedbackStatusLabel(value),
+                })),
+              ]}
+              ariaLabel="Filter requests by status"
+              placeholder="Active requests"
+              searchPlaceholder="Search statuses..."
+              emptyMessage="No matching statuses."
+            />
+            <Select value={kind} onValueChange={setKind}>
+              <SelectTrigger aria-label="Filter requests by type" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {availableKinds.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {value}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
       </Card>

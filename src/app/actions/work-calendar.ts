@@ -74,6 +74,7 @@ import {
   isWorkCalendarRecurrence,
   type WorkCalendarRecurrence,
 } from "@/lib/work-calendar-recurrence"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export type WorkCalendarEntryKind =
   | "schedule"
@@ -1710,7 +1711,7 @@ async function notifyEventParticipants(input: {
 
   const projectName = input.project
     ? input.project.projectNumber
-      ? `${input.project.projectNumber} — ${input.project.name}`
+      ? projectNumberAndName(input.project, " — ")
       : input.project.name
     : "an archived project"
 

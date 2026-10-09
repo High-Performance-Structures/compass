@@ -4,6 +4,14 @@ import Link from "next/link"
 import { useMemo, useState, type ReactElement } from "react"
 
 import type { ProjectFollowUpQueueItem } from "@/app/actions/project-profile"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 
 const STATE_LABELS: Readonly<Record<ProjectFollowUpQueueItem["state"], string>> = {
@@ -68,9 +76,9 @@ export function ProjectFollowUpQueue({
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Prioritized by meaningful client touch, a staff-set next follow-up, and the governed job-status cadence. Internal technical activity does not reset this clock.</p>
       </div>
       <div className="grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-3">
-        <label className="space-y-1 text-sm"><span className="font-medium">Follow-up state</span><select className="flex h-9 w-full rounded-md border bg-background px-3" value={stateFilter} onChange={(event) => { const next = followUpStateFilter(event.target.value); if (next !== null) setStateFilter(next) }}><option value="all">All states</option>{Object.entries(STATE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label className="space-y-1 text-sm"><span className="font-medium">Client status</span><select className="flex h-9 w-full rounded-md border bg-background px-3" value={clientFilter} onChange={(event) => { const next = clientStatusFilter(event.target.value); if (next !== null) setClientFilter(next) }}><option value="all">Leads and customers</option><option value="lead">Leads</option><option value="customer">Customers</option></select></label>
-        <label className="space-y-1 text-sm"><span className="font-medium">Job status</span><select className="flex h-9 w-full rounded-md border bg-background px-3" value={jobStatusFilter} onChange={(event) => setJobStatusFilter(event.target.value)}><option value="all">All job statuses</option>{jobStatuses.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+        <label className="space-y-1 text-sm"><span className="font-medium">Follow-up state</span><Select value={stateFilter} onValueChange={(value) => { const next = followUpStateFilter(value); if (next !== null) setStateFilter(next) }}><SelectTrigger aria-label="Follow-up state" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All states</SelectItem>{Object.entries(STATE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></label>
+        <label className="space-y-1 text-sm"><span className="font-medium">Client status</span><Select value={clientFilter} onValueChange={(value) => { const next = clientStatusFilter(value); if (next !== null) setClientFilter(next) }}><SelectTrigger aria-label="Client status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Leads and customers</SelectItem><SelectItem value="lead">Leads</SelectItem><SelectItem value="customer">Customers</SelectItem></SelectContent></Select></label>
+        <label className="space-y-1 text-sm"><span className="font-medium">Job status</span><SearchableCombobox className="h-9" value={jobStatusFilter} onValueChange={(value) => setJobStatusFilter(value || "all")} options={[{ value: "all", label: "All job statuses" }, ...jobStatuses.map((status) => ({ value: status, label: status }))]} ariaLabel="Job status" placeholder="All job statuses" searchPlaceholder="Search job statuses..." emptyMessage="No matching job statuses." /></label>
       </div>
       <p className="text-sm text-muted-foreground">{filtered.length} {filtered.length === 1 ? "project" : "projects"} shown</p>
       <div className="overflow-hidden rounded-lg border bg-card">

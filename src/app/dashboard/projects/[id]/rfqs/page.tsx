@@ -69,6 +69,7 @@ import {
   projectBrandFor,
   type ProjectBrand,
 } from "@/lib/project-branding"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 export const dynamic = "force-dynamic"
 
@@ -117,7 +118,7 @@ function projectDisplayLabel(
 ): string {
   if (!project) return "Project"
   return project.projectNumber
-    ? `${project.projectNumber} - ${project.name}`
+    ? projectNumberAndName(project, " - ")
     : project.name
 }
 

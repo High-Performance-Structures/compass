@@ -556,6 +556,25 @@ describe("Talk joining workflow", () => {
     expect(container.textContent).toContain("Your browser found a microphone")
     expect(mocks.track.stop).toHaveBeenCalled()
     await click("Background & Settings")
+    // Device choices live in a compact list; open the microphone list to see them.
+    const microphonePicker = document.body.querySelector<HTMLElement>(
+      'button[aria-label="Microphone"]'
+    )
+    if (!microphonePicker) throw new Error("Microphone picker not found")
+    // JSDOM has no layout, so the open list's scroll-to-selected needs a stub.
+    if (!("scrollIntoView" in Element.prototype)) {
+      Object.defineProperty(Element.prototype, "scrollIntoView", {
+        configurable: true,
+        value: () => undefined,
+      })
+    }
+    await act(async () => {
+      microphonePicker.focus()
+      microphonePicker.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+      )
+      await Promise.resolve()
+    })
     expect(document.body.textContent).toContain("Laptop microphone")
   })
 

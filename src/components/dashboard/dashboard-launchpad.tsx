@@ -1251,7 +1251,12 @@ export function DashboardLaunchpad({
 
       <DashboardCountsStrip counts={counts} />
 
-      <PortfolioSection jobs={portfolio.jobs} unplaced={portfolio.unplaced} hidden={portfolio.hidden} />
+      <PortfolioSection
+        jobs={portfolio.jobs}
+        unplaced={portfolio.unplaced}
+        hidden={portfolio.hidden}
+        travel={portfolio.travel}
+      />
 
       {mode === "office" ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">

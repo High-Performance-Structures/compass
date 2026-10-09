@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState, useTransition } from "react"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconCloudCheck,
   IconCloudOff,
@@ -273,7 +274,7 @@ export function FieldDesk({
             <label className="mb-1.5 block text-sm font-medium">
               CHERISH value
             </label>
-            <Select
+            <SearchableCombobox
               value={cherishValue}
               onValueChange={(value) => {
                 const nextValue = CHERISH_VALUES.find(
@@ -281,18 +282,12 @@ export function FieldDesk({
                 )
                 if (nextValue) setCherishValue(nextValue)
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CHERISH_VALUES.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={CHERISH_VALUES.map((value) => ({ value, label: value }))}
+              ariaLabel="CHERISH value"
+              placeholder="Choose a value"
+              searchPlaceholder="Search values..."
+              emptyMessage="No matching values."
+            />
           </div>
 
           <div>

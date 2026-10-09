@@ -307,20 +307,19 @@ export function ProjectIntakeDrawer({
                 </Select>
               </Field>
               <Field label={developerModeEnabled ? "Sage job status *" : "Job status *"}>
-                <Select
+                <SearchableCombobox
                   value={sageJobStatusId}
                   onValueChange={setSageJobStatusId}
                   required
-                >
-                  <SelectTrigger><SelectValue placeholder="Choose status" /></SelectTrigger>
-                  <SelectContent>
-                    {PROJECT_JOB_STATUS_DEFINITIONS.map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={PROJECT_JOB_STATUS_DEFINITIONS.map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                  }))}
+                  ariaLabel="Job status"
+                  placeholder="Choose status"
+                  searchPlaceholder="Search job statuses..."
+                  emptyMessage="No matching job statuses."
+                />
               </Field>
               <Field label={developerModeEnabled ? "Sage job type *" : "Job type *"}>
                 <Select

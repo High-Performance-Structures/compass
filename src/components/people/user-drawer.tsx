@@ -7,17 +7,11 @@ import { toast } from "sonner"
 import type { UserWithRelations } from "@/app/actions/users"
 import { updateUserRole } from "@/app/actions/users"
 import { USER_ROLE_OPTIONS, userRoleDescription } from "@/lib/user-roles"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -151,18 +145,18 @@ export function UserDrawer({
           <TabsContent value="access" className="space-y-4 pt-4">
             <div className="space-y-2">
               <Label htmlFor="role">Primary Role</Label>
-              <Select value={selectedRole} onValueChange={setSelectedRole}>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {USER_ROLE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                id="role"
+                value={selectedRole}
+                onValueChange={(value) => {
+                  if (value !== "") setSelectedRole(value)
+                }}
+                options={USER_ROLE_OPTIONS}
+                ariaLabel="Primary role"
+                placeholder="Select role"
+                searchPlaceholder="Search roles..."
+                emptyMessage="No matching roles."
+              />
               <p className="text-xs text-muted-foreground">
                 {userRoleDescription(selectedRole)}
               </p>

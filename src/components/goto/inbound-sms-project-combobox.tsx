@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { projectNumberAndName } from "@/lib/project-display-name"
 
 type ProjectOption = {
   readonly id: string
@@ -27,7 +28,7 @@ type ProjectOption = {
 
 function projectLabel(project: ProjectOption): string {
   return project.projectNumber
-    ? `${project.projectNumber} — ${project.name}`
+    ? projectNumberAndName(project, " — ")
     : project.name
 }
 

@@ -9,6 +9,7 @@ import {
   IconShieldCheck,
 } from "@tabler/icons-react"
 import Link from "next/link"
+import { contactNotesDisplay } from "@/lib/contact-notes"
 
 import type {
   ProjectContactDirectoryOption,
@@ -147,6 +148,7 @@ function ContactCard({
   readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
   readonly sageOptions?: ProjectContactSageOptions
 }): React.ReactElement {
+  const notesDisplay = contactNotesDisplay(contact.notes)
   return (
     <article className="rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -205,11 +207,21 @@ function ContactCard({
         </div>
       )}
 
-      {!compact && contact.notes && (
+      {!compact && notesDisplay.text ? (
         <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-          {contact.notes}
+          {notesDisplay.text}
         </p>
-      )}
+      ) : null}
+      {!compact && notesDisplay.buildertrendHref ? (
+        <a
+          href={notesDisplay.buildertrendHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
+        >
+          Open in Buildertrend
+        </a>
+      ) : null}
 
       {!compact && isCompanyOnlyVendor(contact) && (
         <p className="mt-2 text-xs text-muted-foreground">

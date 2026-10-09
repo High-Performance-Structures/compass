@@ -12,14 +12,8 @@ import type {
 } from "@/app/actions/project-operations"
 import type { ProjectRegistry } from "@/app/actions/project-registry"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { ProjectManagerWorkflowPanel } from "@/components/projects/project-manager-workflow-panel"
 import { ProjectRegistryPanel } from "@/components/projects/project-registry-panel"
 import { ProjectSageSyncQueuePanel } from "@/components/projects/project-sage-sync-queue-panel"
@@ -115,29 +109,20 @@ function ProjectWorkspaceControlsPortal({
           <p className="text-xs font-medium uppercase text-muted-foreground">
             Preview Role
           </p>
-          <Select
+          <SearchableCombobox
+            className="h-8 bg-background"
             value={activeRoleId}
             onValueChange={(value) => {
               if (!isProjectWorkflowRoleId(value)) return
               if (!allowedRoleIds.includes(value)) return
               onActiveRoleChange(value)
             }}
-          >
-            <SelectTrigger
-              size="sm"
-              className="w-full bg-background"
-              aria-label="Preview role dashboard"
-            >
-              <SelectValue placeholder={activeRole.label} />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {availableRoles.map((role) => (
-                <SelectItem key={role.id} value={role.id}>
-                  {role.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={availableRoles.map((role) => ({ value: role.id, label: role.label }))}
+            ariaLabel="Preview role dashboard"
+            placeholder={activeRole.label}
+            searchPlaceholder="Search roles..."
+            emptyMessage="No matching roles."
+          />
         </div>
       )}
     </div>,

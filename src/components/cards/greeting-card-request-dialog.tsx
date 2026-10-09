@@ -306,28 +306,25 @@ export function GreetingCardRequestDialog({
           {deliveryMethod === "physical_mail" ? (
           <div className="space-y-2">
             <Label htmlFor="greeting-card-design">Card design</Label>
-            <Select
-              value={cardId === null ? undefined : String(cardId)}
+            <SearchableCombobox
+              id="greeting-card-design"
+              value={cardId === null ? "" : String(cardId)}
               onValueChange={(value) => {
                 const card = catalog.find((item) => String(item.id) === value)
                 setCardId(card?.id ?? null)
               }}
-              disabled={catalogLoading || catalog.length === 0}
-            >
-              <SelectTrigger id="greeting-card-design" className="w-full">
-                <SelectValue
-                  placeholder={catalogLoading ? "Loading cards…" : "Choose a card"}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {catalog.map((card) => (
-                  <SelectItem key={card.id} value={String(card.id)}>
-                    {card.categoryName} · {card.name}
-                    {card.price === null ? "" : ` · $${card.price.toFixed(2)}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              disabled={catalogLoading}
+              options={catalog.map((card) => ({
+                value: String(card.id),
+                label: `${card.categoryName} · ${card.name}`,
+                selectedLabel: `${card.categoryName} · ${card.name}${card.price === null ? "" : ` · $${card.price.toFixed(2)}`}`,
+                description: card.price === null ? undefined : `$${card.price.toFixed(2)}`,
+              }))}
+              ariaLabel="Card design"
+              placeholder={catalogLoading ? "Loading cards…" : "Choose a card"}
+              searchPlaceholder="Search cards..."
+              emptyMessage="No matching cards."
+            />
             {catalogError ? (
               <div className="space-y-2" role="status">
                 <p className="text-sm text-destructive">{catalogError}</p>
