@@ -64,4 +64,50 @@ describe("buildAgentRequestMessages", () => {
       { role: "assistant", content: "Done" },
     ])
   })
+
+  it("drops failed exchanges so the newest question is the one answered", () => {
+    const failedReply = (id: string): AgentMessage => ({
+      id,
+      role: "assistant",
+      parts: [],
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    })
+    const user = (id: string, text: string): AgentMessage => ({
+      id,
+      role: "user",
+      parts: [{ type: "text", text }],
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    })
+
+    const requestMessages = buildAgentRequestMessages([
+      user("q0", "What changed today?"),
+      { ...message(1, "Two daily logs were filed."), id: "a0" },
+      user("q1", "Any recent daily logs?"),
+      failedReply("a1"),
+      user("q2", "Any recent daily logs?"),
+      failedReply("a2"),
+      user("q3", "Any messages for me?"),
+    ])
+
+    expect(requestMessages).toEqual([
+      { role: "user", content: "What changed today?" },
+      { role: "assistant", content: "Two daily logs were filed." },
+      { role: "user", content: "Any messages for me?" },
+    ])
+  })
+
+  it("keeps a reply that only made a tool call", () => {
+    const requestMessages = buildAgentRequestMessages([
+      { ...message(0, "Make it dark"), id: "q" },
+      {
+        id: "a",
+        role: "assistant",
+        parts: [{ type: "tool-call", toolName: "setTheme", toolCallId: "c1", args: {}, state: "result" }],
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      { ...message(2, "Thanks"), id: "q2" },
+    ])
+
+    expect(requestMessages.map((m) => m.content)).toEqual(["Make it dark", "", "Thanks"])
+  })
 })

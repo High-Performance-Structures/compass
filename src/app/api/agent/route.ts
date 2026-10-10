@@ -33,7 +33,6 @@ import {
   createClientManager,
 } from "agent-core"
 import type {
-  DataSource,
   ProviderConfig,
   McpServerConfig,
 } from "agent-core"
@@ -52,6 +51,7 @@ import {
 } from "@/lib/help/jarvis-context"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
+import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
 
 const visualAttachmentSchema = z
   .object({
@@ -283,38 +283,7 @@ export async function POST(
     false
   )
 
-  const baseUrl =
-    envRecord.COMPASS_API_BASE_URL ??
-    request.headers.get("origin") ??
-    ""
-
-  const dataSource: DataSource = {
-    async fetch(
-      path: string,
-      fetchBody?: unknown
-    ): Promise<unknown> {
-      const res = await fetch(`${baseUrl}${path}`, {
-        method: fetchBody ? "POST" : "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: fetchBody
-          ? JSON.stringify(fetchBody)
-          : undefined,
-      })
-      if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ error: res.statusText }))
-        const errObj = err as { error?: string }
-        throw new Error(
-          errObj.error ?? `API error ${res.status}`
-        )
-      }
-      return res.json()
-    },
-  }
+  const dataSource = createInProcessDataSource(token)
 
   // Set up MCP-based tool routing
   const compassServer = createCompassServer(dataSource)

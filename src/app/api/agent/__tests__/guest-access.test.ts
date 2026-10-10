@@ -5,6 +5,7 @@ const authMocks = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
 }))
 
+vi.mock("server-only", () => ({}))
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: authMocks.getCurrentUser,
 }))
