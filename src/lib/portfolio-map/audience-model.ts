@@ -38,6 +38,7 @@ export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly Portf
       name: projectDisplayName(row),
       projectNumber: row.projectNumber,
       phase,
+      jobStatusId: row.jobStatusId,
       statusLabel: row.statusLabel,
       town: town?.town ?? null,
       lon: town?.lon ?? null,

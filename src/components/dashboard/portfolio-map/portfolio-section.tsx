@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { PortfolioPanel, type PortfolioSelection } from "@/components/dashboard/portfolio-map/portfolio-panel"
+import { usePortfolioStatusMoves } from "@/components/dashboard/portfolio-map/use-portfolio-status-moves"
 import { PortfolioPipeline } from "@/components/dashboard/portfolio-map/portfolio-pipeline"
 import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfolio-scene"
 import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
@@ -68,7 +69,7 @@ function defaultView(): PortfolioView {
 }
 
 export function PortfolioSection({
-  jobs,
+  jobs: serverJobs,
   unplaced,
   hidden,
   travel,
@@ -81,6 +82,7 @@ export function PortfolioSection({
   readonly salesPipelines?: readonly SalesPipeline[]
 }): React.ReactElement | null {
   const sectionRef = React.useRef<HTMLElement | null>(null)
+  const { jobs, statusMove } = usePortfolioStatusMoves(serverJobs)
   const [view, setView] = React.useState<PortfolioView>("pipeline")
   const [mapUnavailable, setMapUnavailable] = React.useState(false)
   const [nearViewport, setNearViewport] = React.useState(false)
@@ -320,6 +322,7 @@ export function PortfolioSection({
               onSelectPhase={selectPhase}
               onClear={clear}
               jobMessages={jobMessages}
+              statusMove={statusMove}
             />
           )}
         </aside>

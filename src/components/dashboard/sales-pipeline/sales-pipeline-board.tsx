@@ -1,21 +1,33 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
 import { updateProjectDeliveryMethod, updateProjectJobStatus } from "@/app/actions/project-profile"
-import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
+import {
+  CloseButton,
+  JobLinks,
+  StatusMovePicker,
+  jobStatusLabel,
+  type StatusMoveGroup,
+} from "@/components/dashboard/portfolio-map/portfolio-job-actions"
 import type { SalesPipeline, SalesPipelineJob } from "@/lib/sales-pipeline/load"
 import {
   SALES_STAGES,
   salesStageColor,
   salesStageForJobStatus,
   type DeliveryMethod,
+  type SalesStageId,
 } from "@/lib/sales-pipeline/stages"
 import { cn } from "@/lib/utils"
 
-const STATUS_LABEL: ReadonlyMap<string, string> = new Map(
-  PROJECT_JOB_STATUS_DEFINITIONS.map((status) => [status.id, status.label]),
-)
+const STAGE_MOVE_GROUPS: readonly StatusMoveGroup[] = SALES_STAGES.map((stage) => ({
+  id: stage.id,
+  label: stage.label,
+  color: salesStageColor(stage.id),
+  statuses: stage.statuses,
+}))
+
+const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
+const ROW = "flex min-h-11 w-full items-center justify-between gap-3 border-b border-border px-1 text-left text-sm transition-colors hover:bg-accent"
 
 const DELIVERY_OPTIONS: readonly { readonly value: DeliveryMethod | null; readonly label: string }[] = [
   { value: "delivery", label: "Delivery" },
@@ -42,6 +54,9 @@ export type SalesPipelineState = {
   readonly jobs: readonly SalesPipelineJob[]
   readonly selected: SalesPipelineJob | null
   readonly select: (jobId: string | null) => void
+  /** A stage picked in the panel's stage list, when no job is selected. */
+  readonly stage: SalesStageId | null
+  readonly selectStage: (stage: SalesStageId | null) => void
   readonly moveTo: (job: SalesPipelineJob, jobStatusId: string) => void
   readonly setDelivery: (job: SalesPipelineJob, deliveryMethod: DeliveryMethod | null) => void
   readonly saving: boolean
@@ -57,6 +72,7 @@ export function useSalesPipeline(pipeline: SalesPipeline | null): SalesPipelineS
   const pipelineJobs = pipeline?.jobs
   const [jobs, setJobs] = React.useState<readonly SalesPipelineJob[]>(pipelineJobs ?? [])
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
+  const [stage, setStage] = React.useState<SalesStageId | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [saving, startSaving] = React.useTransition()
   React.useEffect(() => setJobs(pipelineJobs ?? []), [pipelineJobs])
@@ -69,7 +85,7 @@ export function useSalesPipeline(pipeline: SalesPipeline | null): SalesPipelineS
     const stage = salesStageForJobStatus(jobStatusId)
     if (!stage || jobStatusId === job.jobStatusId) return
     const before = job
-    patch(job.id, { jobStatusId, stage, statusLabel: STATUS_LABEL.get(jobStatusId) ?? jobStatusId })
+    patch(job.id, { jobStatusId, stage, statusLabel: jobStatusLabel(jobStatusId) })
     setError(null)
     startSaving(async () => {
       const result = await updateProjectJobStatus({ projectId: job.id, jobStatusId })
@@ -96,7 +112,11 @@ export function useSalesPipeline(pipeline: SalesPipeline | null): SalesPipelineS
 
   const select = React.useCallback((jobId: string | null): void => setSelectedId(jobId), [])
   const selected = jobs.find((job) => job.id === selectedId) ?? null
-  return { jobs, selected, select, moveTo, setDelivery, saving, error }
+  const selectStage = React.useCallback((next: SalesStageId | null): void => {
+    setSelectedId(null)
+    setStage(next)
+  }, [])
+  return { jobs, selected, select, stage, selectStage, moveTo, setDelivery, saving, error }
 }
 
 /** One column per sales stage; selecting a job opens it in the panel. */
@@ -145,97 +165,140 @@ export function SalesPipelineColumns({ state }: { readonly state: SalesPipelineS
   )
 }
 
-/** The selected job: details, delivery or pickup, and one-click stage moves. */
+/**
+ * The sales panel beside the map or board, laid out like the project panel:
+ * the stage list, a stage's jobs, or the selected job with its links,
+ * delivery or pickup, and one-click status moves.
+ */
 export function SalesJobPanel({ state, title }: { readonly state: SalesPipelineState; readonly title: string }): React.ReactElement {
-  const { selected, saving, error, moveTo, setDelivery } = state
-  return (
-    <div aria-label={`${title} job details`} className="p-4">
-      {selected ? (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="font-mono text-xs tracking-[0.12em] text-muted-foreground">
-              {selected.projectNumber ?? "NO NUMBER"}
-            </span>
-            <h3 className="text-base font-semibold">{selected.name}</h3>
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">Customer</dt>
-              <dd>{selected.clientName ?? "—"}</dd>
-              <dt className="text-muted-foreground">Assigned</dt>
-              <dd>{selected.assignedTo ?? "—"}</dd>
-              <dt className="text-muted-foreground">Delivery location</dt>
-              <dd>{selected.address ?? "Needs a project address"}</dd>
-              {dateLabel(selected.updatedAt) ? (
-                <>
-                  <dt className="text-muted-foreground">Updated</dt>
-                  <dd>{dateLabel(selected.updatedAt)}</dd>
-                </>
-              ) : null}
-            </dl>
-            <Link
-              href={`/dashboard/projects/${encodeURIComponent(selected.id)}`}
-              className="text-sm text-primary underline-offset-4 hover:underline"
-            >
-              Open job
-            </Link>
+  const { jobs, selected, select, stage, selectStage, saving, error, moveTo, setDelivery } = state
+
+  if (selected) {
+    const stageLabel = SALES_STAGES.find((item) => item.id === selected.stage)?.label ?? selected.statusLabel
+    const updated = dateLabel(selected.updatedAt)
+    return (
+      <div aria-label={`${title} job details`} className="flex flex-col gap-5 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            {selected.projectNumber ? <span className={LABEL}>{selected.projectNumber}</span> : null}
+            <h3 className="text-xl font-semibold leading-tight">{selected.name}</h3>
+            <span className="text-sm text-muted-foreground">{selected.town ? `${selected.town}, CO` : "Town not set"}</span>
           </div>
-
-          <fieldset className="flex flex-col gap-2" disabled={saving}>
-            <legend className="mb-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">DELIVERY</legend>
-            <div role="group" aria-label="Delivery method" className="flex flex-wrap border border-border">
-              {DELIVERY_OPTIONS.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  aria-pressed={selected.deliveryMethod === option.value}
-                  onClick={() => setDelivery(selected, option.value)}
-                  className={cn(
-                    "min-h-8 flex-1 px-3 text-xs transition-colors disabled:opacity-50",
-                    selected.deliveryMethod === option.value ? "bg-foreground text-background" : "hover:bg-accent",
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="flex flex-col gap-2" disabled={saving}>
-            <legend className="mb-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">MOVE TO</legend>
-            {SALES_STAGES.map((stage) => (
-              <div key={stage.id} className="flex flex-col gap-1">
-                <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="size-2" style={{ background: salesStageColor(stage.id) }} aria-hidden="true" />
-                  {stage.label}
-                </span>
-                <div className="flex flex-wrap gap-1 pl-4">
-                  {stage.statuses.map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      aria-pressed={selected.jobStatusId === status}
-                      onClick={() => moveTo(selected, status)}
-                      className={cn(
-                        "min-h-7 border border-border px-2 text-xs transition-colors disabled:opacity-50",
-                        selected.jobStatusId === status ? "bg-foreground text-background" : "hover:bg-accent",
-                      )}
-                    >
-                      {STATUS_LABEL.get(status) ?? status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-            <p className="text-xs text-muted-foreground">
-              To close a job (complete, inactive, or bid refused), change its status on the job page.
-            </p>
-          </fieldset>
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          <CloseButton onClear={() => select(null)} />
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Select a job to move it to another stage or set delivery or customer pickup.
+        <span
+          className="self-start border px-1.5 py-0.5 font-mono text-xs tracking-[0.1em]"
+          style={{ borderColor: salesStageColor(selected.stage), color: salesStageColor(selected.stage) }}
+        >
+          {stageLabel.toUpperCase()}
+        </span>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+          <dt className="text-muted-foreground">Status</dt>
+          <dd className="text-right">{selected.statusLabel}</dd>
+          <dt className="text-muted-foreground">Customer</dt>
+          <dd className="text-right">{selected.clientName ?? "—"}</dd>
+          <dt className="text-muted-foreground">Assigned</dt>
+          <dd className="text-right">{selected.assignedTo ?? "—"}</dd>
+          <dt className="text-muted-foreground">Delivery location</dt>
+          <dd className="text-right">{selected.address ?? "Needs a project address"}</dd>
+          {updated ? (
+            <>
+              <dt className="text-muted-foreground">Updated</dt>
+              <dd className="text-right">{updated}</dd>
+            </>
+          ) : null}
+        </dl>
+        <JobLinks jobId={selected.id} links={[["Information", "information"]]} />
+        <fieldset className="flex flex-col gap-2" disabled={saving}>
+          <legend className="mb-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">DELIVERY</legend>
+          <div role="group" aria-label="Delivery method" className="flex flex-wrap border border-border">
+            {DELIVERY_OPTIONS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                aria-pressed={selected.deliveryMethod === option.value}
+                onClick={() => setDelivery(selected, option.value)}
+                className={cn(
+                  "min-h-8 flex-1 px-3 text-xs transition-colors disabled:opacity-50",
+                  selected.deliveryMethod === option.value ? "bg-foreground text-background" : "hover:bg-accent",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        <StatusMovePicker
+          groups={STAGE_MOVE_GROUPS}
+          currentStatusId={selected.jobStatusId}
+          disabled={saving}
+          error={error}
+          onMove={(statusId) => moveTo(selected, statusId)}
+        />
+      </div>
+    )
+  }
+
+  if (stage) {
+    const stageInfo = SALES_STAGES.find((item) => item.id === stage)
+    const stageJobs = jobs.filter((job) => job.stage === stage)
+    return (
+      <div className="flex flex-col gap-4 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <span className={LABEL}>STAGE · {stageJobs.length} JOBS</span>
+            <h3 className="text-xl font-semibold">{stageInfo?.label}</h3>
+          </div>
+          <CloseButton onClear={() => selectStage(null)} />
+        </div>
+        <ul>
+          {stageJobs.map((job) => (
+            <li key={job.id}>
+              <button type="button" className={ROW} onClick={() => select(job.id)}>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{job.name}</span>
+                  <span className="font-mono text-xs tracking-[0.08em] text-muted-foreground">
+                    {[job.projectNumber, job.town?.toUpperCase()].filter(Boolean).join(" · ") || "NO TOWN"}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{job.statusLabel}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
+  const unplaced = jobs.filter((job) => job.lon === null || job.lat === null).length
+  return (
+    <div className="flex flex-col gap-5 p-5">
+      <div className="flex flex-col gap-1">
+        <span className={LABEL}>{title.toUpperCase()}</span>
+        <span className="text-sm text-muted-foreground">Select a job on the map, or a stage below.</span>
+      </div>
+      <ul>
+        {SALES_STAGES.map((item) => (
+          <li key={item.id}>
+            <button type="button" className={ROW} onClick={() => selectStage(item.id)}>
+              <span className="flex items-center gap-2.5">
+                <span className="size-2.5" style={{ background: salesStageColor(item.id) }} aria-hidden="true" />
+                {item.label}
+              </span>
+              <span className="font-mono text-sm tabular-nums">
+                {jobs.filter((job) => job.stage === item.id).length}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {unplaced > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {unplaced === 1
+            ? "1 job is not on the map yet: it needs a site address with a town."
+            : `${unplaced} jobs are not on the map yet: they need a site address with a town.`}
         </p>
-      )}
+      ) : null}
     </div>
   )
 }

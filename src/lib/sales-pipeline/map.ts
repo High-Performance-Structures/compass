@@ -16,6 +16,7 @@ export function salesMapJobs(jobs: readonly SalesPipelineJob[]): readonly Portfo
     name: job.name,
     projectNumber: job.projectNumber,
     phase: "estimating",
+    jobStatusId: job.jobStatusId,
     statusLabel: job.statusLabel,
     town: job.town,
     lon: job.lon,

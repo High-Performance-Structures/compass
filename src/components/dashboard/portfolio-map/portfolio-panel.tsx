@@ -4,7 +4,7 @@ import Link from "next/link"
 import { PortfolioJobMessageList, type PortfolioJobMessages } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
 import { useRouter } from "next/navigation"
 import * as React from "react"
-import { EyeOff, X } from "lucide-react"
+import { EyeOff } from "lucide-react"
 import { updateProjectMapVisibility } from "@/app/actions/project-profile"
 import { listProjectsToAddToMap } from "@/app/actions/portfolio-map"
 import { Input } from "@/components/ui/input"
@@ -15,8 +15,10 @@ import {
   healthColor,
   phaseColor,
 } from "@/components/dashboard/portfolio-map/portfolio-style"
+import { CloseButton, JobLinks, StatusMovePicker, type StatusMoveGroup } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
 import {
   PORTFOLIO_PHASES,
+  portfolioPhaseStatuses,
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
@@ -29,6 +31,20 @@ import type {
 } from "@/lib/portfolio-map/load"
 import { formatRateCents, rateLabel } from "@/lib/portfolio-map/travel-zones"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+
+/** Moving the selected job to another status from the panel. */
+export type PortfolioStatusMove = {
+  readonly pending: boolean
+  readonly error: string | null
+  readonly onMove: (job: PortfolioMapJob, statusId: string) => void
+}
+
+const PHASE_MOVE_GROUPS: readonly StatusMoveGroup[] = PORTFOLIO_PHASES.map((phase) => ({
+  id: phase.id,
+  label: phase.label,
+  color: phaseColor(phase.id),
+  statuses: portfolioPhaseStatuses(phase.id),
+}))
 
 export type PortfolioSelection =
   | { readonly kind: "none" }
@@ -47,6 +63,7 @@ type PortfolioPanelProps = {
   readonly onClear: () => void
   /** Messages layer on: the selected job's unread items; null otherwise. */
   readonly jobMessages?: PortfolioJobMessages | null
+  readonly statusMove?: PortfolioStatusMove | null
 }
 
 const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
@@ -85,14 +102,6 @@ function useMapVisibility(): {
     })
   }
   return { pending, message, change }
-}
-
-function CloseButton({ onClear }: { readonly onClear: () => void }): React.ReactElement {
-  return (
-    <Button type="button" variant="outline" size="icon" aria-label="Close" onClick={onClear}>
-      <X aria-hidden="true" />
-    </Button>
-  )
 }
 
 /** Zone and mountain charge rows for one job. */
@@ -157,17 +166,28 @@ function JobDetail({
   homeLabel,
   onClear,
   messages,
+  statusMove,
 }: {
   readonly job: PortfolioMapJob
   readonly travel: PortfolioJobTravel | null
   readonly homeLabel: string
   readonly onClear: () => void
   readonly messages: PortfolioJobMessages | null
+  readonly statusMove: PortfolioStatusMove | null
 }): React.ReactElement {
   const visibility = useMapVisibility()
   const phaseIndex = PORTFOLIO_PHASES.findIndex((phase) => phase.id === job.phase)
   const phaseLabel = PORTFOLIO_PHASES[phaseIndex]?.label ?? job.statusLabel
   const base = `/dashboard/projects/${encodeURIComponent(job.id)}`
+  const links = (
+    <JobLinks
+      jobId={job.id}
+      links={[
+        ["Schedule", "schedule"],
+        ["Daily logs", "daily-logs"],
+      ]}
+    />
+  )
   return (
     <div className="flex h-full flex-col gap-5 p-5">
       <div className="flex items-start justify-between gap-3">
@@ -237,17 +257,16 @@ function JobDetail({
               : "Adjust zone charges for this job"}
         </Link>
       ) : null}
-      <div className="mt-auto flex flex-wrap gap-2 pt-2">
-        <Button asChild className="flex-[1_1_9rem]">
-          <Link href={base}>Open job →</Link>
-        </Button>
-        <Button asChild variant="outline" className="flex-[1_1_6rem]">
-          <Link href={`${base}/schedule`}>Schedule</Link>
-        </Button>
-        <Button asChild variant="outline" className="flex-[1_1_6rem]">
-          <Link href={`${base}/daily-logs`}>Daily logs</Link>
-        </Button>
-      </div>
+      {links}
+      {statusMove ? (
+        <StatusMovePicker
+          groups={PHASE_MOVE_GROUPS}
+          currentStatusId={job.jobStatusId}
+          disabled={statusMove.pending}
+          error={statusMove.error}
+          onMove={(statusId) => statusMove.onMove(job, statusId)}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
         <span>{job.visibility === "shown" ? "Always shown on the map" : "Shown by its status"}</span>
         <span className="flex gap-1">
@@ -385,6 +404,7 @@ export function PortfolioPanel({
   onSelectPhase,
   onClear,
   jobMessages = null,
+  statusMove = null,
 }: PortfolioPanelProps): React.ReactElement {
   if (selection.kind === "job") {
     const job = jobs.find((item) => item.id === selection.jobId)
@@ -396,6 +416,7 @@ export function PortfolioPanel({
           homeLabel={travel?.settings.homeBase.label ?? ""}
           onClear={onClear}
           messages={jobMessages}
+          statusMove={statusMove}
         />
       )
     }

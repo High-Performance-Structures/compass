@@ -27,8 +27,8 @@ vi.mock("next/link", () => ({
 import { PortfolioSection } from "../portfolio-section"
 
 const jobs: readonly PortfolioMapJob[] = [
-  { id: "p1", name: "Granby Residence", projectNumber: "H-430-1900", phase: "construction", statusLabel: "Under Construction", town: "Granby", lon: -105.94, lat: 40.09, progress: 22, pastDueCount: 1, stalledCount: 0, nextTaskTitle: "Footing inspection", nextTaskStart: "2026-10-09", health: "late", visibility: "default" },
-  { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default" },
+  { id: "p1", name: "Granby Residence", projectNumber: "H-430-1900", phase: "construction", jobStatusId: "under_construction", statusLabel: "Under Construction", town: "Granby", lon: -105.94, lat: 40.09, progress: 22, pastDueCount: 1, stalledCount: 0, nextTaskTitle: "Footing inspection", nextTaskStart: "2026-10-09", health: "late", visibility: "default" },
+  { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", jobStatusId: null, statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default" },
 ]
 
 describe("PortfolioSection", () => {
@@ -77,6 +77,23 @@ describe("PortfolioSection", () => {
     expect(localStorage.getItem("compass:portfolio-view:v1")).toBe("pipeline")
   })
 
+  const clickMove = async (status: string): Promise<void> => {
+    const button = [...container.querySelectorAll("fieldset button")].find((item) => item.textContent === status)
+    if (!(button instanceof HTMLButtonElement)) throw new Error(`Move button not found: ${status}`)
+    await act(async () => button.click())
+  }
+
+  it("moves a project to another status from its panel, like the sales panel", async () => {
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
+    await click("Granby Residence")
+    expect(container.querySelector('fieldset button[aria-pressed="true"]')?.textContent).toBe("Under Construction")
+    await clickMove("Punchlist")
+    const actions = await import("@/app/actions/project-profile")
+    expect(actions.updateProjectJobStatus).toHaveBeenCalledWith({ projectId: "p1", jobStatusId: "punchlist" })
+    expect(container.querySelector('fieldset button[aria-pressed="true"]')?.textContent).toBe("Punchlist")
+    expect(container.textContent).toContain("Punchlist")
+  })
+
   it("adds a project that its status keeps off the map", async () => {
     await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null })))
     const details = [...container.querySelectorAll("details")].find((item) => item.textContent?.includes("Add a project to the map"))
@@ -120,7 +137,9 @@ describe("PortfolioSection", () => {
 
     await click("Fairplay Garage")
     expect(container.textContent).toContain("12 Main St, Fairplay")
-    await click("Follow-up")
+    const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"))
+    expect(hrefs).toEqual(expect.arrayContaining(["/dashboard/projects/n1", "/dashboard/projects/n1/information"]))
+    await clickMove("Follow-up")
     const actions = await import("@/app/actions/project-profile")
     expect(actions.updateProjectJobStatus).toHaveBeenCalledWith({ projectId: "n1", jobStatusId: "follow_up" })
     await click("Customer pickup")

@@ -205,6 +205,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         name: projectDisplayName(project),
         projectNumber: project.projectNumber,
         phase,
+        jobStatusId: project.jobStatusId,
         statusLabel: project.jobStatusLabel,
         town: town?.town ?? null,
         lon: town?.lon ?? null,
