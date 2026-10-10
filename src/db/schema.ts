@@ -748,6 +748,8 @@ export const projects = sqliteTable("projects", {
   siteLocatedAt: text("site_located_at"),
   /** Set when the site was placed from a nearby number or the street, e.g. "Near 1062 CR 8952". */
   siteLocationNote: text("site_location_note"),
+  /** Material sales: delivered to the project address, or picked up by the customer. */
+  deliveryMethod: text("delivery_method", { enum: ["delivery", "pickup"] }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [

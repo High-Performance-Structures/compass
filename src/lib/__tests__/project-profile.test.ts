@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -303,5 +305,22 @@ describe("project profile rules", () => {
     expect(isEligibleFollowUpOwner({ active: true, role: "office" })).toBe(true)
     expect(isEligibleFollowUpOwner({ active: false, role: "office" })).toBe(false)
     expect(isEligibleFollowUpOwner({ active: true, role: "owner" })).toBe(false)
+  })
+})
+
+describe("job status database guard", () => {
+  it("allows every built-in job status in the latest migration's trigger", () => {
+    // The projects table rejects job statuses its trigger doesn't list, so a
+    // new built-in status also needs a migration that rebuilds the trigger.
+    const directory = join(process.cwd(), "drizzle")
+    const latest = readdirSync(directory)
+      .filter((name) => name.endsWith(".sql"))
+      .sort()
+      .map((name) => readFileSync(join(directory, name), "utf8"))
+      .filter((sql) => sql.includes("CREATE TRIGGER `projects_project_job_status_namespace_insert`"))
+      .at(-1) ?? ""
+    for (const status of PROJECT_JOB_STATUS_DEFINITIONS) {
+      expect(latest).toContain(`'${status.id}'`)
+    }
   })
 })
