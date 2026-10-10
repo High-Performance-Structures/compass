@@ -130,6 +130,23 @@ async function projectLabel(
   return row?.name ?? "the project"
 }
 
+/**
+ * "2026-10-12" -> "Mon, Oct 12, 2026". Read at noon UTC so a date-only value
+ * never shifts a day in either direction; anything else is shown as given.
+ */
+export function friendlyDate(value: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const date = new Date(`${value}T12:00:00Z`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+}
+
 /** A plain-language description of the pending action for the Confirm card. */
 export async function describePendingAction(
   db: ReturnType<typeof getDb>,
@@ -152,7 +169,7 @@ export async function describePendingAction(
       const project = await projectLabel(db, organizationId, stringField(body, "projectId"))
       const title = stringField(body, "title") ?? "a new task"
       const start = stringField(body, "startDate")
-      return `Add "${title}" to the ${project} schedule${start ? ` starting ${start}` : ""}.`
+      return `Add "${title}" to the ${project} schedule${start ? ` starting ${friendlyDate(start)}` : ""}.`
     }
     case "updateTask": {
       const task = await taskLabel(db, organizationId, stringField(body, "taskId"))

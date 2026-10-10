@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 import {
   getOwnerProjectUpdateDocument,
@@ -30,6 +30,12 @@ export default async function OwnerUpdatePage({
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     redirectIfFeaturePermissionDenied(error)
+    // A deleted draft (including the one just deleted from this page, which
+    // Next re-renders when the delete action revalidates) goes back to the
+    // project's owner updates instead of a 404.
+    if (error instanceof Error && error.message === "Owner update not found") {
+      redirect(`/dashboard/projects/${rawProjectId}/owner-updates`)
+    }
     notFound()
   }
 
