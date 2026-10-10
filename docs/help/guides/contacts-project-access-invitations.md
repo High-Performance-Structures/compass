@@ -41,7 +41,7 @@ For an unlinked contact, **Verify Sage link** looks up the exact Sage number wit
 1. Create or correct the directory record, paying special attention to the email address.
 2. From the project **Contacts** page, add the existing contact to that project. An account administrator can also use **Manage Compass access** within Contacts to select multiple accounts and grant specific projects together.
 3. Review the project, contact type, email, intended role, and audience visibility.
-4. Select **Invite contact** and review the project and welcome message before sending.
+4. Select **Invite to Compass**, or **Grant project access** if the person already has a Compass login, and review the project and welcome message before sending. While an invitation is pending, the button reads **Resend invitation**.
 
 For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
 
