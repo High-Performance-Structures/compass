@@ -1,5 +1,7 @@
 "use server"
 
+import { getDb } from "@/db"
+import { agentActionConfirmations } from "@/db/schema-agent"
 import { generateAgentToken } from "@/lib/agent/api-auth"
 import { callAgentRoute } from "@/lib/agent/in-process-data-source"
 import { verifyPendingAction } from "@/lib/agent/pending-actions"
@@ -45,6 +47,25 @@ export async function confirmAgentAction(
       success: false,
       error: "This confirmation was for someone else.",
     }
+  }
+
+  // Claim the token before acting, so a replay or a double click within its
+  // lifetime can't carry the action out twice. A failed action still uses
+  // the token up; the user asks Jarvis again.
+  const claimed = await getDb(env.DB)
+    .insert(agentActionConfirmations)
+    .values({
+      tokenId: pending.tokenId,
+      userId: user.id,
+      organizationId: user.organizationId,
+      path: pending.path,
+      action: typeof pending.body.action === "string" ? pending.body.action : "",
+      confirmedAt: new Date().toISOString(),
+    })
+    .onConflictDoNothing()
+    .returning({ tokenId: agentActionConfirmations.tokenId })
+  if (claimed.length === 0) {
+    return { success: false, error: "This change was already confirmed." }
   }
 
   try {
