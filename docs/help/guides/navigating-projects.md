@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-06"
+  "lastReviewed": "2026-10-09"
 }
 ---
 
@@ -45,6 +45,10 @@ The Help icon in the main header opens the searchable guide drawer without leavi
 Status controls how a job appears in the Project Hub. Open the status selector and choose either a lifecycle view—**All**, **Active**, **Warranty**, **Complete**, **Inactive**, **Archive**, or **Other**—or an exact job status. Search the selector when the status list is long. Counts show how many projects match each choice, and approved job statuses remain listed even when their current count is zero.
 
 Lifecycle views group related job statuses for browsing; an exact job status narrows the list to that one value. The Project Hub opens on **Active**. Use **All** when a project may have moved to another lifecycle, and use **Clear filters** to reset both department and status. Only authorized users should change a project's underlying status, and historical projects should be retained rather than recreated.
+
+## Change Several Project Statuses at Once {#bulk-status}
+
+On **All Projects**, open a department (or search) and choose **Select**. Tick the project cards to change, or use **Select all shown**, then choose the new status in the bar at the bottom and click **Change status**. Each project is checked and recorded the same way as a single status change. Any project you can't change stays selected so you can review it. Choose **Done** to stop selecting.
 
 ## Group Long-Running Work into Phases {#project-phases}
 
