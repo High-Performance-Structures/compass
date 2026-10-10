@@ -52,6 +52,11 @@ import {
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
+import {
+  describePendingAction,
+  requiresConfirmation,
+  signPendingAction,
+} from "@/lib/agent/pending-actions"
 
 const visualAttachmentSchema = z
   .object({
@@ -283,7 +288,25 @@ export async function POST(
     false
   )
 
-  const dataSource = createInProcessDataSource(token)
+  // Deletions and shared schedule changes wait for the user to press Confirm
+  // in the chat; the agent gets a pending action instead of a result.
+  const organizationId = user.organizationId ?? ""
+  const dataSource = createInProcessDataSource(token, {
+    intercept: async (path, body) => {
+      if (!requiresConfirmation(path, body)) return undefined
+      const pending = { userId: user.id, organizationId, path, body }
+      return {
+        action: "confirm",
+        status: "awaiting_confirmation",
+        summary: await describePendingAction(db, pending),
+        confirmationToken: await signPendingAction(agentSecret, pending),
+        message:
+          "Not done yet. The user must press Confirm in the chat to carry " +
+          "this out. Tell them what will happen and ask them to confirm; " +
+          "do not say it is done.",
+      }
+    },
+  })
 
   // Set up MCP-based tool routing
   const compassServer = createCompassServer(dataSource)

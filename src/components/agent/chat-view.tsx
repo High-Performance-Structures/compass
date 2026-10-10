@@ -74,6 +74,7 @@ import {
   type JarvisVisualAttachment,
 } from "@/lib/agent/visual-context"
 import { normalizeAssistantMarkdown } from "@/lib/agent/assistant-markdown"
+import { ActionConfirmation, pendingConfirmations } from "./action-confirmation"
 
 type RepoStats = {
   readonly stargazers_count: number
@@ -369,6 +370,18 @@ const ChatMessage = memo(
 
     // flush remaining text as the final response
     flushText(msg.parts.length, true)
+
+    // Changes Jarvis proposed that wait for the user, shown even when tool
+    // details are hidden.
+    for (const pending of pendingConfirmations(msg.parts)) {
+      elements.push(
+        <ActionConfirmation
+          key={`confirm-${pending.toolCallId}`}
+          summary={pending.summary}
+          confirmationToken={pending.confirmationToken}
+        />
+      )
+    }
 
     const hasContent = elements.length > 0
     const normalizedAllText = normalizeAssistantMarkdown(allText)
