@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 import type { Tool } from "@anthropic-ai/sdk/resources/messages/messages"
 import { createClient } from "./client"
 import { isAnthropicFormatProvider } from "./types"
-import type { ProviderConfig, SSEData } from "./types"
+import type { AgentImage, ProviderConfig, SSEData } from "./types"
 import { runOpenAIAgent } from "./openai-loop"
 import type { ToolDef } from "./tools"
 import { createToolRegistry } from "./tool-registry"
@@ -20,6 +20,8 @@ interface AgentOptions {
   readonly mcpClientManager?: McpClientManager
   readonly maxTurns?: number
   readonly isOAuth?: boolean
+  /** Images attached to the final user message. */
+  readonly images?: readonly AgentImage[]
 }
 
 export async function* runAgent(
@@ -43,6 +45,7 @@ export async function* runAgent(
       reasoningEffort: opts.provider.reasoningEffort,
       systemPrompt: opts.systemPrompt,
       messages: opts.messages,
+      images: opts.images,
       registry,
       maxTurns,
     })
@@ -51,12 +54,30 @@ export async function* runAgent(
 
   const client = createClient(opts.provider)
 
-  // Mutable messages array for the agentic loop
+  // Mutable messages array for the agentic loop. Attached images go on the
+  // final user message, ahead of its text.
+  const images = opts.images ?? []
+  const lastIndex = opts.messages.length - 1
   const messages: Anthropic.MessageParam[] = opts.messages.map(
-    (m) => ({
-      role: m.role,
-      content: m.content,
-    })
+    (m, index): Anthropic.MessageParam =>
+      m.role === "user" && index === lastIndex && images.length > 0
+        ? {
+            role: "user",
+            content: [
+              ...images.map(
+                (image): Anthropic.ImageBlockParam => ({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: image.mediaType,
+                    data: image.base64,
+                  },
+                })
+              ),
+              { type: "text", text: m.content },
+            ],
+          }
+        : { role: m.role, content: m.content }
   )
 
   const apiTools: Tool[] = registry.apiTools.map((t) => ({

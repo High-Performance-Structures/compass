@@ -19,6 +19,7 @@ export type {
 export type {
   ProviderConfig,
   AgentContext,
+  AgentImage,
   DataSource,
   SSEData,
 } from "./types"
