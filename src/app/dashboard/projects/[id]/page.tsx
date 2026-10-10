@@ -53,6 +53,7 @@ import {
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
+import { getRoleDashboardOrders } from "@/app/actions/view-preferences"
 import { ProjectFamilyPanel } from "@/components/projects/project-family-panel"
 import {
   allowedWorkflowRoleIds,
@@ -154,6 +155,7 @@ export default async function ProjectSummaryPage({
   } | null = null
   let tasks: ScheduleTask[] = []
   let registry: ProjectRegistry | null = null
+  let roleDashboardOrders: Readonly<Record<string, readonly string[]>> = {}
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -323,6 +325,7 @@ export default async function ProjectSummaryPage({
       loadedOperationsSummary,
       loadedRfiSummary,
       loadedFamilySummary,
+      loadedRoleDashboardOrders,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -344,6 +347,7 @@ export default async function ProjectSummaryPage({
       loadOptionalSummary("project family summary", () =>
         getProjectFamilySummary(id),
       ),
+      getRoleDashboardOrders().catch(() => ({})),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -353,6 +357,7 @@ export default async function ProjectSummaryPage({
     operationsSummary = loadedOperationsSummary
     rfiSummary = loadedRfiSummary
     familySummary = loadedFamilySummary
+    roleDashboardOrders = loadedRoleDashboardOrders
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -548,6 +553,7 @@ export default async function ProjectSummaryPage({
             canEditRegistry={canEditRegistry}
             initialRoleId={safeInitialWorkflowRoleId}
             allowedRoleIds={allowedRoleIds}
+            roleDashboardOrders={roleDashboardOrders}
           />
         </div>
       </div>
