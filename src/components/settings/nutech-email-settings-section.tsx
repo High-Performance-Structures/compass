@@ -7,6 +7,7 @@ import {
   resetFeatureSettings,
   saveFeatureSettings,
 } from "@/app/actions/feature-settings"
+import { checkNuTechSendingMailbox } from "@/app/actions/nutech-emails"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +53,16 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
   const [details, setDetails] = React.useState<Readonly<Record<DetailKey, string>>>(defaults)
   const [templates, setTemplates] = React.useState<Readonly<Record<string, TemplateText>>>({})
   const [pending, startTransition] = React.useTransition()
+  const [mailboxCheck, setMailboxCheck] = React.useState<
+    { readonly kind: "idle" } | { readonly kind: "checking" } | { readonly kind: "ok"; readonly address: string } | { readonly kind: "failed"; readonly message: string }
+  >({ kind: "idle" })
+
+  function checkMailbox(): void {
+    setMailboxCheck({ kind: "checking" })
+    void checkNuTechSendingMailbox().then((result) =>
+      setMailboxCheck(result.success ? { kind: "ok", address: result.data.address } : { kind: "failed", message: result.error }),
+    )
+  }
 
   const load = React.useCallback(async () => {
     const result = await getFeatureSettingsForEditor("nutech-emails")
@@ -132,6 +143,22 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
                 />
               </div>
             ))}
+          </div>
+
+          <div className="flex flex-col gap-2 border-y py-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" size="sm" variant="outline" onClick={checkMailbox} disabled={mailboxCheck.kind === "checking"}>
+                {mailboxCheck.kind === "checking" ? "Checking…" : "Check sending mailbox"}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Asks Google whether Compass may send as the saved mailbox. Nothing is sent.
+              </span>
+            </div>
+            {mailboxCheck.kind === "ok" ? (
+              <p role="status" className="text-sm text-primary">Compass can send as {mailboxCheck.address}.</p>
+            ) : mailboxCheck.kind === "failed" ? (
+              <p role="alert" className="text-sm text-destructive">{mailboxCheck.message}</p>
+            ) : null}
           </div>
 
           <div className="space-y-2">
