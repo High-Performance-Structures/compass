@@ -4,6 +4,34 @@ This is the canonical product UI standard for Compass. New UI and UI changes
 must follow this document. Implementation details belong in the component
 conventions; this document defines the user-visible behavior and visual rules.
 
+## Guiding principle: build Compass for any company
+
+Every change is judged by one question: **would another company want to use
+this for their own business?** Compass is built with HPS, but it is meant to
+become a tool other construction companies, and companies in other
+industries, adopt for themselves (see the core and industry layers in the
+repository guidelines).
+
+- **No hard-coded company specifics.** Names, legal text, home base, rates,
+  statuses, phases, departments, cost codes and branding come from
+  organization settings or data, never from literals in the UI. HPS values are
+  defaults or seed data that another company can change.
+- **Configurable over custom.** When HPS needs something different, prefer a
+  setting, list or rule an administrator can edit (zone charges, job statuses,
+  rate book, map visibility) over a special case in code.
+- **Words a newcomer understands.** Labels, empty states and help text should
+  make sense to someone who has never worked at HPS. Avoid internal shorthand
+  unless the organization chose it.
+- **Every audience is a first-class user.** Office staff, field crews, owners
+  and sub/vendors each get a coherent workspace that shows only what they are
+  allowed to see, in their own terms.
+- **Safe to share.** Features must keep one company's data, people and
+  communication out of another's view, and must work for an organization with
+  different roles, departments or locations than HPS.
+- **Polish that sells.** First impressions, empty states, onboarding and
+  consistency matter as much as features. Ship work you would be glad to show a
+  prospective customer.
+
 ## Lists and tables
 
 - Use TanStack Table for interactive tabular data.

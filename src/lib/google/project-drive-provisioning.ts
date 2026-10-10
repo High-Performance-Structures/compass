@@ -38,6 +38,12 @@ type ProjectDriveClient = {
 export type ProjectDriveProvisioningInput = {
   readonly department: ProjectIntakeDepartment
   readonly folderName: string
+  /**
+   * The account that connected Google Workspace. Department templates are
+   * shared with it, not with every staff member, so it reads and copies the
+   * template; the project folder itself is still created by the submitter.
+   */
+  readonly templateEmail: string
   readonly existingFolderId?: string
   /** Optional family parent; defaults to the department project root. */
   readonly parentFolderId?: string
@@ -292,19 +298,19 @@ export async function provisionProjectDriveFolder(
   )
 
   const templateFolderId = projectDriveTemplateFolderId(input.department)
-  const template = await client.getFile(userEmail, templateFolderId)
+  const template = await client.getFile(input.templateEmail, templateFolderId)
   if (template.mimeType !== GOOGLE_FOLDER_MIME_TYPE) {
     throw new Error("The configured Developer project template is not a folder.")
   }
   const copied = await copyTemplateContents(
     client,
-    userEmail,
+    input.templateEmail,
     templateFolderId,
     verifiedRoot.id
   )
   const childFolderNames = (await listAllChildren(
     client,
-    userEmail,
+    input.templateEmail,
     templateFolderId
   ))
     .filter((item) => item.mimeType === GOOGLE_FOLDER_MIME_TYPE)

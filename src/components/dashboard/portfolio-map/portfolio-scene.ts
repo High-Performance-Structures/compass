@@ -28,6 +28,12 @@ import {
   type Object3D,
 } from "three"
 import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
+import type { MessageStacks } from "@/lib/notifications/message-stacks"
+import {
+  buildMessageStacks,
+  type BuiltMessageStacks,
+  type MessageStackColors,
+} from "@/components/dashboard/portfolio-map/portfolio-message-stacks"
 import {
   MAX_ELEVATION_BANDS,
   MAX_ZONE_EDGES,
@@ -210,6 +216,9 @@ export class PortfolioScene {
   private readonly scratch = new Vector3()
   private readonly disposables: { dispose: () => void }[] = []
   private readonly jobObjects: Object3D[] = []
+  // Messages layer: unread-item tiles stacked on job markers.
+  private messageStacks: { readonly stacks: MessageStacks; readonly colors: MessageStackColors } | null = null
+  private builtStacks: BuiltMessageStacks | null = null
   private readonly view: View = { ...DEFAULT_VIEW }
   private grid: TerrainGrid | null = null
   private topMaterial: ShaderMaterial | null = null
@@ -505,6 +514,7 @@ export class PortfolioScene {
       return [{ job, mesh, material, edges, flag, flagMaterial, top: new Vector3(xz[0], ground + height + 0.02, xz[1]) }]
     })
     this.applyHighlight()
+    this.rebuildMessageStacks()
     const focus = this.focusSelectedPending
       ? this.markers.find((item) => item.job.id === this.highlight.selectedJobId)
       : undefined
@@ -512,6 +522,26 @@ export class PortfolioScene {
       this.focusSelectedPending = false
       this.flyTo(focus.top.x, focus.top.y * 0.6, focus.top.z, Math.max(this.view.zoom, 2.8))
     }
+  }
+
+  /** Show (or with null, hide) the Messages layer's tile stacks. */
+  setMessageStacks(stacks: MessageStacks | null, colors: MessageStackColors): void {
+    this.messageStacks = stacks ? { stacks, colors } : null
+    this.rebuildMessageStacks()
+  }
+
+  private rebuildMessageStacks(): void {
+    if (this.builtStacks) {
+      this.scene.remove(this.builtStacks.group)
+      this.builtStacks.dispose()
+      this.builtStacks = null
+    }
+    if (this.messageStacks && this.markers.length > 0) {
+      const tops = new Map(this.markers.map((marker) => [marker.job.id, marker.top]))
+      this.builtStacks = buildMessageStacks(this.messageStacks.stacks, tops, this.messageStacks.colors)
+      this.scene.add(this.builtStacks.group)
+    }
+    this.requestRender()
   }
 
   /** Fly to the selected job once its marker exists (used by single-job views). */
@@ -640,7 +670,9 @@ export class PortfolioScene {
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(this.pointer, this.camera)
-    const hit = this.raycaster.intersectObjects(this.markers.map((marker) => marker.mesh), false)[0]
+    const targets: Object3D[] = this.markers.map((marker) => marker.mesh)
+    if (this.builtStacks) targets.push(...this.builtStacks.meshes)
+    const hit = this.raycaster.intersectObjects(targets, false)[0]
     const jobId = hit?.object.userData.jobId
     return typeof jobId === "string" ? this.markers.find((marker) => marker.job.id === jobId) ?? null : null
   }
@@ -744,14 +776,17 @@ export class PortfolioScene {
     for (const marker of this.markers) {
       const selected = marker.job.id === selectedJobId
       if (!selected && marker.job.id !== hoveredJobId) continue
-      const screen = this.project(marker.top)
+      // With the Messages layer on, the label sits above the job's tile stack.
+      const screen = this.project(this.builtStacks?.tops.get(marker.job.id) ?? marker.top)
       if (!screen.onScreen) continue
+      const unread = this.messageStacks?.stacks.get(marker.job.id)?.length ?? 0
+      const town = marker.job.town ? marker.job.town.toUpperCase() : ""
       labels.push({
         key: marker.job.id,
         x: screen.x,
         y: screen.y,
         title: marker.job.name.toUpperCase(),
-        sub: marker.job.town ? marker.job.town.toUpperCase() : "",
+        sub: this.messageStacks ? [town, unread > 0 ? `${unread} UNREAD` : "ALL CLEAR"].filter(Boolean).join(" · ") : town,
         tone: selected ? "selected" : "hover",
       })
     }
@@ -783,6 +818,7 @@ export class PortfolioScene {
     this.canvas.removeEventListener("pointerup", this.handleUp)
     this.canvas.removeEventListener("pointerleave", this.handleLeave)
     this.canvas.removeEventListener("wheel", this.handleWheel)
+    this.builtStacks?.dispose()
     for (const marker of this.markers) {
       marker.mesh.geometry.dispose()
       marker.material.dispose()

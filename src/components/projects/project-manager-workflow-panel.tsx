@@ -1,7 +1,12 @@
 "use client"
 
 import Link from "next/link"
-import { type ReactElement, type ReactNode } from "react"
+import { useState, useTransition, type ReactElement, type ReactNode } from "react"
+import { toast } from "sonner"
+import { saveRoleDashboardOrder } from "@/app/actions/view-preferences"
+import { SortableList } from "@/components/sortable-list"
+import { Button } from "@/components/ui/button"
+import { applySavedOrder } from "@/lib/view-preferences/order"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAddressBook,
@@ -318,6 +323,7 @@ export function ProjectManagerWorkflowPanel({
   canUseDeveloperMode,
   allowedRoleIds,
   showRoleControls = true,
+  savedOrders = {},
 }: {
   readonly projectId: string
   readonly totalTaskCount: number
@@ -333,7 +339,11 @@ export function ProjectManagerWorkflowPanel({
   readonly canUseDeveloperMode: boolean
   readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
   readonly showRoleControls?: boolean
+  /** The viewer's saved step order per role (empty means the role's default). */
+  readonly savedOrders?: Readonly<Record<string, readonly string[]>>
 }): ReactElement {
+  const [orders, setOrders] = useState(savedOrders)
+  const [savingOrder, startSavingOrder] = useTransition()
   const activeRole = roleLensForId(activeRoleId)
   const availableRoles = PROJECT_WORKFLOW_ROLE_LENSES.filter((role) =>
     allowedRoleIds.includes(role.id)
@@ -442,7 +452,22 @@ export function ProjectManagerWorkflowPanel({
       urgent: false,
     },
   ]
-  const orderedSteps = orderedWorkflowSteps(steps, activeRole.priority)
+  const defaultSteps = orderedWorkflowSteps(steps, activeRole.priority)
+  const savedOrder = orders[activeRoleId] ?? []
+  const orderedSteps = applySavedOrder(defaultSteps, savedOrder)
+
+  function saveOrder(nextIds: readonly string[]): void {
+    const roleId = activeRoleId
+    const previous = orders
+    setOrders({ ...orders, [roleId]: nextIds })
+    startSavingOrder(async () => {
+      const result = await saveRoleDashboardOrder(roleId, nextIds)
+      if (!result.success) {
+        setOrders(previous)
+        toast.error(result.error)
+      }
+    })
+  }
 
   return (
     <section className="space-y-3">
@@ -458,6 +483,17 @@ export function ProjectManagerWorkflowPanel({
             Work queues for the current job.
           </p>
         </div>
+        {savedOrder.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={savingOrder}
+            onClick={() => saveOrder([])}
+          >
+            Reset order
+          </Button>
+        )}
       </div>
 
       {showRoleControls && (
@@ -497,10 +533,15 @@ export function ProjectManagerWorkflowPanel({
         </div>
       )}
 
-      <div className="clarity-panel overflow-hidden divide-y">
-        {orderedSteps.map((step, index) => (
-          <WorkflowCard key={step.label} step={step} number={index + 1} />
-        ))}
+      <div className="clarity-panel overflow-hidden" aria-busy={savingOrder}>
+        <SortableList
+          className="divide-y"
+          items={orderedSteps}
+          label={(step) => step.label}
+          disabled={savingOrder}
+          onReorder={(next) => saveOrder(next.map((step) => step.id))}
+          renderItem={(step, index) => <WorkflowCard step={step} number={index + 1} />}
+        />
       </div>
 
       {showRoleControls && (

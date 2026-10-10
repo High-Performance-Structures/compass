@@ -5,10 +5,11 @@ import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/pr
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export const PORTFOLIO_PHASES = [
-  { id: "estimating", label: "Estimating", short: "EST" },
+  { id: "intake", label: "Intake", short: "INT" },
   { id: "design", label: "Design", short: "DES" },
+  { id: "estimating", label: "Estimating", short: "EST" },
+  { id: "negotiation", label: "Negotiation", short: "NEG" },
   { id: "permitting", label: "Permitting", short: "PER" },
-  { id: "precon", label: "Pre-construction", short: "PRE" },
   { id: "construction", label: "Under construction", short: "BLD" },
   { id: "closeout", label: "Closeout", short: "CLO" },
 ] as const
@@ -44,8 +45,9 @@ export type PortfolioMapJob = {
  * awaiting payment).
  */
 const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
-  intake: "estimating",
-  new_client_info_sent: "estimating",
+  // Intake: first contact and new-client info, before any design or pricing.
+  intake: "intake",
+  new_client_info_sent: "intake",
   budget_estimating: "estimating",
   budget_estimate_sent: "estimating",
   estimating: "estimating",
@@ -57,14 +59,17 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   in_design: "design",
   engineering: "design",
   value_engineering: "design",
+  // Negotiation: reviewing, drafting, sending or revising the contract, until
+  // it is awarded and funded.
+  contract_docs: "negotiation",
+  contract_docs_sent: "negotiation",
+  contract_docs_signed: "negotiation",
+  contract: "negotiation",
+  awarded: "negotiation",
+  awaiting_funding: "negotiation",
   permitting: "permitting",
-  contract_docs: "precon",
-  contract_docs_sent: "precon",
-  contract_docs_signed: "precon",
-  contract: "precon",
-  awarded: "precon",
-  awaiting_funding: "precon",
-  awaiting_groundbreaking: "precon",
+  // Permit in hand, waiting to start.
+  awaiting_groundbreaking: "permitting",
   bracing_out: "construction",
   under_construction: "construction",
   current: "construction",
@@ -114,7 +119,7 @@ export function portfolioPhaseFor(rule: PortfolioProjectRule): PortfolioPhaseId 
     jobStatusId: rule.jobStatusId ?? "",
     jobStatusLabel: rule.jobStatusLabel ?? "",
   })
-  return bucket === "warranty" || bucket === "complete" ? "closeout" : "precon"
+  return bucket === "warranty" || bucket === "complete" ? "closeout" : "estimating"
 }
 
 function normalizeLabel(value: string): string {

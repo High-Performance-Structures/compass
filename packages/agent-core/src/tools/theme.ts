@@ -92,7 +92,8 @@ export function themeTools(dataSource: DataSource): ToolDef[] {
       input_schema: zodToJsonSchema(listThemesSchema),
       run: async (): Promise<string> => {
         const result = await dataSource.fetch(
-          "/api/compass/themes/list"
+          "/api/compass/themes",
+          { action: "list" }
         )
         return JSON.stringify(result)
       },
@@ -109,8 +110,8 @@ export function themeTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = setThemeSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/themes/set",
-          args
+          "/api/compass/themes",
+          { action: "set", ...args }
         )
         return JSON.stringify(result)
       },
@@ -127,8 +128,8 @@ export function themeTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = generateThemeSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/themes/generate",
-          args
+          "/api/compass/themes",
+          { action: "generate", ...args }
         )
         return JSON.stringify(result)
       },
@@ -145,8 +146,8 @@ export function themeTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = editThemeSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/themes/edit",
-          args
+          "/api/compass/themes",
+          { action: "edit", ...args }
         )
         return JSON.stringify(result)
       },

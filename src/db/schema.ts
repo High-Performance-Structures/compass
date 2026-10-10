@@ -5,6 +5,7 @@ import {
   sqliteTable,
   text,
   integer,
+  primaryKey,
   real,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
@@ -1431,6 +1432,23 @@ export const userSchedulePreferences = sqliteTable("user_schedule_preferences", 
   ganttScrollMode: text("gantt_scroll_mode").notNull().default("default"),
   updatedAt: text("updated_at").notNull(),
 })
+
+/**
+ * Per-user view settings such as a list's custom order or column sort,
+ * keyed by view (for example "role-dashboard:project_manager"). Value is JSON.
+ */
+export const userViewPreferences = sqliteTable(
+  "user_view_preferences",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewKey: text("view_key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.viewKey] })]
+)
 
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",

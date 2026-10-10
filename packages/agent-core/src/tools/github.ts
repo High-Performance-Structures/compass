@@ -50,33 +50,6 @@ const createIssueSchema = z.object({
     .describe("Milestone number to attach to"),
 })
 
-const interviewSchema = z.object({
-  responses: z
-    .array(
-      z.object({
-        question: z.string(),
-        answer: z.string(),
-      })
-    )
-    .describe(
-      "Array of question/answer pairs from the interview"
-    ),
-  summary: z
-    .string()
-    .describe("Brief summary of the interview findings"),
-  painPoints: z
-    .array(z.string())
-    .optional()
-    .describe("Key pain points identified"),
-  featureRequests: z
-    .array(z.string())
-    .optional()
-    .describe("Feature requests from the user"),
-  overallSentiment: z
-    .enum(["positive", "neutral", "negative", "mixed"])
-    .describe("Overall sentiment of the feedback"),
-})
-
 export function githubTools(dataSource: DataSource): ToolDef[] {
   return [
     {
@@ -88,8 +61,8 @@ export function githubTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = querySchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/github/query",
-          args
+          "/api/compass/github",
+          { action: "query", ...args }
         )
         return JSON.stringify(result)
       },
@@ -104,26 +77,8 @@ export function githubTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = createIssueSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/github/create-issue",
-          args
-        )
-        return JSON.stringify(result)
-      },
-    },
-
-    {
-      name: "saveInterviewFeedback",
-      description:
-        "Save the results of a UX interview. Call this after " +
-        "completing an interview with the user. Saves to the " +
-        "database and creates a GitHub issue tagged " +
-        "user-feedback.",
-      input_schema: zodToJsonSchema(interviewSchema),
-      run: async (input: unknown): Promise<string> => {
-        const args = interviewSchema.parse(input)
-        const result = await dataSource.fetch(
-          "/api/compass/github/save-interview",
-          args
+          "/api/compass/github",
+          { action: "createIssue", ...args }
         )
         return JSON.stringify(result)
       },

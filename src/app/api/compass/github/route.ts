@@ -1,5 +1,7 @@
 import { validateAgentAuth } from "@/lib/agent/api-auth"
 import { getCloudflareContext } from "@/lib/db"
+import { getDb } from "@/db"
+import { resolveAgentUser } from "@/lib/agent/agent-user"
 import {
   getGitHubConfig,
   fetchCommits,
@@ -14,6 +16,12 @@ import {
 
 type GitHubAction = "query" | "createIssue"
 
+const GITHUB_ROLES: ReadonlySet<string> = new Set([
+  "admin",
+  "secondary_admin",
+  "developer",
+])
+
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
   const envRecord = env as unknown as Record<string, string>
@@ -24,6 +32,25 @@ export async function POST(req: Request): Promise<Response> {
       status: 401,
       headers: { "Content-Type": "application/json" },
     })
+  }
+
+  // GitHub runs on one organization-wide token, so reading the repository or
+  // opening issues is limited to administrators and developers.
+  const user = await resolveAgentUser(getDb(env.DB), auth)
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+  if (!GITHUB_ROLES.has(user.role)) {
+    return new Response(
+      JSON.stringify({ error: "GitHub access is limited to administrators" }),
+      {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }
+    )
   }
 
   let body: { action: GitHubAction; [key: string]: unknown }

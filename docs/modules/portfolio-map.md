@@ -14,10 +14,14 @@ block, with a side panel of quick information and links into each job.
   (`isMappedDepartment`). Projects with the built-in **Internal** job status
   (office records, Compass development and test projects) are left off too;
   the Project Hub has an Internal view for them.
+- **Phases**, in order: Intake (intake and new client info sent), Design,
+  Estimating (including budget estimating and budget estimate sent), Negotiation (contract docs
+  through awarded and awaiting funding), Permitting (including awaiting
+  groundbreaking), Under construction, Closeout (punch list and warranty).
 - **Per-project override**: the project information page and the map panel
   set `portfolio_map_visibility` to `default` (follow status and department),
   `shown` (always on the map; statuses without a phase appear in closeout for
-  warranty/complete jobs, pre-construction otherwise) or `hidden`. Hidden jobs
+  warranty/complete jobs, estimating otherwise) or `hidden`. Hidden jobs
   are listed in the panel with "Show on map". "Add a project to the map" in
   the panel searches projects kept off the map by status or department
   (loaded on demand) and sets them to always show. Changes are audited.
@@ -86,8 +90,8 @@ their dashboard overview (`VendorJobMap`).
 ## Owner "Where things stand" relief
 
 Owners see their project on the same relief, zoomed to its town
-(`OwnerSiteRelief`), beside an owner-worded stage stepper (Pricing, Design,
-Permits, Getting ready to build, Under construction, Finishing up) and a
+(`OwnerSiteRelief`), beside an owner-worded stage stepper (Design, Pricing,
+Contract, Permits, Under construction, Finishing up) and a
 "scheduled work complete" bar.
 
 - **General area only:** the pin is the town center from `resolveTown`, never
@@ -118,3 +122,44 @@ audit history. `applyTravelOverride()` in `travel-overrides.ts` applies them
 after `jobTravelCharge()`. The map panel marks such jobs "Custom for this job"
 and links to the section. Adjustments stay inside the office-only travel data
 and never reach owner or vendor views.
+
+## Messages layer
+
+Layers → **Messages** stacks one thin tile per unread bell item on each job
+(colored by kind: messages, project mail, RFIs, schedule, other). The bell and
+the layer are two views of the same inbox:
+
+- Clicking a bell item still opens the item itself; it never opens the map.
+- Clicking a job on the map shows **Unread for this job** at the top of the
+  panel, with the bell's own rows: Open (same destination as the bell),
+  Mark read, and Done. Either view's changes update the other immediately
+  (`compass:notifications-changed` event).
+- Each project section in the office bell has **Show on map**, which opens
+  `/dashboard?layer=messages&job=<id>` with the layer on and the map zoomed
+  to that job.
+
+Only the viewer's own unread items with a project are stacked. Data comes from
+`getNotificationCenter()` through `useNotificationInbox`. The layer loads it
+only while the layer is on and the map is shown. The tiles are built in
+`portfolio-message-stacks.ts`.
+
+## Owner and sub/vendor dashboards
+
+The owner and sub/vendor launchpads follow the office dashboard's order:
+greeting, counts strip (their workspace alerts), the map, the five-day
+horizon, then priorities beside the project team and quick dock, and finally
+"from the site" (photos, latest update, email/text instructions).
+
+Clicking the project (owner) or a job (sub/vendor) fills the right-hand panel
+(`AudienceJobPanel`) with only what that workspace may see:
+
+- **Owner:** stage stepper and progress, **Unread on your project**, coming
+  up (owner-visible schedule), latest owner update, and owner sections.
+- **Sub/vendor:** phase, **Unread for this job**, their next items and
+  commitments (through the vendor dashboard reader), and vendor sections.
+
+Both maps have a **Messages** toggle that stacks unread tiles on the job(s).
+Unread items are loaded per project with the workspace's audience scope
+(`getNotificationCenter({ projectId, audience })`), which checks the viewer's
+project membership server-side. Section links come from
+`lib/project-audience-links.ts`, the same list as the dashboard's quick dock.

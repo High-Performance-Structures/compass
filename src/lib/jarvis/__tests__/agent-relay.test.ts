@@ -5,6 +5,7 @@ import {
   isJarvisAgentBridgeEnabled,
   parseAgentRelayResult,
   relayMessages,
+  shouldRelayAskJarvis,
 } from "@/lib/jarvis/agent-relay"
 
 describe("Jarvis agent relay", () => {
@@ -13,6 +14,28 @@ describe("Jarvis agent relay", () => {
     expect(isJarvisAgentBridgeEnabled(" ON ")).toBe(true)
     expect(isJarvisAgentBridgeEnabled("false")).toBe(false)
     expect(isJarvisAgentBridgeEnabled(undefined)).toBe(false)
+  })
+
+  it("keeps Ask Jarvis on the built-in agent unless its relay is turned on", () => {
+    expect(shouldRelayAskJarvis({ JARVIS_AGENT_BRIDGE_ENABLED: "true" })).toBe(false)
+    expect(
+      shouldRelayAskJarvis({
+        ASK_JARVIS_RELAY_ENABLED: "false",
+        JARVIS_AGENT_BRIDGE_ENABLED: "true",
+      }),
+    ).toBe(false)
+    expect(
+      shouldRelayAskJarvis({
+        ASK_JARVIS_RELAY_ENABLED: "true",
+        JARVIS_AGENT_BRIDGE_ENABLED: "false",
+      }),
+    ).toBe(false)
+    expect(
+      shouldRelayAskJarvis({
+        ASK_JARVIS_RELAY_ENABLED: "true",
+        JARVIS_AGENT_BRIDGE_ENABLED: "true",
+      }),
+    ).toBe(true)
   })
 
   it("limits relayed history and individual message length", () => {
