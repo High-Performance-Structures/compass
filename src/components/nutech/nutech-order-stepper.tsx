@@ -2,6 +2,7 @@ import Link from "next/link"
 import { IconCheck } from "@tabler/icons-react"
 import type { NuTechOrderOverview } from "@/app/actions/nutech-order-overview"
 import { FollowUpSection } from "@/components/projects/project-follow-up-aging"
+import { NuTechEmailMenu } from "@/components/nutech/nutech-email-composer"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -79,6 +80,10 @@ export function NuTechOrderStepper({ overview }: { readonly overview: NuTechOrde
           ))}
         </ul>
       ) : null}
+
+      <div className="border-t pt-3">
+        <NuTechEmailMenu projectId={projectId} step={current?.id ?? null} fulfillment={overview.fulfillment} />
+      </div>
 
       {overview.followUp ? (
         <div className="border-t pt-3">

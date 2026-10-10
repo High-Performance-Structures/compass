@@ -26,6 +26,8 @@ export type NuTechOrderOverview = {
   readonly progress: NuTechOrderProgress
   readonly hasOrder: boolean
   readonly followUp: ProjectFollowUpSignal | null
+  /** Delivery or pickup, from the order, else the job; null when not chosen. */
+  readonly fulfillment: "delivery" | "pickup" | null
 }
 
 function pick<T extends string>(options: readonly { readonly value: T }[], value: string, fallback: T): T {
@@ -116,7 +118,12 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
           }
         : null,
     }
-    return { projectId, progress: nuTechOrderProgress(snapshot), hasOrder: order !== undefined, followUp: snapshot.followUp }
+    const fulfillment = snapshot.order
+      ? snapshot.order.deliveryMethod === "delivery"
+        ? "delivery"
+        : "pickup"
+      : snapshot.projectDeliveryMethod
+    return { projectId, progress: nuTechOrderProgress(snapshot), hasOrder: order !== undefined, followUp: snapshot.followUp, fulfillment }
   } catch (error) {
     console.error("Nu-Tech order overview unavailable", error)
     return null
