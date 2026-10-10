@@ -18,16 +18,19 @@ export const SALES_STAGES = [
 
 export type SalesStageId = (typeof SALES_STAGES)[number]["id"]
 
-/** Stage colors come from the theme, like the portfolio phases. */
+/**
+ * Stage colors come from the theme, like the portfolio phases, and are eight
+ * distinct hues so the map key reads at a glance. Red marks money owed.
+ */
 export const SALES_STAGE_COLOR_TOKEN: Readonly<Record<SalesStageId, string>> = {
-  intake: "--primary",
-  pricing: "--chart-1",
-  estimating: "--muted-foreground",
-  estimate_sent: "--info",
+  intake: "--muted-foreground",
+  pricing: "--chart-3",
+  estimating: "--info",
+  estimate_sent: "--chart-5",
   following_up: "--warning",
-  awaiting_payment: "--chart-4",
+  awaiting_payment: "--destructive",
   ordered: "--success",
-  bracing_out: "--chart-5",
+  bracing_out: "--chart-4",
 }
 
 /** Departments that sell materials rather than build, with their pipeline's title. */

@@ -4,10 +4,15 @@ import { act } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { PortfolioMapJob } from "@/lib/portfolio-map/model"
+import type { SalesPipeline } from "@/lib/sales-pipeline/load"
 
 vi.mock("next/dynamic", () => ({ default: () => () => null }))
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
-vi.mock("@/app/actions/project-profile", () => ({ updateProjectMapVisibility: vi.fn(async () => ({ success: true })) }))
+vi.mock("@/app/actions/project-profile", () => ({
+  updateProjectMapVisibility: vi.fn(async () => ({ success: true })),
+  updateProjectJobStatus: vi.fn(async () => ({ success: true })),
+  updateProjectDeliveryMethod: vi.fn(async () => ({ success: true })),
+}))
 vi.mock("@/app/actions/portfolio-map", () => ({
   listProjectsToAddToMap: vi.fn(async () => [
     { id: "p20", name: "Breckenridge Residence", projectNumber: "H-300-1", statusLabel: "Complete" },
@@ -93,6 +98,38 @@ describe("PortfolioSection", () => {
     await click("Add")
     const actions = await import("@/app/actions/project-profile")
     expect(actions.updateProjectMapVisibility).toHaveBeenCalledWith({ projectId: "p20", visibility: "shown" })
+  })
+
+  it("switches the portfolio to the Nu-Tech Sales pipeline and moves a job", async () => {
+    const salesPipelines: readonly SalesPipeline[] = [{
+      department: "N",
+      title: "Nu-Tech Sales",
+      jobs: [
+        { id: "n1", name: "Fairplay Garage", projectNumber: "N-901", clientName: "Lee", assignedTo: "Rebekah", address: "12 Main St, Fairplay", town: "Fairplay", lon: -106, lat: 39.22, stage: "estimate_sent", jobStatusId: "estimate_sent", statusLabel: "Estimate Sent", deliveryMethod: null, updatedAt: null },
+        { id: "n2", name: "Salida Shop", projectNumber: "N-902", clientName: null, assignedTo: null, address: null, town: "Salida", lon: -106, lat: 38.53, stage: "ordered", jobStatusId: "ordered", statusLabel: "Ordered", deliveryMethod: "pickup", updatedAt: null },
+      ],
+    }]
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null, salesPipelines })))
+    expect(container.textContent).not.toContain("Fairplay Garage")
+
+    await click("NU-TECH SALES")
+    expect(localStorage.getItem("compass:portfolio-scope:v1")).toBe("N")
+    expect(container.textContent).toContain("2 OPEN · 0 AWAITING PAYMENT · 1 ORDERED")
+    expect(container.textContent).toContain("BRACING OUT")
+    expect(container.textContent).not.toContain("Granby Residence")
+
+    await click("Fairplay Garage")
+    expect(container.textContent).toContain("12 Main St, Fairplay")
+    await click("Follow-up")
+    const actions = await import("@/app/actions/project-profile")
+    expect(actions.updateProjectJobStatus).toHaveBeenCalledWith({ projectId: "n1", jobStatusId: "follow_up" })
+    await click("Customer pickup")
+    expect(actions.updateProjectDeliveryMethod).toHaveBeenCalledWith({ projectId: "n1", deliveryMethod: "pickup" })
+
+    await click("PROJECTS")
+    expect(localStorage.getItem("compass:portfolio-scope:v1")).toBeNull()
+    expect(container.textContent).toContain("Granby Residence")
+    expect(container.textContent).not.toContain("Fairplay Garage")
   })
 
   it("renders nothing when there are no mapped jobs", async () => {
