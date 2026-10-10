@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { FEATURE_SETTINGS, parseFeatureSettings } from "@/lib/feature-settings/registry"
 import { checkRecordCopyToken, signRecordCopyToken } from "@/lib/paper-trail/print-token"
-import { internalDomainSet, isSharedOutside } from "@/lib/paper-trail/folders"
+import { internalDomainSet, isSharedOutside, outsideAccess } from "@/lib/paper-trail/folders"
 import { driveFileName } from "@/lib/paper-trail/processor"
 import { paperTrailAllows } from "@/lib/paper-trail/record-types"
 
@@ -51,6 +51,20 @@ describe("shared-outside check", () => {
     expect(isSharedOutside([{ id: "1", type: "anyone", role: "reader" }], internal)).toBe(true)
     expect(isSharedOutside([{ id: "1", type: "domain", role: "reader", domain: "vendor.com" }], internal)).toBe(true)
     expect(isSharedOutside([{ id: "1", type: "user", role: "reader", emailAddress: "owner@gmail.com" }], internal)).toBe(true)
+  })
+
+  it("names outside access by domain only", () => {
+    expect(
+      outsideAccess(
+        [
+          { id: "1", type: "user", role: "writer", emailAddress: "pm@openrangeconstruction.ltd" },
+          { id: "2", type: "user", role: "reader", emailAddress: "owner@gmail.com" },
+          { id: "3", type: "user", role: "reader", emailAddress: "other@gmail.com" },
+          { id: "4", type: "anyone", role: "reader" },
+        ],
+        internal,
+      ),
+    ).toEqual(["anyone with the link", "people at gmail.com"])
   })
 
   it("errs toward private when an address is unreadable", () => {

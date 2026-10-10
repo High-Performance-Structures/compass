@@ -37,18 +37,48 @@ export function internalDomainSet(googleEmail: string, configured: readonly stri
   return domains
 }
 
-/** True when anyone outside the company's domains can open the item. */
-export function isSharedOutside(permissions: readonly DrivePermission[], internalDomains: ReadonlySet<string>): boolean {
-  return permissions.some((permission) => {
-    if (permission.type === "anyone") return true
+/**
+ * Who outside the company can open the item, as short labels with domains
+ * only (never individual addresses), e.g. "people at gmail.com".
+ */
+export function outsideAccess(permissions: readonly DrivePermission[], internalDomains: ReadonlySet<string>): readonly string[] {
+  const labels = new Set<string>()
+  for (const permission of permissions) {
+    if (permission.type === "anyone") {
+      labels.add("anyone with the link")
+      continue
+    }
     if (permission.type === "domain") {
-      return !internalDomains.has(permission.domain?.toLowerCase() ?? "")
+      const domain = permission.domain?.toLowerCase() ?? ""
+      if (!internalDomains.has(domain)) labels.add(domain ? `everyone at ${domain}` : "an unnamed domain")
+      continue
     }
     // "user" and "group": judge by the address's domain. An address we cannot
     // read is treated as outside, which errs toward the private folder.
     const domain = emailDomain(permission.emailAddress)
-    return domain === null || !internalDomains.has(domain)
-  })
+    if (domain === null) labels.add(permission.type === "group" ? "a group without a visible address" : "an account without a visible address")
+    else if (!internalDomains.has(domain)) labels.add(permission.type === "group" ? `a group at ${domain}` : `people at ${domain}`)
+  }
+  return [...labels].sort()
+}
+
+/** True when anyone outside the company's domains can open the item. */
+export function isSharedOutside(permissions: readonly DrivePermission[], internalDomains: ReadonlySet<string>): boolean {
+  return outsideAccess(permissions, internalDomains).length > 0
+}
+
+/** Names who has outside access, for the record's status message. */
+async function describeOutsideAccess(
+  drive: PaperTrailDrive,
+  folderId: string,
+  internalDomains: ReadonlySet<string>,
+): Promise<string> {
+  try {
+    const labels = outsideAccess(await drive.client.listPermissions(drive.googleEmail, folderId), internalDomains)
+    return labels.length > 0 ? ` (${labels.slice(0, 4).join(", ")}${labels.length > 4 ? ", …" : ""})` : ""
+  } catch {
+    return ""
+  }
 }
 
 async function sharedOutside(
@@ -113,7 +143,7 @@ export async function resolveRecordFolder(input: {
   if (await sharedOutside(db, drive, projectFolderId, internalDomains, now)) {
     return {
       ok: false,
-      error: "The project's Drive folder is shared outside the company, so internal records are not saved there.",
+      error: `The project's Drive folder is shared outside the company${await describeOutsideAccess(drive, projectFolderId, internalDomains)}, so internal records are not saved there. Change the folder's sharing, or add company domains in Settings → Workflows → Project paper trail.`,
     }
   }
   const category = PROJECT_FILE_CATEGORIES.find((item) => item.key === input.category)
@@ -134,7 +164,7 @@ export async function resolveRecordFolder(input: {
     PRIVATE_RECORDS_FOLDER_NAME,
   )
   if (await sharedOutside(db, drive, privateId, internalDomains, now)) {
-    return { ok: false, error: `“${PRIVATE_RECORDS_FOLDER_NAME}” is shared outside the company.` }
+    return { ok: false, error: `“${PRIVATE_RECORDS_FOLDER_NAME}” is shared outside the company${await describeOutsideAccess(drive, privateId, internalDomains)}.` }
   }
   return { ok: true, folderId: privateId, heldPrivate: true }
 }
