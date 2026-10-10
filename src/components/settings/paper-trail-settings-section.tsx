@@ -224,12 +224,13 @@ export function PaperTrailSettingsSection(): React.ReactElement {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="paper-trail-domains">Company email domains</Label>
-            <Input id="paper-trail-domains" value={domains} disabled={disabled} placeholder="openrangeconstruction.ltd"
+            <Label htmlFor="paper-trail-domains">Company email domains and trusted addresses</Label>
+            <Input id="paper-trail-domains" value={domains} disabled={disabled} placeholder="openrangeconstruction.com, owner@gmail.com"
               onChange={(event) => setDomains(event.target.value)} className="h-9 sm:max-w-md" />
             <p className="text-xs text-muted-foreground">
-              People on these domains count as inside the company. If a record&apos;s folder is shared with anyone else, the copy goes to a private
-              &ldquo;Compass Records (internal)&rdquo; folder instead. The connected Google account&apos;s domain always counts.
+              Domains (openrangeconstruction.com) or specific addresses (an owner&apos;s personal Gmail) that count as inside the company. If a
+              record&apos;s folder is shared with anyone else, the copy goes to a private &ldquo;Compass Records (internal)&rdquo; folder instead.
+              The connected Google account&apos;s domain always counts.
             </p>
           </div>
 
