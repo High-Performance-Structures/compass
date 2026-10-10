@@ -39,31 +39,57 @@ function errorText(value: unknown, status: number): string {
  * and a Worker calling its own hostname is unreliable on Cloudflare. Each
  * handler still validates the agent token and the user's permissions.
  */
+export async function callAgentRoute(
+  token: string,
+  path: string,
+  body: unknown,
+  routes: ReadonlyMap<string, RouteHandler> = AGENT_TOOL_ROUTES,
+): Promise<unknown> {
+  const handler = routes.get(path)
+  if (!handler) {
+    throw new Error(`No Compass API handler for ${path}`)
+  }
+  const response = await handler(
+    new Request(`https://compass.internal${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body ?? {}),
+    }),
+  )
+  const payload: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(errorText(payload, response.status))
+  }
+  return payload
+}
+
+/**
+ * Answers a tool call without running its handler, or returns undefined to
+ * let it run. Used to hold consequential actions for user confirmation.
+ */
+export type ToolCallInterceptor = (
+  path: string,
+  body: unknown,
+) => Promise<unknown>
+
 export function createInProcessDataSource(
   token: string,
-  routes: ReadonlyMap<string, RouteHandler> = AGENT_TOOL_ROUTES,
+  options: {
+    readonly routes?: ReadonlyMap<string, RouteHandler>
+    readonly intercept?: ToolCallInterceptor
+  } = {},
 ): DataSource {
+  const routes = options.routes ?? AGENT_TOOL_ROUTES
   return {
     async fetch(path: string, body?: unknown): Promise<unknown> {
-      const handler = routes.get(path)
-      if (!handler) {
-        throw new Error(`No Compass API handler for ${path}`)
-      }
-      const response = await handler(
-        new Request(`https://compass.internal${path}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(body ?? {}),
-        }),
-      )
-      const payload: unknown = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(errorText(payload, response.status))
-      }
-      return payload
+      const intercepted = options.intercept
+        ? await options.intercept(path, body)
+        : undefined
+      if (intercepted !== undefined) return intercepted
+      return callAgentRoute(token, path, body, routes)
     },
   }
 }

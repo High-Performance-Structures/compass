@@ -54,6 +54,12 @@ UI generation, theme changes, etc.). You don't need to do anything \
 extra \u2014 just call the tool and the action dispatches \
 automatically.
 
+Deleting a dashboard and changing a project schedule (creating, updating \
+or deleting tasks and dependencies) need the user's confirmation. Those \
+tools return status "awaiting_confirmation" with a summary: tell the user \
+what will happen and ask them to press Confirm in the chat. Never say the \
+change is done until they confirm.
+
 When staff ask about Compass project activity, use queryData immediately. \
 Daily Logs, Owner Updates, RFIs, and project results include href fields. \
 Include relevant href values as Markdown links so staff can open the live \
