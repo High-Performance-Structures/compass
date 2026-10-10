@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/rfis", "/dashboard/purchase-orders", "/dashboard/projects/[id]/rfis", "/dashboard/projects/[id]/rfqs", "/dashboard/projects/[id]/purchase-orders"],
   "owner": "Project operations",
-  "lastReviewed": "2026-09-14"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -26,9 +26,9 @@ Enter a clear subject and complete question, responsible contacts, response date
 
 ## RFQs {#rfqs}
 
-Describe the scope, select recipients, category, response date, priority, selections, line items, and permitted documents. Creating or sharing an RFQ does not grant general portal access. Verify that each Drive link is available to the intended bidders before sending.
+Describe the scope, select recipients, category, response date, priority, selections, line items, and permitted documents. Use the Sage division and cost-code pickers to code scope rows instead of typing an unrelated code. Verify each recipient and Drive link before sending; an RFQ does not grant general portal access.
 
-When bids return, preserve the original response, compare scope and exclusions, document the decision, and use the approved estimate/import workflow rather than silently replacing source information.
+Staff can email external bidders and record a response received outside Compass using the manual-response workflow. Preserve the original quote and identify whose response it is. Compare pricing, scope, exclusions, and lead time before accepting or importing it into an estimate. Use duplication to prepare a related RFQ only after checking the new project, recipients, dates, and scope.
 
 ## Purchase Orders {#purchase-orders}
 
@@ -41,6 +41,18 @@ Use **Pickup copy** on a project P.O. when you need a printed vendor copy. Revie
 Capture vendor, invoice number and dates, amount, description, change-order context, and the original invoice. Internal reviewers check duplicates, code or split the amount, attach backup, and move it through review. Split lines should reconcile to the bill total.
 
 **Ready for Sage** means internal preparation is complete enough for the accounting lane. It does not prove posting or payment.
+
+## Check the Project Paper Trail in Drive {#paper-trail}
+
+When **Project paper trail** is enabled for the project and record type, Compass saves PDF copies of purchase orders, estimates, RFIs, and change orders into their mapped project Drive folders. Working copies update after the configured quiet period; supported sending, signing, approval, or answer events can also retain a dated milestone copy. This first release does not automatically file every Compass record type.
+
+Check the status beside a supported record. **Waiting to save to Drive** is not a completed save. Use **Open copy** to inspect the saved PDF, or **Save to Drive now** to request an update. A failure shows why the copy has not saved. If the usual folder has outside access, Compass can hold the copy in **Compass Records (internal)** instead. Report unexpected outside-access warnings to an administrator rather than broadening folder sharing.
+
+Deleting a Compass record keeps its last Drive copy for the paper trail. Saving a PDF does not publish the record to owners, send an email, approve it, or post it to Sage. See [Company settings](/dashboard/help/company-settings) for setup and trusted-address rules.
+
+## Nu-Tech Material Orders {#related-order-work}
+
+Use the dedicated [Nu-Tech order process](/dashboard/help/nutech-orders) for catalog quantities, takeoff acknowledgement, payment and pickup/delivery readiness, Airlite order forms, manufacturer confirmation, and invoice release. A purchase order alone does not complete those steps.
 
 ## Quick Check {#quick-check}
 

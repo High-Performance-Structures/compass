@@ -4,15 +4,15 @@
   "featureId": "project-hub",
   "slug": "navigating-projects",
   "title": "Navigating Projects and Keeping Context",
-  "summary": "Find projects, switch jobs without losing your workflow, and confirm project context.",
+  "summary": "Find jobs on the dashboard map and pipelines, track follow-up, change statuses, and preserve project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "status", "project switcher", "context", "help beacon", "tooltip", "duplicate review", "project archive", "project family", "phase"],
+  "tags": ["projects", "navigation", "dashboard", "portfolio map", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
-  "routes": ["/dashboard/projects", "/dashboard/executive-admin/project-archive"],
+  "routes": ["/dashboard", "/dashboard/projects", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-09"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -86,6 +86,24 @@ If two records truly represent the same project, select the project to keep and 
 ## Wrong Project Active {#wrong-project}
 
 Stop before saving. Switch to the correct job and confirm its number and client. If the record was already saved, notify a project administrator so it can be corrected or removed with an audit trail; do not immediately create a duplicate.
+
+## Use the Portfolio Map and Pipelines {#portfolio-map}
+
+On **Dashboard**, the portfolio window brings together the project map and pipelines, including **Nu-Tech Sales**. Select a job to open its detail panel, then use **Open job** or the available shortcuts. The construction pipeline runs through **Intake**, **Design**, **Estimating**, **Negotiation**, **Permitting**, **Under construction**, and **Closeout**. The map is a summary of included jobs; use **All Projects** to find work outside that view.
+
+Authorized staff can use **MOVE TO** in a job panel to choose a status within the available phase or sales stage. This saves a real job-status change. To close a job as complete, inactive, or bid refused, use its job page. An **Internal** job status and a per-project map visibility override let authorized staff manage internal work and whether a job belongs on the portfolio map; map visibility does not grant project access.
+
+Turn on **Messages** to see your unread items stacked on jobs and listed in the selected job panel. Opening and reading the linked item clears the corresponding notification. **Zone charges** and **Mountain charge** show travel-charge information; the key below the map explains the layers. A map marker or suggested location should be checked against the actual job address before using it for travel or pricing.
+
+## Track Client Follow-Up {#project-follow-up}
+
+Follow-up flags appear on the map, pipelines, and tracker for job statuses that require client contact. **Follow-up due** is amber and **Overdue** is red. Aging is counted in business days since the last logged client contact, so record the actual contact in the job's follow-up workflow. Schedule lateness can also flag a construction job; inspect the panel to understand the reason.
+
+Admins set status-specific thresholds in **Settings → Workflows → Project aging**. Changing a threshold changes when jobs are flagged; it does not record a client response or complete a follow-up.
+
+## Search, Sort, and Page Through Lists {#list-controls}
+
+Use searchable pickers to find projects, contacts, cost codes, statuses, and other long option lists. In lists with sortable headings, select a column heading to change the order and select it again to reverse it. Use the page controls to review additional rows. Confirm the current filter, page, and selected records before a batch action; a visible page is not necessarily the complete queue.
 
 ## Quick Check {#quick-check}
 
