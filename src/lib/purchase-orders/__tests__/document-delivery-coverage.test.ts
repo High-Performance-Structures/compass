@@ -11,40 +11,28 @@ describe("purchase order delivery output coverage", () => {
     const page = source(
       "src/app/dashboard/projects/[id]/purchase-orders/page.tsx"
     )
+    const document = source("src/components/projects/purchase-order-document.tsx")
+    const driveCopy = source("src/lib/paper-trail/record-copy-data.ts")
 
     expect(page).toContain("resolvedPurchaseOrderShipTo")
-    expect(page).toContain("Delivery Location")
-    expect(page).toContain('{deliveryLocation ?? "TBD"}')
+    expect(page).toContain("<PurchaseOrderDocument")
+    // The Drive copy resolves delivery and vendor details the same way.
+    expect(driveCopy).toContain("resolvedPurchaseOrderShipTo")
+    expect(driveCopy).toContain("purchaseOrderVendorDetails")
+    expect(document).toContain("Delivery Location")
+    expect(document).toContain('{deliveryLocation ?? "TBD"}')
   })
 
   it("prints a matched vendor address instead of accounting metadata", () => {
-    const page = source(
-      "src/app/dashboard/projects/[id]/purchase-orders/page.tsx"
-    )
-    const printStart = page.indexOf(
-      '<div className="hidden text-[11px] leading-tight text-black print:block">'
-    )
-    const printEnd = page.indexOf("</article>", printStart)
-
-    expect(printStart).toBeGreaterThan(-1)
-    expect(printEnd).toBeGreaterThan(printStart)
-    const printMarkup = page.slice(printStart, printEnd)
+    // The whole shared document is the printed markup.
+    const printMarkup = source("src/components/projects/purchase-order-document.tsx")
     expect(printMarkup).toContain("order.vendorAddress")
     expect(printMarkup).not.toContain("Vendor ID:")
   })
 
   it("prints the site contact name and phone instead of internal-owner metadata", () => {
-    const page = source(
-      "src/app/dashboard/projects/[id]/purchase-orders/page.tsx"
-    )
-    const printStart = page.indexOf(
-      '<div className="hidden text-[11px] leading-tight text-black print:block">'
-    )
-    const printEnd = page.indexOf("</article>", printStart)
-
-    expect(printStart).toBeGreaterThan(-1)
-    expect(printEnd).toBeGreaterThan(printStart)
-    const printMarkup = page.slice(printStart, printEnd)
+    // The whole shared document is the printed markup.
+    const printMarkup = source("src/components/projects/purchase-order-document.tsx")
     expect(printMarkup).toContain("Site Contact:")
     expect(printMarkup).toContain("order.siteContactPhone")
     expect(printMarkup).not.toContain("Internal Owner:")

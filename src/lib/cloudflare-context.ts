@@ -262,6 +262,10 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
         FOXIT_ESIGN_CLIENT_SECRET: process.env.FOXIT_ESIGN_CLIENT_SECRET ?? "",
         FOXIT_ESIGN_WEBHOOK_SECRET:
             process.env.FOXIT_ESIGN_WEBHOOK_SECRET ?? "",
+        // Lets scheduled-job routes and record copies be exercised locally.
+        ...(process.env.JARVIS_BRIDGE_SECRET
+            ? { JARVIS_BRIDGE_SECRET: process.env.JARVIS_BRIDGE_SECRET }
+            : {}),
         DB,
         BROWSER: createUnavailableFetcher("BROWSER"),
         WORKER_SELF_REFERENCE: createUnavailableFetcher(

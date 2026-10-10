@@ -8,9 +8,8 @@ function source(file: string): string {
 
 describe("purchase order print layout", () => {
   it("uses a repeating table header while item rows continue", () => {
-    const page = source(
-      "src/app/dashboard/projects/[id]/purchase-orders/page.tsx"
-    )
+    // The PO page and the Drive copy both print this shared document.
+    const page = source("src/components/projects/purchase-order-document.tsx")
     const styles = source("src/app/globals.css")
 
     expect(page).toContain(
@@ -24,9 +23,8 @@ describe("purchase order print layout", () => {
   })
 
   it("provides a vendor signature line in the printable approval area", () => {
-    const page = source(
-      "src/app/dashboard/projects/[id]/purchase-orders/page.tsx"
-    )
+    // The PO page and the Drive copy both print this shared document.
+    const page = source("src/components/projects/purchase-order-document.tsx")
 
     expect(page).toContain("Vendor Signature")
     expect(page).toContain('className="mt-10 grid grid-cols-4')

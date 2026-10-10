@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { FEATURE_SETTINGS, parseFeatureSettings } from "@/lib/feature-settings/registry"
-import { renderRecordSheet } from "@/lib/paper-trail/document"
+import { checkRecordCopyToken, signRecordCopyToken } from "@/lib/paper-trail/print-token"
 import { internalDomainSet, isSharedOutside } from "@/lib/paper-trail/folders"
 import { driveFileName } from "@/lib/paper-trail/processor"
 import { paperTrailAllows } from "@/lib/paper-trail/record-types"
@@ -58,35 +58,34 @@ describe("shared-outside check", () => {
   })
 })
 
-describe("record sheet", () => {
-  const sheet = {
-    companyName: "High Performance Structures",
-    companyLines: ["Woodland Park, CO"],
-    recordLabel: "Purchase Order",
-    title: "PO 1042",
-    projectLabel: "H-012 - Loomis",
-    status: "Sent",
-    generatedAt: "2026-10-10T19:00:00.000Z",
-    sections: [
-      { kind: "fields" as const, heading: "Order", fields: [["Vendor", "<script>alert(1)</script>"] as const] },
-      { kind: "text" as const, heading: "Notes", body: "Line one\nLine two" },
-    ],
-  }
+describe("record copy pass", () => {
+  const grant = { recordType: "purchase_order" as const, recordId: "po-1", projectId: "proj-1" }
+  const now = new Date("2026-10-10T20:00:00Z")
 
-  it("escapes record values", () => {
-    const html = renderRecordSheet(sheet)
-    expect(html).not.toContain("<script>alert")
-    expect(html).toContain("&lt;script&gt;")
+  it("opens the record it was issued for", async () => {
+    const token = await signRecordCopyToken("secret-a", grant, now)
+    expect(await checkRecordCopyToken(["secret-a"], token, now)).toEqual(grant)
   })
 
-  it("is self-contained", () => {
-    const html = renderRecordSheet(sheet)
-    expect(html).not.toMatch(/<script|<link|src="http/)
+  it("accepts the rotated secondary secret", async () => {
+    const token = await signRecordCopyToken("secret-b", grant, now)
+    expect(await checkRecordCopyToken(["secret-a", "secret-b"], token, now)).toEqual(grant)
   })
 
-  it("marks milestone copies as frozen", () => {
-    expect(renderRecordSheet({ ...sheet, milestoneLabel: "Sent 2026-10-10" })).toContain("never changed")
-    expect(renderRecordSheet(sheet)).toContain("replaced automatically")
+  it("rejects other secrets, tampering, and expiry", async () => {
+    const token = await signRecordCopyToken("secret-a", grant, now)
+    expect(await checkRecordCopyToken(["other"], token, now)).toBeNull()
+    const [payload, signature] = token.split(".")
+    const forged = `${btoa(JSON.stringify({ t: "estimate", r: "est-9", p: "proj-1", e: 9_999_999_999 })).replace(/=+$/, "")}.${signature}`
+    expect(await checkRecordCopyToken(["secret-a"], forged, now)).toBeNull()
+    expect(await checkRecordCopyToken(["secret-a"], `${payload}.${signature}.extra`, now)).toBeNull()
+    const later = new Date(now.getTime() + 6 * 60 * 1000)
+    expect(await checkRecordCopyToken(["secret-a"], token, later)).toBeNull()
+  })
+
+  it("rejects empty and oversized passes", async () => {
+    expect(await checkRecordCopyToken(["secret-a"], null, now)).toBeNull()
+    expect(await checkRecordCopyToken(["secret-a"], "x".repeat(3000), now)).toBeNull()
   })
 })
 

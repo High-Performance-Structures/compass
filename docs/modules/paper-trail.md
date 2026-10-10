@@ -6,12 +6,16 @@ unavailable. The live record in Compass stays authoritative.
 
 ## What is saved, and where
 
-| Record | Project subfolder |
-|---|---|
-| Purchase orders | Purchasing (`12_Purchasing`) |
-| Estimates (full internal detail) | Estimate (`02_WorkingEstimate`) |
-| RFIs | Communications (`06_Communications`) |
-| Change orders | Change Orders (`11_ChangeOrders`) |
+| Record | Format | Project subfolder |
+|---|---|---|
+| Purchase orders | PO pickup copy (`PurchaseOrderDocument`) | Purchasing (`12_Purchasing`) |
+| Estimates | Client estimate report (`EstimateClientReport`) | Estimate (`02_WorkingEstimate`) |
+| RFIs | RFI report (`rfiReport` + `portalReportHtml`) | Communications (`06_Communications`) |
+| Change orders | Change order report (`changeOrderReport` + `portalReportHtml`) | Change Orders (`11_ChangeOrders`) |
+
+Every copy uses the format Compass already prints for that record, with the
+department's logo. The in-app print and the Drive copy share one component,
+so they cannot drift apart.
 
 Each record has one **living copy** that is replaced in place when the record
 changes; Google Drive keeps the earlier versions in its version history.
@@ -40,9 +44,14 @@ A subfolder that does not exist yet is created with its standard name.
   queues every existing record, which is the catch-up.
 - **Sharing checks** are cached for an hour per folder.
 
-PDFs are rendered with Cloudflare Browser Run from a self-contained record
-sheet (`src/lib/paper-trail/document.ts`): inline styles, no scripts, no app
-page or session involved.
+PDFs are rendered with Cloudflare Browser Run from the record-copy print page
+(`/print/record-copy`). The job signs a **single-record pass**
+(`src/lib/paper-trail/print-token.ts`): bound to one record type, record, and
+project, valid for five minutes, sent as a request header, and signed with a
+key derived from the maintenance secret for this purpose only. Without a valid
+pass the page returns 404. The data loaders behind it
+(`src/lib/paper-trail/record-copy-data.ts`, `getEstimateWorkspaceForRecordCopy`)
+return only the record the pass names. No person's session is involved.
 
 ## Sharing safeguards
 

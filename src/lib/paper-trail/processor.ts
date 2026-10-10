@@ -9,11 +9,10 @@ import {
 import { parseFeatureSettings, type PaperTrailSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
-import { renderRecordSheet } from "@/lib/paper-trail/document"
 import { internalDomainSet, resolveRecordFolder, type PaperTrailDrive } from "@/lib/paper-trail/folders"
 import { PAPER_TRAIL_RECORDS, paperTrailAllows } from "@/lib/paper-trail/record-types"
 import { sweepPaperTrailChanges } from "@/lib/paper-trail/sweep"
-import { renderRecordSheetPdf } from "@/lib/paper-trail/render"
+import { renderRecordCopyPdf } from "@/lib/paper-trail/render"
 
 type Db = ReturnType<typeof getDb>
 
@@ -175,8 +174,7 @@ async function syncRecord(
       await failRow(db, row, folder.error, now)
       return "failed"
     }
-    const html = renderRecordSheet({ ...record.sheet, generatedAt: now.toISOString() })
-    const pdf = await renderRecordSheetPdf(env, html)
+    const pdf = await renderRecordCopyPdf(env, { recordType: row.recordType, recordId: row.recordId, projectId: row.projectId })
     const blob = new Blob([pdf], { type: "application/pdf" })
     const name = driveFileName(record.fileBaseName)
     const { client, googleEmail } = org.drive
@@ -259,8 +257,8 @@ async function runSnapshots(
       if (!folder.ok) throw new Error(folder.error)
       const label = MILESTONE_LABELS[snapshot.milestone] ?? snapshot.milestone
       const day = snapshot.milestoneAt.slice(0, 10)
-      const html = renderRecordSheet({ ...record.sheet, generatedAt: now.toISOString(), milestoneLabel: `${label} ${day}` })
-      const pdf = await renderRecordSheetPdf(env, html)
+      // Same format as the living copy; the milestone and date are in the file name.
+      const pdf = await renderRecordCopyPdf(env, { recordType: snapshot.recordType, recordId: snapshot.recordId, projectId: snapshot.projectId })
       const name = driveFileName(`${record.fileBaseName} - ${label} ${day}`)
       const created = await org.drive.client.uploadFile(org.drive.googleEmail, {
         name,

@@ -27,6 +27,44 @@ export type EstimateAccess = {
   readonly canEdit: boolean
 }
 
+/** What loading an estimate workspace needs once access has been decided. */
+export type EstimateWorkspaceSource = Omit<EstimateAccess, "user" | "canEdit">
+
+/**
+ * Project context for the paper trail's record copy. The caller must already
+ * have verified a single-record pass; no user is involved.
+ */
+export async function estimateSourceForRecordCopy(
+  env: CloudflareEnv,
+  projectId: string
+): Promise<EstimateWorkspaceSource | null> {
+  const db = getDb(env.DB)
+  const [project] = await db
+    .select({
+      name: projects.name,
+      projectNumber: projects.projectNumber,
+      address: projects.address,
+      mailingAddress: projects.mailingAddress,
+      clientName: projects.clientName,
+      organizationId: projects.organizationId,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  if (!project) return null
+  return {
+    db,
+    rawDb: env.DB,
+    projectNumber: project.projectNumber,
+    projectName: project.name,
+    projectAddress: project.address,
+    projectMailingAddress: project.mailingAddress,
+    projectClientName: project.clientName,
+    organizationId: project.organizationId,
+    department: projectDepartment({ projectId, projectNumber: project.projectNumber }),
+  }
+}
+
 export async function estimateAccess(
   projectId: string,
   update: boolean
