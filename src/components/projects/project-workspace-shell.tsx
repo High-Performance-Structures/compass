@@ -144,6 +144,7 @@ export function ProjectWorkspaceShell({
   canEditRegistry,
   initialRoleId,
   allowedRoleIds,
+  roleDashboardOrders = {},
 }: {
   readonly projectId: string
   readonly totalTaskCount: number
@@ -158,6 +159,7 @@ export function ProjectWorkspaceShell({
   readonly canEditRegistry: boolean
   readonly initialRoleId: ProjectWorkflowRoleId
   readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
+  readonly roleDashboardOrders?: Readonly<Record<string, readonly string[]>>
 }): ReactElement | null {
   const [activeRoleId, setActiveRoleId] =
     useState<ProjectWorkflowRoleId>(initialRoleId)
@@ -233,6 +235,7 @@ export function ProjectWorkspaceShell({
         canUseDeveloperMode={canEditRegistry}
         allowedRoleIds={allowedRoleIds}
         showRoleControls={false}
+        savedOrders={roleDashboardOrders}
       />
     </div>
   )
