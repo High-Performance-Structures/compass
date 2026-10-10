@@ -65,6 +65,8 @@ function ConversationPanelContent() {
   const [isResizing, setIsResizing] = React.useState(false)
   const dragStartX = React.useRef(0)
   const dragStartWidth = React.useRef(0)
+  const conversationLoadIdRef = React.useRef(0)
+  const activeChannelIdRef = React.useRef<string | null>(null)
 
   const loadChannels = React.useCallback(async () => {
     setChannelsLoading(true)
@@ -97,17 +99,25 @@ function ConversationPanelContent() {
   }, [isOpen, loadChannels])
 
   const loadConversation = React.useCallback(async (id: string) => {
+    const requestId = conversationLoadIdRef.current + 1
+    conversationLoadIdRef.current = requestId
+    activeChannelIdRef.current = id
+    const isCurrentRequest = () =>
+      conversationLoadIdRef.current === requestId && activeChannelIdRef.current === id
+
     setLoading(true)
     setLoadError(null)
     setData(null)
     try {
       const result = await getConversationPanelData(id)
+      if (!isCurrentRequest()) return
       if (!result.success || !result.data) {
         setLoadError(result.success ? "Unable to load this conversation." : result.error)
         return
       }
       setData(result.data)
     } catch (error: unknown) {
+      if (!isCurrentRequest()) return
       const message = error instanceof Error ? error.message : ""
       setLoadError(
         /server action|unrecognizedaction/i.test(message)
@@ -115,12 +125,14 @@ function ConversationPanelContent() {
           : "Unable to load this conversation."
       )
     } finally {
-      setLoading(false)
+      if (isCurrentRequest()) setLoading(false)
     }
   }, [])
 
   React.useEffect(() => {
     if (!isOpen || !channelId) {
+      conversationLoadIdRef.current += 1
+      activeChannelIdRef.current = null
       setData(null)
       setLoadError(null)
       return
@@ -295,6 +307,7 @@ function ConversationPanelContent() {
               channelId={data.channel.id}
               initialMessages={data.messages}
               showThreadActions={false}
+              currentUserId={data.currentUserId}
             />
             {data.channel.archivedAt ? (
               <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
