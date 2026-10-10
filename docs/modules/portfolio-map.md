@@ -14,7 +14,8 @@ block, with a side panel of quick information and links into each job.
   (`isMappedDepartment`). Projects with the built-in **Internal** job status
   (office records, Compass development and test projects) are left off too;
   the Project Hub has an Internal view for them.
-- **Phases**, in order: Design, Estimating, Negotiation (contract docs
+- **Phases**, in order: Intake (intake and new client info sent), Design,
+  Estimating (including budget estimating and budget estimate sent), Negotiation (contract docs
   through awarded and awaiting funding), Permitting (including awaiting
   groundbreaking), Under construction, Closeout (punch list and warranty).
 - **Per-project override**: the project information page and the map panel

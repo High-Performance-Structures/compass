@@ -69,8 +69,8 @@ describe("owner relief helpers", () => {
 
   it("marks earlier phases done and later ones upcoming", () => {
     const steps = ownerPhaseSteps("permitting")
-    expect(steps.map((step) => step.label)).toEqual(["Design", "Pricing", "Contract", "Permits", "Under construction", "Finishing up"])
-    expect(steps.map((step) => step.state)).toEqual(["done", "done", "done", "current", "upcoming", "upcoming"])
-    expect(steps[5]?.label).toBe("Finishing up")
+    expect(steps.map((step) => step.label)).toEqual(["Getting started", "Design", "Pricing", "Contract", "Permits", "Under construction", "Finishing up"])
+    expect(steps.map((step) => step.state)).toEqual(["done", "done", "done", "done", "current", "upcoming", "upcoming"])
+    expect(steps[6]?.label).toBe("Finishing up")
   })
 })

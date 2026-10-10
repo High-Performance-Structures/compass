@@ -113,6 +113,7 @@ export default function PortfolioTerrain({
     // Theme colors are lifted for contrast against the dark terrain.
     sceneRef.current?.setJobs(jobs, {
       phase: {
+        intake: themeColorHex(PHASE_COLOR_TOKEN.intake, 0.4),
         estimating: themeColorHex(PHASE_COLOR_TOKEN.estimating, 0.45),
         design: themeColorHex(PHASE_COLOR_TOKEN.design, 0.4),
         permitting: themeColorHex(PHASE_COLOR_TOKEN.permitting, 0.3),
