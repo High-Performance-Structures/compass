@@ -40,7 +40,7 @@ export function AgingTowers({
 }): React.ReactElement {
   const max = Math.max(1, ...towers.map((tower) => tower.count))
   return (
-    <div className="flex flex-wrap items-end justify-center gap-6 py-2 sm:justify-start sm:gap-10" role="group" aria-label="Open messages by age">
+    <div className="flex flex-wrap items-start justify-center gap-6 py-2 sm:justify-start sm:gap-10" role="group" aria-label="Open messages by age">
       {towers.map((tower) => {
         const tone = TOWER_TONE[tower.level]
         const height = tower.count === 0 ? MIN_HEIGHT : Math.max(18, Math.round((tower.count / max) * MAX_HEIGHT))
@@ -84,7 +84,8 @@ export function AgingTowers({
                 style={{ bottom: height, height: DEPTH, transform: "skewX(-45deg)", transformOrigin: "bottom left" }}
               />
             </span>
-            <span className="text-center text-xs font-medium leading-tight">{tower.label}</span>
+            {/* Fixed two-line label area keeps every count and tower on the same baseline. */}
+            <span className="flex h-8 items-start justify-center text-center text-xs font-medium leading-tight">{tower.label}</span>
           </button>
         )
       })}
