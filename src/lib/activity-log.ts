@@ -6,6 +6,7 @@ export const ACTIVITY_CATEGORIES = [
   "account",
   "conversation",
   "email",
+  "field",
   "file",
   "financial",
   "presence",
