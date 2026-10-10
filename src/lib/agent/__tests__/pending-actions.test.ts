@@ -13,10 +13,21 @@ vi.mock("@/app/api/compass/themes/route", () => ({ POST: vi.fn() }))
 import { generateAgentToken, validateAgentAuth } from "@/lib/agent/api-auth"
 import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
 import {
+  friendlyDate,
   requiresConfirmation,
   signPendingAction,
   verifyPendingAction,
 } from "@/lib/agent/pending-actions"
+
+describe("friendlyDate", () => {
+  it("formats a date-only value without shifting the day", () => {
+    expect(friendlyDate("2026-10-12")).toBe("Mon, Oct 12, 2026")
+  })
+
+  it("leaves anything else as given", () => {
+    expect(friendlyDate("next Monday")).toBe("next Monday")
+  })
+})
 
 const secret = "test-agent-secret"
 const pending = {
