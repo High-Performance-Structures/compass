@@ -7,6 +7,7 @@ import {
   resetFeatureSettings,
   saveFeatureSettings,
 } from "@/app/actions/feature-settings"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -162,12 +163,30 @@ function MessageDeskSettingsSection(): React.ReactElement {
   )
 }
 
+/** Price sheets live on their own page; Settings links to it so admins can find it. */
+function NuTechCatalogLink(): React.ReactElement {
+  return (
+    <section aria-labelledby="nutech-catalog-settings" className="flex flex-wrap items-center justify-between gap-3 border-b pb-6">
+      <div>
+        <h2 id="nutech-catalog-settings" className="text-base font-semibold">Nu-Tech product catalog</h2>
+        <p className="text-sm text-muted-foreground">
+          Import the published price sheets, activate a catalog version, and map products to Sage cost codes.
+        </p>
+      </div>
+      <Button asChild size="sm" variant="outline">
+        <Link href="/dashboard/nutech/catalog">Open product catalog →</Link>
+      </Button>
+    </section>
+  )
+}
+
 /** Company workflow rules. Each feature's editable settings get a section here. */
 export function WorkflowsTab(): React.ReactElement {
   return (
     <div className="space-y-6">
       <MessageDeskSettingsSection />
       <ProjectAgingSettingsSection />
+      <NuTechCatalogLink />
       <NuTechEmailSettingsSection />
     </div>
   )
