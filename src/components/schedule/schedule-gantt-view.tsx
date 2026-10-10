@@ -101,7 +101,10 @@ import {
   ganttWheelIntent,
   nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
+  persistGanttScrollPosition,
   revealBarScrollLeft,
+  scheduleScrollStorageKey,
+  shouldRestoreGanttScroll,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
 
@@ -218,10 +221,9 @@ export function ScheduleGanttView({
     []
   )
   const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
-  const scrollStorageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
-  const scrollRestoredProjectRef = useRef<string | null>(null)
+  const scrollRestoredProjectRef = useRef<string | null | undefined>(undefined)
   // The chart can rebuild once while loading; keep opening on today until then.
   const openAtTodayUntilRef = useRef(0)
   // The list and chart mirror each other's vertical scroll. Each side ignores
@@ -242,7 +244,7 @@ export function ScheduleGanttView({
     []
   )
   const preferenceScopeKey = projectId ?? "unified"
-  const scrollStorageKey = `compass:schedule-scroll:${preferenceScopeKey}`
+  const scrollStorageKey = scheduleScrollStorageKey(projectId)
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects]
@@ -330,41 +332,14 @@ export function ScheduleGanttView({
   const rememberScrollPosition = useCallback(
     (position: GanttScrollPosition) => {
       scrollPositionRef.current = position
-      if (scrollStorageTimerRef.current) {
-        clearTimeout(scrollStorageTimerRef.current)
-      }
-      scrollStorageTimerRef.current = setTimeout(() => {
-        try {
-          window.sessionStorage.setItem(
-            scrollStorageKey,
-            JSON.stringify(scrollPositionRef.current)
-          )
-        } catch {
-          // In-memory state still preserves this visit.
-        }
-      }, 150)
+      persistGanttScrollPosition(
+        window.sessionStorage,
+        scrollStorageKey,
+        position
+      )
     },
     [scrollStorageKey]
   )
-
-  const flushScrollPosition = useCallback(() => {
-    if (scrollStorageTimerRef.current) {
-      clearTimeout(scrollStorageTimerRef.current)
-      scrollStorageTimerRef.current = null
-    }
-    try {
-      window.sessionStorage.setItem(
-        scrollStorageKey,
-        JSON.stringify(scrollPositionRef.current)
-      )
-    } catch {
-      // Persisting the position is optional.
-    }
-  }, [scrollStorageKey])
-
-  useEffect(() => {
-    return flushScrollPosition
-  }, [flushScrollPosition])
 
   useEffect(() => {
     const taskList = taskListRef.current
@@ -450,7 +425,8 @@ export function ScheduleGanttView({
       }
 
       let position = scrollPositionRef.current
-      if (scrollRestoredProjectRef.current !== projectId) {
+      let restoredFromStorage = false
+      if (shouldRestoreGanttScroll(projectId, scrollRestoredProjectRef.current)) {
         try {
           const stored = window.sessionStorage.getItem(scrollStorageKey)
           if (stored) {
@@ -475,6 +451,7 @@ export function ScheduleGanttView({
                 top: parsed.top,
                 ...(anchorDate ? { anchorDate } : {}),
               }
+              restoredFromStorage = true
             }
           }
         } catch {
@@ -492,10 +469,11 @@ export function ScheduleGanttView({
       const openAtToday = !remembered || performance.now() < openAtTodayUntilRef.current
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          // Opening only moves the timeline sideways; rows and focus stay put.
-          const anchorDate = openAtToday ? localIsoDate(new Date()) : position.anchorDate
-          if (anchorDate && scrollToDateRef.current) {
-            scrollToDateRef.current(anchorDate)
+          // Persisted numeric positions must be restored directly. Recomputing
+          // from an anchor date can clamp to zero in mobile WebKit while the
+          // Gantt content is still laying out, losing the saved viewport.
+          if (!restoredFromStorage && openAtToday && scrollToDateRef.current) {
+            scrollToDateRef.current(localIsoDate(new Date()))
           } else {
             container.scrollLeft = position.left
           }
