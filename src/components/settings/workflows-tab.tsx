@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
+import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
 
@@ -167,6 +168,7 @@ export function WorkflowsTab(): React.ReactElement {
     <div className="space-y-6">
       <MessageDeskSettingsSection />
       <ProjectAgingSettingsSection />
+      <NuTechEmailSettingsSection />
     </div>
   )
 }

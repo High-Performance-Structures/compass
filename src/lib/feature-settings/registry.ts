@@ -42,10 +42,39 @@ export const projectAgingSettingsSchema = z.object({
 
 export type ProjectAgingSettings = z.infer<typeof projectAgingSettingsSchema>
 
+const optionalEmail = z.union([z.literal(""), z.email()])
+
+/**
+ * Nu-Tech (material sales) emails: the mailbox they are sent from, the outside
+ * parties' details the templates fill in, and per-template text that replaces
+ * the built-in wording. Blank values leave the matching merge field empty.
+ */
+export const nuTechEmailSettingsSchema = z.object({
+  senderAddress: optionalEmail,
+  senderName: z.string().max(80),
+  officePhone: z.string().max(40),
+  officeHours: z.string().max(80),
+  manufacturerOrdersEmail: optionalEmail,
+  manufacturerCcEmail: optionalEmail,
+  dealerAccountNumber: z.string().max(40),
+  warehouseName: z.string().max(80),
+  warehouseAddress: z.string().max(160),
+  warehousePhone: z.string().max(40),
+  warehouseEmail: optionalEmail,
+  warehouseDockHours: z.string().max(80),
+  templates: z.record(
+    z.string().min(1).max(60),
+    z.object({ subject: z.string().min(1).max(200), body: z.string().min(1).max(8000) }),
+  ),
+})
+
+export type NuTechEmailSettings = z.infer<typeof nuTechEmailSettingsSchema>
+
 /** Settings type for each registered feature key. */
 type FeatureSettingsTypes = {
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
+  readonly "nutech-emails": NuTechEmailSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -70,6 +99,26 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "When a job's client follow-up is due or overdue, by job status, counted in business days since the last client contact.",
     defaults: { statuses: {} },
     schema: projectAgingSettingsSchema,
+  },
+  "nutech-emails": {
+    label: "Nu-Tech emails",
+    description: "The mailbox Nu-Tech order emails are sent from, the manufacturer, warehouse and office details they fill in, and each template's wording.",
+    defaults: {
+      senderAddress: "",
+      senderName: "",
+      officePhone: "",
+      officeHours: "",
+      manufacturerOrdersEmail: "",
+      manufacturerCcEmail: "",
+      dealerAccountNumber: "",
+      warehouseName: "",
+      warehouseAddress: "",
+      warehousePhone: "",
+      warehouseEmail: "",
+      warehouseDockHours: "",
+      templates: {},
+    },
+    schema: nuTechEmailSettingsSchema,
   },
 }
 
