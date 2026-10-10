@@ -52,6 +52,8 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   budget_estimate_sent: "estimating",
   estimating: "estimating",
   estimate_sent: "estimating",
+  awaiting_response: "estimating",
+  follow_up: "estimating",
   takeoff: "estimating",
   design_proposal: "design",
   design_proposal_sent: "design",

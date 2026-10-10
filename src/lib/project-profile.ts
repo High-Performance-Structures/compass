@@ -157,6 +157,12 @@ export const PROJECT_JOB_STATUS_DEFINITIONS = [
     followUpCadenceDays: 3,
   },
   {
+    id: "awaiting_response",
+    label: "Awaiting Response",
+    followUpCadenceDays: 3,
+  },
+  { id: "follow_up", label: "Follow-up", followUpCadenceDays: 2 },
+  {
     id: "design_proposal",
     label: "Design Proposal",
     followUpCadenceDays: 3,
