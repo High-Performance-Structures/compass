@@ -11,7 +11,7 @@ unavailable. The live record in Compass stays authoritative.
 | Purchase orders | PO pickup copy (`PurchaseOrderDocument`) | Purchasing (`12_Purchasing`) |
 | Estimates | Client estimate report (`EstimateClientReport`) | Estimate (`02_WorkingEstimate`) |
 | RFIs | RFI report (`rfiReport` + `portalReportHtml`) | Communications (`06_Communications`) |
-| Change orders | Change order report (`changeOrderReport` + `portalReportHtml`) | Change Orders (`11_ChangeOrders`) |
+| Change orders | Change order report (`changeOrderReport` + `portalReportHtml`) | Change Orders (`16_ChangeOrders`) |
 
 Every copy uses the format Compass already prints for that record, with the
 department's logo. The in-app print and the Drive copy share one component,
@@ -28,7 +28,8 @@ Milestones also save a **frozen copy** that is never changed:
 | RFI answered | `answered_at` is set |
 | Change order approved | `executed_at` is set |
 
-A subfolder that does not exist yet is created with its standard name.
+The job never creates project folders. If a record's subfolder is missing from
+the project, the copy is held back and the record names the folder it needs.
 
 ## Keeping Compass fast
 

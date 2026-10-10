@@ -95,7 +95,7 @@ describe("project Drive provisioning", () => {
       name: "O-SequentialNumber-AddressNumber-LastName",
       mimeType: FOLDER_MIME_TYPE,
     })
-    for (const name of ["03_PayRequests", "11_ChangeOrders"]) {
+    for (const name of ["03_PayRequests", "16_ChangeOrders"]) {
       client.files.set(`template-${name}`, {
         id: `template-${name}`,
         name,
@@ -112,7 +112,7 @@ describe("project Drive provisioning", () => {
     expect(result.createdRoot).toBe(true)
     expect(result.createdChildCount).toBe(2)
     expect(client.createdNames).toContain("03_PayRequests")
-    expect(client.createdNames).toContain("11_ChangeOrders")
+    expect(client.createdNames).toContain("16_ChangeOrders")
     expect(result.parentFolderId).toBe("0Bzi_pskoDROqd3RCemxpT3Flanc")
   })
 

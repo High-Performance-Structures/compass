@@ -25,6 +25,12 @@ const CANDIDATE_LIMIT = 25
 const DISABLED_RECHECK_MS = 30 * 60 * 1000
 const MAX_BACKOFF_MS = 6 * 60 * 60 * 1000
 const MAX_SNAPSHOT_ATTEMPTS = 6
+/**
+ * How long a run holds a record it is printing. Printing takes well under a
+ * minute; the lease keeps the next minute's run from picking up the same
+ * record and uploading a second copy.
+ */
+const CLAIM_LEASE_MS = 10 * 60 * 1000
 /** The change sweep runs on minutes divisible by this. */
 const SWEEP_EVERY_MINUTES = 10
 
@@ -121,6 +127,19 @@ async function projectFolderId(db: Db, projectId: string): Promise<string | null
     .where(eq(projects.id, projectId))
     .limit(1)
   return project?.folderId?.trim() || null
+}
+
+/**
+ * Atomically takes a due record for this run by pushing its due time past the
+ * lease. Returns false when another run already took it.
+ */
+async function claimRow(db: Db, row: ProjectRecordDriveFile, now: Date): Promise<boolean> {
+  const claimed = await db
+    .update(projectRecordDriveFiles)
+    .set({ dueAt: new Date(now.getTime() + CLAIM_LEASE_MS).toISOString() })
+    .where(and(eq(projectRecordDriveFiles.id, row.id), eq(projectRecordDriveFiles.dueAt, row.dueAt), eq(projectRecordDriveFiles.status, row.status)))
+    .returning({ id: projectRecordDriveFiles.id })
+  return claimed.length > 0
 }
 
 /** Refreshes one record's living copy. Returns what happened. */
@@ -238,6 +257,19 @@ async function runSnapshots(
     if (!org.settings.milestoneCopies || !paperTrailAllows(org.settings, snapshot.recordType, snapshot.projectId)) continue
     const definition = PAPER_TRAIL_RECORDS[snapshot.recordType]
     if (!definition.load || !org.drive) continue
+    // Claim it: only the run that moves attempts forward prints this copy.
+    const claimed = await db
+      .update(projectRecordDriveSnapshots)
+      .set({ attempts: snapshot.attempts + 1 })
+      .where(
+        and(
+          eq(projectRecordDriveSnapshots.id, snapshot.id),
+          eq(projectRecordDriveSnapshots.attempts, snapshot.attempts),
+          inArray(projectRecordDriveSnapshots.status, ["pending", "failed"]),
+        ),
+      )
+      .returning({ id: projectRecordDriveSnapshots.id })
+    if (claimed.length === 0) continue
     try {
       const record = await definition.load(db, snapshot.recordId)
       if (!record) {
@@ -275,7 +307,7 @@ async function runSnapshots(
     } catch (error) {
       await db
         .update(projectRecordDriveSnapshots)
-        .set({ status: "failed", attempts: snapshot.attempts + 1, lastError: errorMessage(error) })
+        .set({ status: "failed", lastError: errorMessage(error) })
         .where(eq(projectRecordDriveSnapshots.id, snapshot.id))
     }
   }
@@ -334,6 +366,7 @@ export async function runPaperTrail(db: Db, env: CloudflareEnv, now = new Date()
       continue
     }
     if (worked >= MAX_RECORDS_PER_RUN) continue
+    if (!(await claimRow(db, row, now))) continue
     worked += 1
     const outcome = await syncRecord(db, env, row, org, now)
     if (outcome === "saved") saved += 1

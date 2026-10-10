@@ -110,22 +110,18 @@ async function sharedOutside(
   return result
 }
 
-async function findOrCreateChildFolder(
+async function findChildFolder(
   drive: PaperTrailDrive,
   parentId: string,
   match: (name: string) => boolean,
-  createName: string,
-): Promise<string> {
+): Promise<string | null> {
   const children = await drive.client.listFiles(drive.googleEmail, {
     folderId: parentId,
     query: `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}'`,
     pageSize: 200,
     ...(drive.sharedDriveId ? { driveId: drive.sharedDriveId } : {}),
   })
-  const existing = children.files.find((file) => match(file.name))
-  if (existing) return existing.id
-  const created = await drive.client.createFolder(drive.googleEmail, { name: createName, parentId })
-  return created.id
+  return children.files.find((file) => match(file.name))?.id ?? null
 }
 
 /**
@@ -150,22 +146,28 @@ export async function resolveRecordFolder(input: {
     }
   }
   const category = PROJECT_FILE_CATEGORIES.find((item) => item.key === input.category)
-  const createName = category?.currentNames[0] ?? category?.label ?? input.category
-  const subfolderId = await findOrCreateChildFolder(
+  // Project folders come from the department templates; the paper trail never
+  // adds its own, so a missing subfolder is reported instead of invented.
+  const subfolderId = await findChildFolder(
     drive,
     projectFolderId,
     (name) => classifyProjectFolderName(name)?.key === input.category,
-    createName,
   )
+  if (!subfolderId) {
+    const expected = category?.currentNames[0] ?? category?.label ?? input.category
+    return {
+      ok: false,
+      error: `This project's Drive folder has no ${expected} folder. Add it from the department template, then save again.`,
+    }
+  }
   if (!(await sharedOutside(db, drive, subfolderId, internalDomains, now))) {
     return { ok: true, folderId: subfolderId, heldPrivate: false }
   }
-  const privateId = await findOrCreateChildFolder(
-    drive,
-    projectFolderId,
-    (name) => name === PRIVATE_RECORDS_FOLDER_NAME,
-    PRIVATE_RECORDS_FOLDER_NAME,
-  )
+  // The private records folder is the one folder the paper trail may create:
+  // it exists only to keep internal records out of a shared subfolder.
+  const privateId =
+    (await findChildFolder(drive, projectFolderId, (name) => name === PRIVATE_RECORDS_FOLDER_NAME)) ??
+    (await drive.client.createFolder(drive.googleEmail, { name: PRIVATE_RECORDS_FOLDER_NAME, parentId: projectFolderId })).id
   if (await sharedOutside(db, drive, privateId, internalDomains, now)) {
     return { ok: false, error: `“${PRIVATE_RECORDS_FOLDER_NAME}” is shared outside the company${await describeOutsideAccess(drive, privateId, internalDomains)}.` }
   }

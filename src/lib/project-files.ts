@@ -163,8 +163,10 @@ export const PROJECT_FILE_CATEGORIES: readonly ProjectFileCategory[] = [
   {
     key: "change-orders",
     label: "Change Orders",
-    currentNames: ["11_ChangeOrders"],
-    legacyNames: [],
+    // Renumbered from 11 (which clashed with 11_ConstructionSchedule) on
+    // 2026-10-10; the old name stays recognized for projects not yet renamed.
+    currentNames: ["16_ChangeOrders"],
+    legacyNames: ["11_ChangeOrders"],
   },
   {
     key: "purchasing",
