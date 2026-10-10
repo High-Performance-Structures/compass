@@ -8,7 +8,7 @@ import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { sendCompassEmail } from "@/lib/email/compass-email"
+import { COMPASS_GMAIL_SEND_SCOPE, getCompassGmailAccessToken, sendCompassEmail } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   NUTECH_EMAIL_TEMPLATES,
@@ -291,5 +291,49 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
   } catch (error) {
     console.error("Nu-Tech email failed", error)
     return { success: false, error: error instanceof Error ? error.message : "Unable to send the email." }
+  }
+}
+
+/** Plain-language reason Google refused to let Compass send as a mailbox. */
+function mailboxProblem(message: string, address: string): string {
+  if (/Invalid email or User ID/i.test(message)) {
+    return `Google doesn't know ${address} as a mailbox in your Workspace. If it is an alias or a group, make it a user mailbox (or tell us which user owns it); if it belongs to a separate Google account, it needs to be in the same Workspace as Compass.`
+  }
+  if (/unauthorized_client/i.test(message)) {
+    return "Compass's Google connection isn't allowed to send email. In the Google Admin console, add the Gmail send scope (https://www.googleapis.com/auth/gmail.send) to Compass's domain-wide delegation."
+  }
+  if (/not connected/i.test(message)) return message
+  return `Google refused: ${message}`
+}
+
+/**
+ * Check that Compass may send as the Nu-Tech mailbox: asks Google for a
+ * send-only token for it. Nothing is sent or read.
+ */
+export async function checkNuTechSendingMailbox(): Promise<Result<{ readonly address: string }>> {
+  try {
+    const user = await requireAuth()
+    if (!isInternalStaffRole(user.role)) return { success: false, error: "Available to office staff." }
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const settings = await readFeatureSettings(db, organizationId, "nutech-emails")
+    const address = settings.senderAddress
+    if (!address) return { success: false, error: "Enter and save the sending mailbox first." }
+    try {
+      const access = await getCompassGmailAccessToken({
+        env,
+        db,
+        organizationId,
+        scopes: [COMPASS_GMAIL_SEND_SCOPE],
+        sender: address,
+      })
+      if (!access.success) return { success: false, error: mailboxProblem(access.error, address) }
+    } catch (error) {
+      return { success: false, error: mailboxProblem(error instanceof Error ? error.message : String(error), address) }
+    }
+    return { success: true, data: { address } }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to check the mailbox." }
   }
 }
