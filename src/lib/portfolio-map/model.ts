@@ -279,10 +279,10 @@ export function portfolioHealth(pastDueCount: number, stalledCount: number): Por
  * Jobs in the same town would stack on one point; fan them out on a small
  * ring (about 3 km) in a stable order.
  */
-export function spreadSharedTowns(
-  jobs: readonly PortfolioMapJob[],
-): readonly PortfolioMapJob[] {
-  const byTown = new Map<string, PortfolioMapJob[]>()
+export function spreadSharedTowns<
+  T extends { readonly id: string; readonly town: string | null; readonly lon: number | null; readonly lat: number | null },
+>(jobs: readonly T[]): readonly T[] {
+  const byTown = new Map<string, T[]>()
   for (const job of jobs) {
     if (job.lon === null || job.lat === null || job.town === null) continue
     const group = byTown.get(job.town) ?? []

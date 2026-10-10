@@ -4,7 +4,7 @@ import { projects } from "@/db/schema"
 import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { resolveTown } from "@/lib/portfolio-map/model"
+import { resolveTown, spreadSharedTowns } from "@/lib/portfolio-map/model"
 import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 import { projectDisplayName } from "@/lib/project-display-name"
 import {
@@ -24,6 +24,9 @@ export type SalesPipelineJob = {
   readonly assignedTo: string | null
   readonly address: string | null
   readonly town: string | null
+  /** Map position: the located site, else the town (fanned out when towns repeat). */
+  readonly lon: number | null
+  readonly lat: number | null
   readonly stage: SalesStageId
   readonly jobStatusId: string
   readonly statusLabel: string
@@ -68,6 +71,10 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
         projectManager: projects.projectManager,
         deliveryMethod: projects.deliveryMethod,
         updatedAt: projects.updatedAt,
+        siteLatitude: projects.siteLatitude,
+        siteLongitude: projects.siteLongitude,
+        siteLocationAddress: projects.siteLocationAddress,
+        siteLocationStatus: projects.siteLocationStatus,
       })
       .from(projects)
       .where(and(eq(projects.organizationId, user.organizationId), inArray(projects.department, departments)))
@@ -92,6 +99,8 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
           assignedTo: detail.projectManager,
           address: detail.address,
           town: town?.town ?? null,
+          lon: town?.lon ?? null,
+          lat: town?.lat ?? null,
           stage,
           jobStatusId: project.jobStatusId,
           statusLabel: project.jobStatusLabel,
@@ -99,7 +108,16 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
           updatedAt: detail.updatedAt,
         }]
       })
-      return jobs.length > 0 ? [{ department, title, jobs }] : []
+      const placed = spreadSharedTowns(jobs).map((job) => {
+        const detail = detailById.get(job.id)
+        const siteFound =
+          detail?.siteLocationStatus === "found" &&
+          detail.siteLocationAddress === (detail.address?.trim() ?? "") &&
+          detail.siteLatitude !== null &&
+          detail.siteLongitude !== null
+        return siteFound ? { ...job, lat: detail.siteLatitude, lon: detail.siteLongitude } : job
+      })
+      return placed.length > 0 ? [{ department, title, jobs: placed }] : []
     })
   } catch (error) {
     console.error("Sales pipeline data failed", error)
