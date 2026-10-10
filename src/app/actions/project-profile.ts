@@ -3,6 +3,7 @@
 import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import { isDeliveryMethod } from "@/lib/sales-pipeline/stages"
 
 import { getDb } from "@/db"
 import {
@@ -1617,6 +1618,71 @@ export async function updateProjectJobStatus(input: {
   } catch (error) {
     console.error("Unable to update project job status", error)
     return { success: false, error: "Unable to update project status." }
+  }
+}
+
+export async function updateProjectDeliveryMethod(input: {
+  readonly projectId: string
+  readonly deliveryMethod: string | null
+}): Promise<ProjectProfileResult> {
+  try {
+    const { db, organizationId, user } = await projectProfileContext(
+      input.projectId,
+      "update",
+    )
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
+      return { success: false, error: "Demo data cannot be changed." }
+    }
+    const deliveryMethod = input.deliveryMethod
+    if (deliveryMethod !== null && !isDeliveryMethod(deliveryMethod)) {
+      return { success: false, error: "Choose delivery or customer pickup." }
+    }
+
+    const existingRows = await db
+      .select({ deliveryMethod: projects.deliveryMethod })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    const existing = existingRows[0]
+    if (!existing) return { success: false, error: "Project not found." }
+    if (existing.deliveryMethod === deliveryMethod) return { success: true }
+
+    const updatedAt = nowIso()
+    await db.batch([
+      db
+        .update(projects)
+        .set({ deliveryMethod, updatedAt })
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            eq(projects.organizationId, organizationId),
+          ),
+        ),
+      db.insert(projectProfileAuditEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        projectId: input.projectId,
+        actorUserId: user.id,
+        eventType: "project_delivery_method_updated",
+        entityType: "project",
+        entityId: input.projectId,
+        beforeJson: JSON.stringify({ deliveryMethod: existing.deliveryMethod }),
+        afterJson: JSON.stringify({ deliveryMethod }),
+        createdAt: updatedAt,
+      }),
+    ])
+
+    revalidateProjectProfile(input.projectId)
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to update project delivery method", error)
+    return { success: false, error: "Unable to save the delivery method." }
   }
 }
 
