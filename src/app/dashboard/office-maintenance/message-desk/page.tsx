@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { PageHeader } from "@/components/page-header"
+import { MessageDeskBoard } from "@/components/staff-message-desk/message-desk-board"
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -39,7 +40,8 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
       </main>
     )
   }
-  const { records, assignees, inboundTexts } = result.data
+  const { records, assignees, inboundTexts, viewerId } = result.data
+  const openCount = records.filter((record) => record.status !== "resolved").length
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">
@@ -48,7 +50,7 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
         back={{ href: "/dashboard/projects", label: "Office maintenance" }}
         icon={<IconPhone className="size-6 text-muted-foreground" />}
         title="Staff Message Desk"
-        actions={<Badge variant="secondary">{records.length} messages</Badge>}
+        actions={<Badge variant="secondary">{openCount} open</Badge>}
       />
 
       <section className="border-b pb-6" aria-labelledby="new-staff-message">
@@ -117,34 +119,12 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
         )}
       </section>
 
-      <section className="space-y-4" aria-labelledby="active-staff-messages">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <IconInbox className="size-5 text-muted-foreground" />
-          <h2 id="active-staff-messages" className="text-lg font-semibold">Message Desk records</h2>
-        </div>
-        {records.length === 0 ? (
-          <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">No message records yet.</div>
-        ) : records.map((record) => (
-          <article id={`message-${record.id}`} key={record.id} className="border bg-background p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-semibold">{record.subject}</h3>
-                  <Badge variant="outline">{record.sourceType === "call" ? "Call" : "Message"}</Badge>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {record.callerName}
-                  {record.callerCompany ? ` · ${record.callerCompany}` : ""}
-                  {record.callerPhone ? ` · ${record.callerPhone}` : ""}
-                  {record.callerEmail ? ` · ${record.callerEmail}` : ""}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">Assigned to {record.assigneeName} · {timestamp(record.createdAt)}</p>
-            </div>
-            <p className="mt-4 whitespace-pre-wrap border-l-2 pl-3 text-sm leading-6">{record.body}</p>
-          </article>
-        ))}
-      </section>
+      <MessageDeskBoard
+        records={records}
+        assignees={assignees}
+        viewerId={viewerId}
+        nowIso={new Date().toISOString()}
+      />
 
       <section className="space-y-4 border-t pt-6" aria-labelledby="inbound-text-routing">
         <div className="flex items-center gap-2 border-b pb-2">

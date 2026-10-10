@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -8,6 +8,7 @@ import {
   gotoInboundEvents,
   organizations,
   organizationMembers,
+  staffMessageEvents,
   staffMessageRecords,
   users,
 } from "@/db/schema"
@@ -23,6 +24,12 @@ import {
 import { createNotificationEvent } from "@/lib/notifications/create-event"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import {
+  STAFF_MESSAGE_STATUS_LABEL,
+  isStaffMessageStatus,
+  staffMessageStatus,
+  type StaffMessageStatus,
+} from "@/lib/staff-message-desk/triage"
 
 const MESSAGE_DESK_PATH = "/dashboard/office-maintenance/message-desk"
 
@@ -55,6 +62,21 @@ export type StaffMessageDeskRecordDto = Readonly<{
   readonly createdBy: string | null
   readonly createdAt: string
   readonly updatedAt: string
+  readonly status: StaffMessageStatus
+  /** Last status change, note or reassignment (falls back to updatedAt). */
+  readonly lastActivityAt: string
+  readonly resolvedAt: string | null
+  readonly history: readonly StaffMessageEventDto[]
+}>
+
+export type StaffMessageEventDto = Readonly<{
+  readonly id: string
+  readonly actorName: string
+  readonly eventType: string
+  readonly fromStatus: string | null
+  readonly toStatus: string | null
+  readonly note: string | null
+  readonly createdAt: string
 }>
 
 export type StaffMessageAssigneeDto = Readonly<{
@@ -71,6 +93,7 @@ export type StaffMessageInboundTextDto = Readonly<{
 }>
 
 export type StaffMessageDeskData = Readonly<{
+  readonly viewerId: string
   readonly records: readonly StaffMessageDeskRecordDto[]
   readonly assignees: readonly StaffMessageAssigneeDto[]
   readonly inboundTexts: readonly StaffMessageInboundTextDto[]
@@ -322,6 +345,9 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
         createdBy: staffMessageRecords.createdBy,
         createdAt: staffMessageRecords.createdAt,
         updatedAt: staffMessageRecords.updatedAt,
+        status: staffMessageRecords.status,
+        lastActivityAt: staffMessageRecords.lastActivityAt,
+        resolvedAt: staffMessageRecords.resolvedAt,
         assigneeDisplayName: users.displayName,
         assigneeFirstName: users.firstName,
         assigneeLastName: users.lastName,
@@ -351,9 +377,40 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
         )
       )
       .orderBy(desc(gotoInboundEvents.receivedAt))
+    const events = rows.length
+      ? await db
+          .select({
+            id: staffMessageEvents.id,
+            messageId: staffMessageEvents.messageId,
+            actorName: staffMessageEvents.actorName,
+            eventType: staffMessageEvents.eventType,
+            fromStatus: staffMessageEvents.fromStatus,
+            toStatus: staffMessageEvents.toStatus,
+            note: staffMessageEvents.note,
+            createdAt: staffMessageEvents.createdAt,
+          })
+          .from(staffMessageEvents)
+          .where(eq(staffMessageEvents.organizationId, organizationId))
+          .orderBy(asc(staffMessageEvents.createdAt))
+      : []
+    const historyByMessage = new Map<string, StaffMessageEventDto[]>()
+    for (const event of events) {
+      const list = historyByMessage.get(event.messageId) ?? []
+      list.push({
+        id: event.id,
+        actorName: event.actorName,
+        eventType: event.eventType,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        note: event.note,
+        createdAt: event.createdAt,
+      })
+      historyByMessage.set(event.messageId, list)
+    }
     return {
       success: true,
       data: {
+        viewerId: user.id,
         records: rows.map((row) => ({
           id: row.id,
           sourceType: sourceType(row.sourceType),
@@ -374,6 +431,10 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
           createdBy: row.createdBy,
           createdAt: row.createdAt,
           updatedAt: row.updatedAt,
+          status: staffMessageStatus(row.status),
+          lastActivityAt: row.lastActivityAt ?? row.updatedAt,
+          resolvedAt: row.resolvedAt,
+          history: historyByMessage.get(row.id) ?? [],
         })),
         assignees: await activeAssignees(db, organizationId, user.id),
         inboundTexts: inboundRows.map((row) => ({
@@ -531,4 +592,101 @@ export async function submitRouteGotoTextToMessageDesk(
   formData: FormData
 ): Promise<void> {
   await routeGotoTextToMessageDesk(formData)
+}
+
+const MAX_TRIAGE_BATCH = 100
+
+/**
+ * Updates one or more Message Desk records: change status, reassign to another
+ * staff member, and/or add a note. Every change is recorded in the message's
+ * history and counts as activity, which resets its aging flag.
+ */
+export async function updateStaffMessages(input: {
+  readonly ids: readonly string[]
+  readonly status?: string | null
+  readonly assigneeUserId?: string | null
+  readonly note?: string | null
+}): Promise<ActionResult<{ readonly updated: number }>> {
+  try {
+    const { db, organizationId, user } = await staffMessageContext()
+    const ids = [...new Set(input.ids.map((id) => id.trim()).filter((id) => id.length > 0))]
+    if (ids.length === 0) throw new Error("Choose at least one message")
+    if (ids.length > MAX_TRIAGE_BATCH) throw new Error(`Update at most ${MAX_TRIAGE_BATCH} messages at a time`)
+    const requestedStatus = input.status ? input.status.trim() : null
+    if (requestedStatus && !isStaffMessageStatus(requestedStatus)) throw new Error("Choose a listed status")
+    const nextStatus: StaffMessageStatus | null =
+      requestedStatus && isStaffMessageStatus(requestedStatus) ? requestedStatus : null
+    const note = input.note?.trim() ? input.note.trim().slice(0, 4000) : null
+    const assignee = input.assigneeUserId
+      ? await assigneeFor(db, organizationId, user.id, input.assigneeUserId)
+      : null
+    if (!nextStatus && !assignee && !note) throw new Error("Choose a status, a new owner, or add a note")
+
+    const records = await db
+      .select({
+        id: staffMessageRecords.id,
+        subject: staffMessageRecords.subject,
+        status: staffMessageRecords.status,
+        assigneeUserId: staffMessageRecords.assigneeUserId,
+      })
+      .from(staffMessageRecords)
+      .where(and(eq(staffMessageRecords.organizationId, organizationId), inArray(staffMessageRecords.id, ids)))
+    if (records.length !== ids.length) throw new Error("Some of those messages no longer exist. Refresh and try again.")
+
+    const now = new Date().toISOString()
+    const actorName = (user.displayName?.trim() || user.email).slice(0, 200)
+    for (const record of records) {
+      const fromStatus = staffMessageStatus(record.status)
+      const statusChanged = nextStatus !== null && nextStatus !== fromStatus
+      const reassigned = assignee !== null && assignee.id !== record.assigneeUserId
+      if (!statusChanged && !reassigned && !note) continue
+      await db
+        .update(staffMessageRecords)
+        .set({
+          ...(statusChanged && nextStatus
+            ? {
+                status: nextStatus,
+                statusChangedAt: now,
+                resolvedAt: nextStatus === "resolved" ? now : null,
+                resolvedBy: nextStatus === "resolved" ? user.id : null,
+              }
+            : {}),
+          ...(reassigned && assignee ? { assigneeUserId: assignee.id } : {}),
+          lastActivityAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(staffMessageRecords.id, record.id), eq(staffMessageRecords.organizationId, organizationId)))
+      await db.insert(staffMessageEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        messageId: record.id,
+        actorUserId: user.id,
+        actorName,
+        eventType: statusChanged ? "status_changed" : reassigned ? "reassigned" : "note",
+        fromStatus: statusChanged ? fromStatus : null,
+        toStatus: statusChanged ? nextStatus : null,
+        fromAssigneeUserId: reassigned ? record.assigneeUserId : null,
+        toAssigneeUserId: reassigned && assignee ? assignee.id : null,
+        note:
+          note ??
+          (reassigned && assignee
+            ? `Reassigned to ${displayName(assignee)}.`
+            : statusChanged && nextStatus
+              ? `Marked ${STAFF_MESSAGE_STATUS_LABEL[nextStatus].toLowerCase()}.`
+              : null),
+        createdAt: now,
+      })
+      if (reassigned && assignee) {
+        try {
+          await notifyAssignment({ organizationId, recordId: record.id, subject: record.subject, assignee, actor: user })
+        } catch (error) {
+          console.error("[staff-message-desk] reassignment notification error", error)
+        }
+      }
+    }
+    revalidatePath(MESSAGE_DESK_PATH)
+    return { success: true, data: { updated: records.length } }
+  } catch (error) {
+    return failure(error)
+  }
 }
