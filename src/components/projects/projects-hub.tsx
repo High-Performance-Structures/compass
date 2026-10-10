@@ -64,6 +64,13 @@ import {
 } from "@/lib/sage/client-project-write"
 import { projectDepartmentDisplayName } from "@/lib/project-branding"
 import { PageHeader } from "@/components/page-header"
+import {
+  ProjectBulkStatusBar,
+  ProjectSelectCheckbox,
+  ProjectSelectionProvider,
+  ProjectSelectionToggle,
+  useProjectSelected,
+} from "@/components/projects/project-bulk-selection"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
 type ProjectStatusBucket = ProjectJobStatusBucket
@@ -505,6 +512,7 @@ function ProjectCard({
   const label = projectLabel(project)
   const subtitle = projectSubtitle(project)
   const departmentId = departmentIdForProject(project)
+  const selected = useProjectSelected(project.id)
   const actionClassName =
     "inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 
@@ -512,10 +520,13 @@ function ProjectCard({
     <article
       className={cn(
         "group rounded-md border border-l-[6px] bg-card px-3 py-2.5 shadow-sm transition-colors hover:bg-muted/55",
-        departmentBorderClassName(departmentId)
+        departmentBorderClassName(departmentId),
+        selected && "ring-2 ring-primary/60"
       )}
     >
       <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-2">
+        <ProjectSelectCheckbox projectId={project.id} label={label} />
         <div className="min-w-0">
           <Link
             href={`/dashboard/projects/${project.id}`}
@@ -528,6 +539,7 @@ function ProjectCard({
               {subtitle}
             </p>
           )}
+        </div>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
@@ -615,6 +627,7 @@ function DepartmentLane({
               projects
             </span>
           </span>
+          <ProjectSelectionToggle visibleProjectIds={visibleProjects.map((project) => project.id)} />
           {!isFiltered && group.projects.length > visibleProjects.length && (
             <Button size="sm" variant="outline" asChild>
               <Link href={`/dashboard/projects?department=${group.id}`}>
@@ -854,9 +867,12 @@ function DepartmentLanding({
       <div className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">Projects</h3>
-          <p className="text-xs text-muted-foreground">
-            {group.projects.length} shown from {group.allProjects.length} total.
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs text-muted-foreground">
+              {group.projects.length} shown from {group.allProjects.length} total.
+            </p>
+            <ProjectSelectionToggle visibleProjectIds={group.projects.map((project) => project.id)} />
+          </div>
         </div>
         {group.projects.length > 0 ? (
           <div className="mt-3 grid gap-3 xl:grid-cols-2">
@@ -1285,6 +1301,7 @@ export function ProjectsHub({
   }
 
   return (
+    <ProjectSelectionProvider enabled={canCreateOrUpdateProjects}>
     <div className="min-h-0 flex-1 overflow-y-auto">
       {showProjectManagerDeveloperDialog && (
         <ProjectManagerEmbedDialog
@@ -1865,7 +1882,9 @@ export function ProjectsHub({
             </p>
           </div>
         )}
+        <ProjectBulkStatusBar />
       </div>
     </div>
+    </ProjectSelectionProvider>
   )
 }
