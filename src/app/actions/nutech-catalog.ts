@@ -17,6 +17,7 @@ import { isDemoUser } from "@/lib/demo"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechCatalogImport } from "@/lib/nutech/catalog-import"
 import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
+import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
 import { requireOrg } from "@/lib/org-scope"
 import {
   canFeature,
@@ -329,39 +330,43 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       createdAt: now,
       updatedAt: now,
     }))
-    await db
-      .insert(nuTechProducts)
-      .values(productRows)
-      .onConflictDoUpdate({
-        target: [nuTechProducts.organizationId, nuTechProducts.manufacturerSku],
-        set: {
-          name: sql`excluded.name`,
-          category: sql`excluded.category`,
-          origin: sql`excluded.origin`,
-          priceUnit: sql`excluded.price_unit`,
-          packageQuantity: sql`excluded.package_quantity`,
-          packageLabel: sql`excluded.package_label`,
-          minimumOrderIncrement: sql`excluded.minimum_order_increment`,
-          squareFeetPerUnitMils: sql`excluded.square_feet_per_unit_mils`,
-          airliteTemplateSku: sql`excluded.airlite_template_sku`,
-          airliteTemplateRow: sql`excluded.airlite_template_row`,
-          airliteMappingStatus: sql`excluded.airlite_mapping_status`,
-          active: true,
-          updatedAt: now,
-        },
-      })
-    const storedProducts = await db
-      .select({ id: nuTechProducts.id, manufacturerSku: nuTechProducts.manufacturerSku })
-      .from(nuTechProducts)
-      .where(
-        and(
-          eq(nuTechProducts.organizationId, organizationId),
-          inArray(
-            nuTechProducts.manufacturerSku,
-            imported.products.map((product) => product.manufacturerSku)
-          )
+    // One INSERT per chunk: D1 caps bound parameters at 100 per statement.
+    const productConflictSet = {
+      name: sql`excluded.name`,
+      category: sql`excluded.category`,
+      origin: sql`excluded.origin`,
+      priceUnit: sql`excluded.price_unit`,
+      packageQuantity: sql`excluded.package_quantity`,
+      packageLabel: sql`excluded.package_label`,
+      minimumOrderIncrement: sql`excluded.minimum_order_increment`,
+      squareFeetPerUnitMils: sql`excluded.square_feet_per_unit_mils`,
+      airliteTemplateSku: sql`excluded.airlite_template_sku`,
+      airliteTemplateRow: sql`excluded.airlite_template_row`,
+      airliteMappingStatus: sql`excluded.airlite_mapping_status`,
+      active: true,
+      updatedAt: now,
+    }
+    const productInserts = chunkD1Rows(productRows, 2).map((chunk) =>
+      db
+        .insert(nuTechProducts)
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: [nuTechProducts.organizationId, nuTechProducts.manufacturerSku],
+          set: productConflictSet,
+        })
+    )
+    const [firstProductInsert, ...restProductInserts] = productInserts
+    if (firstProductInsert) await db.batch([firstProductInsert, ...restProductInserts])
+    const storedProducts = (
+      await Promise.all(
+        chunkD1Values(imported.products.map((product) => product.manufacturerSku)).map((skus) =>
+          db
+            .select({ id: nuTechProducts.id, manufacturerSku: nuTechProducts.manufacturerSku })
+            .from(nuTechProducts)
+            .where(and(eq(nuTechProducts.organizationId, organizationId), inArray(nuTechProducts.manufacturerSku, skus)))
         )
       )
+    ).flat()
     const storedIds = new Map(
       storedProducts.map((product) => [product.manufacturerSku, product.id])
     )
@@ -390,7 +395,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       db
         .delete(nuTechCatalogPrices)
         .where(eq(nuTechCatalogPrices.catalogVersionId, versionId)),
-      db.insert(nuTechCatalogPrices).values(priceRows),
+      ...chunkD1Rows(priceRows).map((chunk) => db.insert(nuTechCatalogPrices).values(chunk)),
     ])
     revalidateCatalogPaths()
     return { success: true, id: versionId, productCount: priceRows.length }
