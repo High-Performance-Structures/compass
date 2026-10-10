@@ -106,7 +106,7 @@ describe("project Drive provisioning", () => {
     const result = await provisionProjectDriveFolder(
       client,
       "martine@hps-colorado.com",
-      { department: "O", folderName: "O-214-55 - Smith Residence" }
+      { department: "O", folderName: "O-214-55 - Smith Residence", templateEmail: "integration@example.com" }
     )
 
     expect(result.createdRoot).toBe(true)
@@ -137,11 +137,13 @@ describe("project Drive provisioning", () => {
 
     const first = await provisionProjectDriveFolder(client, "test@example.com", {
       department: "H",
+      templateEmail: "integration@example.com",
       folderName: "H-432-10 - Example",
     })
     const createdAfterFirstRun = client.createdNames.length
     const second = await provisionProjectDriveFolder(client, "test@example.com", {
       department: "H",
+      templateEmail: "integration@example.com",
       folderName: "H-432-10 - Example",
     })
 

@@ -122,7 +122,7 @@ describe("project Drive provisioning", () => {
     const first = await provisionProjectDriveFolder(
       client,
       "projects@hps-colorado.com",
-      { department: "H", folderName: "H-999 - Test Project" }
+      { department: "H", folderName: "H-999 - Test Project", templateEmail: "integration@example.com" }
     )
     expect(first.parentFolderId).toBe(source.folderId)
     expect(first.childFolderNames).toEqual([
@@ -134,7 +134,7 @@ describe("project Drive provisioning", () => {
     const second = await provisionProjectDriveFolder(
       client,
       "projects@hps-colorado.com",
-      { department: "H", folderName: "H-999 - Test Project" }
+      { department: "H", folderName: "H-999 - Test Project", templateEmail: "integration@example.com" }
     )
     expect(second.folderId).toBe(first.folderId)
     expect(second.createdChildCount).toBe(0)
@@ -161,6 +161,7 @@ describe("project Drive provisioning", () => {
       "projects@hps-colorado.com",
       {
         department: "H",
+        templateEmail: "integration@example.com",
         folderName: "H-999-1 - Phase 1",
         parentFolderId: "family-parent",
       },
@@ -172,5 +173,40 @@ describe("project Drive provisioning", () => {
       result.folderId,
     )
     expect(phaseFolder.parents).toEqual(["family-parent"])
+  })
+
+  it("copies the template as the integration account when the submitter cannot open it", async () => {
+    const templateId = projectDriveTemplateFolderId("N")
+    const restricted = new Set([templateId, "template-quotes"])
+    // Staff can create folders in the department root but are not shared on
+    // the Developer templates, which only the integration account can read.
+    class SharedOnlyWithIntegration extends FakeDriveClient {
+      async listFiles(userEmail: string, options: ListFilesOptions = {}): Promise<DriveFileList> {
+        if (userEmail !== "integration@example.com" && options.folderId && restricted.has(options.folderId)) {
+          throw new Error("File not found")
+        }
+        return super.listFiles(userEmail, options)
+      }
+
+      async getFile(userEmail: string, fileId: string): Promise<DriveFile> {
+        if (userEmail !== "integration@example.com" && restricted.has(fileId)) {
+          throw new Error("File not found")
+        }
+        return super.getFile(userEmail, fileId)
+      }
+    }
+    const client = new SharedOnlyWithIntegration()
+    client.add({ id: templateId, name: "N-SequentialNumber-AddressNumber-LastName", mimeType: FOLDER_MIME_TYPE })
+    client.add({ id: "template-quotes", name: "01_Quotes", mimeType: FOLDER_MIME_TYPE, parents: [templateId] })
+
+    const result = await provisionProjectDriveFolder(client, "staff@example.com", {
+      department: "N",
+      folderName: "N-1009-12 - Test Fox Blocks",
+      templateEmail: "integration@example.com",
+    })
+
+    expect(result.createdRoot).toBe(true)
+    expect(result.childFolderNames).toEqual(["01_Quotes"])
+    expect(result.createdChildCount).toBe(1)
   })
 })
