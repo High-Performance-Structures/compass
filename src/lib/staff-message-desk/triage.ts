@@ -4,14 +4,16 @@
  * open messages with no activity are flagged as they age so nothing sits
  * unanswered without anyone noticing.
  */
-export const STAFF_MESSAGE_STATUSES = ["new", "in_progress", "waiting", "resolved"] as const
+// Matches the CHECK constraint from migration 0111_staff_message_statuses.
+export const STAFF_MESSAGE_STATUSES = ["new", "follow_up_needed", "in_progress", "waiting_on_contact", "closed"] as const
 export type StaffMessageStatus = (typeof STAFF_MESSAGE_STATUSES)[number]
 
 export const STAFF_MESSAGE_STATUS_LABEL: Readonly<Record<StaffMessageStatus, string>> = {
   new: "New",
+  follow_up_needed: "Follow-up needed",
   in_progress: "In progress",
-  waiting: "Waiting on caller",
-  resolved: "Resolved",
+  waiting_on_contact: "Waiting on contact",
+  closed: "Closed",
 }
 
 export function isStaffMessageStatus(value: string): value is StaffMessageStatus {
@@ -77,7 +79,7 @@ export function staffMessageAging(
   now: Date,
 ): StaffMessageAging {
   const idleDays = businessDaysBetween(message.lastActivityAt, now)
-  if (message.status === "resolved") return { level: "fresh", idleDays }
+  if (message.status === "closed") return { level: "fresh", idleDays }
   if (idleDays >= STAFF_MESSAGE_AGING.staleDays) return { level: "stale", idleDays }
   if (idleDays >= STAFF_MESSAGE_AGING.agingDays) return { level: "aging", idleDays }
   if (message.status === "new" && businessDaysBetween(message.createdAt, now) >= STAFF_MESSAGE_AGING.firstResponseDays) {

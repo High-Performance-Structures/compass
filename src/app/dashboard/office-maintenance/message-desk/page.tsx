@@ -41,7 +41,7 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
     )
   }
   const { records, assignees, inboundTexts, viewerId } = result.data
-  const openCount = records.filter((record) => record.status !== "resolved").length
+  const openCount = records.filter((record) => record.status !== "closed").length
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">

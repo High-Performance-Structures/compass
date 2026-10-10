@@ -1185,22 +1185,23 @@ export const staffMessageRecords = sqliteTable(
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** new | in_progress | waiting | resolved (see lib/staff-message-desk/triage). */
+    /** See STAFF_MESSAGE_STATUSES (migration 0111 adds the CHECK). */
     status: text("status").notNull().default("new"),
     statusChangedAt: text("status_changed_at"),
     /** Last status change, note or reassignment; null means use updated_at. */
     lastActivityAt: text("last_activity_at"),
-    resolvedAt: text("resolved_at"),
-    resolvedBy: text("resolved_by").references(() => users.id, {
+    closedAt: text("closed_at"),
+    closedBy: text("closed_by").references(() => users.id, {
       onDelete: "set null",
     }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    index("staff_message_records_org_status_idx").on(
+    index("staff_message_records_org_status_updated_idx").on(
       table.organizationId,
-      table.status
+      table.status,
+      table.updatedAt
     ),
     uniqueIndex("staff_message_records_goto_event_unique")
       .on(table.gotoInboundEventId)

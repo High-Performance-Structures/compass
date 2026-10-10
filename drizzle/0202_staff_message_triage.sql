@@ -1,14 +1,10 @@
-ALTER TABLE `staff_message_records` ADD COLUMN `status` text DEFAULT 'new' NOT NULL;
---> statement-breakpoint
 ALTER TABLE `staff_message_records` ADD COLUMN `status_changed_at` text;
 --> statement-breakpoint
 ALTER TABLE `staff_message_records` ADD COLUMN `last_activity_at` text;
 --> statement-breakpoint
-ALTER TABLE `staff_message_records` ADD COLUMN `resolved_at` text;
+ALTER TABLE `staff_message_records` ADD COLUMN `closed_at` text;
 --> statement-breakpoint
-ALTER TABLE `staff_message_records` ADD COLUMN `resolved_by` text REFERENCES `users`(`id`) ON DELETE set null;
---> statement-breakpoint
-CREATE INDEX `staff_message_records_org_status_idx` ON `staff_message_records` (`organization_id`, `status`);
+ALTER TABLE `staff_message_records` ADD COLUMN `closed_by` text REFERENCES `users`(`id`) ON DELETE set null;
 --> statement-breakpoint
 CREATE TABLE `staff_message_events` (
 	`id` text PRIMARY KEY NOT NULL,

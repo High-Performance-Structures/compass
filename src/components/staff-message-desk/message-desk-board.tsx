@@ -28,13 +28,13 @@ import {
 } from "@/lib/staff-message-desk/triage"
 import { cn } from "@/lib/utils"
 
-type DeskFilter = "open" | "mine" | "attention" | "resolved" | "all"
+type DeskFilter = "open" | "mine" | "attention" | "closed" | "all"
 
 const FILTERS: readonly { readonly id: DeskFilter; readonly label: string }[] = [
   { id: "open", label: "Open" },
   { id: "mine", label: "Assigned to me" },
   { id: "attention", label: "Needs attention" },
-  { id: "resolved", label: "Resolved" },
+  { id: "closed", label: "Closed" },
   { id: "all", label: "All" },
 ]
 
@@ -79,7 +79,7 @@ function MessageRow({
 }): React.ReactElement {
   const [note, setNote] = React.useState("")
   const [reassignTo, setReassignTo] = React.useState("")
-  const resolved = row.status === "resolved"
+  const closed = row.status === "closed"
   const flag = row.aging.level
   return (
     <article
@@ -96,7 +96,7 @@ function MessageRow({
         />
         <button type="button" className="min-w-0 flex-1 text-left" onClick={onExpand} aria-expanded={expanded}>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className={cn("font-semibold", resolved && "text-muted-foreground line-through decoration-muted-foreground/40")}>{row.subject}</h3>
+            <h3 className={cn("font-semibold", closed && "text-muted-foreground line-through decoration-muted-foreground/40")}>{row.subject}</h3>
             <Badge variant="outline">{row.sourceType === "call" ? "Call" : "Message"}</Badge>
             <Badge variant={row.status === "new" ? "default" : "secondary"}>{STAFF_MESSAGE_STATUS_LABEL[row.status]}</Badge>
             {flag !== "fresh" ? (
@@ -139,23 +139,23 @@ function MessageRow({
           </div>
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              {row.status !== "in_progress" && !resolved ? (
+              {row.status !== "in_progress" && !closed ? (
                 <Button size="sm" variant="outline" disabled={pending} onClick={() => onUpdate({ status: "in_progress" })}>
                   Start
                 </Button>
               ) : null}
-              {row.status !== "waiting" && !resolved ? (
-                <Button size="sm" variant="outline" disabled={pending} onClick={() => onUpdate({ status: "waiting" })}>
-                  Waiting on caller
+              {row.status !== "waiting_on_contact" && !closed ? (
+                <Button size="sm" variant="outline" disabled={pending} onClick={() => onUpdate({ status: "waiting_on_contact" })}>
+                  Waiting on contact
                 </Button>
               ) : null}
-              {resolved ? (
+              {closed ? (
                 <Button size="sm" variant="outline" disabled={pending} onClick={() => onUpdate({ status: "in_progress" })}>
                   Reopen
                 </Button>
               ) : (
-                <Button size="sm" disabled={pending} onClick={() => onUpdate({ status: "resolved", note: note || undefined }, () => setNote(""))}>
-                  Resolve
+                <Button size="sm" disabled={pending} onClick={() => onUpdate({ status: "closed", note: note || undefined }, () => setNote(""))}>
+                  Close
                 </Button>
               )}
             </div>
@@ -229,7 +229,7 @@ export function MessageDeskBoard({
     return records.map((record) => ({ ...record, aging: staffMessageAging(record, now) }))
   }, [nowIso, records])
 
-  const open = rows.filter((row) => row.status !== "resolved")
+  const open = rows.filter((row) => row.status !== "closed")
   const towers: readonly AgingTower[] = [
     { level: "stale", label: "Stale", hint: `No activity for ${STAFF_MESSAGE_AGING.staleDays}+ business days`, count: open.filter((row) => row.aging.level === "stale").length },
     { level: "aging", label: "Aging", hint: `No activity for ${STAFF_MESSAGE_AGING.agingDays}+ business days`, count: open.filter((row) => row.aging.level === "aging").length },
@@ -240,11 +240,11 @@ export function MessageDeskBoard({
   const normalizedQuery = query.trim().toLowerCase()
   const visible = rows
     .filter((row) => {
-      if (filter === "open" && row.status === "resolved") return false
-      if (filter === "mine" && (row.assigneeUserId !== viewerId || row.status === "resolved")) return false
-      if (filter === "attention" && (row.status === "resolved" || row.aging.level === "fresh")) return false
-      if (filter === "resolved" && row.status !== "resolved") return false
-      if (agingFilter && (row.status === "resolved" || row.aging.level !== agingFilter)) return false
+      if (filter === "open" && row.status === "closed") return false
+      if (filter === "mine" && (row.assigneeUserId !== viewerId || row.status === "closed")) return false
+      if (filter === "attention" && (row.status === "closed" || row.aging.level === "fresh")) return false
+      if (filter === "closed" && row.status !== "closed") return false
+      if (agingFilter && (row.status === "closed" || row.aging.level !== agingFilter)) return false
       if (!normalizedQuery) return true
       return `${row.subject} ${row.callerName} ${row.callerCompany ?? ""} ${row.callerPhone ?? ""} ${row.callerEmail ?? ""} ${row.body} ${row.assigneeName}`
         .toLowerCase()
@@ -252,9 +252,9 @@ export function MessageDeskBoard({
     })
     // Most urgent first, then oldest activity first so nothing hides at the bottom.
     .sort((a, b) =>
-      (a.status === "resolved" ? 1 : 0) - (b.status === "resolved" ? 1 : 0) ||
+      (a.status === "closed" ? 1 : 0) - (b.status === "closed" ? 1 : 0) ||
       AGING_RANK[a.aging.level] - AGING_RANK[b.aging.level] ||
-      (a.status === "resolved" ? b.lastActivityAt.localeCompare(a.lastActivityAt) : a.lastActivityAt.localeCompare(b.lastActivityAt)),
+      (a.status === "closed" ? b.lastActivityAt.localeCompare(a.lastActivityAt) : a.lastActivityAt.localeCompare(b.lastActivityAt)),
     )
 
   const selectedVisible = visible.filter((row) => selectedIds.has(row.id)).map((row) => row.id)

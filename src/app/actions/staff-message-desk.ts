@@ -65,7 +65,7 @@ export type StaffMessageDeskRecordDto = Readonly<{
   readonly status: StaffMessageStatus
   /** Last status change, note or reassignment (falls back to updatedAt). */
   readonly lastActivityAt: string
-  readonly resolvedAt: string | null
+  readonly closedAt: string | null
   readonly history: readonly StaffMessageEventDto[]
 }>
 
@@ -347,7 +347,7 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
         updatedAt: staffMessageRecords.updatedAt,
         status: staffMessageRecords.status,
         lastActivityAt: staffMessageRecords.lastActivityAt,
-        resolvedAt: staffMessageRecords.resolvedAt,
+        closedAt: staffMessageRecords.closedAt,
         assigneeDisplayName: users.displayName,
         assigneeFirstName: users.firstName,
         assigneeLastName: users.lastName,
@@ -433,7 +433,7 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
           updatedAt: row.updatedAt,
           status: staffMessageStatus(row.status),
           lastActivityAt: row.lastActivityAt ?? row.updatedAt,
-          resolvedAt: row.resolvedAt,
+          closedAt: row.closedAt,
           history: historyByMessage.get(row.id) ?? [],
         })),
         assignees: await activeAssignees(db, organizationId, user.id),
@@ -647,8 +647,8 @@ export async function updateStaffMessages(input: {
             ? {
                 status: nextStatus,
                 statusChangedAt: now,
-                resolvedAt: nextStatus === "resolved" ? now : null,
-                resolvedBy: nextStatus === "resolved" ? user.id : null,
+                closedAt: nextStatus === "closed" ? now : null,
+                closedBy: nextStatus === "closed" ? user.id : null,
               }
             : {}),
           ...(reassigned && assignee ? { assigneeUserId: assignee.id } : {}),

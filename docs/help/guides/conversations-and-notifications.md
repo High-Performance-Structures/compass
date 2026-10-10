@@ -58,7 +58,7 @@ For the complete active-project list or basic texting instructions, use the HPS 
 
 ## Follow Up on the Staff Message Desk {#message-desk}
 
-Every call or message logged on the **Staff Message Desk** has an owner and a status: **New**, **In progress**, **Waiting on caller**, or **Resolved**. Open a message to add a follow-up note, change its status, or reassign it. Each change is kept in the message's history.
+Every call or message logged on the **Staff Message Desk** has an owner and a status: **New**, **Follow-up needed**, **In progress**, **Waiting on contact**, or **Closed**. Open a message to add a follow-up note, change its status, or reassign it. Each change is kept in the message's history.
 
 Open messages are flagged as they age, counted in business days:
 

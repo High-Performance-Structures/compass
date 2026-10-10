@@ -29,7 +29,7 @@ describe("staffMessageAging", () => {
     expect(staffMessageAging(working, new Date("2026-10-16T16:00:00.000Z")).level).toBe("stale")
   })
 
-  it("never flags resolved messages", () => {
-    expect(staffMessageAging({ ...base, status: "resolved" }, new Date("2026-11-30T16:00:00.000Z")).level).toBe("fresh")
+  it("never flags closed messages", () => {
+    expect(staffMessageAging({ ...base, status: "closed" }, new Date("2026-11-30T16:00:00.000Z")).level).toBe("fresh")
   })
 })
