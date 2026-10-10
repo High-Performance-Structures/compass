@@ -1,4 +1,4 @@
-import type { SSEData } from "./types"
+import type { AgentImage, SSEData } from "./types"
 import type { ToolRegistry } from "./tool-registry"
 
 // Native OpenAI Chat Completions loop. The Anthropic SDK used by the other
@@ -8,8 +8,16 @@ import type { ToolRegistry } from "./tool-registry"
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 
+type UserContentPart =
+  | { readonly type: "text"; readonly text: string }
+  | { readonly type: "image_url"; readonly image_url: { readonly url: string } }
+
 type ChatMessage =
-  | { readonly role: "system" | "user"; readonly content: string }
+  | { readonly role: "system"; readonly content: string }
+  | {
+      readonly role: "user"
+      readonly content: string | readonly UserContentPart[]
+    }
   | {
       readonly role: "assistant"
       readonly content: string | null
@@ -44,6 +52,8 @@ export interface OpenAIAgentOptions {
     readonly role: "user" | "assistant"
     readonly content: string
   }>
+  /** Images attached to the final user message. */
+  readonly images?: readonly AgentImage[]
   readonly registry: ToolRegistry
   readonly maxTurns: number
   readonly fetchImpl?: typeof globalThis.fetch
@@ -114,12 +124,30 @@ export async function* runOpenAIAgent(
     },
   }))
 
+  // Attached images go on the final user message, after its text.
+  const images = opts.images ?? []
+  const lastIndex = opts.messages.length - 1
   const messages: ChatMessage[] = [
     { role: "system", content: opts.systemPrompt },
-    ...opts.messages.map((m): ChatMessage =>
-      m.role === "user"
-        ? { role: "user", content: m.content }
-        : { role: "assistant", content: m.content },
+    ...opts.messages.map((m, index): ChatMessage =>
+      m.role !== "user"
+        ? { role: "assistant", content: m.content }
+        : index === lastIndex && images.length > 0
+          ? {
+              role: "user",
+              content: [
+                { type: "text", text: m.content },
+                ...images.map(
+                  (image): UserContentPart => ({
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${image.mediaType};base64,${image.base64}`,
+                    },
+                  }),
+                ),
+              ],
+            }
+          : { role: "user", content: m.content },
     ),
   ]
 

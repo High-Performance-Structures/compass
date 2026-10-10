@@ -201,15 +201,12 @@ export async function POST(
     return createAgentRelayResponse(relayResult.content)
   }
 
-  if (body.visuals.length > 0) {
-    return Response.json(
-      {
-        error:
-          "Jarvis can't read screenshots yet. Describe what you're seeing instead.",
-      },
-      { status: 503 },
-    )
-  }
+  // Screenshots go to the model as images on the latest message. The schema
+  // above already limited them to two well-formed data URLs.
+  const images = body.visuals.map((visual) => ({
+    mediaType: visual.mediaType,
+    base64: visual.dataUrl.slice(`data:${visual.mediaType};base64,`.length),
+  }))
 
   const activeAgentConfig = await db
     .select({ modelId: agentConfig.modelId })
@@ -411,6 +408,7 @@ export async function POST(
     model: resolvedModel,
     systemPrompt,
     messages: msgs,
+    images,
     mcpClientManager: manager,
     isOAuth,
   })
