@@ -401,6 +401,9 @@ export const projectEstimateLineCostItems = sqliteTable(
     lineTotalCents: integer("line_total_cents").notNull().default(0),
     totalCostCents: integer("total_cost_cents").notNull().default(0),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** Rate book entry and version that filled this item, if any. */
+    rateBookEntryId: text("rate_book_entry_id"),
+    rateBookVersion: integer("rate_book_version"),
     deletedAt: text("deleted_at"),
     deletedByUserId: text("deleted_by_user_id").references(() => users.id, {
       onDelete: "set null",

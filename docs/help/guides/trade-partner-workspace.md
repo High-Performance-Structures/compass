@@ -7,7 +7,7 @@
   "summary": "Review assigned project work, answer RFQs and RFIs, update commitments, and coordinate with the project team.",
   "contextSummary": "Your Trade Partner Workspace shows only information approved for your assigned company. Confirm the project, scope, and current record before responding.",
   "category": "Start Here",
-  "tags": ["subcontractor", "supplier", "vendor", "trade partner", "portal", "commitments", "purchase orders", "RFI", "RFQ", "quote"],
+  "tags": ["subcontractor", "supplier", "vendor", "trade partner", "portal", "commitments", "purchase orders", "RFI", "RFQ", "quote", "warranty"],
   "audiences": ["subcontractor", "supplier"],
   "permissions": ["help:read", "project:read"],
   "routes": [
@@ -23,10 +23,11 @@
     "/preview/projects/[id]/sub-vendor/rfqs",
     "/preview/projects/[id]/sub-vendor/schedule",
     "/preview/projects/[id]/sub-vendor/selections",
-    "/preview/projects/[id]/sub-vendor/team"
+    "/preview/projects/[id]/sub-vendor/team",
+    "/preview/projects/[id]/sub-vendor/warranty"
   ],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-06"
+  "lastReviewed": "2026-10-09"
 }
 ---
 
@@ -71,6 +72,12 @@ Choose **Submit a quote** or **Decline to quote**. For a quote, enter the reques
 **Change Orders** lists trade-partner-visible requests with scope, price when determined, schedule impact, documents, status, and activity history. Open the full record before acting.
 
 When **Request change** is available, describe the changed condition or scope, explain why it is needed, and attach only relevant support. Submission begins review; it does not authorize extra work, revise a commitment, or guarantee payment. Track the existing request and follow the project team's recorded approval process rather than duplicating it.
+
+## Handle Assigned Warranty Work {#warranty}
+
+When warranty service is enabled for the project, **Warranty** lists only the claims the project team assigned to you or your company. If nothing is assigned, the page is empty. Each claim shows the owner's description, location, priority, and the updates the owner can see.
+
+For an open claim, set the visit or work date, choose **Visit scheduled**, **In progress**, or **Resolved**, and add a short progress note. The owner and the project team see each saved update. The owner confirms the resolution, and the project team handles priority, reassignment, and closing the claim. Contact the project team if a claim was assigned to you by mistake.
 
 ## Message the Project Team {#conversations}
 

@@ -12,6 +12,8 @@ export type ProjectAudienceViewerContact = {
   readonly displayName: string
   readonly companyName: string | null
   readonly email: string | null
+  /** The vendor company this contact belongs to, when linked. */
+  readonly vendorId: string | null
 }
 
 const VIEWER_CONTACT_SELECTION = {
@@ -20,6 +22,7 @@ const VIEWER_CONTACT_SELECTION = {
   displayName: projectContacts.displayName,
   companyName: projectContacts.companyName,
   email: projectContacts.email,
+  vendorId: projectContacts.vendorId,
 }
 
 export async function getProjectAudienceViewerContact(

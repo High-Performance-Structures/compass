@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
-import type { ProviderConfig } from "./types"
+import type { AnthropicFormatProvider } from "./types"
 
-export function createClient(provider: ProviderConfig): Anthropic {
+export function createClient(provider: AnthropicFormatProvider): Anthropic {
   switch (provider.type) {
     case "anthropic": {
       // OAuth tokens use Bearer auth instead of x-api-key

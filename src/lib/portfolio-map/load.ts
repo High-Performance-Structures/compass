@@ -18,7 +18,7 @@ import {
   type PortfolioMapJob,
   type PortfolioProjectRule,
 } from "@/lib/portfolio-map/model"
-import { locateSites, needsSiteLookup, SITE_LOOKUPS_PER_LOAD } from "@/lib/portfolio-map/site-locations"
+import { locateSites, siteLocationWriter, needsSiteLookup, SITE_LOOKUPS_PER_LOAD } from "@/lib/portfolio-map/site-locations"
 import {
   DEFAULT_TRAVEL_CHARGE_SETTINGS,
   jobTravelCharge,
@@ -273,7 +273,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         return location && needsSiteLookup(location, now) ? [location] : []
       })
       .slice(0, SITE_LOOKUPS_PER_LOAD)
-    if (toLocate.length > 0) ctx.waitUntil(locateSites(db, orgId, toLocate))
+    if (toLocate.length > 0) ctx.waitUntil(locateSites(siteLocationWriter(db, orgId), toLocate))
     return { jobs: placedJobs, travel: showTravel ? { settings, byJobId } : null, unplaced, hidden }
   } catch (error) {
     console.error("Portfolio map data failed", error)

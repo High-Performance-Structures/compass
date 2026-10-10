@@ -49,7 +49,8 @@ import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
+import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
 import { assertProjectAccess } from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
@@ -225,6 +226,8 @@ export type ProjectDailyLogWorkspace = {
     readonly clientName: string | null
   }
   readonly logs: readonly ProjectDailyLogItem[]
+  /** Logs this viewer may delete (see lib/daily-logs/delete-rules). */
+  readonly deletableLogIds: readonly string[]
   readonly unattachedPhotos: readonly ProjectDailyLogPhoto[]
   readonly schedulePhases: readonly string[]
   readonly counts: {
@@ -1274,6 +1277,7 @@ export async function getProjectDailyLogWorkspace(
       reviewStatus: dailyLogs.reviewStatus,
       syncStatus: dailyLogs.syncStatus,
       tags: dailyLogs.tags,
+      authorId: dailyLogs.authorId,
       authorDisplayName: users.displayName,
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
@@ -1467,8 +1471,24 @@ export async function getProjectDailyLogWorkspace(
     ])
   }
 
+  let deletableLogIds: readonly string[] = []
+  if (viewer.isActive && isInternalStaffRole(viewer.role) && logRows.length > 0) {
+    const [canDeleteAny, canUpdate, ownerUpdates] = await Promise.all([
+      canFeature(viewer, "daily-logs", "delete"),
+      canFeature(viewer, "daily-logs", "update"),
+      db
+        .select({ title: ownerProjectUpdates.title, sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds })
+        .from(ownerProjectUpdates)
+        .where(eq(ownerProjectUpdates.projectId, projectId)),
+    ])
+    deletableLogIds = logRows
+      .filter((row) => dailyLogDeleteBlocker(row, { viewerId: viewer.id, canDeleteAny, canUpdate, ownerUpdates }) === null)
+      .map((row) => row.id)
+  }
+
   return {
     project,
+    deletableLogIds,
     logs: logRows.map((row) => ({
       id: row.id,
       sourceSystem: row.sourceSystem,

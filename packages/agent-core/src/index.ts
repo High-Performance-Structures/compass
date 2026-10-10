@@ -1,5 +1,8 @@
 export { createClient } from "./client"
 export { runAgent } from "./loop"
+export { runOpenAIAgent } from "./openai-loop"
+export { createToolRegistry } from "./tool-registry"
+export type { ToolRegistry } from "./tool-registry"
 export { createTools } from "./tools"
 export type { ToolDef } from "./tools"
 export { zodToJsonSchema } from "./tools"

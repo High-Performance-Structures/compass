@@ -8,20 +8,8 @@ import {
   useState,
   type MouseEvent,
 } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
-import {
-  IconAlertCircle,
-  IconArchive,
-  IconBell,
-  IconCheck,
-  IconClipboardCheck,
-  IconClock,
-  IconHeart,
-  IconMessageCircle,
-  IconMessages,
-  IconPhone,
-} from "@tabler/icons-react"
+import { IconBell } from "@tabler/icons-react"
 
 import {
   dismissReadNotifications,
@@ -54,125 +42,13 @@ import {
   type InboxRow,
   type InboxSection,
 } from "@/lib/notifications/inbox"
-import { NOTIFICATIONS_CHANGED_EVENT } from "@/lib/notifications/client-events"
+import { announceNotificationsChanged, NOTIFICATIONS_CHANGED_EVENT } from "@/lib/notifications/client-events"
+import { InboxRowItem } from "@/components/notifications/inbox-row"
+import { portfolioMessagesHref } from "@/lib/notifications/message-stacks"
 import { cn } from "@/lib/utils"
 
 type Row = InboxRow<NotificationCenterItem>
 type View = "unread" | "all"
-
-function iconFor(item: NotificationCenterItem, stacked: boolean): typeof IconClipboardCheck {
-  if (stacked) return IconMessages
-  if (item.sourceType === "message" || item.sourceType === "project_correspondence") {
-    return IconMessageCircle
-  }
-  if (item.eventType.startsWith("cherish.")) return IconHeart
-  if (item.eventType.startsWith("staff_message.")) return IconPhone
-  if (item.eventType.startsWith("rfi.")) return IconMessageCircle
-  if (item.priority === "high") return IconAlertCircle
-  if (item.eventType.startsWith("schedule.")) return IconClock
-  return IconClipboardCheck
-}
-
-function relativeTime(value: string): string {
-  const createdAt = new Date(value).getTime()
-  const diffMs = Date.now() - createdAt
-  if (!Number.isFinite(diffMs) || diffMs < 0) return "just now"
-  const minutes = Math.floor(diffMs / 60000)
-  if (minutes < 1) return "just now"
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
-function rowSummary(row: Row): string | null {
-  if (row.items.length < 2) return null
-  return row.unreadCount > 0
-    ? `${row.unreadCount} new of ${row.items.length} messages`
-    : `${row.items.length} messages`
-}
-
-function InboxRowItem({
-  row,
-  onNavigate,
-  onMarkRead,
-  onDone,
-}: {
-  readonly row: Row
-  readonly onNavigate: (row: Row, event: MouseEvent<HTMLAnchorElement>) => void
-  readonly onMarkRead: (row: Row) => void
-  readonly onDone: (row: Row) => void
-}) {
-  const { latest } = row
-  const unread = row.unreadCount > 0
-  const stacked = row.items.length > 1
-  const Icon = iconFor(latest, stacked)
-  const summary = rowSummary(row)
-  return (
-    <li className="group relative">
-      <Link
-        href={latest.href}
-        onClick={(event) => onNavigate(row, event)}
-        className="flex gap-3 px-4 py-2.5 pr-20 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
-      >
-        <span
-          className={cn(
-            "relative mt-0.5 grid size-8 shrink-0 place-items-center rounded-md",
-            unread ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-          )}
-        >
-          <Icon className="size-4" />
-          {stacked && (
-            <span className="absolute -bottom-1 -right-1 min-w-4 rounded-full border border-background bg-foreground px-1 text-center text-xs font-semibold leading-4 text-background">
-              {row.items.length > 9 ? "9+" : row.items.length}
-            </span>
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-baseline gap-2">
-            <span className={cn("truncate text-sm", unread ? "font-semibold" : "font-medium text-muted-foreground")}>
-              {latest.title}
-            </span>
-          </span>
-          <span className="line-clamp-1 break-words text-xs text-muted-foreground">
-            {latest.body}
-          </span>
-          <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-            {unread && <span aria-hidden className="size-1.5 rounded-full bg-primary" />}
-            <span>{relativeTime(latest.createdAt)}</span>
-            {summary && <span>· {summary}</span>}
-          </span>
-        </span>
-      </Link>
-      {/* Quick actions: always visible on touch, on hover or focus otherwise. */}
-      <div className="absolute right-2 top-2.5 flex gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-        {unread && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label={stacked ? "Mark these read" : "Mark read"}
-            title="Mark read"
-            onClick={() => onMarkRead(row)}
-          >
-            <IconCheck className="size-4" />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          aria-label={stacked ? "Done with these" : "Done"}
-          title="Done"
-          onClick={() => onDone(row)}
-        >
-          <IconArchive className="size-4" />
-        </Button>
-      </div>
-    </li>
-  )
-}
 
 function InboxPanel({
   sections,
@@ -188,6 +64,7 @@ function InboxPanel({
   onNavigate,
   onMarkRead,
   onDone,
+  showOnMap,
 }: {
   readonly sections: readonly InboxSection<NotificationCenterItem>[]
   readonly view: View
@@ -202,6 +79,8 @@ function InboxPanel({
   readonly onNavigate: (row: Row, event: MouseEvent<HTMLAnchorElement>) => void
   readonly onMarkRead: (row: Row) => void
   readonly onDone: (row: Row) => void
+  /** Office bell only: link a project section to its job on the dashboard map. */
+  readonly showOnMap: ((projectId: string) => void) | null
 }) {
   const visible = sections
     .map((section) => ({
@@ -251,11 +130,22 @@ function InboxPanel({
                 <span className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {section.label}
                 </span>
-                {section.unreadCount > 0 && (
-                  <span className="shrink-0 text-xs font-medium text-primary">
-                    {section.unreadCount} new
-                  </span>
-                )}
+                <span className="flex shrink-0 items-center gap-2">
+                  {section.unreadCount > 0 && (
+                    <span className="text-xs font-medium text-primary">
+                      {section.unreadCount} new
+                    </span>
+                  )}
+                  {showOnMap && section.key !== "general" && (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      onClick={() => showOnMap(section.key)}
+                    >
+                      Show on map
+                    </button>
+                  )}
+                </span>
               </div>
               <ul className="pb-1">
                 {section.rows.map((row) => (
@@ -451,6 +341,7 @@ export function NotificationsPopover({
     const result = await markAllNotificationsRead(notificationScope)
     if (result.success) {
       markLocallyRead(new Set(notifications.map((item) => item.id)))
+      announceNotificationsChanged()
     }
   }
 
@@ -458,6 +349,7 @@ export function NotificationsPopover({
     const result = await dismissReadNotifications(notificationScope)
     if (result.success) {
       setNotifications((items) => items.filter((item) => item.readAt === null))
+      announceNotificationsChanged()
     }
   }
 
@@ -470,6 +362,8 @@ export function NotificationsPopover({
         markNotificationRead(item.id, notificationScope).catch(() => undefined)
       )
     )
+    // Keeps the map's Messages layer in step with the bell.
+    announceNotificationsChanged()
   }
 
   async function markRowDone(row: Row): Promise<void> {
@@ -481,6 +375,7 @@ export function NotificationsPopover({
     undoTimerRef.current = window.setTimeout(() => setUndo(null), 6000)
     const result = await setNotificationsDismissed(ids, true, notificationScope)
     if (!result.success) void loadNotifications(false)
+    else announceNotificationsChanged()
   }
 
   async function undoDone(): Promise<void> {
@@ -488,7 +383,7 @@ export function NotificationsPopover({
     const { ids } = undo
     setUndo(null)
     await setNotificationsDismissed(ids, false, notificationScope)
-    void loadNotifications(false)
+    announceNotificationsChanged()
   }
 
   async function navigate(
@@ -547,6 +442,14 @@ export function NotificationsPopover({
       onNavigate={(row, event) => void navigate(row, event)}
       onMarkRead={(row) => void markRowRead(row)}
       onDone={(row) => void markRowDone(row)}
+      showOnMap={
+        notificationScope
+          ? null
+          : (projectId) => {
+              setOpen(false)
+              router.push(portfolioMessagesHref(projectId))
+            }
+      }
     />
   )
 

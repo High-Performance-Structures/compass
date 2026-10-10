@@ -6,7 +6,9 @@ import type { ProjectAudiencePreview } from "@/app/actions/project-audience-prev
 import { getProjectBudgetSummary } from "@/app/actions/project-budget"
 import { getProjectChangeOrders } from "@/app/actions/project-change-orders"
 import { ProjectAudienceDashboardView } from "@/components/projects/project-audience-dashboard-view"
-import { audienceDashboardDate } from "@/lib/project-audience-dashboard"
+import { audienceDashboardDate, audienceDashboardDateLabel } from "@/lib/project-audience-dashboard"
+import { audienceQuickLinks } from "@/lib/project-audience-links"
+import { ownerUpdatePreviewHref, projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import type { ProjectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { getAudienceJobMap } from "@/lib/portfolio-map/audience"
 import { VendorJobMap } from "@/components/projects/vendor-job-map"
@@ -34,18 +36,38 @@ export async function ProjectAudienceDashboard({
     // project switcher.
     data.audience === "owner"
       ? getAudienceJobMap([data.project.id])
-      : data.projectOptions.length > 1
-        ? getAudienceJobMap(data.projectOptions.map((option) => option.id))
-        : Promise.resolve([]),
+      : getAudienceJobMap(
+          data.projectOptions.length > 0 ? data.projectOptions.map((option) => option.id) : [data.project.id],
+        ),
   ])
   const jobs = mapJobs.status === "fulfilled" ? mapJobs.value : []
   const ownerJob = data.audience === "owner" ? jobs[0] : undefined
+  const date = audienceDashboardDate(new Date())
+  // The owner panel shows only owner-visible work and the owner's sections.
+  const ownerUpcoming = data.scheduleItems
+    .filter((item) => item.endDate >= date.today && item.percentComplete < 100)
+    .toSorted((left, right) => left.startDate.localeCompare(right.startDate))
+    .slice(0, 4)
+    .map((item) => ({ id: item.id, title: item.title, when: audienceDashboardDateLabel(item.startDate) }))
+  const latestOwnerUpdate = data.ownerUpdates[0]
   const mapSection = ownerJob ? (
-    <OwnerSiteRelief job={ownerJob} progress={ownerScheduleProgress(data.scheduleItems)} />
-  ) : data.audience === "sub_vendor" && jobs.length > 1 ? (
+    <OwnerSiteRelief
+      job={ownerJob}
+      progress={ownerScheduleProgress(data.scheduleItems)}
+      upcoming={ownerUpcoming}
+      latestUpdate={
+        latestOwnerUpdate
+          ? { title: latestOwnerUpdate.title, href: ownerUpdatePreviewHref(data.project.id, latestOwnerUpdate.id) }
+          : null
+      }
+      links={audienceQuickLinks({ owner: true, warrantyEnabled: data.project.warrantyEnabled }).map((link) => ({
+        label: link.label,
+        href: projectAudienceSectionHref(data.project.id, "owner", link.section),
+      }))}
+    />
+  ) : data.audience === "sub_vendor" && jobs.length > 0 ? (
     <VendorJobMap jobs={jobs} currentProjectId={data.project.id} />
   ) : null
-  const date = audienceDashboardDate(new Date())
   return (
     <ProjectAudienceDashboardView
       selectionSummary={

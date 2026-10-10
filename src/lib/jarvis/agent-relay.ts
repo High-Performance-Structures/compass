@@ -143,6 +143,22 @@ export function isJarvisAgentBridgeEnabled(
   )
 }
 
+/**
+ * Ask Jarvis answers with Compass's built-in agent unless the private relay is
+ * explicitly turned on for it. The relay has no Compass tools, and keeping it
+ * off means staff chats never reach the bridge host's Signet memory. Other
+ * relay users (owner-update drafting) only need JARVIS_AGENT_BRIDGE_ENABLED.
+ */
+export function shouldRelayAskJarvis(env: {
+  readonly ASK_JARVIS_RELAY_ENABLED?: string
+  readonly JARVIS_AGENT_BRIDGE_ENABLED?: string
+}): boolean {
+  return (
+    isJarvisAgentBridgeEnabled(env.ASK_JARVIS_RELAY_ENABLED) &&
+    isJarvisAgentBridgeEnabled(env.JARVIS_AGENT_BRIDGE_ENABLED)
+  )
+}
+
 async function readEventState(
   db: CompassDb,
   idempotencyKey: string,

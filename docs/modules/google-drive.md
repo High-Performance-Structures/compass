@@ -188,6 +188,11 @@ authoritative source for their folder names, nested folders, and template
 files. Provisioning recursively copies the applicable O, H, D, or N template
 and records the template folder ID in the project's Google Drive metadata.
 
+The project folder is created as the person who submitted the project, but
+the template is read and copied as the account that connected Google
+Workspace. Templates only need to be shared with that account, not with every
+staff member who creates projects.
+
 Do not add a second hard-coded folder-name list to Compass. Update the live
 Developer template when the project structure changes; the next project setup
 will copy that structure. Re-running Drive setup is idempotent and fills

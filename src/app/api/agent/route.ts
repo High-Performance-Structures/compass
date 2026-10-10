@@ -22,7 +22,7 @@ import {
 } from "@/lib/agent/runtime-config"
 import {
   createAgentRelayResponse,
-  isJarvisAgentBridgeEnabled,
+  shouldRelayAskJarvis,
   relayAgentRequest,
 } from "@/lib/jarvis/agent-relay"
 import {
@@ -162,11 +162,7 @@ export async function POST(
 
   const db = getDb(env.DB)
 
-  if (
-    isJarvisAgentBridgeEnabled(
-      envRecord.JARVIS_AGENT_BRIDGE_ENABLED,
-    )
-  ) {
+  if (shouldRelayAskJarvis(envRecord)) {
     if (!envRecord.JARVIS_BRIDGE_SECRET) {
       return Response.json(
         { error: "Jarvis relay is not configured" },
@@ -204,7 +200,7 @@ export async function POST(
     return Response.json(
       {
         error:
-          "Screenshot analysis requires the private Jarvis connection.",
+          "Jarvis can't read screenshots yet. Describe what you're seeing instead.",
       },
       { status: 503 },
     )
@@ -414,7 +410,8 @@ export async function POST(
   )
   const resolvedModel = resolveRuntimeModelId(
     configuredModel,
-    runtimeProviderType
+    runtimeProviderType,
+    envRecord.OPENAI_MODEL
   )
 
   const stream = runAgent({

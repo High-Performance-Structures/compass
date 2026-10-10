@@ -1,6 +1,6 @@
 "use server"
 
-import { eq, and, desc } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { customDashboards } from "@/db/schema-dashboards"
@@ -10,6 +10,11 @@ import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
+import {
+  deleteCustomDashboardForUser,
+  getCustomDashboardForUser,
+  listCustomDashboardsForUser,
+} from "@/lib/dashboards/user-dashboards"
 
 const MAX_DASHBOARDS = 5
 
@@ -37,19 +42,7 @@ export async function getCustomDashboards(): Promise<
   if (!user) return { success: false, error: "not authenticated" }
 
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const dashboards = await db.query.customDashboards.findMany({
-    where: (d, { eq: e }) => e(d.userId, user.id),
-    orderBy: (d) => desc(d.updatedAt),
-    columns: {
-      id: true,
-      name: true,
-      description: true,
-      updatedAt: true,
-    },
-  })
-
+  const dashboards = await listCustomDashboardsForUser(getDb(env.DB), user.id)
   return { success: true, data: dashboards }
 }
 
@@ -74,29 +67,7 @@ export async function getCustomDashboardById(
   if (!user) return { success: false, error: "not authenticated" }
 
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const dashboard = await db.query.customDashboards.findFirst({
-    where: (d, { eq: e, and: a }) =>
-      a(e(d.id, dashboardId), e(d.userId, user.id)),
-  })
-
-  if (!dashboard) {
-    return { success: false, error: "dashboard not found" }
-  }
-
-  return {
-    success: true,
-    data: {
-      id: dashboard.id,
-      name: dashboard.name,
-      description: dashboard.description,
-      specData: dashboard.specData,
-      queries: dashboard.queries,
-      renderPrompt: dashboard.renderPrompt,
-      updatedAt: dashboard.updatedAt,
-    },
-  }
+  return getCustomDashboardForUser(getDb(env.DB), user.id, dashboardId)
 }
 
 export async function saveCustomDashboard(
@@ -179,32 +150,14 @@ export async function deleteCustomDashboard(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  if (isDemoUser(user.id)) {
-    return { success: false, error: "DEMO_READ_ONLY" }
-  }
-
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const existing = await db.query.customDashboards.findFirst({
-    where: (d, { eq: e, and: a }) =>
-      a(e(d.id, dashboardId), e(d.userId, user.id)),
-  })
-  if (!existing) {
-    return { success: false, error: "dashboard not found" }
-  }
-
-  await db
-    .delete(customDashboards)
-    .where(
-      and(
-        eq(customDashboards.id, dashboardId),
-        eq(customDashboards.userId, user.id),
-      ),
-    )
-
-  revalidatePath("/", "layout")
-  return { success: true }
+  const result = await deleteCustomDashboardForUser(
+    getDb(env.DB),
+    user.id,
+    dashboardId,
+  )
+  if (result.success) revalidatePath("/", "layout")
+  return result
 }
 
 export async function executeDashboardQueries(

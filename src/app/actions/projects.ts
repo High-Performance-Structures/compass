@@ -1101,7 +1101,11 @@ export async function createProjectIntake(
       const drive = await provisionGoogleProjectDriveFolder(
         googleClients.drive,
         submittingGoogleEmail,
-        { department, folderName: driveFolderName }
+        {
+          department,
+          folderName: driveFolderName,
+          templateEmail: googleClients.projectIntakeGoogleEmail,
+        }
       )
       projectDriveUrl = drive.folderUrl
       const syncedAt = new Date().toISOString()
@@ -1438,6 +1442,7 @@ export async function provisionProjectDriveFolder(
       {
         department,
         folderName,
+        templateEmail: googleClients.projectIntakeGoogleEmail,
         existingFolderId:
           project.googleDriveFolderId ?? familyPhase?.phaseFolderId ?? undefined,
         parentFolderId:

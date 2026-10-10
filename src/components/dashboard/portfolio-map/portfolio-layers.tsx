@@ -7,21 +7,25 @@ import {
   zoneRangeLabel,
   type TravelChargeSettings,
 } from "@/lib/portfolio-map/travel-zones"
+import { MESSAGE_KIND_LABEL, MESSAGE_KINDS } from "@/lib/notifications/message-stacks"
+import { MESSAGE_KIND_COLOR_TOKEN } from "@/components/dashboard/portfolio-map/portfolio-style"
 
-export type PortfolioLayerId = "zones" | "elevation"
+export type PortfolioLayerId = "zones" | "elevation" | "messages"
 export type PortfolioLayerState = Readonly<Record<PortfolioLayerId, boolean>>
 
-export const NO_LAYERS: PortfolioLayerState = { zones: false, elevation: false }
+export const NO_LAYERS: PortfolioLayerState = { zones: false, elevation: false, messages: false }
 
 /** Overlay colors (theme tokens); the scene lifts them for the dark terrain. */
 export const LAYER_COLOR_TOKEN: Readonly<Record<PortfolioLayerId, string>> = {
   zones: "--warning",
   elevation: "--info",
+  messages: "--brand-hps-green",
 }
 
 const LAYERS: readonly { readonly id: PortfolioLayerId; readonly label: string; readonly hint: string }[] = [
   { id: "zones", label: "Zone charges", hint: "Distance rings from home base" },
   { id: "elevation", label: "Mountain charge", hint: "Ground above each elevation band" },
+  { id: "messages", label: "Messages", hint: "Your unread items, stacked on each job" },
 ]
 
 const STORAGE_KEY = "compass:portfolio-layers:v1"
@@ -33,6 +37,7 @@ export function readStoredLayers(): PortfolioLayerState {
     return {
       zones: "zones" in parsed && parsed.zones === true,
       elevation: "elevation" in parsed && parsed.elevation === true,
+      messages: "messages" in parsed && parsed.messages === true,
     }
   } catch {
     return NO_LAYERS
@@ -114,7 +119,7 @@ export function PortfolioLayerLegend({
   readonly state: PortfolioLayerState
   readonly settings: TravelChargeSettings
 }): React.ReactElement | null {
-  if (!state.zones && !state.elevation) return null
+  if (!state.zones && !state.elevation && !state.messages) return null
   return (
     <div className="inline-flex max-w-full flex-col gap-1 border border-border bg-background/85 px-3 py-1.5 font-mono text-xs tracking-[0.06em] text-foreground backdrop-blur">
       {state.zones ? (
@@ -142,6 +147,17 @@ export function PortfolioLayerLegend({
               </span>
             ))
           )}
+        </p>
+      ) : null}
+      {state.messages ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <span className="text-muted-foreground">UNREAD · ONE TILE EACH</span>
+          {MESSAGE_KINDS.map((kind) => (
+            <span key={kind} className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="size-2.5" style={{ background: `var(${MESSAGE_KIND_COLOR_TOKEN[kind]})` }} aria-hidden="true" />
+              {MESSAGE_KIND_LABEL[kind]}
+            </span>
+          ))}
         </p>
       ) : null}
     </div>

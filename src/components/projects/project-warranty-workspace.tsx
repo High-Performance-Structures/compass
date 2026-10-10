@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { warrantyAssigneeKey, type WarrantyAssigneeOption } from "@/lib/warranty/assignee"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 import { ProjectPortalPrintButton } from "@/components/projects/project-portal-print-button"
 import { warrantyReport } from "@/lib/print/audience-record-reports"
@@ -274,25 +275,26 @@ function ClaimActions({
   projectId,
   claim,
   viewerIsInternal,
-  assigneeNames,
+  assigneeOptions,
 }: {
   readonly projectId: string
   readonly claim: WarrantyClaimItem
   readonly viewerIsInternal: boolean
-  readonly assigneeNames: readonly string[]
+  readonly assigneeOptions: readonly WarrantyAssigneeOption[]
 }): React.ReactElement {
+  // Start on the claim's linked contact (or a name match, so one save links
+  // an older text-only assignment).
+  const assigneeKey = warrantyAssigneeKey(claim, assigneeOptions)
   const router = useRouter()
   const [message, setMessage] = React.useState<string | null>(null)
   const [submitting, startTransition] = React.useTransition()
 
   function handleUpdate(formData: FormData): void {
     startTransition(async () => {
-      const assignedName = optionalText(formText(formData, "assignedName"))
       const result = await updateProjectWarrantyClaim(projectId, claim.id, {
         status: formText(formData, "status"),
         priority: formText(formData, "priority"),
-        assignedUserId: null,
-        assignedName,
+        assignee: optionalText(formText(formData, "assignee")),
         scheduledFor: optionalText(formText(formData, "scheduledFor")),
         resolutionSummary: optionalText(formText(formData, "resolutionSummary")),
         internalNotes: optionalText(formText(formData, "internalNotes")),
@@ -354,12 +356,16 @@ function ClaimActions({
           <label className="space-y-1 text-xs font-medium text-muted-foreground">
             Assigned to
             <SearchableComboboxField
-              name="assignedName"
-              defaultValue={claim.assignedName ?? ""}
+              name="assignee"
+              defaultValue={assigneeKey}
               ariaLabel={`Assign ${claim.claimNumber}`}
               options={[
                 { value: "", label: "Unassigned" },
-                ...assigneeNames.map((name) => ({ value: name, label: name })),
+                // An older text-only assignment with no matching contact stays selectable as-is.
+                ...(assigneeKey.startsWith("name:")
+                  ? [{ value: assigneeKey, label: `${claim.assignedName ?? ""} (not linked to a contact)` }]
+                  : []),
+                ...assigneeOptions.map((option) => ({ value: option.key, label: option.label })),
               ]}
               placeholder="Unassigned"
               searchPlaceholder="Type an assignee name..."
@@ -409,13 +415,13 @@ function ClaimRow({
   projectId, project,
   claim,
   viewerIsInternal,
-  assigneeNames,
+  assigneeOptions,
 }: {
   readonly projectId: string
   readonly project: ReportProject
   readonly claim: WarrantyClaimItem
   readonly viewerIsInternal: boolean
-  readonly assigneeNames: readonly string[]
+  readonly assigneeOptions: readonly WarrantyAssigneeOption[]
 }): React.ReactElement {
   return (
     <article id={`warranty-${claim.id}`} className="border-b py-5 last:border-b-0">
@@ -471,17 +477,17 @@ function ClaimRow({
           </ol>
         </details>
       )}
-      <ClaimActions projectId={projectId} claim={claim} viewerIsInternal={viewerIsInternal} assigneeNames={assigneeNames} />
+      <ClaimActions projectId={projectId} claim={claim} viewerIsInternal={viewerIsInternal} assigneeOptions={assigneeOptions} />
     </article>
   )
 }
 
 export function ProjectWarrantyWorkspace({
   workspace,
-  assigneeNames = [],
+  assigneeOptions = [],
 }: {
   readonly workspace: WarrantyWorkspace
-  readonly assigneeNames?: readonly string[]
+  readonly assigneeOptions?: readonly WarrantyAssigneeOption[]
 }): React.ReactElement {
   return (
     <section className="bg-background">
@@ -503,7 +509,7 @@ export function ProjectWarrantyWorkspace({
       <div className="px-4 sm:px-6">
         {workspace.claims.length > 0 ? (
           workspace.claims.map((claim) => (
-            <ClaimRow project={workspace.project} key={claim.id} projectId={workspace.project.id} claim={claim} viewerIsInternal={workspace.viewerIsInternal} assigneeNames={assigneeNames} />
+            <ClaimRow project={workspace.project} key={claim.id} projectId={workspace.project.id} claim={claim} viewerIsInternal={workspace.viewerIsInternal} assigneeOptions={assigneeOptions} />
           ))
         ) : (
           <div className="py-16 text-center">

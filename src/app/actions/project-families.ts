@@ -370,6 +370,7 @@ async function provisionPhaseDriveFolder(
         projectNumber,
         phaseName: phase.phaseName,
       }),
+      templateEmail: googleClients.projectIntakeGoogleEmail,
       existingFolderId: phase.phaseFolderId ?? undefined,
       parentFolderId,
     },

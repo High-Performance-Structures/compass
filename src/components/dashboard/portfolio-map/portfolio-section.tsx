@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
+import { useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { PortfolioPanel, type PortfolioSelection } from "@/components/dashboard/portfolio-map/portfolio-panel"
 import { PortfolioPipeline } from "@/components/dashboard/portfolio-map/portfolio-pipeline"
@@ -14,6 +15,10 @@ import {
   storeLayers,
   type PortfolioLayerState,
 } from "@/components/dashboard/portfolio-map/portfolio-layers"
+import type { PortfolioJobMessages } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
+import { useNotificationInbox } from "@/hooks/use-notification-inbox"
+import { groupInbox } from "@/lib/notifications/inbox"
+import { messageStacksFrom } from "@/lib/notifications/message-stacks"
 
 // three.js and the terrain scene load only when the map is about to be seen.
 const PortfolioTerrain = dynamic(
@@ -64,6 +69,21 @@ export function PortfolioSection({
     setLayerState(readStoredLayers())
   }, [])
 
+  // "Show on map" from the bell: map view, Messages layer on, that job
+  // selected. Watches the URL because the bell navigates within the page.
+  const searchParams = useSearchParams()
+  const linkedLayer = searchParams.get("layer")
+  const linkedJob = searchParams.get("job")
+  React.useEffect(() => {
+    if (linkedLayer !== "messages" || !linkedJob) return
+    const next = { ...readStoredLayers(), messages: true }
+    setView("map")
+    setLayerState(next)
+    storeLayers(next)
+    setSelection({ kind: "job", jobId: linkedJob })
+    sectionRef.current?.scrollIntoView({ block: "start" })
+  }, [linkedJob, linkedLayer])
+
   React.useEffect(() => {
     const element = sectionRef.current
     if (!element || nearViewport) return
@@ -102,6 +122,26 @@ export function PortfolioSection({
     setLayerState(next)
     storeLayers(next)
   }, [])
+  // Messages layer: the viewer's bell items, stacked per job on the map.
+  const messagesOn = layerState.messages && travel !== null && view === "map" && !mapUnavailable
+  const inbox = useNotificationInbox(messagesOn)
+  const messageStacks = React.useMemo(
+    () => (messagesOn ? messageStacksFrom(inbox.items) : null),
+    [inbox.items, messagesOn],
+  )
+  const selectedJobId = selection.kind === "job" ? selection.jobId : null
+  const { markRead: markInboxRead, done: markInboxDone } = inbox
+  const jobMessages = React.useMemo<PortfolioJobMessages | null>(() => {
+    if (!messagesOn || !selectedJobId) return null
+    const sections = groupInbox(inbox.items.filter((item) => item.projectId === selectedJobId))
+    return {
+      rows: sections.flatMap((section) => section.rows.filter((row) => row.unreadCount > 0)),
+      loaded: inbox.loaded,
+      onMarkRead: (row) => void markInboxRead(row),
+      onDone: (row) => void markInboxDone(row),
+    }
+  }, [inbox.items, inbox.loaded, markInboxDone, markInboxRead, messagesOn, selectedJobId])
+
   const travelSettings = travel?.settings
   const layers = React.useMemo(
     () => (travelSettings ? { state: layerState, settings: travelSettings, onChange: changeLayers } : undefined),
@@ -166,6 +206,8 @@ export function PortfolioSection({
                 onHoverJob={setHoveredJobId}
                 onUnavailable={handleUnavailable}
                 layers={layers}
+                messageStacks={messageStacks}
+                focusSelectedOnLoad={linkedLayer === "messages" && linkedJob !== null}
               />
             ) : (
               <div className="h-full" />
@@ -190,6 +232,7 @@ export function PortfolioSection({
             onSelectJob={selectJob}
             onSelectPhase={selectPhase}
             onClear={clear}
+            jobMessages={jobMessages}
           />
         </aside>
       </div>
