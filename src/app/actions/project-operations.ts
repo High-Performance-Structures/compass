@@ -61,6 +61,7 @@ import {
 import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
+import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -1848,6 +1849,8 @@ export async function updateProjectOperationStatus(
     revalidatePath("/dashboard")
     if (operationKind === "rfq") {
       revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
+    } else {
+      await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: operationId })
     }
 
     return { success: true, id: operationId }
@@ -1986,6 +1989,7 @@ export async function createPurchaseOrderRequest(
       db.insert(projectOperations).values(inserted),
       ...lineInserts,
     ])
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: id })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
@@ -2139,6 +2143,7 @@ export async function updatePurchaseOrderRequest(
       ...lineInserts,
     ])
 
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
@@ -2454,6 +2459,8 @@ export async function deletePurchaseOrderRequest(
         )
       )
 
+    // The last Drive copy stays as the paper trail of the deleted order.
+    await markPaperTrailRemoved(db, { recordType: "purchase_order", recordId: purchaseOrderId })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath(`/dashboard/projects/${projectId}/financials`)
@@ -3218,6 +3225,8 @@ export async function sendPurchaseOrderEmail(
         updatedAt: now,
       })
       .where(eq(projectOperations.id, purchaseOrderId))
+    // Freeze a dated copy of exactly what the vendor received.
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId, milestone: "sent" })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)

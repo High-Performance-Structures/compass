@@ -16,6 +16,7 @@ const SAGE_BRIDGE_HEALTH_TARGET = "/api/operations/sage/health"
 const SQUARE_AUTH_HEALTH_TARGET = "/api/operations/square/auth-health"
 const STAFF_MESSAGE_STALE_REMINDER_TARGET =
   "/api/operations/staff-message-desk/stale-reminders"
+const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
   "/api/operations/sage/square-receipts"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_CRON = "* * * * *"
@@ -279,6 +280,9 @@ export default {
         Promise.all([
           runMaintenanceJob("Sage Square manual receipts", () => reconcileSageSquareReceipts(env)),
           runMaintenanceJob("Square authentication health", () => checkBridgeHealth(env, SQUARE_AUTH_HEALTH_TARGET)),
+          // Every minute: refreshes Drive copies of records edited at least the
+          // company's quiet period ago. Idle runs cost one indexed query.
+          runMaintenanceJob("project paper trail", () => checkBridgeHealth(env, PAPER_TRAIL_TARGET)),
         ]).then(() => undefined)
       )
       return

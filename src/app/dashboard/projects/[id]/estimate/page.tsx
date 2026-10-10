@@ -10,6 +10,8 @@ import { getProjectFamilySummary } from "@/app/actions/project-families"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectEstimateWorkspacePanel } from "@/components/projects/project-estimate-workspace"
+import { getProjectPaperTrail } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 export default async function ProjectEstimatePage({
   params,
@@ -20,11 +22,13 @@ export default async function ProjectEstimatePage({
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
-  const [workspace, estimateTemplates, family] = await Promise.all([
+  const [workspace, estimateTemplates, family, paperTrail] = await Promise.all([
     getProjectEstimateWorkspace(id, query.estimateId),
     getPublishedEstimateTemplateOptions(),
     getProjectFamilySummary(id),
+    getProjectPaperTrail(id, "estimate"),
   ])
+  const activeEstimateId = workspace.activeEstimate?.id ?? null
 
   return (
     <div className="compass-content-scroll min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -47,6 +51,15 @@ export default async function ProjectEstimatePage({
           </>
         }
       />
+      {paperTrail.enabled && activeEstimateId ? (
+        <PaperTrailRecordStatus
+          className="-mt-3 mb-4"
+          projectId={id}
+          recordType="estimate"
+          recordId={activeEstimateId}
+          record={paperTrail.records[activeEstimateId] ?? null}
+        />
+      ) : null}
       <ProjectEstimateWorkspacePanel
         projectId={id}
         workspace={workspace}

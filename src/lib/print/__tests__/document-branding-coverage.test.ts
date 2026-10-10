@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest"
 
 const REACT_PRINT_DOCUMENTS = [
   "src/app/dashboard/projects/[id]/budget/page.tsx",
-  "src/app/dashboard/projects/[id]/purchase-orders/page.tsx",
+  "src/components/projects/purchase-order-document.tsx",
   "src/app/preview/projects/[id]/owner/budget/page.tsx",
-  "src/app/print/projects/[id]/estimate/page.tsx",
+  "src/components/projects/estimate-client-report.tsx",
   "src/components/projects/daily-log-print-document.tsx",
   "src/components/projects/owner-update-document.tsx",
   "src/components/schedule/schedule-print-document.tsx",

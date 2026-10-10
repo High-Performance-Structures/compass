@@ -69,12 +69,35 @@ export const nuTechEmailSettingsSchema = z.object({
 })
 
 export type NuTechEmailSettings = z.infer<typeof nuTechEmailSettingsSchema>
+/**
+ * Project paper trail: readable copies of Compass records in each project's
+ * Drive folder. "pilot" limits saving to the listed projects while the
+ * company checks the results.
+ */
+export const paperTrailSettingsSchema = z.object({
+  mode: z.enum(["off", "pilot", "on"]),
+  pilotProjectIds: z.array(z.string().min(1).max(80)).max(50),
+  purchaseOrders: z.boolean(),
+  estimates: z.boolean(),
+  rfis: z.boolean(),
+  changeOrders: z.boolean(),
+  milestoneCopies: z.boolean(),
+  quietMinutes: z.number().int().min(1).max(60),
+  /**
+   * Email domains that count as inside the company when checking whether a
+   * Drive folder is shared. The connected Google account's domain always counts.
+   */
+  internalDomains: z.array(z.string().min(3).max(100).regex(/^[a-z0-9.-]+\.[a-z]{2,}$/)).max(20),
+})
+
+export type PaperTrailSettings = z.infer<typeof paperTrailSettingsSchema>
 
 /** Settings type for each registered feature key. */
 type FeatureSettingsTypes = {
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
   readonly "nutech-emails": NuTechEmailSettings
+  readonly "paper-trail": PaperTrailSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -119,6 +142,22 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       templates: {},
     },
     schema: nuTechEmailSettingsSchema,
+  },
+  "paper-trail": {
+    label: "Project paper trail",
+    description: "Which Compass records are saved as PDFs in each project's Google Drive folder, and how long to wait after the last edit.",
+    defaults: {
+      mode: "off",
+      pilotProjectIds: [],
+      purchaseOrders: true,
+      estimates: true,
+      rfis: true,
+      changeOrders: true,
+      milestoneCopies: true,
+      quietMinutes: 3,
+      internalDomains: [],
+    },
+    schema: paperTrailSettingsSchema,
   },
 }
 

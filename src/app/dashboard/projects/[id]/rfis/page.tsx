@@ -37,6 +37,8 @@ import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
 import { viewableRfiAttachmentUrl } from "@/lib/rfis/attachment-url"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { getProjectPaperTrail } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 function formatDate(value: string | null): string {
   if (!value) return "No due date"
@@ -112,13 +114,14 @@ export default async function ProjectRfisPage({
     ? query.item[0] ?? null
     : query.item ?? null
   const statusFilter = parseRfiStatusFilter(query.status)
-  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails] =
+  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail] =
     await Promise.all([
       getProjects(),
       getProjectRfis(id),
       getProjectContactsSummary(id, "internal"),
       getProjectTaskAssigneeOptions(id),
       getProjectRfiInboundEmails(id),
+      getProjectPaperTrail(id, "rfi"),
     ]).catch((error: unknown) => {
       redirectIfFeaturePermissionDenied(error)
       throw error
@@ -316,6 +319,15 @@ export default async function ProjectRfisPage({
                     </span>
                   )}
                 </div>
+                {paperTrail.enabled ? (
+                  <PaperTrailRecordStatus
+                    className="mt-2"
+                    projectId={id}
+                    recordType="rfi"
+                    recordId={rfi.id}
+                    record={paperTrail.records[rfi.id] ?? null}
+                  />
+                ) : null}
                 {rfi.attachments.length > 0 && (
                   <div className="mt-3 rounded-md border bg-muted/20 p-3">
                     <p className="text-xs font-medium text-muted-foreground">
