@@ -28,6 +28,7 @@ export function salesMapJobs(jobs: readonly SalesPipelineJob[]): readonly Portfo
     nextTaskStart: null,
     health: "ok",
     visibility: "default",
+    followUp: job.followUp,
   }))
 }
 

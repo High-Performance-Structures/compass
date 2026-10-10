@@ -15,6 +15,8 @@ import {
   type SalesStageId,
 } from "@/lib/sales-pipeline/stages"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
+import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
 export type SalesPipelineJob = {
   readonly id: string
@@ -32,6 +34,8 @@ export type SalesPipelineJob = {
   readonly statusLabel: string
   readonly deliveryMethod: DeliveryMethod | null
   readonly updatedAt: string | null
+  /** Client follow-up aging; null when the status isn't followed up. */
+  readonly followUp: ProjectFollowUpSignal | null
 }
 
 export type SalesPipeline = {
@@ -79,6 +83,15 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
       .from(projects)
       .where(and(eq(projects.organizationId, user.organizationId), inArray(projects.department, departments)))
     const detailById = new Map(details.map((row) => [row.id, row]))
+    const followUps = await loadProjectFollowUpSignals(
+      db,
+      user.organizationId,
+      staged.map(({ project }) => project),
+      new Date(),
+    ).catch((error: unknown) => {
+      console.error("Sales follow-up aging unavailable", error instanceof Error ? error.message : error)
+      return new Map<string, ProjectFollowUpSignal>()
+    })
 
     return departments.flatMap((department): SalesPipeline[] => {
       const title = SALES_PIPELINE_DEPARTMENTS[department]
@@ -106,6 +119,7 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
           statusLabel: project.jobStatusLabel,
           deliveryMethod: isDeliveryMethod(detail.deliveryMethod) ? detail.deliveryMethod : null,
           updatedAt: detail.updatedAt,
+          followUp: followUps.get(project.id) ?? null,
         }]
       })
       const placed = spreadSharedTowns(jobs).map((job) => {

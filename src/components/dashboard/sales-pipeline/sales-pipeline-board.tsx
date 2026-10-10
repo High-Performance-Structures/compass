@@ -17,6 +17,8 @@ import {
   type DeliveryMethod,
   type SalesStageId,
 } from "@/lib/sales-pipeline/stages"
+import { FollowUpChip, FollowUpSection } from "@/components/projects/project-follow-up-aging"
+import { needsFollowUp } from "@/lib/project-follow-up"
 import { cn } from "@/lib/utils"
 
 const STAGE_MOVE_GROUPS: readonly StatusMoveGroup[] = SALES_STAGES.map((stage) => ({
@@ -153,6 +155,9 @@ export function SalesPipelineColumns({ state }: { readonly state: SalesPipelineS
                       <span className="truncate font-mono text-xs tracking-[0.08em] text-muted-foreground">
                         {[job.projectNumber, job.town?.toUpperCase()].filter(Boolean).join(" · ") || "NO TOWN"}
                       </span>
+                      <span className="flex">
+                        <FollowUpChip signal={job.followUp} />
+                      </span>
                     </button>
                   </li>
                 ))}
@@ -192,6 +197,7 @@ export function SalesJobPanel({ state, title }: { readonly state: SalesPipelineS
         >
           {stageLabel.toUpperCase()}
         </span>
+        {selected.followUp ? <FollowUpSection projectId={selected.id} signal={selected.followUp} compact /> : null}
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">Status</dt>
           <dd className="text-right">{selected.statusLabel}</dd>
@@ -271,6 +277,13 @@ export function SalesJobPanel({ state, title }: { readonly state: SalesPipelineS
   }
 
   const unplaced = jobs.filter((job) => job.lon === null || job.lat === null).length
+  const attention = jobs
+    .filter((job) => needsFollowUp(job.followUp))
+    .sort(
+      (a, b) =>
+        Number(b.followUp?.level === "overdue") - Number(a.followUp?.level === "overdue") ||
+        (b.followUp?.businessDaysSinceLastTouch ?? 0) - (a.followUp?.businessDaysSinceLastTouch ?? 0),
+    )
   return (
     <div className="flex flex-col gap-5 p-5">
       <div className="flex flex-col gap-1">
@@ -292,6 +305,28 @@ export function SalesJobPanel({ state, title }: { readonly state: SalesPipelineS
           </li>
         ))}
       </ul>
+      {attention.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-xs tracking-[0.12em]" style={{ color: "var(--destructive)" }}>
+            ● NEEDS ATTENTION · {attention.length}
+          </span>
+          <ul>
+            {attention.slice(0, 8).map((job) => (
+              <li key={job.id}>
+                <button type="button" className={ROW} onClick={() => select(job.id)}>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{job.name}</span>
+                    <span className="font-mono text-xs tracking-[0.08em] text-muted-foreground">
+                      {job.town ? job.town.toUpperCase() : "NO TOWN"}
+                    </span>
+                  </span>
+                  <FollowUpChip signal={job.followUp} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {unplaced > 0 ? (
         <p className="text-xs text-muted-foreground">
           {unplaced === 1

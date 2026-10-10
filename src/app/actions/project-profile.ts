@@ -76,7 +76,9 @@ import {
   projectNumberDepartmentSequence,
   projectNumberReviewIssue,
 } from "@/lib/project-number-review"
-import { clientFollowUpState } from "@/lib/project-follow-up"
+import { clientFollowUpState, followUpThresholds, type ProjectFollowUpSignal } from "@/lib/project-follow-up"
+import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import {
   isProjectDepartment,
@@ -146,6 +148,8 @@ export type ProjectInformation = {
     readonly ownerUserId: string | null
     readonly ownerName: string | null
   } | null
+  /** Client follow-up aging by the company's thresholds; null when the status isn't followed up. */
+  readonly followUpSignal: ProjectFollowUpSignal | null
   readonly syncOperations: readonly {
     readonly id: string
     readonly operation: string
@@ -511,6 +515,12 @@ export async function getProjectInformation(
         interactionTypeLabel: projectInteractionTypeLabel(interaction.interactionType),
       })),
       followUp: followUps[0] ?? null,
+      followUpSignal: await loadProjectFollowUpSignals(db, organizationId, [project], new Date())
+        .then((signals) => signals.get(project.id) ?? null)
+        .catch((error: unknown) => {
+          console.error("Project follow-up aging unavailable", error instanceof Error ? error.message : error)
+          return null
+        }),
       syncOperations: operations,
     }
   } catch (error) {
@@ -545,7 +555,7 @@ export async function getProjectFollowUpQueue(): Promise<
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
     const db = getDb(env.DB)
-    const [rows, customStatuses] = await Promise.all([
+    const [rows, customStatuses, agingSettings] = await Promise.all([
       db
         .select({
           projectId: projects.id,
@@ -591,6 +601,7 @@ export async function getProjectFollowUpQueue(): Promise<
             eq(projectJobStatuses.active, true),
           ),
         ),
+      readFeatureSettings(db, organizationId, "project-aging"),
     ])
     const customStatusesById = new Map(customStatuses.map((status) => [status.id, status]))
     const builtInStatusLabels = new Map<string, string>(
@@ -646,7 +657,11 @@ export async function getProjectFollowUpQueue(): Promise<
       const customStatus = customStatusesById.get(project.jobStatusId)
       const state = clientFollowUpState({
         jobStatusId: project.jobStatusId,
-        cadenceDays: customStatus ? customStatus.cadenceDays : undefined,
+        thresholds: followUpThresholds({
+          jobStatusId: project.jobStatusId,
+          customCadenceDays: customStatus ? customStatus.cadenceDays : undefined,
+          settings: agingSettings,
+        }),
         interactions: project.interactions,
         nextFollowUpAt: project.nextFollowUpAt,
         now: new Date(),
@@ -1957,6 +1972,76 @@ export async function setProjectFollowUp(input: {
   } catch (error) {
     console.error("Unable to set project follow-up", error)
     return { success: false, error: "Unable to set project follow-up." }
+  }
+}
+
+/** Active client contacts a contact can be logged against, for quick logging from the map. */
+export async function getProjectQuickLogContacts(
+  projectId: string,
+): Promise<{ readonly success: true; readonly contacts: readonly { readonly id: string; readonly displayName: string }[] } | { readonly success: false; readonly error: string }> {
+  try {
+    const { db } = await projectProfileContext(projectId, "read")
+    const contacts = await db
+      .select({ id: projectContacts.id, displayName: projectContacts.displayName })
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.contactType, "owner"),
+          eq(projectContacts.active, true),
+        ),
+      )
+      .orderBy(asc(projectContacts.displayName))
+    return { success: true, contacts }
+  } catch (error) {
+    console.error("Unable to load client contacts", error)
+    return { success: false, error: "Unable to load client contacts." }
+  }
+}
+
+/**
+ * Push the next follow-up to a later date, keeping its owner. Used by
+ * "Snooze" on the map and the project's follow-up tracker.
+ */
+export async function snoozeProjectFollowUp(input: {
+  readonly projectId: string
+  readonly nextFollowUpAt: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const next = new Date(input.nextFollowUpAt)
+    if (Number.isNaN(next.getTime()) || next.getTime() <= Date.now()) {
+      return { success: false, error: "Choose a future follow-up date." }
+    }
+    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
+    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
+    const before = await db
+      .select({ nextFollowUpAt: projectFollowUps.nextFollowUpAt })
+      .from(projectFollowUps)
+      .where(eq(projectFollowUps.projectId, input.projectId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    const timestamp = nowIso()
+    await db
+      .insert(projectFollowUps)
+      .values({
+        projectId: input.projectId,
+        organizationId,
+        nextFollowUpAt: next.toISOString(),
+        ownerUserId: null,
+        createdBy: user.id,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .onConflictDoUpdate({
+        target: projectFollowUps.projectId,
+        set: { nextFollowUpAt: next.toISOString(), updatedAt: timestamp },
+      })
+    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_follow_up_snoozed", entityType: "project_follow_up", entityId: input.projectId, before, after: { nextFollowUpAt: next.toISOString() } })
+    revalidateProjectProfile(input.projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to snooze project follow-up", error)
+    return { success: false, error: "Unable to snooze the follow-up." }
   }
 }
 

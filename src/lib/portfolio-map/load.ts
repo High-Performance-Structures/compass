@@ -8,6 +8,8 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { getCloudflareContext } from "@/lib/db"
 import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
+import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
+import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 import {
   defaultPortfolioPhase,
   isPortfolioMapVisibility,
@@ -89,7 +91,8 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const orgId = user.organizationId
     const today = dateKeyInTimeZone(new Date(), TIME_ZONE)
 
-    const [locations, taskStats, upcoming, storedSettings, overrideRows] = await Promise.all([
+    const showFollowUp = isInternalStaffRole(user.role)
+    const [locations, taskStats, upcoming, storedSettings, overrideRows, followUps] = await Promise.all([
       db
         .select({
           id: projects.id,
@@ -150,6 +153,13 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           console.error("Per-job zone charges unavailable", error instanceof Error ? error.message : error)
           return []
         }),
+      // Follow-up aging is office information, and optional like the charges.
+      showFollowUp
+        ? loadProjectFollowUpSignals(db, orgId, visible, new Date()).catch((error: unknown) => {
+            console.error("Project follow-up aging unavailable", error instanceof Error ? error.message : error)
+            return new Map<string, ProjectFollowUpSignal>()
+          })
+        : new Map<string, ProjectFollowUpSignal>(),
     ])
     const settings = parseStoredSettings(storedSettings[0]?.settingsJson)
     const overrideById = new Map(overrideRows.map((row) => [row.projectId, row]))
@@ -220,6 +230,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         nextTaskStart: next?.startDate ?? null,
         health: portfolioHealth(pastDueCount, stalledCount),
         visibility,
+        followUp: followUps.get(project.id) ?? null,
       }
     })
     // Fan out same-town jobs, then put jobs with a located site on the site itself.

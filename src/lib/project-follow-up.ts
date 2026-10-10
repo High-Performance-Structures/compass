@@ -1,4 +1,28 @@
 import { defaultFollowUpCadenceDays } from "@/lib/project-profile"
+import type { ProjectAgingSettings } from "@/lib/feature-settings/registry"
+
+/** Business days since the last client contact at which follow-up is due, then overdue. */
+export type FollowUpThresholds = {
+  readonly dueDays: number
+  readonly overdueDays: number
+}
+
+/**
+ * A status's thresholds: the company's setting for it, else its cadence (due
+ * on the cadence day, overdue the day after). Null when the status is not
+ * followed up (closed, internal).
+ */
+export function followUpThresholds(input: {
+  readonly jobStatusId: string
+  /** Cadence of an organization-specific status; undefined for built-in statuses. */
+  readonly customCadenceDays?: number | null
+  readonly settings: ProjectAgingSettings
+}): FollowUpThresholds | null {
+  const cadence =
+    input.customCadenceDays === undefined ? defaultFollowUpCadenceDays(input.jobStatusId) : input.customCadenceDays
+  if (cadence === null) return null
+  return input.settings.statuses[input.jobStatusId] ?? { dueDays: cadence, overdueDays: cadence + 1 }
+}
 
 export type ClientInteractionTime = {
   readonly occurredAt: string
@@ -62,6 +86,8 @@ function latestInteraction(
 export function clientFollowUpState(input: {
   readonly jobStatusId: string
   readonly cadenceDays?: number | null
+  /** Company thresholds; when given they replace the cadence. */
+  readonly thresholds?: FollowUpThresholds | null
   readonly interactions: readonly ClientInteractionTime[]
   readonly nextFollowUpAt: string | null
   readonly now: Date
@@ -70,7 +96,13 @@ export function clientFollowUpState(input: {
     input.cadenceDays === undefined
       ? defaultFollowUpCadenceDays(input.jobStatusId)
       : input.cadenceDays
-  if (cadenceDays === null) {
+  const thresholds =
+    input.thresholds !== undefined
+      ? input.thresholds
+      : cadenceDays === null
+        ? null
+        : { dueDays: cadenceDays, overdueDays: cadenceDays + 1 }
+  if (thresholds === null) {
     return {
       eligible: false,
       businessDaysSinceLastTouch: null,
@@ -81,6 +113,18 @@ export function clientFollowUpState(input: {
   }
 
   const latest = latestInteraction(input.interactions)
+  // A future follow-up date (set or snoozed) quiets the job even before any
+  // contact is logged.
+  const plannedAt = input.nextFollowUpAt ? validDate(input.nextFollowUpAt) : null
+  if (!latest && plannedAt && plannedAt.getTime() > input.now.getTime()) {
+    return {
+      eligible: true,
+      businessDaysSinceLastTouch: null,
+      lastClientInteractionAt: null,
+      nextFollowUpAt: input.nextFollowUpAt,
+      state: "scheduled",
+    }
+  }
   if (!latest) {
     return {
       eligible: true,
@@ -115,9 +159,9 @@ export function clientFollowUpState(input: {
   }
 
   const state =
-    businessDaysSinceLastTouch > cadenceDays
+    businessDaysSinceLastTouch >= thresholds.overdueDays
       ? "overdue"
-      : businessDaysSinceLastTouch === cadenceDays
+      : businessDaysSinceLastTouch >= thresholds.dueDays
         ? "due"
         : "current"
   return {
@@ -127,4 +171,49 @@ export function clientFollowUpState(input: {
     nextFollowUpAt: input.nextFollowUpAt,
     state,
   }
+}
+
+/**
+ * Aging levels shown on the map, pipeline and job pages, mildest to worst.
+ * Same colors as Message Desk aging: red always means overdue.
+ */
+export type ProjectAgingLevel = "on_track" | "scheduled" | "no_contact" | "due" | "overdue"
+
+export const PROJECT_AGING_LEVELS: Readonly<Record<ProjectAgingLevel, { readonly label: string; readonly colorToken: string }>> = {
+  on_track: { label: "On track", colorToken: "--success" },
+  scheduled: { label: "Follow-up scheduled", colorToken: "--success" },
+  no_contact: { label: "No contact logged", colorToken: "--info" },
+  due: { label: "Follow-up due", colorToken: "--warning" },
+  overdue: { label: "Overdue", colorToken: "--destructive" },
+}
+
+export function projectAgingLevel(state: ClientFollowUpState["state"]): ProjectAgingLevel | null {
+  switch (state) {
+    case "current":
+      return "on_track"
+    case "scheduled":
+      return "scheduled"
+    case "unrecorded":
+      return "no_contact"
+    case "due":
+      return "due"
+    case "overdue":
+      return "overdue"
+    case "excluded":
+      return null
+  }
+}
+
+/** A job's follow-up aging, carried to the map, pipeline and job pages. */
+export type ProjectFollowUpSignal = {
+  readonly level: ProjectAgingLevel
+  readonly businessDaysSinceLastTouch: number | null
+  readonly lastContactAt: string | null
+  readonly nextFollowUpAt: string | null
+  readonly thresholds: FollowUpThresholds
+}
+
+/** Needs someone's attention: due or overdue. */
+export function needsFollowUp(signal: ProjectFollowUpSignal | null): boolean {
+  return signal?.level === "due" || signal?.level === "overdue"
 }

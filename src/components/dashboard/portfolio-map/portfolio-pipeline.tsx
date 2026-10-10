@@ -3,8 +3,10 @@
 import type * as React from "react"
 import { cn } from "@/lib/utils"
 import { HEALTH_LABEL, healthColor, phaseColor } from "@/components/dashboard/portfolio-map/portfolio-style"
+import { FollowUpChip } from "@/components/projects/project-follow-up-aging"
 import {
   PORTFOLIO_PHASES,
+  portfolioMarkerAlert,
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
@@ -52,6 +54,7 @@ export function PortfolioPipeline({
                 {phaseJobs.map((job) => {
                   const selected = job.id === selectedJobId
                   const progress = job.progress ?? 0
+                  const alert = portfolioMarkerAlert(job)
                   return (
                     <li key={job.id}>
                       <button
@@ -71,18 +74,21 @@ export function PortfolioPipeline({
                           <span className="absolute inset-1 flex items-center justify-center rounded-full bg-card font-mono text-xs tabular-nums">
                             {job.progress === null ? "—" : job.progress}
                           </span>
-                          {job.health !== "ok" ? (
+                          {alert ? (
                             <span
                               className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-card"
-                              style={{ background: healthColor(job.health) }}
+                              style={{ background: healthColor(alert) }}
                             />
                           ) : null}
                         </span>
-                        <span className="flex min-w-0 flex-col">
+                        <span className="flex min-w-0 flex-col gap-0.5">
                           <span className="truncate text-xs">{job.name}</span>
                           <span className="font-mono text-xs tracking-[0.08em] text-muted-foreground">
                             {job.town ? job.town.toUpperCase() : "NO TOWN"}
                             {job.health !== "ok" ? ` · ${HEALTH_LABEL[job.health].toUpperCase()}` : ""}
+                          </span>
+                          <span className="flex">
+                            <FollowUpChip signal={job.followUp} />
                           </span>
                         </span>
                       </button>

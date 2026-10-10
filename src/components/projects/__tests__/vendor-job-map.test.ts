@@ -14,6 +14,7 @@ function job(id: string, name: string, town: string | null): PortfolioMapJob {
     town, lon: town ? -105.9 : null, lat: town ? 40.1 : null, progress: null,
     pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null,
     health: "ok", visibility: "default",
+    followUp: null,
   }
 }
 
