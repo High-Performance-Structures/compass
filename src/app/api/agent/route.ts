@@ -5,7 +5,7 @@
  */
 
 import { getCurrentUser } from "@/lib/auth"
-import { getProviderConfigForJwt } from "@/app/actions/provider-config"
+import { getProviderConfigForJwt } from "@/lib/agent/provider-config"
 import { getOAuthAccessToken } from "@/app/actions/anthropic-oauth"
 import { generateAgentToken } from "@/lib/agent/api-auth"
 import { getCloudflareContext } from "@/lib/db"
