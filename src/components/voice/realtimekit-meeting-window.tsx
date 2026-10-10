@@ -18,6 +18,10 @@ import { TalkPreview } from "@/components/voice/talk-preview"
 import { TalkNotesPanel } from "@/components/voice/talk-notes-panel"
 import { useTalkSettings } from "@/hooks/use-talk-settings"
 import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
+import {
+  createPictureInPictureTileRegistry,
+  selectPictureInPictureVideo,
+} from "@/lib/realtimekit/picture-in-picture"
 import { useVoiceActivityPublisher } from "@/hooks/use-music-ducking"
 import { useMutedSpeechHint } from "@/hooks/use-muted-speech-hint"
 
@@ -203,6 +207,7 @@ export function RealtimeKitMeetingWindow({
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
+  const pipTileRegistryRef = React.useRef(createPictureInPictureTileRegistry())
   const endingMeetingRef = React.useRef(false)
 
   const showInfo = React.useCallback((text: string): void => {
@@ -293,18 +298,21 @@ export function RealtimeKitMeetingWindow({
 
   React.useEffect(() => {
     if (!meeting) return
-    const pip = meeting.participants.pip
     const updatePictureInPictureState = (): void => {
-      setPictureInPictureActive(pip.isActive)
+      setPictureInPictureActive(Boolean(document.pictureInPictureElement))
     }
     const updatePermissions = (): void => {
       setCanEndMeeting(meeting.self.permissions.kickParticipant)
     }
-    setCanUsePictureInPicture(pip.isSupported() && meeting.self.config.pipMode)
+    const updateCapability = (): void => {
+      setCanUsePictureInPicture(
+        Boolean(document.pictureInPictureEnabled) && meeting.self.config.pipMode
+      )
+    }
     updatePictureInPictureState()
+    updateCapability()
     updatePermissions()
-    // The SDK's composite PiP video lives outside the renderer's shadow roots.
-    // Capture also observes the browser's non-bubbling PiP close event.
+    // Browser PiP events do not reliably bubble from videos inside SDK shadow roots.
     document.addEventListener("enterpictureinpicture", updatePictureInPictureState, true)
     document.addEventListener("leavepictureinpicture", updatePictureInPictureState, true)
     meeting.self.permissions.addListener("permissionsUpdate", updatePermissions)
@@ -323,6 +331,14 @@ export function RealtimeKitMeetingWindow({
       videoTrackRef.current = null
     }
   }, [])
+
+  React.useEffect(() => {
+    if (!joined || !meeting || loading || error) return
+    const meetingUi = meetingUiRef.current
+    if (!meetingUi) return
+
+    return pipTileRegistryRef.current.attach(meetingUi)
+  }, [error, joined, loading, meeting])
 
   React.useEffect(() => {
     if (!meeting || loading || error) return
@@ -557,23 +573,32 @@ export function RealtimeKitMeetingWindow({
     }
   }, [closeMeetingWindow, meeting, leaving, showInfo])
 
-  const togglePictureInPicture = React.useCallback((): void => {
+  const togglePictureInPicture = React.useCallback(async (): Promise<void> => {
     if (!meeting || !canUsePictureInPicture) {
       showError("Picture-in-picture is not available in this browser.")
       return
     }
     setNotice(null)
     try {
-      const pip = meeting.participants.pip
-      if (pip.isActive) {
-        pip.disable()
+      if (document.pictureInPictureElement) {
+        setPipStatus("stopping")
+        await document.exitPictureInPicture()
         setPictureInPictureActive(false)
-      } else {
-        // Idempotent initialization prepares the SDK's participant canvas and
-        // media controls. Searching document videos misses shadow-DOM tiles.
-        pip.init()
-        pip.enable()
+        setPipStatus("idle")
+        return
       }
+
+      const activeVideo = selectPictureInPictureVideo(
+        pipTileRegistryRef.current.getCandidates(meeting.self.id)
+      )
+      if (!activeVideo) {
+        showError("Turn video on before starting picture-in-picture.")
+        return
+      }
+
+      setPipStatus("starting")
+      await activeVideo.requestPictureInPicture()
+      setPictureInPictureActive(true)
       setPipStatus("idle")
     } catch (cause: unknown) {
       recordRealtimeKitDiagnostic("picture-in-picture-failed", {
