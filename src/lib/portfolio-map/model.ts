@@ -3,6 +3,7 @@ import zipsData from "./colorado-zips.json"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/project-profile"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
 export const PORTFOLIO_PHASES = [
   { id: "intake", label: "Intake", short: "INT" },
@@ -37,6 +38,19 @@ export type PortfolioMapJob = {
   readonly nextTaskStart: string | null
   readonly health: PortfolioHealth
   readonly visibility: PortfolioMapVisibility
+  /** Client follow-up aging; null when the status isn't followed up or the viewer isn't office staff. */
+  readonly followUp: ProjectFollowUpSignal | null
+}
+
+/**
+ * The flag over a map marker: the worse of schedule health (construction)
+ * and client follow-up aging. Red is past due or overdue; amber is at risk
+ * or follow-up due.
+ */
+export function portfolioMarkerAlert(job: PortfolioMapJob): "late" | "risk" | null {
+  if (job.health === "late" || job.followUp?.level === "overdue") return "late"
+  if (job.health === "risk" || job.followUp?.level === "due") return "risk"
+  return null
 }
 
 /**

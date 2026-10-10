@@ -50,6 +50,7 @@ export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly Portf
       nextTaskStart: null,
       health: "ok",
       visibility: "default",
+      followUp: null,
     }]
   })
   return spreadSharedTowns(jobs)

@@ -16,8 +16,10 @@ import {
   phaseColor,
 } from "@/components/dashboard/portfolio-map/portfolio-style"
 import { CloseButton, JobLinks, StatusMovePicker, type StatusMoveGroup } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
+import { FollowUpChip, FollowUpSection } from "@/components/projects/project-follow-up-aging"
 import {
   PORTFOLIO_PHASES,
+  portfolioMarkerAlert,
   portfolioPhaseStatuses,
   type PortfolioMapJob,
   type PortfolioPhaseId,
@@ -69,13 +71,13 @@ type PortfolioPanelProps = {
 const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
 const ROW = "flex min-h-11 w-full items-center justify-between gap-3 border-b border-border px-1 text-left text-sm transition-colors hover:bg-accent"
 
-function HealthTag({ job }: { readonly job: PortfolioMapJob }): React.ReactElement {
+function HealthTag({ job, prefix = "" }: { readonly job: PortfolioMapJob; readonly prefix?: string }): React.ReactElement {
   return (
     <span
       className="shrink-0 border px-1.5 py-0.5 font-mono text-xs tracking-[0.1em]"
       style={{ borderColor: healthColor(job.health), color: healthColor(job.health) }}
     >
-      {HEALTH_LABEL[job.health].toUpperCase()}
+      {prefix}{HEALTH_LABEL[job.health].toUpperCase()}
     </span>
   )
 }
@@ -198,7 +200,9 @@ function JobDetail({
         </div>
         <CloseButton onClear={onClear} />
       </div>
-      <HealthTag job={job} />
+      {/* Schedule health only means something once the job has a schedule. */}
+      {job.progress !== null || job.health !== "ok" ? <HealthTag job={job} prefix="SCHEDULE · " /> : null}
+      {job.followUp ? <FollowUpSection projectId={job.id} signal={job.followUp} compact /> : null}
       {/* With the Messages layer on, the job's unread items come first. */}
       {messages ? <PortfolioJobMessageList messages={messages} /> : null}
       <div className="flex flex-col gap-2">
@@ -453,9 +457,15 @@ export function PortfolioPanel({
     )
   }
 
+  // Schedule trouble and overdue client follow-up, worst first.
   const attention = jobs
-    .filter((job) => job.health !== "ok")
-    .sort((a, b) => Number(b.health === "late") - Number(a.health === "late") || b.pastDueCount - a.pastDueCount)
+    .filter((job) => portfolioMarkerAlert(job) !== null)
+    .sort(
+      (a, b) =>
+        Number(portfolioMarkerAlert(b) === "late") - Number(portfolioMarkerAlert(a) === "late") ||
+        b.pastDueCount - a.pastDueCount ||
+        (b.followUp?.businessDaysSinceLastTouch ?? 0) - (a.followUp?.businessDaysSinceLastTouch ?? 0),
+    )
   return (
     <div className="flex flex-col gap-5 p-5">
       <div className="flex flex-col gap-1">
@@ -492,7 +502,7 @@ export function PortfolioPanel({
                       {job.town ? job.town.toUpperCase() : "NO TOWN"}
                     </span>
                   </span>
-                  <HealthTag job={job} />
+                  {job.health !== "ok" ? <HealthTag job={job} /> : <FollowUpChip signal={job.followUp} />}
                 </button>
               </li>
             ))}

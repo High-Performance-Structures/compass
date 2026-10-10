@@ -7,6 +7,7 @@ import {
   resolveTown,
   townAt,
   spreadSharedTowns,
+  portfolioMarkerAlert,
   type PortfolioMapJob,
 } from "../model"
 
@@ -26,6 +27,7 @@ function job(overrides: Partial<PortfolioMapJob> & Pick<PortfolioMapJob, "id">):
     nextTaskStart: null,
     health: "ok",
     visibility: "default",
+    followUp: null,
     ...overrides,
   }
 }
@@ -80,6 +82,7 @@ describe("portfolioPhaseFor", () => {
     jobStatusId: "under_construction",
     jobStatusLabel: "Under Construction",
     visibility: "default",
+    followUp: null,
   } as const
 
   it("follows status and department by default", () => {
@@ -166,5 +169,22 @@ describe("spreadSharedTowns", () => {
     expect(a?.lon).not.toBe(b?.lon)
     expect(Math.abs((a?.lon ?? 0) - -105.94)).toBeLessThan(0.05)
     expect(c?.lon).toBe(-105.99)
+  })
+})
+
+describe("portfolioMarkerAlert", () => {
+  const signal = (level: "due" | "overdue" | "on_track") => ({
+    level,
+    businessDaysSinceLastTouch: 4,
+    lastContactAt: null,
+    nextFollowUpAt: null,
+    thresholds: { dueDays: 3, overdueDays: 5 },
+  })
+  it("flags the worse of schedule health and client follow-up", () => {
+    expect(portfolioMarkerAlert(job({ id: "a" }))).toBeNull()
+    expect(portfolioMarkerAlert(job({ id: "b", followUp: signal("due") }))).toBe("risk")
+    expect(portfolioMarkerAlert(job({ id: "c", followUp: signal("overdue") }))).toBe("late")
+    expect(portfolioMarkerAlert(job({ id: "d", health: "late", followUp: signal("on_track") }))).toBe("late")
+    expect(portfolioMarkerAlert(job({ id: "e", health: "risk", followUp: signal("overdue") }))).toBe("late")
   })
 })

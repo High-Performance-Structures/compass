@@ -27,8 +27,8 @@ vi.mock("next/link", () => ({
 import { PortfolioSection } from "../portfolio-section"
 
 const jobs: readonly PortfolioMapJob[] = [
-  { id: "p1", name: "Granby Residence", projectNumber: "H-430-1900", phase: "construction", jobStatusId: "under_construction", statusLabel: "Under Construction", town: "Granby", lon: -105.94, lat: 40.09, progress: 22, pastDueCount: 1, stalledCount: 0, nextTaskTitle: "Footing inspection", nextTaskStart: "2026-10-09", health: "late", visibility: "default" },
-  { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", jobStatusId: null, statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default" },
+  { id: "p1", name: "Granby Residence", projectNumber: "H-430-1900", phase: "construction", jobStatusId: "under_construction", statusLabel: "Under Construction", town: "Granby", lon: -105.94, lat: 40.09, progress: 22, pastDueCount: 1, stalledCount: 0, nextTaskTitle: "Footing inspection", nextTaskStart: "2026-10-09", health: "late", visibility: "default", followUp: null },
+  { id: "p2", name: "Calhan Residence", projectNumber: null, phase: "permitting", jobStatusId: null, statusLabel: "Permitting", town: "Calhan", lon: -104.3, lat: 39.03, progress: null, pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null, health: "ok", visibility: "default", followUp: null },
 ]
 
 describe("PortfolioSection", () => {
@@ -122,8 +122,8 @@ describe("PortfolioSection", () => {
       department: "N",
       title: "Nu-Tech Sales",
       jobs: [
-        { id: "n1", name: "Fairplay Garage", projectNumber: "N-901", clientName: "Lee", assignedTo: "Rebekah", address: "12 Main St, Fairplay", town: "Fairplay", lon: -106, lat: 39.22, stage: "estimate_sent", jobStatusId: "estimate_sent", statusLabel: "Estimate Sent", deliveryMethod: null, updatedAt: null },
-        { id: "n2", name: "Salida Shop", projectNumber: "N-902", clientName: null, assignedTo: null, address: null, town: "Salida", lon: -106, lat: 38.53, stage: "ordered", jobStatusId: "ordered", statusLabel: "Ordered", deliveryMethod: "pickup", updatedAt: null },
+        { id: "n1", name: "Fairplay Garage", projectNumber: "N-901", clientName: "Lee", assignedTo: "Rebekah", address: "12 Main St, Fairplay", town: "Fairplay", lon: -106, lat: 39.22, stage: "estimate_sent", jobStatusId: "estimate_sent", statusLabel: "Estimate Sent", deliveryMethod: null, updatedAt: null, followUp: null },
+        { id: "n2", name: "Salida Shop", projectNumber: "N-902", clientName: null, assignedTo: null, address: null, town: "Salida", lon: -106, lat: 38.53, stage: "ordered", jobStatusId: "ordered", statusLabel: "Ordered", deliveryMethod: "pickup", updatedAt: null, followUp: null },
       ],
     }]
     await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null, salesPipelines })))

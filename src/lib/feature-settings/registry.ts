@@ -20,9 +20,32 @@ export const messageDeskSettingsSchema = z
 
 export type MessageDeskSettings = z.infer<typeof messageDeskSettingsSchema>
 
+/** One job status's client follow-up thresholds, in business days since the last client contact. */
+export const projectFollowUpThresholdsSchema = z
+  .object({
+    dueDays: z.number().int().min(1).max(60),
+    overdueDays: z.number().int().min(2).max(120),
+  })
+  .refine((value) => value.dueDays < value.overdueDays, {
+    message: "Overdue must be longer than Follow-up due.",
+    path: ["overdueDays"],
+  })
+
+/**
+ * Project aging: per-status follow-up thresholds that replace the status's
+ * built-in cadence. Statuses left out use their cadence (due on the cadence
+ * day, overdue the day after).
+ */
+export const projectAgingSettingsSchema = z.object({
+  statuses: z.record(z.string().min(1).max(80), projectFollowUpThresholdsSchema),
+})
+
+export type ProjectAgingSettings = z.infer<typeof projectAgingSettingsSchema>
+
 /** Settings type for each registered feature key. */
 type FeatureSettingsTypes = {
   readonly "message-desk": MessageDeskSettings
+  readonly "project-aging": ProjectAgingSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -41,6 +64,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "When open messages are flagged for follow-up, counted in business days.",
     defaults: { firstResponseDays: 1, agingDays: 2, staleDays: 5, remindOnStale: true },
     schema: messageDeskSettingsSchema,
+  },
+  "project-aging": {
+    label: "Project aging",
+    description: "When a job's client follow-up is due or overdue, by job status, counted in business days since the last client contact.",
+    defaults: { statuses: {} },
+    schema: projectAgingSettingsSchema,
   },
 }
 

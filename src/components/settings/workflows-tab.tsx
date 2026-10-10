@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
+import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
 
@@ -165,6 +166,7 @@ export function WorkflowsTab(): React.ReactElement {
   return (
     <div className="space-y-6">
       <MessageDeskSettingsSection />
+      <ProjectAgingSettingsSection />
     </div>
   )
 }

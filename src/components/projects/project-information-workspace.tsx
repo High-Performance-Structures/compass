@@ -41,6 +41,7 @@ import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/por
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 import { projectNumberAndName } from "@/lib/project-display-name"
 import { PageHeader } from "@/components/page-header"
+import { FollowUpSection } from "@/components/projects/project-follow-up-aging"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
 const UNASSIGNED_OWNER = "__unassigned__"
@@ -498,9 +499,14 @@ export function ProjectInformationWorkspace({
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="border-t pt-5">
+        <section id="client-follow-up" className="scroll-mt-4 border-t pt-5">
           <h2 className="font-semibold">Client follow-up</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Set the next explicit follow-up; the queue also calculates status-based staleness from meaningful touches.</p>
+          {information.followUpSignal ? (
+            <div className="mt-3 border-b pb-4">
+              <FollowUpSection projectId={information.project.id} signal={information.followUpSignal} />
+            </div>
+          ) : null}
+          <p className="mt-3 text-sm text-muted-foreground">Set the next explicit follow-up and its owner. Logging a client contact below resets the aging clock.</p>
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={saveFollowUp}>
             <div className="space-y-2"><Label htmlFor="follow-up-at">Next follow-up</Label><Input id="follow-up-at" type="datetime-local" value={followUpAt} onChange={(event) => setFollowUpAt(event.target.value)} required /></div>
             <div className="space-y-2"><Label htmlFor="follow-up-owner">Owner</Label><SearchableCombobox
