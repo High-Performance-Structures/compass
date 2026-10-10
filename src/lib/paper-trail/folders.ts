@@ -53,8 +53,11 @@ export function outsideAccess(permissions: readonly DrivePermission[], internalD
       if (!internalDomains.has(domain)) labels.add(domain ? `everyone at ${domain}` : "an unnamed domain")
       continue
     }
-    // "user" and "group": judge by the address's domain. An address we cannot
-    // read is treated as outside, which errs toward the private folder.
+    // "user" and "group": inside when the exact address or its domain is
+    // listed. An address we cannot read is treated as outside, which errs
+    // toward the private folder.
+    const address = permission.emailAddress?.trim().toLowerCase() ?? ""
+    if (address && internalDomains.has(address)) continue
     const domain = emailDomain(permission.emailAddress)
     if (domain === null) labels.add(permission.type === "group" ? "a group without a visible address" : "an account without a visible address")
     else if (!internalDomains.has(domain)) labels.add(permission.type === "group" ? `a group at ${domain}` : `people at ${domain}`)

@@ -84,10 +84,13 @@ export const paperTrailSettingsSchema = z.object({
   milestoneCopies: z.boolean(),
   quietMinutes: z.number().int().min(1).max(60),
   /**
-   * Email domains that count as inside the company when checking whether a
-   * Drive folder is shared. The connected Google account's domain always counts.
+   * Email domains, and specific trusted addresses (e.g. an owner's personal
+   * Gmail), that count as inside the company when checking whether a Drive
+   * folder is shared. The connected Google account's domain always counts.
    */
-  internalDomains: z.array(z.string().min(3).max(100).regex(/^[a-z0-9.-]+\.[a-z]{2,}$/)).max(20),
+  internalDomains: z
+    .array(z.string().min(3).max(120).regex(/^([a-z0-9._%+-]+@)?[a-z0-9.-]+\.[a-z]{2,}$/))
+    .max(60),
 })
 
 export type PaperTrailSettings = z.infer<typeof paperTrailSettingsSchema>

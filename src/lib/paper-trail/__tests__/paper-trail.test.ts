@@ -67,6 +67,16 @@ describe("shared-outside check", () => {
     ).toEqual(["anyone with the link", "people at gmail.com"])
   })
 
+  it("trusts listed personal addresses without trusting their whole domain", () => {
+    const trusted = internalDomainSet("office@hps-colorado.com", ["martine.vogel@gmail.com"])
+    expect(isSharedOutside([{ id: "1", type: "user", role: "writer", emailAddress: "Martine.Vogel@gmail.com" }], trusted)).toBe(false)
+    expect(isSharedOutside([{ id: "2", type: "user", role: "reader", emailAddress: "stranger@gmail.com" }], trusted)).toBe(true)
+    expect(parseFeatureSettings("paper-trail", '{"internalDomains":["martine.vogel@gmail.com","hps-colorado.com"]}').internalDomains).toEqual([
+      "martine.vogel@gmail.com",
+      "hps-colorado.com",
+    ])
+  })
+
   it("errs toward private when an address is unreadable", () => {
     expect(isSharedOutside([{ id: "1", type: "group", role: "reader" }], internal)).toBe(true)
   })
