@@ -56,7 +56,12 @@ describe("requiresConfirmation", () => {
 describe("pending action tokens", () => {
   it("round-trips the exact action, data and user", async () => {
     const token = await signPendingAction(secret, pending)
-    expect(await verifyPendingAction(secret, token)).toEqual(pending)
+    const verified = await verifyPendingAction(secret, token)
+    expect(verified).toMatchObject(pending)
+    expect(verified?.tokenId).toMatch(/^[0-9a-f-]{36}$/)
+    // Every token gets its own id, so each can be claimed only once.
+    const second = await verifyPendingAction(secret, await signPendingAction(secret, pending))
+    expect(second?.tokenId).not.toBe(verified?.tokenId)
   })
 
   it("rejects a token signed with another secret or altered", async () => {

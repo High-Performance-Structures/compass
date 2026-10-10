@@ -71,6 +71,8 @@ export async function signPendingAction(
   })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(CONFIRMATION_AUDIENCE)
+    // Recorded on Confirm so each token can be carried out only once.
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime(CONFIRMATION_TTL)
     .sign(new TextEncoder().encode(secret))
@@ -79,23 +81,24 @@ export async function signPendingAction(
 export async function verifyPendingAction(
   secret: string,
   token: string,
-): Promise<PendingAction | null> {
+): Promise<(PendingAction & { readonly tokenId: string }) | null> {
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
       algorithms: ["HS256"],
       audience: CONFIRMATION_AUDIENCE,
     })
-    const { uid, org, path, body } = payload
+    const { uid, org, path, body, jti } = payload
     if (
       typeof uid !== "string" ||
       typeof org !== "string" ||
       typeof path !== "string" ||
+      typeof jti !== "string" ||
       !isRecord(body) ||
       !requiresConfirmation(path, body)
     ) {
       return null
     }
-    return { userId: uid, organizationId: org, path, body }
+    return { userId: uid, organizationId: org, path, body, tokenId: jti }
   } catch {
     return null
   }
