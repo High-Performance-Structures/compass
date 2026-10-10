@@ -52,6 +52,18 @@ import {
   type RateBookEntryInput,
 } from "@/lib/rate-book/model"
 import { cn } from "@/lib/utils"
+import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
+
+type RateSortKey = "name" | "category" | "cost" | "markup" | "costCode" | "used"
+
+const RATE_SORT: Readonly<Record<RateSortKey, (entry: RateBookEntry) => string | number | null>> = {
+  name: (entry) => entry.name,
+  category: (entry) => RATE_BOOK_CATEGORY_LABEL[entry.category],
+  cost: (entry) => entry.unitCostCents,
+  markup: (entry) => entry.markupBasisPoints,
+  costCode: (entry) => entry.costCode,
+  used: (entry) => entry.usageCount,
+}
 
 const ALL = "all"
 const NO_CODE = "none"
@@ -176,6 +188,7 @@ export function RateBookTab(): React.ReactElement {
     (!query || `${entry.name} ${entry.costCode ?? ""} ${entry.costCodeName ?? ""} ${entry.notes ?? ""}`.toLowerCase().includes(query)),
   )
   const activeCount = (entries ?? []).filter((entry) => entry.status === "active").length
+  const { rows: sortedRates, sort: rateSort, toggle: toggleRateSort } = useTableSort(visible, RATE_SORT)
 
   return (
     <div className="flex flex-col gap-4">
@@ -224,16 +237,16 @@ export function RateBookTab(): React.ReactElement {
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="py-2 pr-3 font-medium">Rate</th>
-                <th className="py-2 pr-3 font-medium">Category</th>
-                <th className="py-2 pr-3 text-right font-medium">Cost</th>
-                <th className="py-2 pr-3 text-right font-medium">Markup</th>
-                <th className="py-2 pr-3 font-medium">Cost code</th>
-                <th className="py-2 text-right font-medium">Used</th>
+                <SortableTh sortKey="name" sort={rateSort} onSort={toggleRateSort} className="py-2 pr-3 font-medium">Rate</SortableTh>
+                <SortableTh sortKey="category" sort={rateSort} onSort={toggleRateSort} className="py-2 pr-3 font-medium">Category</SortableTh>
+                <SortableTh sortKey="cost" sort={rateSort} onSort={toggleRateSort} align="right" className="py-2 pr-3 text-right font-medium">Cost</SortableTh>
+                <SortableTh sortKey="markup" sort={rateSort} onSort={toggleRateSort} align="right" className="py-2 pr-3 text-right font-medium">Markup</SortableTh>
+                <SortableTh sortKey="costCode" sort={rateSort} onSort={toggleRateSort} className="py-2 pr-3 font-medium">Cost code</SortableTh>
+                <SortableTh sortKey="used" sort={rateSort} onSort={toggleRateSort} align="right" className="py-2 text-right font-medium">Used</SortableTh>
               </tr>
             </thead>
             <tbody>
-              {visible.map((entry) => (
+              {sortedRates.map((entry) => (
                 <tr
                   key={entry.id}
                   className={cn("cursor-pointer border-b hover:bg-muted/40", entry.status === "retired" && "text-muted-foreground")}

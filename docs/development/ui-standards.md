@@ -48,6 +48,14 @@ repository guidelines).
 - If a mutation removes the current page, clamp the page to the last remaining
   valid page. Never leave the user on an empty invalid page.
 - Use the shared `DataTablePagination` component for new and migrated tables.
+- Columns with a header are sortable by clicking the header: ascending, then
+  descending, then back to the default order, with an arrow on the sorted
+  column and `aria-sort` on the header. Use `TanstackSortableHeader` for
+  TanStack tables and `useTableSort` with `SortableTh` / `SortableTableHead`
+  (`src/components/ui/sortable-header.tsx`) for hand-built tables. Blank
+  values sort last in both directions. Leave out action, checkbox, and
+  thumbnail columns, and lists whose order is meaningful (document line
+  items, ranked queues, or lists the user arranges by hand).
 - Lists without pagination still need a deliberate empty state and should not
   silently render an unbounded dataset when the collection can grow.
 
