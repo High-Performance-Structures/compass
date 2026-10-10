@@ -53,6 +53,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { CompassLoadingOverlay } from "@/components/compass-loader"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -757,6 +758,9 @@ export function ProjectDailyLogWorkspace({
   const [pendingDeleteIds, setPendingDeleteIds] = React.useState<readonly string[]>([])
   const [isPending, startTransition] = React.useTransition()
   const [isWeatherPending, startWeatherTransition] = React.useTransition()
+  // Separate so the loading overlay covers only draft building, through the
+  // navigation to the new draft.
+  const [isBuildingDraft, startDraftTransition] = React.useTransition()
 
   React.useEffect(() => {
     setLogs(workspace.logs)
@@ -1245,7 +1249,7 @@ export function ProjectDailyLogWorkspace({
   function draftOwnerUpdate(): void {
     const dailyLogIds = ownerUpdateSelectedIds
     setMessage(null)
-    startTransition(async () => {
+    startDraftTransition(async () => {
       const result = await draftOwnerUpdateFromDailyLogs(workspace.project.id, {
         dailyLogIds,
       })
@@ -1262,6 +1266,9 @@ export function ProjectDailyLogWorkspace({
 
   return (
     <>
+    {isBuildingDraft && (
+      <CompassLoadingOverlay label="Building the owner update draft…" />
+    )}
     <AlertDialog
       open={pendingDeleteIds.length > 0}
       onOpenChange={(open) => {
@@ -1340,7 +1347,7 @@ export function ProjectDailyLogWorkspace({
                   <Button
                     size="sm"
                     onClick={draftOwnerUpdate}
-                    disabled={isPending || ownerUpdateSelectedIds.length === 0}
+                    disabled={isPending || isBuildingDraft || ownerUpdateSelectedIds.length === 0}
                   >
                     <IconMailForward className="size-4" />
                     Draft owner update
@@ -1581,7 +1588,7 @@ export function ProjectDailyLogWorkspace({
               <Button
                 size="sm"
                 onClick={draftOwnerUpdate}
-                disabled={isPending || ownerUpdateSelectedIds.length === 0}
+                disabled={isPending || isBuildingDraft || ownerUpdateSelectedIds.length === 0}
               >
                 <IconMailForward className="size-4" />
                 Build draft from selected

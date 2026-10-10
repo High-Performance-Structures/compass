@@ -179,8 +179,8 @@ export function OwnerUpdateActions({
         return
       }
 
-      router.push(`/dashboard/projects/${projectId}/owner-updates`)
-      router.refresh()
+      // Replace, not push: Back must not return to the deleted draft.
+      router.replace(`/dashboard/projects/${projectId}/owner-updates`)
     } catch {
       setPublishError("Unable to delete this draft. Please try again.")
     } finally {
