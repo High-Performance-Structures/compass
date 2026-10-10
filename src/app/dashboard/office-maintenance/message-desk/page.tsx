@@ -40,7 +40,7 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
       </main>
     )
   }
-  const { records, assignees, inboundTexts, viewerId } = result.data
+  const { records, assignees, inboundTexts, viewerId, agingThresholds } = result.data
   const openCount = records.filter((record) => record.status !== "closed").length
 
   return (
@@ -124,6 +124,7 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
         assignees={assignees}
         viewerId={viewerId}
         nowIso={new Date().toISOString()}
+        thresholds={agingThresholds}
       />
 
       <section className="space-y-4 border-t pt-6" aria-labelledby="inbound-text-routing">

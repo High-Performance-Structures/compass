@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   IconAdjustments,
   IconBook,
+  IconRoute,
   IconMapPin,
   IconPalette,
   IconPlug,
@@ -28,6 +29,7 @@ import { PermissionsTab } from "@/components/settings/permissions-tab"
 import { AgentTab } from "@/components/settings/agent-tab"
 import { TravelChargesTab } from "@/components/settings/travel-charges-tab"
 import { RateBookTab } from "@/components/settings/rate-book-tab"
+import { WorkflowsTab } from "@/components/settings/workflows-tab"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
@@ -44,6 +46,7 @@ const SETTINGS_TABS = [
   { value: "permissions", label: "Permissions", icon: IconShieldLock },
   { value: "zone-charges", label: "Zone charges", icon: IconMapPin },
   { value: "rate-book", label: "Rate book", icon: IconBook },
+  { value: "workflows", label: "Workflows", icon: IconRoute },
   { value: "agent", label: "Agent", icon: IconRobot },
   { value: "integrations", label: "Integrations", icon: IconPlug },
 ] as const
@@ -118,6 +121,8 @@ export default function SettingsPage() {
         return <TravelChargesTab />
       case "rate-book":
         return <RateBookTab />
+      case "workflows":
+        return <WorkflowsTab />
       case "agent":
         return developerModeEnabled ? <AgentTab /> : null
       case "integrations":

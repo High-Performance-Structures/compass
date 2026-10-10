@@ -12,7 +12,7 @@
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-09"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -60,11 +60,15 @@ For the complete active-project list or basic texting instructions, use the HPS 
 
 Every call or message logged on the **Staff Message Desk** has an owner and a status: **New**, **Follow-up needed**, **In progress**, **Waiting on contact**, or **Closed**. Open a message to add a follow-up note, change its status, or reassign it. Each change is kept in the message's history.
 
-Open messages are flagged as they age, counted in business days:
+Open messages are flagged as they age, counted in business days. The defaults are:
 
 - **Needs first response**: still New after one business day.
 - **Aging**: no follow-up for two business days.
 - **Stale**: no follow-up for five business days.
+
+Admins can change these in **Settings → Workflows**.
+
+When a message assigned to you goes **Stale**, three things happen. Your **Staff Message Desk** link in the sidebar turns red with a count, you get an urgent reminder in notifications, and the bell turns red until you read it. Following up on the message clears the reminder. If it later goes stale again, you get one new reminder. Admins can turn these reminders off in Settings.
 
 The towers at the top show how many open messages are in each group. Taller, redder towers mean more messages are waiting, and clicking a tower lists only those messages. To update several messages at once, tick them and use **Set status** or **Reassign to**. Any status change, note, or reassignment counts as follow-up and clears the flag.
 

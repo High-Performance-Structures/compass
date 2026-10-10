@@ -24,15 +24,21 @@ export function staffMessageStatus(value: string): StaffMessageStatus {
   return isStaffMessageStatus(value) ? value : "new"
 }
 
-/** Business-day targets. Kept together so they can become an org setting. */
-export const STAFF_MESSAGE_AGING = {
+export type StaffMessageAgingThresholds = {
+  readonly firstResponseDays: number
+  readonly agingDays: number
+  readonly staleDays: number
+}
+
+/** Default business-day targets; each company can change them in Settings. */
+export const STAFF_MESSAGE_AGING: StaffMessageAgingThresholds = {
   /** A new message should get a first response within this many business days. */
   firstResponseDays: 1,
   /** An open message with no activity for this long is flagged as aging. */
   agingDays: 2,
   /** …and as stale after this long. */
   staleDays: 5,
-} as const
+}
 
 export type StaffMessageAgingLevel = "fresh" | "needs_response" | "aging" | "stale"
 
@@ -77,12 +83,13 @@ export function staffMessageAging(
     readonly lastActivityAt: string
   },
   now: Date,
+  thresholds: StaffMessageAgingThresholds = STAFF_MESSAGE_AGING,
 ): StaffMessageAging {
   const idleDays = businessDaysBetween(message.lastActivityAt, now)
   if (message.status === "closed") return { level: "fresh", idleDays }
-  if (idleDays >= STAFF_MESSAGE_AGING.staleDays) return { level: "stale", idleDays }
-  if (idleDays >= STAFF_MESSAGE_AGING.agingDays) return { level: "aging", idleDays }
-  if (message.status === "new" && businessDaysBetween(message.createdAt, now) >= STAFF_MESSAGE_AGING.firstResponseDays) {
+  if (idleDays >= thresholds.staleDays) return { level: "stale", idleDays }
+  if (idleDays >= thresholds.agingDays) return { level: "aging", idleDays }
+  if (message.status === "new" && businessDaysBetween(message.createdAt, now) >= thresholds.firstResponseDays) {
     return { level: "needs_response", idleDays }
   }
   return { level: "fresh", idleDays }

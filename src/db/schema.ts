@@ -1192,6 +1192,8 @@ export const staffMessageRecords = sqliteTable(
     statusChangedAt: text("status_changed_at"),
     /** Last status change, note or reassignment; null means use updated_at. */
     lastActivityAt: text("last_activity_at"),
+    /** When the assignee was last reminded that this message went stale. */
+    staleRemindedAt: text("stale_reminded_at"),
     closedAt: text("closed_at"),
     closedBy: text("closed_by").references(() => users.id, {
       onDelete: "set null",
@@ -1452,6 +1454,25 @@ export const userViewPreferences = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.viewKey] })]
+)
+
+/**
+ * Company-editable settings for a feature (thresholds, timings, defaults),
+ * one JSON value per feature key. Each key is registered with its defaults
+ * and validation in lib/feature-settings.
+ */
+export const organizationFeatureSettings = sqliteTable(
+  "organization_feature_settings",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    featureKey: text("feature_key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [primaryKey({ columns: [table.organizationId, table.featureKey] })]
 )
 
 export const scheduleSavedViews = sqliteTable(
