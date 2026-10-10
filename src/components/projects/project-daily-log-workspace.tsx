@@ -22,6 +22,7 @@ import {
   IconFileText,
   IconMailForward,
   IconPencil,
+  IconTrash,
   IconPhoto,
   IconPlus,
   IconPrinter,
@@ -40,6 +41,17 @@ import {
   type ProjectDailyLogPhoto,
   type ProjectDailyLogWorkspace as ProjectDailyLogWorkspaceData,
 } from "@/app/actions/project-field"
+import { deleteProjectDailyLogs } from "@/app/actions/daily-log-delete"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
@@ -741,6 +753,8 @@ export function ProjectDailyLogWorkspace({
   const [printLogs, setPrintLogs] =
     React.useState<readonly ProjectDailyLogItem[]>([])
   const [message, setMessage] = React.useState<string | null>(null)
+  // Logs waiting on delete confirmation (one from the edit form, or the selection).
+  const [pendingDeleteIds, setPendingDeleteIds] = React.useState<readonly string[]>([])
   const [isPending, startTransition] = React.useTransition()
   const [isWeatherPending, startWeatherTransition] = React.useTransition()
 
@@ -775,6 +789,34 @@ export function ProjectDailyLogWorkspace({
     [logs, selectedIds]
   )
   const ownerUpdateSelectedIds = selectedLogs.map((log) => log.id)
+  const deletableIds = React.useMemo(
+    () => new Set(workspace.deletableLogIds),
+    [workspace.deletableLogIds]
+  )
+  const deletableSelectedIds = ownerUpdateSelectedIds.filter((id) => deletableIds.has(id))
+  const pendingDeleteLogs = logs.filter((log) => pendingDeleteIds.includes(log.id))
+
+  function confirmDeleteLogs(): void {
+    const ids = pendingDeleteIds
+    setMessage(null)
+    startTransition(async () => {
+      const result = await deleteProjectDailyLogs(workspace.project.id, ids)
+      setPendingDeleteIds([])
+      if (result.success) {
+        setLogs((current) => current.filter((log) => !ids.includes(log.id)))
+        setSelectedIds((current) => current.filter((id) => !ids.includes(id)))
+        if (editingLogId && ids.includes(editingLogId)) setEditingLogId(null)
+        setMessage(
+          result.deletedCount === 1
+            ? "Daily log deleted. Its files are still in the project's photos."
+            : `${result.deletedCount} daily logs deleted. Their files are still in the project's photos.`
+        )
+        router.refresh()
+      } else {
+        setMessage(result.error)
+      }
+    })
+  }
   const printAuthorOptions = React.useMemo(
     () =>
       [...new Set(logs.map((log) => log.authorName).filter(
@@ -1220,6 +1262,40 @@ export function ProjectDailyLogWorkspace({
 
   return (
     <>
+    <AlertDialog
+      open={pendingDeleteIds.length > 0}
+      onOpenChange={(open) => {
+        if (!open && !isPending) setPendingDeleteIds([])
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {pendingDeleteLogs.length === 1
+              ? `Delete the ${formatDate(pendingDeleteLogs[0]?.logDate ?? "")} daily log?`
+              : `Delete ${pendingDeleteLogs.length} daily logs?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            The log entries are removed from this project. Photos and files
+            attached to them stay in the project&apos;s photos, and a copy of each
+            log is kept in the activity log.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isPending}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={(event) => {
+              event.preventDefault()
+              confirmDeleteLogs()
+            }}
+          >
+            {pendingDeleteLogs.length === 1 ? "Delete log" : `Delete ${pendingDeleteLogs.length} logs`}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <PageHeader
@@ -1483,6 +1559,25 @@ export function ProjectDailyLogWorkspace({
                   : ""}{" "}
                 · {filteredLogs.length} shown
               </div>
+              {deletableIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isPending || deletableSelectedIds.length === 0}
+                  onClick={() => setPendingDeleteIds(deletableSelectedIds)}
+                  title={
+                    deletableSelectedIds.length < selectedLogs.length
+                      ? "Some selected logs can't be deleted by you (approved, shared with the owner, written by someone else, or used in an owner update)."
+                      : undefined
+                  }
+                >
+                  <IconTrash className="size-4" />
+                  Delete selected
+                  {deletableSelectedIds.length > 0 && deletableSelectedIds.length < selectedLogs.length
+                    ? ` (${deletableSelectedIds.length})`
+                    : ""}
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={draftOwnerUpdate}
@@ -1659,6 +1754,19 @@ export function ProjectDailyLogWorkspace({
                       </p>
                     </div>
                     <div className="flex gap-2">
+                      {deletableIds.has(log.id) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={isPending}
+                          onClick={() => setPendingDeleteIds([log.id])}
+                        >
+                          <IconTrash className="size-4" />
+                          Delete
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"
