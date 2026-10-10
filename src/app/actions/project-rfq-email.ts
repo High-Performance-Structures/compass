@@ -1,5 +1,6 @@
 "use server"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -226,7 +227,7 @@ export async function sendProjectRfqEmail(
           await drive.client.ensureReaderPermission(drive.googleEmail, fileId, email)
         }
       }
-      const brand = projectBrandFor({ projectId, projectNumber: access.project.projectNumber })
+      const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(), projectId, projectNumber: access.project.projectNumber })
       const emailInput = {
         brand,
         projectLabel: access.project.projectNumber

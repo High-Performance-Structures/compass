@@ -1,5 +1,6 @@
 "use server"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -3184,7 +3185,7 @@ export async function sendPurchaseOrderEmail(
     }
     const senderName = user.displayName ?? user.email
     const emailInput = {
-      brand: projectBrandFor({
+      brand: projectBrandFor({ profiles: await currentDepartmentProfiles(),
         projectId: project.id,
         projectNumber: project.projectNumber,
       }),

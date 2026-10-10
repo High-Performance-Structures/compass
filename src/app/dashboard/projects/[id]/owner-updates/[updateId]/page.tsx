@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import { notFound } from "next/navigation"
@@ -32,5 +33,5 @@ export default async function OwnerUpdatePage({
     notFound()
   }
 
-  return <OwnerUpdateDocument document={document} />
+  return <OwnerUpdateDocument document={document} profiles={await currentDepartmentProfiles()} />
 }

@@ -1,4 +1,5 @@
 import { z } from "zod/v4"
+import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -50,10 +51,6 @@ const optionalEmail = z.union([z.literal(""), z.email()])
  * the built-in wording. Blank values leave the matching merge field empty.
  */
 export const nuTechEmailSettingsSchema = z.object({
-  senderAddress: optionalEmail,
-  senderName: z.string().max(80),
-  officePhone: z.string().max(40),
-  officeHours: z.string().max(80),
   manufacturerOrdersEmail: optionalEmail,
   manufacturerCcEmail: optionalEmail,
   dealerAccountNumber: z.string().max(40),
@@ -96,7 +93,42 @@ export const paperTrailSettingsSchema = z.object({
 export type PaperTrailSettings = z.infer<typeof paperTrailSettingsSchema>
 
 /** Settings type for each registered feature key. */
+const LOGO_DATA_URL = /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i
+
+/** One department's identity; see DepartmentProfile in src/lib/department-profiles.ts. */
+export const departmentProfileSchema = z.object({
+  displayName: z.string().trim().min(1, "Enter a display name.").max(80),
+  shortName: z.string().trim().min(1, "Enter a short name.").max(24),
+  description: z.string().max(200),
+  companyName: z.string().trim().min(1, "Enter a company name.").max(120),
+  legalName: z.string().trim().min(1, "Enter the legal name.").max(200),
+  email: optionalEmail,
+  telephone: z.string().max(40),
+  mailingAddress: z.string().max(240),
+  website: z.string().max(200),
+  licenseNumber: z.string().max(60),
+  officeHours: z.string().max(80),
+  senderAddress: optionalEmail,
+  senderName: z.string().max(80),
+  logoDataUrl: z
+    .string()
+    .max(400_000, "Use a PNG logo under 300 KB.")
+    .refine((value) => value === "" || LOGO_DATA_URL.test(value), "Use a PNG logo."),
+})
+
+export const departmentProfilesSchema = z.object({
+  departments: z.object({
+    O: departmentProfileSchema,
+    H: departmentProfileSchema,
+    N: departmentProfileSchema,
+    D: departmentProfileSchema,
+  }),
+})
+
+export type DepartmentProfilesSettings = z.infer<typeof departmentProfilesSchema>
+
 type FeatureSettingsTypes = {
+  readonly "department-profiles": DepartmentProfilesSettings
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
   readonly "nutech-emails": NuTechEmailSettings
@@ -108,12 +140,22 @@ type FeatureSettingsGroup<T> = {
   readonly description: string
   readonly defaults: T
   readonly schema: z.ZodType<T>
+  /** Roles that may edit this group; defaults to admins and secondary admins. */
+  readonly editorRoles?: ReadonlySet<string>
 }
 
 export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "department-profiles": {
+    label: "Departments",
+    description: "Each department's name, legal name, logo and contact details. Documents, emails, portals and print views read them from here.",
+    defaults: { departments: DEFAULT_DEPARTMENT_PROFILES },
+    schema: departmentProfilesSchema,
+    // Company identity is the owner's to change.
+    editorRoles: new Set(["admin"]),
+  },
   "message-desk": {
     label: "Staff Message Desk",
     description: "When open messages are flagged for follow-up, counted in business days.",
@@ -128,12 +170,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "nutech-emails": {
     label: "Nu-Tech emails",
-    description: "The mailbox Nu-Tech order emails are sent from, the manufacturer, warehouse and office details they fill in, and each template's wording.",
+    description: "The manufacturer, warehouse and dealer details Nu-Tech order emails fill in, and each template's wording. The sending mailbox, phone and hours come from the Nu-Tech department profile.",
     defaults: {
-      senderAddress: "",
-      senderName: "",
-      officePhone: "",
-      officeHours: "",
       manufacturerOrdersEmail: "",
       manufacturerCcEmail: "",
       dealerAccountNumber: "",
@@ -185,6 +223,7 @@ export function parseFeatureSettings<K extends FeatureSettingsKey>(key: K, raw: 
 /** Roles that may change company settings. */
 const FEATURE_SETTINGS_EDITOR_ROLES: ReadonlySet<string> = new Set(["admin", "secondary_admin"])
 
-export function canEditFeatureSettings(role: string): boolean {
-  return FEATURE_SETTINGS_EDITOR_ROLES.has(role)
+export function canEditFeatureSettings(role: string, key?: FeatureSettingsKey): boolean {
+  const roles = key ? (FEATURE_SETTINGS[key].editorRoles ?? FEATURE_SETTINGS_EDITOR_ROLES) : FEATURE_SETTINGS_EDITOR_ROLES
+  return roles.has(role)
 }

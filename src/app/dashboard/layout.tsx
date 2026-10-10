@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic"
 
 import { AppSidebar } from "@/components/app-sidebar"
+import { DepartmentProfilesProvider } from "@/components/branding/department-profiles-provider"
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { SiteHeader } from "@/components/site-header"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { CommandMenuProvider } from "@/components/command-menu-provider"
@@ -102,7 +104,9 @@ export default async function DashboardLayout({
       ? `${authUser.organizationId}:${authUser.id}`
       : null
 
+  const departmentProfiles = await currentDepartmentProfiles()
   return (
+    <DepartmentProfilesProvider profiles={departmentProfiles}>
     <DeveloperModeProvider
       canUseDeveloperMode={canUseDeveloperMode}
       initialEnabled={developerModeEnabled}
@@ -194,5 +198,6 @@ export default async function DashboardLayout({
     </ChatProvider>
     </HelpUiProvider>
     </DeveloperModeProvider>
+    </DepartmentProfilesProvider>
   )
 }

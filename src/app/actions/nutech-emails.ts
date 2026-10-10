@@ -8,8 +8,9 @@ import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { COMPASS_GMAIL_SEND_SCOPE, getCompassGmailAccessToken, sendCompassEmail } from "@/lib/email/compass-email"
+import { sendCompassEmail } from "@/lib/email/compass-email"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { readDepartmentProfiles } from "@/lib/department-profiles-server"
 import {
   NUTECH_EMAIL_TEMPLATES,
   nuTechTemplateText,
@@ -81,8 +82,9 @@ async function nuTechEmailContext(projectId: string, action: "read" | "update") 
   if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") {
     throw new Error("Nu-Tech emails are available only for N projects.")
   }
-  const [settings, contacts, order] = await Promise.all([
+  const [settings, profiles, contacts, order] = await Promise.all([
     readFeatureSettings(db, organizationId, "nutech-emails"),
+    readDepartmentProfiles(db, organizationId),
     db
       .select({ id: projectContacts.id, displayName: projectContacts.displayName, email: projectContacts.email })
       .from(projectContacts)
@@ -121,8 +123,10 @@ async function nuTechEmailContext(projectId: string, action: "read" | "update") 
     quantitySummary: order?.blockQuantityNotes ?? "",
     pricingLabel: order?.pricingMode === "cash_discount" ? "cash-discounted pricing" : "standard pricing",
     senderName: user.displayName ?? user.email,
-    officePhone: settings.officePhone,
-    officeHours: settings.officeHours,
+    officePhone: profiles.N.telephone,
+    officeHours: profiles.N.officeHours,
+    companyName: profiles.N.companyName,
+    companyEmail: profiles.N.email,
     dealerAccountNumber: settings.dealerAccountNumber,
     warehouseName: settings.warehouseName,
     warehouseAddress: settings.warehouseAddress,
@@ -130,7 +134,8 @@ async function nuTechEmailContext(projectId: string, action: "read" | "update") 
     warehouseEmail: settings.warehouseEmail,
     warehouseDockHours: settings.warehouseDockHours,
   }
-  return { user, organizationId, env, db, project, settings, customer, context, fulfillment }
+  const sender = { address: profiles.N.senderAddress, name: profiles.N.senderName || profiles.N.companyName }
+  return { user, organizationId, env, db, project, settings, sender, customer, context, fulfillment }
 }
 
 function defaultRecipients(
@@ -167,7 +172,7 @@ export async function getNuTechEmailDraft(projectId: string, templateId: string)
         templateId: template.id,
         label: template.label,
         audience: template.audience,
-        senderAddress: ctx.settings.senderAddress,
+        senderAddress: ctx.sender.address,
         to: recipients.to,
         cc: recipients.cc,
         subject: rendered.subject,
@@ -214,8 +219,8 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
 
     const ctx = await nuTechEmailContext(projectId, "update")
     if (isDemoUser(ctx.user.id)) return { success: false, error: "Demo data cannot be changed." }
-    if (!ctx.settings.senderAddress) {
-      return { success: false, error: "Set the Nu-Tech sending mailbox in Settings → Workflows → Nu-Tech emails first." }
+    if (!ctx.sender.address) {
+      return { success: false, error: "Set the Nu-Tech sending mailbox in Settings → Company → Departments first." }
     }
 
     const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0)
@@ -238,12 +243,12 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
       subject: subject.trim(),
       text: body,
       attachments,
-      sender: { address: ctx.settings.senderAddress, name: ctx.settings.senderName || null },
+      sender: { address: ctx.sender.address, name: ctx.sender.name || null },
     })
     if (delivery.status !== "sent") {
       return {
         success: false,
-        error: `The email was not sent from ${ctx.settings.senderAddress}: ${delivery.error ?? delivery.status}. Check that the mailbox exists in Google Workspace and that Compass's Google connection may send as it.`,
+        error: `The email was not sent from ${ctx.sender.address}: ${delivery.error ?? delivery.status}. Check that the mailbox exists in Google Workspace and that Compass's Google connection may send as it.`,
       }
     }
 
@@ -291,49 +296,5 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
   } catch (error) {
     console.error("Nu-Tech email failed", error)
     return { success: false, error: error instanceof Error ? error.message : "Unable to send the email." }
-  }
-}
-
-/** Plain-language reason Google refused to let Compass send as a mailbox. */
-function mailboxProblem(message: string, address: string): string {
-  if (/Invalid email or User ID/i.test(message)) {
-    return `Google doesn't know ${address} as a mailbox in your Workspace. If it is an alias or a group, make it a user mailbox (or tell us which user owns it); if it belongs to a separate Google account, it needs to be in the same Workspace as Compass.`
-  }
-  if (/unauthorized_client/i.test(message)) {
-    return "Compass's Google connection isn't allowed to send email. In the Google Admin console, add the Gmail send scope (https://www.googleapis.com/auth/gmail.send) to Compass's domain-wide delegation."
-  }
-  if (/not connected/i.test(message)) return message
-  return `Google refused: ${message}`
-}
-
-/**
- * Check that Compass may send as the Nu-Tech mailbox: asks Google for a
- * send-only token for it. Nothing is sent or read.
- */
-export async function checkNuTechSendingMailbox(): Promise<Result<{ readonly address: string }>> {
-  try {
-    const user = await requireAuth()
-    if (!isInternalStaffRole(user.role)) return { success: false, error: "Available to office staff." }
-    const organizationId = requireOrg(user)
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-    const settings = await readFeatureSettings(db, organizationId, "nutech-emails")
-    const address = settings.senderAddress
-    if (!address) return { success: false, error: "Enter and save the sending mailbox first." }
-    try {
-      const access = await getCompassGmailAccessToken({
-        env,
-        db,
-        organizationId,
-        scopes: [COMPASS_GMAIL_SEND_SCOPE],
-        sender: address,
-      })
-      if (!access.success) return { success: false, error: mailboxProblem(access.error, address) }
-    } catch (error) {
-      return { success: false, error: mailboxProblem(error instanceof Error ? error.message : String(error), address) }
-    }
-    return { success: true, data: { address } }
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Unable to check the mailbox." }
   }
 }

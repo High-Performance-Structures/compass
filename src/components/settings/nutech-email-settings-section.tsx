@@ -7,7 +7,6 @@ import {
   resetFeatureSettings,
   saveFeatureSettings,
 } from "@/app/actions/feature-settings"
-import { checkNuTechSendingMailbox } from "@/app/actions/nutech-emails"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,10 +17,6 @@ import { NUTECH_EMAIL_MERGE_FIELDS, NUTECH_EMAIL_TEMPLATES } from "@/lib/nutech/
 type DetailKey = Exclude<keyof NuTechEmailSettings, "templates">
 
 const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string; readonly placeholder: string; readonly type?: "email" }[] = [
-  { key: "senderAddress", label: "Send from (Workspace mailbox)", placeholder: "orders@example.com", type: "email" },
-  { key: "senderName", label: "Sender name", placeholder: "Company Orders" },
-  { key: "officePhone", label: "Office phone", placeholder: "719-555-0100" },
-  { key: "officeHours", label: "Office hours", placeholder: "8:00 am – 4:00 pm" },
   { key: "manufacturerOrdersEmail", label: "Manufacturer orders email", placeholder: "orders@manufacturer.com", type: "email" },
   { key: "manufacturerCcEmail", label: "Manufacturer rep (cc)", placeholder: "rep@manufacturer.com", type: "email" },
   { key: "dealerAccountNumber", label: "Dealer account number", placeholder: "123456" },
@@ -53,16 +48,6 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
   const [details, setDetails] = React.useState<Readonly<Record<DetailKey, string>>>(defaults)
   const [templates, setTemplates] = React.useState<Readonly<Record<string, TemplateText>>>({})
   const [pending, startTransition] = React.useTransition()
-  const [mailboxCheck, setMailboxCheck] = React.useState<
-    { readonly kind: "idle" } | { readonly kind: "checking" } | { readonly kind: "ok"; readonly address: string } | { readonly kind: "failed"; readonly message: string }
-  >({ kind: "idle" })
-
-  function checkMailbox(): void {
-    setMailboxCheck({ kind: "checking" })
-    void checkNuTechSendingMailbox().then((result) =>
-      setMailboxCheck(result.success ? { kind: "ok", address: result.data.address } : { kind: "failed", message: result.error }),
-    )
-  }
 
   const load = React.useCallback(async () => {
     const result = await getFeatureSettingsForEditor("nutech-emails")
@@ -145,21 +130,9 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
             ))}
           </div>
 
-          <div className="flex flex-col gap-2 border-y py-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" size="sm" variant="outline" onClick={checkMailbox} disabled={mailboxCheck.kind === "checking"}>
-                {mailboxCheck.kind === "checking" ? "Checking…" : "Check sending mailbox"}
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                Asks Google whether Compass may send as the saved mailbox. Nothing is sent.
-              </span>
-            </div>
-            {mailboxCheck.kind === "ok" ? (
-              <p role="status" className="text-sm text-primary">Compass can send as {mailboxCheck.address}.</p>
-            ) : mailboxCheck.kind === "failed" ? (
-              <p role="alert" className="text-sm text-destructive">{mailboxCheck.message}</p>
-            ) : null}
-          </div>
+          <p className="text-xs text-muted-foreground">
+            The sending mailbox, phone and office hours come from the Nu-Tech department profile in Settings → Company.
+          </p>
 
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Templates</h3>

@@ -1,5 +1,7 @@
 "use client"
 
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
+import type { DepartmentProfiles } from "@/lib/department-profiles"
 import * as React from "react"
 import { IconUpload, IconVideo, IconX } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
@@ -59,10 +61,10 @@ function titleFromFileName(fileName: string): string {
   return title.slice(0, 100) || "Project video"
 }
 
-function channelLabel(channelKey: string): string {
-  if (channelKey === "hps") return projectDepartmentDisplayName("H")
-  if (channelKey === "nutech") return projectDepartmentDisplayName("N")
-  return projectDepartmentDisplayName("O")
+function channelLabel(channelKey: string, profiles: DepartmentProfiles): string {
+  if (channelKey === "hps") return projectDepartmentDisplayName("H", profiles)
+  if (channelKey === "nutech") return projectDepartmentDisplayName("N", profiles)
+  return projectDepartmentDisplayName("O", profiles)
 }
 
 function uploadToGoogleDrive(input: {
@@ -138,6 +140,7 @@ export function ProjectVideoUpload({
   readonly projectId: string
   readonly projectNumber: string | null
 }): React.ReactElement {
+  const departmentProfiles = useDepartmentProfiles()
   const router = useRouter()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const requestRef = React.useRef<XMLHttpRequest | null>(null)
@@ -381,7 +384,7 @@ export function ProjectVideoUpload({
               >
                 <YoutubeLogo />
               </a>
-              <span>{channelLabel(channelKey)}</span>
+              <span>{channelLabel(channelKey, departmentProfiles)}</span>
             </div>
             <label className="flex items-start gap-2 text-sm">
               <Checkbox

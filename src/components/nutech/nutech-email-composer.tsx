@@ -118,7 +118,7 @@ export function NuTechEmailMenu({
                 <DialogTitle>{draft.label}</DialogTitle>
                 <DialogDescription>
                   To the {AUDIENCE_LABEL[draft.audience].toLowerCase()}, from{" "}
-                  {draft.senderAddress || "the Nu-Tech mailbox (not set yet: Settings → Workflows → Nu-Tech emails)"}.
+                  {draft.senderAddress || "the Nu-Tech mailbox (not set yet: Settings → Company → Departments)"}.
                   {draft.audience === "customer" ? " Sending logs it as a client contact." : ""}
                 </DialogDescription>
               </DialogHeader>

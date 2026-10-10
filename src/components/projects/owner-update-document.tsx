@@ -1,3 +1,4 @@
+import type { DepartmentProfiles } from "@/lib/department-profiles"
 import type * as React from "react"
 import Link from "next/link"
 import {
@@ -62,8 +63,11 @@ function ownerUpdateDocumentHref(input: {
 export function OwnerUpdateDocument({
   document,
   previewMode,
+  profiles,
 }: {
   readonly document: OwnerProjectUpdateDocument
+  /** The company's department profiles; the built-in defaults when omitted. */
+  readonly profiles?: DepartmentProfiles
   readonly previewMode?: {
     readonly homeHref: string
     readonly photosHref: string
@@ -82,6 +86,7 @@ export function OwnerUpdateDocument({
   const brand = projectBrandFor({
     projectId: document.project.id,
     projectNumber: document.project.projectNumber,
+    profiles,
   })
 
   return (

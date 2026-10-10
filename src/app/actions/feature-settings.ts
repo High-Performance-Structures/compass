@@ -12,6 +12,7 @@ import {
   canEditFeatureSettings,
   isFeatureSettingsKey,
   parseFeatureSettings,
+  type FeatureSettingsKey,
 } from "@/lib/feature-settings/registry"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -25,7 +26,7 @@ export type FeatureSettingsEditorView = {
   readonly canEdit: boolean
 }
 
-async function context(): Promise<
+async function context(key: FeatureSettingsKey): Promise<
   | { readonly ok: true; readonly db: ReturnType<typeof getDb>; readonly organizationId: string; readonly userId: string; readonly canEdit: boolean }
   | { readonly ok: false; readonly error: string }
 > {
@@ -37,7 +38,7 @@ async function context(): Promise<
     db: getDb(env.DB),
     organizationId: user.organizationId,
     userId: user.id,
-    canEdit: user.isActive && canEditFeatureSettings(user.role) && !isDemoUser(user.id) && !isDemoOrg(user.organizationId),
+    canEdit: user.isActive && canEditFeatureSettings(user.role, key) && !isDemoUser(user.id) && !isDemoOrg(user.organizationId),
   }
 }
 
@@ -45,7 +46,7 @@ async function context(): Promise<
 export async function getFeatureSettingsForEditor(key: string): Promise<Result<FeatureSettingsEditorView>> {
   try {
     if (!isFeatureSettingsKey(key)) return { success: false, error: "Unknown settings." }
-    const ctx = await context()
+    const ctx = await context(key)
     if (!ctx.ok) return { success: false, error: ctx.error }
     const row = await ctx.db
       .select({ value: organizationFeatureSettings.value })
@@ -72,9 +73,14 @@ export async function getFeatureSettingsForEditor(key: string): Promise<Result<F
 export async function saveFeatureSettings(key: string, value: unknown): Promise<Result<null>> {
   try {
     if (!isFeatureSettingsKey(key)) return { success: false, error: "Unknown settings." }
-    const ctx = await context()
+    const ctx = await context(key)
     if (!ctx.ok) return { success: false, error: ctx.error }
-    if (!ctx.canEdit) return { success: false, error: "Only admins can change company settings." }
+    if (!ctx.canEdit) {
+      return {
+        success: false,
+        error: FEATURE_SETTINGS[key].editorRoles ? "Only the company owner can change these settings." : "Only admins can change company settings.",
+      }
+    }
     const parsed = FEATURE_SETTINGS[key].schema.safeParse(value)
     if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Check the values and try again." }
     const now = new Date().toISOString()
@@ -98,9 +104,14 @@ export async function saveFeatureSettings(key: string, value: unknown): Promise<
 export async function resetFeatureSettings(key: string): Promise<Result<null>> {
   try {
     if (!isFeatureSettingsKey(key)) return { success: false, error: "Unknown settings." }
-    const ctx = await context()
+    const ctx = await context(key)
     if (!ctx.ok) return { success: false, error: ctx.error }
-    if (!ctx.canEdit) return { success: false, error: "Only admins can change company settings." }
+    if (!ctx.canEdit) {
+      return {
+        success: false,
+        error: FEATURE_SETTINGS[key].editorRoles ? "Only the company owner can change these settings." : "Only admins can change company settings.",
+      }
+    }
     await ctx.db
       .delete(organizationFeatureSettings)
       .where(and(eq(organizationFeatureSettings.organizationId, ctx.organizationId), eq(organizationFeatureSettings.featureKey, key)))

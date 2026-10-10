@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import { notFound } from "next/navigation"
@@ -82,6 +83,7 @@ export default async function OwnerUpdatePreviewPage({
       warrantyEnabled={preview.project.warrantyEnabled}
     >
       <OwnerUpdateDocument
+        profiles={await currentDepartmentProfiles()}
         document={document}
         previewMode={{
           homeHref,

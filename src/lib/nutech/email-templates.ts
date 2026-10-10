@@ -42,6 +42,8 @@ export const NUTECH_EMAIL_MERGE_FIELDS = [
   { name: "quantitySummary", label: "Block quantities and takeoff notes" },
   { name: "pricingLabel", label: "Pricing (standard or cash-discount)" },
   { name: "senderName", label: "Your name" },
+  { name: "companyName", label: "Company name (department profile)" },
+  { name: "companyEmail", label: "Company email (department profile)" },
   { name: "officePhone", label: "Office phone" },
   { name: "officeHours", label: "Office hours" },
   { name: "dealerAccountNumber", label: "Dealer account number" },

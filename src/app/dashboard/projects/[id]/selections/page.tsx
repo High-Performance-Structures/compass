@@ -1,3 +1,4 @@
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
 import { PageHeader } from "@/components/page-header"
 import { SelectionDecisionWorkspace } from "@/components/selections/selection-decision-workspace"
@@ -72,7 +73,7 @@ export default async function ProjectSelectionsPage({
   const projects = await getProjects()
   const project = projects.find((item) => item.id === id)
   const label = projectLabel(project)
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber,
   })
