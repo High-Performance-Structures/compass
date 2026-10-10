@@ -14,7 +14,7 @@ function job(overrides: Partial<PortfolioMapJob> & Pick<PortfolioMapJob, "id">):
   return {
     name: "Sample",
     projectNumber: null,
-    phase: "construction",
+    phase: "construction", jobStatusId: null,
     statusLabel: "Under Construction",
     town: "Granby",
     lon: -105.94,

@@ -10,7 +10,7 @@ import { VendorJobMap } from "@/components/projects/vendor-job-map"
 
 function job(id: string, name: string, town: string | null): PortfolioMapJob {
   return {
-    id, name, projectNumber: null, phase: "construction", statusLabel: "Current",
+    id, name, projectNumber: null, phase: "construction", jobStatusId: null, statusLabel: "Current",
     town, lon: town ? -105.9 : null, lat: town ? 40.1 : null, progress: null,
     pastDueCount: 0, stalledCount: 0, nextTaskTitle: null, nextTaskStart: null,
     health: "ok", visibility: "default",

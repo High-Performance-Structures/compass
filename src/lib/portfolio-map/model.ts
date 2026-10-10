@@ -23,6 +23,8 @@ export type PortfolioMapJob = {
   readonly name: string
   readonly projectNumber: string | null
   readonly phase: PortfolioPhaseId
+  /** The job's status id, so a status can be changed from the map. */
+  readonly jobStatusId: string | null
   readonly statusLabel: string
   readonly town: string | null
   readonly lon: number | null
@@ -77,6 +79,14 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   current: "construction",
   punchlist: "closeout",
   under_warranty: "closeout",
+}
+
+/**
+ * The built-in statuses of each phase, in workflow order, for moving a job to
+ * another status from the map. Custom statuses are changed on the job page.
+ */
+export function portfolioPhaseStatuses(phase: PortfolioPhaseId): readonly string[] {
+  return Object.entries(PHASE_BY_JOB_STATUS).flatMap(([status, statusPhase]) => (statusPhase === phase ? [status] : []))
 }
 
 /**
