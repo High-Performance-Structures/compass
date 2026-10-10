@@ -187,6 +187,30 @@ export class DriveClient {
     )
   }
 
+  /** Everyone with access to a file or folder, including access inherited in a shared drive. */
+  async listPermissions(
+    userEmail: string,
+    fileId: string
+  ): Promise<readonly DrivePermission[]> {
+    const permissions: DrivePermission[] = []
+    let pageToken: string | null = null
+    do {
+      const params = new URLSearchParams({
+        supportsAllDrives: "true",
+        fields: "nextPageToken,permissions(id,type,role,emailAddress,domain)",
+        pageSize: "100",
+      })
+      if (pageToken) params.set("pageToken", pageToken)
+      const page = await this.request<{
+        readonly permissions?: readonly DrivePermission[]
+        readonly nextPageToken?: string
+      }>(userEmail, `/files/${encodeURIComponent(fileId)}/permissions?${params.toString()}`)
+      permissions.push(...(page.permissions ?? []))
+      pageToken = page.nextPageToken ?? null
+    } while (pageToken)
+    return permissions
+  }
+
   async ensureReaderPermission(
     userEmail: string,
     fileId: string,

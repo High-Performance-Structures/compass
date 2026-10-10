@@ -8,6 +8,8 @@ import {
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderDetail } from "@/components/projects/project-change-order-detail"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { getProjectPaperTrail } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 export default async function ProjectChangeOrderDetailPage({
   params,
@@ -19,9 +21,10 @@ export default async function ProjectChangeOrderDetailPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId, changeOrderId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const [item, formOptions] = await Promise.all([
+  const [item, formOptions, paperTrail] = await Promise.all([
     getProjectChangeOrder(id, changeOrderId),
     getProjectChangeOrderFormOptions(id),
+    getProjectPaperTrail(id, "change_order"),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -37,6 +40,16 @@ export default async function ProjectChangeOrderDetailPage({
         backHref={backHref}
         internal
         formOptions={formOptions}
+        paperTrailStatus={
+          paperTrail.enabled ? (
+            <PaperTrailRecordStatus
+              projectId={id}
+              recordType="change_order"
+              recordId={changeOrderId}
+              record={paperTrail.records[changeOrderId] ?? null}
+            />
+          ) : null
+        }
       />
     </div>
   )

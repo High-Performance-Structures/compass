@@ -56,6 +56,8 @@ import {
   projectBrandFor,
   type ProjectBrand,
 } from "@/lib/project-branding"
+import { getProjectPaperTrail, type PaperTrailRecordView } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 function formatDate(value: string | null): string {
   if (!value) return "No due date"
@@ -126,6 +128,7 @@ function PurchaseOrderCard({
   phaseOptions,
   costCodeOptions,
   developerModeEnabled,
+  paperTrail,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -144,6 +147,8 @@ function PurchaseOrderCard({
     typeof ProjectPurchaseOrderEditForm
   >["costCodeOptions"]
   readonly developerModeEnabled: boolean
+  /** Drive copy status; null when the paper trail is off for this project. */
+  readonly paperTrail: PaperTrailRecordView | null | undefined
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -243,6 +248,15 @@ function PurchaseOrderCard({
           </span>
           <span>{formatDate(order.dueDate)}</span>
         </div>
+        {paperTrail !== undefined ? (
+          <PaperTrailRecordStatus
+            className="mt-2"
+            projectId={projectId}
+            recordType="purchase_order"
+            recordId={order.id}
+            record={paperTrail}
+          />
+        ) : null}
         <p className="mt-3 text-sm font-medium">{formatPurchaseOrderMoney(order.amount)}</p>
         {order.vendorAcknowledgement && (
           <div className="mt-3 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
@@ -477,6 +491,7 @@ export default async function ProjectPurchaseOrdersPage({
     siteContactOptions,
     contactsSummary,
     purchaseOrderCodingOptions,
+    paperTrail,
   ] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
@@ -484,6 +499,7 @@ export default async function ProjectPurchaseOrdersPage({
     getProjectPurchaseOrderSiteContactOptions(id),
     getProjectContactsSummary(id, "internal"),
     getProjectPurchaseOrderFormOptions(id),
+    getProjectPaperTrail(id, "purchase_order"),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -629,6 +645,7 @@ export default async function ProjectPurchaseOrdersPage({
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
               developerModeEnabled={developerModeEnabled}
+              paperTrail={paperTrail.enabled ? paperTrail.records[order.id] ?? null : undefined}
             />
           ))
         ) : (

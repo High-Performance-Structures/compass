@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
+import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
 
@@ -188,6 +189,7 @@ export function WorkflowsTab(): React.ReactElement {
       <ProjectAgingSettingsSection />
       <NuTechCatalogLink />
       <NuTechEmailSettingsSection />
+      <PaperTrailSettingsSection />
     </div>
   )
 }

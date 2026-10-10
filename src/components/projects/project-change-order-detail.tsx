@@ -47,11 +47,14 @@ export function ProjectChangeOrderDetail({
   backHref,
   internal,
   formOptions,
+  paperTrailStatus = null,
 }: {
   readonly item: ProjectChangeOrderItem
   readonly backHref: string
   readonly internal: boolean
   readonly formOptions: ProjectChangeOrderFormOptions
+  /** Staff pages pass the Drive copy status line; previews leave it out. */
+  readonly paperTrailStatus?: React.ReactNode
 }): React.ReactElement {
   return (
     <div className="space-y-5">
@@ -89,6 +92,7 @@ export function ProjectChangeOrderDetail({
           </>
         }
       />
+      {paperTrailStatus}
 
       <ProjectChangeOrderEditForm
         item={item}

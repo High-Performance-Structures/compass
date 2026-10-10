@@ -11,6 +11,8 @@ export type DrivePermission = {
   readonly type: string
   readonly role: string
   readonly emailAddress?: string
+  /** Set on "domain" permissions. */
+  readonly domain?: string
   readonly displayName?: string
   readonly photoLink?: string
 }

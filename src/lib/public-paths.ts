@@ -52,6 +52,7 @@ const scheduledMaintenancePaths = [
   "/api/email/gmail-sync",
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
+  "/api/operations/paper-trail/run",
   "/api/operations/sage/health",
   "/api/operations/sage/square-receipts",
   "/api/operations/square/auth-health",
