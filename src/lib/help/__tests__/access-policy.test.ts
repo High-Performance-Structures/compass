@@ -36,6 +36,21 @@ describe("effective help access policy", () => {
     expect(allowedGuideIds.length).toBeGreaterThan(0)
   })
 
+  it.each([
+    ["agent", "jarvis"],
+    ["nutech-orders", "nutech.orders"],
+    ["social-publishing", "social.posts"],
+  ])("keeps %s guidance behind its effective feature permission", (featureId, guideId) => {
+    const allowed = new Set(HELP_GUIDES.map((guide) => guide.featureId))
+    expect(selectAllowedHelpGuideIds("admin", allowed)).toContain(guideId)
+    allowed.delete(featureId)
+    expect(selectAllowedHelpGuideIds("admin", allowed)).not.toContain(guideId)
+    allowed.add(featureId)
+    for (const role of ["client", "subcontractor", "supplier", "guest"]) {
+      expect(selectAllowedHelpGuideIds(role, allowed)).not.toContain(guideId)
+    }
+  })
+
   it("returns no guides for an unknown role", () => {
     expect(
       selectAllowedHelpGuideIds(
