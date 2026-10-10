@@ -44,6 +44,8 @@ import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invit
 import { PortfolioSection } from "@/components/dashboard/portfolio-map/portfolio-section"
 import { DashboardCountsStrip, type DashboardCount } from "@/components/dashboard/dashboard-counts-strip"
 import type { PortfolioMapData } from "@/lib/portfolio-map/load"
+import { SalesPipelineSection } from "@/components/dashboard/sales-pipeline/sales-pipeline-section"
+import type { SalesPipeline } from "@/lib/sales-pipeline/load"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Select,
@@ -1180,6 +1182,7 @@ export function DashboardLaunchpad({
   canPrepareGreetingCards,
   cherishRecognitions,
   portfolio,
+  salesPipelines,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1191,6 +1194,7 @@ export function DashboardLaunchpad({
   readonly canPrepareGreetingCards: boolean
   readonly cherishRecognitions: readonly CherishStory[]
   readonly portfolio: PortfolioMapData
+  readonly salesPipelines: readonly SalesPipeline[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1259,6 +1263,10 @@ export function DashboardLaunchpad({
         hidden={portfolio.hidden}
         travel={portfolio.travel}
       />
+
+      {salesPipelines.map((pipeline) => (
+        <SalesPipelineSection key={pipeline.department} pipeline={pipeline} />
+      ))}
 
       {mode === "office" ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">
