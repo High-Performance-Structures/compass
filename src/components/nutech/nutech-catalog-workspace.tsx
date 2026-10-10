@@ -17,6 +17,7 @@ import {
   type NuTechCatalogWorkspace,
 } from "@/app/actions/nutech-catalog"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
@@ -27,6 +28,21 @@ function money(cents: number): string {
   }).format(cents / 100)
 }
 
+type Product = NuTechCatalogWorkspace["products"][number]
+type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode"
+
+const PRODUCT_SORT: Readonly<Record<ProductSortKey, (product: Product) => string | number | null>> = {
+  sku: (product) => product.manufacturerSku,
+  package: (product) => product.packageLabel,
+  cost: (product) => product.airliteCostCents,
+  newStandard: (product) => product.newStandardPriceCents,
+  newCash: (product) => product.newCashPriceCents,
+  returning: (product) => product.returningStandardPriceCents,
+  returningCash: (product) => product.returningCashPriceCents,
+  form: (product) => product.airliteTemplateRow,
+  costCode: (product) => product.sageCostCodeLabel,
+}
+
 export function NuTechCatalogWorkspacePanel({
   workspace,
 }: {
@@ -34,6 +50,7 @@ export function NuTechCatalogWorkspacePanel({
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const { rows: products, sort, toggle } = useTableSort(workspace.products, PRODUCT_SORT)
 
   function importCatalog(): void {
     startTransition(async () => {
@@ -177,19 +194,19 @@ export function NuTechCatalogWorkspacePanel({
             <table className="w-full min-w-[1100px] text-left text-xs">
               <thead className="border-b bg-muted/40 text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-medium">SKU / product</th>
-                  <th className="px-3 py-2 font-medium">Package</th>
-                  <th className="px-3 py-2 text-right font-medium">Airlite cost</th>
-                  <th className="px-3 py-2 text-right font-medium">New standard</th>
-                  <th className="px-3 py-2 text-right font-medium">New cash</th>
-                  <th className="px-3 py-2 text-right font-medium">Returning</th>
-                  <th className="px-3 py-2 text-right font-medium">Returning cash</th>
-                  <th className="px-3 py-2 font-medium">Airlite form</th>
-                  <th className="px-3 py-2 font-medium">Sage cost code</th>
+                  <SortableTh sortKey="sku" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">SKU / product</SortableTh>
+                  <SortableTh sortKey="package" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Package</SortableTh>
+                  <SortableTh sortKey="cost" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Airlite cost</SortableTh>
+                  <SortableTh sortKey="newStandard" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">New standard</SortableTh>
+                  <SortableTh sortKey="newCash" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">New cash</SortableTh>
+                  <SortableTh sortKey="returning" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Returning</SortableTh>
+                  <SortableTh sortKey="returningCash" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Returning cash</SortableTh>
+                  <SortableTh sortKey="form" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Airlite form</SortableTh>
+                  <SortableTh sortKey="costCode" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Sage cost code</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {workspace.products.map((product) => (
+                {products.map((product) => (
                   <tr key={product.id}>
                     <td className="px-3 py-2 align-top">
                       <p className="font-medium">{product.manufacturerSku}</p>

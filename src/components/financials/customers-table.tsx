@@ -1,5 +1,7 @@
 "use client"
 
+import { TanstackSortableHeader } from "@/components/ui/sortable-header"
+
 import * as React from "react"
 import { IconDotsVertical } from "@tabler/icons-react"
 import {
@@ -434,12 +436,7 @@ export function CustomersTable({
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <TableHead key={header.id} className="whitespace-nowrap">
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                      <TanstackSortableHeader header={header} />
                     </TableHead>
                   ))}
                 </TableRow>
