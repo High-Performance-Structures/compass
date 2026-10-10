@@ -12,7 +12,7 @@ vi.mock("@/lib/auth", () => ({
 
 // These server actions import Next server-only modules that are irrelevant to
 // the guest guard exercised here.
-vi.mock("@/app/actions/provider-config", () => ({
+vi.mock("@/lib/agent/provider-config", () => ({
   getProviderConfigForJwt: vi.fn(),
 }))
 vi.mock("@/app/actions/anthropic-oauth", () => ({
