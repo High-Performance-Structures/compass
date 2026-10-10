@@ -1,3 +1,4 @@
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -529,7 +530,7 @@ export default async function ProjectRfqsPage({
     return rfq.dueDate < new Date().toISOString().slice(0, 10)
   }).length
   const projectLabel = projectDisplayLabel(project)
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber,
   })

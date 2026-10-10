@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 import { getEstimateWorkspaceForRecordCopy } from "@/app/actions/project-estimates"
@@ -29,7 +30,7 @@ export default async function RecordCopyPage(): Promise<React.ReactElement> {
   if (grant.recordType === "purchase_order") {
     const data = await purchaseOrderCopyData(db, grant.projectId, grant.recordId)
     if (!data) notFound()
-    const brand = projectBrandFor({ projectId: grant.projectId, projectNumber: data.projectNumber })
+    const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(), projectId: grant.projectId, projectNumber: data.projectNumber })
     return (
       <main className="bg-white p-0 text-[11px] leading-tight text-black">
         <style>{"@page { size: letter; margin: 0.5in; } @media print { body { background: white !important; } }"}</style>
@@ -48,7 +49,7 @@ export default async function RecordCopyPage(): Promise<React.ReactElement> {
     const workspace = await getEstimateWorkspaceForRecordCopy(token)
     const estimate = workspace?.activeEstimate
     if (!workspace || !estimate) notFound()
-    const brand = projectBrandFor({ projectId: grant.projectId, projectNumber: workspace.projectNumber })
+    const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(), projectId: grant.projectId, projectNumber: workspace.projectNumber })
     return (
       <>
         <EstimateClientReport
@@ -56,7 +57,7 @@ export default async function RecordCopyPage(): Promise<React.ReactElement> {
           workspace={workspace}
           estimate={estimate}
           brand={brand}
-          legalEntityName={projectLegalEntityName(brand.department)}
+          legalEntityName={projectLegalEntityName(brand.department, await currentDepartmentProfiles())}
           showActions={false}
         />
         <RecordCopyPrintMode selectionReport={false} />
@@ -80,7 +81,7 @@ export default async function RecordCopyPage(): Promise<React.ReactElement> {
         className="selection-printable portal-report-printable"
         // portalReportHtml escapes every value; it is the same markup the
         // in-app "Print / Save PDF" button prints.
-        dangerouslySetInnerHTML={{ __html: portalReportHtml(report.project, report.report) }}
+        dangerouslySetInnerHTML={{ __html: portalReportHtml(report.project, report.report, false, undefined, await currentDepartmentProfiles()) }}
       />
       <RecordCopyPrintMode selectionReport />
     </>

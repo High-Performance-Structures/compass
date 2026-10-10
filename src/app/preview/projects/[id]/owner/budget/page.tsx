@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { requireProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import { notFound } from "next/navigation"
@@ -94,7 +95,7 @@ export default async function OwnerBudgetPage({
     notFound()
   }
 
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
   })

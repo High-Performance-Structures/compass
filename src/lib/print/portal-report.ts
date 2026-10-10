@@ -1,3 +1,4 @@
+import type { DepartmentProfiles } from "@/lib/department-profiles"
 import { projectBrandFor } from "@/lib/project-branding"
 
 export type ReportProject = {
@@ -36,10 +37,12 @@ export function portalReportHtml(
   report: PortalReport,
   roomSheets = false,
   printedAt = new Date().toLocaleString("en-US"),
+  profiles?: DepartmentProfiles,
 ): string {
   const brand = projectBrandFor({
     projectId: project.id,
     projectNumber: project.projectNumber,
+    profiles,
   })
   const label = [project.projectNumber, project.name]
     .filter(Boolean)

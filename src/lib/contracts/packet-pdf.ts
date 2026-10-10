@@ -1,3 +1,4 @@
+import type { DepartmentProfiles } from "@/lib/department-profiles"
 import {
   PDFDocument,
   PDFFont,
@@ -483,11 +484,18 @@ export async function loadContractPacketPdfBranding(input: {
   readonly origin: string
   readonly projectId: string
   readonly projectNumber: string | null
+  readonly profiles?: DepartmentProfiles
 }): Promise<ContractPacketPdfBranding> {
   const brand = projectBrandFor({
     projectId: input.projectId,
     projectNumber: input.projectNumber,
+    profiles: input.profiles,
   })
+  // An uploaded logo is a PNG data URL saved with the department profile.
+  const uploaded = /^data:image\/png;base64,(.+)$/.exec(brand.logoSrc)?.[1]
+  if (uploaded) {
+    return { companyName: brand.companyName, contactLines: brand.contactLines, logoBytes: base64PdfBytes(uploaded) }
+  }
   const url = new URL(
     contractBrandLogoPath(brand.department, brand.logoSrc),
     input.origin

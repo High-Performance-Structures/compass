@@ -1,7 +1,15 @@
+import {
+  addressLines,
+  DEFAULT_DEPARTMENT_PROFILES,
+  departmentLogoSrc,
+  type DepartmentProfiles,
+} from "@/lib/department-profiles"
+
 export type ProjectDepartment = "O" | "H" | "N" | "D"
 
 export type ProjectBrand = {
   readonly companyName: string
+  readonly legalName: string
   readonly contactLines: readonly string[]
   readonly department: ProjectDepartment
   readonly email: string
@@ -9,42 +17,8 @@ export type ProjectBrand = {
   readonly logoSrc: string
   readonly mailingAddress: readonly string[]
   readonly telephone: string
-}
-
-const PROJECT_LEGAL_ENTITY_NAMES: Readonly<Record<ProjectDepartment, string>> = {
-  O: "High Performance Structures Inc. dba Open Range Construction, Ltd.",
-  D: "High Performance Structures Inc. dba Open Range Construction, Ltd.",
-  N: "High Performance Structures Inc. dba Nu-Tech Systems",
-  H: "High Performance Structures Inc.",
-}
-
-type BrandIdentity = Omit<ProjectBrand, "contactLines" | "department">
-
-const ORC_BRAND: BrandIdentity = {
-  companyName: "Open Range Construction, Ltd.",
-  email: "accounting@openrangeconstruction.com",
-  logoAlt: "Open Range Construction, Ltd.",
-  logoSrc: "/department-logos/orc-mark.png",
-  mailingAddress: ["PO Box 9046", "Woodland Park, CO 80866"],
-  telephone: "719.630.8767",
-}
-
-const HPS_BRAND: BrandIdentity = {
-  companyName: "High Performance Structures Inc.",
-  email: "accounting@hps-colorado.com",
-  logoAlt: "High Performance Structures",
-  logoSrc: "/department-logos/hps-h-green.svg",
-  mailingAddress: ["PO Box 1813", "Woodland Park, CO 80866"],
-  telephone: "719.900.8850",
-}
-
-const NUTECH_BRAND: BrandIdentity = {
-  companyName: "Nu-Tech Systems",
-  email: "orders@nutechcolorado.com",
-  logoAlt: "Nu-Tech Systems",
-  logoSrc: "/department-logos/nu-tech-n.png",
-  mailingAddress: ["PO Box 1813", "Woodland Park, CO 80866"],
-  telephone: "719.686.0770",
+  readonly website: string
+  readonly licenseNumber: string
 }
 
 export function isProjectDepartment(value: string): value is ProjectDepartment {
@@ -105,51 +79,64 @@ export function resolvedProjectDepartment({
   )
 }
 
+/**
+ * A project's brand from its department's profile. Pass the company's saved
+ * profiles (readDepartmentProfiles) wherever they are available; without
+ * them the built-in defaults are used.
+ */
 export function projectBrandFor({
   department: explicitDepartment,
   projectId,
   projectNumber,
+  profiles = DEFAULT_DEPARTMENT_PROFILES,
 }: {
   readonly department?: string | null
   readonly projectId?: string | null
   readonly projectNumber?: string | null
+  readonly profiles?: DepartmentProfiles
 }): ProjectBrand {
   const department = projectDepartment({
     department: explicitDepartment,
     projectId,
     projectNumber,
   })
-  const identity =
-    department === "H"
-      ? HPS_BRAND
-      : department === "N"
-        ? NUTECH_BRAND
-        : ORC_BRAND
+  return brandForDepartment(department, profiles)
+}
 
+export function brandForDepartment(department: ProjectDepartment, profiles: DepartmentProfiles = DEFAULT_DEPARTMENT_PROFILES): ProjectBrand {
+  const profile = profiles[department]
+  const mailingAddress = addressLines(profile.mailingAddress)
   return {
-    ...identity,
+    companyName: profile.companyName,
+    legalName: profile.legalName,
+    email: profile.email,
+    telephone: profile.telephone,
+    website: profile.website,
+    licenseNumber: profile.licenseNumber,
+    logoAlt: profile.companyName,
+    logoSrc: departmentLogoSrc(department, profile),
+    mailingAddress,
     contactLines: [
-      ...identity.mailingAddress,
-      `Tel: ${identity.telephone}`,
-      `Email: ${identity.email}`,
+      ...mailingAddress,
+      ...(profile.telephone ? [`Tel: ${profile.telephone}`] : []),
+      ...(profile.email ? [`Email: ${profile.email}`] : []),
     ],
     department,
   }
 }
 
-export function projectLegalEntityName(
-  department: ProjectDepartment
-): string {
-  return PROJECT_LEGAL_ENTITY_NAMES[department]
-}
-
 // Department displays and project documents must resolve names here so the
 // operating brand and contracting entity cannot drift between surfaces.
-export function projectDepartmentDisplayName(
-  department: ProjectDepartment
+export function projectLegalEntityName(
+  department: ProjectDepartment,
+  profiles: DepartmentProfiles = DEFAULT_DEPARTMENT_PROFILES,
 ): string {
-  if (department === "H") return "High Performance Structures"
-  if (department === "N") return NUTECH_BRAND.companyName
-  if (department === "D") return "Design only"
-  return ORC_BRAND.companyName
+  return profiles[department].legalName
+}
+
+export function projectDepartmentDisplayName(
+  department: ProjectDepartment,
+  profiles: DepartmentProfiles = DEFAULT_DEPARTMENT_PROFILES,
+): string {
+  return profiles[department].displayName
 }

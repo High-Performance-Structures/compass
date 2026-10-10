@@ -42,6 +42,28 @@ on the server with `readFeatureSettings`, and give them a section in
 everyone else sees the current values. Offer **Reset to defaults**. Ship
 sensible defaults so a new company works without touching anything.
 
+### Company identity and templates
+
+- **Identity lives in Settings.** Each department's (or company's) display
+  name, legal name and dba, logo, mailing address, phone, email, website,
+  license number, office hours and sending mailbox come from the department
+  profiles in Settings. Documents, print views, emails, portals and the agent
+  read them from there. Only the owner-admin can change identity; everyone else
+  sees it read-only.
+- **No identity literals in code.** Do not write company email addresses,
+  phone numbers, street addresses, domains, legal names or logo paths into
+  components, actions, email bodies or document generators. The only place
+  they may appear is the built-in defaults a new company starts from, kept next
+  to the settings that replace them.
+- **Templates are settings.** Email wording, document boilerplate, workflow
+  steps and checklist items ship with built-in text and are editable per
+  company, with **Use the built-in wording** to undo a change. Templates fill
+  in identity and job details through merge fields such as `{{companyName}}`,
+  never by typing the values into the text.
+- **Outside parties are data.** Vendors, warehouses, carriers and their
+  contacts (for example a manufacturer's orders address) are settings or
+  contact records, so a rep change is made in one place.
+
 
 ## Lists and tables
 
@@ -270,6 +292,11 @@ Before a PR that changes visible UI is merged or deployed, reviewers must check
 this document. Any new or changed list/table must explicitly verify page-size
 selection, mobile behavior, edit/delete page preservation, filtering behavior,
 empty/loading/error states, and accessibility labels.
+
+Every PR must confirm it adds no company-specific literals (names, addresses,
+phone numbers, email addresses, domains, logos, rates or wording) outside the
+built-in defaults of a setting; new rules, thresholds and templates are
+registered as settings with an editor in Settings.
 
 For theme or token changes, compare before and after screenshots of the
 dashboard, project hub, estimate, financials, and schedule in light and dark

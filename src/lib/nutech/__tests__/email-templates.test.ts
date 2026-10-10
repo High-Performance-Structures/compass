@@ -22,6 +22,8 @@ const context: NuTechEmailContext = {
   quantitySummary: "265.3 linear feet, 6 corners, 4 T's at 2' 8\"",
   pricingLabel: "standard pricing",
   senderName: "Rebekah",
+  companyName: "Nu-Tech Systems",
+  companyEmail: "orders@example.com",
   officePhone: "719-900-8850",
   officeHours: "8:00 am – 4:00 pm",
   dealerAccountNumber: "701888",

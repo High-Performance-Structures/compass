@@ -62,7 +62,9 @@ import {
   SAGE_CLIENT_STATUS_OPTIONS,
   SAGE_JOB_TYPE_OPTIONS,
 } from "@/lib/sage/client-project-write"
-import { projectDepartmentDisplayName } from "@/lib/project-branding"
+import type { ProjectDepartment } from "@/lib/project-branding"
+import { DEPARTMENT_CODES, departmentLogoSrc, type DepartmentProfiles } from "@/lib/department-profiles"
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { PageHeader } from "@/components/page-header"
 import {
   ProjectBulkStatusBar,
@@ -109,53 +111,35 @@ type StatusFilterConfig = {
   readonly description: string
 }
 
-const DEPARTMENTS: readonly DepartmentConfig[] = [
-  {
-    id: "O",
-    label: "ORC Projects",
-    shortLabel: "ORC",
-    description: `${projectDepartmentDisplayName("O")} jobs and owner-facing builds.`,
-    accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white",
-    logoSrc: "/department-logos/orc-mark.png",
-    icon: <IconHome className="size-4" />,
-  },
-  {
-    id: "H",
-    label: "HPS Projects",
-    shortLabel: "HPS",
-    description: "High Performance Structures work and internal construction.",
-    accentClassName: "border-brand-hps-primary bg-brand-hps-primary text-white",
-    logoSrc: "/department-logos/hps-h-green.svg",
-    icon: <IconBuildingCommunity className="size-4" />,
-  },
-  {
-    id: "N",
-    label: "Nu-Tech Projects",
-    shortLabel: "Nu-Tech",
-    description: "ICF sales, bracing rental, support, and related projects.",
-    accentClassName: "border-brand-nutech-gold bg-brand-nutech-gold text-white",
-    logoSrc: "/department-logos/nu-tech-n.png",
-    icon: <IconTool className="size-4" />,
-  },
-  {
-    id: "D",
-    label: "Design Projects",
-    shortLabel: "Design",
-    description: "Design-only scopes, drafting, estimating, and handoff work.",
-    accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white",
-    logoSrc: "/department-logos/orc-mark.png",
-    icon: <IconPaint className="size-4" />,
-  },
-  {
-    id: "UNASSIGNED",
-    label: "Unassigned",
-    shortLabel: "Other",
-    description: "Projects that still need an O, H, N, or D project number.",
-    accentClassName: "border-muted-foreground/25 bg-muted text-muted-foreground",
-    logoSrc: null,
-    icon: <IconFolder className="size-4" />,
-  },
-]
+const DEPARTMENT_LOOK: Readonly<Record<ProjectDepartment, { readonly accentClassName: string; readonly icon: React.ReactNode }>> = {
+  O: { accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white", icon: <IconHome className="size-4" /> },
+  H: { accentClassName: "border-brand-hps-primary bg-brand-hps-primary text-white", icon: <IconBuildingCommunity className="size-4" /> },
+  N: { accentClassName: "border-brand-nutech-gold bg-brand-nutech-gold text-white", icon: <IconTool className="size-4" /> },
+  D: { accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white", icon: <IconPaint className="size-4" /> },
+}
+
+/** Department tiles from the company's department profiles (names, descriptions, logos). */
+function departmentConfigs(profiles: DepartmentProfiles): readonly DepartmentConfig[] {
+  return [
+    ...DEPARTMENT_CODES.map((code): DepartmentConfig => ({
+      id: code,
+      label: `${profiles[code].shortName} Projects`,
+      shortLabel: profiles[code].shortName,
+      description: profiles[code].description,
+      logoSrc: departmentLogoSrc(code, profiles[code]),
+      ...DEPARTMENT_LOOK[code],
+    })),
+    {
+      id: "UNASSIGNED",
+      label: "Unassigned",
+      shortLabel: "Other",
+      description: "Projects that still need a department project number.",
+      accentClassName: "border-muted-foreground/25 bg-muted text-muted-foreground",
+      logoSrc: null,
+      icon: <IconFolder className="size-4" />,
+    },
+  ]
+}
 
 const STATUS_FILTERS: readonly StatusFilterConfig[] = [
   {
@@ -1038,6 +1022,8 @@ export function ProjectsHub({
   readonly projects: readonly ProjectsHubProject[]
   readonly canCreateOrUpdateProjects: boolean
 }): React.ReactElement {
+  const departmentProfiles = useDepartmentProfiles()
+  const departments = React.useMemo(() => departmentConfigs(departmentProfiles), [departmentProfiles])
   const router = useRouter()
   const searchParams = useSearchParams()
   const [query, setQuery] = React.useState("")
@@ -1257,7 +1243,7 @@ export function ProjectsHub({
   const searchedProjects = statusFilteredProjects.filter((project) =>
     projectMatchesSearch(project, normalizedQuery)
   )
-  const groups: readonly DepartmentGroup[] = DEPARTMENTS.map((department) => ({
+  const groups: readonly DepartmentGroup[] = departments.map((department) => ({
     ...department,
     allProjects: projects.filter(
       (project) => departmentIdForProject(project) === department.id
@@ -1528,7 +1514,7 @@ export function ProjectsHub({
                     </p>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {DEPARTMENTS.filter((department) => department.id !== "UNASSIGNED").map(
+                    {departments.filter((department) => department.id !== "UNASSIGNED").map(
                       (department) => (
                         <Button
                           key={department.id}

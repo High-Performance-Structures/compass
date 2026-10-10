@@ -1,3 +1,4 @@
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -378,7 +379,7 @@ export default async function ProjectPurchaseOrdersPage({
     throw error
   })
   const project = projects.find((item) => item.id === id)
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber,
   })

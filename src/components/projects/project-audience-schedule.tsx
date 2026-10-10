@@ -1,5 +1,6 @@
 "use client"
 
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import * as React from "react"
 import {
   IconCalendar,
@@ -121,7 +122,8 @@ export function ProjectAudienceSchedule({
   readonly isPublished: boolean
 }): React.ReactElement {
   const displayColorPalette = useScheduleDisplayPalette(projectId)
-  const printBrand = projectBrandFor({ projectId, projectNumber })
+  const departmentProfiles = useDepartmentProfiles()
+  const printBrand = projectBrandFor({ projectId, projectNumber, profiles: departmentProfiles })
   const [view, setView] = React.useState<ScheduleView>("list")
   const [visibleMonth, setVisibleMonth] = React.useState(() =>
     monthStart(new Date())

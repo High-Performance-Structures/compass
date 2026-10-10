@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { requireProjectRouteId } from "@/lib/project-route-id"
 import { redirect } from "next/navigation"
 
@@ -19,11 +20,11 @@ export default async function ProjectEstimatePrintPage({
   const id = await requireProjectRouteId(rawProjectId)
   const workspace = await getProjectEstimateWorkspace(id, query.estimateId)
   const estimate = workspace.activeEstimate
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: workspace.projectNumber,
   })
-  const legalEntityName = projectLegalEntityName(brand.department)
+  const legalEntityName = projectLegalEntityName(brand.department, await currentDepartmentProfiles())
 
   if (!estimate) {
     return <main className="p-8">Estimate not found.</main>
