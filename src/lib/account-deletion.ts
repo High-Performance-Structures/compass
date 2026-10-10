@@ -11,6 +11,7 @@ import {
   userPermissionOverrides,
   userSchedulePreferences,
   users,
+  userViewPreferences,
 } from "@/db/schema"
 import { typingSessions, userPresence } from "@/db/schema-conversations"
 import {
@@ -33,6 +34,7 @@ export const PERSONAL_DATA_TABLES = [
   pushTokens,
   notificationPreferences,
   userSchedulePreferences,
+  userViewPreferences,
   userPermissionOverrides,
   userPresence,
   typingSessions,
