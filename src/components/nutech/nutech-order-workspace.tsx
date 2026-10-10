@@ -50,10 +50,12 @@ import {
   NUTECH_ORDER_STATUS_OPTIONS,
   NUTECH_PRICING_MODE_OPTIONS,
   NUTECH_QUANTITY_SOURCE_OPTIONS,
+  NUTECH_PAYMENT_METHOD_OPTIONS,
   NUTECH_SCOPE_TYPE_OPTIONS,
   NUTECH_TAKEOFF_STATUS_OPTIONS,
   NUTECH_VENDOR_INVOICE_STATUS_OPTIONS,
   nuTechOrderStatusLabel,
+  nuTechCustomerReadinessIssues,
   nuTechPurchaseOrderReleaseReadiness,
   type NuTechCustomerType,
   type NuTechPricingMode,
@@ -141,6 +143,13 @@ export function NuTechOrderWorkspace({
       order?.airlitePurchaseOrderOperationId ?? null,
     orderItemCount: workspace.orderItems.length,
     airliteWorkbookStatus: order?.airliteWorkbookStatus ?? "not_generated",
+    customerReadinessIssues: nuTechCustomerReadinessIssues({
+      deliveryMethod: order?.deliveryMethod ?? "delivery",
+      customerPaidAt: order?.customerPaidAt ?? null,
+      requestedDeliveryDate: order?.requestedDeliveryDate ?? null,
+      trailerDimensions: order?.trailerDimensions ?? null,
+      trailerPhotoReceivedAt: order?.trailerPhotoReceivedAt ?? null,
+    }),
   })
   const selectedProduct = workspace.catalogProducts.find(
     (product) => product.id === selectedProductId
@@ -230,6 +239,10 @@ export function NuTechOrderWorkspace({
           formData,
           "requestedDeliveryDate"
         ),
+        customerPaidAt: optionalFormText(formData, "customerPaidAt"),
+        customerPaymentMethod: optionalFormText(formData, "customerPaymentMethod"),
+        trailerDimensions: optionalFormText(formData, "trailerDimensions"),
+        trailerPhotoReceivedAt: optionalFormText(formData, "trailerPhotoReceivedAt"),
         airlitePurchaseOrderOperationId: optionalFormText(
           formData,
           "airlitePurchaseOrderOperationId"
@@ -419,7 +432,7 @@ export function NuTechOrderWorkspace({
 
       <form onSubmit={submitOrder} className="space-y-6">
         <fieldset disabled={!workspace.canEdit || isPending} className="space-y-6">
-          <section className="space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-intake" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
             <div>
               <h2 className="font-semibold">1. Intake and pricing basis</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -533,7 +546,7 @@ export function NuTechOrderWorkspace({
             </Alert>
           </section>
 
-          <section className="space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-quantities" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="font-semibold">2. Product quantities</h2>
@@ -680,7 +693,7 @@ export function NuTechOrderWorkspace({
             )}
           </section>
 
-          <section className="space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-fulfillment" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
             <div>
               <h2 className="font-semibold">3. Bracing and delivery</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -749,6 +762,46 @@ export function NuTechOrderWorkspace({
                 />
               </div>
             </div>
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Customer readiness</h3>
+              <p className="text-xs text-muted-foreground">
+                Needed before the order goes to the manufacturer: payment and the requested date, and for customer pickup the trailer dimensions and a trailer photo.
+              </p>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nutech-paid-at">Customer paid</Label>
+                  <Input id="nutech-paid-at" name="customerPaidAt" type="date" defaultValue={order?.customerPaidAt ?? ""} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nutech-payment-method">Payment method</Label>
+                  <Select name="customerPaymentMethod" defaultValue={order?.customerPaymentMethod ?? undefined}>
+                    <SelectTrigger id="nutech-payment-method" className="w-full">
+                      <SelectValue placeholder="Not paid yet" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {NUTECH_PAYMENT_METHOD_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nutech-trailer-dimensions">Trailer dimensions (pickup)</Label>
+                  <Input
+                    id="nutech-trailer-dimensions"
+                    name="trailerDimensions"
+                    placeholder={`8'6" wide × 26' long, enclosed, swing doors`}
+                    defaultValue={order?.trailerDimensions ?? ""}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nutech-trailer-photo">Trailer photo received (pickup)</Label>
+                  <Input id="nutech-trailer-photo" name="trailerPhotoReceivedAt" type="date" defaultValue={order?.trailerPhotoReceivedAt ?? ""} />
+                </div>
+              </div>
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="nutech-block-notes">
@@ -797,7 +850,7 @@ export function NuTechOrderWorkspace({
             </div>
           </section>
 
-          <section className="space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-airlite" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="font-semibold">4. Airlite PO and vendor invoice</h2>

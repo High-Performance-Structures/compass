@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectOperations, projects } from "@/db/schema"
+import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
 import {
   nuTechCatalogPrices,
@@ -26,12 +26,17 @@ import {
   NUTECH_SCOPE_TYPE_OPTIONS,
   NUTECH_TAKEOFF_STATUS_OPTIONS,
   NUTECH_VENDOR_INVOICE_STATUS_OPTIONS,
+  isNuTechPaymentMethod,
+  jobStatusForNuTechOrderStatus,
   normalizedNuTechTakeoffStatus,
+  nuTechCustomerReadinessIssues,
   nuTechPurchaseOrderReleaseReadiness,
+  projectDeliveryMethodForNuTech,
   nuTechReleaseAuditIssues,
   type NuTechCustomerType,
   type NuTechDeliveryMethod,
   type NuTechOrderStatus,
+  type NuTechPaymentMethod,
   type NuTechPricingMode,
   type NuTechQuantitySource,
   type NuTechScopeType,
@@ -79,6 +84,10 @@ export type NuTechOrderRecord = {
   readonly bracingNotes: string | null
   readonly deliveryMethod: NuTechDeliveryMethod
   readonly requestedDeliveryDate: string | null
+  readonly customerPaidAt: string | null
+  readonly customerPaymentMethod: NuTechPaymentMethod | null
+  readonly trailerDimensions: string | null
+  readonly trailerPhotoReceivedAt: string | null
   readonly airlitePurchaseOrderOperationId: string | null
   readonly orderStatus: NuTechOrderStatus
   readonly vendorConfirmationNumber: string | null
@@ -163,6 +172,10 @@ export type SaveNuTechOrderInput = {
   readonly bracingNotes: string | null
   readonly deliveryMethod: string
   readonly requestedDeliveryDate: string | null
+  readonly customerPaidAt: string | null
+  readonly customerPaymentMethod: string | null
+  readonly trailerDimensions: string | null
+  readonly trailerPhotoReceivedAt: string | null
   readonly airlitePurchaseOrderOperationId: string | null
   readonly orderStatus: string
   readonly vendorConfirmationNumber: string | null
@@ -299,6 +312,10 @@ function toOrderRecord(
     bracingNotes: row.bracingNotes,
     deliveryMethod: storedDeliveryMethod(row.deliveryMethod),
     requestedDeliveryDate: row.requestedDeliveryDate,
+    customerPaidAt: row.customerPaidAt,
+    customerPaymentMethod: isNuTechPaymentMethod(row.customerPaymentMethod) ? row.customerPaymentMethod : null,
+    trailerDimensions: row.trailerDimensions,
+    trailerPhotoReceivedAt: row.trailerPhotoReceivedAt,
     airlitePurchaseOrderOperationId: row.airlitePurchaseOrderOperationId,
     orderStatus: orderStatus(row.orderStatus),
     vendorConfirmationNumber: row.vendorConfirmationNumber,
@@ -351,6 +368,58 @@ async function nuTechProjectAccess(
     throw new Error("The Nu-Tech order workflow is available only for N projects.")
   }
   return { db, user, organizationId, project }
+}
+
+/**
+ * Keep the job in step with its order: the job status (and so the Nu-Tech
+ * Sales pipeline stage) and delivery or pickup. Status changes are audited
+ * like any other job status change.
+ */
+async function syncProjectWithOrder(
+  access: NuTechAccess,
+  next: {
+    readonly jobStatusId: string | null
+    readonly deliveryMethod: "delivery" | "pickup" | null
+    readonly now: string
+  },
+): Promise<void> {
+  const current = await access.db
+    .select({ jobStatusId: projects.jobStatusId, deliveryMethod: projects.deliveryMethod })
+    .from(projects)
+    .where(eq(projects.id, access.project.id))
+    .limit(1)
+    .get()
+  if (!current) return
+  const statusChanged = next.jobStatusId !== null && next.jobStatusId !== current.jobStatusId
+  const deliveryChanged = next.deliveryMethod !== null && next.deliveryMethod !== current.deliveryMethod
+  if (!statusChanged && !deliveryChanged) return
+  const update = access.db
+    .update(projects)
+    .set({
+      ...(statusChanged && next.jobStatusId !== null ? { jobStatusId: next.jobStatusId } : {}),
+      ...(deliveryChanged && next.deliveryMethod !== null ? { deliveryMethod: next.deliveryMethod } : {}),
+      updatedAt: next.now,
+    })
+    .where(eq(projects.id, access.project.id))
+  if (!statusChanged) {
+    await update
+    return
+  }
+  await access.db.batch([
+    update,
+    access.db.insert(projectProfileAuditEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: access.organizationId,
+      projectId: access.project.id,
+      actorUserId: access.user.id,
+      eventType: "project_job_status_updated",
+      entityType: "project",
+      entityId: access.project.id,
+      beforeJson: JSON.stringify({ jobStatusId: current.jobStatusId }),
+      afterJson: JSON.stringify({ jobStatusId: next.jobStatusId, source: "nutech_order" }),
+      createdAt: next.now,
+    }),
+  ])
 }
 
 function revalidateNuTechPaths(projectId: string): void {
@@ -630,6 +699,12 @@ export async function saveProjectNuTechOrder(
       input.requestedDeliveryDate,
       "Requested delivery date"
     )
+    const customerPaidAt = cleanDate(input.customerPaidAt, "Customer paid date")
+    const paymentMethod = cleanText(input.customerPaymentMethod)
+    if (paymentMethod !== null && !isNuTechPaymentMethod(paymentMethod)) {
+      throw new Error("Choose check, cash, ACH, or card.")
+    }
+    const trailerPhotoReceivedAt = cleanDate(input.trailerPhotoReceivedAt, "Trailer photo received date")
     const parsedOrderStatus = orderStatus(input.orderStatus)
     const parsedVendorInvoiceStatus = vendorInvoiceStatus(
       input.vendorInvoiceStatus
@@ -693,6 +768,10 @@ export async function saveProjectNuTechOrder(
       bracingNotes: bracingIncluded ? cleanText(input.bracingNotes) : null,
       deliveryMethod: deliveryMethod(input.deliveryMethod),
       requestedDeliveryDate,
+      customerPaidAt,
+      customerPaymentMethod: paymentMethod,
+      trailerDimensions: cleanText(input.trailerDimensions),
+      trailerPhotoReceivedAt,
       airlitePurchaseOrderOperationId: purchaseOrderId,
       orderStatus: parsedOrderStatus,
       vendorConfirmationNumber: cleanText(input.vendorConfirmationNumber),
@@ -737,6 +816,10 @@ export async function saveProjectNuTechOrder(
           bracingNotes: values.bracingNotes,
           deliveryMethod: values.deliveryMethod,
           requestedDeliveryDate: values.requestedDeliveryDate,
+          customerPaidAt: values.customerPaidAt,
+          customerPaymentMethod: values.customerPaymentMethod,
+          trailerDimensions: values.trailerDimensions,
+          trailerPhotoReceivedAt: values.trailerPhotoReceivedAt,
           airlitePurchaseOrderOperationId: values.airlitePurchaseOrderOperationId,
           orderStatus: values.orderStatus,
           vendorConfirmationNumber: values.vendorConfirmationNumber,
@@ -775,6 +858,11 @@ export async function saveProjectNuTechOrder(
     } else {
       await saveWorkflowQuery
     }
+    await syncProjectWithOrder(access, {
+      jobStatusId: jobStatusForNuTechOrderStatus(parsedOrderStatus),
+      deliveryMethod: projectDeliveryMethodForNuTech(deliveryMethod(input.deliveryMethod)),
+      now,
+    })
     revalidateNuTechPaths(projectId)
     return { success: true, id }
   } catch (error) {
@@ -814,6 +902,13 @@ export async function releaseNuTechAirlitePurchaseOrder(
       airlitePurchaseOrderOperationId: order.airlitePurchaseOrderOperationId,
       orderItemCount: orderItemRows.length,
       airliteWorkbookStatus: order.airliteWorkbookStatus,
+      customerReadinessIssues: nuTechCustomerReadinessIssues({
+        deliveryMethod: storedDeliveryMethod(order.deliveryMethod),
+        customerPaidAt: order.customerPaidAt,
+        requestedDeliveryDate: order.requestedDeliveryDate,
+        trailerDimensions: order.trailerDimensions,
+        trailerPhotoReceivedAt: order.trailerPhotoReceivedAt,
+      }),
     })
     if (!readiness.ready) throw new Error(readiness.issues.join(" "))
     const purchaseOrderId = order.airlitePurchaseOrderOperationId
@@ -852,6 +947,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
         .set({ status: purchaseOrderStatus, updatedAt: now })
         .where(eq(projectOperations.id, purchaseOrderId)),
     ])
+    await syncProjectWithOrder(access, { jobStatusId: jobStatusForNuTechOrderStatus("po_released"), deliveryMethod: null, now })
     revalidateNuTechPaths(projectId)
     return { success: true, id: order.id }
   } catch (error) {

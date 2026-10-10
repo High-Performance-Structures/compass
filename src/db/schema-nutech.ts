@@ -168,6 +168,10 @@ export const nuTechOrderWorkflows = sqliteTable(
     bracingNotes: text("bracing_notes"),
     deliveryMethod: text("delivery_method").notNull().default("delivery"),
     requestedDeliveryDate: text("requested_delivery_date"),
+    customerPaidAt: text("customer_paid_at"),
+    customerPaymentMethod: text("customer_payment_method"),
+    trailerDimensions: text("trailer_dimensions"),
+    trailerPhotoReceivedAt: text("trailer_photo_received_at"),
     airlitePurchaseOrderOperationId: text(
       "airlite_purchase_order_operation_id"
     ).references(() => projectOperations.id, { onDelete: "set null" }),

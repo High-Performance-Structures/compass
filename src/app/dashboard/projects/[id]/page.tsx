@@ -55,6 +55,8 @@ import { ProjectCommunicationInstructions } from "@/components/projects/project-
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
 import { getRoleDashboardOrders } from "@/app/actions/view-preferences"
 import { ProjectFamilyPanel } from "@/components/projects/project-family-panel"
+import { getNuTechOrderOverview, type NuTechOrderOverview } from "@/app/actions/nutech-order-overview"
+import { NuTechOrderStepper } from "@/components/nutech/nutech-order-stepper"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -156,6 +158,7 @@ export default async function ProjectSummaryPage({
   let tasks: ScheduleTask[] = []
   let registry: ProjectRegistry | null = null
   let roleDashboardOrders: Readonly<Record<string, readonly string[]>> = {}
+  let nuTechOrder: NuTechOrderOverview | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -326,6 +329,7 @@ export default async function ProjectSummaryPage({
       loadedRfiSummary,
       loadedFamilySummary,
       loadedRoleDashboardOrders,
+      loadedNuTechOrder,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -348,6 +352,8 @@ export default async function ProjectSummaryPage({
         getProjectFamilySummary(id),
       ),
       getRoleDashboardOrders().catch(() => ({})),
+      // Null unless this is an N job and the viewer has Nu-Tech office access.
+      getNuTechOrderOverview(id).catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -358,6 +364,7 @@ export default async function ProjectSummaryPage({
     rfiSummary = loadedRfiSummary
     familySummary = loadedFamilySummary
     roleDashboardOrders = loadedRoleDashboardOrders
+    nuTechOrder = loadedNuTechOrder
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -450,6 +457,11 @@ export default async function ProjectSummaryPage({
           </div>
         )}
 
+        {nuTechOrder ? (
+          <div className="mb-4 sm:mb-5">
+            <NuTechOrderStepper overview={nuTechOrder} />
+          </div>
+        ) : null}
         <div className="mb-4 sm:mb-5">
           <Link
             href={`/dashboard/projects/${id}/information`}
