@@ -4,10 +4,10 @@
   "featureId": "agent",
   "slug": "ask-jarvis",
   "title": "Ask Jarvis: What It Can Do",
-  "summary": "Use Jarvis to find project records and messages, manage schedules and dashboards, change themes, remember context, and work with connected skills and GitHub.",
+  "summary": "Use Jarvis to find project records and messages, ask about a screenshot, manage schedules and dashboards, change themes, and remember context.",
   "contextSummary": "Jarvis uses live Compass tools for permitted data and actions. Schedule changes and dashboard deletion wait for Confirm; a proposed action is not a completed action.",
   "category": "Start Here",
-  "tags": ["Jarvis", "Ask Jarvis", "AI assistant", "search", "unread messages", "schedule", "confirm", "dashboards", "themes", "memory", "skills", "GitHub"],
+  "tags": ["Jarvis", "Ask Jarvis", "AI assistant", "search", "unread messages", "schedule", "confirm", "dashboards", "themes", "memory", "screenshot"],
   "audiences": ["staff"],
   "permissions": ["help:read", "agent:read"],
   "routes": ["/dashboard"],
@@ -58,22 +58,18 @@ Jarvis can list available preset and personal themes, switch your theme, generat
 
 Ask Jarvis to remember a preference, workflow, fact, or decision for later and to recall your saved context by topic. For example, “Remember that I want short project summaries with source links” or “What did we decide about our reporting workflow?” These built-in memories are stored for your Compass user and organization; do not assume another user's chat or a separate assistant shares them. Never save credentials, authentication codes, or secret links as memories. A remembered decision is context; confirm current project state with a live lookup.
 
-## Use Skills, GitHub, and Connected Tools {#skills-and-github}
+## Ask About a Screenshot {#screenshots}
 
-When permitted, Jarvis can list installed agent skills, install a skill from a GitHub source, enable or disable it, and uninstall it. Installation, toggling, and removal require the appropriate administrator access; confirm the intended skill and source before proceeding. Skills provide additional instructions, while an integration must supply any additional executable tools.
-
-With the repository connection configured, Jarvis can query commits and commit changes, pull requests, issues, contributors, milestones, and repository statistics. It can create a GitHub issue after you approve its title, content, and destination. It does not have a built-in tool to merge a pull request or deploy Compass.
-
-Enabled external MCP connections can add tools. Their availability depends on the organization's configuration and the working connection; ask Jarvis which tools are available for the requested task. This guide's built-in capabilities do not promise access to email, calendars, Drive contents, or other services unless a connected tool provides it.
+Attach up to two screenshots with the image button in the chat box and ask your question, such as "Why is this task showing late?" or "What does this error mean?" Jarvis reads the images along with your message. Crop out anything private that doesn't need to be shared, and open the actual record before acting on what Jarvis says.
 
 ## Review Confirmations and Verify Results {#confirm}
 
 Built-in task creation, task updates, task deletion, dependency creation/removal, and custom-dashboard deletion show an action summary with **Confirm** and **Cancel** in chat. Until you press **Confirm**, nothing in that pending action has changed. Check the exact target and proposed values. **Cancel** leaves it unchanged. Confirmations expire after about ten minutes; if one expires, ask Jarvis to prepare it again after checking current state.
 
-Wait for **Done.** or an explicit successful tool result, then open the actual record. If the action fails, preserve the message and check current state before retrying. Other consequential work, such as skill installation or GitHub issue creation, needs explicit review but does not use this same built-in confirmation card.
+Wait for **Done.** or an explicit successful tool result, then open the actual record. If the action fails, preserve the message and check current state before retrying. Each confirmation can be used once; to repeat a change, ask Jarvis again.
 
 ## Know When to Use the Dedicated Workflow {#limits}
 
-Jarvis can draft wording, explain Help, and analyze the data returned to it. Its current built-in record queries are read-only except for the schedule, dashboard, theme, memory, skill, and GitHub actions listed above. They do not create daily logs, publish owner updates or social posts, send project email, approve contracts, post accounting entries, or record payments. Use the corresponding workspace for those actions, or a separately available authorized integration.
+Jarvis can draft wording, explain Help, and analyze the data returned to it. Its current built-in record queries are read-only except for the schedule, dashboard, theme, and memory actions listed above. They do not create daily logs, publish owner updates or social posts, send project email, approve contracts, post accounting entries, or record payments. Use the corresponding workspace for those actions, or a separately available authorized integration.
 
 Owner Update editors have their own Jarvis drafting control; see [Owner updates](/dashboard/help/owner-updates#draft-with-jarvis). Drafting there does not publish. If a tool or provider is unavailable, use Help and the dedicated Compass page, keep unfinished work, and [report the exact error](/dashboard/help/requesting-help).
