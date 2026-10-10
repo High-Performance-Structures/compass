@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { getMyStaleMessageCount } from "@/app/actions/staff-message-desk"
 import Link from "next/link"
 import {
   IconAddressBook,
@@ -632,9 +631,11 @@ function useStaleMessageCount(enabled: boolean, pathname: string): number {
     }
     let cancelled = false
     const load = (): void => {
-      void getMyStaleMessageCount()
-        .then((next) => {
-          if (!cancelled) setCount(next)
+      void fetch("/api/staff-message-desk/stale-count", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: unknown) => {
+          const next = typeof body === "object" && body !== null ? Reflect.get(body, "count") : null
+          if (!cancelled && typeof next === "number") setCount(next)
         })
         .catch(() => undefined)
     }
