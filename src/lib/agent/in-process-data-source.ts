@@ -4,6 +4,7 @@ import type { DataSource } from "agent-core"
 import { POST as dashboardsPOST } from "@/app/api/compass/dashboards/route"
 import { POST as githubPOST } from "@/app/api/compass/github/route"
 import { POST as memoryPOST } from "@/app/api/compass/memory/route"
+import { POST as messagesPOST } from "@/app/api/compass/messages/route"
 import { POST as queryPOST } from "@/app/api/compass/query/route"
 import { POST as schedulePOST } from "@/app/api/compass/schedule/route"
 import { POST as skillsPOST } from "@/app/api/compass/skills/route"
@@ -16,6 +17,7 @@ export const AGENT_TOOL_ROUTES: ReadonlyMap<string, RouteHandler> = new Map([
   ["/api/compass/dashboards", dashboardsPOST],
   ["/api/compass/github", githubPOST],
   ["/api/compass/memory", memoryPOST],
+  ["/api/compass/messages", messagesPOST],
   ["/api/compass/query", queryPOST],
   ["/api/compass/schedule", schedulePOST],
   ["/api/compass/skills", skillsPOST],
