@@ -3,6 +3,7 @@ import type { PortfolioHealth, PortfolioPhaseId } from "@/lib/portfolio-map/mode
 
 /** Phase colors come from the theme so the map follows the active palette. */
 export const PHASE_COLOR_TOKEN: Readonly<Record<PortfolioPhaseId, string>> = {
+  intake: "--primary",
   estimating: "--muted-foreground",
   design: "--info",
   permitting: "--chart-3",

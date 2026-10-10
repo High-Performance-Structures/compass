@@ -95,6 +95,7 @@ export function vendorJobScope(
 
 /** Phase names written for homeowners. */
 export const OWNER_PHASE_LABEL: Readonly<Record<PortfolioPhaseId, string>> = {
+  intake: "Getting started",
   estimating: "Pricing",
   design: "Design",
   permitting: "Permits",

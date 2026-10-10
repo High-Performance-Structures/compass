@@ -5,6 +5,7 @@ import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/pr
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
 export const PORTFOLIO_PHASES = [
+  { id: "intake", label: "Intake", short: "INT" },
   { id: "design", label: "Design", short: "DES" },
   { id: "estimating", label: "Estimating", short: "EST" },
   { id: "negotiation", label: "Negotiation", short: "NEG" },
@@ -44,8 +45,9 @@ export type PortfolioMapJob = {
  * awaiting payment).
  */
 const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
-  intake: "estimating",
-  new_client_info_sent: "estimating",
+  // Intake: first contact and new-client info, before any design or pricing.
+  intake: "intake",
+  new_client_info_sent: "intake",
   budget_estimating: "estimating",
   budget_estimate_sent: "estimating",
   estimating: "estimating",
