@@ -1187,10 +1187,24 @@ export const staffMessageRecords = sqliteTable(
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** See STAFF_MESSAGE_STATUSES (migration 0111 adds the CHECK). */
+    status: text("status").notNull().default("new"),
+    statusChangedAt: text("status_changed_at"),
+    /** Last status change, note or reassignment; null means use updated_at. */
+    lastActivityAt: text("last_activity_at"),
+    closedAt: text("closed_at"),
+    closedBy: text("closed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
+    index("staff_message_records_org_status_updated_idx").on(
+      table.organizationId,
+      table.status,
+      table.updatedAt
+    ),
     uniqueIndex("staff_message_records_goto_event_unique")
       .on(table.gotoInboundEventId)
       .where(
@@ -1204,6 +1218,34 @@ export const staffMessageRecords = sqliteTable(
       table.assigneeUserId,
       table.createdAt
     ),
+  ]
+)
+
+/** Status changes, notes and reassignments on a Message Desk record. */
+export const staffMessageEvents = sqliteTable(
+  "staff_message_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => staffMessageRecords.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorName: text("actor_name").notNull(),
+    eventType: text("event_type").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    fromAssigneeUserId: text("from_assignee_user_id"),
+    toAssigneeUserId: text("to_assignee_user_id"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("staff_message_events_message_idx").on(table.messageId, table.createdAt),
   ]
 )
 
