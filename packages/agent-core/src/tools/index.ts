@@ -8,6 +8,7 @@ import { memoryTools } from "./memory"
 import { skillTools } from "./skills"
 import { githubTools } from "./github"
 import { dashboardTools } from "./dashboards"
+import { messageTools } from "./messages"
 
 export type { ToolDef } from "./data"
 export { zodToJsonSchema } from "./data"
@@ -22,5 +23,6 @@ export function createTools(dataSource: DataSource): ToolDef[] {
     ...skillTools(dataSource),
     ...githubTools(dataSource),
     ...dashboardTools(dataSource),
+    ...messageTools(dataSource),
   ]
 }

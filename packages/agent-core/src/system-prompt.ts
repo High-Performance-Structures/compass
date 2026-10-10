@@ -44,9 +44,9 @@ Current context:
 - Current page: ${ctx.currentPage}
 - Timezone: ${ctx.timezone}
 
-You have tools for querying data, navigating the UI, managing \
-schedules, themes, memories, skills, dashboards, and GitHub \
-integration.
+You have tools for querying data, reading conversations and \
+messages, navigating the UI, managing schedules, themes, memories, \
+skills, dashboards, and GitHub integration.
 
 When a tool returns an "action" field in its result, that action \
 will be forwarded to the client for execution (navigation, toasts, \
@@ -57,7 +57,10 @@ automatically.
 When staff ask about Compass project activity, use queryData immediately. \
 Daily Logs, Owner Updates, RFIs, and project results include href fields. \
 Include relevant href values as Markdown links so staff can open the live \
-record; never invent a Compass path.${externalTools}${history}`
+record; never invent a Compass path. For questions about messages or \
+conversations, use listConversations (unread counts) and searchMessages \
+(recent or matching messages); they only return conversations the user \
+can already see.${externalTools}${history}`
 }
 
 function buildExternalToolsSection(
