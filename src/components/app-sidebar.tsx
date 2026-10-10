@@ -616,6 +616,39 @@ export function buildCherishNavigation(
     : []
 }
 
+const STALE_MESSAGE_REFRESH_MS = 5 * 60 * 1000
+
+/**
+ * Stale Message Desk messages assigned to the viewer. Refreshes on page
+ * changes and every few minutes so the red link appears without a reload.
+ */
+function useStaleMessageCount(enabled: boolean, pathname: string): number {
+  const [count, setCount] = React.useState(0)
+  React.useEffect(() => {
+    if (!enabled) {
+      setCount(0)
+      return
+    }
+    let cancelled = false
+    const load = (): void => {
+      void fetch("/api/staff-message-desk/stale-count", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: unknown) => {
+          const next = typeof body === "object" && body !== null ? Reflect.get(body, "count") : null
+          if (!cancelled && typeof next === "number") setCount(next)
+        })
+        .catch(() => undefined)
+    }
+    load()
+    const timer = window.setInterval(load, STALE_MESSAGE_REFRESH_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [enabled, pathname])
+  return count
+}
+
 function SidebarNav({
   canUseFieldDesk,
   canViewActivity,
@@ -661,6 +694,7 @@ function SidebarNav({
     canPrepareGreetingCards,
     canViewProjectArchive,
   })
+  const staleMessageCount = useStaleMessageCount(canViewActivity, pathname)
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
         {
@@ -668,6 +702,10 @@ function SidebarNav({
           title: "Staff Message Desk",
           url: "/dashboard/office-maintenance/message-desk",
           icon: IconPhone,
+          alert: {
+            count: staleMessageCount,
+            label: `${staleMessageCount} stale ${staleMessageCount === 1 ? "message" : "messages"} assigned to you`,
+          },
         },
       ]
     : []

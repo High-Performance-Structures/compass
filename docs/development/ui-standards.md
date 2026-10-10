@@ -32,6 +32,17 @@ repository guidelines).
   consistency matter as much as features. Ship work you would be glad to show a
   prospective customer.
 
+### Customizable by default
+
+Every feature's rules (thresholds, timings, reminders, labels, and defaults)
+are company settings, not constants. Register them in
+`src/lib/feature-settings/registry.ts` with defaults and validation, read them
+on the server with `readFeatureSettings`, and give them a section in
+**Settings → Workflows** (or the feature's own Settings tab). Admins edit;
+everyone else sees the current values. Offer **Reset to defaults**. Ship
+sensible defaults so a new company works without touching anything.
+
+
 ## Lists and tables
 
 - Use TanStack Table for interactive tabular data.

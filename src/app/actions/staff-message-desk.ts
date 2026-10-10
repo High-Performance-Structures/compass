@@ -28,8 +28,12 @@ import {
   STAFF_MESSAGE_STATUS_LABEL,
   isStaffMessageStatus,
   staffMessageStatus,
+  type StaffMessageAgingThresholds,
   type StaffMessageStatus,
 } from "@/lib/staff-message-desk/triage"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { countStaleMessagesForUser } from "@/lib/staff-message-desk/stale-reminders"
+import { clearStaleMessageReminders } from "@/lib/notifications/clear-on-read"
 
 const MESSAGE_DESK_PATH = "/dashboard/office-maintenance/message-desk"
 
@@ -94,6 +98,8 @@ export type StaffMessageInboundTextDto = Readonly<{
 
 export type StaffMessageDeskData = Readonly<{
   readonly viewerId: string
+  /** The company's aging thresholds (Settings → Workflows). */
+  readonly agingThresholds: StaffMessageAgingThresholds
   readonly records: readonly StaffMessageDeskRecordDto[]
   readonly assignees: readonly StaffMessageAssigneeDto[]
   readonly inboundTexts: readonly StaffMessageInboundTextDto[]
@@ -411,6 +417,7 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
       success: true,
       data: {
         viewerId: user.id,
+        agingThresholds: await readFeatureSettings(db, organizationId, "message-desk"),
         records: rows.map((row) => ({
           id: row.id,
           sourceType: sourceType(row.sourceType),
@@ -594,6 +601,16 @@ export async function submitRouteGotoTextToMessageDesk(
   await routeGotoTextToMessageDesk(formData)
 }
 
+/** Stale messages assigned to the signed-in user (0 for anyone without desk access). */
+export async function getMyStaleMessageCount(): Promise<number> {
+  try {
+    const { db, organizationId, user } = await staffMessageContext()
+    return await countStaleMessagesForUser(db, organizationId, user.id)
+  } catch {
+    return 0
+  }
+}
+
 const MAX_TRIAGE_BATCH = 100
 
 /**
@@ -683,6 +700,11 @@ export async function updateStaffMessages(input: {
           console.error("[staff-message-desk] reassignment notification error", error)
         }
       }
+    }
+    try {
+      await clearStaleMessageReminders(db, records.map((record) => record.id))
+    } catch (error) {
+      console.error("[staff-message-desk] stale reminder clear error", error)
     }
     revalidatePath(MESSAGE_DESK_PATH)
     return { success: true, data: { updated: records.length } }

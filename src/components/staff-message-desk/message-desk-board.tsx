@@ -25,6 +25,7 @@ import {
   staffMessageAging,
   type StaffMessageAging,
   type StaffMessageAgingLevel,
+  type StaffMessageAgingThresholds,
 } from "@/lib/staff-message-desk/triage"
 import { cn } from "@/lib/utils"
 
@@ -48,6 +49,10 @@ const AGING_BADGE: Readonly<Record<StaffMessageAgingLevel, string>> = {
 }
 
 const STATUS_OPTIONS = STAFF_MESSAGE_STATUSES.map((status) => ({ value: status, label: STAFF_MESSAGE_STATUS_LABEL[status] }))
+
+function businessDays(days: number): string {
+  return `${days} business ${days === 1 ? "day" : "days"}`
+}
 
 function timestamp(value: string): string {
   const parsed = new Date(value)
@@ -208,11 +213,13 @@ export function MessageDeskBoard({
   assignees,
   viewerId,
   nowIso,
+  thresholds = STAFF_MESSAGE_AGING,
 }: {
   readonly records: readonly StaffMessageDeskRecordDto[]
   readonly assignees: readonly StaffMessageAssigneeDto[]
   readonly viewerId: string
   readonly nowIso: string
+  readonly thresholds?: StaffMessageAgingThresholds
 }): React.ReactElement {
   const router = useRouter()
   const [filter, setFilter] = React.useState<DeskFilter>("open")
@@ -226,14 +233,14 @@ export function MessageDeskBoard({
 
   const rows = React.useMemo<readonly Row[]>(() => {
     const now = new Date(nowIso)
-    return records.map((record) => ({ ...record, aging: staffMessageAging(record, now) }))
-  }, [nowIso, records])
+    return records.map((record) => ({ ...record, aging: staffMessageAging(record, now, thresholds) }))
+  }, [nowIso, records, thresholds])
 
   const open = rows.filter((row) => row.status !== "closed")
   const towers: readonly AgingTower[] = [
-    { level: "stale", label: "Stale", hint: `No activity for ${STAFF_MESSAGE_AGING.staleDays}+ business days`, count: open.filter((row) => row.aging.level === "stale").length },
-    { level: "aging", label: "Aging", hint: `No activity for ${STAFF_MESSAGE_AGING.agingDays}+ business days`, count: open.filter((row) => row.aging.level === "aging").length },
-    { level: "needs_response", label: "Needs first response", hint: `New for more than ${STAFF_MESSAGE_AGING.firstResponseDays} business day`, count: open.filter((row) => row.aging.level === "needs_response").length },
+    { level: "stale", label: "Stale", hint: `No activity for ${businessDays(thresholds.staleDays)} or more`, count: open.filter((row) => row.aging.level === "stale").length },
+    { level: "aging", label: "Aging", hint: `No activity for ${businessDays(thresholds.agingDays)} or more`, count: open.filter((row) => row.aging.level === "aging").length },
+    { level: "needs_response", label: "Needs first response", hint: `New for more than ${businessDays(thresholds.firstResponseDays)}`, count: open.filter((row) => row.aging.level === "needs_response").length },
     { level: "fresh", label: "On track", hint: "Open with recent activity", count: open.filter((row) => row.aging.level === "fresh").length },
   ]
 
@@ -282,7 +289,7 @@ export function MessageDeskBoard({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
         <h2 id="active-staff-messages" className="text-lg font-semibold">Messages</h2>
         <p className="text-xs text-muted-foreground">
-          {open.length} open · first response within {STAFF_MESSAGE_AGING.firstResponseDays} business day
+          {open.length} open · first response within {businessDays(thresholds.firstResponseDays)}
         </p>
       </div>
 
