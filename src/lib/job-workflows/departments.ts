@@ -186,14 +186,16 @@ export const CUSTOM_BUILD_WORKFLOW: WorkflowDefinition = {
       ],
     },
     {
+      // "Pre-construction" is the company's name for the design and engineering
+      // stage (see the design agreement step), so this step is named for the wait.
       id: "preconstruction",
-      label: "Pre-construction",
+      label: "Awaiting groundbreaking",
       jobStatusId: "awaiting_groundbreaking",
       items: [
         { id: "selections", label: "Finish selections approved", fact: "selectionsApproved", tickable: true, path: "selections" },
         { id: "schedule", label: "Build the schedule", fact: "scheduled", tickable: true, path: "schedule" },
         { id: "buyout", label: "Bids in; subcontracts and POs issued", fact: "purchaseOrdered", tickable: true, path: "purchase-orders" },
-        { id: "meeting", label: "Pre-construction meeting held", path: null },
+        { id: "meeting", label: "Pre-groundbreaking meeting held", path: null },
         { id: "groundbreaking", label: "Groundbreaking date set", path: "schedule" },
       ],
     },
