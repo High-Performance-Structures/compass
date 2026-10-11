@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState, useTransition } from "react"
+import { useRef, useState, useTransition } from "react"
 import { SearchableCombobox, SearchableComboboxField } from "@/components/searchable-combobox"
 import {
   IconCalculator,
@@ -36,9 +36,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_CLASS } from "@/lib/ui/document-fields"
+import { cn } from "@/lib/utils"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -214,61 +214,67 @@ export function NuTechOrderWorkspace({
     }
   }
 
+  const formRef = useRef<HTMLFormElement | null>(null)
+
+  function orderInput(formData: FormData): Parameters<typeof saveProjectNuTechOrder>[1] {
+    return {
+      customerType: formText(formData, "customerType"),
+      pricingMode: formText(formData, "pricingMode"),
+      quantitySource: formText(formData, "quantitySource"),
+      takeoffAcknowledgementStatus: formText(
+        formData,
+        "takeoffAcknowledgementStatus"
+      ),
+      scopeType: formText(formData, "scopeType"),
+      blockQuantityNotes: optionalFormText(formData, "blockQuantityNotes"),
+      bracingIncluded: formData.get("bracingIncluded") === "on",
+      bracingRentalStartDate: optionalFormText(
+        formData,
+        "bracingRentalStartDate"
+      ),
+      bracingRentalEndDate: optionalFormText(
+        formData,
+        "bracingRentalEndDate"
+      ),
+      bracingNotes: optionalFormText(formData, "bracingNotes"),
+      deliveryMethod: formText(formData, "deliveryMethod"),
+      requestedDeliveryDate: optionalFormText(
+        formData,
+        "requestedDeliveryDate"
+      ),
+      customerPaidAt: optionalFormText(formData, "customerPaidAt"),
+      customerPaymentMethod: optionalFormText(formData, "customerPaymentMethod"),
+      trailerDimensions: optionalFormText(formData, "trailerDimensions"),
+      trailerPhotoReceivedAt: optionalFormText(formData, "trailerPhotoReceivedAt"),
+      airlitePurchaseOrderOperationId: optionalFormText(
+        formData,
+        "airlitePurchaseOrderOperationId"
+      ),
+      orderStatus: formText(formData, "orderStatus"),
+      vendorConfirmationNumber: optionalFormText(
+        formData,
+        "vendorConfirmationNumber"
+      ),
+      vendorInvoiceNumber: optionalFormText(formData, "vendorInvoiceNumber"),
+      vendorInvoiceStatus: formText(formData, "vendorInvoiceStatus"),
+      vendorInvoiceReceivedAt: optionalFormText(
+        formData,
+        "vendorInvoiceReceivedAt"
+      ),
+      notes: optionalFormText(formData, "notes"),
+    }
+  }
+
   function submitOrder(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     startTransition(async () => {
-      const result = await saveProjectNuTechOrder(workspace.projectId, {
-        customerType: formText(formData, "customerType"),
-        pricingMode: formText(formData, "pricingMode"),
-        quantitySource: formText(formData, "quantitySource"),
-        takeoffAcknowledgementStatus: formText(
-          formData,
-          "takeoffAcknowledgementStatus"
-        ),
-        scopeType: formText(formData, "scopeType"),
-        blockQuantityNotes: optionalFormText(formData, "blockQuantityNotes"),
-        bracingIncluded: formData.get("bracingIncluded") === "on",
-        bracingRentalStartDate: optionalFormText(
-          formData,
-          "bracingRentalStartDate"
-        ),
-        bracingRentalEndDate: optionalFormText(
-          formData,
-          "bracingRentalEndDate"
-        ),
-        bracingNotes: optionalFormText(formData, "bracingNotes"),
-        deliveryMethod: formText(formData, "deliveryMethod"),
-        requestedDeliveryDate: optionalFormText(
-          formData,
-          "requestedDeliveryDate"
-        ),
-        customerPaidAt: optionalFormText(formData, "customerPaidAt"),
-        customerPaymentMethod: optionalFormText(formData, "customerPaymentMethod"),
-        trailerDimensions: optionalFormText(formData, "trailerDimensions"),
-        trailerPhotoReceivedAt: optionalFormText(formData, "trailerPhotoReceivedAt"),
-        airlitePurchaseOrderOperationId: optionalFormText(
-          formData,
-          "airlitePurchaseOrderOperationId"
-        ),
-        orderStatus: formText(formData, "orderStatus"),
-        vendorConfirmationNumber: optionalFormText(
-          formData,
-          "vendorConfirmationNumber"
-        ),
-        vendorInvoiceNumber: optionalFormText(formData, "vendorInvoiceNumber"),
-        vendorInvoiceStatus: formText(formData, "vendorInvoiceStatus"),
-        vendorInvoiceReceivedAt: optionalFormText(
-          formData,
-          "vendorInvoiceReceivedAt"
-        ),
-        notes: optionalFormText(formData, "notes"),
-      })
+      const result = await saveProjectNuTechOrder(workspace.projectId, orderInput(formData))
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success(order ? "Nu-Tech order updated." : "Nu-Tech order started.")
+      toast.success(order ? "Nu-Tech order saved." : "Nu-Tech order started.")
       router.refresh()
     })
   }
@@ -292,6 +298,17 @@ export function NuTechOrderWorkspace({
       return
     }
     startTransition(async () => {
+      // The first product starts the order (and a changed pricing basis is
+      // saved) from the intake above, so there is no separate save step.
+      if (!order || pricingBasisChanged) {
+        const form = formRef.current
+        if (!form) return
+        const saved = await saveProjectNuTechOrder(workspace.projectId, orderInput(new FormData(form)))
+        if (!saved.success) {
+          toast.error(saved.error)
+          return
+        }
+      }
       const result = await saveNuTechOrderItem(workspace.projectId, {
         productId: selectedProductId,
         quantity,
@@ -362,8 +379,8 @@ export function NuTechOrderWorkspace({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="border-y py-4">
+    <div className="max-w-5xl space-y-8">
+      <section className="border-b pb-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-semibold">Current handoff</p>
@@ -373,27 +390,20 @@ export function NuTechOrderWorkspace({
                 : "No Nu-Tech order workflow has been started for this project."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">
-              {quantitySource === "staff_takeoff"
-                ? "Staff takeoff"
-                : "Customer quantities"}
-            </Badge>
-            <Badge variant="outline">
-              {takeoffStatus === "not_required"
-                ? "Acknowledgement not required"
-                : `Acknowledgement: ${takeoffStatus}`}
-            </Badge>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            {quantitySource === "staff_takeoff" ? "Staff takeoff" : "Customer quantities"}
+            {" · "}
+            {takeoffStatus === "not_required" ? "Acknowledgement not required" : `Acknowledgement ${takeoffStatus}`}
+          </p>
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-3">
+      <section aria-label="Resources" className="grid border-b md:grid-cols-3 md:divide-x">
         <a
           href={pricingFolderUrl ?? NUTECH_RESOURCE_LINKS.newClientPricing}
           target="_blank"
           rel="noreferrer"
-          className="rounded-lg border bg-background p-4 transition-colors hover:bg-muted/40"
+          className="block py-3 transition-colors hover:bg-accent md:px-4 md:first:pl-0"
         >
           <div className="flex items-center justify-between gap-2">
             <p className="font-semibold">2026 customer pricing</p>
@@ -408,7 +418,7 @@ export function NuTechOrderWorkspace({
           href={NUTECH_RESOURCE_LINKS.airliteOrderForm}
           target="_blank"
           rel="noreferrer"
-          className="rounded-lg border bg-background p-4 transition-colors hover:bg-muted/40"
+          className="block py-3 transition-colors hover:bg-accent md:px-4 md:first:pl-0"
         >
           <div className="flex items-center justify-between gap-2">
             <p className="font-semibold">2026 Airlite order form</p>
@@ -420,7 +430,7 @@ export function NuTechOrderWorkspace({
         </a>
         <Link
           href={`/dashboard/projects/${workspace.projectId}/estimate`}
-          className="rounded-lg border bg-background p-4 transition-colors hover:bg-muted/40"
+          className="block py-3 transition-colors hover:bg-accent md:px-4 md:first:pl-0"
         >
           <div className="flex items-center justify-between gap-2">
             <p className="font-semibold">Compass estimate</p>
@@ -434,11 +444,11 @@ export function NuTechOrderWorkspace({
         </Link>
       </section>
 
-      <form onSubmit={submitOrder} className="space-y-6">
+      <form ref={formRef} onSubmit={submitOrder} className="space-y-8">
         <fieldset disabled={!workspace.canEdit || isPending} className="space-y-6">
-          <section id="nutech-intake" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-intake" className="scroll-mt-4 space-y-5 border-b pb-8">
             <div>
-              <h2 className="font-semibold">1. Intake and pricing basis</h2>
+              <h2 className="text-base font-semibold">1. Intake and pricing basis</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Choose the matching published price sheet and record who supplied
                 the quantities.
@@ -451,7 +461,7 @@ export function NuTechOrderWorkspace({
                   value={customerType}
                   onValueChange={(value) => setCustomerType(customerTypeValue(value))}
                 >
-                  <SelectTrigger id="nutech-customer-type" className="w-full">
+                  <SelectTrigger id="nutech-customer-type" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -473,7 +483,7 @@ export function NuTechOrderWorkspace({
                     )
                   }
                 >
-                  <SelectTrigger id="nutech-pricing-mode" className="w-full">
+                  <SelectTrigger id="nutech-pricing-mode" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -494,7 +504,7 @@ export function NuTechOrderWorkspace({
                   value={quantitySource}
                   onValueChange={onQuantitySourceChange}
                 >
-                  <SelectTrigger id="nutech-quantity-source" className="w-full">
+                  <SelectTrigger id="nutech-quantity-source" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -515,7 +525,7 @@ export function NuTechOrderWorkspace({
                   onValueChange={(value) => setTakeoffStatus(takeoffStatusValue(value))}
                   disabled={quantitySource === "customer_provided"}
                 >
-                  <SelectTrigger id="nutech-takeoff-status" className="w-full">
+                  <SelectTrigger id="nutech-takeoff-status" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -535,25 +545,24 @@ export function NuTechOrderWorkspace({
                 )}
               </div>
             </div>
-            <Alert>
-              <IconCheck className="size-4" />
-              <AlertTitle>
+            <div className="border-l-2 pl-3 text-sm">
+              <p className="font-medium">
                 {quantitySource === "customer_provided"
                   ? "No acknowledgement required"
                   : "Signed acknowledgement required before PO release"}
-              </AlertTitle>
-              <AlertDescription>
+              </p>
+              <p className="text-muted-foreground">
                 {quantitySource === "customer_provided"
                   ? "The customer supplied the order quantities, so Compass will not hold the Airlite PO for a takeoff acknowledgement."
                   : "Attach the Nu-Tech takeoff acknowledgement to the client estimate and record it as signed before releasing the Airlite PO."}
-              </AlertDescription>
-            </Alert>
+              </p>
+            </div>
           </section>
 
-          <section id="nutech-quantities" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-quantities" className="scroll-mt-4 space-y-5 border-b pb-8">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="font-semibold">2. Product quantities</h2>
+                <h2 className="text-base font-semibold">2. Product quantities</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {workspace.catalogVersionName
                     ? `${workspace.catalogVersionName} · package increments are enforced automatically.`
@@ -570,7 +579,7 @@ export function NuTechOrderWorkspace({
                   <Label htmlFor="nutech-product">Catalog product</Label>
                   <SearchableCombobox
                     id="nutech-product"
-                    className="h-9"
+                    className={cn(DOCUMENT_SELECT_TRIGGER_CLASS, "h-9")}
                     value={selectedProductId}
                     onValueChange={(value) => {
                       if (value !== "") setSelectedProductId(value)
@@ -601,7 +610,7 @@ export function NuTechOrderWorkspace({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="nutech-product-quantity">Quantity</Label>
-                  <Input
+                  <Input className={DOCUMENT_INPUT_CLASS}
                     id="nutech-product-quantity"
                     type="number"
                     min={selectedProduct?.minimumOrderIncrement ?? 1}
@@ -612,13 +621,7 @@ export function NuTechOrderWorkspace({
                 </div>
                 <Button
                   type="button"
-                  disabled={
-                    !order ||
-                    !selectedProduct ||
-                    isPending ||
-                    pricingBasisChanged ||
-                    purchaseOrderReleased
-                  }
+                  disabled={!selectedProduct || isPending || purchaseOrderReleased}
                   onClick={saveOrderItem}
                 >
                   <IconPlus className="size-4" />
@@ -627,14 +630,11 @@ export function NuTechOrderWorkspace({
               </div>
             )}
             {!order && workspace.catalogProducts.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Save the intake once before adding catalog quantities.
-              </p>
+              <p className="text-sm text-muted-foreground">Adding the first product starts the order with the intake above.</p>
             )}
-            {pricingBasisChanged && (
+            {order && pricingBasisChanged && (
               <p className="text-sm text-muted-foreground">
-                Save the revised customer/pricing basis before adding or updating
-                products. Existing line prices will refresh when the workflow is saved.
+                The pricing basis changed; adding a product (or saving) refreshes the existing line prices.
               </p>
             )}
             {workspace.orderItems.length > 0 && (
@@ -697,9 +697,9 @@ export function NuTechOrderWorkspace({
             )}
           </section>
 
-          <section id="nutech-fulfillment" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-fulfillment" className="scroll-mt-4 space-y-5 border-b pb-8">
             <div>
-              <h2 className="font-semibold">3. Bracing and delivery</h2>
+              <h2 className="text-base font-semibold">3. Bracing and delivery</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 Bracing rental rates remain on the applicable 2026 Fox Blocks price
                 sheet.
@@ -711,7 +711,7 @@ export function NuTechOrderWorkspace({
                 <Select name="scopeType"
                   defaultValue={order?.scopeType ?? "block_sale"}
                 >
-                  <SelectTrigger id="nutech-scope" className="w-full">
+                  <SelectTrigger id="nutech-scope" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -728,7 +728,7 @@ export function NuTechOrderWorkspace({
                 <Select name="deliveryMethod"
                   defaultValue={order?.deliveryMethod ?? "delivery"}
                 >
-                  <SelectTrigger id="nutech-delivery-method" className="w-full">
+                  <SelectTrigger id="nutech-delivery-method" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -744,7 +744,7 @@ export function NuTechOrderWorkspace({
                 <Label htmlFor="nutech-requested-delivery">
                   Requested delivery / pickup
                 </Label>
-                <Input
+                <Input className={DOCUMENT_INPUT_CLASS}
                   id="nutech-requested-delivery"
                   name="requestedDeliveryDate"
                   type="date"
@@ -756,7 +756,7 @@ export function NuTechOrderWorkspace({
                 <SearchableComboboxField
                   id="nutech-status"
                   name="orderStatus"
-                  className="h-9"
+                  className={cn(DOCUMENT_SELECT_TRIGGER_CLASS, "h-9")}
                   defaultValue={order?.orderStatus ?? "intake"}
                   options={availableOrderStatusOptions}
                   ariaLabel="Workflow status"
@@ -774,12 +774,12 @@ export function NuTechOrderWorkspace({
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2">
                   <Label htmlFor="nutech-paid-at">Customer paid</Label>
-                  <Input id="nutech-paid-at" name="customerPaidAt" type="date" defaultValue={order?.customerPaidAt ?? ""} />
+                  <Input className={DOCUMENT_INPUT_CLASS} id="nutech-paid-at" name="customerPaidAt" type="date" defaultValue={order?.customerPaidAt ?? ""} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="nutech-payment-method">Payment method</Label>
                   <Select name="customerPaymentMethod" defaultValue={order?.customerPaymentMethod ?? undefined}>
-                    <SelectTrigger id="nutech-payment-method" className="w-full">
+                    <SelectTrigger id="nutech-payment-method" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                       <SelectValue placeholder="Not paid yet" />
                     </SelectTrigger>
                     <SelectContent>
@@ -793,7 +793,7 @@ export function NuTechOrderWorkspace({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="nutech-trailer-dimensions">Trailer dimensions (pickup)</Label>
-                  <Input
+                  <Input className={DOCUMENT_INPUT_CLASS}
                     id="nutech-trailer-dimensions"
                     name="trailerDimensions"
                     placeholder={`8'6" wide × 26' long, enclosed, swing doors`}
@@ -802,7 +802,7 @@ export function NuTechOrderWorkspace({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="nutech-trailer-photo">Trailer photo received (pickup)</Label>
-                  <Input id="nutech-trailer-photo" name="trailerPhotoReceivedAt" type="date" defaultValue={order?.trailerPhotoReceivedAt ?? ""} />
+                  <Input className={DOCUMENT_INPUT_CLASS} id="nutech-trailer-photo" name="trailerPhotoReceivedAt" type="date" defaultValue={order?.trailerPhotoReceivedAt ?? ""} />
                 </div>
               </div>
             </div>
@@ -811,7 +811,7 @@ export function NuTechOrderWorkspace({
                 <Label htmlFor="nutech-block-notes">
                   Block quantities and accessory notes
                 </Label>
-                <Textarea
+                <Textarea className={DOCUMENT_TEXTAREA_CLASS}
                   id="nutech-block-notes"
                   name="blockQuantityNotes"
                   rows={5}
@@ -823,7 +823,7 @@ export function NuTechOrderWorkspace({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="nutech-bracing-start">Bracing start</Label>
-                    <Input
+                    <Input className={DOCUMENT_INPUT_CLASS}
                       id="nutech-bracing-start"
                       name="bracingRentalStartDate"
                       type="date"
@@ -832,7 +832,7 @@ export function NuTechOrderWorkspace({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="nutech-bracing-end">Bracing return due</Label>
-                    <Input
+                    <Input className={DOCUMENT_INPUT_CLASS}
                       id="nutech-bracing-end"
                       name="bracingRentalEndDate"
                       type="date"
@@ -842,7 +842,7 @@ export function NuTechOrderWorkspace({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="nutech-bracing-notes">Bracing rental notes</Label>
-                  <Textarea
+                  <Textarea className={DOCUMENT_TEXTAREA_CLASS}
                     id="nutech-bracing-notes"
                     name="bracingNotes"
                     rows={3}
@@ -854,10 +854,10 @@ export function NuTechOrderWorkspace({
             </div>
           </section>
 
-          <section id="nutech-airlite" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
+          <section id="nutech-airlite" className="scroll-mt-4 space-y-5 border-b pb-8">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="font-semibold">4. Airlite PO and vendor invoice</h2>
+                <h2 className="text-base font-semibold">4. Airlite PO and vendor invoice</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Build the PO from this order (or link an existing one), then
                   release it after the applicable intake gates are complete.
@@ -881,7 +881,7 @@ export function NuTechOrderWorkspace({
                 <SearchableComboboxField
                   id="nutech-airlite-po"
                   name="airlitePurchaseOrderOperationId"
-                  className="h-9"
+                  className={cn(DOCUMENT_SELECT_TRIGGER_CLASS, "h-9")}
                   defaultValue={order?.airlitePurchaseOrderOperationId ?? ""}
                   options={[
                     { value: "", label: "No linked purchase order" },
@@ -903,7 +903,7 @@ export function NuTechOrderWorkspace({
                 <Label htmlFor="nutech-vendor-confirmation">
                   Airlite confirmation
                 </Label>
-                <Input
+                <Input className={DOCUMENT_INPUT_CLASS}
                   id="nutech-vendor-confirmation"
                   name="vendorConfirmationNumber"
                   defaultValue={order?.vendorConfirmationNumber ?? ""}
@@ -917,7 +917,7 @@ export function NuTechOrderWorkspace({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-invoice-number">Vendor invoice number</Label>
-                <Input
+                <Input className={DOCUMENT_INPUT_CLASS}
                   id="nutech-invoice-number"
                   name="vendorInvoiceNumber"
                   defaultValue={order?.vendorInvoiceNumber ?? ""}
@@ -928,7 +928,7 @@ export function NuTechOrderWorkspace({
                 <Select name="vendorInvoiceStatus"
                   defaultValue={order?.vendorInvoiceStatus ?? "not_received"}
                 >
-                  <SelectTrigger id="nutech-invoice-status" className="w-full">
+                  <SelectTrigger id="nutech-invoice-status" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -942,7 +942,7 @@ export function NuTechOrderWorkspace({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-invoice-received">Invoice received</Label>
-                <Input
+                <Input className={DOCUMENT_INPUT_CLASS}
                   id="nutech-invoice-received"
                   name="vendorInvoiceReceivedAt"
                   type="date"
@@ -996,22 +996,20 @@ export function NuTechOrderWorkspace({
               </div>
             )}
             {order && !releaseReadiness.ready && (
-              <Alert>
-                <AlertTitle>PO release checklist</AlertTitle>
-                <AlertDescription>
-                  <ul className="mt-1 list-disc space-y-1 pl-5">
-                    {releaseReadiness.issues.map((issue) => (
-                      <li key={issue}>{issue}</li>
-                    ))}
-                  </ul>
-                </AlertDescription>
-              </Alert>
+              <div className="border-l-2 border-warning pl-3 text-sm">
+                <p className="font-medium">Before the PO can be released</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5 text-muted-foreground">
+                  {releaseReadiness.issues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </section>
 
-          <section className="space-y-2 rounded-lg border bg-background p-4">
+          <section className="space-y-2 pb-4">
             <Label htmlFor="nutech-notes">Internal order notes</Label>
-            <Textarea
+            <Textarea className={DOCUMENT_TEXTAREA_CLASS}
               id="nutech-notes"
               name="notes"
               rows={4}
@@ -1020,11 +1018,12 @@ export function NuTechOrderWorkspace({
             />
           </section>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          {/* Keeps Save visible while scrolling the long form, like a drawer footer. */}
+          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t bg-background py-3">
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={isPending}>
                 <IconCheck className="size-4" />
-                {order ? "Save workflow" : "Start Nu-Tech order"}
+                {order ? "Save order" : "Start order"}
               </Button>
               {order && (
                 <Button
