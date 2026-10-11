@@ -62,9 +62,10 @@ const MILESTONES: { readonly [K in PaperTrailRecordType]?: { readonly milestone:
 /** Limits a query to the company's projects the settings allow. */
 function projectScope(organizationId: string, settings: PaperTrailSettings): SQL | null {
   if (settings.mode === "off") return null
-  if (settings.mode === "on") return sql`p.organization_id = ${organizationId}`
+  // Internal workspaces (H-Office, the yard) have no project folders to save into.
+  if (settings.mode === "on") return sql`p.organization_id = ${organizationId} AND p.workspace_kind IS NULL`
   if (settings.pilotProjectIds.length === 0) return null
-  return sql`p.organization_id = ${organizationId} AND p.id IN (${sql.join(
+  return sql`p.organization_id = ${organizationId} AND p.workspace_kind IS NULL AND p.id IN (${sql.join(
     settings.pilotProjectIds.map((id) => sql`${id}`),
     sql`, `,
   )})`

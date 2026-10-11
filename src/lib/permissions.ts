@@ -210,6 +210,13 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "finance",
   },
   {
+    id: "internal-duties",
+    group: "Operations",
+    label: "Internal Duty Log",
+    description: "Log office and yard duties with hours in internal workspaces such as H-Office.",
+    resource: "project",
+  },
+  {
     id: "nutech-orders",
     group: "Operations",
     label: "Nu-Tech Orders",
@@ -688,6 +695,7 @@ export function getPermissionAccessLevel(
 
 const INTERNAL_STAFF_EDIT_FEATURES: readonly string[] = [
   "project-hub",
+  "internal-duties",
   "social-publishing",
 ]
 

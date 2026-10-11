@@ -28,7 +28,7 @@ export async function markPaperTrailDue(
         (id, organization_id, project_id, record_type, record_id, status, due_at, changed_at, attempts, created_at, updated_at)
       SELECT ${crypto.randomUUID()}, p.organization_id, p.id, ${input.recordType}, ${input.recordId}, 'pending', ${now}, ${now}, 0, ${now}, ${now}
       FROM projects p
-      WHERE p.id = ${input.projectId} AND p.organization_id IS NOT NULL
+      WHERE p.id = ${input.projectId} AND p.organization_id IS NOT NULL AND p.workspace_kind IS NULL
       ON CONFLICT (record_type, record_id) DO UPDATE SET
         status = CASE WHEN status IN ('removed', 'needs_choice', 'kept_existing') THEN status ELSE 'pending' END,
         due_at = excluded.due_at,
