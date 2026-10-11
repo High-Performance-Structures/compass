@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import type { BracingRentalSettings } from "@/lib/feature-settings/registry"
+import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_CLASS } from "@/lib/ui/document-fields"
+import { cn } from "@/lib/utils"
 import { bracingCharges, bracingRentalDays, bracingSignOutIssues, formatCents } from "@/lib/nutech/bracing"
 
 type LineDraft = {
@@ -219,19 +221,19 @@ function RentalForm({
       <div className="grid gap-3 sm:grid-cols-4">
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-out`}>Signed out</Label>
-          <Input id={`${idPrefix}-out`} type="date" value={draft.signedOutOn} disabled={disabled || status === "returned"} onChange={(event) => set({ signedOutOn: event.target.value })} />
+          <Input className={DOCUMENT_INPUT_CLASS} id={`${idPrefix}-out`} type="date" value={draft.signedOutOn} disabled={disabled || status === "returned"} onChange={(event) => set({ signedOutOn: event.target.value })} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-expected`}>Expected back</Label>
-          <Input id={`${idPrefix}-expected`} type="date" value={draft.expectedReturnOn} disabled={disabled} onChange={(event) => set({ expectedReturnOn: event.target.value })} />
+          <Input className={DOCUMENT_INPUT_CLASS} id={`${idPrefix}-expected`} type="date" value={draft.expectedReturnOn} disabled={disabled} onChange={(event) => set({ expectedReturnOn: event.target.value })} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-returned`}>Returned</Label>
-          <Input id={`${idPrefix}-returned`} type="date" value={draft.returnedOn} disabled={disabled || status === "reserved"} onChange={(event) => set({ returnedOn: event.target.value })} />
+          <Input className={DOCUMENT_INPUT_CLASS} id={`${idPrefix}-returned`} type="date" value={draft.returnedOn} disabled={disabled || status === "reserved"} onChange={(event) => set({ returnedOn: event.target.value })} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-days`}>Days billed</Label>
-          <Input
+          <Input className={DOCUMENT_INPUT_CLASS}
             id={`${idPrefix}-days`}
             inputMode="numeric"
             value={draft.billedDays}
@@ -263,7 +265,7 @@ function RentalForm({
                   <td className="py-1.5 pr-2">{label}</td>
                   <td className="w-32 py-1.5 pr-2">
                     <Select value={line.size || NO_SIZE} disabled={disabled || status === "returned"} onValueChange={(value) => setLine(line.key, { size: value === NO_SIZE ? "" : value })}>
-                      <SelectTrigger aria-label={`${label} size`} className="h-8 w-full">
+                      <SelectTrigger aria-label={`${label} size`} className={cn(DOCUMENT_SELECT_TRIGGER_CLASS, "h-8")}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -281,7 +283,7 @@ function RentalForm({
                       <Input
                         aria-label={`${label} ${field === "quantityOut" ? "out" : field === "quantityReturned" ? "returned" : "damaged"}`}
                         inputMode="numeric"
-                        className="h-8"
+                        className={cn(DOCUMENT_INPUT_CLASS, "h-8")}
                         value={line[field]}
                         disabled={disabled || (field === "quantityOut" ? status === "returned" : status === "reserved")}
                         onChange={(event) => setLine(line.key, { [field]: event.target.value })}
@@ -289,10 +291,10 @@ function RentalForm({
                     </td>
                   ))}
                   <td className="w-24 py-1.5 pr-2">
-                    <Input aria-label={`${label} damage cost`} inputMode="decimal" className="h-8" value={line.damage} disabled={disabled || status === "reserved"} onChange={(event) => setLine(line.key, { damage: event.target.value })} />
+                    <Input aria-label={`${label} damage cost`} inputMode="decimal" className={cn(DOCUMENT_INPUT_CLASS, "h-8")} value={line.damage} disabled={disabled || status === "reserved"} onChange={(event) => setLine(line.key, { damage: event.target.value })} />
                   </td>
                   <td className="py-1.5 pr-2">
-                    <Input aria-label={`${label} damage note`} className="h-8" value={line.damageNote} disabled={disabled || status === "reserved"} onChange={(event) => setLine(line.key, { damageNote: event.target.value })} />
+                    <Input aria-label={`${label} damage note`} className={cn(DOCUMENT_INPUT_CLASS, "h-8")} value={line.damageNote} disabled={disabled || status === "reserved"} onChange={(event) => setLine(line.key, { damageNote: event.target.value })} />
                   </td>
                 </tr>
               )
@@ -305,7 +307,7 @@ function RentalForm({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor={`${idPrefix}-deposit`}>Deposit paid</Label>
-            <Input id={`${idPrefix}-deposit`} inputMode="decimal" placeholder="0.00" value={draft.deposit} disabled={disabled} onChange={(event) => set({ deposit: event.target.value })} />
+            <Input className={DOCUMENT_INPUT_CLASS} id={`${idPrefix}-deposit`} inputMode="decimal" placeholder="0.00" value={draft.deposit} disabled={disabled} onChange={(event) => set({ deposit: event.target.value })} />
           </div>
           <div className="flex items-center gap-2">
             <Checkbox id={`${idPrefix}-id`} checked={draft.idCopyReceived} disabled={disabled} onCheckedChange={(checked) => set({ idCopyReceived: checked === true })} />
@@ -314,7 +316,7 @@ function RentalForm({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`${idPrefix}-notes`}>Notes</Label>
-          <Textarea id={`${idPrefix}-notes`} rows={3} value={draft.notes} disabled={disabled} onChange={(event) => set({ notes: event.target.value })} />
+          <Textarea className={DOCUMENT_TEXTAREA_CLASS} id={`${idPrefix}-notes`} rows={3} value={draft.notes} disabled={disabled} onChange={(event) => set({ notes: event.target.value })} />
         </div>
       </div>
 
@@ -346,7 +348,7 @@ function RentalForm({
       </dl>
 
       {signOutIssues.length > 0 && canEdit ? (
-        <p className="border-l-2 border-warning bg-warning/10 px-3 py-2 text-sm">Before signing out: {signOutIssues.join(" ")}</p>
+        <p className="border-l-2 border-warning pl-3 text-sm">Before signing out: {signOutIssues.join(" ")}</p>
       ) : null}
 
       {canEdit ? (
@@ -383,10 +385,10 @@ function RentalForm({
 export function NuTechBracingRentals({ data }: { readonly data: ProjectBracingRentals }): React.ReactElement {
   const [adding, setAdding] = React.useState(false)
   return (
-    <section id="nutech-bracing" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
+    <section id="nutech-bracing" className="max-w-5xl scroll-mt-4 space-y-5 border-b pb-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Bracing rental</h2>
+          <h2 className="text-base font-semibold">Bracing rental</h2>
           <p className="text-sm text-muted-foreground">
             {formatCents(data.settings.dailyRateCents)} per brace per day. Equipment, sizes, rate and deposit rules are in Settings → Workflows → Bracing rentals.
           </p>

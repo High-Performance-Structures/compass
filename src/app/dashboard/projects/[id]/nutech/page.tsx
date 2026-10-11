@@ -44,7 +44,7 @@ export default async function ProjectNuTechOrderPage({
       />
       <NuTechOrderWorkspace workspace={workspace} manufacturerName={manufacturerName} />
       {bracing.success ? (
-        <div className="mt-4">
+        <div className="mt-8">
           <NuTechBracingRentals data={bracing.data} />
         </div>
       ) : null}
