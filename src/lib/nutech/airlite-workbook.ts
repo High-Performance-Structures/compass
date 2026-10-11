@@ -91,6 +91,38 @@ function cell(range: string, value: unknown): GoogleSheetValueUpdate {
   return { range: `${SHEET}!${range}`, values: [[value]] }
 }
 
+/**
+ * The order's place in the manufacturer PO sequence: the number already
+ * assigned, else one past the last Compass assigned, but never below the
+ * "next number" in Settings (staff raise it when numbers are used elsewhere).
+ * Null when Settings has no starting number and none was ever assigned.
+ */
+export function nextAirlitePoSequence(input: {
+  readonly assigned: number | null
+  readonly lastAssigned: number | null
+  readonly nextSetting: string
+}): number | null {
+  if (input.assigned !== null) return input.assigned
+  const setting = /^\d+$/.test(input.nextSetting.trim()) ? Number(input.nextSetting.trim()) : null
+  const following = input.lastAssigned === null ? null : input.lastAssigned + 1
+  if (setting === null) return following
+  return following === null ? setting : Math.max(setting, following)
+}
+
+/** "N-0-0-1860 Reeves": project number, PO sequence, client last name. */
+export function airlitePurchaseOrderLabel(input: {
+  readonly projectNumber: string | null
+  readonly sequence: number | null
+  readonly fallbackNumber: string
+  readonly clientLastName: string
+}): string {
+  const number =
+    input.sequence === null
+      ? input.fallbackNumber
+      : [input.projectNumber?.trim(), String(input.sequence)].filter(Boolean).join("-")
+  return [number, input.clientLastName].filter(Boolean).join(" ")
+}
+
 export function formatAirliteDate(isoDate: string): string {
   const [year, month, day] = isoDate.slice(0, 10).split("-")
   return year && month && day ? `${Number(month)}/${Number(day)}/${year}` : isoDate

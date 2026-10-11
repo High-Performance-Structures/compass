@@ -91,6 +91,8 @@ export const nuTechEmailSettingsSchema = z.object({
   /** FOB wording on the order form for deliveries and for customer pickups. */
   fobDelivery: z.string().max(80),
   fobPickup: z.string().max(80),
+  /** Lowest number for the next manufacturer PO; each order takes one higher than the last Compass assigned. */
+  nextPurchaseOrderNumber: z.string().regex(/^\d{0,9}$/, "Use digits only"),
   templates: z.record(
     z.string().min(1).max(60),
     z.object({ subject: z.string().min(1).max(200), body: z.string().min(1).max(8000) }),
@@ -404,6 +406,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       orderFormFile: "",
       fobDelivery: "",
       fobPickup: "",
+      nextPurchaseOrderNumber: "",
       templates: {},
     },
     schema: nuTechEmailSettingsSchema,

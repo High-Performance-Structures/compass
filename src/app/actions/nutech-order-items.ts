@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, ne } from "drizzle-orm"
+import { and, asc, eq, max, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -17,8 +17,10 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import {
+  airlitePurchaseOrderLabel,
   buildNuTechAirliteWorkbookPlan,
   formatAirliteDate,
+  nextAirlitePoSequence,
   readNuTechAirliteFormLayout,
   type NuTechAirliteOrderHeader,
 } from "@/lib/nutech/airlite-workbook"
@@ -365,12 +367,28 @@ export async function generateNuTechAirliteWorkbook(
       throw new Error("The linked Compass purchase order needs a PO number.")
     }
     const settings = await readFeatureSettings(access.db, access.organizationId, "nutech-emails")
+    const lastAssigned = await access.db
+      .select({ sequence: max(nuTechOrderWorkflows.airlitePoSequence) })
+      .from(nuTechOrderWorkflows)
+      .innerJoin(projects, eq(projects.id, nuTechOrderWorkflows.projectId))
+      .where(eq(projects.organizationId, access.organizationId))
+      .get()
+    const poSequence = nextAirlitePoSequence({
+      assigned: workflow.airlitePoSequence,
+      lastAssigned: lastAssigned?.sequence ?? null,
+      nextSetting: settings.nextPurchaseOrderNumber,
+    })
     const now = new Date().toISOString()
     const delivery = workflow.deliveryMethod === "delivery"
     const clientLastName = (access.project.clientName ?? "").replace(/[,&].*$/, "").trim().split(/\s+/).pop() ?? ""
     const shippingCents = delivery ? (workflow.shippingCents ?? 0) : 0
     const header: NuTechAirliteOrderHeader = {
-      purchaseOrderLabel: [purchaseOrder.number, clientLastName].filter(Boolean).join(" "),
+      purchaseOrderLabel: airlitePurchaseOrderLabel({
+        projectNumber: access.project.projectNumber,
+        sequence: poSequence,
+        fallbackNumber: purchaseOrder.number,
+        clientLastName,
+      }),
       purchaseOrderDate: formatAirliteDate(now),
       fulfillment: delivery ? "delivery" : "pickup",
       requestedDate: workflow.requestedDeliveryDate ? formatAirliteDate(workflow.requestedDeliveryDate) : null,
@@ -429,6 +447,7 @@ export async function generateNuTechAirliteWorkbook(
     await access.db
       .update(nuTechOrderWorkflows)
       .set({
+        airlitePoSequence: poSequence,
         airliteWorkbookId: workbook.id,
         airliteWorkbookUrl: workbookUrl,
         airliteWorkbookStatus:

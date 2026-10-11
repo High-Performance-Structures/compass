@@ -181,6 +181,8 @@ export const nuTechOrderWorkflows = sqliteTable(
     ).references(() => projectOperations.id, { onDelete: "set null" }),
     orderStatus: text("order_status").notNull().default("intake"),
     vendorConfirmationNumber: text("vendor_confirmation_number"),
+    /** The order's number in the manufacturer PO sequence ("N-0-0-1860"); kept so regenerating reuses it. */
+    airlitePoSequence: integer("airlite_po_sequence"),
     airliteWorkbookId: text("airlite_workbook_id"),
     airliteWorkbookUrl: text("airlite_workbook_url"),
     airliteWorkbookStatus: text("airlite_workbook_status")

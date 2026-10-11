@@ -31,6 +31,7 @@ const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string;
   { key: "manufacturerOrdersEmail", label: "Manufacturer orders email", placeholder: "orders@manufacturer.com", type: "email" },
   { key: "manufacturerCcEmail", label: "Manufacturer rep (cc)", placeholder: "rep@manufacturer.com", type: "email" },
   { key: "dealerAccountNumber", label: "Dealer account number", placeholder: "123456" },
+  { key: "nextPurchaseOrderNumber", label: "Next manufacturer PO number", placeholder: "e.g. 1860 (follows the project number)" },
   { key: "orderFormFile", label: "Manufacturer order form (Drive link)", placeholder: "Link to a blank order form (Sheet or .xlsx)" },
   { key: "fobDelivery", label: "FOB on deliveries", placeholder: "e.g. the manufacturer's plant city" },
   { key: "fobPickup", label: "FOB on customer pickups", placeholder: "e.g. the warehouse dock" },
