@@ -24,6 +24,7 @@ import {
   IconMessageCircle,
   IconMessageCircleQuestion,
   IconMessageReport,
+  IconPackages,
   IconPalette,
   IconPhone,
   IconPhoto,
@@ -392,6 +393,15 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "Contacts",
         url: "/dashboard/contacts",
         icon: IconAddressBook,
+      },
+      {
+        // Staff open the Nu-Tech product catalog daily; it was otherwise only
+        // reachable from the Nu-Tech orders page, a job, or Settings.
+        kind: "link",
+        title: "Nu-Tech Price List",
+        url: "/dashboard/nutech/catalog",
+        icon: IconPackages,
+        internalOnly: true,
       },
       {
         kind: "link",
