@@ -13,6 +13,7 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { projectDepartment } from "@/lib/project-branding"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -217,6 +218,31 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
       costCode: row.costCode ?? (settings.productCostCode.trim() || null),
       detail: `$${(row.costCents / 100).toFixed(2)} per ${row.unit}${row.packageLabel ? ` · ${row.packageLabel}` : ""}`,
     }))
+  } catch {
+    return []
+  }
+}
+
+export type NuTechCostCodeOption = { readonly value: string; readonly label: string; readonly divisionCode: string }
+
+/** The company cost code list (numbered Sage codes plus named items like "ICF Shipping") for the Nu-Tech settings pickers. */
+export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCodeOption[]> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const { env } = await getCloudflareContext()
+    const sageRows = await getDb(env.DB)
+      .select({
+        code: sageCostCodes.code,
+        description: sageCostCodes.description,
+        displayLabel: sageCostCodes.displayLabel,
+        divisionCode: sageCostCodes.divisionCode,
+        divisionDescription: sageCostCodes.divisionDescription,
+        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
+      })
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+    return projectEstimateCostCodeCatalog(sageRows, []).map((item) => ({ value: item.code, label: item.displayLabel, divisionCode: item.divisionCode }))
   } catch {
     return []
   }

@@ -19,6 +19,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import {
   budgetPaymentBreakdown,
   type BudgetPaymentBreakdown,
@@ -727,6 +728,7 @@ export async function getProjectFinancialCodingOptions(
         description: sageCostCodes.description,
         displayLabel: sageCostCodes.displayLabel,
         divisionCode: sageCostCodes.divisionCode,
+        divisionDescription: sageCostCodes.divisionDescription,
         divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
       })
       .from(sageCostCodes)
@@ -771,6 +773,18 @@ export async function getProjectFinancialCodingOptions(
       label: row.displayLabel,
       description: row.description,
       divisionCode: row.divisionCode,
+    })
+  }
+
+  // The company's named cost items (e.g. "ICF Shipping") sit beside the
+  // numbered Sage codes, the same list the estimate picker offers.
+  for (const item of projectEstimateCostCodeCatalog(sageRows, [])) {
+    if (costCodes.has(item.code)) continue
+    costCodes.set(item.code, {
+      value: item.code,
+      label: item.displayLabel,
+      description: item.description,
+      divisionCode: item.divisionCode,
     })
   }
 
