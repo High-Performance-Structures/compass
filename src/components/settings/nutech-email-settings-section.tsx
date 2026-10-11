@@ -22,7 +22,7 @@ type DetailKey = Exclude<keyof NuTechEmailSettings, "templates" | "warehouseTaxE
 
 const COST_CODE_FIELDS: readonly { readonly key: CostCodeKey; readonly label: string }[] = [
   { key: "productCostCode", label: "Cost code for catalog products" },
-  { key: "shippingCostCode", label: "Cost code for shipping" },
+  { key: "shippingCostCode", label: "Cost code for shipping (until Freight is mapped on the price list)" },
 ]
 
 const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string; readonly placeholder: string; readonly type?: "email" }[] = [

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -23,6 +23,7 @@ import {
 } from "@/lib/nutech/catalog-pricing"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { NUTECH_FREIGHT_CATEGORY } from "@/lib/nutech/freight"
 import { projectDepartment } from "@/lib/project-branding"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -142,7 +143,9 @@ export async function saveNuTechOrderItem(
           eq(nuTechCatalogPrices.catalogVersionId, workflow.catalogVersionId),
           eq(nuTechProducts.id, input.productId),
           eq(nuTechProducts.organizationId, access.organizationId),
-          eq(nuTechProducts.active, true)
+          eq(nuTechProducts.active, true),
+          // Freight is the order's shipping charge, not a product line.
+          ne(nuTechProducts.category, NUTECH_FREIGHT_CATEGORY)
         )
       )
       .limit(1)

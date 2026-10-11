@@ -14,6 +14,7 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
+import { isNuTechFreight, loadNuTechFreight, nuTechProductCostCode } from "@/lib/nutech/freight"
 import { projectDepartment } from "@/lib/project-branding"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -66,6 +67,7 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
         unit: nuTechOrderItems.priceUnitSnapshot,
         unitCostCents: nuTechOrderItems.unitCostCents,
         costCodeId: nuTechProducts.sageCostCodeId,
+        costCodeName: nuTechProducts.sageCostCodeName,
       })
       .from(nuTechOrderItems)
       .innerJoin(nuTechProducts, eq(nuTechProducts.id, nuTechOrderItems.productId))
@@ -89,7 +91,9 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
     const shipTo = pickup ? `Customer pickup${warehouse ? `: ${warehouse}` : ""}` : project.address
     const lines: CreatePurchaseOrderLineInput[] = items.map((item) => ({
       description: `${item.sku} ${item.name}`.trim(),
-      costCode: (item.costCodeId ? codeById.get(item.costCodeId) : undefined) ?? (settings.productCostCode.trim() || null),
+      costCode:
+        nuTechProductCostCode({ sageCode: (item.costCodeId ? codeById.get(item.costCodeId) : undefined) ?? null, sageCostCodeName: item.costCodeName }) ??
+        (settings.productCostCode.trim() || null),
       phaseCode: null,
       quantity: item.quantity,
       unitCost: item.unitCostCents / 100,
@@ -100,9 +104,10 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
     // The freight quoted for a delivery is the manufacturer's charge too.
     const freightCents = order.deliveryMethod === "delivery" ? (order.shippingCents ?? 0) : 0
     if (freightCents > 0) {
+      const freight = await loadNuTechFreight(db, organizationId)
       lines.push({
         description: order.shippingNote ? `Freight (${order.shippingNote})` : "Freight",
-        costCode: settings.shippingCostCode.trim() || null,
+        costCode: freight.costCode ?? (settings.shippingCostCode.trim() || null),
         phaseCode: null,
         quantity: 1,
         unitCost: freightCents / 100,
@@ -196,8 +201,10 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
         name: nuTechProducts.name,
         unit: nuTechProducts.priceUnit,
         packageLabel: nuTechProducts.packageLabel,
+        category: nuTechProducts.category,
         costCents: nuTechCatalogPrices.airliteCostCents,
-        costCode: sageCostCodes.code,
+        sageCode: sageCostCodes.code,
+        sageCostCodeName: nuTechProducts.sageCostCodeName,
       })
       .from(nuTechCatalogPrices)
       .innerJoin(nuTechProducts, eq(nuTechProducts.id, nuTechCatalogPrices.productId))
@@ -210,27 +217,29 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
         ),
       )
       .orderBy(asc(nuTechProducts.manufacturerSku))
-    const products = rows.map((row) => ({
-      id: row.id,
-      description: `${row.sku} ${row.name}`.trim(),
-      unit: row.unit,
-      unitCost: row.costCents / 100,
-      costCode: row.costCode ?? (settings.productCostCode.trim() || null),
-      detail: `$${(row.costCents / 100).toFixed(2)} per ${row.unit}${row.packageLabel ? ` · ${row.packageLabel}` : ""}`,
-    }))
-    // Optional freight line, coded to the shipping cost code from Settings.
-    const shippingCostCode = settings.shippingCostCode.trim()
-    const shipping: readonly PurchaseOrderCatalogItem[] = shippingCostCode
-      ? [{
-          id: "shipping",
+    return rows.map((row): PurchaseOrderCatalogItem => {
+      const costCode = nuTechProductCostCode(row)
+      // Freight is quoted per order: the line takes its cost code, and the amount is typed in.
+      if (isNuTechFreight(row)) {
+        const code = costCode ?? (settings.shippingCostCode.trim() || null)
+        return {
+          id: row.id,
           description: `Freight (${settings.manufacturerName.trim() || "manufacturer"})`,
-          unit: "ea",
+          unit: "LS",
           unitCost: 0,
-          costCode: shippingCostCode,
-          detail: `Shipping · enter the quoted amount · ${shippingCostCode}`,
-        }]
-      : []
-    return [...products, ...shipping]
+          costCode: code,
+          detail: `Quoted per order · enter the amount${code ? ` · ${code}` : ""}`,
+        }
+      }
+      return {
+        id: row.id,
+        description: `${row.sku} ${row.name}`.trim(),
+        unit: row.unit,
+        unitCost: row.costCents / 100,
+        costCode: costCode ?? (settings.productCostCode.trim() || null),
+        detail: `$${(row.costCents / 100).toFixed(2)} per ${row.unit}${row.packageLabel ? ` · ${row.packageLabel}` : ""}`,
+      }
+    })
   } catch {
     return []
   }
@@ -273,7 +282,7 @@ export async function getNuTechShippingCostCodeOption(): Promise<ProjectPurchase
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const organizationId = requireOrg(user)
-    const code = (await readFeatureSettings(db, organizationId, "nutech-emails")).shippingCostCode.trim()
+    const code = (await loadNuTechFreight(db, organizationId)).costCode ?? (await readFeatureSettings(db, organizationId, "nutech-emails")).shippingCostCode.trim()
     if (!code) return null
     const match = (await getNuTechCostCodeOptions()).find((option) => option.value === code)
     return { value: code, label: match?.label ?? code, description: match?.label ?? code, divisionCode: match?.divisionCode ?? "" }

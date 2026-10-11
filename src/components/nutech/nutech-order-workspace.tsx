@@ -224,7 +224,16 @@ export function NuTechOrderWorkspace({
   const effectiveTaxEntityId = taxEntityId || (isDelivery ? "" : (workspace.warehouseTaxEntityId ?? ""))
   const taxDistrict = workspace.taxDistricts.find((district) => district.id === effectiveTaxEntityId) ?? null
   const shippingCents = isDelivery ? Math.max(0, Math.round((Number.parseFloat(shipping.replace(/[$,]/g, "")) || 0) * 100)) : 0
-  const taxCents = taxDistrict ? Math.round((customerTotalCents * taxDistrict.rateBasisPoints) / 10_000) : 0
+  // Items are taxed per their price-list setting (old catalog rows default to taxable); shipping per Freight's.
+  const taxableCents =
+    workspace.orderItems.reduce(
+      (total, item) =>
+        workspace.catalogProducts.find((product) => product.id === item.productId)?.taxable === false
+          ? total
+          : total + item.quantity * item.unitPriceCents,
+      0
+    ) + (workspace.shippingTaxable ? shippingCents : 0)
+  const taxCents = taxDistrict ? Math.round((taxableCents * taxDistrict.rateBasisPoints) / 10_000) : 0
 
   function orderInput(formData: FormData): Parameters<typeof saveProjectNuTechOrder>[1] {
     return {

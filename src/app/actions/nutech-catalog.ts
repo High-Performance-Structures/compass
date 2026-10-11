@@ -16,6 +16,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechCatalogImport } from "@/lib/nutech/catalog-import"
+import { ensureNuTechFreightProduct, isNuTechFreight } from "@/lib/nutech/freight"
+import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
 import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
 import { requireOrg } from "@/lib/org-scope"
@@ -48,6 +50,10 @@ export type NuTechCatalogProductItem = {
   readonly sageMappingStatus: string
   readonly sageCostCodeId: string | null
   readonly sageCostCodeLabel: string | null
+  readonly sageCostCodeName: string | null
+  readonly taxable: boolean
+  /** Freight: its amount is quoted per order, not priced here. */
+  readonly quotedPerOrder: boolean
   readonly airliteCostCents: number
   readonly newStandardPriceCents: number
   readonly newCashPriceCents: number
@@ -67,7 +73,15 @@ export type NuTechCatalogWorkspace = {
     readonly description: string
     readonly displayLabel: string
   }[]
+  /** Named company cost codes (e.g. "ICF Shipping") that aren't numbered Sage codes. */
+  readonly namedCostCodes: readonly { readonly name: string; readonly label: string }[]
 }
+
+/** A price-list item's Sage cost code: a numbered code, a named company code, or none. */
+export type NuTechProductCostCodeMapping =
+  | { readonly kind: "sage"; readonly id: string }
+  | { readonly kind: "named"; readonly name: string }
+  | null
 
 export type NuTechCatalogActionResult =
   | { readonly success: true; readonly id: string; readonly productCount?: number }
@@ -122,6 +136,8 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
           sageMappingStatus: nuTechProducts.sageMappingStatus,
           sageCostCodeId: nuTechProducts.sageCostCodeId,
           sageCostCodeLabel: sageCostCodes.displayLabel,
+          sageCostCodeName: nuTechProducts.sageCostCodeName,
+          taxable: nuTechProducts.taxable,
           airliteCostCents: nuTechCatalogPrices.airliteCostCents,
           newStandardPriceCents: nuTechCatalogPrices.newStandardPriceCents,
           newCashPriceCents: nuTechCatalogPrices.newCashPriceCents,
@@ -143,6 +159,9 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
           code: sageCostCodes.code,
           description: sageCostCodes.description,
           displayLabel: sageCostCodes.displayLabel,
+          divisionCode: sageCostCodes.divisionCode,
+          divisionDescription: sageCostCodes.divisionDescription,
+          divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
         })
         .from(sageCostCodes)
         .where(eq(sageCostCodes.active, true))
@@ -151,6 +170,17 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
       canFeature(user, "nutech-orders", "delete"),
     ])
   const activeVersion = versionRows.find((version) => version.status === "active")
+  // Catalogs imported before Freight existed get it the first time an approver opens the page.
+  if (
+    activeVersion &&
+    canImport &&
+    !isDemoUser(user.id) &&
+    !priceRows.some((row) => row.versionId === activeVersion.id && isNuTechFreight(row))
+  ) {
+    await ensureNuTechFreightProduct(db, organizationId, activeVersion.id)
+    return getNuTechCatalogWorkspace()
+  }
+  const sageCodes = new Set(sageRows.map((row) => row.code))
   return {
     canImport: canImport && !isDemoUser(user.id),
     canDelete: canDelete && !isDemoUser(user.id),
@@ -180,7 +210,10 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
             airliteTemplateRow: row.airliteTemplateRow,
             sageMappingStatus: row.sageMappingStatus,
             sageCostCodeId: row.sageCostCodeId,
-            sageCostCodeLabel: row.sageCostCodeLabel,
+            sageCostCodeLabel: row.sageCostCodeLabel ?? row.sageCostCodeName,
+            sageCostCodeName: row.sageCostCodeName,
+            taxable: row.taxable,
+            quotedPerOrder: isNuTechFreight(row),
             airliteCostCents: row.airliteCostCents,
             newStandardPriceCents: row.newStandardPriceCents,
             newCashPriceCents: row.newCashPriceCents,
@@ -188,7 +221,10 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
             returningCashPriceCents: row.returningCashPriceCents,
           }))
       : [],
-    sageCostCodes: sageRows,
+    sageCostCodes: sageRows.map((row) => ({ id: row.id, code: row.code, description: row.description, displayLabel: row.displayLabel })),
+    namedCostCodes: projectEstimateCostCodeCatalog(sageRows, [])
+      .filter((item) => !sageCodes.has(item.code))
+      .map((item) => ({ name: item.code, label: item.displayLabel })),
   }
 }
 
@@ -254,6 +290,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       (version) => version.sourceHash === hash
     )
     if (matchingVersion && matchingVersion.status !== "draft") {
+      await ensureNuTechFreightProduct(db, organizationId, matchingVersion.id)
       return {
         success: true,
         id: matchingVersion.id,
@@ -397,6 +434,7 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
         .where(eq(nuTechCatalogPrices.catalogVersionId, versionId)),
       ...chunkD1Rows(priceRows).map((chunk) => db.insert(nuTechCatalogPrices).values(chunk)),
     ])
+    await ensureNuTechFreightProduct(db, organizationId, versionId)
     revalidateCatalogPaths()
     return { success: true, id: versionId, productCount: priceRows.length }
   } catch (error) {
@@ -426,6 +464,7 @@ export async function activateNuTechCatalogVersion(
       .limit(1)
       .get()
     if (!version) throw new Error("Nu-Tech catalog version not found.")
+    await ensureNuTechFreightProduct(db, organizationId, versionId)
     const now = new Date().toISOString()
     await db.batch([
       db
@@ -457,7 +496,7 @@ export async function activateNuTechCatalogVersion(
 
 export async function mapNuTechProductToSageCostCode(
   productId: string,
-  sageCostCodeId: string | null
+  mapping: NuTechProductCostCodeMapping
 ): Promise<NuTechCatalogActionResult> {
   try {
     const user = await requireAuth()
@@ -478,6 +517,8 @@ export async function mapNuTechProductToSageCostCode(
       .limit(1)
       .get()
     if (!product) throw new Error("Nu-Tech product not found.")
+    const sageCostCodeId = mapping?.kind === "sage" ? mapping.id : null
+    const sageCostCodeName = mapping?.kind === "named" ? mapping.name.trim() || null : null
     if (sageCostCodeId !== null) {
       const costCode = await db
         .select({ id: sageCostCodes.id })
@@ -492,9 +533,10 @@ export async function mapNuTechProductToSageCostCode(
       .update(nuTechProducts)
       .set({
         sageCostCodeId,
-        sageMappingStatus: sageCostCodeId === null ? "unmapped" : "mapped",
-        sageMappedAt: sageCostCodeId === null ? null : now,
-        sageMappedBy: sageCostCodeId === null ? null : user.id,
+        sageCostCodeName,
+        sageMappingStatus: mapping === null ? "unmapped" : "mapped",
+        sageMappedAt: mapping === null ? null : now,
+        sageMappedBy: mapping === null ? null : user.id,
         updatedAt: now,
       })
       .where(eq(nuTechProducts.id, productId))
@@ -502,6 +544,28 @@ export async function mapNuTechProductToSageCostCode(
     return { success: true, id: productId }
   } catch (error) {
     return errorResult(error, "Failed to update the Sage cost-code mapping.")
+  }
+}
+
+/** Whether a price-list item is sales-taxable on estimates and order totals. */
+export async function setNuTechProductTaxable(productId: string, taxable: boolean): Promise<NuTechCatalogActionResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
+    await requireFeaturePermission(user, "nutech-orders", "approve")
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const updated = await db
+      .update(nuTechProducts)
+      .set({ taxable, updatedAt: new Date().toISOString() })
+      .where(and(eq(nuTechProducts.id, productId), eq(nuTechProducts.organizationId, organizationId)))
+      .returning({ id: nuTechProducts.id })
+    if (updated.length === 0) throw new Error("Nu-Tech product not found.")
+    revalidateCatalogPaths()
+    return { success: true, id: productId }
+  } catch (error) {
+    return errorResult(error, "Failed to update the tax setting.")
   }
 }
 

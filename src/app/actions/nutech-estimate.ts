@@ -16,6 +16,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { loadNuTechFreight, nuTechProductCostCode } from "@/lib/nutech/freight"
 import { nuTechEstimateLineDescription } from "@/lib/nutech/estimate-wording"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -67,7 +68,9 @@ export async function createNuTechEstimateFromOrder(
         unit: nuTechOrderItems.priceUnitSnapshot,
         unitPriceCents: nuTechOrderItems.unitPriceCents,
         packageLabel: nuTechProducts.packageLabel,
-        costCode: sageCostCodes.code,
+        sageCode: sageCostCodes.code,
+        sageCostCodeName: nuTechProducts.sageCostCodeName,
+        taxable: nuTechProducts.taxable,
       })
       .from(nuTechOrderItems)
       .innerJoin(nuTechProducts, eq(nuTechProducts.id, nuTechOrderItems.productId))
@@ -85,14 +88,15 @@ export async function createNuTechEstimateFromOrder(
 
     const settings = await readFeatureSettings(db, organizationId, "nutech-emails")
     const productCode = settings.productCostCode.trim()
-    const shippingCode = settings.shippingCostCode.trim()
-    const missingCode = items.find((item) => !item.costCode && !productCode)
+    const freight = await loadNuTechFreight(db, organizationId)
+    const shippingCode = freight.costCode ?? settings.shippingCostCode.trim()
+    const missingCode = items.find((item) => !nuTechProductCostCode(item) && !productCode)
     if (missingCode) {
       return { success: false, error: "Set the cost code for catalog products in Settings → Workflows → Nu-Tech emails first." }
     }
     const shippingCents = order.deliveryMethod === "delivery" ? (order.shippingCents ?? 0) : 0
     if (shippingCents > 0 && !shippingCode) {
-      return { success: false, error: "Set the cost code for shipping in Settings → Workflows → Nu-Tech emails first." }
+      return { success: false, error: "Map Freight to its Sage cost code on the Nu-Tech price list first." }
     }
 
     // The newest estimate version, if any.
@@ -136,15 +140,15 @@ export async function createNuTechEstimateFromOrder(
     const base = { assemblyId: null, reportPhaseId: null, markupPercent: 0, ownerVisible: true, includeInBuilderFee: false, insertAfterLineId: null }
     const lines: ProjectEstimateLineInput[] = items.map((item) => ({
       ...base,
-      costCode: item.costCode ?? productCode,
+      costCode: nuTechProductCostCode(item) ?? productCode,
       // Lines carry the customer's price; the manufacturer cost stays on the order and its PO.
       description: nuTechEstimateLineDescription({ quantity: item.quantity, unit: item.unit, name: item.name, sku: item.sku, packageLabel: item.packageLabel }),
       specifications: null,
       quantity: item.quantity,
       unit: item.unit,
       unitCost: item.unitPriceCents / 100,
-      taxable: true,
-      taxEntityId: district.id,
+      taxable: item.taxable,
+      taxEntityId: item.taxable ? district.id : null,
     }))
     if (shippingCents > 0) {
       lines.push({
@@ -155,8 +159,8 @@ export async function createNuTechEstimateFromOrder(
         quantity: 1,
         unit: "LS",
         unitCost: shippingCents / 100,
-        taxable: false,
-        taxEntityId: null,
+        taxable: freight.taxable,
+        taxEntityId: freight.taxable ? district.id : null,
       })
     }
     for (const line of lines) {

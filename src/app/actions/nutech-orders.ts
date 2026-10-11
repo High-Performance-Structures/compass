@@ -7,6 +7,7 @@ import { getDb } from "@/db"
 import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
 import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { isNuTechFreight } from "@/lib/nutech/freight"
 import {
   nuTechCatalogPrices,
   nuTechCatalogVersions,
@@ -128,6 +129,7 @@ export type NuTechCatalogProductOption = {
   readonly newCashPriceCents: number
   readonly returningStandardPriceCents: number
   readonly returningCashPriceCents: number
+  readonly taxable: boolean
 }
 
 export type NuTechOrderItemRecord = {
@@ -160,6 +162,8 @@ export type ProjectNuTechOrderWorkspace = {
   readonly taxDistricts: readonly NuTechTaxDistrict[]
   /** District for customer pickups at the warehouse (Settings → Nu-Tech emails). */
   readonly warehouseTaxEntityId: string | null
+  /** Whether the shipping charge is taxed (the price list's Freight item; non-taxable unless changed). */
+  readonly shippingTaxable: boolean
 }
 
 export type NuTechOrderDashboardItem = {
@@ -545,6 +549,7 @@ export async function getProjectNuTechOrderWorkspace(
             returningStandardPriceCents:
               nuTechCatalogPrices.returningStandardPriceCents,
             returningCashPriceCents: nuTechCatalogPrices.returningCashPriceCents,
+            taxable: nuTechProducts.taxable,
           })
           .from(nuTechCatalogPrices)
           .innerJoin(
@@ -588,12 +593,13 @@ export async function getProjectNuTechOrderWorkspace(
     address: access.project.address,
     order: orderRow ? toOrderRecord(orderRow) : null,
     catalogVersionName: catalogVersion?.name ?? null,
-    catalogProducts,
+    catalogProducts: catalogProducts.filter((product) => !isNuTechFreight(product)),
     orderItems,
     estimate: estimateRow ?? null,
     purchaseOrders: purchaseOrderRows,
     taxDistricts,
     warehouseTaxEntityId: nuTechSettings.warehouseTaxEntityId || null,
+    shippingTaxable: catalogProducts.find(isNuTechFreight)?.taxable ?? false,
   }
 }
 

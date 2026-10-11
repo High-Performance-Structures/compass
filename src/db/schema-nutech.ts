@@ -75,6 +75,8 @@ export const nuTechProducts = sqliteTable(
       () => sageCostCodes.id,
       { onDelete: "set null" }
     ),
+    /** Named company cost code (e.g. "ICF Shipping") when the Sage cost item isn't a numbered code. */
+    sageCostCodeName: text("sage_cost_code_name"),
     sageMappingStatus: text("sage_mapping_status")
       .notNull()
       .default("unmapped"),
@@ -82,6 +84,8 @@ export const nuTechProducts = sqliteTable(
     sageMappedBy: text("sage_mapped_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** Sales-taxable on estimates and order totals; freight is not. */
+    taxable: integer("taxable", { mode: "boolean" }).notNull().default(true),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
