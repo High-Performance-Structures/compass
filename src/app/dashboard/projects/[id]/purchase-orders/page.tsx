@@ -1,4 +1,6 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
+import { getNuTechManufacturerName } from "@/app/actions/nutech-airlite-po"
+import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -391,6 +393,8 @@ export default async function ProjectPurchaseOrdersPage({
     projectId: id,
     projectNumber: project?.projectNumber,
   })
+  // N jobs order from the block manufacturer, built from the Nu-Tech order.
+  const manufacturerName = brand.department === "N" ? await getNuTechManufacturerName() : ""
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
@@ -477,7 +481,10 @@ export default async function ProjectPurchaseOrdersPage({
               siteContactOptions={siteContactOptions}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
+              createLabel={brand.department === "N" ? "Other vendor PO" : undefined}
+              createSecondary={brand.department === "N"}
             />
+            {brand.department === "N" ? <NuTechManufacturerPoButton projectId={id} manufacturerName={manufacturerName} /> : null}
           </div>
         </div>
 

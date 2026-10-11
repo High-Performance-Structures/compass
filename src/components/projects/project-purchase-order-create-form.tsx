@@ -320,6 +320,10 @@ type SharedPurchaseOrderFormProps = {
   readonly siteContactOptions: readonly ProjectTaskAssigneeOption[]
   readonly phaseOptions: readonly ProjectPurchaseOrderPhaseOption[]
   readonly costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
+  /** Button text for a new PO; "New PO" by default. */
+  readonly createLabel?: string
+  /** Secondary styling, for jobs whose main PO comes from another button. */
+  readonly createSecondary?: boolean
 }
 
 type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
@@ -529,15 +533,15 @@ function ProjectPurchaseOrderForm(
       <SheetTrigger asChild>
         <Button
           type="button"
-          variant={purchaseOrder === null ? "default" : "outline"}
-          size={purchaseOrder === null ? "default" : "sm"}
+          variant={purchaseOrder === null && !props.createSecondary ? "default" : "outline"}
+          size={purchaseOrder === null && !props.createSecondary ? "default" : "sm"}
         >
           {purchaseOrder === null ? (
             <IconPlus className="size-4" />
           ) : (
             <IconPencil className="size-4" />
           )}
-          {purchaseOrder === null ? "New PO" : "Edit draft"}
+          {purchaseOrder === null ? (props.createLabel ?? "New PO") : "Edit draft"}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-[min(96vw,1180px)] overflow-y-auto sm:max-w-none">

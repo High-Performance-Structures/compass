@@ -39,6 +39,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -109,8 +110,11 @@ function formatDateTime(value: string | null): string {
 
 export function NuTechOrderWorkspace({
   workspace,
+  manufacturerName = "",
 }: {
   readonly workspace: ProjectNuTechOrderWorkspace
+  /** From Settings → Workflows → Nu-Tech emails; labels the PO button. */
+  readonly manufacturerName?: string
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -855,16 +859,21 @@ export function NuTechOrderWorkspace({
               <div>
                 <h2 className="font-semibold">4. Airlite PO and vendor invoice</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Link the Compass PO, then release it after the applicable intake
-                  gates are complete.
+                  Build the PO from this order (or link an existing one), then
+                  release it after the applicable intake gates are complete.
                 </p>
               </div>
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/dashboard/projects/${workspace.projectId}/purchase-orders`}>
-                  <IconShoppingCart className="size-4" />
-                  Open purchase orders
-                </Link>
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {order?.airlitePurchaseOrderOperationId ? null : (
+                  <NuTechManufacturerPoButton projectId={workspace.projectId} manufacturerName={manufacturerName} size="sm" />
+                )}
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/dashboard/projects/${workspace.projectId}/purchase-orders`}>
+                    <IconShoppingCart className="size-4" />
+                    Open purchase orders
+                  </Link>
+                </Button>
+              </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2 md:col-span-2">
