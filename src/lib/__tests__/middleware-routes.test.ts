@@ -7,6 +7,7 @@ import {
 describe("middleware public routes", () => {
   it("keeps legal and compliance disclosures public", () => {
     expect(isPublicPath("/privacy")).toBe(true)
+    expect(isPublicPath("/account-deletion")).toBe(true)
     expect(isPublicPath("/terms")).toBe(true)
   })
 
