@@ -2433,7 +2433,7 @@ export async function deletePurchaseOrderRequest(
       "purchase-orders"
     )
     const [existing] = await db
-      .select({ id: projectOperations.id })
+      .select({ id: projectOperations.id, status: projectOperations.status })
       .from(projectOperations)
       .where(
         and(
@@ -2448,7 +2448,8 @@ export async function deletePurchaseOrderRequest(
       return { success: false, error: "Purchase order not found." }
     }
 
-    await releaseNuTechAirlitePoNumber(db, purchaseOrderId)
+    // A draft never reached the vendor, so its manufacturer PO number can be reused.
+    if (existing.status === "draft") await releaseNuTechAirlitePoNumber(db, purchaseOrderId)
     await db
       .delete(projectPurchaseOrderLines)
       .where(

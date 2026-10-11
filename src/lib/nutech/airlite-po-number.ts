@@ -69,7 +69,7 @@ export async function assignNuTechAirlitePoNumber(
 }
 
 /**
- * Before an unreleased manufacturer PO is deleted: frees its Nu-Tech order's
+ * Before a draft manufacturer PO (never emailed) is deleted: frees its Nu-Tech order's
  * PO number (the latest number is handed out again) and clears the order
  * form, so the next PO starts fresh. A released order keeps its number.
  */
