@@ -63,7 +63,6 @@ import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
-import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -1597,7 +1596,6 @@ export async function getProjectPurchaseOrderFormOptions(
         description: sageCostCodes.description,
         displayLabel: sageCostCodes.displayLabel,
         divisionCode: sageCostCodes.divisionCode,
-        divisionDescription: sageCostCodes.divisionDescription,
         divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
       })
       .from(sageCostCodes)
@@ -1643,18 +1641,6 @@ export async function getProjectPurchaseOrderFormOptions(
       label: row.displayLabel,
       description: row.description,
       divisionCode: row.divisionCode,
-    })
-  }
-
-  // The company's named cost items (e.g. "ICF Shipping") sit beside the
-  // numbered Sage codes, the same list the estimate picker offers.
-  for (const item of projectEstimateCostCodeCatalog(sageRows, [])) {
-    if (costCodeMap.has(item.code)) continue
-    costCodeMap.set(item.code, {
-      value: item.code,
-      label: item.displayLabel,
-      description: item.description,
-      divisionCode: item.divisionCode,
     })
   }
 
