@@ -163,6 +163,16 @@ export const jobWorkflowsSettingsSchema = z.object({
 
 export type JobWorkflowsSettings = z.infer<typeof jobWorkflowsSettingsSchema>
 
+/** HPS, ORC and Design job emails: per-template wording, keyed `${department}.${templateId}`. */
+export const jobEmailSettingsSchema = z.object({
+  templates: z.record(
+    z.string().regex(/^[OHND]\.[a-z0-9_]{1,60}$/),
+    z.object({ subject: z.string().min(1).max(200), body: z.string().min(1).max(8000) }),
+  ),
+})
+
+export type JobEmailSettings = z.infer<typeof jobEmailSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "department-profiles": DepartmentProfilesSettings
   readonly "message-desk": MessageDeskSettings
@@ -170,6 +180,7 @@ type FeatureSettingsTypes = {
   readonly "nutech-emails": NuTechEmailSettings
   readonly "paper-trail": PaperTrailSettings
   readonly "job-workflows": JobWorkflowsSettings
+  readonly "job-emails": JobEmailSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -242,6 +253,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "The steps and checklists on each department's job overview. Rename or hide steps and items, add your own checklist items, and choose the job status each step goes with.",
     defaults: { departments: {} },
     schema: jobWorkflowsSettingsSchema,
+  },
+  "job-emails": {
+    label: "Job emails",
+    description: "The emails offered on HPS, ORC and Design job overviews. Company names, phone and address come from Settings → Company; edit any template's wording here.",
+    defaults: { templates: {} },
+    schema: jobEmailSettingsSchema,
   },
 }
 
