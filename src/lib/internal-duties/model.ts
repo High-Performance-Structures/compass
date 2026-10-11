@@ -1,12 +1,14 @@
 import type { InternalDutySettings } from "@/lib/feature-settings/registry"
 
-export type WorkspaceKind = "office" | "field"
+export type WorkspaceKind = "office" | "executive" | "field"
 
 export type DutyOption = { readonly code: string; readonly label: string }
 
 /** Active duties for one kind of workspace, in the order Settings lists them. */
 export function dutiesFor(settings: InternalDutySettings, kind: WorkspaceKind): readonly DutyOption[] {
-  return settings.duties.filter((duty) => duty.active && duty.workspace === kind).map(({ code, label }) => ({ code, label }))
+  // The owner's office logs the same administrative duties as the office.
+  const workspace = kind === "executive" ? "office" : kind
+  return settings.duties.filter((duty) => duty.active && duty.workspace === workspace).map(({ code, label }) => ({ code, label }))
 }
 
 export function dutyDisplay(code: string, label: string): string {

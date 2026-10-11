@@ -8,6 +8,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { parseSavedOrder, ROLE_DASHBOARD_VIEW_PREFIX } from "@/lib/view-preferences/order"
 import { isProjectWorkflowRoleId } from "@/lib/project-workflow-roles"
+import { isInternalQueueRoleId } from "@/lib/internal-duties/queues"
 
 type SaveResult = { readonly success: true } | { readonly success: false; readonly error: string }
 
@@ -29,7 +30,7 @@ export async function saveRoleDashboardOrder(roleId: string, orderedIds: readonl
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Sign in to save your layout." }
     if (isDemoUser(user.id)) return { success: false, error: "Demo accounts are read-only." }
-    if (!isProjectWorkflowRoleId(roleId)) return { success: false, error: "Unknown role." }
+    if (!isProjectWorkflowRoleId(roleId) && !isInternalQueueRoleId(roleId)) return { success: false, error: "Unknown role." }
     const order = parseSavedOrder(JSON.stringify(orderedIds))
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)

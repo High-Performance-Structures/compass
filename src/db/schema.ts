@@ -745,10 +745,11 @@ export const projects = sqliteTable("projects", {
   clientName: text("client_name"),
   /**
    * Internal workspaces are not client jobs: "office" for administrative duty
-   * logs (H-Office), "field" for crew work at the yard or generic order help.
+   * logs (H-Office), "executive" for the owner's office (Woodland Park Home
+   * Office), "field" for crew work at the yard or generic order help.
    * Null for every client project.
    */
-  workspaceKind: text("workspace_kind", { enum: ["office", "field"] }),
+  workspaceKind: text("workspace_kind", { enum: ["office", "executive", "field"] }),
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
   netsuiteJobId: text("netsuite_job_id"),
