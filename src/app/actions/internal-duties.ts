@@ -299,3 +299,71 @@ export async function setProjectWorkspaceKind(projectId: string, kind: Workspace
     return failure(error)
   }
 }
+
+export type InternalWorkspaceSummary = {
+  readonly projectId: string
+  readonly workspaceKind: WorkspaceKind
+  /** Monday of the current week, YYYY-MM-DD. */
+  readonly weekStart: string
+  readonly weekHours: number
+  readonly byDuty: readonly DutySummaryRow[]
+  readonly byPerson: readonly { readonly name: string; readonly hours: number; readonly entries: number }[]
+  /** Daily logs written before the duty log that still need a duty. */
+  readonly waitingLogs: number
+  readonly canEdit: boolean
+}
+
+function mondayOf(date: Date): string {
+  const day = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const offset = (day.getUTCDay() + 6) % 7
+  day.setUTCDate(day.getUTCDate() - offset)
+  return day.toISOString().slice(0, 10)
+}
+
+/** The Overview panel for an internal workspace; null for client projects. */
+export async function getInternalWorkspaceSummary(projectId: string): Promise<InternalWorkspaceSummary | null> {
+  const { db, user, orgId } = await context()
+  if (!(await canFeature(user, FEATURE, "read"))) return null
+  const project = await loadProject(db, orgId, projectId)
+  if (!project?.workspaceKind) return null
+  const weekStart = mondayOf(new Date())
+  const [entryRows, logRows, canEdit] = await Promise.all([
+    db
+      .select({
+        entryDate: internalDutyEntries.entryDate,
+        dutyCode: internalDutyEntries.dutyCode,
+        dutyLabel: internalDutyEntries.dutyLabel,
+        hours: internalDutyEntries.hours,
+        dailyLogId: internalDutyEntries.dailyLogId,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(internalDutyEntries)
+      .leftJoin(users, eq(users.id, internalDutyEntries.userId))
+      .where(eq(internalDutyEntries.projectId, projectId)),
+    db.select({ id: dailyLogs.id }).from(dailyLogs).where(eq(dailyLogs.projectId, projectId)),
+    canFeature(user, FEATURE, "update"),
+  ])
+  const week = entryRows.filter((entry) => entry.entryDate >= weekStart)
+  const people = new Map<string, { name: string; hours: number; entries: number }>()
+  for (const entry of week) {
+    const name = nameOf(entry)
+    const row = people.get(name) ?? { name, hours: 0, entries: 0 }
+    row.hours += entry.hours ?? 0
+    row.entries += 1
+    people.set(name, row)
+  }
+  const categorized = new Set(entryRows.flatMap((entry) => (entry.dailyLogId ? [entry.dailyLogId] : [])))
+  return {
+    projectId,
+    workspaceKind: project.workspaceKind,
+    weekStart,
+    weekHours: week.reduce((sum, entry) => sum + (entry.hours ?? 0), 0),
+    // monthSummary groups by duty; giving it the week's entries and "" matches them all.
+    byDuty: monthSummary(week, ""),
+    byPerson: [...people.values()].sort((a, b) => b.hours - a.hours),
+    waitingLogs: logRows.filter((log) => !categorized.has(log.id)).length,
+    canEdit: canEdit && !isDemoUser(user.id),
+  }
+}

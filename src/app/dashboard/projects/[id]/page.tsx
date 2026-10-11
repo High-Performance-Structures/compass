@@ -59,6 +59,8 @@ import { getNuTechOrderOverview, type NuTechOrderOverview } from "@/app/actions/
 import { NuTechOrderStepper } from "@/components/nutech/nutech-order-stepper"
 import { getJobWorkflowOverview, type JobWorkflowOverview } from "@/app/actions/job-workflows"
 import { JobWorkflowOverviewPanel } from "@/components/projects/job-workflow-overview"
+import { getInternalWorkspaceSummary, type InternalWorkspaceSummary } from "@/app/actions/internal-duties"
+import { InternalWorkspacePanel } from "@/components/projects/internal-workspace-panel"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -194,6 +196,7 @@ export default async function ProjectSummaryPage({
   let roleDashboardOrders: Readonly<Record<string, readonly string[]>> = {}
   let nuTechOrder: NuTechOrderOverview | null = null
   let jobWorkflow: JobWorkflowOverview | null = null
+  let internalWorkspace: InternalWorkspaceSummary | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -362,6 +365,7 @@ export default async function ProjectSummaryPage({
       loadedRoleDashboardOrders,
       loadedNuTechOrder,
       loadedJobWorkflow,
+      loadedInternalWorkspace,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -388,6 +392,8 @@ export default async function ProjectSummaryPage({
       getNuTechOrderOverview(id).catch(() => null),
       // Null for Nu-Tech jobs and departments without a workflow yet.
       getJobWorkflowOverview(id).catch(() => null),
+      // Null unless this project is an internal workspace (H-Office, the yard).
+      getInternalWorkspaceSummary(id).catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -400,6 +406,7 @@ export default async function ProjectSummaryPage({
     roleDashboardOrders = loadedRoleDashboardOrders
     nuTechOrder = loadedNuTechOrder
     jobWorkflow = loadedJobWorkflow
+    internalWorkspace = loadedInternalWorkspace
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -492,7 +499,11 @@ export default async function ProjectSummaryPage({
           </div>
         )}
 
-        {nuTechOrder ? (
+        {internalWorkspace ? (
+          <div className="mb-4 sm:mb-5">
+            <InternalWorkspacePanel summary={internalWorkspace} />
+          </div>
+        ) : nuTechOrder ? (
           <div className="mb-4 sm:mb-5">
             <NuTechOrderStepper overview={nuTechOrder} />
           </div>
