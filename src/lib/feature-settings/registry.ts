@@ -77,6 +77,10 @@ export const nuTechEmailSettingsSchema = z.object({
   warehouseDockHours: z.string().max(80),
   /** Sales tax district for customer pickups at the warehouse. */
   warehouseTaxEntityId: z.string().max(80),
+  /** Cost code for catalog products without their own (estimates and POs). */
+  productCostCode: z.string().max(20),
+  /** Cost code for the shipping charge on estimates. */
+  shippingCostCode: z.string().max(20),
   templates: z.record(
     z.string().min(1).max(60),
     z.object({ subject: z.string().min(1).max(200), body: z.string().min(1).max(8000) }),
@@ -343,6 +347,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       warehouseEmail: "",
       warehouseDockHours: "",
       warehouseTaxEntityId: "",
+      productCostCode: "",
+      shippingCostCode: "",
       templates: {},
     },
     schema: nuTechEmailSettingsSchema,
