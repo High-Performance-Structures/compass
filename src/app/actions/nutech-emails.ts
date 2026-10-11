@@ -1,6 +1,7 @@
 "use server"
 
 import { and, asc, eq } from "drizzle-orm"
+import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectContacts, projectInteractions, projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
@@ -290,6 +291,12 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
           ]
         : []),
     ])
+    if (loggedContact) {
+      // Logged contact ends any overdue follow-up stretch; clear its reminder.
+      await clearOverdueFollowUpReminders(ctx.db, [projectId]).catch((error: unknown) => {
+        console.error("Unable to clear overdue follow-up reminders", error)
+      })
+    }
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/information`)
     return { success: true, data: { loggedContact } }

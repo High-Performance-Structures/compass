@@ -44,6 +44,8 @@ export const projectFollowUpThresholdsSchema = z
  */
 export const projectAgingSettingsSchema = z.object({
   statuses: z.record(z.string().min(1).max(80), projectFollowUpThresholdsSchema),
+  /** Remind a job's follow-up owner when it turns overdue (missing means yes). */
+  remindOnOverdue: z.boolean().optional(),
 })
 
 export type ProjectAgingSettings = z.infer<typeof projectAgingSettingsSchema>
