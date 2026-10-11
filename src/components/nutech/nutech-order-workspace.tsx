@@ -548,6 +548,13 @@ export function NuTechOrderWorkspace({
                   : "Attach the Nu-Tech takeoff acknowledgement to the client estimate and record it as signed before releasing the Airlite PO."}
               </AlertDescription>
             </Alert>
+            {/* Saves the whole form; placed here so quantities can be added without scrolling to the bottom. */}
+            <div className="flex justify-end">
+              <Button type="submit" size="sm" disabled={isPending}>
+                <IconCheck className="size-4" />
+                {order ? "Save intake" : "Save intake and start the order"}
+              </Button>
+            </div>
           </section>
 
           <section id="nutech-quantities" className="scroll-mt-4 space-y-4 rounded-lg border bg-background p-4">
@@ -627,14 +634,18 @@ export function NuTechOrderWorkspace({
               </div>
             )}
             {!order && workspace.catalogProducts.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Save the intake once before adding catalog quantities.
-              </p>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <span>Quantities are added once the order is started.</span>
+                <Button type="submit" size="sm" variant="outline" disabled={isPending}>
+                  <IconCheck className="size-4" />
+                  Save intake and start the order
+                </Button>
+              </div>
             )}
             {pricingBasisChanged && (
               <p className="text-sm text-muted-foreground">
-                Save the revised customer/pricing basis before adding or updating
-                products. Existing line prices will refresh when the workflow is saved.
+                Save the revised customer/pricing basis (Save intake, above) before
+                adding or updating products. Existing line prices will refresh when it is saved.
               </p>
             )}
             {workspace.orderItems.length > 0 && (
