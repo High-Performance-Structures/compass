@@ -93,6 +93,12 @@ export function clientFollowUpState(input: {
   readonly interactions: readonly ClientInteractionTime[]
   readonly nextFollowUpAt: string | null
   readonly now: Date
+  /**
+   * When a job with no logged contact starts aging (the company's clock start
+   * or the job's creation, whichever is later). Absent means such jobs stay
+   * "No contact logged" and never turn due or overdue.
+   */
+  readonly noContactSince?: string | null
 }): ClientFollowUpState {
   const cadenceDays =
     input.cadenceDays === undefined
@@ -128,12 +134,15 @@ export function clientFollowUpState(input: {
     }
   }
   if (!latest) {
+    const since = input.noContactSince ? validDate(input.noContactSince) : null
+    const waited = since && since.getTime() < input.now.getTime() ? businessDaysBetween(since, input.now) : 0
     return {
       eligible: true,
       businessDaysSinceLastTouch: null,
       lastClientInteractionAt: null,
       nextFollowUpAt: input.nextFollowUpAt,
-      state: "unrecorded",
+      // With a clock, a job nobody has contacted ages like any other.
+      state: since === null ? "unrecorded" : waited >= thresholds.overdueDays ? "overdue" : waited >= thresholds.dueDays ? "due" : "unrecorded",
     }
   }
 

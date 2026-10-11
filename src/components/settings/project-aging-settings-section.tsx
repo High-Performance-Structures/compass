@@ -70,6 +70,8 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
   const [canEdit, setCanEdit] = React.useState(false)
   const [customized, setCustomized] = React.useState(false)
   const [remindOnOverdue, setRemindOnOverdue] = React.useState(true)
+  const [noContactClockStart, setNoContactClockStart] = React.useState<string | null>(null)
+  const [countNoContact, setCountNoContact] = React.useState(false)
   const [defaultOwners, setDefaultOwners] = React.useState<Readonly<Record<string, string>>>({})
   const [owners, setOwners] = React.useState<readonly { readonly id: string; readonly displayName: string }[]>([])
   const [departmentNames, setDepartmentNames] = React.useState<Readonly<Record<string, string>>>(
@@ -109,6 +111,8 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
     const settings = parsed.success ? parsed.data : FEATURE_SETTINGS["project-aging"].defaults
     setRows(rowsFrom(options, settings))
     setRemindOnOverdue(settings.remindOnOverdue !== false)
+    setNoContactClockStart(settings.noContactClockStart ?? null)
+    setCountNoContact(Boolean(settings.noContactClockStart))
     setDefaultOwners(settings.defaultOwners ?? {})
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -144,7 +148,14 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
       configured[status.id] = { dueDays, overdueDays }
     }
     startTransition(async () => {
-      const result = await saveFeatureSettings("project-aging", { statuses: configured, remindOnOverdue, defaultOwners })
+      // Turning the no-contact clock on starts it now; existing jobs age from today.
+      const clockStart = countNoContact ? (noContactClockStart ?? new Date().toISOString()) : undefined
+      const result = await saveFeatureSettings("project-aging", {
+        statuses: configured,
+        remindOnOverdue,
+        defaultOwners,
+        ...(clockStart ? { noContactClockStart: clockStart } : {}),
+      })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -224,6 +235,17 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
               </p>
             </div>
             <Switch id="project-aging-remind" checked={remindOnOverdue} onCheckedChange={setRemindOnOverdue} disabled={disabled} />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="project-aging-no-contact">Flag jobs with no logged contact</Label>
+              <p className="text-xs text-muted-foreground">
+                {noContactClockStart
+                  ? `Jobs nobody has contacted age from ${new Date(noContactClockStart).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} (or when they were created, if later) and turn due and overdue like any other job.`
+                  : "Jobs nobody has contacted start aging from the day you turn this on (or when they were created, if later), so they don't all turn red at once."}
+              </p>
+            </div>
+            <Switch id="project-aging-no-contact" checked={countNoContact} onCheckedChange={setCountNoContact} disabled={disabled} />
           </div>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Default follow-up owner</legend>

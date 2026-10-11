@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { projectFollowUps, projectInteractions, projectJobStatuses } from "@/db/schema"
+import { projectFollowUps, projectInteractions, projectJobStatuses, projects } from "@/db/schema"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   clientFollowUpState,
@@ -14,10 +14,16 @@ import {
  * project's activity tracker), any scheduled follow-up, and the company's
  * project aging settings. Jobs whose status is not followed up are left out.
  */
+/** The later of the company's no-contact clock start and the job's creation. */
+function noContactSince(clockStart: string | null, createdAt: string | null): string | null {
+  if (!clockStart) return null
+  return createdAt && createdAt > clockStart ? createdAt : clockStart
+}
+
 export async function loadProjectFollowUpSignals(
   db: ReturnType<typeof getDb>,
   organizationId: string,
-  jobs: readonly { readonly id: string; readonly jobStatusId: string }[],
+  jobs: readonly { readonly id: string; readonly jobStatusId: string; readonly createdAt?: string | null }[],
   now: Date,
 ): Promise<ReadonlyMap<string, ProjectFollowUpSignal>> {
   if (jobs.length === 0) return new Map()
@@ -48,6 +54,15 @@ export async function loadProjectFollowUpSignals(
       .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true))),
   ])
   const lastContactById = new Map(lastContacts.map((row) => [row.projectId, row.occurredAt]))
+  // Creation dates only matter once the company's no-contact clock is on.
+  const createdAtById = new Map<string, string>()
+  if (settings.noContactClockStart) {
+    const created = await db
+      .select({ id: projects.id, createdAt: projects.createdAt })
+      .from(projects)
+      .where(eq(projects.organizationId, organizationId))
+    for (const row of created) createdAtById.set(row.id, row.createdAt)
+  }
   const scheduledById = new Map(scheduled.map((row) => [row.projectId, row.nextFollowUpAt]))
   const customCadenceById = new Map(customStatuses.map((row) => [row.id, row.cadenceDays]))
 
@@ -66,6 +81,7 @@ export async function loadProjectFollowUpSignals(
       interactions: lastContactAt ? [{ occurredAt: lastContactAt, deletedAt: null, qualifiesForClientTouch: true }] : [],
       nextFollowUpAt: scheduledById.get(job.id) ?? null,
       now,
+      noContactSince: noContactSince(settings.noContactClockStart ?? null, job.createdAt ?? createdAtById.get(job.id) ?? null),
     })
     const level = projectAgingLevel(state.state)
     if (!level) continue
