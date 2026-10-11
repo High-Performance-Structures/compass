@@ -10,8 +10,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowProgress } from "@/lib/job-workflows/engine"
-import { forwardJobStatusSuggestion } from "@/lib/job-workflows/status"
-import { loadWorkflowChecks, readWorkflowOverrides, scopeOfWorkFacts } from "@/lib/job-workflows/server"
+import { forwardJobStatusSuggestion, workflowCatchUp } from "@/lib/job-workflows/status"
+import { chunkD1Rows } from "@/lib/d1-query"
+import { loadWorkflowChecks, readWorkflowOverrides, jobWorkflowFacts } from "@/lib/job-workflows/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
@@ -31,7 +32,11 @@ export type JobWorkflowOverview = {
   readonly jobStatus: { readonly id: string; readonly label: string }
   /** The current step's usual job status when it would move the job forward. */
   readonly suggestedJobStatus: { readonly id: string; readonly label: string } | null
+  /** Offered when the job's status is ahead of its checklist (jobs already underway). */
+  readonly catchUp: { readonly stepLabel: string; readonly itemCount: number } | null
 }
+
+type Db = ReturnType<typeof getDb>
 
 async function context(projectId: string, action: "read" | "update") {
   const user = await requireAuth()
@@ -51,51 +56,103 @@ async function context(projectId: string, action: "read" | "update") {
  * checklist, and the job status the step usually goes with. Null for
  * departments without a workflow here (Nu-Tech has its own order loader).
  */
+async function loadOverview(db: Db, organizationId: string, projectId: string): Promise<JobWorkflowOverview | null> {
+  const project = await db
+    .select({
+      id: projects.id,
+      projectNumber: projects.projectNumber,
+      address: projects.address,
+      jobStatusId: projects.jobStatusId,
+      googleDriveFolderId: projects.googleDriveFolderId,
+    })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+    .get()
+  if (!project) return null
+  const department = projectDepartment({ projectId: project.id, projectNumber: project.projectNumber })
+  const definition = department === "N" ? undefined : DEPARTMENT_WORKFLOWS[department]
+  if (!definition) return null
+
+  const [facts, checks, overrides, followUps, customStatus] = await Promise.all([
+    jobWorkflowFacts(db, { ...project, department }),
+    loadWorkflowChecks(db, organizationId, projectId),
+    readWorkflowOverrides(db, organizationId, department),
+    loadProjectFollowUpSignals(db, organizationId, [project], new Date()).catch(() => new Map<string, ProjectFollowUpSignal>()),
+    db
+      .select({ label: projectJobStatuses.label })
+      .from(projectJobStatuses)
+      .where(and(eq(projectJobStatuses.id, project.jobStatusId), eq(projectJobStatuses.organizationId, organizationId)))
+      .get(),
+  ])
+  const progress = workflowProgress(applyWorkflowOverrides(definition, overrides), facts, checks)
+  const suggestedId = forwardJobStatusSuggestion(progress, project.jobStatusId)
+  const catchUp = workflowCatchUp(progress, project.jobStatusId)
+  return {
+    projectId,
+    department,
+    progress,
+    followUp: followUps.get(projectId) ?? null,
+    jobStatus: { id: project.jobStatusId, label: projectJobStatusLabel({ jobStatusId: project.jobStatusId, customLabel: customStatus?.label ?? null }) },
+    suggestedJobStatus:
+      suggestedId && !catchUp ? { id: suggestedId, label: projectJobStatusLabel({ jobStatusId: suggestedId, customLabel: null }) } : null,
+    catchUp: catchUp ? { stepLabel: catchUp.stepLabel, itemCount: catchUp.itemKeys.length } : null,
+  }
+}
+
+/**
+ * A job's department workflow for its overview: steps, the current step's
+ * checklist, and the job status the step usually goes with. Null for
+ * departments without a workflow here (Nu-Tech has its own order loader).
+ */
 export async function getJobWorkflowOverview(projectId: string): Promise<JobWorkflowOverview | null> {
   try {
     const { db, organizationId } = await context(projectId, "read")
-    const project = await db
-      .select({
-        id: projects.id,
-        projectNumber: projects.projectNumber,
-        address: projects.address,
-        jobStatusId: projects.jobStatusId,
-      })
-      .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
-      .get()
-    if (!project) return null
-    const department = projectDepartment({ projectId: project.id, projectNumber: project.projectNumber })
-    const definition = department === "N" ? undefined : DEPARTMENT_WORKFLOWS[department]
-    if (!definition) return null
-
-    const [facts, checks, overrides, followUps, customStatus] = await Promise.all([
-      scopeOfWorkFacts(db, { ...project, department }),
-      loadWorkflowChecks(db, organizationId, projectId),
-      readWorkflowOverrides(db, organizationId, department),
-      loadProjectFollowUpSignals(db, organizationId, [project], new Date()).catch(() => new Map<string, ProjectFollowUpSignal>()),
-      db
-        .select({ label: projectJobStatuses.label })
-        .from(projectJobStatuses)
-        .where(and(eq(projectJobStatuses.id, project.jobStatusId), eq(projectJobStatuses.organizationId, organizationId)))
-        .get(),
-    ])
-    const progress = workflowProgress(applyWorkflowOverrides(definition, overrides), facts, checks)
-    const suggestedId = forwardJobStatusSuggestion(project.jobStatusId, progress.current?.jobStatusId ?? null)
-    return {
-      projectId,
-      department,
-      progress,
-      followUp: followUps.get(projectId) ?? null,
-      jobStatus: { id: project.jobStatusId, label: projectJobStatusLabel({ jobStatusId: project.jobStatusId, customLabel: customStatus?.label ?? null }) },
-      suggestedJobStatus:
-        suggestedId
-          ? { id: suggestedId, label: projectJobStatusLabel({ jobStatusId: suggestedId, customLabel: null }) }
-          : null,
-    }
+    return await loadOverview(db, organizationId, projectId)
   } catch (error) {
     console.error("Job workflow overview unavailable", error)
     return null
+  }
+}
+
+/**
+ * Tick the open items before the step the job's status says it has reached,
+ * for jobs already underway. Recomputed here rather than trusted from the page.
+ */
+export async function catchUpJobWorkflow(projectId: string): Promise<Result<{ readonly ticked: number }>> {
+  try {
+    const { db, organizationId, user } = await context(projectId, "update")
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) return { success: false, error: "Demo data cannot be changed." }
+    const overview = await loadOverview(db, organizationId, projectId)
+    const catchUp = overview ? workflowCatchUp(overview.progress, overview.jobStatus.id) : null
+    if (!catchUp) return { success: true, data: { ticked: 0 } }
+    const now = new Date().toISOString()
+    const rows = catchUp.itemKeys.map((itemKey) => ({
+      id: crypto.randomUUID(),
+      organizationId,
+      projectId,
+      itemKey,
+      checkedBy: user.id,
+      checkedAt: now,
+    }))
+    for (const chunk of chunkD1Rows(rows)) {
+      await db.insert(projectWorkflowChecks).values(chunk).onConflictDoNothing()
+    }
+    await db.insert(projectProfileAuditEvents).values({
+      id: crypto.randomUUID(),
+      organizationId,
+      projectId,
+      actorUserId: user.id,
+      eventType: "workflow_caught_up",
+      entityType: "project_workflow_check",
+      entityId: null,
+      beforeJson: JSON.stringify({ step: overview?.progress.current?.id ?? null }),
+      afterJson: JSON.stringify({ throughStep: catchUp.stepLabel, itemKeys: catchUp.itemKeys }),
+      createdAt: now,
+    })
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    return { success: true, data: { ticked: rows.length } }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to update the checklist." }
   }
 }
 

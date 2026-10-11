@@ -1,6 +1,16 @@
-import { and, count, desc, eq, inArray, isNotNull, ne } from "drizzle-orm"
+import { and, count, desc, eq, gte, inArray, isNotNull, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
-import { dailyLogs, projectContacts, projectOperations, projects, scheduleTasks, users } from "@/db/schema"
+import {
+  dailyLogs,
+  ownerProjectUpdates,
+  projectChangeOrders,
+  projectContacts,
+  projectFinishSelections,
+  projectOperations,
+  projects,
+  scheduleTasks,
+  users,
+} from "@/db/schema"
 import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
@@ -41,18 +51,33 @@ export async function readWorkflowOverrides(db: Db, organizationId: string, depa
 const ESTIMATE_SENT = new Set(["signature_pending", "accepted"])
 const CLOSED_STATUSES = new Set(["complete", "closed"])
 
-/** What Compass records on a scope-of-work job, as workflow facts. */
-export async function scopeOfWorkFacts(
+// Change orders still waiting on the company or the owner.
+const OPEN_CHANGE_ORDER_STATUSES = [
+  "submitted",
+  "triage",
+  "needs_information",
+  "pricing",
+  "internal_review",
+  "approved_for_owner",
+  "signature_pending",
+]
+const OWNER_UPDATE_WINDOW_DAYS = 7
+
+/** What Compass records on a job, as workflow facts (all departments but Nu-Tech). */
+export async function jobWorkflowFacts(
   db: Db,
   project: {
     readonly id: string
     readonly department: ProjectDepartment
     readonly address: string | null
     readonly jobStatusId: string
+    readonly googleDriveFolderId: string | null
   },
+  now: Date = new Date(),
 ): Promise<WorkflowFacts> {
   const projectId = project.id
-  const [contacts, estimate, signedPacket, schedule, purchaseOrders, logs, phase] = await Promise.all([
+  const updateSince = new Date(now.getTime() - OWNER_UPDATE_WINDOW_DAYS * 86_400_000).toISOString()
+  const [contacts, estimate, signedPacket, schedule, purchaseOrders, logs, phase, selections, approvedSelections, recentUpdate, openChangeOrders] = await Promise.all([
     db
       .select({ total: count() })
       .from(projectContacts)
@@ -84,7 +109,25 @@ export async function scopeOfWorkFacts(
       .where(eq(projectFamilyPhases.projectId, projectId))
       .limit(1)
       .get(),
+    db.select({ total: count() }).from(projectFinishSelections).where(eq(projectFinishSelections.projectId, projectId)).get(),
+    db
+      .select({ total: count() })
+      .from(projectFinishSelections)
+      .where(and(eq(projectFinishSelections.projectId, projectId), eq(projectFinishSelections.status, "approved")))
+      .get(),
+    db
+      .select({ id: ownerProjectUpdates.id })
+      .from(ownerProjectUpdates)
+      .where(and(eq(ownerProjectUpdates.projectId, projectId), gte(ownerProjectUpdates.publishedAt, updateSince)))
+      .limit(1)
+      .get(),
+    db
+      .select({ total: count() })
+      .from(projectChangeOrders)
+      .where(and(eq(projectChangeOrders.projectId, projectId), inArray(projectChangeOrders.status, OPEN_CHANGE_ORDER_STATUSES)))
+      .get(),
   ])
+  const selectionTotal = selections?.total ?? 0
   return {
     clientContact: (contacts?.total ?? 0) > 0,
     hasAddress: (project.address?.trim() ?? "") !== "",
@@ -97,6 +140,10 @@ export async function scopeOfWorkFacts(
     dailyLogged: (logs?.total ?? 0) > 0,
     linkedToOtherDepartment: phase ? await familyHasOtherDepartment(db, phase.familyId, projectId, project.department) : false,
     jobClosed: CLOSED_STATUSES.has(project.jobStatusId),
+    driveFolder: (project.googleDriveFolderId ?? "") !== "",
+    selectionsApproved: selectionTotal > 0 && (approvedSelections?.total ?? 0) === selectionTotal,
+    ownerUpdateRecent: recentUpdate !== undefined,
+    changeOrdersAnswered: (openChangeOrders?.total ?? 0) === 0,
   }
 }
 

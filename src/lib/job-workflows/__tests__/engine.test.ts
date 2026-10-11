@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { SCOPE_OF_WORK_WORKFLOW } from "@/lib/job-workflows/departments"
+import { CUSTOM_BUILD_WORKFLOW, DESIGN_WORKFLOW, SCOPE_OF_WORK_WORKFLOW } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowCheck, type WorkflowDefinition } from "@/lib/job-workflows/engine"
 import { jobWorkflowsSettingsSchema } from "@/lib/feature-settings/registry"
-import { forwardJobStatusSuggestion } from "@/lib/job-workflows/status"
+import { forwardJobStatusSuggestion, workflowCatchUp } from "@/lib/job-workflows/status"
 
 const DEFINITION: WorkflowDefinition = {
   title: "test",
@@ -119,12 +119,47 @@ describe("job workflow settings", () => {
 })
 
 describe("forwardJobStatusSuggestion", () => {
-  it("offers the step's status only when it moves the job forward", () => {
-    expect(forwardJobStatusSuggestion("intake", "estimating")).toBe("estimating")
-    expect(forwardJobStatusSuggestion("under_construction", "awarded")).toBeNull()
-    expect(forwardJobStatusSuggestion("follow_up", "estimate_sent")).toBeNull()
-    expect(forwardJobStatusSuggestion("estimating", "estimating")).toBeNull()
-    expect(forwardJobStatusSuggestion("custom-status", "estimating")).toBeNull()
-    expect(forwardJobStatusSuggestion("intake", null)).toBeNull()
+  it("offers the current step's status only when the job's status belongs to an earlier step", () => {
+    const atEstimate = workflowProgress(SCOPE_OF_WORK_WORKFLOW, { clientContact: true, hasAddress: true, linkedToOtherDepartment: true }, new Map([["intake.plans", tick()]]))
+    expect(forwardJobStatusSuggestion(atEstimate, "intake")).toBe("estimating")
+    expect(forwardJobStatusSuggestion(atEstimate, "estimating")).toBeNull()
+    expect(forwardJobStatusSuggestion(atEstimate, "under_construction")).toBeNull()
+    expect(forwardJobStatusSuggestion(atEstimate, "follow_up")).toBeNull()
+    expect(forwardJobStatusSuggestion(atEstimate, "custom-status")).toBeNull()
+  })
+})
+
+describe("workflowCatchUp", () => {
+  it("offers to tick the open items before the step the job status has reached", () => {
+    const progress = workflowProgress(CUSTOM_BUILD_WORKFLOW, { clientContact: true, hasAddress: true }, new Map())
+    const catchUp = workflowCatchUp(progress, "under_construction")
+    expect(catchUp?.stepLabel).toBe("Construction")
+    expect(catchUp?.itemKeys).toContain("intake.meeting")
+    expect(catchUp?.itemKeys).toContain("preconstruction.groundbreaking")
+    expect(catchUp?.itemKeys.some((key) => key.startsWith("construction."))).toBe(false)
+    // Items only records can complete are never ticked.
+    expect(catchUp?.itemKeys).not.toContain("intake.client")
+  })
+
+  it("follows workflow order, not the status list", () => {
+    const design = workflowProgress(DESIGN_WORKFLOW, {}, new Map())
+    expect(workflowCatchUp(design, "in_design")?.stepLabel).toBe("Schematic design")
+  })
+
+  it("offers nothing when the checklist is at or ahead of the job status", () => {
+    const progress = workflowProgress(CUSTOM_BUILD_WORKFLOW, {}, new Map())
+    expect(workflowCatchUp(progress, "intake")).toBeNull()
+    expect(workflowCatchUp(progress, "a-custom-status")).toBeNull()
+  })
+
+  it("defines unique ids in every built-in workflow", () => {
+    for (const definition of [CUSTOM_BUILD_WORKFLOW, DESIGN_WORKFLOW]) {
+      const stepIds = definition.steps.map((step) => step.id)
+      expect(new Set(stepIds).size).toBe(stepIds.length)
+      for (const step of definition.steps) {
+        const itemIds = step.items.map((item) => item.id)
+        expect(new Set(itemIds).size).toBe(itemIds.length)
+      }
+    }
   })
 })
