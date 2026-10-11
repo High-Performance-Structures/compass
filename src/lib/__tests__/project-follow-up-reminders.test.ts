@@ -24,3 +24,14 @@ describe("overdueReminderDue", () => {
     expect(overdueReminderDue({ level: "overdue", lastContactAt: "2026-09-20T15:00:00.000Z" }, "2026-09-10T15:00:00.000Z")).toBe(true)
   })
 })
+
+import { responsibleFor } from "@/lib/project-follow-up-reminders"
+
+describe("responsibleFor", () => {
+  it("prefers the job's owner, then the last contact, then the department default", () => {
+    expect(responsibleFor({ ownerUserId: "owner", lastContactBy: "caller", departmentDefault: "default" })).toBe("owner")
+    expect(responsibleFor({ ownerUserId: null, lastContactBy: "caller", departmentDefault: "default" })).toBe("caller")
+    expect(responsibleFor({ ownerUserId: null, lastContactBy: null, departmentDefault: "default" })).toBe("default")
+    expect(responsibleFor({ ownerUserId: null, lastContactBy: null, departmentDefault: null })).toBeNull()
+  })
+})

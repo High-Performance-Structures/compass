@@ -27,11 +27,27 @@ export function overdueReminderDue(
   return signal.lastContactAt !== null && remindedAt < signal.lastContactAt
 }
 
+/** Follow-up owner, else last person to log contact, else the department default. */
+export function responsibleFor(input: {
+  readonly ownerUserId: string | null
+  readonly lastContactBy: string | null
+  readonly departmentDefault: string | null
+}): string | null {
+  return input.ownerUserId ?? input.lastContactBy ?? input.departmentDefault
+}
+
 /**
  * Who answers for each job's follow-up: its follow-up owner, else whoever
- * last logged client contact on it.
+ * last logged client contact on it, else its department's default owner
+ * (Settings → Workflows → Project aging).
  */
-async function followUpResponsibles(db: Db, organizationId: string, now: Date): Promise<ReadonlyMap<string, string>> {
+async function followUpResponsibles(
+  db: Db,
+  organizationId: string,
+  now: Date,
+  jobs: readonly { readonly id: string; readonly department: string | null }[],
+  defaultOwners: Readonly<Record<string, string>>,
+): Promise<ReadonlyMap<string, string>> {
   const since = new Date(now.getTime() - LAST_CONTACT_WINDOW_DAYS * 86_400_000).toISOString()
   const [owners, contacts] = await Promise.all([
     db
@@ -51,20 +67,33 @@ async function followUpResponsibles(db: Db, organizationId: string, now: Date): 
       )
       .orderBy(desc(projectInteractions.occurredAt)),
   ])
-  const responsible = new Map<string, string>()
   // Newest first, so the first person seen per job is the latest contact.
+  const lastContactBy = new Map<string, string>()
   for (const row of contacts) {
-    if (row.createdBy && !responsible.has(row.projectId)) responsible.set(row.projectId, row.createdBy)
+    if (row.createdBy && !lastContactBy.has(row.projectId)) lastContactBy.set(row.projectId, row.createdBy)
   }
-  for (const row of owners) {
-    if (row.ownerUserId) responsible.set(row.projectId, row.ownerUserId)
+  const ownerById = new Map(owners.flatMap((row) => (row.ownerUserId ? [[row.projectId, row.ownerUserId] as const] : [])))
+  const responsible = new Map<string, string>()
+  for (const job of jobs) {
+    const person = responsibleFor({
+      ownerUserId: ownerById.get(job.id) ?? null,
+      lastContactBy: lastContactBy.get(job.id) ?? null,
+      departmentDefault: job.department ? (defaultOwners[job.department] ?? null) : null,
+    })
+    if (person) responsible.set(job.id, person)
   }
   return responsible
 }
 
 async function orgSignals(db: Db, organizationId: string, now: Date) {
   const jobs = await db
-    .select({ id: projects.id, jobStatusId: projects.jobStatusId, name: projects.name, projectNumber: projects.projectNumber })
+    .select({
+      id: projects.id,
+      jobStatusId: projects.jobStatusId,
+      name: projects.name,
+      projectNumber: projects.projectNumber,
+      department: projects.department,
+    })
     .from(projects)
     .where(eq(projects.organizationId, organizationId))
   const signals = await loadProjectFollowUpSignals(db, organizationId, jobs, now)
@@ -73,7 +102,11 @@ async function orgSignals(db: Db, organizationId: string, now: Date) {
 
 /** Overdue jobs this user answers for (the red count on Client follow-up). */
 export async function countOverdueFollowUpsForUser(db: Db, organizationId: string, userId: string, now: Date = new Date()): Promise<number> {
-  const [{ signals }, responsible] = await Promise.all([orgSignals(db, organizationId, now), followUpResponsibles(db, organizationId, now)])
+  const [{ jobs, signals }, settings] = await Promise.all([
+    orgSignals(db, organizationId, now),
+    readFeatureSettings(db, organizationId, "project-aging"),
+  ])
+  const responsible = await followUpResponsibles(db, organizationId, now, jobs, settings.defaultOwners ?? {})
   let count = 0
   for (const [projectId, signal] of signals) {
     if (signal.level === "overdue" && responsible.get(projectId) === userId) count += 1
@@ -97,7 +130,7 @@ export async function sendOverdueFollowUpReminders(db: Db, now: Date = new Date(
     const overdue = jobs.filter((job) => signals.get(job.id)?.level === "overdue")
     if (overdue.length === 0) continue
     const [responsible, reminders] = await Promise.all([
-      followUpResponsibles(db, organizationId, now),
+      followUpResponsibles(db, organizationId, now, jobs, settings.defaultOwners ?? {}),
       db
         .select({ projectId: projectFollowUpReminders.projectId, remindedAt: projectFollowUpReminders.remindedAt })
         .from(projectFollowUpReminders)

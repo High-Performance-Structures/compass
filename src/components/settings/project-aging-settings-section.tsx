@@ -13,7 +13,14 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS, projectAgingSettingsSchema, type ProjectAgingSettings } from "@/lib/feature-settings/registry"
 import { PROJECT_AGING_LEVELS } from "@/lib/project-follow-up"
-import { getProjectAgingStatusRows, type ProjectAgingStatusRow } from "@/app/actions/project-profile"
+import {
+  getOrganizationFollowUpOwners,
+  getProjectAgingStatusRows,
+  type ProjectAgingStatusRow,
+} from "@/app/actions/project-profile"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import { DEFAULT_DEPARTMENT_PROFILES, DEPARTMENT_CODES } from "@/lib/department-profiles"
+import { departmentProfilesSchema } from "@/lib/feature-settings/registry"
 
 /** A status row: its default timing as text ("" when not followed by default). */
 type StatusOption = {
@@ -25,6 +32,9 @@ type StatusOption = {
 }
 
 type Row = { readonly due: string; readonly overdue: string }
+
+/** Picker value for "no default owner" (the combobox needs a non-empty value). */
+const NO_DEFAULT_OWNER = "__none__"
 
 function statusOptions(rows: readonly ProjectAgingStatusRow[]): readonly StatusOption[] {
   return rows.map((row) => ({
@@ -60,13 +70,31 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
   const [canEdit, setCanEdit] = React.useState(false)
   const [customized, setCustomized] = React.useState(false)
   const [remindOnOverdue, setRemindOnOverdue] = React.useState(true)
+  const [defaultOwners, setDefaultOwners] = React.useState<Readonly<Record<string, string>>>({})
+  const [owners, setOwners] = React.useState<readonly { readonly id: string; readonly displayName: string }[]>([])
+  const [departmentNames, setDepartmentNames] = React.useState<Readonly<Record<string, string>>>(
+    Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, DEFAULT_DEPARTMENT_PROFILES[code].displayName])),
+  )
   const [error, setError] = React.useState<string | null>(null)
   const [statuses, setStatuses] = React.useState<readonly StatusOption[]>([])
   const [rows, setRows] = React.useState<Readonly<Record<string, Row>>>({})
   const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
-    const [result, statusResult] = await Promise.all([getFeatureSettingsForEditor("project-aging"), getProjectAgingStatusRows()])
+    const [result, statusResult, ownerOptions, departmentResult] = await Promise.all([
+      getFeatureSettingsForEditor("project-aging"),
+      getProjectAgingStatusRows(),
+      getOrganizationFollowUpOwners(),
+      getFeatureSettingsForEditor("department-profiles"),
+    ])
+    setOwners(ownerOptions)
+    if (departmentResult.success) {
+      // Use the company's own department names.
+      const parsedDepartments = departmentProfilesSchema.safeParse(departmentResult.data.settings)
+      if (parsedDepartments.success) {
+        setDepartmentNames(Object.fromEntries(DEPARTMENT_CODES.map((code) => [code, parsedDepartments.data.departments[code].displayName])))
+      }
+    }
     if (!result.success) {
       setError(result.error)
       return
@@ -81,6 +109,7 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
     const settings = parsed.success ? parsed.data : FEATURE_SETTINGS["project-aging"].defaults
     setRows(rowsFrom(options, settings))
     setRemindOnOverdue(settings.remindOnOverdue !== false)
+    setDefaultOwners(settings.defaultOwners ?? {})
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -115,7 +144,7 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
       configured[status.id] = { dueDays, overdueDays }
     }
     startTransition(async () => {
-      const result = await saveFeatureSettings("project-aging", { statuses: configured, remindOnOverdue })
+      const result = await saveFeatureSettings("project-aging", { statuses: configured, remindOnOverdue, defaultOwners })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -191,11 +220,44 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
             <div>
               <Label htmlFor="project-aging-remind">Remind when a job&apos;s follow-up is overdue</Label>
               <p className="text-xs text-muted-foreground">
-                Sends the follow-up owner (or whoever last contacted the client) one urgent reminder per overdue stretch, and turns their Client follow-up link and bell red.
+                Sends the job's follow-up owner (else whoever last contacted the client, else the department's default owner below) one urgent reminder per overdue stretch, and turns their Client follow-up link and bell red.
               </p>
             </div>
             <Switch id="project-aging-remind" checked={remindOnOverdue} onCheckedChange={setRemindOnOverdue} disabled={disabled} />
           </div>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Default follow-up owner</legend>
+            <p className="text-xs text-muted-foreground">
+              Who answers for a job that has no follow-up owner and no logged contact: they get its overdue reminder and see it in their red count. Setting an owner on a job overrides this.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {DEPARTMENT_CODES.map((code) => (
+                <div key={code} className="flex items-center justify-between gap-3">
+                  <Label htmlFor={`default-owner-${code}`} className="text-sm font-normal">{departmentNames[code] ?? code}</Label>
+                  <SearchableCombobox
+                    id={`default-owner-${code}`}
+                    className="h-8 w-[200px] bg-background"
+                    popoverClassName="min-w-[14rem]"
+                    value={defaultOwners[code] ?? NO_DEFAULT_OWNER}
+                    disabled={disabled}
+                    onValueChange={(value) =>
+                      setDefaultOwners((current) => {
+                        const next = { ...current }
+                        if (value === NO_DEFAULT_OWNER || value === "") delete next[code]
+                        else next[code] = value
+                        return next
+                      })
+                    }
+                    options={[{ value: NO_DEFAULT_OWNER, label: "No default owner" }, ...owners.map((owner) => ({ value: owner.id, label: owner.displayName }))]}
+                    ariaLabel={`Default follow-up owner for ${departmentNames[code] ?? code}`}
+                    placeholder="No default owner"
+                    searchPlaceholder="Search staff..."
+                    emptyMessage="No matching staff."
+                  />
+                </div>
+              ))}
+            </div>
+          </fieldset>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (
               <>
