@@ -81,8 +81,53 @@ db.transaction(() => {
   }
   db.prepare(`DELETE FROM project_estimates WHERE project_id = 'compass-developer'`).run()
 
-  // Clips that create records start from an empty project each run.
+  // Each run starts with only these earlier, fictional daily logs, which give
+  // Jarvis records to find and summarize.
   db.prepare(`DELETE FROM daily_logs WHERE project_id = 'compass-developer'`).run()
+  const daysAgo = (days) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+  const pastLogs = [
+    ["help-video-log-1", 3, "Excavated north footing and placed gravel base.", "Groundwater seeped into the northeast corner; pumped out before noon.", "Excavation crew (3)"],
+    ["help-video-log-2", 2, "Set rebar for north footing.", "Two bundles of #5 rebar arrived short; supplier delivering the rest tomorrow.", "Concrete sub (3)"],
+    ["help-video-log-3", 1, "Finished rebar; inspector scheduled.", "Inspector moved the rebar inspection from 9:00 to 10:30.", "Concrete sub (3), framing crew (2)"],
+  ]
+  for (const [id, age, work, issues, crew] of pastLogs) {
+    db.prepare(`INSERT INTO daily_logs (id, project_id, author_id, log_date, weather_temp_f, weather_conditions,
+        work_completed, issues, crew_present, safety_incidents, review_status, created_at, updated_at)
+      VALUES (?, 'compass-developer', 'dev-user-1', ?, 52, 'Partly cloudy', ?, ?, ?, 'No incidents.', 'approved', ?, ?)`)
+      .run(id, daysAgo(age), work, issues, crew, now, now)
+  }
+
+  // A short schedule for the Jarvis schedule clip.
+  db.prepare(`DELETE FROM task_dependencies WHERE successor_id LIKE 'help-video-task-%' OR predecessor_id LIKE 'help-video-task-%'`).run()
+  db.prepare(`DELETE FROM schedule_tasks WHERE project_id = 'compass-developer'`).run()
+  const tasks = [
+    ["help-video-task-1", "Pour north footing", 1, 1, "Foundation"],
+    ["help-video-task-2", "Cure and strip forms", 2, 3, "Foundation"],
+    ["help-video-task-3", "Backfill north side", 5, 2, "Foundation"],
+    ["help-video-task-4", "Frame first-floor walls", 7, 5, "Framing"],
+  ]
+  for (const [index, [id, title, offset, workdays, phase]] of tasks.entries()) {
+    const start = new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
+    db.prepare(`INSERT INTO schedule_tasks (id, project_id, title, start_date, workdays, end_date_calculated, phase,
+        status, is_critical_path, sort_order, assigned_to, created_at, updated_at)
+      VALUES (?, 'compass-developer', ?, ?, ?, ?, ?, 'PENDING', 1, ?, 'Dev User', ?, ?)`)
+      .run(id, title, start, workdays, start, phase, index + 1, now, now)
+  }
+  for (const [index, successor] of ["help-video-task-2", "help-video-task-3", "help-video-task-4"].entries()) {
+    db.prepare(`INSERT INTO task_dependencies (id, predecessor_id, successor_id, type, lag_days)
+      VALUES (?, ?, ?, 'FS', 0)`).run(`help-video-dep-${index + 1}`, `help-video-task-${index + 1}`, successor)
+  }
+
+  // Each Jarvis clip starts with an empty chat history.
+  db.prepare(`DELETE FROM agent_memories WHERE user_id = 'dev-user-1'`).run()
+  db.prepare(`DELETE FROM agent_conversations WHERE user_id = 'dev-user-1'`).run()
+
+  // Jarvis uses the same OpenAI model as production (OPENAI_MODEL in
+  // wrangler.jsonc); an "openai/" ID resolves to it when OpenAI is the provider.
+  db.prepare(`INSERT INTO agent_config (id, model_id, model_name, provider, prompt_cost, completion_cost,
+      context_length, updated_by, updated_at, allow_user_selection)
+    VALUES ('global', 'openai/gpt-6-luna', 'GPT-6 Luna', 'openai', '0', '0', 400000, 'dev-user-1', ?, 0)
+    ON CONFLICT(id) DO UPDATE SET model_id = excluded.model_id, provider = excluded.provider`).run(now)
 
   // Photos awaiting review. The recorder serves sample images for these IDs,
   // so the Drive file IDs below never resolve to real files.

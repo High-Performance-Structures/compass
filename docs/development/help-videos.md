@@ -31,6 +31,19 @@ real customer data.
      node node_modules/next/dist/bin/next dev --webpack -p 3107
    ```
 
+   Clips that use Jarvis (`jarvis-*`, `owner-updates-draft-with-jarvis`) also
+   need an AI key in that terminal, for example by prompting for it without
+   saving it to history:
+
+   ```bash
+   read -s "OPENAI_API_KEY?OpenAI key: " && export OPENAI_API_KEY
+   ```
+
+   Local development uses production's `OPENAI_MODEL` and
+   `OPENAI_REASONING_EFFORT` from `wrangler.jsonc` unless they are set, and
+   generates no signing secret on its own, so also export a throwaway
+   `AGENT_AUTH_SECRET` (any random value).
+
 3. Record all clips, or name specific ones:
 
    ```bash

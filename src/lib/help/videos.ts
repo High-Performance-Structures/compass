@@ -50,6 +50,24 @@ export const HELP_VIDEOS: readonly HelpVideo[] = [
     title: "Start an estimate and add a line",
     durationSeconds: 34,
   },
+  {
+    id: "jarvis-find-records",
+    topicId: "jarvis.find-records",
+    title: "Ask Jarvis to find and summarize records",
+    durationSeconds: 18,
+  },
+  {
+    id: "jarvis-schedule-confirm",
+    topicId: "schedule.jarvis-schedule",
+    title: "Change the schedule with Jarvis and Confirm",
+    durationSeconds: 26,
+  },
+  {
+    id: "owner-updates-draft-with-jarvis",
+    topicId: "owner.updates.draft-with-jarvis",
+    title: "Draft an owner update with Jarvis",
+    durationSeconds: 20,
+  },
 ]
 
 export type HelpVideoWithGuide = HelpVideo & Readonly<{ guideId: string }>

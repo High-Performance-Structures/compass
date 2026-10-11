@@ -12,6 +12,10 @@ const clipsDir = resolve("scripts/help-videos/clips")
 const outDir = resolve(".help-videos/output")
 mkdirSync(outDir, { recursive: true })
 
+const dbEnv = { ...process.env, LOCAL_DB_PATH: process.env.LOCAL_DB_PATH ?? ".help-videos/compass.db" }
+// Apply any migrations added since the recording database was created.
+execFileSync("node", ["scripts/init-local-db.mjs"], { env: dbEnv, stdio: "ignore" })
+
 const requested = new Set(process.argv.slice(2))
 const files = readdirSync(clipsDir).filter((name) => name.endsWith(".mjs")).sort()
 
@@ -20,10 +24,7 @@ for (const file of files) {
   if (requested.size > 0 && !requested.has(clipModule.clip.id)) continue
   console.log(`Recording ${clipModule.clip.id}...`)
   // Each clip starts from the same seeded state so re-recordings match.
-  execFileSync("node", ["scripts/help-videos/seed.mjs"], {
-    env: { ...process.env, LOCAL_DB_PATH: process.env.LOCAL_DB_PATH ?? ".help-videos/compass.db" },
-    stdio: "ignore",
-  })
+  execFileSync("node", ["scripts/help-videos/seed.mjs"], { env: dbEnv, stdio: "ignore" })
   const session = await startRecording(join(".help-videos/raw", clipModule.clip.id), {
     captionAt: clipModule.clip.captionAt,
   })
