@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, max, ne } from "drizzle-orm"
+import { and, asc, eq, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -20,10 +20,10 @@ import {
   airlitePurchaseOrderLabel,
   buildNuTechAirliteWorkbookPlan,
   formatAirliteDate,
-  nextAirlitePoSequence,
   readNuTechAirliteFormLayout,
   type NuTechAirliteOrderHeader,
 } from "@/lib/nutech/airlite-workbook"
+import { assignNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
@@ -367,16 +367,14 @@ export async function generateNuTechAirliteWorkbook(
       throw new Error("The linked Compass purchase order needs a PO number.")
     }
     const settings = await readFeatureSettings(access.db, access.organizationId, "nutech-emails")
-    const lastAssigned = await access.db
-      .select({ sequence: max(nuTechOrderWorkflows.airlitePoSequence) })
-      .from(nuTechOrderWorkflows)
-      .innerJoin(projects, eq(projects.id, nuTechOrderWorkflows.projectId))
-      .where(eq(projects.organizationId, access.organizationId))
-      .get()
-    const poSequence = nextAirlitePoSequence({
+    const poSequence = await assignNuTechAirlitePoNumber(access.db, {
+      organizationId: access.organizationId,
+      workflowId: workflow.id,
+      projectId,
+      projectNumber: access.project.projectNumber,
       assigned: workflow.airlitePoSequence,
-      lastAssigned: lastAssigned?.sequence ?? null,
-      nextSetting: settings.nextPurchaseOrderNumber,
+      purchaseOrderId: workflow.airlitePurchaseOrderOperationId,
+      purchaseOrderReleased: false,
     })
     const now = new Date().toISOString()
     const delivery = workflow.deliveryMethod === "delivery"
@@ -447,7 +445,6 @@ export async function generateNuTechAirliteWorkbook(
     await access.db
       .update(nuTechOrderWorkflows)
       .set({
-        airlitePoSequence: poSequence,
         airliteWorkbookId: workbook.id,
         airliteWorkbookUrl: workbookUrl,
         airliteWorkbookStatus:

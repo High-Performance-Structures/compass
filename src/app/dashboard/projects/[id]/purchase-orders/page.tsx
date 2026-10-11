@@ -1,7 +1,8 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { getNuTechManufacturerName, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
+import { getNuTechManufacturerName, getNuTechOrderFormLink, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
+import { NuTechOrderFormButton } from "@/components/nutech/nutech-order-form-button"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -134,6 +135,7 @@ function PurchaseOrderCard({
   developerModeEnabled,
   paperTrail,
   catalogItems,
+  orderForm,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -156,6 +158,8 @@ function PurchaseOrderCard({
   readonly paperTrail: PaperTrailRecordView | null | undefined
   /** The manufacturer's price list, for its POs' line items. */
   readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
+  /** Set on the PO linked to the Nu-Tech order: the manufacturer's order form replaces the pickup copy. */
+  readonly orderForm?: { readonly workbookUrl: string | null; readonly released: boolean }
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -238,7 +242,11 @@ function PurchaseOrderCard({
               defaultTaskType="supplier_task"
               assigneeOptions={taskAssigneeOptions}
             />
-            <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+            {orderForm ? (
+              <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} />
+            ) : (
+              <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+            )}
           </div>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
@@ -399,10 +407,15 @@ export default async function ProjectPurchaseOrdersPage({
     projectNumber: project?.projectNumber,
   })
   // N jobs order from the block manufacturer, built from the Nu-Tech order.
-  const [manufacturerName, manufacturerCatalog, shippingCostCode] =
+  const [manufacturerName, manufacturerCatalog, shippingCostCode, orderFormLink] =
     brand.department === "N"
-      ? await Promise.all([getNuTechManufacturerName(), getNuTechPurchaseOrderCatalog(id), getNuTechShippingCostCodeOption()])
-      : ["", [], null]
+      ? await Promise.all([
+          getNuTechManufacturerName(),
+          getNuTechPurchaseOrderCatalog(id),
+          getNuTechShippingCostCodeOption(),
+          getNuTechOrderFormLink(id),
+        ])
+      : ["", [], null, null]
   // The manufacturer's POs can also code freight to the shipping cost code.
   const manufacturerCostCodes =
     shippingCostCode && !purchaseOrderCodingOptions.costCodes.some((option) => option.value === shippingCostCode.value)
@@ -556,6 +569,7 @@ export default async function ProjectPurchaseOrdersPage({
               catalogItems={
                 manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
               }
+              orderForm={orderFormLink?.purchaseOrderId === order.id ? orderFormLink : undefined}
             />
           ))
         ) : (

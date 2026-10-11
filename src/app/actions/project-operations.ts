@@ -63,6 +63,7 @@ import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
+import { nuTechOrderFormAttachment, type EmailAttachment } from "@/lib/nutech/order-form-attachment"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -1004,6 +1005,7 @@ async function sendResendPurchaseOrderEmail(
     readonly subject: string
     readonly text: string
     readonly html: string
+    readonly attachments?: readonly EmailAttachment[]
   }
 ): Promise<{
   readonly status: string
@@ -1031,6 +1033,9 @@ async function sendResendPurchaseOrderEmail(
   }
   if (input.cc.length > 0) {
     requestBody.cc = input.cc
+  }
+  if (input.attachments && input.attachments.length > 0) {
+    requestBody.attachments = input.attachments
   }
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -3199,12 +3204,22 @@ export async function sendPurchaseOrderEmail(
       }),
       order,
     }
+    // The manufacturer's PO goes out with its own filled order form.
+    const orderForm = await nuTechOrderFormAttachment({
+      db,
+      environment: env,
+      organizationId: orgId,
+      user,
+      purchaseOrderId,
+      purchaseOrderNumber: operation.sourceRecordNumber,
+    })
     const delivery = await sendResendPurchaseOrderEmail(env, {
       to,
       cc,
       subject,
       text: purchaseOrderEmailText(emailInput),
       html: purchaseOrderEmailHtml(emailInput),
+      attachments: orderForm ? [orderForm] : [],
     })
 
     if (delivery.status === "failed") {
