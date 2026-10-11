@@ -70,7 +70,10 @@ export const SCOPE_OF_WORK_WORKFLOW: WorkflowDefinition = {
       id: "work",
       label: "Work in progress",
       jobStatusId: "under_construction",
-      items: [{ id: "started", label: "Crew on site (first daily log)", fact: "dailyLogged", tickable: true, path: "daily-logs" }],
+      items: [
+        { id: "started", label: "Crew on site (first daily log)", fact: "dailyLogged", tickable: true, path: "daily-logs" },
+        { id: "finished", label: "Our scope of work is finished", path: null },
+      ],
     },
     {
       id: "completion",

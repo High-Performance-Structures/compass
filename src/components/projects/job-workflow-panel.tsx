@@ -28,7 +28,8 @@ function checkedNote(item: WorkflowItem): string | null {
 
 /**
  * A job's department workflow on its overview: the steps, the next thing to
- * do, and the current step's checklist. Items Compass records link to where
+ * do, and the current step's checklist (any step's, when picked, to undo a
+ * mistaken tick). Items Compass records link to where
  * they are filled in; the rest are ticked here.
  */
 export function JobWorkflowPanel({
@@ -60,6 +61,10 @@ export function JobWorkflowPanel({
   const [statusPending, startStatus] = React.useTransition()
   const base = `/dashboard/projects/${encodeURIComponent(projectId)}`
   const current = progress.current
+  // The step whose checklist is open: the current one unless someone picked another.
+  const [selectedId, setSelectedId] = React.useState<string | null>(null)
+  const shown = progress.steps.find((step) => step.id === selectedId) ?? current ?? null
+  const reviewing = shown !== null && shown.id !== current?.id
   const headingId = `job-workflow-${department}`
   const heading = `${profiles[department].shortName} ${progress.title}`.toUpperCase()
 
@@ -114,27 +119,44 @@ export function JobWorkflowPanel({
       <ol className="flex flex-wrap gap-x-1 gap-y-2" aria-label="Steps">
         {progress.steps.map((step, index) => (
           <li key={step.id} className="flex items-center gap-1">
-            <span
+            <button
+              type="button"
               aria-current={step.state === "current" ? "step" : undefined}
+              aria-pressed={shown?.id === step.id}
+              onClick={() => setSelectedId(step.id === current?.id ? null : step.id)}
               className={cn(
-                "flex items-center gap-1.5 border px-2 py-1 font-mono text-xs tracking-[0.06em]",
-                step.state === "done" && "border-transparent text-muted-foreground",
+                "flex items-center gap-1.5 border px-2 py-1 font-mono text-xs tracking-[0.06em] transition-colors",
+                step.state === "done" && "border-transparent text-muted-foreground hover:border-border",
                 step.state === "current" && "border-primary bg-primary text-primary-foreground",
-                step.state === "upcoming" && "border-border text-muted-foreground",
+                step.state === "upcoming" && "border-border text-muted-foreground hover:text-foreground",
+                shown?.id === step.id && step.state !== "current" && "border-foreground text-foreground",
               )}
             >
               {step.state === "done" ? <IconCheck className="size-3" aria-hidden="true" /> : null}
               {step.label.toUpperCase()}
               <span className="sr-only">{step.state === "done" ? " (done)" : step.state === "current" ? " (current)" : ""}</span>
-            </span>
+            </button>
             {index < progress.steps.length - 1 ? <span className="text-muted-foreground" aria-hidden="true">·</span> : null}
           </li>
         ))}
       </ol>
 
-      {current && !cancelledMessage ? (
-        <ul className="flex flex-col" aria-label={`${current.label} checklist`}>
-          {current.items.map((item) => {
+      {reviewing && shown ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            Showing {shown.label}. Untick anything checked by mistake; recorded items follow the job&apos;s records.
+          </span>
+          {current ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedId(null)}>
+              Back to {current.label}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {shown && !cancelledMessage ? (
+        <ul className="flex flex-col" aria-label={`${shown.label} checklist`}>
+          {shown.items.map((item) => {
             const done = optimistic.get(item.key) ?? item.done
             const note = checkedNote(item)
             const box = (
@@ -173,7 +195,7 @@ export function JobWorkflowPanel({
                   <span className={cn("flex-1", done && "text-muted-foreground line-through")}>{item.label}</span>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {note ?? (item.source === "record" ? "Done" : item.path && !done ? <Link href={`${base}/${item.path}`}>Open →</Link> : null)}
+                  {note ?? (item.source === "record" ? "Recorded" : item.path && !done ? <Link href={`${base}/${item.path}`}>Open →</Link> : null)}
                 </span>
               </li>
             )
