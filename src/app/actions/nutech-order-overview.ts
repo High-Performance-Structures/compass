@@ -4,7 +4,7 @@ import { and, count, desc, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projectContacts, projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
-import { nuTechOrderItems, nuTechOrderWorkflows } from "@/db/schema-nutech"
+import { nuTechBracingRentals, nuTechOrderItems, nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -64,7 +64,7 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
     if (!project) return null
     if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") return null
 
-    const [order, estimate, contacts, followUps, customization, checks] = await Promise.all([
+    const [order, estimate, contacts, followUps, customization, checks, rentals] = await Promise.all([
       db.select().from(nuTechOrderWorkflows).where(eq(nuTechOrderWorkflows.projectId, projectId)).limit(1).get(),
       db
         .select({ status: projectEstimates.status, taxEntityId: projectEstimates.defaultTaxEntityId })
@@ -87,6 +87,10 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
       loadProjectFollowUpSignals(db, organizationId, [project], new Date()).catch(() => new Map()),
       readWorkflowCustomization(db, organizationId, "N"),
       loadWorkflowChecks(db, organizationId, projectId),
+      db
+        .select({ status: nuTechBracingRentals.status })
+        .from(nuTechBracingRentals)
+        .where(and(eq(nuTechBracingRentals.projectId, projectId), eq(nuTechBracingRentals.organizationId, organizationId))),
     ])
     const itemCount = order
       ? ((await db.select({ total: count() }).from(nuTechOrderItems).where(eq(nuTechOrderItems.workflowId, order.id)).get())?.total ?? 0)
@@ -101,6 +105,11 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
       followUp: followUps.get(projectId) ?? null,
       estimateStatus: estimate?.status ?? null,
       estimateTaxChosen: (estimate?.taxEntityId ?? null) !== null,
+      bracing: {
+        included: (order?.bracingIncluded ?? false) || rentals.length > 0,
+        signedOut: rentals.some((rental) => rental.status === "out" || rental.status === "returned"),
+        returned: rentals.length > 0 && rentals.every((rental) => rental.status === "returned"),
+      },
       order: order
         ? {
             quantitySource: pick(NUTECH_QUANTITY_SOURCE_OPTIONS, order.quantitySource, "customer_provided"),

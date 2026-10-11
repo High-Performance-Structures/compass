@@ -260,6 +260,62 @@ export const nuTechOrderItems = sqliteTable(
 )
 
 export type NuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferSelect
+/**
+ * A bracing rental on an N job: signed out, returned and checked in, with
+ * damage, deposit and the days billed (see drizzle/0211).
+ */
+export const nuTechBracingRentals = sqliteTable(
+  "nutech_bracing_rentals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** reserved | out | returned */
+    status: text("status").notNull().default("reserved"),
+    signedOutOn: text("signed_out_on"),
+    expectedReturnOn: text("expected_return_on"),
+    returnedOn: text("returned_on"),
+    /** Days charged when they differ from the dates (for example, a partial day). */
+    billedDays: integer("billed_days"),
+    dailyRateCents: integer("daily_rate_cents").notNull(),
+    depositCents: integer("deposit_cents").notNull().default(0),
+    idCopyReceived: integer("id_copy_received", { mode: "boolean" }).notNull().default(false),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("nutech_bracing_rentals_project_idx").on(table.projectId),
+    index("nutech_bracing_rentals_org_status_idx").on(table.organizationId, table.status),
+  ],
+)
+
+export const nuTechBracingRentalLines = sqliteTable(
+  "nutech_bracing_rental_lines",
+  {
+    id: text("id").primaryKey(),
+    rentalId: text("rental_id")
+      .notNull()
+      .references(() => nuTechBracingRentals.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    itemLabel: text("item_label").notNull(),
+    size: text("size").notNull().default(""),
+    quantityOut: integer("quantity_out").notNull().default(0),
+    quantityReturned: integer("quantity_returned").notNull().default(0),
+    quantityDamaged: integer("quantity_damaged").notNull().default(0),
+    damageCents: integer("damage_cents").notNull().default(0),
+    damageNote: text("damage_note"),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [index("nutech_bracing_rental_lines_rental_idx").on(table.rentalId, table.sortOrder)],
+)
+
 export type NewNuTechOrderWorkflow = typeof nuTechOrderWorkflows.$inferInsert
 export type NuTechCatalogVersion = typeof nuTechCatalogVersions.$inferSelect
 export type NuTechProduct = typeof nuTechProducts.$inferSelect

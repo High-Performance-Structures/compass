@@ -35,6 +35,7 @@ const snapshot = (overrides: Partial<NuTechOrderSnapshot> = {}): NuTechOrderSnap
   followUp: null,
   estimateStatus: null,
   estimateTaxChosen: false,
+  bracing: { included: false, signedOut: false, returned: false },
   order: null,
   ...overrides,
 })
@@ -139,5 +140,18 @@ describe("Nu-Tech readiness and job sync", () => {
     expect(jobStatusForNuTechOrderStatus("complete")).toBe("complete")
     expect(jobStatusForNuTechOrderStatus("cancelled")).toBeNull()
     expect(projectDeliveryMethodForNuTech("will_call")).toBe("pickup")
+  })
+
+  it("adds bracing sign-out and check-in to the last step when bracing is rented", () => {
+    const done = order({ orderStatus: "complete" })
+    const without = nuTechOrderProgress(snapshot({ order: done }))
+    expect(without.steps.at(-1)?.items.map((item) => item.label)).not.toContain("Sign out the bracing")
+    const rented = nuTechOrderProgress(snapshot({ order: done, bracing: { included: true, signedOut: true, returned: false } }))
+    const last = rented.steps.at(-1)
+    expect(last?.items.map((item) => [item.label, item.done])).toEqual([
+      ["Sign out the bracing", true],
+      ["Check the bracing back in", false],
+      ["Mark the order complete after pickup or delivery", true],
+    ])
   })
 })

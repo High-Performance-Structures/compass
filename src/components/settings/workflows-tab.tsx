@@ -18,6 +18,7 @@ import { ProjectAgingSettingsSection } from "@/components/settings/project-aging
 import { ClientInteractionSettingsSection } from "@/components/settings/client-interaction-settings-section"
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
+import { BracingRentalSettingsSection } from "@/components/settings/bracing-rental-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
@@ -196,6 +197,7 @@ const WORKFLOW_AREAS = [
   { value: "client-follow-up", label: "Client follow-up", description: "Follow-up cadence for clients." },
   { value: "nutech-catalog", label: "Nu-Tech product catalog", description: "Price sheets and cost code mapping." },
   { value: "nutech-emails", label: "Nu-Tech emails", description: "Order and quote email templates." },
+  { value: "bracing-rentals", label: "Bracing rentals", description: "Rental equipment, owned counts, daily rate and deposit rules." },
   { value: "paper-trail", label: "Project paper trail", description: "Which records are saved as PDFs in project Drive folders." },
   { value: "shop-tickets", label: "Shop tickets", description: "Ticket numbering and letterhead." },
 ] as const
@@ -231,6 +233,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <NuTechCatalogLink />
     case "nutech-emails":
       return <NuTechEmailSettingsSection />
+    case "bracing-rentals":
+      return <BracingRentalSettingsSection />
     case "paper-trail":
       return <PaperTrailSettingsSection />
     case "shop-tickets":
