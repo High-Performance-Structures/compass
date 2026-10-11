@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { dailyLogs, projects, users } from "@/db/schema"
+import { dailyLogs, organizationMembers, projects, users } from "@/db/schema"
 import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -16,6 +16,8 @@ import { dutiesFor, monthSummary, parseHours, type DutyOption, type DutySummaryR
 import { requireOrg } from "@/lib/org-scope"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { isInternalStaffRole } from "@/lib/user-roles"
+import { dutiesNeedingAttention, loadRecurringDuties, type RecurringDutyView } from "@/lib/internal-duties/recurring-data"
 
 const FEATURE = "internal-duties"
 
@@ -56,6 +58,9 @@ export type DutyLogWorkspace = {
   readonly canEdit: boolean
   /** Admins may edit anyone's entries and turn a project into an internal workspace. */
   readonly canManage: boolean
+  readonly recurring: readonly RecurringDutyView[]
+  /** Staff who can own a recurring duty. */
+  readonly staff: readonly { readonly value: string; readonly label: string }[]
 }
 
 function nameOf(user: { readonly displayName: string | null; readonly firstName: string | null; readonly lastName: string | null } | null): string {
@@ -86,7 +91,7 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
   if (!project) return null
   const summaryMonth = month && /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7)
   const kind = project.workspaceKind
-  const [settings, entryRows, logRows, related, canEdit] = await Promise.all([
+  const [settings, entryRows, logRows, related, canEdit, recurring, staffRows] = await Promise.all([
     readFeatureSettings(db, orgId, "internal-duties"),
     db
       .select({
@@ -122,6 +127,12 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
       .where(and(eq(projects.organizationId, orgId), inArray(projects.status, ["OPEN", "WARRANTY"])))
       .orderBy(asc(projects.projectNumber)),
     canFeature(user, FEATURE, "update"),
+    kind ? loadRecurringDuties(db, projectId) : Promise.resolve([]),
+    db
+      .select({ id: users.id, displayName: users.displayName, firstName: users.firstName, lastName: users.lastName, role: users.role })
+      .from(users)
+      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+      .where(and(eq(organizationMembers.organizationId, orgId), eq(users.isActive, true))),
   ])
   const relatedLabels = new Map(related.map((item) => [item.id, projectNumberAndName(item)]))
   const entries: DutyLogEntryView[] = entryRows.map(({ entry, ...person }) => ({
@@ -157,6 +168,11 @@ export async function getDutyLogWorkspace(projectId: string, month?: string): Pr
     currentUserId: user.id,
     canEdit: canEdit && !isDemoUser(user.id) && kind !== null,
     canManage: canEditFeatureSettings(user.role, "internal-duties"),
+    recurring,
+    staff: staffRows
+      .filter((row) => isInternalStaffRole(row.role))
+      .map((row) => ({ value: row.id, label: nameOf(row) }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
   }
 }
 
@@ -311,6 +327,8 @@ export type InternalWorkspaceSummary = {
   /** Daily logs written before the duty log that still need a duty. */
   readonly waitingLogs: number
   readonly canEdit: boolean
+  /** Recurring duties behind, due soon, or not started yet. */
+  readonly attention: readonly RecurringDutyView[]
 }
 
 function mondayOf(date: Date): string {
@@ -327,7 +345,7 @@ export async function getInternalWorkspaceSummary(projectId: string): Promise<In
   const project = await loadProject(db, orgId, projectId)
   if (!project?.workspaceKind) return null
   const weekStart = mondayOf(new Date())
-  const [entryRows, logRows, canEdit] = await Promise.all([
+  const [entryRows, logRows, canEdit, recurring] = await Promise.all([
     db
       .select({
         entryDate: internalDutyEntries.entryDate,
@@ -344,6 +362,7 @@ export async function getInternalWorkspaceSummary(projectId: string): Promise<In
       .where(eq(internalDutyEntries.projectId, projectId)),
     db.select({ id: dailyLogs.id }).from(dailyLogs).where(eq(dailyLogs.projectId, projectId)),
     canFeature(user, FEATURE, "update"),
+    loadRecurringDuties(db, projectId),
   ])
   const week = entryRows.filter((entry) => entry.entryDate >= weekStart)
   const people = new Map<string, { name: string; hours: number; entries: number }>()
@@ -365,5 +384,6 @@ export async function getInternalWorkspaceSummary(projectId: string): Promise<In
     byPerson: [...people.values()].sort((a, b) => b.hours - a.hours),
     waitingLogs: logRows.filter((log) => !categorized.has(log.id)).length,
     canEdit: canEdit && !isDemoUser(user.id),
+    attention: dutiesNeedingAttention(recurring),
   }
 }

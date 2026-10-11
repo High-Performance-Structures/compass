@@ -34,11 +34,33 @@ optional hours, notes, and optionally the client project the work was for.
 Internal workspaces are skipped by the project paper trail, since they have no
 project folders.
 
+## Recurring duties
+
+Office workspaces have a recurring duties board on the duty log page, and the
+Overview panel lists what needs attention.
+
+- A duty has a name, an optional account (for reconciliations), a cadence
+  (monthly, quarterly, yearly), a due day, the duty its time is logged under,
+  and an owner. A period's work is due on the due day of the month after the
+  period ends (an April reconciliation due the 15th is due May 15).
+- Status: **behind** (periods past their due date, counted), **due soon**
+  (the next period is due within a week), **current**, or **not started**
+  until someone marks the most recent period done.
+- **Mark done** records the period, the date, and optionally hours, which go
+  on the duty log under the duty's cost code. **Undo last** removes a period
+  marked by mistake, with its duty log entry.
+- Admins add, edit and turn off duties. A duty that was never marked done can
+  be deleted; one with history is turned off instead.
+- H-Office starts with monthly reconciliations for FSB, FSB Project, PPCU
+  Checking, PPCU Savings and Spark Credit Card (due the 15th), sales tax (due
+  the 20th) and vendor statement review (due month end). FSB starts from April
+  2026, reconciled on Sep 28.
+
 ## Planned
 
-- Recurring duties board (monthly bank and card reconciliations per account,
-  sales tax, vendor statements, insurance certificate expirations), with
-  what's behind highlighted.
+- Saving each reconciliation PDF to the company Drive (07_Banking / account /
+  year) when it is marked done.
+- Insurance certificate expirations from vendor records.
 - Settings editor for the duty list.
 - Field crew log with orders tagged after the fact (Nu-Tech Labor Tracking).
 - Checking logged hours against the Sage labor journal.
