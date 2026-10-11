@@ -75,6 +75,8 @@ export const nuTechEmailSettingsSchema = z.object({
   warehousePhone: z.string().max(40),
   warehouseEmail: optionalEmail,
   warehouseDockHours: z.string().max(80),
+  /** Sales tax district for customer pickups at the warehouse. */
+  warehouseTaxEntityId: z.string().max(80),
   templates: z.record(
     z.string().min(1).max(60),
     z.object({ subject: z.string().min(1).max(200), body: z.string().min(1).max(8000) }),
@@ -340,6 +342,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       warehousePhone: "",
       warehouseEmail: "",
       warehouseDockHours: "",
+      warehouseTaxEntityId: "",
       templates: {},
     },
     schema: nuTechEmailSettingsSchema,
