@@ -47,6 +47,11 @@ export const projectAgingSettingsSchema = z.object({
   /** Remind a job's follow-up owner when it turns overdue (missing means yes). */
   remindOnOverdue: z.boolean().optional(),
   /**
+   * When jobs with no logged contact started aging (ISO time, recorded when the
+   * company turns this on). Missing means those jobs stay "No contact logged".
+   */
+  noContactClockStart: z.string().datetime().optional(),
+  /**
    * Per-department fallback follow-up owner (user id), used when a job has no
    * owner and no logged contact. Keyed by department code.
    */

@@ -101,6 +101,8 @@ Follow-up flags appear on the map, pipelines, and tracker for job statuses that 
 
 **Log contact** opens the client interaction record, which is also at the top of the project's **Information** page. Choose the client contact, how you reached them (call, email, text, meeting, site visit, or your own type), who reached out, and when, then describe what happened and the next step. Only a completed record counts as client contact and resets the clock. **Snooze** moves the next follow-up date but does not count as contact.
 
+By default, a job with no client contact logged shows **No contact logged**. When an admin turns on **Flag jobs with no logged contact** in **Settings → Workflows → Project aging**, those jobs start aging from the day it's turned on (or from when the job was created, if later). They then turn due and overdue on the same thresholds and send reminders like any other job.
+
 Admins set every status's thresholds in one place: **Settings → Workflows → Project aging**. This includes statuses your organization added, and leaving both values blank means a status isn't followed up. **Settings → Workflows → Client contact records** sets how much a record must describe and how far back it may be dated. Changing a threshold changes when jobs are flagged; it does not record a client response or complete a follow-up.
 
 ## Use the Client Follow-Up Page {#client-follow-up-page}

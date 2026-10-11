@@ -165,3 +165,26 @@ describe("project aging thresholds", () => {
     expect(PROJECT_AGING_LEVELS.overdue.colorToken).toBe("--destructive")
   })
 })
+
+describe("no-contact clock", () => {
+  const thresholds = { dueDays: 2, overdueDays: 5 }
+  const base = { jobStatusId: "estimating", thresholds, interactions: [], nextFollowUpAt: null }
+
+  it("keeps never-contacted jobs as No contact logged without a clock", () => {
+    expect(clientFollowUpState({ ...base, now: new Date("2026-10-20T16:00:00.000Z") }).state).toBe("unrecorded")
+  })
+
+  it("ages never-contacted jobs from the clock start in business days", () => {
+    // Clock starts Friday 2026-10-09.
+    const since = "2026-10-09T15:00:00.000Z"
+    expect(clientFollowUpState({ ...base, noContactSince: since, now: new Date("2026-10-12T16:00:00.000Z") }).state).toBe("unrecorded")
+    expect(clientFollowUpState({ ...base, noContactSince: since, now: new Date("2026-10-13T16:00:00.000Z") }).state).toBe("due")
+    expect(clientFollowUpState({ ...base, noContactSince: since, now: new Date("2026-10-16T16:00:00.000Z") }).state).toBe("overdue")
+  })
+
+  it("lets a scheduled follow-up still quiet a never-contacted job", () => {
+    expect(
+      clientFollowUpState({ ...base, noContactSince: "2026-09-01T15:00:00.000Z", nextFollowUpAt: "2026-11-01T15:00:00.000Z", now: new Date("2026-10-16T16:00:00.000Z") }).state,
+    ).toBe("scheduled")
+  })
+})
