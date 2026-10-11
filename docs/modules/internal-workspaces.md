@@ -5,6 +5,8 @@ yard, and generic projects the field crew logs against. These are internal
 workspaces (`projects.workspace_kind`):
 
 - `office` — administrative duties (for example H-Office).
+- `executive` — the owner's office (for example Woodland Park Home Office):
+  office duties, with owner and CEO work queues.
 - `field` — crew work at the yard, or generic order help where the crew
   doesn't know the order number.
 
