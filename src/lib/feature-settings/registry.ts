@@ -83,6 +83,7 @@ export const paperTrailSettingsSchema = z.object({
   estimates: z.boolean(),
   rfis: z.boolean(),
   changeOrders: z.boolean(),
+  shopTickets: z.boolean(),
   milestoneCopies: z.boolean(),
   quietMinutes: z.number().int().min(1).max(60),
   /**
@@ -213,6 +214,21 @@ export const jobEmailSettingsSchema = z.object({
 
 export type JobEmailSettings = z.infer<typeof jobEmailSettingsSchema>
 
+/**
+ * Shop tickets bill a project for the company's own labor and machine hours.
+ * The issuing department's profile supplies the letterhead.
+ */
+export const shopTicketSettingsSchema = z.object({
+  numberPrefix: z.string().trim().max(12).regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers or dashes."),
+  /** The first number to use; later tickets continue from the highest issued. */
+  startNumber: z.number().int().min(1).max(999_999),
+  issuingDepartment: z.enum(["O", "H", "N", "D"]),
+  title: z.string().trim().min(1).max(40),
+  subtitle: z.string().trim().max(80),
+})
+
+export type ShopTicketSettings = z.infer<typeof shopTicketSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
@@ -223,6 +239,7 @@ type FeatureSettingsTypes = {
   readonly "paper-trail": PaperTrailSettings
   readonly "job-workflows": JobWorkflowsSettings
   readonly "job-emails": JobEmailSettings
+  readonly "shop-tickets": ShopTicketSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -296,6 +313,7 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       estimates: true,
       rfis: true,
       changeOrders: true,
+      shopTickets: true,
       milestoneCopies: true,
       quietMinutes: 3,
       internalDomains: [],
@@ -313,6 +331,18 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "The emails offered on HPS, ORC and Design job overviews. Company names, phone and address come from Settings → Company; edit any template's wording here.",
     defaults: { templates: {} },
     schema: jobEmailSettingsSchema,
+  },
+  "shop-tickets": {
+    label: "Shop tickets",
+    description: "Numbering and letterhead for shop tickets that bill a project for labor and machine hours at the rate book's set rates.",
+    defaults: {
+      numberPrefix: "GSL",
+      startNumber: 176,
+      issuingDepartment: "H",
+      title: "Shop Ticket",
+      subtitle: "Labor and Machine Hours",
+    },
+    schema: shopTicketSettingsSchema,
   },
 }
 

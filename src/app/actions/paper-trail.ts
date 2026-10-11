@@ -34,6 +34,7 @@ const RECORD_FEATURES: Readonly<Record<PaperTrailRecordType, string>> = {
   estimate: "budget",
   rfi: "rfis",
   change_order: "change-orders",
+  shop_ticket: "shop-tickets",
 }
 
 async function projectContext(projectId: string, recordType: PaperTrailRecordType, action: "read" | "update") {

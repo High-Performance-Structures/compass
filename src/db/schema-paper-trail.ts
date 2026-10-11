@@ -6,6 +6,7 @@ export const PAPER_TRAIL_RECORD_TYPES = [
   "estimate",
   "rfi",
   "change_order",
+  "shop_ticket",
 ] as const
 export type PaperTrailRecordType = (typeof PAPER_TRAIL_RECORD_TYPES)[number]
 

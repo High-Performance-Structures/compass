@@ -28,6 +28,7 @@ const RECORD_SWITCHES = [
   { key: "estimates", label: "Estimates", folder: "02_WorkingEstimate" },
   { key: "rfis", label: "RFIs", folder: "06_Communications" },
   { key: "changeOrders", label: "Change orders", folder: "16_ChangeOrders" },
+  { key: "shopTickets", label: "Shop tickets", folder: "03_PayRequests (draw folder)" },
 ] as const
 
 type ProjectOption = { readonly value: string; readonly label: string }

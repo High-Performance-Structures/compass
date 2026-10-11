@@ -3,6 +3,7 @@ import type { getDb } from "@/db"
 import { driveFolderShareChecks } from "@/db/schema-paper-trail"
 import type { DriveClient } from "@/lib/google/client/drive-client"
 import type { DrivePermission } from "@/lib/google/client/types"
+import type { PaperTrailSubfolder } from "@/lib/paper-trail/types"
 import {
   classifyProjectFolderName,
   PROJECT_FILE_CATEGORIES,
@@ -135,6 +136,7 @@ export async function resolveRecordFolder(input: {
   readonly drive: PaperTrailDrive
   readonly projectFolderId: string
   readonly category: ProjectFileCategoryKey
+  readonly subfolders: readonly PaperTrailSubfolder[]
   readonly internalDomains: ReadonlySet<string>
   readonly now: Date
 }): Promise<RecordFolderResult> {
@@ -160,8 +162,17 @@ export async function resolveRecordFolder(input: {
       error: `This project's Drive folder has no ${expected} folder. Add it from the department template, then save again.`,
     }
   }
-  if (!(await sharedOutside(db, drive, subfolderId, internalDomains, now))) {
-    return { ok: true, folderId: subfolderId, heldPrivate: false }
+  // Per-occurrence folders below the category (a draw's folder and its
+  // receipts folder) are found by name or created.
+  let targetId = subfolderId
+  for (const subfolder of input.subfolders) {
+    const names = new Set([subfolder.name, ...subfolder.alternatives].map((name) => name.toLowerCase()))
+    targetId =
+      (await findChildFolder(drive, targetId, (name) => names.has(name.trim().toLowerCase()))) ??
+      (await drive.client.createFolder(drive.googleEmail, { name: subfolder.name, parentId: targetId })).id
+  }
+  if (!(await sharedOutside(db, drive, targetId, internalDomains, now))) {
+    return { ok: true, folderId: targetId, heldPrivate: false }
   }
   // The private records folder is the one folder the paper trail may create:
   // it exists only to keep internal records out of a shared subfolder.

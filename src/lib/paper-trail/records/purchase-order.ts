@@ -22,5 +22,6 @@ export async function loadPurchaseOrderRecord(
     projectId: order.projectId,
     version: [order.updatedAt, lines?.count ?? 0, lines?.latest ?? ""].join("|"),
     fileBaseName: `PO ${number}${order.title ? ` - ${order.title}` : ""}`,
+    subfolders: [],
   }
 }

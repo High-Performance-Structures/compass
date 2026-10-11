@@ -14,6 +14,8 @@ import {
 import type { AudienceRfi } from "@/app/actions/project-audience-preview"
 import type { PurchaseOrderDocumentData } from "@/components/projects/purchase-order-document"
 import type { ChangeOrderReportItem } from "@/lib/print/audience-record-reports"
+import type { ShopTicketDocumentData } from "@/components/projects/shop-ticket-document"
+import { loadShopTicket } from "@/lib/shop-tickets/data"
 import type { ReportProject } from "@/lib/print/portal-report"
 import { isChangeOrderStatus } from "@/lib/change-orders/status"
 import { projectNumberAndName } from "@/lib/project-display-name"
@@ -213,6 +215,36 @@ export async function changeOrderCopyData(
       reason: row.reason,
       lines,
       documents,
+    },
+  }
+}
+
+/** A shop ticket that has been issued or voided; drafts are never copied. */
+export async function shopTicketCopyData(
+  db: Db,
+  projectId: string,
+  recordId: string,
+): Promise<{ readonly organizationId: string; readonly ticket: ShopTicketDocumentData } | null> {
+  const project = await reportProject(db, projectId)
+  const ticket = await loadShopTicket(db, recordId)
+  if (!project?.organizationId || !ticket || ticket.projectId !== projectId || ticket.status === "draft") return null
+  const [client] = await db.select({ clientName: projects.clientName }).from(projects).where(eq(projects.id, projectId)).limit(1)
+  return {
+    organizationId: project.organizationId,
+    ticket: {
+      ticketNumber: ticket.ticketNumber,
+      status: ticket.status,
+      ticketDate: ticket.ticketDate,
+      laborFrom: ticket.laborFrom,
+      laborTo: ticket.laborTo,
+      payApplicationNumber: ticket.payApplicationNumber,
+      payApplicationMonth: ticket.payApplicationMonth,
+      projectNumber: project.projectNumber,
+      clientName: client?.clientName ?? null,
+      address: project.address,
+      totalCents: ticket.totalCents,
+      voidReason: ticket.voidReason,
+      lines: ticket.lines,
     },
   }
 }

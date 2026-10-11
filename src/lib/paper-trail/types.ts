@@ -8,4 +8,13 @@ export type LoadedPaperTrailRecord = {
   readonly version: string
   /** File name without extension; the job adds ".pdf". */
   readonly fileBaseName: string
+  /**
+   * Folders below the category folder, outermost first. Missing ones are
+   * created with `name`; an existing folder matching an alternative is used.
+   * Only per-occurrence folders (such as a draw's folder) belong here; the
+   * category folders themselves always come from the department template.
+   */
+  readonly subfolders: readonly PaperTrailSubfolder[]
 }
+
+export type PaperTrailSubfolder = { readonly name: string; readonly alternatives: readonly string[] }
