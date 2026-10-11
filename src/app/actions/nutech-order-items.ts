@@ -16,7 +16,14 @@ import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
-import { buildNuTechAirliteWorkbookPlan } from "@/lib/nutech/airlite-workbook"
+import {
+  buildNuTechAirliteWorkbookPlan,
+  formatAirliteDate,
+  readNuTechAirliteFormLayout,
+  type NuTechAirliteOrderHeader,
+} from "@/lib/nutech/airlite-workbook"
+import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   nuTechCustomerPriceCents,
   validateNuTechOrderQuantity,
@@ -273,6 +280,23 @@ export async function deleteNuTechOrderItem(
   }
 }
 
+/** "11730 Red Lodge Rd., Peyton, CO 80831" → street, then city/state/ZIP. */
+function splitShipTo(address: string | null): readonly string[] {
+  const value = address?.trim() ?? ""
+  if (!value) return []
+  const comma = value.indexOf(",")
+  return comma < 0 ? [value] : [value.slice(0, comma).trim(), value.slice(comma + 1).trim()]
+}
+
+/** A Drive file ID from a pasted link or a bare ID. */
+function driveFileId(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const fromLink = /\/d\/([\w-]{20,})/.exec(trimmed)?.[1] ?? /[?&]id=([\w-]{20,})/.exec(trimmed)?.[1]
+  if (fromLink) return fromLink
+  return /^[\w-]{20,}$/.test(trimmed) ? trimmed : null
+}
+
 export async function generateNuTechAirliteWorkbook(
   projectId: string
 ): Promise<NuTechOrderItemActionResult> {
@@ -325,12 +349,10 @@ export async function generateNuTechAirliteWorkbook(
           manufacturerSku: nuTechOrderItems.manufacturerSkuSnapshot,
           name: nuTechOrderItems.productNameSnapshot,
           origin: nuTechProducts.origin,
-          category: nuTechProducts.category,
           quantity: nuTechOrderItems.quantity,
           minimumOrderIncrement: nuTechProducts.minimumOrderIncrement,
           packageLabel: nuTechProducts.packageLabel,
           priceUnit: nuTechOrderItems.priceUnitSnapshot,
-          airliteTemplateRow: nuTechProducts.airliteTemplateRow,
           unitCostCents: nuTechOrderItems.unitCostCents,
         })
         .from(nuTechOrderItems)
@@ -342,19 +364,26 @@ export async function generateNuTechAirliteWorkbook(
     if (!purchaseOrder?.number) {
       throw new Error("The linked Compass purchase order needs a PO number.")
     }
+    const settings = await readFeatureSettings(access.db, access.organizationId, "nutech-emails")
     const now = new Date().toISOString()
-    const plan = buildNuTechAirliteWorkbookPlan({
-      purchaseOrderNumber: purchaseOrder.number,
-      purchaseOrderDate: now.slice(0, 10),
-      requestedDeliveryDate: workflow.requestedDeliveryDate,
-      projectName: access.project.name,
-      jobsiteAddress: access.project.address,
-      orderContactName: access.user.displayName ?? access.user.email,
-      orderContactPhone: access.user.phone ?? null,
-      orderContactEmail: access.user.email,
+    const delivery = workflow.deliveryMethod === "delivery"
+    const clientLastName = (access.project.clientName ?? "").replace(/[,&].*$/, "").trim().split(/\s+/).pop() ?? ""
+    const shippingCents = delivery ? (workflow.shippingCents ?? 0) : 0
+    const header: NuTechAirliteOrderHeader = {
+      purchaseOrderLabel: [purchaseOrder.number, clientLastName].filter(Boolean).join(" "),
+      purchaseOrderDate: formatAirliteDate(now),
+      fulfillment: delivery ? "delivery" : "pickup",
+      requestedDate: workflow.requestedDeliveryDate ? formatAirliteDate(workflow.requestedDeliveryDate) : null,
+      freight:
+        shippingCents > 0
+          ? `${shippingCents % 100 === 0 ? shippingCents / 100 : (shippingCents / 100).toFixed(2)}${workflow.shippingNote ? ` (${workflow.shippingNote})` : ""}`
+          : null,
+      fob: (delivery ? settings.fobDelivery : settings.fobPickup).trim() || null,
+      shippingWarehouse: settings.warehouseName.trim() || null,
+      shipToLines: splitShipTo(access.project.address),
       deliveryContact: access.project.clientName,
-      lines: lineRows,
-    })
+      miscNote: !delivery && workflow.trailerDimensions ? `Trailer: ${workflow.trailerDimensions}.` : null,
+    }
     const { env } = await getCloudflareContext()
     const { client, sheetsClient, userEmail } = await getOrganizationDriveContext({
       db: access.db,
@@ -362,14 +391,17 @@ export async function generateNuTechAirliteWorkbook(
       organizationId: access.organizationId,
       user: access.user,
     })
-    const workbook = await client.copyFile(
-      userEmail,
-      catalogVersion.airliteTemplateId,
-      {
-        name: `${access.project.projectNumber ?? access.project.name} Airlite Order ${now.slice(0, 10)}`,
-        parentId: access.project.googleDriveFolderId,
-      }
+    const formFileId = driveFileId(settings.orderFormFile) ?? NUTECH_2026_CATALOG_SOURCES.airliteTemplateId
+    // Copies convert to a Google Sheet, so the form can be a Sheet or an .xlsx.
+    const workbook = await client.copyFile(userEmail, formFileId, {
+      name: `PO ${header.purchaseOrderLabel}`,
+      parentId: access.project.googleDriveFolderId,
+      mimeType: "application/vnd.google-apps.spreadsheet",
+    })
+    const layout = readNuTechAirliteFormLayout(
+      await sheetsClient.getValues(userEmail, { spreadsheetId: workbook.id, range: "USLvl3!A1:J200" })
     )
+    const plan = buildNuTechAirliteWorkbookPlan({ layout, header, lines: lineRows })
     await sheetsClient.batchUpdateValues(userEmail, {
       spreadsheetId: workbook.id,
       updates: plan.updates,
