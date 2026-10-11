@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { decodeProjectRouteId } from "@/lib/project-route-id"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 
 import { getDb } from "@/db"
@@ -18,6 +18,7 @@ import {
   resolveProjectRouteAliasTarget,
 } from "@/lib/project-route-alias"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function ProjectRouteAliasLayout({
   children,
@@ -79,13 +80,11 @@ export default async function ProjectRouteAliasLayout({
       requestUrl,
       projectId,
     )
-    redirect(
-      projectRouteAliasDestination(
+    return <ClientRedirect href={projectRouteAliasDestination(
         aliasResolution.targetProjectId,
         deepLink?.suffix,
         deepLink?.originalSearch,
-      ),
-    )
+      )} />
   }
 
   return <>{children}</>

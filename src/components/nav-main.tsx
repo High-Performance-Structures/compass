@@ -34,6 +34,8 @@ export interface NavLinkItem {
   readonly title: string
   readonly url: string
   readonly icon?: Icon
+  /** Turns the link red with a count, e.g. stale messages for this user. */
+  readonly alert?: { readonly count: number; readonly label: string }
 }
 
 export interface NavGroupItem {
@@ -141,10 +143,16 @@ function NavLink({
     item.title,
     conversationPanel !== null,
   )
+  const alert = item.alert && item.alert.count > 0 ? item.alert : null
   const content = (
     <>
       {item.icon && !nested ? <item.icon className={COLLAPSED_ONLY_ICON} /> : null}
       <span>{item.title}</span>
+      {alert ? (
+        <span className="ml-auto rounded-sm bg-destructive px-1.5 text-xs font-semibold leading-5 text-destructive-foreground tabular-nums group-data-[collapsible=icon]:hidden">
+          {alert.count > 9 ? "9+" : alert.count}
+        </span>
+      ) : null}
     </>
   )
 
@@ -168,9 +176,10 @@ function NavLink({
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
-        tooltip={item.title}
+        tooltip={alert ? `${item.title}: ${alert.label}` : item.title}
         isActive={isActive}
-        aria-label={item.title}
+        aria-label={alert ? `${item.title}, ${alert.label}` : item.title}
+        className={alert ? "text-destructive hover:text-destructive data-[active=true]:text-destructive" : undefined}
       >
         {opensPanel ? (
           <button type="button" onClick={() => conversationPanel?.open()}>

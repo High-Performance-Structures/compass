@@ -33,6 +33,12 @@ export type CompassEmailInput = {
   readonly text: string
   readonly html?: string
   readonly attachments?: readonly CompassEmailAttachment[]
+  /**
+   * Send as this Workspace mailbox (for example a department's shared orders
+   * address) instead of the Compass default. Sent only through Gmail, never
+   * the fallback provider, so replies always reach that mailbox.
+   */
+  readonly sender?: { readonly address: string; readonly name: string | null }
 }
 
 export type CompassEmailDeliveryResult = {
@@ -163,6 +169,7 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
     db: input.db,
     organizationId: input.organizationId,
     scopes: [COMPASS_GMAIL_SEND_SCOPE],
+    sender: input.sender?.address,
   })
   if (!access.success) {
     return {
@@ -173,8 +180,11 @@ async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDelivery
     }
   }
 
-  const from =
-    envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
+  const from = input.sender
+    ? input.sender.name
+      ? `${input.sender.name} <${input.sender.address}>`
+      : input.sender.address
+    : envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
   const raw = base64urlString(
     buildCompassMimeMessage({
       from,
@@ -281,6 +291,7 @@ export async function sendCompassEmail(
   const preferredProvider =
     envString(input.env, "COMPASS_EMAIL_PROVIDER") ?? "gmail"
 
+  if (input.sender) return sendGmail(input)
   if (preferredProvider === "resend") {
     return sendResend(input)
   }

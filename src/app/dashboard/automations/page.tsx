@@ -1,5 +1,4 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import {
   IconAutomation,
   IconBrandGoogleDrive,
@@ -27,8 +26,9 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
-type ScriptStatus = "google-native" | "bridge-candidate" | "retire-later"
+type ScriptStatus = "google-native" | "bridge-candidate" | "retire-later" | "retired"
 
 type AutomationScript = Readonly<{
   name: string
@@ -46,25 +46,24 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
   {
     name: "HPS Project Manager",
     division: "All divisions",
-    status: "bridge-candidate",
+    status: "retired",
     source: "Developer / GoogleIntegration",
     scriptId: "1NzKjO6r_WS5optIHxwGxB5mby3PX0TSHhctU73xZIFtWXXgLueksPN-s",
-    webAppUrl:
-      "https://script.google.com/a/macros/hps-colorado.com/s/AKfycbyeCqsdObrPp91LRmpEHSLZ8xdGerw7ExF2mFSSzYkxGnTrliv9OvHsYOFXicnVC5nQ/exec",
+    webAppUrl: null,
     summary:
-      "Searches clients and projects, creates new project numbers, creates Drive folders, adds subfolders, and updates tracker rows.",
+      "Retired 2026-10-10. Compass project intake now assigns project numbers, creates Drive folders from the department templates, and writes the registry and tracker rows.",
     owns: ["Project intake", "Folder creation", "Tracker updates"],
     compassHandoff: "Posts project create/update records to Compass and stages Sage job review.",
   },
   {
     name: "HPS Project Intake Automation",
     division: "HPS",
-    status: "google-native",
+    status: "retired",
     source: "HPS Projects",
     scriptId: "1lURNLz1gp29Df2kMD8veaSoJQrAB4lNvRX-FtzFcbAwP8HD_vB7lJg8Z",
     webAppUrl: null,
     summary:
-      "Keeps Google intake available while project review moves into Compass.",
+      "Retired 2026-10-10 with the HPS Project Manager. Project intake happens in Compass.",
     owns: ["Form submit trigger", "Intake handoff", "Drive-side setup"],
     compassHandoff: "Ready for /api/google/script-handoff once its trigger payload is confirmed.",
   },
@@ -133,6 +132,8 @@ function statusLabel(status: ScriptStatus): string {
       return "Bridge candidate"
     case "retire-later":
       return "Retire later"
+    case "retired":
+      return "Retired"
   }
 }
 
@@ -143,6 +144,7 @@ function statusVariant(status: ScriptStatus): "default" | "secondary" | "outline
     case "bridge-candidate":
       return "default"
     case "retire-later":
+    case "retired":
       return "outline"
   }
 }
@@ -158,7 +160,7 @@ export default async function AutomationsPage() {
   const canManageAutomations = canManageProjectRegistry(user)
   const developerModeEnabled = await isDeveloperModeEnabled(canManageAutomations)
 
-  if (!developerModeEnabled) redirect("/dashboard")
+  if (!developerModeEnabled) return <ClientRedirect href={"/dashboard"} />
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-3 sm:p-4 lg:p-6">

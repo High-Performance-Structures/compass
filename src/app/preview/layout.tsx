@@ -10,6 +10,8 @@ import { getHelpGuides } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 
 import { Toaster } from "@/components/ui/sonner"
+import { DepartmentProfilesProvider } from "@/components/branding/department-profiles-provider"
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 
 export default async function PreviewLayout({
   children,
@@ -26,12 +28,15 @@ export default async function PreviewLayout({
     .filter((guide) => allowedHelpGuideIds.has(guide.id))
     .map(toHelpGuidePreview)
 
+  const departmentProfiles = await currentDepartmentProfiles()
   return (
+    <DepartmentProfilesProvider profiles={departmentProfiles}>
     <HelpUiProvider guides={helpGuides} canUseJarvis={false}>
       <QuickAddProvider projects={quickAddProjects}>
         {children}
         <Toaster position="bottom-right" />
       </QuickAddProvider>
     </HelpUiProvider>
+    </DepartmentProfilesProvider>
   )
 }

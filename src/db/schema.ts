@@ -743,6 +743,12 @@ export const projects = sqliteTable("projects", {
   clientStatus: text("client_status").notNull().default("customer"),
   jobStatusId: text("job_status_id").notNull().default("current"),
   clientName: text("client_name"),
+  /**
+   * Internal workspaces are not client jobs: "office" for administrative duty
+   * logs (H-Office), "field" for crew work at the yard or generic order help.
+   * Null for every client project.
+   */
+  workspaceKind: text("workspace_kind", { enum: ["office", "field"] }),
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
   netsuiteJobId: text("netsuite_job_id"),
@@ -788,6 +794,8 @@ export const projects = sqliteTable("projects", {
   siteLocatedAt: text("site_located_at"),
   /** Set when the site was placed from a nearby number or the street, e.g. "Near 1062 CR 8952". */
   siteLocationNote: text("site_location_note"),
+  /** Material sales: delivered to the project address, or picked up by the customer. */
+  deliveryMethod: text("delivery_method", { enum: ["delivery", "pickup"] }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [
@@ -1225,10 +1233,26 @@ export const staffMessageRecords = sqliteTable(
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** See STAFF_MESSAGE_STATUSES (migration 0111 adds the CHECK). */
+    status: text("status").notNull().default("new"),
+    statusChangedAt: text("status_changed_at"),
+    /** Last status change, note or reassignment; null means use updated_at. */
+    lastActivityAt: text("last_activity_at"),
+    /** When the assignee was last reminded that this message went stale. */
+    staleRemindedAt: text("stale_reminded_at"),
+    closedAt: text("closed_at"),
+    closedBy: text("closed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
+    index("staff_message_records_org_status_updated_idx").on(
+      table.organizationId,
+      table.status,
+      table.updatedAt
+    ),
     uniqueIndex("staff_message_records_goto_event_unique")
       .on(table.gotoInboundEventId)
       .where(
@@ -1242,6 +1266,34 @@ export const staffMessageRecords = sqliteTable(
       table.assigneeUserId,
       table.createdAt
     ),
+  ]
+)
+
+/** Status changes, notes and reassignments on a Message Desk record. */
+export const staffMessageEvents = sqliteTable(
+  "staff_message_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => staffMessageRecords.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorName: text("actor_name").notNull(),
+    eventType: text("event_type").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    fromAssigneeUserId: text("from_assignee_user_id"),
+    toAssigneeUserId: text("to_assignee_user_id"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("staff_message_events_message_idx").on(table.messageId, table.createdAt),
   ]
 )
 
@@ -1449,6 +1501,40 @@ export const userViewPreferences = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.viewKey] })]
 )
+
+/**
+ * Company-editable settings for a feature (thresholds, timings, defaults),
+ * one JSON value per feature key. Each key is registered with its defaults
+ * and validation in lib/feature-settings.
+ */
+export const organizationFeatureSettings = sqliteTable(
+  "organization_feature_settings",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    featureKey: text("feature_key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [primaryKey({ columns: [table.organizationId, table.featureKey] })]
+)
+
+/**
+ * When a job's follow-up owner was last reminded that it went overdue, so
+ * each overdue stretch sends one reminder (see lib/project-follow-up-reminders).
+ */
+export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
+  remindedAt: text("reminded_at").notNull(),
+})
 
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",

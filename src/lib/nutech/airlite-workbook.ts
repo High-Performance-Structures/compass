@@ -1,16 +1,32 @@
 import type { GoogleSheetValueUpdate } from "@/lib/google/client/sheets-client"
 
+/**
+ * Fills the manufacturer's order form (Fox Blocks "US Level 3 Stocking
+ * Dealer", sheet USLvl3) the way staff fill it by hand. Item rows and the
+ * Misc row are found by reading the form, so a new form revision with
+ * different rows still fills correctly. Quantities and unit costs go in
+ * columns A and I; the form's own formulas compute bundles, line totals,
+ * subtotals and the order total, so those cells are never overwritten.
+ */
+
+const SHEET = "USLvl3"
+
 export type NuTechAirliteOrderLine = {
   readonly manufacturerSku: string
   readonly name: string
   readonly origin: string
-  readonly category: string
   readonly quantity: number
   readonly minimumOrderIncrement: number
   readonly packageLabel: string
   readonly priceUnit: string
-  readonly airliteTemplateRow: number | null
   readonly unitCostCents: number
+}
+
+export type NuTechAirliteFormLayout = {
+  /** Item # (normalized) → sheet row. */
+  readonly itemRows: ReadonlyMap<string, number>
+  /** Row of "Misc Order info"; its note goes in G of that row. */
+  readonly miscRow: number | null
 }
 
 export type NuTechAirliteWorkbookPlan = {
@@ -20,125 +36,164 @@ export type NuTechAirliteWorkbookPlan = {
   readonly addendumValues: ReadonlyArray<ReadonlyArray<unknown>>
 }
 
+export type NuTechAirliteOrderHeader = {
+  /** "1859 Reeves": the PO number and the client's last name. */
+  readonly purchaseOrderLabel: string
+  /** Shown as M/D/YYYY. */
+  readonly purchaseOrderDate: string
+  readonly fulfillment: "delivery" | "pickup"
+  readonly requestedDate: string | null
+  /** e.g. "1000 (CSC Rate)"; deliveries only. */
+  readonly freight: string | null
+  readonly fob: string | null
+  readonly shippingWarehouse: string | null
+  /** Delivery address: street, then city/state/ZIP. */
+  readonly shipToLines: readonly string[]
+  readonly deliveryContact: string | null
+  readonly miscNote: string | null
+}
+
+/** Compares item numbers ignoring case, spaces and hyphens ("Fox Spray Foam" = "FOX-SPRAYFOAM"). */
+export function normalizeAirliteSku(sku: string): string {
+  return sku.toUpperCase().replace(/[^A-Z0-9]/g, "")
+}
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : ""
+}
+
+/** Reads the item rows from the form's values (row 1 first, columns A–J). */
+export function readNuTechAirliteFormLayout(values: ReadonlyArray<ReadonlyArray<unknown>>): NuTechAirliteFormLayout {
+  const headerIndex = values.findIndex((row) => text(row[0]).toLowerCase().startsWith("enter each qty"))
+  if (headerIndex < 0) throw new Error("The order form has no \"Enter Each Qty.\" header row; check the form in Settings.")
+  const itemRows = new Map<string, number>()
+  let miscRow: number | null = null
+  for (let index = headerIndex + 1; index < values.length; index += 1) {
+    const row = values[index] ?? []
+    if (text(row[0]).toLowerCase().startsWith("misc order info")) {
+      miscRow = index + 1
+      break
+    }
+    const sku = text(row[1])
+    // Subtotal and total rows carry a label in G–I and no item number.
+    if (!sku) continue
+    // Some rows name the item in B and put the item number in the description ("Fox-Spraygun").
+    const descriptionSku = /^fox-\S+/i.exec(text(row[3]))?.[0]
+    for (const key of [sku, descriptionSku]) {
+      if (key && !itemRows.has(normalizeAirliteSku(key))) itemRows.set(normalizeAirliteSku(key), index + 1)
+    }
+  }
+  if (itemRows.size === 0) throw new Error("No item rows were found on the order form.")
+  return { itemRows, miscRow }
+}
+
 function cell(range: string, value: unknown): GoogleSheetValueUpdate {
-  return { range: `USLvl3!${range}`, values: [[value]] }
+  return { range: `${SHEET}!${range}`, values: [[value]] }
 }
 
-function lineTotalCents(line: NuTechAirliteOrderLine): number {
-  return line.quantity * line.unitCostCents
+/**
+ * The order's place in the manufacturer PO sequence: the number already
+ * assigned, else one past the last Compass assigned, but never below the
+ * "next number" in Settings (staff raise it when numbers are used elsewhere).
+ * Null when Settings has no starting number and none was ever assigned.
+ */
+export function nextAirlitePoSequence(input: {
+  readonly assigned: number | null
+  readonly lastAssigned: number | null
+  readonly nextSetting: string
+}): number | null {
+  if (input.assigned !== null) return input.assigned
+  const setting = /^\d+$/.test(input.nextSetting.trim()) ? Number(input.nextSetting.trim()) : null
+  const following = input.lastAssigned === null ? null : input.lastAssigned + 1
+  if (setting === null) return following
+  return following === null ? setting : Math.max(setting, following)
 }
 
-function packageCount(line: NuTechAirliteOrderLine): number {
-  return line.quantity / line.minimumOrderIncrement
+/** "N-0-0-1860 Reeves": project number, PO sequence, client last name. */
+export function airlitePurchaseOrderLabel(input: {
+  readonly projectNumber: string | null
+  readonly sequence: number | null
+  readonly fallbackNumber: string
+  readonly clientLastName: string
+}): string {
+  const number =
+    input.sequence === null
+      ? input.fallbackNumber
+      : [input.projectNumber?.trim(), String(input.sequence)].filter(Boolean).join("-")
+  return [number, input.clientLastName].filter(Boolean).join(" ")
+}
+
+export function formatAirliteDate(isoDate: string): string {
+  const [year, month, day] = isoDate.slice(0, 10).split("-")
+  return year && month && day ? `${Number(month)}/${Number(day)}/${year}` : isoDate
 }
 
 export function buildNuTechAirliteWorkbookPlan(input: {
-  readonly purchaseOrderNumber: string
-  readonly purchaseOrderDate: string
-  readonly requestedDeliveryDate: string | null
-  readonly projectName: string
-  readonly jobsiteAddress: string | null
-  readonly orderContactName: string
-  readonly orderContactPhone: string | null
-  readonly orderContactEmail: string
-  readonly deliveryContact: string | null
+  readonly layout: NuTechAirliteFormLayout
+  readonly header: NuTechAirliteOrderHeader
   readonly lines: readonly NuTechAirliteOrderLine[]
 }): NuTechAirliteWorkbookPlan {
+  const { layout, header } = input
   if (input.lines.length === 0) {
     throw new Error("Add at least one Nu-Tech catalog item before generating the Airlite workbook.")
   }
   const invalidLine = input.lines.find(
-    (line) =>
-      !Number.isInteger(line.quantity) ||
-      line.quantity <= 0 ||
-      line.quantity % line.minimumOrderIncrement !== 0
+    (line) => !Number.isInteger(line.quantity) || line.quantity <= 0 || line.quantity % line.minimumOrderIncrement !== 0
   )
   if (invalidLine) {
-    throw new Error(
-      `${invalidLine.manufacturerSku} quantity must be a positive multiple of ${invalidLine.minimumOrderIncrement}.`
-    )
+    throw new Error(`${invalidLine.manufacturerSku} quantity must be a positive multiple of ${invalidLine.minimumOrderIncrement}.`)
   }
-  const mappedLines = input.lines.filter(
-    (line) => line.airliteTemplateRow !== null
-  )
-  const addendumLines = input.lines.filter(
-    (line) => line.airliteTemplateRow === null
-  )
+  const delivery = header.fulfillment === "delivery"
   const updates: GoogleSheetValueUpdate[] = [
-    cell("B7", input.purchaseOrderNumber),
-    cell("B8", input.purchaseOrderDate),
-    cell("H8", input.requestedDeliveryDate ?? ""),
-    cell("H11", input.projectName),
-    cell("H12", input.jobsiteAddress ?? ""),
-    cell("B15", input.orderContactName),
-    cell("B16", input.orderContactPhone ?? ""),
-    cell("B18", input.orderContactEmail),
-    cell("H19", input.deliveryContact ?? ""),
+    cell("B7", header.purchaseOrderLabel),
+    cell("B8", header.purchaseOrderDate),
+    cell("E6", delivery ? (header.freight ?? "") : ""),
+    cell("E7", header.fob ?? ""),
+    cell("E8", delivery ? "Delivery" : "CPU"),
+    // Pickups ask for a ship date; deliveries an arrival date (ASAP when none).
+    cell("I7", delivery ? "" : (header.requestedDate ?? "")),
+    cell("I8", delivery ? (header.requestedDate ?? "ASAP") : ""),
+    cell("I9", header.shippingWarehouse ?? ""),
+    cell("G13", delivery ? (header.shipToLines[0] ?? "") : ""),
+    cell("G14", delivery ? header.shipToLines.slice(1).join(", ") : ""),
+    cell("I19", delivery ? (header.deliveryContact ?? "") : `CPU ${header.deliveryContact ?? ""}`.trim()),
   ]
-  for (const line of mappedLines) {
-    const row = line.airliteTemplateRow
-    if (row === null) continue
-    updates.push(
-      cell(`A${row}`, line.quantity),
-      cell(`H${row}`, packageCount(line)),
-      cell(`I${row}`, line.unitCostCents / 100),
-      cell(`J${row}`, lineTotalCents(line) / 100)
-    )
+
+  const ordered = new Map<number, NuTechAirliteOrderLine>()
+  const addendumLines: NuTechAirliteOrderLine[] = []
+  for (const line of input.lines) {
+    const row = layout.itemRows.get(normalizeAirliteSku(line.manufacturerSku))
+    if (row === undefined || ordered.has(row)) addendumLines.push(line)
+    else ordered.set(row, line)
   }
-  const blockLines = mappedLines.filter((line) => line.category === "block")
-  const accessoryLines = mappedLines.filter((line) => line.category !== "block")
-  const totalQuantity = input.lines.reduce((sum, line) => sum + line.quantity, 0)
-  const totalPackages = input.lines.reduce(
-    (sum, line) => sum + packageCount(line),
-    0
-  )
-  const totalCostCents = input.lines.reduce(
-    (sum, line) => sum + lineTotalCents(line),
-    0
-  )
-  updates.push(
-    cell("A68", blockLines.reduce((sum, line) => sum + line.quantity, 0)),
-    cell("H68", blockLines.reduce((sum, line) => sum + packageCount(line), 0)),
-    cell(
-      "J68",
-      blockLines.reduce((sum, line) => sum + lineTotalCents(line), 0) / 100
-    ),
-    cell("A85", accessoryLines.reduce((sum, line) => sum + line.quantity, 0)),
-    cell(
-      "H85",
-      accessoryLines.reduce((sum, line) => sum + packageCount(line), 0)
-    ),
-    cell(
-      "J85",
-      accessoryLines.reduce((sum, line) => sum + lineTotalCents(line), 0) / 100
-    ),
-    cell("A87", totalQuantity),
-    cell("H87", totalPackages),
-    cell("J87", totalCostCents / 100),
-    cell(
-      "A94",
-      addendumLines.length === 0
-        ? ""
-        : "See the Compass Addendum tab for products not listed on this manufacturer form. Addendum items are included in Order Sub-total."
-    )
-  )
+  // Every item row is written, so a form copied from an earlier PO starts clean.
+  for (const row of layout.itemRows.values()) {
+    const line = ordered.get(row)
+    updates.push(cell(`A${row}`, line ? line.quantity : ""))
+    if (line) updates.push(cell(`I${row}`, line.unitCostCents / 100))
+  }
+
+  const lineTotal = (line: NuTechAirliteOrderLine): number => line.quantity * line.unitCostCents
+  const totalCostCents = input.lines.reduce((sum, line) => sum + lineTotal(line), 0)
+  const addendumCents = addendumLines.reduce((sum, line) => sum + lineTotal(line), 0)
+  const notes = [
+    header.miscNote,
+    addendumLines.length > 0
+      ? `Also ordering ${addendumLines.length} item(s) not on this form, listed on the Compass Addendum tab ($${(addendumCents / 100).toFixed(2)}, not in the totals above).`
+      : null,
+  ].filter((note): note is string => Boolean(note))
+  if (layout.miscRow !== null) updates.push(cell(`G${layout.miscRow}`, notes.join(" ")))
+  // The signature date beside the customer signature line.
+  if (layout.miscRow !== null) updates.push(cell(`I${layout.miscRow + 2}`, header.purchaseOrderDate))
+
   const addendumValues: ReadonlyArray<ReadonlyArray<unknown>> =
     addendumLines.length === 0
       ? []
       : [
           ["Compass Airlite Order Addendum"],
-          [input.purchaseOrderNumber, input.projectName, input.purchaseOrderDate],
-          ["Items below are included in the USLvl3 Order Sub-total."],
-          [
-            "SKU",
-            "Product",
-            "Origin",
-            "Quantity",
-            "Price unit",
-            "Package",
-            "Airlite unit cost",
-            "Line total",
-          ],
+          [header.purchaseOrderLabel, header.purchaseOrderDate],
+          ["Items not listed on the USLvl3 form."],
+          ["SKU", "Product", "Origin", "Quantity", "Price unit", "Package", "Airlite unit cost", "Line total"],
           ...addendumLines.map((line) => [
             line.manufacturerSku,
             line.name,
@@ -147,18 +202,10 @@ export function buildNuTechAirliteWorkbookPlan(input: {
             line.priceUnit,
             line.packageLabel,
             line.unitCostCents / 100,
-            lineTotalCents(line) / 100,
+            lineTotal(line) / 100,
           ]),
           [],
-          ["Addendum total", "", "", "", "", "", "", addendumLines.reduce(
-            (sum, line) => sum + lineTotalCents(line),
-            0
-          ) / 100],
+          ["Addendum total", "", "", "", "", "", "", addendumCents / 100],
         ]
-  return {
-    updates,
-    addendumItemCount: addendumLines.length,
-    totalCostCents,
-    addendumValues,
-  }
+  return { updates, addendumItemCount: addendumLines.length, totalCostCents, addendumValues }
 }

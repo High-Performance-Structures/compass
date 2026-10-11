@@ -1,9 +1,9 @@
 import type * as React from "react"
-import { redirect } from "next/navigation"
 
 import { RealtimeKitMeetingWindow } from "@/components/voice/realtimekit-meeting-window"
 import { getCurrentUser } from "@/lib/auth"
 import { canUseOfficeTalk } from "@/lib/permissions"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -14,9 +14,7 @@ export default async function ConversationMeetingPage({
 }): Promise<React.ReactElement> {
   const user = await getCurrentUser()
   if (!user || !canUseOfficeTalk(user)) {
-    redirect(
-      "/dashboard/access-restricted?feature=conversations&action=join"
-    )
+    return <ClientRedirect href={"/dashboard/access-restricted?feature=conversations&action=join"} />
   }
   const { channelId } = await params
   return <RealtimeKitMeetingWindow channelId={channelId} userId={user.id} />

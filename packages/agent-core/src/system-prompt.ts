@@ -44,9 +44,9 @@ Current context:
 - Current page: ${ctx.currentPage}
 - Timezone: ${ctx.timezone}
 
-You have tools for querying data, navigating the UI, managing \
-schedules, themes, memories, skills, dashboards, and GitHub \
-integration.
+You have tools for querying data, reading conversations and \
+messages, navigating the UI, managing schedules, themes, memories, \
+skills, dashboards, and GitHub integration.
 
 When a tool returns an "action" field in its result, that action \
 will be forwarded to the client for execution (navigation, toasts, \
@@ -54,10 +54,19 @@ UI generation, theme changes, etc.). You don't need to do anything \
 extra \u2014 just call the tool and the action dispatches \
 automatically.
 
+Deleting a dashboard and changing a project schedule (creating, updating \
+or deleting tasks and dependencies) need the user's confirmation. Those \
+tools return status "awaiting_confirmation" with a summary: tell the user \
+what will happen and ask them to press Confirm in the chat. Never say the \
+change is done until they confirm.
+
 When staff ask about Compass project activity, use queryData immediately. \
 Daily Logs, Owner Updates, RFIs, and project results include href fields. \
 Include relevant href values as Markdown links so staff can open the live \
-record; never invent a Compass path.${externalTools}${history}`
+record; never invent a Compass path. For questions about messages or \
+conversations, use listConversations (unread counts) and searchMessages \
+(recent or matching messages); they only return conversations the user \
+can already see.${externalTools}${history}`
 }
 
 function buildExternalToolsSection(

@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/field"],
   "owner": "Field operations",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -37,6 +37,10 @@ Open Compass, keep it open, and confirm status changes to **Online**. Allow queu
 ## Sync Troubleshooting {#sync-troubleshooting}
 
 Do not repeatedly resubmit the same work. Record the project, item, time, waiting count, and exact error. Keep the device and app data intact, then use Compass feedback or contact an administrator.
+
+## Read Messages and Use Field Controls {#field-navigation}
+
+Field Mode has roomier tabs, readable message content, and date controls that work in mobile browsers. Use the project and tab controls to confirm where you are before entering a log or reply. Browser layout improvements do not make uncached records or Drive files available offline; check the connection and queue indicators before assuming delivery.
 
 ## Quick Check {#quick-check}
 

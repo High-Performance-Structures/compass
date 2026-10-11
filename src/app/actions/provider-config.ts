@@ -7,7 +7,7 @@ import { getDb } from "@/db"
 import { userProviderConfig } from "@/db/schema-ai-config"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
-import { encrypt, decrypt } from "@/lib/crypto"
+import { encrypt } from "@/lib/crypto"
 import { isDemoUser } from "@/lib/demo"
 
 // --- constants ---
@@ -22,13 +22,6 @@ interface ProviderConfigData {
   readonly baseUrl: string | null
   readonly modelOverrides: Record<string, string> | null
   readonly isActive: boolean
-}
-
-interface ProviderConfigForJwt {
-  readonly type: string
-  readonly apiKey: string | null
-  readonly baseUrl: string | null
-  readonly modelOverrides: Record<string, string> | null
 }
 
 // --- actions ---
@@ -88,69 +81,6 @@ export async function getUserProviderConfig(): Promise<
           ? err.message
           : "Failed to get provider config",
     }
-  }
-}
-
-export async function getProviderConfigForJwt(
-  userId: string
-): Promise<ProviderConfigForJwt | null> {
-  try {
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    const config = await db
-      .select()
-      .from(userProviderConfig)
-      .where(eq(userProviderConfig.userId, userId))
-      .get()
-
-    if (!config || config.isActive !== 1) {
-      return null
-    }
-
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
-
-    let decryptedApiKey: string | null = null
-    if (config.apiKey) {
-      if (!encryptionKey) {
-        // Can't decrypt, but still return the config without a key
-        decryptedApiKey = null
-      } else {
-        try {
-          decryptedApiKey = await decrypt(
-            config.apiKey,
-            encryptionKey,
-            userId
-          )
-        } catch (err) {
-          console.error("Failed to decrypt API key:", err)
-          decryptedApiKey = null
-        }
-      }
-    }
-
-    let modelOverrides: Record<string, string> | null = null
-    if (config.modelOverrides) {
-      try {
-        modelOverrides = JSON.parse(
-          config.modelOverrides
-        ) as Record<string, string>
-      } catch {
-        modelOverrides = null
-      }
-    }
-
-    return {
-      type: config.providerType,
-      apiKey: decryptedApiKey,
-      baseUrl: config.baseUrl,
-      modelOverrides,
-    }
-  } catch (err) {
-    console.error("Failed to get provider config for JWT:", err)
-    return null
   }
 }
 

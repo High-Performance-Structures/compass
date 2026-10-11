@@ -90,6 +90,44 @@ describe("runOpenAIAgent", () => {
     expect(body).not.toHaveProperty("reasoning_effort")
   })
 
+  it("attaches screenshots to the latest user message only", async () => {
+    const fetchImpl: FetchMock = vi.fn(async () =>
+      sseResponse([{ choices: [{ delta: { content: "I see the schedule." }, finish_reason: "stop" }] }]),
+    )
+
+    await collect(
+      runOpenAIAgent({
+        apiKey: "sk-test",
+        model: "gpt-test",
+        systemPrompt: "",
+        messages: [
+          { role: "user", content: "Earlier question" },
+          { role: "assistant", content: "Earlier answer" },
+          { role: "user", content: "What is wrong on this screen?" },
+        ],
+        images: [{ mediaType: "image/png", base64: "iVBORw0KGgo=" }],
+        registry: createToolRegistry([], undefined),
+        maxTurns: 5,
+        fetchImpl,
+      }),
+    )
+
+    expect(sentBody(fetchImpl, 0)).toMatchObject({
+      messages: [
+        { role: "system" },
+        { role: "user", content: "Earlier question" },
+        { role: "assistant", content: "Earlier answer" },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What is wrong on this screen?" },
+            { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } },
+          ],
+        },
+      ],
+    })
+  })
+
   it("sends reasoning_effort when one is configured", async () => {
     const fetchImpl: FetchMock = vi.fn(async () =>
       sseResponse([{ choices: [{ delta: { content: "Hi" }, finish_reason: "stop" }] }]),

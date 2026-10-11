@@ -5,7 +5,7 @@
  */
 
 import { getCurrentUser } from "@/lib/auth"
-import { getProviderConfigForJwt } from "@/app/actions/provider-config"
+import { getProviderConfigForJwt } from "@/lib/agent/provider-config"
 import { getOAuthAccessToken } from "@/app/actions/anthropic-oauth"
 import { generateAgentToken } from "@/lib/agent/api-auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -33,7 +33,6 @@ import {
   createClientManager,
 } from "agent-core"
 import type {
-  DataSource,
   ProviderConfig,
   McpServerConfig,
 } from "agent-core"
@@ -51,7 +50,14 @@ import {
   resolveJarvisHelpContext,
 } from "@/lib/help/jarvis-context"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { resolveCurrentProjectContext } from "@/lib/agent/current-project-context"
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
+import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
+import {
+  describePendingAction,
+  requiresConfirmation,
+  signPendingAction,
+} from "@/lib/agent/pending-actions"
 
 const visualAttachmentSchema = z
   .object({
@@ -196,15 +202,12 @@ export async function POST(
     return createAgentRelayResponse(relayResult.content)
   }
 
-  if (body.visuals.length > 0) {
-    return Response.json(
-      {
-        error:
-          "Jarvis can't read screenshots yet. Describe what you're seeing instead.",
-      },
-      { status: 503 },
-    )
-  }
+  // Screenshots go to the model as images on the latest message. The schema
+  // above already limited them to two well-formed data URLs.
+  const images = body.visuals.map((visual) => ({
+    mediaType: visual.mediaType,
+    base64: visual.dataUrl.slice(`data:${visual.mediaType};base64,`.length),
+  }))
 
   const activeAgentConfig = await db
     .select({ modelId: agentConfig.modelId })
@@ -283,38 +286,25 @@ export async function POST(
     false
   )
 
-  const baseUrl =
-    envRecord.COMPASS_API_BASE_URL ??
-    request.headers.get("origin") ??
-    ""
-
-  const dataSource: DataSource = {
-    async fetch(
-      path: string,
-      fetchBody?: unknown
-    ): Promise<unknown> {
-      const res = await fetch(`${baseUrl}${path}`, {
-        method: fetchBody ? "POST" : "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: fetchBody
-          ? JSON.stringify(fetchBody)
-          : undefined,
-      })
-      if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ error: res.statusText }))
-        const errObj = err as { error?: string }
-        throw new Error(
-          errObj.error ?? `API error ${res.status}`
-        )
+  // Deletions and shared schedule changes wait for the user to press Confirm
+  // in the chat; the agent gets a pending action instead of a result.
+  const organizationId = user.organizationId ?? ""
+  const dataSource = createInProcessDataSource(token, {
+    intercept: async (path, body) => {
+      if (!requiresConfirmation(path, body)) return undefined
+      const pending = { userId: user.id, organizationId, path, body }
+      return {
+        action: "confirm",
+        status: "awaiting_confirmation",
+        summary: await describePendingAction(db, pending),
+        confirmationToken: await signPendingAction(agentSecret, pending),
+        message:
+          "Not done yet. The user must press Confirm in the chat to carry " +
+          "this out. Tell them what will happen and ask them to confirm; " +
+          "do not say it is done.",
       }
-      return res.json()
     },
-  }
+  })
 
   // Set up MCP-based tool routing
   const compassServer = createCompassServer(dataSource)
@@ -395,9 +385,18 @@ export async function POST(
         ? externalMcpTools
         : undefined,
   })
-  const systemPrompt = helpContext
-    ? `${baseSystemPrompt}\n\n${helpContext.prompt}`
-    : baseSystemPrompt
+  const currentProjectContext = await resolveCurrentProjectContext(
+    db,
+    user,
+    currentPage
+  )
+  const systemPrompt = [
+    baseSystemPrompt,
+    currentProjectContext,
+    helpContext?.prompt,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n")
 
   const isOAuth =
     provider.apiKey?.startsWith("sk-ant-oat") ?? false
@@ -419,6 +418,7 @@ export async function POST(
     model: resolvedModel,
     systemPrompt,
     messages: msgs,
+    images,
     mcpClientManager: manager,
     isOAuth,
   })

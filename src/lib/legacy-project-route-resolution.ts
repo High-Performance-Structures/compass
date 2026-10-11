@@ -25,9 +25,20 @@ type LegacyProjectRouteSearchParams = Readonly<{
  * Keeping this boundary at the root avoids reconciling the dashboard layout
  * with a transient resolver child during a client-side navigation.
  */
+/** Redirects a legacy project route to its current destination. */
 export async function resolveLegacyProjectRoute(
   searchParams: LegacyProjectRouteSearchParams,
 ): Promise<never> {
+  redirect(await legacyProjectRouteDestination(searchParams))
+}
+
+/**
+ * Where a legacy project route should go. Dashboard pages send the browser
+ * there with `<ClientRedirect>`; see that component for why.
+ */
+export async function legacyProjectRouteDestination(
+  searchParams: LegacyProjectRouteSearchParams,
+): Promise<string> {
   const sourceProjectId = scalarLegacyRouteSearchParam(
     searchParams.sourceProjectId,
   )
@@ -80,16 +91,14 @@ export async function resolveLegacyProjectRoute(
 
   if (aliasResolution.kind === "resolved") {
     if (!hasTargetAccess) notFound()
-    redirect(
-      projectRouteAliasDestination(
-        aliasResolution.targetProjectId,
-        suffix,
-        originalSearch,
-      ),
+    return projectRouteAliasDestination(
+      aliasResolution.targetProjectId,
+      suffix,
+      originalSearch,
     )
   }
 
   // Existing, unconsolidated Buildertrend leads continue through their
   // original project route. The marker prevents a resolver loop.
-  redirect(fallbackPathname)
+  return fallbackPathname
 }

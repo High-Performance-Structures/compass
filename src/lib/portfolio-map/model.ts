@@ -3,6 +3,7 @@ import zipsData from "./colorado-zips.json"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/project-profile"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
 export const PORTFOLIO_PHASES = [
   { id: "intake", label: "Intake", short: "INT" },
@@ -23,6 +24,8 @@ export type PortfolioMapJob = {
   readonly name: string
   readonly projectNumber: string | null
   readonly phase: PortfolioPhaseId
+  /** The job's status id, so a status can be changed from the map. */
+  readonly jobStatusId: string | null
   readonly statusLabel: string
   readonly town: string | null
   readonly lon: number | null
@@ -35,6 +38,19 @@ export type PortfolioMapJob = {
   readonly nextTaskStart: string | null
   readonly health: PortfolioHealth
   readonly visibility: PortfolioMapVisibility
+  /** Client follow-up aging; null when the status isn't followed up or the viewer isn't office staff. */
+  readonly followUp: ProjectFollowUpSignal | null
+}
+
+/**
+ * The flag over a map marker: the worse of schedule health (construction)
+ * and client follow-up aging. Red is past due or overdue; amber is at risk
+ * or follow-up due.
+ */
+export function portfolioMarkerAlert(job: PortfolioMapJob): "late" | "risk" | null {
+  if (job.health === "late" || job.followUp?.level === "overdue") return "late"
+  if (job.health === "risk" || job.followUp?.level === "due") return "risk"
+  return null
 }
 
 /**
@@ -52,6 +68,8 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   budget_estimate_sent: "estimating",
   estimating: "estimating",
   estimate_sent: "estimating",
+  awaiting_response: "estimating",
+  follow_up: "estimating",
   takeoff: "estimating",
   design_proposal: "design",
   design_proposal_sent: "design",
@@ -75,6 +93,14 @@ const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
   current: "construction",
   punchlist: "closeout",
   under_warranty: "closeout",
+}
+
+/**
+ * The built-in statuses of each phase, in workflow order, for moving a job to
+ * another status from the map. Custom statuses are changed on the job page.
+ */
+export function portfolioPhaseStatuses(phase: PortfolioPhaseId): readonly string[] {
+  return Object.entries(PHASE_BY_JOB_STATUS).flatMap(([status, statusPhase]) => (statusPhase === phase ? [status] : []))
 }
 
 /**
@@ -277,10 +303,10 @@ export function portfolioHealth(pastDueCount: number, stalledCount: number): Por
  * Jobs in the same town would stack on one point; fan them out on a small
  * ring (about 3 km) in a stable order.
  */
-export function spreadSharedTowns(
-  jobs: readonly PortfolioMapJob[],
-): readonly PortfolioMapJob[] {
-  const byTown = new Map<string, PortfolioMapJob[]>()
+export function spreadSharedTowns<
+  T extends { readonly id: string; readonly town: string | null; readonly lon: number | null; readonly lat: number | null },
+>(jobs: readonly T[]): readonly T[] {
+  const byTown = new Map<string, T[]>()
   for (const job of jobs) {
     if (job.lon === null || job.lat === null || job.town === null) continue
     const group = byTown.get(job.town) ?? []

@@ -10,6 +10,12 @@ export const HELP_REVIEW_MAX_AGE_DAYS = 180
  */
 export const MONITORED_HELP_WORKFLOW_ROUTES: readonly string[] = [
   "/dashboard/cards",
+  "/dashboard/settings",
+  "/dashboard/nutech/catalog",
+  "/dashboard/projects/[id]/nutech",
+  "/dashboard/projects/[id]/social",
+  "/dashboard/projects/[id]/messages",
+  "/dashboard/office-maintenance/message-desk",
   "/dashboard/projects",
   "/dashboard/projects/[id]/contacts",
   "/dashboard/projects/[id]/daily-logs",

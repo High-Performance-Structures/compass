@@ -4,7 +4,7 @@ import { SignJWT } from "jose"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
-import { getProviderConfigForJwt } from "./provider-config"
+import { getProviderConfigForJwt } from "@/lib/agent/provider-config"
 
 const ORG_DEFAULT_USER_ID = "org_default"
 
@@ -35,12 +35,21 @@ export async function getAgentToken(): Promise<
       providerConfig = await getProviderConfigForJwt(ORG_DEFAULT_USER_ID)
     }
 
+    // This token is returned to the browser, and a JWT payload is readable by
+    // anyone holding it, so the provider's API key must never be included.
+    // A standalone agent server supplies its own provider key.
     const token = await new SignJWT({
       sub: user.id,
       orgId: user.organizationId,
       role: user.role,
       isDemoUser: isDemoUser(user.id),
-      provider: providerConfig ?? undefined,
+      provider: providerConfig
+        ? {
+            type: providerConfig.type,
+            baseUrl: providerConfig.baseUrl,
+            modelOverrides: providerConfig.modelOverrides,
+          }
+        : undefined,
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()

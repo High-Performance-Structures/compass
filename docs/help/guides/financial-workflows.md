@@ -7,12 +7,12 @@
   "summary": "Understand estimates, budgets, G703 views, pay applications, and Sage synchronization.",
   "contextSummary": "Compass supports operational review and controlled handoff. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "budget", "G703", "pay applications", "Sage", "sync", "accounting"],
+  "tags": ["estimates", "assemblies", "customer report", "cost breakdown", "rate book", "accepted rates", "budget", "G703", "pay applications", "Sage", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
-  "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials"],
+  "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-09-30"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -65,6 +65,18 @@ Only authorized staff should queue Sage writes. Confirm identity, mapping, amoun
 ## Sage Unavailable {#sage-unavailable}
 
 Continue preparing permitted operational records in Compass, leave them in a non-posted state, record what happened during the outage, and reconcile the queue after service returns. Compass should support continuity without becoming a conflicting ledger.
+
+## Use the Accepted Rate Book {#rate-book}
+
+Open **Settings → Rate book** to review accepted labor, equipment, material, and other rates. Authorized staff can add and edit entries, set their status, and inspect the history of prior values. Review the unit, cost, markup, cost code, fuel assumptions when present, and change note. Retire a rate that should no longer be selected. Deletion requires confirmation; a rate already used is retained through retirement rather than losing its history.
+
+In an estimate's cost breakdown, use **From rate book** to fill a cost-code entry, then check quantity, unit, markup, tax, and coding before saving. The estimate keeps the selected rate version. A later rate-book edit does not silently reprice it: **Review new rate** lets you inspect and apply a newer value to editable work. Locked estimates still require the normal revision workflow.
+
+## Customize Report Phases and Duplicate Estimates {#estimate-phases}
+
+Use **Work on → Group descriptions & report phases** to customize client report phase names and grouping across departments. Keep report grouping separate from the division and cost-code identities used for accounting.
+
+**Duplicate estimate** can copy an estimate into another activated project phase in the same family. Confirm the destination project and version before copying, then review its quantities, rates, tax, descriptions, and terms before sharing. A copied estimate is a new working record, not approval or Sage posting.
 
 ## Quick Check {#quick-check}
 

@@ -95,3 +95,76 @@ export async function markCorrespondenceNotificationsRead(
 ): Promise<void> {
   await markSourceNotificationsRead(db, userId, "project_correspondence", messageIds)
 }
+
+/**
+ * Someone followed up on these Message Desk records, so they are no longer
+ * stale: clear the stale reminders for everyone who received them (which also
+ * turns the bell back from red).
+ */
+export async function clearStaleMessageReminders(
+  db: Db,
+  messageIds: readonly string[],
+): Promise<void> {
+  const now = new Date().toISOString()
+  for (let start = 0; start < messageIds.length; start += ID_CHUNK) {
+    const chunk = messageIds.slice(start, start + ID_CHUNK)
+    if (chunk.length === 0) continue
+    await db
+      .update(notificationRecipients)
+      .set({ readAt: now })
+      .where(
+        and(
+          isNull(notificationRecipients.readAt),
+          inArray(
+            notificationRecipients.eventId,
+            db
+              .select({ id: notificationEvents.id })
+              .from(notificationEvents)
+              .where(
+                and(
+                  eq(notificationEvents.sourceType, "staff_message_record"),
+                  eq(notificationEvents.eventType, "staff_message.stale"),
+                  inArray(notificationEvents.sourceId, [...chunk]),
+                ),
+              ),
+          ),
+        ),
+      )
+  }
+}
+
+/**
+ * A client contact was logged on these jobs, so their follow-up is no longer
+ * overdue: clear the overdue reminders for everyone who received them.
+ */
+export async function clearOverdueFollowUpReminders(
+  db: Db,
+  projectIds: readonly string[],
+): Promise<void> {
+  const now = new Date().toISOString()
+  for (let start = 0; start < projectIds.length; start += ID_CHUNK) {
+    const chunk = projectIds.slice(start, start + ID_CHUNK)
+    if (chunk.length === 0) continue
+    await db
+      .update(notificationRecipients)
+      .set({ readAt: now })
+      .where(
+        and(
+          isNull(notificationRecipients.readAt),
+          inArray(
+            notificationRecipients.eventId,
+            db
+              .select({ id: notificationEvents.id })
+              .from(notificationEvents)
+              .where(
+                and(
+                  eq(notificationEvents.sourceType, "project"),
+                  eq(notificationEvents.eventType, "project.follow_up_overdue"),
+                  inArray(notificationEvents.sourceId, [...chunk]),
+                ),
+              ),
+          ),
+        ),
+      )
+  }
+}

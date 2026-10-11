@@ -1,6 +1,5 @@
 import type * as React from "react"
 import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
 
 import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
@@ -14,6 +13,7 @@ import { DashboardLaunchpad } from "@/components/dashboard/dashboard-launchpad"
 import type { DashboardOfficeEvent } from "@/components/dashboard/dashboard-launchpad"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import { getPortfolioMapData } from "@/lib/portfolio-map/load"
+import { getSalesPipelines } from "@/lib/sales-pipeline/load"
 import {
   projectAudienceActiveProjectCookieName,
   resolveProjectAudienceActiveProject,
@@ -22,6 +22,7 @@ import {
   canPrepareGreetingCards,
   canManageProjectRegistry,
 } from "@/lib/permissions"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function Page(): Promise<React.ReactElement> {
   const currentUser = await getCurrentUser()
@@ -46,9 +47,7 @@ export default async function Page(): Promise<React.ReactElement> {
         ?.value ?? null
     )
     if (projectId) {
-      redirect(
-        `/preview/projects/${encodeURIComponent(projectId)}/${audience}`
-      )
+      return <ClientRedirect href={`/preview/projects/${encodeURIComponent(projectId)}/${audience}`} />
     }
   }
 
@@ -59,6 +58,7 @@ export default async function Page(): Promise<React.ReactElement> {
     workCalendar,
     cherishResult,
     portfolio,
+    salesPipelines,
   ] = await Promise.all([
     getDashboardOverview(),
     getCurrentUserPresence(),
@@ -66,6 +66,7 @@ export default async function Page(): Promise<React.ReactElement> {
     getWorkCalendar(undefined, { eventsOnly: true }).catch(() => null),
     getActiveCherishStories(),
     getPortfolioMapData(),
+    getSalesPipelines(),
   ])
   const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
   const initialDeskStatusMessage = presenceResult.success
@@ -102,6 +103,7 @@ export default async function Page(): Promise<React.ReactElement> {
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
       canPrepareGreetingCards={canPrepareGreetingCards(currentUser)}
       portfolio={portfolio}
+      salesPipelines={salesPipelines}
       cherishRecognitions={
         cherishResult.success
           ? cherishResult.data

@@ -1,5 +1,6 @@
 "use client"
 
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import * as React from "react"
 import { IconPrinter } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
@@ -29,9 +30,11 @@ export function ProjectPortalPrintButton({
 }): React.ReactElement {
   const [pending, setPending] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const departmentProfiles = useDepartmentProfiles()
   const logoSrc = projectBrandFor({
     projectId: project.id,
     projectNumber: project.projectNumber,
+    profiles: departmentProfiles,
   }).logoSrc
   React.useEffect(() => {
     const logo = new window.Image()
@@ -45,7 +48,7 @@ export function ProjectPortalPrintButton({
     const root = document.createElement("article")
     root.dataset.selectionPrintRoot = "true"
     root.className = "selection-printable portal-report-printable hidden"
-    root.innerHTML = portalReportHtml(project, report, roomSheets)
+    root.innerHTML = portalReportHtml(project, report, roomSheets, undefined, departmentProfiles)
     document.body.appendChild(root)
     document.body.classList.add("selection-printing-selected")
     let timer: number | undefined

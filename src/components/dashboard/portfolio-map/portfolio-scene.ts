@@ -27,7 +27,7 @@ import {
   WebGLRenderer,
   type Object3D,
 } from "three"
-import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
+import { portfolioMarkerAlert, type PortfolioMapJob, type PortfolioPhaseId } from "@/lib/portfolio-map/model"
 import type { MessageStacks } from "@/lib/notifications/message-stacks"
 import {
   buildMessageStacks,
@@ -56,6 +56,8 @@ export type SceneLabel = {
 
 export type SceneJobColors = {
   readonly phase: Readonly<Record<PortfolioPhaseId, number>>
+  /** Per-job colors that replace the phase color (the sales pipeline's stages). */
+  readonly byJobId?: ReadonlyMap<string, number>
   readonly risk: number
   readonly late: number
 }
@@ -489,7 +491,10 @@ export class PortfolioScene {
       const height = building ? 0.25 + ((job.progress ?? 0) / 100) * 1.2 : 0.06
       const width = building ? 0.17 : 0.3
       const geometry = new BoxGeometry(width, height, width)
-      const material = new MeshLambertMaterial({ color: colors.phase[job.phase], transparent: true })
+      const material = new MeshLambertMaterial({
+        color: colors.byJobId?.get(job.id) ?? colors.phase[job.phase],
+        transparent: true,
+      })
       const mesh = new Mesh(geometry, material)
       mesh.position.set(xz[0], ground + height / 2 + 0.01, xz[1])
       mesh.userData.jobId = job.id
@@ -501,9 +506,10 @@ export class PortfolioScene {
       this.jobObjects.push(mesh)
       let flag: Mesh | null = null
       let flagMaterial: MeshBasicMaterial | null = null
-      if (job.health !== "ok") {
+      const alert = portfolioMarkerAlert(job)
+      if (alert) {
         flagMaterial = new MeshBasicMaterial({
-          color: job.health === "late" ? colors.late : colors.risk,
+          color: alert === "late" ? colors.late : colors.risk,
           transparent: true,
         })
         flag = new Mesh(new OctahedronGeometry(0.06), flagMaterial)

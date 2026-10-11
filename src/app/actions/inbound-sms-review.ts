@@ -484,8 +484,48 @@ export async function dismissInboundSms(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/activity")
 }
 
+export type TrashInboundSmsResult =
+  | { readonly success: true }
+  | {
+      readonly success: false
+      readonly error: string
+      /** GoTo refused because the connection lacks delete permission. */
+      readonly gotoPermissionMissing: boolean
+    }
+
+/** True when GoTo rejected the call for missing OAuth scope or token. */
+function isGotoPermissionError(detail: string): boolean {
+  return /AUTHZ_INSUFFICIENT_SCOPE|insufficient to perform/i.test(detail)
+}
+
 export async function trashInboundSms(formData: FormData): Promise<void> {
-  const eventId = requiredFormString(formData, "eventId")
+  const result = await trashInboundSmsEvent(requiredFormString(formData, "eventId"))
+  if (!result.success) throw new Error(result.error)
+}
+
+/**
+ * Deletes the sender's whole GoTo conversation and marks its pending texts as
+ * spam. Returns why it failed instead of throwing, so the button can explain
+ * it (for example, when the GoTo connection isn't allowed to delete).
+ */
+export async function trashInboundSmsEvent(eventId: string): Promise<TrashInboundSmsResult> {
+  try {
+    await trashInboundSmsOrThrow(eventId)
+    return { success: true }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unable to delete the conversation."
+    if (isGotoPermissionError(detail)) {
+      return {
+        success: false,
+        gotoPermissionMissing: true,
+        error: "GoTo didn't allow Compass to delete this conversation. The GoTo connection doesn't have permission to delete texts yet.",
+      }
+    }
+    return { success: false, gotoPermissionMissing: false, error: detail }
+  }
+}
+
+async function trashInboundSmsOrThrow(eventId: string): Promise<void> {
   const { db, env, organizationId, user } = await reviewContext()
   const event = await db
     .select()

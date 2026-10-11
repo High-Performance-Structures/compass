@@ -1,7 +1,21 @@
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+
+// The in-process data source imports every Compass API route; stub them so
+// this test only checks which paths it serves.
+vi.mock("server-only", () => ({}))
+vi.mock("@/app/api/compass/dashboards/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/github/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/memory/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/messages/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/query/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/schedule/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/skills/route", () => ({ POST: vi.fn() }))
+vi.mock("@/app/api/compass/themes/route", () => ({ POST: vi.fn() }))
+
 import { createTools } from "agent-core"
+import { AGENT_TOOL_ROUTES } from "@/lib/agent/in-process-data-source"
 
 // Minimal valid input for tools whose schemas have required fields. Tools
 // not listed here accept an empty object.
@@ -21,6 +35,7 @@ const SAMPLE_INPUT: Readonly<Record<string, unknown>> = {
   editTheme: { themeId: "theme-1" },
   rememberContext: { content: "Prefers weekly summaries", memoryType: "preference" },
   recallMemory: { query: "summaries" },
+  recallConversations: {},
   installSkill: { source: "owner/repo/skill" },
   toggleInstalledSkill: { pluginId: "skill-1", enabled: true },
   uninstallSkill: { pluginId: "skill-1" },
@@ -90,6 +105,8 @@ describe("built-in agent tools", () => {
     for (const call of calls) {
       const source = routeSource(call.path)
       expect(source, `${call.tool} calls missing route ${call.path}`).not.toBeNull()
+      // Production runs tool calls in-process, so the path also needs a handler.
+      expect(AGENT_TOOL_ROUTES.has(call.path), `${call.tool}: no in-process handler for ${call.path}`).toBe(true)
 
       // Every route except the query endpoint dispatches on body.action.
       if (call.path === "/api/compass/query") continue

@@ -1,5 +1,4 @@
 import type * as React from "react"
-import { redirect } from "next/navigation"
 import { IconMail } from "@tabler/icons-react"
 
 import { getGreetingCardRequests } from "@/app/actions/greeting-cards"
@@ -10,6 +9,7 @@ import {
 } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -18,7 +18,7 @@ export default async function GreetingCardsPage(): Promise<React.ReactElement> {
   const canViewApprovals = await canFeature(user, "greeting-card-approval", "read")
   const canApprove = await canFeature(user, "greeting-card-approval", "approve")
   if (!canPrepareGreetingCards(user) && !canViewApprovals) {
-    redirect("/dashboard/access-restricted?action=prepare%20greeting%20cards")
+    return <ClientRedirect href={"/dashboard/access-restricted?action=prepare%20greeting%20cards"} />
   }
   const requests = await getGreetingCardRequests()
 

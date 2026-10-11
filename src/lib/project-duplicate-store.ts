@@ -13,6 +13,7 @@ import {
   type ProjectDuplicateCandidate,
   type ProjectDuplicateIdentity,
 } from "@/lib/project-duplicate-detector"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 
 type Db = ReturnType<typeof getDb>
 
@@ -98,7 +99,10 @@ export async function scanOpenProjectDuplicateCandidates(
   )
 
   let previouslyReviewedCount = 0
-  const candidates = findProjectDuplicateCandidates(identities).filter(
+  const settings = await readFeatureSettings(db, organizationId, "project-duplicates")
+  const candidates = findProjectDuplicateCandidates(identities, {
+    repeatOrderDepartments: new Set(settings.repeatOrderDepartments),
+  }).filter(
     (candidate) => {
       const decision = decisionsByPair.get(
         projectDuplicatePairKey(candidate.first.id, candidate.second.id),
@@ -136,8 +140,13 @@ export async function findProspectiveProjectDuplicates(
     id: `prospective-${crypto.randomUUID()}`,
     createdAt: new Date().toISOString(),
   }
-  const existing = await loadActiveProjectDuplicateIdentities(db, organizationId)
-  return findProjectDuplicateCandidates([prospective, ...existing]).filter(
+  const [existing, settings] = await Promise.all([
+    loadActiveProjectDuplicateIdentities(db, organizationId),
+    readFeatureSettings(db, organizationId, "project-duplicates"),
+  ])
+  return findProjectDuplicateCandidates([prospective, ...existing], {
+    repeatOrderDepartments: new Set(settings.repeatOrderDepartments),
+  }).filter(
     (candidate) =>
       candidate.first.id === prospective.id ||
       candidate.second.id === prospective.id,

@@ -3,6 +3,7 @@
 import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import { isDeliveryMethod } from "@/lib/sales-pipeline/stages"
 
 import { getDb } from "@/db"
 import {
@@ -75,7 +76,11 @@ import {
   projectNumberDepartmentSequence,
   projectNumberReviewIssue,
 } from "@/lib/project-number-review"
-import { clientFollowUpState } from "@/lib/project-follow-up"
+import { clientFollowUpState, followUpThresholds, type ProjectFollowUpSignal } from "@/lib/project-follow-up"
+import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
+import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import {
   isProjectDepartment,
@@ -133,6 +138,8 @@ export type ProjectInformation = {
   }
   readonly jobStatuses: readonly ProjectProfileJobStatus[]
   readonly interactionTypes: readonly ProjectInteractionTypeOption[]
+  /** What a logged client contact must include (Settings → Workflows). */
+  readonly interactionRules: { readonly minimumSummaryCharacters: number; readonly maximumBackdateDays: number }
   readonly clientContacts: readonly {
     readonly id: string
     readonly displayName: string
@@ -145,6 +152,8 @@ export type ProjectInformation = {
     readonly ownerUserId: string | null
     readonly ownerName: string | null
   } | null
+  /** Client follow-up aging by the company's thresholds; null when the status isn't followed up. */
+  readonly followUpSignal: ProjectFollowUpSignal | null
   readonly syncOperations: readonly {
     readonly id: string
     readonly operation: string
@@ -351,6 +360,35 @@ export async function getProjectFollowUpOwners(
   }
 }
 
+/** Staff who can own client follow-up, for company-wide settings (no project needed). */
+export async function getOrganizationFollowUpOwners(): Promise<readonly ProjectFollowUpOwner[]> {
+  try {
+    const user = await requireAuth()
+    if (!isInternalStaffRole(user.role)) return []
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const members = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        active: users.isActive,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+      .orderBy(asc(users.displayName), asc(users.email))
+    return members
+      .filter((member) => isEligibleFollowUpOwner(member))
+      .map((member) => ({ id: member.id, displayName: member.displayName ?? member.email }))
+  } catch (error) {
+    console.error("Unable to load follow-up owners", error)
+    return []
+  }
+}
+
 export async function getProjectInformation(
   projectId: string,
 ): Promise<ProjectInformation | null> {
@@ -502,6 +540,7 @@ export async function getProjectInformation(
       interactionTypes: projectInteractionTypeOptions(
         customInteractionTypes.map((item) => item.interactionType),
       ),
+      interactionRules: await readFeatureSettings(db, organizationId, "client-interactions"),
       clientContacts,
       projectNumberAliases: aliases.map((alias) => alias.projectNumber),
       notes,
@@ -510,6 +549,12 @@ export async function getProjectInformation(
         interactionTypeLabel: projectInteractionTypeLabel(interaction.interactionType),
       })),
       followUp: followUps[0] ?? null,
+      followUpSignal: await loadProjectFollowUpSignals(db, organizationId, [project], new Date())
+        .then((signals) => signals.get(project.id) ?? null)
+        .catch((error: unknown) => {
+          console.error("Project follow-up aging unavailable", error instanceof Error ? error.message : error)
+          return null
+        }),
       syncOperations: operations,
     }
   } catch (error) {
@@ -544,7 +589,7 @@ export async function getProjectFollowUpQueue(): Promise<
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
     const db = getDb(env.DB)
-    const [rows, customStatuses] = await Promise.all([
+    const [rows, customStatuses, agingSettings] = await Promise.all([
       db
         .select({
           projectId: projects.id,
@@ -590,6 +635,7 @@ export async function getProjectFollowUpQueue(): Promise<
             eq(projectJobStatuses.active, true),
           ),
         ),
+      readFeatureSettings(db, organizationId, "project-aging"),
     ])
     const customStatusesById = new Map(customStatuses.map((status) => [status.id, status]))
     const builtInStatusLabels = new Map<string, string>(
@@ -645,7 +691,11 @@ export async function getProjectFollowUpQueue(): Promise<
       const customStatus = customStatusesById.get(project.jobStatusId)
       const state = clientFollowUpState({
         jobStatusId: project.jobStatusId,
-        cadenceDays: customStatus ? customStatus.cadenceDays : undefined,
+        thresholds: followUpThresholds({
+          jobStatusId: project.jobStatusId,
+          customCadenceDays: customStatus ? customStatus.cadenceDays : undefined,
+          settings: agingSettings,
+        }),
         interactions: project.interactions,
         nextFollowUpAt: project.nextFollowUpAt,
         now: new Date(),
@@ -1620,6 +1670,71 @@ export async function updateProjectJobStatus(input: {
   }
 }
 
+export async function updateProjectDeliveryMethod(input: {
+  readonly projectId: string
+  readonly deliveryMethod: string | null
+}): Promise<ProjectProfileResult> {
+  try {
+    const { db, organizationId, user } = await projectProfileContext(
+      input.projectId,
+      "update",
+    )
+    if (isDemoUser(user.id) || isDemoOrg(organizationId)) {
+      return { success: false, error: "Demo data cannot be changed." }
+    }
+    const deliveryMethod = input.deliveryMethod
+    if (deliveryMethod !== null && !isDeliveryMethod(deliveryMethod)) {
+      return { success: false, error: "Choose delivery or customer pickup." }
+    }
+
+    const existingRows = await db
+      .select({ deliveryMethod: projects.deliveryMethod })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.projectId),
+          eq(projects.organizationId, organizationId),
+        ),
+      )
+      .limit(1)
+    const existing = existingRows[0]
+    if (!existing) return { success: false, error: "Project not found." }
+    if (existing.deliveryMethod === deliveryMethod) return { success: true }
+
+    const updatedAt = nowIso()
+    await db.batch([
+      db
+        .update(projects)
+        .set({ deliveryMethod, updatedAt })
+        .where(
+          and(
+            eq(projects.id, input.projectId),
+            eq(projects.organizationId, organizationId),
+          ),
+        ),
+      db.insert(projectProfileAuditEvents).values({
+        id: crypto.randomUUID(),
+        organizationId,
+        projectId: input.projectId,
+        actorUserId: user.id,
+        eventType: "project_delivery_method_updated",
+        entityType: "project",
+        entityId: input.projectId,
+        beforeJson: JSON.stringify({ deliveryMethod: existing.deliveryMethod }),
+        afterJson: JSON.stringify({ deliveryMethod }),
+        createdAt: updatedAt,
+      }),
+    ])
+
+    revalidateProjectProfile(input.projectId)
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to update project delivery method", error)
+    return { success: false, error: "Unable to save the delivery method." }
+  }
+}
+
 export async function updateProjectMapVisibility(input: {
   readonly projectId: string
   readonly visibility: string
@@ -1771,6 +1886,12 @@ export async function createProjectInteraction(input: {
     const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
     if (!input.contactId) return { success: false, error: "Choose an active client contact." }
+    // Only a complete record counts as client contact for project aging.
+    const recordProblem = clientInteractionRecordProblem(
+      { summary, occurredAt },
+      await readFeatureSettings(db, organizationId, "client-interactions"),
+    )
+    if (recordProblem) return { success: false, error: recordProblem }
     const contactRows = await db
       .select({ id: projectContacts.id })
       .from(projectContacts)
@@ -1805,6 +1926,12 @@ export async function createProjectInteraction(input: {
       deletedBy: null,
     })
     await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "client_interaction_created", entityType: "project_interaction", entityId: id, before: null, after: { interactionType, direction: input.direction, summary, occurredAt } })
+    try {
+      // Logged contact ends the overdue stretch, so its reminder (and red bell) clears.
+      await clearOverdueFollowUpReminders(db, [input.projectId])
+    } catch (error) {
+      console.error("Unable to clear overdue follow-up reminders", error)
+    }
     revalidateProjectProfile(input.projectId)
     return { success: true }
   } catch (error) {
@@ -1894,6 +2021,98 @@ export async function setProjectFollowUp(input: {
   }
 }
 
+/** Active client contacts a contact can be logged against, for quick logging from the map. */
+export type ProjectInteractionFormOptions = {
+  readonly contacts: readonly { readonly id: string; readonly displayName: string }[]
+  readonly interactionTypes: readonly ProjectInteractionTypeOption[]
+  readonly rules: { readonly minimumSummaryCharacters: number; readonly maximumBackdateDays: number }
+}
+
+/** What the client-contact form needs: the job's client contacts, the company's interaction types and record rules. */
+export async function getProjectInteractionFormOptions(
+  projectId: string,
+): Promise<{ readonly success: true; readonly options: ProjectInteractionFormOptions } | { readonly success: false; readonly error: string }> {
+  try {
+    const { db, organizationId } = await projectProfileContext(projectId, "read")
+    const [contacts, customTypes, rules] = await Promise.all([
+      db
+        .select({ id: projectContacts.id, displayName: projectContacts.displayName })
+        .from(projectContacts)
+        .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
+        .orderBy(asc(projectContacts.displayName)),
+      db
+        .selectDistinct({ interactionType: projectInteractions.interactionType })
+        .from(projectInteractions)
+        .where(
+          and(
+            eq(projectInteractions.organizationId, organizationId),
+            eq(projectInteractions.source, "manual"),
+            like(projectInteractions.interactionType, "custom:%"),
+          ),
+        )
+        .orderBy(asc(projectInteractions.interactionType)),
+      readFeatureSettings(db, organizationId, "client-interactions"),
+    ])
+    return {
+      success: true,
+      options: {
+        contacts,
+        interactionTypes: projectInteractionTypeOptions(customTypes.map((item) => item.interactionType)),
+        rules,
+      },
+    }
+  } catch (error) {
+    console.error("Unable to load client contact options", error)
+    return { success: false, error: "Unable to load client contacts." }
+  }
+}
+
+/**
+ * Push the next follow-up to a later date, keeping its owner. Used by
+ * "Snooze" on the map and the project's follow-up tracker.
+ */
+export async function snoozeProjectFollowUp(input: {
+  readonly projectId: string
+  readonly nextFollowUpAt: string
+}): Promise<ProjectProfileResult> {
+  try {
+    const next = new Date(input.nextFollowUpAt)
+    if (Number.isNaN(next.getTime()) || next.getTime() <= Date.now()) {
+      return { success: false, error: "Choose a future follow-up date." }
+    }
+    const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
+    if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
+    const before = await db
+      .select({ nextFollowUpAt: projectFollowUps.nextFollowUpAt })
+      .from(projectFollowUps)
+      .where(eq(projectFollowUps.projectId, input.projectId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    const timestamp = nowIso()
+    await db
+      .insert(projectFollowUps)
+      .values({
+        projectId: input.projectId,
+        organizationId,
+        nextFollowUpAt: next.toISOString(),
+        ownerUserId: null,
+        createdBy: user.id,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      })
+      .onConflictDoUpdate({
+        target: projectFollowUps.projectId,
+        set: { nextFollowUpAt: next.toISOString(), updatedAt: timestamp },
+      })
+    await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "project_follow_up_snoozed", entityType: "project_follow_up", entityId: input.projectId, before, after: { nextFollowUpAt: next.toISOString() } })
+    revalidateProjectProfile(input.projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to snooze project follow-up", error)
+    return { success: false, error: "Unable to snooze the follow-up." }
+  }
+}
+
 export async function clearProjectFollowUp(projectId: string): Promise<ProjectProfileResult> {
   try {
     const { db, organizationId, user } = await projectProfileContext(projectId, "update")
@@ -1912,6 +2131,58 @@ export async function clearProjectFollowUp(projectId: string): Promise<ProjectPr
   } catch (error) {
     console.error("Unable to clear project follow-up", error)
     return { success: false, error: "Unable to clear project follow-up." }
+  }
+}
+
+export type ProjectAgingStatusRow = {
+  readonly id: string
+  readonly label: string
+  /** True for statuses the company added. */
+  readonly custom: boolean
+  /** Timing used when Settings has no entry; null means not followed up by default. */
+  readonly defaultThresholds: { readonly dueDays: number; readonly overdueDays: number } | null
+}
+
+/**
+ * Every job status the company uses (built-in and its own) with its default
+ * follow-up timing, for Settings → Workflows → Project aging.
+ */
+export async function getProjectAgingStatusRows(): Promise<
+  { readonly success: true; readonly rows: readonly ProjectAgingStatusRow[] } | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    if (!isInternalStaffRole(user.role)) return { success: false, error: "Project aging settings are available to office staff." }
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const custom = await db
+      .select({ id: projectJobStatuses.id, label: projectJobStatuses.label, cadenceDays: projectJobStatuses.followUpCadenceDays })
+      .from(projectJobStatuses)
+      .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true)))
+      .orderBy(asc(projectJobStatuses.sortOrder), asc(projectJobStatuses.label))
+    const thresholdsFor = (cadence: number | null): ProjectAgingStatusRow["defaultThresholds"] =>
+      cadence === null ? null : { dueDays: cadence, overdueDays: cadence + 1 }
+    return {
+      success: true,
+      rows: [
+        ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => ({
+          id: status.id,
+          label: status.label,
+          custom: false,
+          defaultThresholds: thresholdsFor(status.followUpCadenceDays),
+        })),
+        ...custom.map((status) => ({
+          id: status.id,
+          label: status.label,
+          custom: true,
+          defaultThresholds: thresholdsFor(status.cadenceDays),
+        })),
+      ],
+    }
+  } catch (error) {
+    console.error("Unable to load project aging statuses", error)
+    return { success: false, error: "Unable to load job statuses." }
   }
 }
 

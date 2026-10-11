@@ -12,7 +12,7 @@
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-09-07"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -30,7 +30,7 @@ Look for the small Compass Help beacon—a compass ring with a question mark—b
 
 Hover over a beacon, or move keyboard focus to it, for a brief explanation. Click or tap it once to open the compact Help card. Select **Read full guide** for the detailed procedure and related safety notes. Double-clicking a beacon opens its full guide directly in the main view. Use **Close help** to return to your work.
 
-**Ask Jarvis** appears only for roles allowed to use the Compass agent. Owners and trade partners receive the same official guide content without Jarvis and can use the email or phone support options when the guide does not answer the question.
+**Ask Jarvis** appears only for roles allowed to use the Compass agent. Authorized staff can read [Ask Jarvis](/dashboard/help/ask-jarvis) for current tools, example requests, and confirmation rules. Owners and trade partners receive the same official guide content without Jarvis and can use the email or phone support options when the guide does not answer the question.
 
 For a product defect, access problem, or missing documentation, submit feedback even if the guide helps you continue. That gives the product team a durable report.
 

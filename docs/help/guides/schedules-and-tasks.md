@@ -12,7 +12,7 @@
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-09-14"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -22,7 +22,7 @@ Use **Schedules & Calendar** for a cross-project entry point or open a project's
 
 ## Gantt View {#gantt}
 
-The task list and timeline move together. Select an item to bring its date into view, use **Today** and zoom controls to navigate, and use grouping or color modes as viewing aids. Colors do not replace phase, status, or completion data.
+The task list and timeline scroll together. The Gantt opens around **Today**; use **Today**, zoom, search, grouping, and color modes to focus the view. Selecting a row selects the schedule item without rebuilding the whole view or repeatedly jumping the timeline. Grouping by phase keeps list rows aligned with their bars. Colors are viewing aids; confirm actual phase, status, and completion data.
 
 ## Critical Path {#critical-path}
 
@@ -42,7 +42,9 @@ Do not force a dependent item to an incompatible date until you know whether its
 
 ## Publish a Schedule {#publish-schedule}
 
-The first publication makes the working schedule active for owner and trade-partner workspaces and does not require a change reason. After a schedule has been published, enter a concise reason when publishing another revision so the internal activity history explains what changed.
+The first **Publish schedule** makes selected visible items available in owner and trade-partner workspaces and does not require a change reason. Later edits remain internal while viewers continue to see the last published version. Use **Publish changes** and enter a concise reason for another revision, including republishing a previously published schedule after it was hidden.
+
+Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
 
 ## Workday Exceptions {#workday-exceptions}
 
@@ -55,6 +57,10 @@ A baseline is a saved snapshot for comparison. Create one before a major approve
 ## Tasks and To-Dos {#tasks}
 
 A useful task has a clear action, project context, assignee, due date, source-record link when available, and current status. Personal calendar choices do not replace the project's operational schedule.
+
+## Ask Jarvis to Help with the Schedule {#jarvis-schedule}
+
+Ask Jarvis to read the project's tasks, dependencies, workday exceptions, overall progress, or critical path. It can propose creating, updating, or deleting tasks and adding or removing predecessor relationships. Every built-in schedule mutation waits for **Confirm** in chat and still checks your permissions. Review the exact project, task, date, duration, and dependency before confirming, then inspect the updated schedule and downstream dates. This does not publish a revised schedule automatically. See [Ask Jarvis](/dashboard/help/ask-jarvis#schedule-actions).
 
 ## Quick Check {#quick-check}
 

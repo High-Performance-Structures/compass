@@ -1096,10 +1096,11 @@ em-emoji-picker {
     gap: 0.09in;
   }
 
+  /* Same logo size as the purchase order (64px) so every printed form matches. */
   .selection-print-brand img {
-    height: 0.34in;
+    height: 0.67in;
     object-fit: contain;
-    width: 0.34in;
+    width: 0.67in;
   }
 
   .selection-print-brand p,

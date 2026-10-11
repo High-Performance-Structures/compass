@@ -203,6 +203,20 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "project",
   },
   {
+    id: "shop-tickets",
+    group: "Operations",
+    label: "Shop Tickets",
+    description: "Create, issue and void shop tickets that bill a project for labor and machine hours at set rates.",
+    resource: "finance",
+  },
+  {
+    id: "internal-duties",
+    group: "Operations",
+    label: "Internal Duty Log",
+    description: "Log office and yard duties with hours in internal workspaces such as H-Office.",
+    resource: "project",
+  },
+  {
     id: "nutech-orders",
     group: "Operations",
     label: "Nu-Tech Orders",
@@ -681,6 +695,7 @@ export function getPermissionAccessLevel(
 
 const INTERNAL_STAFF_EDIT_FEATURES: readonly string[] = [
   "project-hub",
+  "internal-duties",
   "social-publishing",
 ]
 

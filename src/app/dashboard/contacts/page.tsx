@@ -6,12 +6,14 @@ import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
-  flexRender,
   getCoreRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type SortingState,
 } from "@tanstack/react-table"
+import { TanstackSortableHeader } from "@/components/ui/sortable-header"
 import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 import {
@@ -120,17 +122,18 @@ function InternalContactsTable({
     pageIndex: 0,
     pageSize: DEFAULT_TABLE_PAGE_SIZE,
   })
+  const [sorting, setSorting] = React.useState<SortingState>([])
 
   const columns = React.useMemo<ColumnDef<InternalDirectoryContact>[]>(
     () => [
-      { id: "name", header: "Name" },
-      { id: "company", header: "Company" },
-      { id: "role", header: "Role" },
-      { id: "email", header: "Email" },
-      { id: "phone", header: "Phone" },
-      { id: "access", header: "Compass access" },
-      ...(developerModeEnabled ? [{ id: "source", header: "Source" }] : []),
-      ...(onSageEdit || onSageLink ? [{ id: "actions", header: "Actions" }] : []),
+      { id: "name", header: "Name", accessorFn: (contact) => contact.name },
+      { id: "company", header: "Company", accessorFn: (contact) => contact.company ?? "Internal" },
+      { id: "role", header: "Role", accessorFn: (contact) => contact.role ?? "Internal" },
+      { id: "email", header: "Email", accessorFn: (contact) => contact.email ?? "", sortUndefined: "last" },
+      { id: "phone", header: "Phone", accessorFn: (contact) => contact.phone ?? contact.cellPhone ?? "" },
+      { id: "access", header: "Compass access", accessorFn: (contact) => contact.accessStatus },
+      ...(developerModeEnabled ? [{ id: "source", header: "Source", accessorFn: (contact: InternalDirectoryContact) => contact.sourceLabel }] : []),
+      ...(onSageEdit || onSageLink ? [{ id: "actions", header: "Actions", enableSorting: false }] : []),
     ],
     [developerModeEnabled, onSageEdit, onSageLink]
   )
@@ -141,9 +144,11 @@ function InternalContactsTable({
     getRowId: (contact) => contact.id,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     autoResetPageIndex: false,
     onPaginationChange: setPagination,
-    state: { pagination },
+    onSortingChange: setSorting,
+    state: { pagination, sorting },
   })
 
   if (contacts.length === 0) {
@@ -164,8 +169,8 @@ function InternalContactsTable({
           <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
             <tr className="border-b">
               {table.getHeaderGroups()[0]?.headers.map((header) => (
-                <th key={header.id} className="px-3 py-2 text-left font-medium">
-                  {flexRender(header.column.columnDef.header, header.getContext())}
+                <th key={header.id} className="px-3 py-2 text-left font-medium" aria-sort={header.column.getIsSorted() === "asc" ? "ascending" : header.column.getIsSorted() === "desc" ? "descending" : undefined}>
+                  <TanstackSortableHeader header={header} />
                 </th>
               ))}
             </tr>
