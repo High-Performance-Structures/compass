@@ -297,6 +297,8 @@ export class DriveClient {
     options: {
       readonly name: string
       readonly parentId: string
+      /** Convert while copying, e.g. an .xlsx into a Google Sheet. */
+      readonly mimeType?: string
     }
   ): Promise<DriveFile> {
     const params = new URLSearchParams({
@@ -313,6 +315,7 @@ export class DriveClient {
         body: JSON.stringify({
           name: options.name,
           parents: [options.parentId],
+          ...(options.mimeType ? { mimeType: options.mimeType } : {}),
         }),
       }
     )
