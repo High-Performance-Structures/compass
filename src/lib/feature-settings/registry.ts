@@ -63,6 +63,10 @@ const optionalEmail = z.union([z.literal(""), z.email()])
  * the built-in wording. Blank values leave the matching merge field empty.
  */
 export const nuTechEmailSettingsSchema = z.object({
+  /** The block manufacturer's name, used as the vendor on its purchase orders. */
+  manufacturerName: z.string().max(80),
+  /** The manufacturer's vendor number in the accounting system, when known. */
+  manufacturerVendorId: z.string().max(40),
   manufacturerOrdersEmail: optionalEmail,
   manufacturerCcEmail: optionalEmail,
   dealerAccountNumber: z.string().max(40),
@@ -324,8 +328,10 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "nutech-emails": {
     label: "Nu-Tech emails",
-    description: "The manufacturer, warehouse and dealer details Nu-Tech order emails fill in, and each template's wording. The sending mailbox, phone and hours come from the Nu-Tech department profile.",
+    description: "The manufacturer, warehouse and dealer details Nu-Tech order emails and purchase orders fill in, and each template's wording. The sending mailbox, phone and hours come from the Nu-Tech department profile.",
     defaults: {
+      manufacturerName: "",
+      manufacturerVendorId: "",
       manufacturerOrdersEmail: "",
       manufacturerCcEmail: "",
       dealerAccountNumber: "",
