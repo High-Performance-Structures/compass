@@ -1,11 +1,12 @@
 "use server"
 
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectOperations, projects, sageCostCodes } from "@/db/schema"
-import { nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
+import { nuTechCatalogPrices, nuTechCatalogVersions, nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
 import { createPurchaseOrderRequest, type CreatePurchaseOrderLineInput } from "@/app/actions/project-operations"
+import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
@@ -143,5 +144,65 @@ export async function getNuTechManufacturerName(): Promise<string> {
     return settings.manufacturerName.trim()
   } catch {
     return ""
+  }
+}
+
+/**
+ * The active Fox Blocks price list as PO line choices for an N job: each
+ * product with its manufacturer cost and cost code. Empty for other jobs
+ * or when no catalog is active.
+ */
+export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<readonly PurchaseOrderCatalogItem[]> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const project = await db
+      .select({ id: projects.id, projectNumber: projects.projectNumber })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
+      .get()
+    if (!project || projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") return []
+    const version = await db
+      .select({ id: nuTechCatalogVersions.id })
+      .from(nuTechCatalogVersions)
+      .where(and(eq(nuTechCatalogVersions.organizationId, organizationId), eq(nuTechCatalogVersions.status, "active")))
+      .orderBy(desc(nuTechCatalogVersions.effectiveDate))
+      .limit(1)
+      .get()
+    if (!version) return []
+    const rows = await db
+      .select({
+        id: nuTechProducts.id,
+        sku: nuTechProducts.manufacturerSku,
+        name: nuTechProducts.name,
+        unit: nuTechProducts.priceUnit,
+        packageLabel: nuTechProducts.packageLabel,
+        costCents: nuTechCatalogPrices.airliteCostCents,
+        costCode: sageCostCodes.code,
+      })
+      .from(nuTechCatalogPrices)
+      .innerJoin(nuTechProducts, eq(nuTechProducts.id, nuTechCatalogPrices.productId))
+      .leftJoin(sageCostCodes, eq(sageCostCodes.id, nuTechProducts.sageCostCodeId))
+      .where(
+        and(
+          eq(nuTechCatalogPrices.catalogVersionId, version.id),
+          eq(nuTechProducts.organizationId, organizationId),
+          eq(nuTechProducts.active, true),
+        ),
+      )
+      .orderBy(asc(nuTechProducts.manufacturerSku))
+    return rows.map((row) => ({
+      id: row.id,
+      description: `${row.sku} ${row.name}`.trim(),
+      unit: row.unit,
+      unitCost: row.costCents / 100,
+      costCode: row.costCode,
+      detail: `$${(row.costCents / 100).toFixed(2)} per ${row.unit}${row.packageLabel ? ` · ${row.packageLabel}` : ""}`,
+    }))
+  } catch {
+    return []
   }
 }

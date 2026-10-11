@@ -1,5 +1,6 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { getNuTechManufacturerName } from "@/app/actions/nutech-airlite-po"
+import { getNuTechManufacturerName, getNuTechPurchaseOrderCatalog } from "@/app/actions/nutech-airlite-po"
+import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
@@ -132,6 +133,7 @@ function PurchaseOrderCard({
   costCodeOptions,
   developerModeEnabled,
   paperTrail,
+  catalogItems,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -152,6 +154,8 @@ function PurchaseOrderCard({
   readonly developerModeEnabled: boolean
   /** Drive copy status; null when the paper trail is off for this project. */
   readonly paperTrail: PaperTrailRecordView | null | undefined
+  /** The manufacturer's price list, for its POs' line items. */
+  readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -196,6 +200,7 @@ function PurchaseOrderCard({
               <ProjectPurchaseOrderEditForm
                 projectId={projectId}
                 purchaseOrder={order}
+                catalogItems={catalogItems}
                 contactOptions={taskAssigneeOptions}
                 siteContactOptions={siteContactOptions}
                 jobsiteAddress={jobsiteAddress}
@@ -394,7 +399,8 @@ export default async function ProjectPurchaseOrdersPage({
     projectNumber: project?.projectNumber,
   })
   // N jobs order from the block manufacturer, built from the Nu-Tech order.
-  const manufacturerName = brand.department === "N" ? await getNuTechManufacturerName() : ""
+  const [manufacturerName, manufacturerCatalog] =
+    brand.department === "N" ? await Promise.all([getNuTechManufacturerName(), getNuTechPurchaseOrderCatalog(id)]) : ["", []]
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
@@ -535,6 +541,10 @@ export default async function ProjectPurchaseOrdersPage({
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
               developerModeEnabled={developerModeEnabled}
               paperTrail={paperTrail.enabled ? paperTrail.records[order.id] ?? null : undefined}
+              // Only the manufacturer's own POs pick lines from its price list.
+              catalogItems={
+                manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
+              }
             />
           ))
         ) : (
