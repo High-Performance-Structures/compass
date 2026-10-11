@@ -31,10 +31,12 @@ import * as correspondenceEmailSchema from "./schema-correspondence-email"
 import * as correspondenceSourceSchema from "./schema-correspondence-source"
 
 import * as selectionDecisionSchema from "./schema-selection-decisions"
+import * as internalDutySchema from "./schema-internal-duties"
 import * as shopTicketSchema from "./schema-shop-tickets"
 
 const allSchemas = {
   ...rateBookSchema,
+  ...internalDutySchema,
   ...shopTicketSchema,
   ...paperTrailSchema,
   ...selectionDecisionSchema,

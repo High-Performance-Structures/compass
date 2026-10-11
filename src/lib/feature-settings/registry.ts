@@ -278,7 +278,27 @@ export const bracingRentalSettingsSchema = z.object({
 
 export type BracingRentalSettings = z.infer<typeof bracingRentalSettingsSchema>
 
+/**
+ * Duties for internal workspaces. Each is a cost code (the company's Sage
+ * codes by default) so logged hours line up with how payroll is coded.
+ */
+export const internalDutySettingsSchema = z.object({
+  duties: z
+    .array(
+      z.object({
+        code: z.string().trim().min(1).max(20),
+        label: z.string().trim().min(1).max(80),
+        workspace: z.enum(["office", "field"]),
+        active: z.boolean(),
+      }),
+    )
+    .max(80),
+})
+
+export type InternalDutySettings = z.infer<typeof internalDutySettingsSchema>
+
 type FeatureSettingsTypes = {
+  readonly "internal-duties": InternalDutySettings
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
   readonly "department-profiles": DepartmentProfilesSettings
@@ -305,6 +325,28 @@ export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "internal-duties": {
+    label: "Internal duties",
+    description: "The duties staff log in internal workspaces (H-Office, the yard). Each duty is a cost code so hours match how payroll is coded.",
+    defaults: {
+      duties: [
+        { code: "501", label: "Sales Taxes", workspace: "office", active: true },
+        { code: "502", label: "Bank Reconciliations", workspace: "office", active: true },
+        { code: "503", label: "General Accounting & Bookkeeping", workspace: "office", active: true },
+        { code: "504", label: "Audits and Compliance", workspace: "office", active: true },
+        { code: "507", label: "Billing/Accounts Receivable", workspace: "office", active: true },
+        { code: "508", label: "Business Development", workspace: "office", active: true },
+        { code: "509", label: "Education and Training", workspace: "office", active: true },
+        { code: "512", label: "Accounts Payable", workspace: "office", active: true },
+        { code: "513", label: "Office Housekeeping/Maintenance", workspace: "office", active: true },
+        { code: "32", label: "Administrative Fee", workspace: "office", active: true },
+        { code: "1540007", label: "ICF Bracing Rental", workspace: "field", active: true },
+        { code: "01 71 13", label: "Mobilization", workspace: "field", active: true },
+        { code: "10800000", label: "Miscellaneous Costs", workspace: "field", active: true },
+      ],
+    },
+    schema: internalDutySettingsSchema,
+  },
   "client-follow-up": {
     label: "Client follow-up page",
     description: "How the Client follow-up page shows team activity: the leaderboard, streaks and the period it opens on.",

@@ -703,6 +703,12 @@ export const projects = sqliteTable("projects", {
   clientStatus: text("client_status").notNull().default("customer"),
   jobStatusId: text("job_status_id").notNull().default("current"),
   clientName: text("client_name"),
+  /**
+   * Internal workspaces are not client jobs: "office" for administrative duty
+   * logs (H-Office), "field" for crew work at the yard or generic order help.
+   * Null for every client project.
+   */
+  workspaceKind: text("workspace_kind", { enum: ["office", "field"] }),
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
   netsuiteJobId: text("netsuite_job_id"),

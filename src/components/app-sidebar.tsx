@@ -28,6 +28,7 @@ import {
   IconPalette,
   IconPhone,
   IconPhoto,
+  IconClipboardList,
   IconReceipt,
   IconShieldCheck,
   IconShoppingCart,
@@ -306,6 +307,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
             url: "/dashboard/projects",
             icon: IconReceipt,
             projectPath: "/financials",
+          },
+          {
+            kind: "link",
+            title: "Duty Log",
+            url: "/dashboard/projects",
+            icon: IconClipboardList,
+            projectPath: "/duty-log",
           },
           {
             kind: "link",
