@@ -8,10 +8,12 @@ import {
 } from "@/lib/nutech/workflow"
 import {
   applyWorkflowOverrides,
+  DEFAULT_WORKFLOW_LAYOUT,
   workflowProgress,
   type WorkflowCheck,
   type WorkflowDefinition,
   type WorkflowFacts,
+  type WorkflowLayout,
   type WorkflowOverrides,
   type WorkflowProgress,
 } from "@/lib/job-workflows/engine"
@@ -214,9 +216,10 @@ export function nuTechOrderProgress(
   snapshot: NuTechOrderSnapshot,
   overrides: WorkflowOverrides = {},
   checks: ReadonlyMap<string, WorkflowCheck> = new Map(),
+  layout: WorkflowLayout = DEFAULT_WORKFLOW_LAYOUT,
 ): NuTechOrderProgress {
   const order = snapshot.order
-  const progress = workflowProgress(applyWorkflowOverrides(NUTECH_ORDER_WORKFLOW, overrides), nuTechOrderFacts(snapshot), checks)
+  const progress = workflowProgress(applyWorkflowOverrides(NUTECH_ORDER_WORKFLOW, overrides, layout), nuTechOrderFacts(snapshot), checks)
   const readinessIssues = order
     ? nuTechCustomerReadinessIssues({
         deliveryMethod: order.deliveryMethod,

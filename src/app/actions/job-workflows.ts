@@ -12,7 +12,7 @@ import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowProgress } from "@/lib/job-workflows/engine"
 import { forwardJobStatusSuggestion, workflowCatchUp } from "@/lib/job-workflows/status"
 import { chunkD1Rows } from "@/lib/d1-query"
-import { loadWorkflowChecks, readWorkflowOverrides, jobWorkflowFacts } from "@/lib/job-workflows/server"
+import { loadWorkflowChecks, readWorkflowCustomization, jobWorkflowFacts } from "@/lib/job-workflows/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
@@ -73,10 +73,10 @@ async function loadOverview(db: Db, organizationId: string, projectId: string): 
   const definition = department === "N" ? undefined : DEPARTMENT_WORKFLOWS[department]
   if (!definition) return null
 
-  const [facts, checks, overrides, followUps, customStatus] = await Promise.all([
+  const [facts, checks, customization, followUps, customStatus] = await Promise.all([
     jobWorkflowFacts(db, { ...project, department }),
     loadWorkflowChecks(db, organizationId, projectId),
-    readWorkflowOverrides(db, organizationId, department),
+    readWorkflowCustomization(db, organizationId, department),
     loadProjectFollowUpSignals(db, organizationId, [project], new Date()).catch(() => new Map<string, ProjectFollowUpSignal>()),
     db
       .select({ label: projectJobStatuses.label })
@@ -84,7 +84,7 @@ async function loadOverview(db: Db, organizationId: string, projectId: string): 
       .where(and(eq(projectJobStatuses.id, project.jobStatusId), eq(projectJobStatuses.organizationId, organizationId)))
       .get(),
   ])
-  const progress = workflowProgress(applyWorkflowOverrides(definition, overrides), facts, checks)
+  const progress = workflowProgress(applyWorkflowOverrides(definition, customization.overrides, customization.layout), facts, checks)
   const suggestedId = forwardJobStatusSuggestion(progress, project.jobStatusId)
   const catchUp = workflowCatchUp(progress, project.jobStatusId)
   return {
