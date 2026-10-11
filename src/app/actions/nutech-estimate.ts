@@ -16,6 +16,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { nuTechEstimateLineDescription } from "@/lib/nutech/estimate-wording"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
@@ -28,10 +29,6 @@ export type NuTechEstimateFromOrderResult =
   | { readonly kind: "confirm_replace"; readonly estimateNumber: string; readonly lineCount: number }
 
 const EDITABLE = new Set(["draft", "internal_review"])
-
-function plural(unit: string, quantity: number): string {
-  return quantity === 1 || unit.endsWith("s") ? unit : `${unit}s`
-}
 
 /**
  * Fill the job's Compass estimate from its Nu-Tech order: one line per
@@ -69,6 +66,7 @@ export async function createNuTechEstimateFromOrder(
         name: nuTechOrderItems.productNameSnapshot,
         unit: nuTechOrderItems.priceUnitSnapshot,
         unitPriceCents: nuTechOrderItems.unitPriceCents,
+        packageLabel: nuTechProducts.packageLabel,
         costCode: sageCostCodes.code,
       })
       .from(nuTechOrderItems)
@@ -140,8 +138,8 @@ export async function createNuTechEstimateFromOrder(
       ...base,
       costCode: item.costCode ?? productCode,
       // Lines carry the customer's price; the manufacturer cost stays on the order and its PO.
-      description: `${item.quantity} ${plural(item.unit, item.quantity)} of ${item.name}`,
-      specifications: item.sku,
+      description: nuTechEstimateLineDescription({ quantity: item.quantity, unit: item.unit, name: item.name, sku: item.sku, packageLabel: item.packageLabel }),
+      specifications: null,
       quantity: item.quantity,
       unit: item.unit,
       unitCost: item.unitPriceCents / 100,

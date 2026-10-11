@@ -96,6 +96,20 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
       amount: (item.unitCostCents * item.quantity) / 100,
       taxGroup: null,
     }))
+    // The freight quoted for a delivery is the manufacturer's charge too.
+    const freightCents = order.deliveryMethod === "delivery" ? (order.shippingCents ?? 0) : 0
+    if (freightCents > 0) {
+      lines.push({
+        description: order.shippingNote ? `Freight (${order.shippingNote})` : "Freight",
+        costCode: settings.shippingCostCode.trim() || null,
+        phaseCode: null,
+        quantity: 1,
+        unitCost: freightCents / 100,
+        unit: "LS",
+        amount: freightCents / 100,
+        taxGroup: null,
+      })
+    }
     const description = [
       settings.dealerAccountNumber ? `Dealer account ${settings.dealerAccountNumber}.` : null,
       pickup ? "Customer pickup" : `Deliver to ${project.address ?? "the job site"}`,
