@@ -14,7 +14,9 @@ import {
   deleteNuTechCatalogVersion,
   importNuTech2026Catalog,
   mapNuTechProductToSageCostCode,
+  setNuTechProductTaxable,
   type NuTechCatalogWorkspace,
+  type NuTechProductCostCodeMapping,
 } from "@/app/actions/nutech-catalog"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
@@ -24,6 +26,7 @@ import {
 import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -33,7 +36,7 @@ function money(cents: number): string {
 }
 
 type Product = NuTechCatalogWorkspace["products"][number]
-type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode"
+type ProductSortKey = "sku" | "package" | "cost" | "newStandard" | "newCash" | "returning" | "returningCash" | "form" | "costCode" | "taxable"
 
 const PRODUCT_SORT: Readonly<Record<ProductSortKey, (product: Product) => string | number | null>> = {
   sku: (product) => product.manufacturerSku,
@@ -45,6 +48,28 @@ const PRODUCT_SORT: Readonly<Record<ProductSortKey, (product: Product) => string
   returningCash: (product) => product.returningCashPriceCents,
   form: (product) => product.airliteTemplateRow,
   costCode: (product) => product.sageCostCodeLabel,
+  taxable: (product) => (product.taxable ? 1 : 0),
+}
+
+// Picker values: a numbered Sage code by id, or a named company code by name.
+function mappingValue(product: Product): string {
+  if (product.sageCostCodeId) return `sage:${product.sageCostCodeId}`
+  if (product.sageCostCodeName) return `named:${product.sageCostCodeName}`
+  return ""
+}
+
+function mappingFromValue(value: string): NuTechProductCostCodeMapping {
+  if (value.startsWith("sage:")) return { kind: "sage", id: value.slice("sage:".length) }
+  if (value.startsWith("named:")) return { kind: "named", name: value.slice("named:".length) }
+  return null
+}
+
+function PriceCell({ product, cents }: { readonly product: Product; readonly cents: number }): React.ReactElement {
+  return (
+    <td className="px-3 py-2 text-right align-top">
+      {product.quotedPerOrder ? <span className="text-muted-foreground">Quoted</span> : money(cents)}
+    </td>
+  )
 }
 
 function sheetUrl(spreadsheetId: string): string {
@@ -189,11 +214,23 @@ export function NuTechCatalogWorkspacePanel({
     })
   }
 
+  function setTaxable(productId: string, taxable: boolean): void {
+    startTransition(async () => {
+      const result = await setNuTechProductTaxable(productId, taxable)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(taxable ? "Marked taxable." : "Marked non-taxable.")
+      router.refresh()
+    })
+  }
+
   function mapSageCostCode(productId: string, value: string): void {
     startTransition(async () => {
       const result = await mapNuTechProductToSageCostCode(
         productId,
-        value.length > 0 ? value : null
+        mappingFromValue(value)
       )
       if (!result.success) {
         toast.error(result.error)
@@ -304,6 +341,7 @@ export function NuTechCatalogWorkspacePanel({
                   <SortableTh sortKey="returningCash" sort={sort} onSort={toggle} align="right" className="px-3 py-2 text-right font-medium">Returning cash</SortableTh>
                   <SortableTh sortKey="form" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Airlite form</SortableTh>
                   <SortableTh sortKey="costCode" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Sage cost code</SortableTh>
+                  <SortableTh sortKey="taxable" sort={sort} onSort={toggle} className="px-3 py-2 font-medium">Taxable</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -316,21 +354,11 @@ export function NuTechCatalogWorkspacePanel({
                     <td className="px-3 py-2 align-top text-muted-foreground">
                       {product.packageLabel} · {product.priceUnit}
                     </td>
-                    <td className="px-3 py-2 text-right align-top">
-                      {money(product.airliteCostCents)}
-                    </td>
-                    <td className="px-3 py-2 text-right align-top">
-                      {money(product.newStandardPriceCents)}
-                    </td>
-                    <td className="px-3 py-2 text-right align-top">
-                      {money(product.newCashPriceCents)}
-                    </td>
-                    <td className="px-3 py-2 text-right align-top">
-                      {money(product.returningStandardPriceCents)}
-                    </td>
-                    <td className="px-3 py-2 text-right align-top">
-                      {money(product.returningCashPriceCents)}
-                    </td>
+                    <PriceCell product={product} cents={product.airliteCostCents} />
+                    <PriceCell product={product} cents={product.newStandardPriceCents} />
+                    <PriceCell product={product} cents={product.newCashPriceCents} />
+                    <PriceCell product={product} cents={product.returningStandardPriceCents} />
+                    <PriceCell product={product} cents={product.returningCashPriceCents} />
                     <td className="px-3 py-2 align-top">
                       <Badge
                         variant={
@@ -352,22 +380,29 @@ export function NuTechCatalogWorkspacePanel({
                           // instead of letting the picker's reset unmap it.
                           value={
                             workspace.sageCostCodes.some(
-                              (costCode) => costCode.id === product.sageCostCodeId
+                              (costCode) => `sage:${costCode.id}` === mappingValue(product)
+                            ) ||
+                            workspace.namedCostCodes.some(
+                              (costCode) => `named:${costCode.name}` === mappingValue(product)
                             )
-                              ? (product.sageCostCodeId ?? "")
+                              ? mappingValue(product)
                               : ""
                           }
                           disabled={isPending}
                           onValueChange={(value) => {
-                            if (value !== (product.sageCostCodeId ?? "")) {
+                            if (value !== mappingValue(product)) {
                               mapSageCostCode(product.id, value)
                             }
                           }}
                           options={[
                             { value: "", label: "Not mapped" },
                             ...workspace.sageCostCodes.map((costCode) => ({
-                              value: costCode.id,
+                              value: `sage:${costCode.id}`,
                               label: costCode.displayLabel,
+                            })),
+                            ...workspace.namedCostCodes.map((costCode) => ({
+                              value: `named:${costCode.name}`,
+                              label: costCode.label,
                             })),
                           ]}
                           ariaLabel={`Sage cost code for ${product.name}`}
@@ -380,6 +415,14 @@ export function NuTechCatalogWorkspacePanel({
                           {product.sageCostCodeLabel ?? "Not mapped"}
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-2 align-top">
+                      <Checkbox
+                        checked={product.taxable}
+                        disabled={isPending || !workspace.canImport}
+                        aria-label={`${product.name} is taxable`}
+                        onCheckedChange={(checked) => setTaxable(product.id, checked === true)}
+                      />
                     </td>
                   </tr>
                 ))}
