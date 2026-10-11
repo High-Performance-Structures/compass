@@ -4,6 +4,7 @@ import * as React from "react"
 import { IconLockCog, IconUsersGroup } from "@tabler/icons-react"
 
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { AccountDeletionRequestsCard } from "@/components/settings/account-deletion-requests-card"
 import {
   getPermissionOverrideContext,
   updateRolePermissionOverride,
@@ -701,6 +702,7 @@ export function PermissionsTab(): React.ReactElement {
           </p>
         </aside>
       </div>
+      {canEditMatrix && <AccountDeletionRequestsCard />}
     </div>
   )
 }
