@@ -305,7 +305,7 @@ export async function generateNuTechAirliteWorkbook(
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
-      throw new Error("Provision the project Google Drive folder before generating the Airlite workbook.")
+      throw new Error("This job has no Google Drive folder yet, so the order form has nowhere to go. An admin can create it with “Retry Drive setup” in the project's registry panel.")
     }
     const workflow = await access.db
       .select()
@@ -335,7 +335,11 @@ export async function generateNuTechAirliteWorkbook(
         .limit(1)
         .get(),
       access.db
-        .select({ number: projectOperations.sourceRecordNumber })
+        .select({
+          number: projectOperations.sourceRecordNumber,
+          siteContactName: projectOperations.assigneeName,
+          siteContactPhone: projectOperations.siteContactPhone,
+        })
         .from(projectOperations)
         .where(
           and(
@@ -397,7 +401,11 @@ export async function generateNuTechAirliteWorkbook(
       fob: (delivery ? settings.fobDelivery : settings.fobPickup).trim() || null,
       shippingWarehouse: settings.warehouseName.trim() || null,
       shipToLines: splitShipTo(access.project.address),
-      deliveryContact: access.project.clientName,
+      // "Jody Reeves 304-293-4503": the PO's site contact, else the client.
+      deliveryContact:
+        [purchaseOrder.siteContactName?.trim() || access.project.clientName, purchaseOrder.siteContactPhone?.trim()]
+          .filter(Boolean)
+          .join(" ") || null,
       miscNote: !delivery && workflow.trailerDimensions ? `Trailer: ${workflow.trailerDimensions}.` : null,
     }
     const { env } = await getCloudflareContext()
