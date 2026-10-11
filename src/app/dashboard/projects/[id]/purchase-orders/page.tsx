@@ -158,7 +158,7 @@ function PurchaseOrderCard({
   readonly paperTrail: PaperTrailRecordView | null | undefined
   /** The manufacturer's price list, for its POs' line items. */
   readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
-  /** Set on the PO linked to the Nu-Tech order: the manufacturer's order form replaces the pickup copy. */
+  /** Set on the PO linked to the Nu-Tech order: its manufacturer order form, beside the pickup copy. */
   readonly orderForm?: { readonly workbookUrl: string | null; readonly released: boolean }
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
@@ -242,11 +242,10 @@ function PurchaseOrderCard({
               defaultTaskType="supplier_task"
               assigneeOptions={taskAssigneeOptions}
             />
-            {orderForm ? (
+            {orderForm && (
               <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} />
-            ) : (
-              <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
             )}
+            <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
           </div>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
