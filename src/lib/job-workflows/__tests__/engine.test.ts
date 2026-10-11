@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { SCOPE_OF_WORK_WORKFLOW } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowCheck, type WorkflowDefinition } from "@/lib/job-workflows/engine"
 import { jobWorkflowsSettingsSchema } from "@/lib/feature-settings/registry"
+import { forwardJobStatusSuggestion } from "@/lib/job-workflows/status"
 
 const DEFINITION: WorkflowDefinition = {
   title: "test",
@@ -114,5 +115,16 @@ describe("job workflow settings", () => {
   it("accepts overrides and rejects malformed custom item ids", () => {
     expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: { intake: { extraItems: [{ id: "custom-site-visit-ab12cd", label: "Site visit" }] } } } }).success).toBe(true)
     expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: { intake: { extraItems: [{ id: "bad id", label: "x" }] } } } }).success).toBe(false)
+  })
+})
+
+describe("forwardJobStatusSuggestion", () => {
+  it("offers the step's status only when it moves the job forward", () => {
+    expect(forwardJobStatusSuggestion("intake", "estimating")).toBe("estimating")
+    expect(forwardJobStatusSuggestion("under_construction", "awarded")).toBeNull()
+    expect(forwardJobStatusSuggestion("follow_up", "estimate_sent")).toBeNull()
+    expect(forwardJobStatusSuggestion("estimating", "estimating")).toBeNull()
+    expect(forwardJobStatusSuggestion("custom-status", "estimating")).toBeNull()
+    expect(forwardJobStatusSuggestion("intake", null)).toBeNull()
   })
 })
