@@ -64,11 +64,13 @@ async function loadOverview(db: Db, organizationId: string, projectId: string): 
       address: projects.address,
       jobStatusId: projects.jobStatusId,
       googleDriveFolderId: projects.googleDriveFolderId,
+      workspaceKind: projects.workspaceKind,
     })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
     .get()
-  if (!project) return null
+  // Internal workspaces (H-Office, the yard) show their own panel, not a client-job workflow.
+  if (!project || project.workspaceKind) return null
   const department = projectDepartment({ projectId: project.id, projectNumber: project.projectNumber })
   const definition = department === "N" ? undefined : DEPARTMENT_WORKFLOWS[department]
   if (!definition) return null
