@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  airlitePurchaseOrderLabel,
   buildNuTechAirliteWorkbookPlan,
+  nextAirlitePoSequence,
   formatAirliteDate,
   readNuTechAirliteFormLayout,
   type NuTechAirliteOrderHeader,
@@ -104,5 +106,24 @@ describe("Nu-Tech Airlite order form", () => {
 
   it("formats dates the way the form shows them", () => {
     expect(formatAirliteDate("2026-03-06T19:04:21Z")).toBe("3/6/2026")
+  })
+})
+
+describe("Airlite PO numbering", () => {
+  it("continues from the Settings number, then from the last assigned", () => {
+    expect(nextAirlitePoSequence({ assigned: null, lastAssigned: null, nextSetting: "1860" })).toBe(1860)
+    expect(nextAirlitePoSequence({ assigned: null, lastAssigned: 1860, nextSetting: "1860" })).toBe(1861)
+    expect(nextAirlitePoSequence({ assigned: null, lastAssigned: 1861, nextSetting: "1900" })).toBe(1900)
+    expect(nextAirlitePoSequence({ assigned: 1855, lastAssigned: 1861, nextSetting: "1900" })).toBe(1855)
+    expect(nextAirlitePoSequence({ assigned: null, lastAssigned: null, nextSetting: "" })).toBeNull()
+  })
+
+  it("labels the PO with the project number, sequence and last name", () => {
+    expect(
+      airlitePurchaseOrderLabel({ projectNumber: "N-0-0", sequence: 1860, fallbackNumber: "N-0-0-PO-001", clientLastName: "Reeves" })
+    ).toBe("N-0-0-1860 Reeves")
+    expect(
+      airlitePurchaseOrderLabel({ projectNumber: "N-0-0", sequence: null, fallbackNumber: "N-0-0-PO-001", clientLastName: "Reeves" })
+    ).toBe("N-0-0-PO-001 Reeves")
   })
 })
