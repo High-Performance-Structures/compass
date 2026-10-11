@@ -244,7 +244,7 @@ export function ProjectRegistryPanel({
                 ) : (
                   <IconFolder className="size-4" />
                 )}
-                Retry Drive setup
+                Create Drive folder
               </Button>
             )}
             <Button

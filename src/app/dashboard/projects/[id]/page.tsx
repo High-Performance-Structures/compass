@@ -13,6 +13,7 @@ import {
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { ProjectDriveFolderButton } from "@/components/projects/project-drive-folder-button"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
@@ -475,10 +476,15 @@ export default async function ProjectSummaryPage({
             jobStatus={projectJobStatus}
             clientStatus={clientStatus}
           />
-          <ProjectActionsMenu
-            projectId={id}
-            projectDriveFolderId={project?.googleDriveFolderId ?? null}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            {canEditRegistry && project && !project.googleDriveFolderId && (
+              <ProjectDriveFolderButton projectId={id} />
+            )}
+            <ProjectActionsMenu
+              projectId={id}
+              projectDriveFolderId={project?.googleDriveFolderId ?? null}
+            />
+          </div>
         </div>
 
         {/* meta line: address + tasks */}
