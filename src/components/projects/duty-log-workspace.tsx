@@ -12,6 +12,7 @@ import {
   type DutyLogWorkspace,
   type UncategorizedLogView,
 } from "@/app/actions/internal-duties"
+import { RecurringDutiesBoard } from "@/components/projects/recurring-duties-board"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -217,6 +218,18 @@ export function DutyLogWorkspaceView({ workspace }: { readonly workspace: DutyLo
             </Button>
           </div>
         </form>
+      ) : null}
+
+      {project.workspaceKind === "office" || workspace.recurring.length > 0 ? (
+        <RecurringDutiesBoard
+          projectId={project.id}
+          duties={workspace.recurring}
+          dutyOptions={workspace.duties}
+          staff={workspace.staff}
+          canEdit={workspace.canEdit}
+          canManage={workspace.canManage}
+          currentUserId={workspace.currentUserId}
+        />
       ) : null}
 
       <section aria-labelledby="duty-summary" className="grid gap-2">

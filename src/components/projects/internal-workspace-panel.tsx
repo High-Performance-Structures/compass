@@ -3,7 +3,9 @@ import Link from "next/link"
 import { IconClipboardList } from "@tabler/icons-react"
 
 import type { InternalWorkspaceSummary } from "@/app/actions/internal-duties"
+import { statusText, TONE_CLASS } from "@/lib/internal-duties/recurring-display"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 function weekLabel(weekStart: string): string {
   return new Date(`${weekStart}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })
@@ -39,6 +41,21 @@ export function InternalWorkspacePanel({ summary }: { readonly summary: Internal
           </Button>
         </div>
       </div>
+
+      {summary.attention.length > 0 ? (
+        <div className="grid gap-1.5" aria-label="Recurring duties that need attention">
+          <h3 className="text-sm font-semibold">Needs attention</h3>
+          {summary.attention.map((duty) => {
+            const status = statusText(duty)
+            return (
+              <div key={duty.id} className="flex flex-wrap justify-between gap-x-4 gap-y-0.5 text-sm">
+                <span>{duty.accountName ? `${duty.title} · ${duty.accountName}` : duty.title}</span>
+                <span className={cn("font-medium", TONE_CLASS[status.tone])}>{status.text}</span>
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
 
       {summary.byDuty.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing logged this week yet.</p>
