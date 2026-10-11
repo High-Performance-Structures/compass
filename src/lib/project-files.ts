@@ -10,6 +10,7 @@ export type ProjectFileCategoryKey =
   | "plans"
   | "selections"
   | "communications"
+  | "meeting-notes"
   | "construction-log"
   | "inspections"
   | "financing"
@@ -18,6 +19,12 @@ export type ProjectFileCategoryKey =
   | "change-orders"
   | "purchasing"
   | "submittals"
+  | "engineering"
+  | "subcontractors"
+  | "warranty"
+  | "project-binder"
+  | "icf-awards"
+  | "key-ceremony"
   | "photos"
   | "buildertrend-archive"
   | "archive"
@@ -92,21 +99,21 @@ export const PROJECT_FILE_CATEGORIES: readonly ProjectFileCategory[] = [
   {
     key: "estimate",
     label: "Estimate",
-    currentNames: ["02_WorkingEstimate"],
+    // 03_TakeOffsEstimates is the Nu-Tech order template's estimate folder.
+    currentNames: ["02_WorkingEstimate", "03_TakeOffsEstimates"],
     legacyNames: ["01_Takeoffs", "02_Estimates", "01_Quotes"],
   },
   {
     key: "pay-requests",
     label: "Pay Requests",
-    currentNames: ["03_PayRequests"],
+    currentNames: ["03_PayRequests", "05_PayRequests"],
     legacyNames: ["06_PayRequests", "02_Invoices"],
   },
   {
     key: "plans",
     label: "Plans and Specifications",
-    currentNames: ["04_PermittedPlansSpecifications"],
+    currentNames: ["04_PermittedPlansSpecifications", "01_PlanFiles"],
     legacyNames: [
-      "03_BidDocs",
       "04_PermittedPlans",
       "04_ConstructionDocs",
       "05_PermitSet",
@@ -122,7 +129,13 @@ export const PROJECT_FILE_CATEGORIES: readonly ProjectFileCategory[] = [
     key: "communications",
     label: "Communications",
     currentNames: ["06_Communications"],
-    legacyNames: ["Correspondence", "Meeting Notes"],
+    legacyNames: ["Correspondence"],
+  },
+  {
+    key: "meeting-notes",
+    label: "Meeting Notes",
+    currentNames: ["13_MeetingNotes"],
+    legacyNames: ["Meeting Notes"],
   },
   {
     key: "construction-log",
@@ -146,8 +159,10 @@ export const PROJECT_FILE_CATEGORIES: readonly ProjectFileCategory[] = [
   {
     key: "preconstruction",
     label: "Preconstruction",
-    currentNames: ["10_Preconstruction"],
+    // 02_TakeOffs is the Nu-Tech order template's takeoff folder.
+    currentNames: ["10_Preconstruction", "02_TakeOffs"],
     legacyNames: [
+      "03_BidDocs",
       "01_ProgramDocs",
       "02_Schematics",
       "03_DesignDevelopment",
@@ -171,7 +186,8 @@ export const PROJECT_FILE_CATEGORIES: readonly ProjectFileCategory[] = [
   {
     key: "purchasing",
     label: "Purchasing",
-    currentNames: ["12_Purchasing"],
+    // 04_PurchaseOrders is the Nu-Tech order template's purchasing folder.
+    currentNames: ["12_Purchasing", "04_PurchaseOrders"],
     legacyNames: ["03_DeliveryDocs"],
   },
   {
@@ -181,8 +197,47 @@ export const PROJECT_FILE_CATEGORIES: readonly ProjectFileCategory[] = [
     legacyNames: ["08_Submittals"],
   },
   {
+    key: "engineering",
+    label: "Engineering and Structural",
+    currentNames: ["14_EngineeringStructural"],
+    legacyNames: [],
+  },
+  {
+    key: "subcontractors",
+    label: "Subcontractors",
+    currentNames: ["15_Subcontractors"],
+    legacyNames: [],
+  },
+  {
+    key: "warranty",
+    label: "Warranty",
+    // 13 belongs to 13_MeetingNotes; warranty moved to 17 on 2026-10-10.
+    currentNames: ["17_Warranty"],
+    legacyNames: ["13_Warranty"],
+  },
+  {
+    key: "project-binder",
+    label: "Project Binder",
+    currentNames: ["18_ProjectBinder"],
+    legacyNames: ["13_Final Binder", "Final Binder"],
+  },
+  {
+    key: "icf-awards",
+    label: "ICF Builder Awards",
+    currentNames: ["19_ICFBuilderAwards"],
+    legacyNames: ["11_ICFBuilderAwardsSubmission"],
+  },
+  {
+    key: "key-ceremony",
+    label: "Key Ceremony",
+    currentNames: ["20_KeyCeremony"],
+    legacyNames: ["Key Ceremony"],
+  },
+  {
     key: "photos",
     label: "Photos",
+    // The Buildertrend cutover uploads into Pictures; photos move to
+    // 07_ConstructionLog/04_ProgressPhotos once the cutover is finished.
     currentNames: ["Pictures", "Photos"],
     legacyNames: ["Photos"],
   },
