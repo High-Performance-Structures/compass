@@ -11,27 +11,37 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FEATURE_SETTINGS, projectAgingSettingsSchema, type ProjectAgingSettings } from "@/lib/feature-settings/registry"
 import { PROJECT_AGING_LEVELS } from "@/lib/project-follow-up"
-import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
+import { getProjectAgingStatusRows, type ProjectAgingStatusRow } from "@/app/actions/project-profile"
 
-/** Statuses that are followed up, with their built-in cadence as the default. */
-const FOLLOWED_STATUSES = PROJECT_JOB_STATUS_DEFINITIONS.flatMap((status) =>
-  status.followUpCadenceDays === null
-    ? []
-    : [{ id: status.id, label: status.label, dueDays: status.followUpCadenceDays, overdueDays: status.followUpCadenceDays + 1 }],
-)
+/** A status row: its default timing as text ("" when not followed by default). */
+type StatusOption = {
+  readonly id: string
+  readonly label: string
+  readonly custom: boolean
+  readonly dueDays: string
+  readonly overdueDays: string
+}
 
 type Row = { readonly due: string; readonly overdue: string }
 
-function rowsFrom(settings: ProjectAgingSettings): Readonly<Record<string, Row>> {
+function statusOptions(rows: readonly ProjectAgingStatusRow[]): readonly StatusOption[] {
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    custom: row.custom,
+    dueDays: row.defaultThresholds ? String(row.defaultThresholds.dueDays) : "",
+    overdueDays: row.defaultThresholds ? String(row.defaultThresholds.overdueDays) : "",
+  }))
+}
+
+function rowsFrom(statuses: readonly StatusOption[], settings: ProjectAgingSettings): Readonly<Record<string, Row>> {
   return Object.fromEntries(
-    FOLLOWED_STATUSES.map((status) => {
-      const custom = settings.statuses[status.id]
-      return [status.id, { due: String(custom?.dueDays ?? status.dueDays), overdue: String(custom?.overdueDays ?? status.overdueDays) }]
+    statuses.map((status) => {
+      const configured = settings.statuses[status.id]
+      return [status.id, configured ? { due: String(configured.dueDays), overdue: String(configured.overdueDays) } : { due: status.dueDays, overdue: status.overdueDays }]
     }),
   )
 }
-
-const DEFAULT_ROWS = rowsFrom(FEATURE_SETTINGS["project-aging"].defaults)
 
 function Swatch({ token }: { readonly token: string }): React.ReactElement {
   return <span className="size-2" style={{ background: `var(${token})` }} aria-hidden="true" />
@@ -48,17 +58,24 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
   const [canEdit, setCanEdit] = React.useState(false)
   const [customized, setCustomized] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [rows, setRows] = React.useState<Readonly<Record<string, Row>>>(DEFAULT_ROWS)
+  const [statuses, setStatuses] = React.useState<readonly StatusOption[]>([])
+  const [rows, setRows] = React.useState<Readonly<Record<string, Row>>>({})
   const [pending, startTransition] = React.useTransition()
 
   const load = React.useCallback(async () => {
-    const result = await getFeatureSettingsForEditor("project-aging")
+    const [result, statusResult] = await Promise.all([getFeatureSettingsForEditor("project-aging"), getProjectAgingStatusRows()])
     if (!result.success) {
       setError(result.error)
       return
     }
+    if (!statusResult.success) {
+      setError(statusResult.error)
+      return
+    }
+    const options = statusOptions(statusResult.rows)
     const parsed = projectAgingSettingsSchema.safeParse(result.data.settings)
-    setRows(rowsFrom(parsed.success ? parsed.data : FEATURE_SETTINGS["project-aging"].defaults))
+    setStatuses(options)
+    setRows(rowsFrom(options, parsed.success ? parsed.data : FEATURE_SETTINGS["project-aging"].defaults))
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -77,22 +94,23 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    // Store only statuses that differ from their cadence default.
-    const statuses: ProjectAgingSettings["statuses"] = {}
-    for (const status of FOLLOWED_STATUSES) {
+    // Store only statuses that differ from their default; blank means "not followed up".
+    const configured: ProjectAgingSettings["statuses"] = {}
+    for (const status of statuses) {
       const row = rows[status.id]
       if (!row) continue
+      if (row.due === status.dueDays && row.overdue === status.overdueDays) continue
+      if (row.due.trim() === "" && row.overdue.trim() === "") continue
       const dueDays = Number(row.due)
       const overdueDays = Number(row.overdue)
-      if (dueDays === status.dueDays && overdueDays === status.overdueDays) continue
-      if (!(dueDays < overdueDays)) {
-        toast.error(`${status.label}: Overdue must be longer than Follow-up due.`)
+      if (!Number.isInteger(dueDays) || !Number.isInteger(overdueDays) || dueDays < 1 || !(dueDays < overdueDays)) {
+        toast.error(`${status.label}: enter whole days, with Overdue longer than Follow-up due.`)
         return
       }
-      statuses[status.id] = { dueDays, overdueDays }
+      configured[status.id] = { dueDays, overdueDays }
     }
     startTransition(async () => {
-      const result = await saveFeatureSettings("project-aging", { statuses })
+      const result = await saveFeatureSettings("project-aging", { statuses: configured })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -138,14 +156,16 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
               </tr>
             </thead>
             <tbody>
-              {FOLLOWED_STATUSES.map((status) => {
-                const row = rows[status.id] ?? { due: String(status.dueDays), overdue: String(status.overdueDays) }
-                const changed = row.due !== String(status.dueDays) || row.overdue !== String(status.overdueDays)
+              {statuses.map((status) => {
+                const row = rows[status.id] ?? { due: status.dueDays, overdue: status.overdueDays }
+                const changed = row.due !== status.dueDays || row.overdue !== status.overdueDays
                 return (
                   <tr key={status.id} className="border-b">
                     <td className="py-1.5">
                       {status.label}
-                      {changed ? <span className="ml-2 text-xs text-primary">Custom</span> : null}
+                      {status.custom ? <span className="ml-2 text-xs text-muted-foreground">Your status</span> : null}
+                      {changed ? <span className="ml-2 text-xs text-primary">Changed</span> : null}
+                      {row.due === "" && row.overdue === "" ? <span className="ml-2 text-xs text-muted-foreground">Not followed up</span> : null}
                     </td>
                     <td className="py-1.5">
                       <Input type="number" inputMode="numeric" min={1} max={60} step={1} value={row.due} disabled={disabled}
@@ -174,7 +194,7 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
               <p className="text-xs text-muted-foreground">Only admins can change these settings.</p>
             )}
             <p className="ml-auto text-xs text-muted-foreground">
-              Business days since the last logged client contact. Organization-specific statuses use the cadence set when they were added.
+              Business days since the last logged client contact. Leave both blank for statuses that shouldn&apos;t be followed up. This is the one place follow-up timing is set.
             </p>
           </div>
         </form>

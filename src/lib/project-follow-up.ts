@@ -8,9 +8,10 @@ export type FollowUpThresholds = {
 }
 
 /**
- * A status's thresholds: the company's setting for it, else its cadence (due
- * on the cadence day, overdue the day after). Null when the status is not
- * followed up (closed, internal).
+ * A status's thresholds: the company's setting for it (Settings → Workflows),
+ * else its default cadence (due on the cadence day, overdue the day after).
+ * Null when the status has neither, i.e. it isn't followed up (closed,
+ * internal).
  */
 export function followUpThresholds(input: {
   readonly jobStatusId: string
@@ -20,8 +21,9 @@ export function followUpThresholds(input: {
 }): FollowUpThresholds | null {
   const cadence =
     input.customCadenceDays === undefined ? defaultFollowUpCadenceDays(input.jobStatusId) : input.customCadenceDays
-  if (cadence === null) return null
-  return input.settings.statuses[input.jobStatusId] ?? { dueDays: cadence, overdueDays: cadence + 1 }
+  const configured = input.settings.statuses[input.jobStatusId]
+  if (configured) return configured
+  return cadence === null ? null : { dueDays: cadence, overdueDays: cadence + 1 }
 }
 
 export type ClientInteractionTime = {

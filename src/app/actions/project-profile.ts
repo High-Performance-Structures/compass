@@ -79,6 +79,7 @@ import {
 import { clientFollowUpState, followUpThresholds, type ProjectFollowUpSignal } from "@/lib/project-follow-up"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import {
   isProjectDepartment,
@@ -136,6 +137,8 @@ export type ProjectInformation = {
   }
   readonly jobStatuses: readonly ProjectProfileJobStatus[]
   readonly interactionTypes: readonly ProjectInteractionTypeOption[]
+  /** What a logged client contact must include (Settings → Workflows). */
+  readonly interactionRules: { readonly minimumSummaryCharacters: number; readonly maximumBackdateDays: number }
   readonly clientContacts: readonly {
     readonly id: string
     readonly displayName: string
@@ -507,6 +510,7 @@ export async function getProjectInformation(
       interactionTypes: projectInteractionTypeOptions(
         customInteractionTypes.map((item) => item.interactionType),
       ),
+      interactionRules: await readFeatureSettings(db, organizationId, "client-interactions"),
       clientContacts,
       projectNumberAliases: aliases.map((alias) => alias.projectNumber),
       notes,
@@ -1852,6 +1856,12 @@ export async function createProjectInteraction(input: {
     const { db, organizationId, user } = await projectProfileContext(input.projectId, "update")
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
     if (!input.contactId) return { success: false, error: "Choose an active client contact." }
+    // Only a complete record counts as client contact for project aging.
+    const recordProblem = clientInteractionRecordProblem(
+      { summary, occurredAt },
+      await readFeatureSettings(db, organizationId, "client-interactions"),
+    )
+    if (recordProblem) return { success: false, error: recordProblem }
     const contactRows = await db
       .select({ id: projectContacts.id })
       .from(projectContacts)
@@ -1976,25 +1986,47 @@ export async function setProjectFollowUp(input: {
 }
 
 /** Active client contacts a contact can be logged against, for quick logging from the map. */
-export async function getProjectQuickLogContacts(
+export type ProjectInteractionFormOptions = {
+  readonly contacts: readonly { readonly id: string; readonly displayName: string }[]
+  readonly interactionTypes: readonly ProjectInteractionTypeOption[]
+  readonly rules: { readonly minimumSummaryCharacters: number; readonly maximumBackdateDays: number }
+}
+
+/** What the client-contact form needs: the job's client contacts, the company's interaction types and record rules. */
+export async function getProjectInteractionFormOptions(
   projectId: string,
-): Promise<{ readonly success: true; readonly contacts: readonly { readonly id: string; readonly displayName: string }[] } | { readonly success: false; readonly error: string }> {
+): Promise<{ readonly success: true; readonly options: ProjectInteractionFormOptions } | { readonly success: false; readonly error: string }> {
   try {
-    const { db } = await projectProfileContext(projectId, "read")
-    const contacts = await db
-      .select({ id: projectContacts.id, displayName: projectContacts.displayName })
-      .from(projectContacts)
-      .where(
-        and(
-          eq(projectContacts.projectId, projectId),
-          eq(projectContacts.contactType, "owner"),
-          eq(projectContacts.active, true),
-        ),
-      )
-      .orderBy(asc(projectContacts.displayName))
-    return { success: true, contacts }
+    const { db, organizationId } = await projectProfileContext(projectId, "read")
+    const [contacts, customTypes, rules] = await Promise.all([
+      db
+        .select({ id: projectContacts.id, displayName: projectContacts.displayName })
+        .from(projectContacts)
+        .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
+        .orderBy(asc(projectContacts.displayName)),
+      db
+        .selectDistinct({ interactionType: projectInteractions.interactionType })
+        .from(projectInteractions)
+        .where(
+          and(
+            eq(projectInteractions.organizationId, organizationId),
+            eq(projectInteractions.source, "manual"),
+            like(projectInteractions.interactionType, "custom:%"),
+          ),
+        )
+        .orderBy(asc(projectInteractions.interactionType)),
+      readFeatureSettings(db, organizationId, "client-interactions"),
+    ])
+    return {
+      success: true,
+      options: {
+        contacts,
+        interactionTypes: projectInteractionTypeOptions(customTypes.map((item) => item.interactionType)),
+        rules,
+      },
+    }
   } catch (error) {
-    console.error("Unable to load client contacts", error)
+    console.error("Unable to load client contact options", error)
     return { success: false, error: "Unable to load client contacts." }
   }
 }
@@ -2063,6 +2095,58 @@ export async function clearProjectFollowUp(projectId: string): Promise<ProjectPr
   } catch (error) {
     console.error("Unable to clear project follow-up", error)
     return { success: false, error: "Unable to clear project follow-up." }
+  }
+}
+
+export type ProjectAgingStatusRow = {
+  readonly id: string
+  readonly label: string
+  /** True for statuses the company added. */
+  readonly custom: boolean
+  /** Timing used when Settings has no entry; null means not followed up by default. */
+  readonly defaultThresholds: { readonly dueDays: number; readonly overdueDays: number } | null
+}
+
+/**
+ * Every job status the company uses (built-in and its own) with its default
+ * follow-up timing, for Settings → Workflows → Project aging.
+ */
+export async function getProjectAgingStatusRows(): Promise<
+  { readonly success: true; readonly rows: readonly ProjectAgingStatusRow[] } | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    if (!isInternalStaffRole(user.role)) return { success: false, error: "Project aging settings are available to office staff." }
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const custom = await db
+      .select({ id: projectJobStatuses.id, label: projectJobStatuses.label, cadenceDays: projectJobStatuses.followUpCadenceDays })
+      .from(projectJobStatuses)
+      .where(and(eq(projectJobStatuses.organizationId, organizationId), eq(projectJobStatuses.active, true)))
+      .orderBy(asc(projectJobStatuses.sortOrder), asc(projectJobStatuses.label))
+    const thresholdsFor = (cadence: number | null): ProjectAgingStatusRow["defaultThresholds"] =>
+      cadence === null ? null : { dueDays: cadence, overdueDays: cadence + 1 }
+    return {
+      success: true,
+      rows: [
+        ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => ({
+          id: status.id,
+          label: status.label,
+          custom: false,
+          defaultThresholds: thresholdsFor(status.followUpCadenceDays),
+        })),
+        ...custom.map((status) => ({
+          id: status.id,
+          label: status.label,
+          custom: true,
+          defaultThresholds: thresholdsFor(status.cadenceDays),
+        })),
+      ],
+    }
+  } catch (error) {
+    console.error("Unable to load project aging statuses", error)
+    return { success: false, error: "Unable to load job statuses." }
   }
 }
 
