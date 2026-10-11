@@ -154,6 +154,11 @@ export function FollowUpSection({
             <Link href={`/dashboard/projects/${encodeURIComponent(projectId)}/information#client-follow-up`}>History</Link>
           </Button>
         ) : null}
+        {compact ? (
+          <Button asChild size="sm" variant="ghost">
+            <Link href={`/dashboard/client-follow-up?job=${encodeURIComponent(projectId)}`}>Client follow-up</Link>
+          </Button>
+        ) : null}
       </div>
       {mode === "snooze" ? (
         <div role="group" aria-label="Snooze follow-up" className="flex flex-wrap gap-1">

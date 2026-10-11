@@ -100,21 +100,29 @@ export function PortfolioSection({
     setScope(readStoredScope(firstSalesPipelines.current))
   }, [])
 
-  // "Show on map" from the bell: map view, Messages layer on, that job
-  // selected. Watches the URL because the bell navigates within the page.
+  // Deep link to a job: /dashboard?job=<id> selects and focuses it (used by
+  // the bell's "Show on map" and the Client follow-up page). Optional:
+  // layer=messages turns the inbox layer on, view=pipeline opens the pipeline,
+  // scope=sales switches to the sales portfolio first. For that load the URL
+  // wins over the stored view and scope. Watches the URL because links can
+  // navigate within the page.
   const searchParams = useSearchParams()
   const linkedLayer = searchParams.get("layer")
   const linkedJob = searchParams.get("job")
+  const linkedView = searchParams.get("view")
+  const linkedScope = searchParams.get("scope")
   React.useEffect(() => {
-    if (linkedLayer !== "messages" || !linkedJob) return
-    const next = { ...readStoredLayers(), messages: true }
-    setView("map")
-    setScope(null)
-    setLayerState(next)
-    storeLayers(next)
+    if (!linkedJob) return
+    if (linkedLayer === "messages") {
+      const next = { ...readStoredLayers(), messages: true }
+      setLayerState(next)
+      storeLayers(next)
+    }
+    setView(linkedView === "pipeline" && linkedLayer !== "messages" ? "pipeline" : "map")
+    setScope(linkedScope === "sales" ? (firstSalesPipelines.current[0]?.department ?? null) : null)
     setSelection({ kind: "job", jobId: linkedJob })
     sectionRef.current?.scrollIntoView({ block: "start" })
-  }, [linkedJob, linkedLayer])
+  }, [linkedJob, linkedLayer, linkedScope, linkedView])
 
   React.useEffect(() => {
     const element = sectionRef.current
@@ -291,7 +299,7 @@ export function PortfolioSection({
                 onUnavailable={handleUnavailable}
                 layers={layers}
                 messageStacks={messageStacks}
-                focusSelectedOnLoad={linkedLayer === "messages" && linkedJob !== null}
+                focusSelectedOnLoad={linkedJob !== null}
               />
             ) : (
               <div className="h-full" />

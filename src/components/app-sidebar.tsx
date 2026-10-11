@@ -707,6 +707,12 @@ function SidebarNav({
             label: `${staleMessageCount} stale ${staleMessageCount === 1 ? "message" : "messages"} assigned to you`,
           },
         },
+        {
+          kind: "link",
+          title: "Client follow-up",
+          url: "/dashboard/client-follow-up",
+          icon: IconAddressBook,
+        },
       ]
     : []
   const cherishNav = buildCherishNavigation(canUseFieldDesk)
