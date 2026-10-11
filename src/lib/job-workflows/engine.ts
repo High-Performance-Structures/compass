@@ -46,6 +46,42 @@ export type WorkflowStepOverride = {
 
 export type WorkflowOverrides = Readonly<Record<string, WorkflowStepOverride>>
 
+/** A step the company added. Its checklist is the step override's extra items; everything in it is ticked. */
+export type WorkflowCustomStep = {
+  readonly id: string
+  readonly label: string
+  readonly jobStatusId: string | null
+}
+
+/** A company's step order and added steps for one department. */
+export type WorkflowLayout = {
+  /** Step ids in the company's order; steps left out keep their built-in place after these. */
+  readonly order: readonly string[]
+  readonly customSteps: readonly WorkflowCustomStep[]
+}
+
+export const DEFAULT_WORKFLOW_LAYOUT: WorkflowLayout = { order: [], customSteps: [] }
+
+/** Built-in steps followed by the company's added steps, in the company's order. */
+export function orderedWorkflowSteps(
+  builtIn: readonly WorkflowStepDefinition[],
+  layout: WorkflowLayout,
+): readonly WorkflowStepDefinition[] {
+  const builtInIds = new Set(builtIn.map((step) => step.id))
+  const added = layout.customSteps
+    .filter((step) => !builtInIds.has(step.id))
+    .map((step): WorkflowStepDefinition => ({ id: step.id, label: step.label, jobStatusId: step.jobStatusId, items: [] }))
+  const all = [...builtIn, ...added]
+  const byId = new Map(all.map((step) => [step.id, step]))
+  const placed = layout.order.flatMap((id) => {
+    const step = byId.get(id)
+    if (!step) return []
+    byId.delete(id)
+    return [step]
+  })
+  return [...placed, ...all.filter((step) => byId.has(step.id))]
+}
+
 export type WorkflowCheck = {
   readonly checkedAt: string
   readonly checkedByName: string | null
@@ -88,9 +124,13 @@ function applies(when: string | undefined, facts: WorkflowFacts): boolean {
   return when.startsWith("!") ? facts[when.slice(1)] !== true : facts[when] === true
 }
 
-/** The definition with a company's overrides applied: renamed, hidden and added items. */
-export function applyWorkflowOverrides(definition: WorkflowDefinition, overrides: WorkflowOverrides): WorkflowDefinition {
-  const steps = definition.steps
+/** The definition with a company's changes applied: reordered, added, renamed and hidden steps and items. */
+export function applyWorkflowOverrides(
+  definition: WorkflowDefinition,
+  overrides: WorkflowOverrides,
+  layout: WorkflowLayout = DEFAULT_WORKFLOW_LAYOUT,
+): WorkflowDefinition {
+  const steps = orderedWorkflowSteps(definition.steps, layout)
     .filter((step) => overrides[step.id]?.hidden !== true)
     .map((step): WorkflowStepDefinition => {
       const override = overrides[step.id]

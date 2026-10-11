@@ -16,7 +16,7 @@ import { projectEstimates } from "@/db/schema-estimates"
 import { projectWorkflowChecks } from "@/db/schema-job-workflows"
 import { projectFamilyPhases } from "@/db/schema-project-families"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
-import type { WorkflowCheck, WorkflowFacts, WorkflowOverrides } from "@/lib/job-workflows/engine"
+import type { WorkflowCheck, WorkflowFacts, WorkflowLayout, WorkflowOverrides } from "@/lib/job-workflows/engine"
 import { resolvedProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
 
 type Db = ReturnType<typeof getDb>
@@ -42,10 +42,17 @@ export async function loadWorkflowChecks(db: Db, organizationId: string, project
   )
 }
 
-/** The company's changes to a department's workflow. */
-export async function readWorkflowOverrides(db: Db, organizationId: string, department: ProjectDepartment): Promise<WorkflowOverrides> {
+/** The company's changes to a department's workflow: step changes, order and added steps. */
+export async function readWorkflowCustomization(
+  db: Db,
+  organizationId: string,
+  department: ProjectDepartment,
+): Promise<{ readonly overrides: WorkflowOverrides; readonly layout: WorkflowLayout }> {
   const settings = await readFeatureSettings(db, organizationId, "job-workflows")
-  return settings.departments[department] ?? {}
+  return {
+    overrides: settings.departments[department] ?? {},
+    layout: { order: settings.order[department] ?? [], customSteps: settings.customSteps[department] ?? [] },
+  }
 }
 
 const ESTIMATE_SENT = new Set(["signature_pending", "accepted"])

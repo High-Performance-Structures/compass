@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconTrash } from "@tabler/icons-react"
+import { IconArrowDown, IconArrowUp, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
@@ -13,7 +13,13 @@ import { Switch } from "@/components/ui/switch"
 import { DEPARTMENT_CODES } from "@/lib/department-profiles"
 import { FEATURE_SETTINGS, jobWorkflowsSettingsSchema, type JobWorkflowsSettings } from "@/lib/feature-settings/registry"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
-import type { WorkflowOverrides, WorkflowStepDefinition, WorkflowStepOverride } from "@/lib/job-workflows/engine"
+import {
+  orderedWorkflowSteps,
+  type WorkflowCustomStep,
+  type WorkflowOverrides,
+  type WorkflowStepDefinition,
+  type WorkflowStepOverride,
+} from "@/lib/job-workflows/engine"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
 import { cn } from "@/lib/utils"
@@ -37,17 +43,24 @@ function customItemId(label: string): string {
   return `custom-${slug || "item"}-${crypto.randomUUID().slice(0, 6)}`
 }
 
-/** One step's editor: name, visibility, job status, and its checklist. */
+/** One step's editor: place, name, visibility, job status, and its checklist. */
 function StepEditor({
   step,
   override,
   disabled,
   onChange,
+  position,
+  onMove,
+  custom,
 }: {
   readonly step: WorkflowStepDefinition
   readonly override: WorkflowStepOverride
   readonly disabled: boolean
   readonly onChange: (next: WorkflowStepOverride) => void
+  readonly position: { readonly index: number; readonly count: number }
+  readonly onMove: (delta: -1 | 1) => void
+  /** Set for steps the company added: renamed in place and removable. */
+  readonly custom: { readonly onRename: (label: string) => void; readonly onRemove: () => void } | null
 }): React.ReactElement {
   const [draft, setDraft] = React.useState("")
   const hidden = override.hidden === true
@@ -66,14 +79,65 @@ function StepEditor({
     <li className="space-y-3 border-b py-4">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:pr-1 sm:items-end">
         <div className="space-y-1.5">
-          <Label htmlFor={`step-${step.id}`}>Step</Label>
-          <Input
-            id={`step-${step.id}`}
-            value={override.label ?? ""}
-            placeholder={step.label}
-            disabled={disabled}
-            onChange={(event) => onChange({ ...override, label: event.target.value })}
-          />
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor={`step-${step.id}`}>
+              Step {position.index + 1}
+              {custom ? <span className="ml-2 text-xs font-normal text-muted-foreground">Yours</span> : null}
+            </Label>
+            <div className="flex items-center">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="size-7"
+                aria-label={`Move ${step.label} earlier`}
+                disabled={disabled || position.index === 0}
+                onClick={() => onMove(-1)}
+              >
+                <IconArrowUp className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="size-7"
+                aria-label={`Move ${step.label} later`}
+                disabled={disabled || position.index === position.count - 1}
+                onClick={() => onMove(1)}
+              >
+                <IconArrowDown className="size-4" />
+              </Button>
+              {custom ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="size-7"
+                  aria-label={`Remove ${step.label}`}
+                  disabled={disabled}
+                  onClick={custom.onRemove}
+                >
+                  <IconTrash className="size-4" />
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          {custom ? (
+            <Input
+              id={`step-${step.id}`}
+              value={step.label}
+              disabled={disabled}
+              onChange={(event) => custom.onRename(event.target.value)}
+            />
+          ) : (
+            <Input
+              id={`step-${step.id}`}
+              value={override.label ?? ""}
+              placeholder={step.label}
+              disabled={disabled}
+              onChange={(event) => onChange({ ...override, label: event.target.value })}
+            />
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`step-${step.id}-status`}>Goes with job status</Label>
@@ -227,18 +291,66 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
 
   const definition = DEPARTMENT_WORKFLOWS[active]
   const overrides: WorkflowOverrides = settings.departments[active] ?? {}
+  const customSteps: readonly WorkflowCustomStep[] = settings.customSteps[active] ?? []
+  const customIds = new Set(customSteps.map((step) => step.id))
+  const steps = definition ? orderedWorkflowSteps(definition.steps, { order: settings.order[active] ?? [], customSteps }) : []
+  const [newStep, setNewStep] = React.useState("")
+
   const setStep = (stepId: string, next: WorkflowStepOverride): void =>
     setSettings((current) => ({
+      ...current,
       departments: { ...current.departments, [active]: { ...(current.departments[active] ?? {}), [stepId]: next } },
     }))
+  const setCustomSteps = (next: readonly WorkflowCustomStep[]): void =>
+    setSettings((current) => ({ ...current, customSteps: { ...current.customSteps, [active]: [...next] } }))
+
+  function move(index: number, delta: -1 | 1): void {
+    const ids = steps.map((step) => step.id)
+    const target = index + delta
+    const moving = ids[index]
+    const other = ids[target]
+    if (moving === undefined || other === undefined) return
+    ids[index] = other
+    ids[target] = moving
+    setSettings((current) => ({ ...current, order: { ...current.order, [active]: ids } }))
+  }
+
+  function addStep(): void {
+    const label = newStep.trim()
+    if (!label) return
+    const id = customItemId(label)
+    setSettings((current) => ({
+      ...current,
+      customSteps: { ...current.customSteps, [active]: [...(current.customSteps[active] ?? []), { id, label, jobStatusId: null }] },
+      // New steps go last, after the current order.
+      order: { ...current.order, [active]: [...steps.map((step) => step.id), id] },
+    }))
+    setNewStep("")
+  }
+
+  function removeStep(id: string): void {
+    setSettings((current) => {
+      const remainingOverrides = Object.fromEntries(Object.entries(current.departments[active] ?? {}).filter(([stepId]) => stepId !== id))
+      return {
+        departments: { ...current.departments, [active]: remainingOverrides },
+        order: { ...current.order, [active]: (current.order[active] ?? []).filter((stepId) => stepId !== id) },
+        customSteps: { ...current.customSteps, [active]: (current.customSteps[active] ?? []).filter((step) => step.id !== id) },
+      }
+    })
+  }
 
   function save(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const departments = Object.fromEntries(
       Object.entries(settings.departments).map(([code, value]) => [code, value ? cleanOverrides(value) : value]),
     )
+    const emptyStep = Object.values(settings.customSteps).flatMap((list) => list ?? []).find((step) => step.label.trim() === "")
+    if (emptyStep) {
+      toast.error("Name every step you added, or remove it.")
+      return
+    }
     startTransition(async () => {
-      const result = await saveFeatureSettings("job-workflows", { departments })
+      const result = await saveFeatureSettings("job-workflows", { ...settings, departments })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -289,20 +401,52 @@ export function JobWorkflowSettingsSection(): React.ReactElement {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            “Recorded” items complete themselves from what Compass already holds; “Ticked” items are checked off on the job overview. Leave a name blank to keep the built-in wording.
+            “Recorded” items complete themselves from what Compass already holds; “Ticked” items are checked off on the job overview. Leave a name blank to keep the built-in wording. Use the arrows to reorder steps; built-in steps can be hidden, and steps you add can be removed.
           </p>
           {definition ? (
             <ol aria-label={`${profiles[active].shortName} steps`}>
-              {definition.steps.map((step) => (
+              {steps.map((step, index) => (
                 <StepEditor
                   key={`${active}-${step.id}`}
                   step={step}
                   override={overrides[step.id] ?? {}}
                   disabled={disabled}
                   onChange={(next) => setStep(step.id, next)}
+                  position={{ index, count: steps.length }}
+                  onMove={(delta) => move(index, delta)}
+                  custom={
+                    customIds.has(step.id)
+                      ? {
+                          onRename: (label) => setCustomSteps(customSteps.map((entry) => (entry.id === step.id ? { ...entry, label } : entry))),
+                          onRemove: () => removeStep(step.id),
+                        }
+                      : null
+                  }
                 />
               ))}
             </ol>
+          ) : null}
+          {definition && canEdit ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                aria-label={`Add a step to the ${profiles[active].shortName} workflow`}
+                value={newStep}
+                placeholder="Add a step (for example, Site meeting)"
+                onChange={(event) => setNewStep(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    addStep()
+                  }
+                }}
+                className="h-9 max-w-sm flex-1"
+                disabled={pending}
+              />
+              <Button type="button" size="sm" variant="outline" onClick={addStep} disabled={pending || !newStep.trim()}>
+                Add step
+              </Button>
+              <span className="text-xs text-muted-foreground">Then add its checklist items. A step shows on jobs once it has at least one.</span>
+            </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (

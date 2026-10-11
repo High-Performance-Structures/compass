@@ -156,13 +156,39 @@ export const workflowStepOverrideSchema = z.object({
 
 const workflowOverridesSchema = z.record(z.string().min(1).max(60), workflowStepOverrideSchema)
 
-/** Job workflows: per department, changes to the built-in steps. */
+const workflowStepOrderSchema = z.array(z.string().min(1).max(60)).max(60)
+
+/** A step the company added; its checklist lives in the step's extraItems. */
+export const workflowCustomStepSchema = z.object({
+  id: z.string().regex(/^custom-[a-z0-9-]{1,40}$/),
+  label: z.string().trim().min(1, "Name the step.").max(60),
+  jobStatusId: z.string().min(1).max(80).nullable(),
+})
+
+const workflowCustomStepsSchema = z.array(workflowCustomStepSchema).max(20)
+
+/**
+ * Job workflows, per department: changes to each step (departments), the
+ * company's step order, and steps the company added.
+ */
 export const jobWorkflowsSettingsSchema = z.object({
   departments: z.object({
     O: workflowOverridesSchema.optional(),
     H: workflowOverridesSchema.optional(),
     N: workflowOverridesSchema.optional(),
     D: workflowOverridesSchema.optional(),
+  }),
+  order: z.object({
+    O: workflowStepOrderSchema.optional(),
+    H: workflowStepOrderSchema.optional(),
+    N: workflowStepOrderSchema.optional(),
+    D: workflowStepOrderSchema.optional(),
+  }),
+  customSteps: z.object({
+    O: workflowCustomStepsSchema.optional(),
+    H: workflowCustomStepsSchema.optional(),
+    N: workflowCustomStepsSchema.optional(),
+    D: workflowCustomStepsSchema.optional(),
   }),
 })
 
@@ -278,8 +304,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "job-workflows": {
     label: "Job workflows",
-    description: "The steps and checklists on each department's job overview. Rename or hide steps and items, add your own checklist items, and choose the job status each step goes with.",
-    defaults: { departments: {} },
+    description: "The steps and checklists on each department's job overview. Reorder, rename or hide steps, add your own steps and checklist items, and choose the job status each step goes with.",
+    defaults: { departments: {}, order: {}, customSteps: {} },
     schema: jobWorkflowsSettingsSchema,
   },
   "job-emails": {

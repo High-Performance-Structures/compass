@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { CUSTOM_BUILD_WORKFLOW, DESIGN_WORKFLOW, SCOPE_OF_WORK_WORKFLOW } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowCheck, type WorkflowDefinition } from "@/lib/job-workflows/engine"
-import { jobWorkflowsSettingsSchema } from "@/lib/feature-settings/registry"
+import { jobWorkflowsSettingsSchema, parseFeatureSettings } from "@/lib/feature-settings/registry"
 import { forwardJobStatusSuggestion, workflowCatchUp } from "@/lib/job-workflows/status"
 
 const DEFINITION: WorkflowDefinition = {
@@ -113,8 +113,8 @@ describe("scope of work workflow", () => {
 
 describe("job workflow settings", () => {
   it("accepts overrides and rejects malformed custom item ids", () => {
-    expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: { intake: { extraItems: [{ id: "custom-site-visit-ab12cd", label: "Site visit" }] } } } }).success).toBe(true)
-    expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: { intake: { extraItems: [{ id: "bad id", label: "x" }] } } } }).success).toBe(false)
+    expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: { intake: { extraItems: [{ id: "custom-site-visit-ab12cd", label: "Site visit" }] } } }, order: {}, customSteps: {} }).success).toBe(true)
+    expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: { intake: { extraItems: [{ id: "bad id", label: "x" }] } } }, order: {}, customSteps: {} }).success).toBe(false)
   })
 })
 
@@ -161,5 +161,36 @@ describe("workflowCatchUp", () => {
         expect(new Set(itemIds).size).toBe(itemIds.length)
       }
     }
+  })
+})
+
+describe("workflow layout", () => {
+  it("reorders steps and appends steps the company added", () => {
+    const changed = applyWorkflowOverrides(
+      DEFINITION,
+      { "custom-site-meeting-abc123": { extraItems: [{ id: "custom-walk-def456", label: "Walk the site" }] } },
+      { order: ["three", "one"], customSteps: [{ id: "custom-site-meeting-abc123", label: "Site meeting", jobStatusId: null }] },
+    )
+    expect(changed.steps.map((step) => step.id)).toEqual(["three", "one", "two", "custom-site-meeting-abc123"])
+    const progress = workflowProgress(changed, { a: true, c: true }, new Map([["one.b", tick()], ["three.e", tick()]]))
+    expect(progress.current?.label).toBe("Site meeting")
+    expect(progress.current?.items[0]).toMatchObject({ key: "custom-site-meeting-abc123.custom-walk-def456", tickable: true })
+  })
+
+  it("leaves an added step with no checklist off the job, and ignores unknown ids in the order", () => {
+    const changed = applyWorkflowOverrides(DEFINITION, {}, { order: ["missing", "two"], customSteps: [{ id: "custom-empty-aaa111", label: "Empty", jobStatusId: null }] })
+    expect(changed.steps.map((step) => step.id)).toEqual(["two", "one", "three", "custom-empty-aaa111"])
+    expect(workflowProgress(changed, {}, new Map()).steps.some((step) => step.id === "custom-empty-aaa111")).toBe(false)
+  })
+
+  it("reads settings saved before steps could be reordered", () => {
+    const parsed = parseFeatureSettings("job-workflows", JSON.stringify({ departments: { H: { intake: { label: "Start" } } } }))
+    expect(parsed.departments.H?.intake?.label).toBe("Start")
+    expect(parsed.order).toEqual({})
+  })
+
+  it("validates saved layouts", () => {
+    expect(jobWorkflowsSettingsSchema.safeParse({ departments: { H: {} }, order: {}, customSteps: {} }).success).toBe(true)
+    expect(jobWorkflowsSettingsSchema.safeParse({ departments: {}, order: {}, customSteps: { O: [{ id: "custom-x-123abc", label: "", jobStatusId: null }] } }).success).toBe(false)
   })
 })
