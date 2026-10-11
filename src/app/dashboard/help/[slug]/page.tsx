@@ -9,8 +9,10 @@ import {
   safeHelpReturnTo,
 } from "@/components/help/help-ui-model"
 import { getCurrentUser } from "@/lib/auth"
+import { getCloudflareContext } from "@/lib/db"
 import { getHelpGuide } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { getHelpVideosForGuide } from "@/lib/help/videos"
 import { PageHeader } from "@/components/page-header"
 
 export const dynamic = "force-dynamic"
@@ -45,6 +47,10 @@ export default async function HelpGuidePage({
   const guide = getHelpGuide(slug)
   if (!guide) notFound()
   if (!helpAccess.allowedGuideIds.includes(guide.id)) notFound()
+  // Show players only where the video bucket exists, so environments without
+  // it never render videos that can't load.
+  const { env } = await getCloudflareContext()
+  const videos = env.HELP_VIDEOS ? getHelpVideosForGuide(guide.id) : {}
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-5 sm:px-6 sm:py-7">
@@ -82,6 +88,7 @@ export default async function HelpGuidePage({
         title={guide.title}
         content={guide.content}
         sections={guide.sections}
+        videos={videos}
         returnTo={returnTo}
       />
     </div>

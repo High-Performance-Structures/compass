@@ -287,6 +287,8 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
     }
 
     for (const key of [
+        // Signs Jarvis tool tokens; without it local Ask Jarvis always fails.
+        "AGENT_AUTH_SECRET",
         "JARVIS_BRIDGE_SECRET",
         "JARVIS_BRIDGE_SECONDARY_SECRET",
         "JARVIS_BRIDGE_ORGANIZATION_ID",

@@ -10,21 +10,26 @@ import {
   helpHrefWithReturnTo,
 } from "@/components/help/help-ui-model"
 import { useCanUseHelpJarvis } from "@/components/help/help-ui-provider"
+import { HelpVideoPlayer } from "@/components/help/help-video"
 import { Button } from "@/components/ui/button"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import type { HelpGuideSection } from "@/lib/help"
+import type { HelpVideo } from "@/lib/help/videos"
 
 export function HelpArticle({
   guideId,
   title,
   content,
   sections,
+  videos = {},
   returnTo,
 }: {
   readonly guideId: string
   readonly title: string
   readonly content: string
   readonly sections: readonly HelpGuideSection[]
+  /** Tutorial videos keyed by the section ID they appear under. */
+  readonly videos?: Readonly<Record<string, HelpVideo>>
   readonly returnTo: string | null
 }): React.ReactElement {
   const articleRef = React.useRef<HTMLElement>(null)
@@ -49,6 +54,10 @@ export function HelpArticle({
     const target = document.getElementById(hash)
     target?.scrollIntoView({ block: "start" })
   }, [sections])
+
+  const linkHrefTransform = returnTo
+    ? (href: string): string => helpHrefWithReturnTo(href, returnTo)
+    : undefined
 
   async function askJarvis(): Promise<void> {
     if (!canUseJarvis || !agent || !chat) return
@@ -91,15 +100,25 @@ export function HelpArticle({
         className="min-w-0 scroll-mt-20 border-l-2 border-primary/50 pl-5 sm:pl-7 [&_h2]:scroll-mt-20 [&_h2]:border-b [&_h2]:border-border [&_h2]:pb-2 [&_h3]:scroll-mt-20"
       >
         <div className="space-y-4 text-[15px] leading-7 text-foreground [&_h2]:mt-9 [&_h3]:mt-6 [&_li]:leading-6 [&_p]:leading-7">
-          <MarkdownRenderer
-            linkHrefTransform={
-              returnTo
-                ? (href) => helpHrefWithReturnTo(href, returnTo)
-                : undefined
-            }
-          >
-            {content}
-          </MarkdownRenderer>
+          {Object.keys(videos).length === 0 ? (
+            <MarkdownRenderer linkHrefTransform={linkHrefTransform}>
+              {content}
+            </MarkdownRenderer>
+          ) : (
+            // Sections rebuild the guide exactly (checked in tests), which
+            // lets a video sit directly under the section it demonstrates.
+            sections.map((section) => {
+              const video = videos[section.id]
+              return (
+                <React.Fragment key={section.id}>
+                  <MarkdownRenderer linkHrefTransform={linkHrefTransform}>
+                    {`## ${section.title}\n${section.content}`}
+                  </MarkdownRenderer>
+                  {video ? <HelpVideoPlayer video={video} /> : null}
+                </React.Fragment>
+              )
+            })
+          )}
         </div>
       </article>
     </div>
