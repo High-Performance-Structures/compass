@@ -18,6 +18,7 @@ import { ClientInteractionSettingsSection } from "@/components/settings/client-i
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
+import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
 
@@ -188,6 +189,7 @@ export function WorkflowsTab(): React.ReactElement {
   return (
     <div className="space-y-6">
       <JobWorkflowSettingsSection />
+      <JobEmailSettingsSection />
       <MessageDeskSettingsSection />
       <ProjectAgingSettingsSection />
       <ClientInteractionSettingsSection />
