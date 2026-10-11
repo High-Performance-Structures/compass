@@ -37,21 +37,35 @@ CREATE TABLE `recurring_duty_completions` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `recurring_duty_completions_period_idx` ON `recurring_duty_completions` (`recurring_duty_id`,`period`);
 --> statement-breakpoint
--- H-Office's recurring duties, owned by the office manager. Only rows whose
--- workspace and owner exist are inserted, so other databases are unaffected.
+-- H-Office's recurring duties, owned by the office manager. One insert per
+-- duty (D1 limits compound selects); each is skipped when H-Office is absent.
 INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
-SELECT d.id, p.organization_id, p.id, d.title, d.account, 'monthly', d.due_day, d.code,
-  (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, d.sort_order, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
-FROM (
-  SELECT 'rduty-hoffice-fsb' AS id, 'Bank reconciliation' AS title, 'FSB' AS account, 15 AS due_day, '502' AS code, 1 AS sort_order
-  UNION ALL SELECT 'rduty-hoffice-fsb-project', 'Bank reconciliation', 'FSB Project', 15, '502', 2
-  UNION ALL SELECT 'rduty-hoffice-ppcu-checking', 'Bank reconciliation', 'PPCU Checking', 15, '502', 3
-  UNION ALL SELECT 'rduty-hoffice-ppcu-savings', 'Bank reconciliation', 'PPCU Savings', 15, '502', 4
-  UNION ALL SELECT 'rduty-hoffice-spark-card', 'Statement reconciliation', 'Spark Credit Card', 15, '502', 5
-  UNION ALL SELECT 'rduty-hoffice-sales-tax', 'Sales tax filing', NULL, 20, '501', 6
-  UNION ALL SELECT 'rduty-hoffice-vendor-statements', 'Vendor statement review', NULL, 31, '512', 7
-) d
-JOIN `projects` p ON p.id = 'proj-h-office';
+SELECT 'rduty-hoffice-fsb', p.organization_id, p.id, 'Bank reconciliation', 'FSB', 'monthly', 15, '502', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 1, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
+--> statement-breakpoint
+INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
+SELECT 'rduty-hoffice-fsb-project', p.organization_id, p.id, 'Bank reconciliation', 'FSB Project', 'monthly', 15, '502', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 2, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
+--> statement-breakpoint
+INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
+SELECT 'rduty-hoffice-ppcu-checking', p.organization_id, p.id, 'Bank reconciliation', 'PPCU Checking', 'monthly', 15, '502', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 3, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
+--> statement-breakpoint
+INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
+SELECT 'rduty-hoffice-ppcu-savings', p.organization_id, p.id, 'Bank reconciliation', 'PPCU Savings', 'monthly', 15, '502', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 4, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
+--> statement-breakpoint
+INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
+SELECT 'rduty-hoffice-spark-card', p.organization_id, p.id, 'Statement reconciliation', 'Spark Credit Card', 'monthly', 15, '502', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 5, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
+--> statement-breakpoint
+INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
+SELECT 'rduty-hoffice-sales-tax', p.organization_id, p.id, 'Sales tax filing', NULL, 'monthly', 20, '501', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 6, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
+--> statement-breakpoint
+INSERT INTO `recurring_duties` (`id`,`organization_id`,`project_id`,`title`,`account_name`,`cadence`,`due_day`,`duty_code`,`owner_user_id`,`active`,`sort_order`,`created_at`,`updated_at`)
+SELECT 'rduty-hoffice-vendor-statements', p.organization_id, p.id, 'Vendor statement review', NULL, 'monthly', 31, '512', (SELECT u.id FROM users u WHERE u.id = 'user_01KGSRW8957M25E2YJ1XTMS74Q'), 1, 7, '2026-10-11T00:00:00.000Z', '2026-10-11T00:00:00.000Z'
+FROM `projects` p WHERE p.id = 'proj-h-office';
 --> statement-breakpoint
 -- FSB April 2026 was reconciled on Sep 28 (H-Office daily log).
 INSERT INTO `recurring_duty_completions` (`id`,`recurring_duty_id`,`period`,`completed_on`,`completed_by`,`notes`,`created_at`)
