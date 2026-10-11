@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { IconCheck } from "@tabler/icons-react"
 import { toast } from "sonner"
-import { setJobWorkflowCheck } from "@/app/actions/job-workflows"
+import { catchUpJobWorkflow, setJobWorkflowCheck } from "@/app/actions/job-workflows"
 import { updateProjectJobStatus } from "@/app/actions/project-profile"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { FollowUpSection } from "@/components/projects/project-follow-up-aging"
@@ -42,6 +42,7 @@ export function JobWorkflowPanel({
   footer = null,
   followUp,
   statusSuggestion = null,
+  catchUp = null,
 }: {
   readonly projectId: string
   readonly department: ProjectDepartment
@@ -53,6 +54,8 @@ export function JobWorkflowPanel({
   readonly footer?: React.ReactNode
   readonly followUp: ProjectFollowUpSignal | null
   readonly statusSuggestion?: StatusSuggestion | null
+  /** The job's status is ahead of its checklist: offer to tick the earlier steps. */
+  readonly catchUp?: { readonly jobStatusLabel: string; readonly stepLabel: string; readonly itemCount: number } | null
 }): React.ReactElement {
   const router = useRouter()
   const profiles = useDepartmentProfiles()
@@ -86,6 +89,18 @@ export function JobWorkflowPanel({
         toast.error(result.error)
         return
       }
+      router.refresh()
+    })
+  }
+
+  function applyCatchUp(): void {
+    startStatus(async () => {
+      const result = await catchUpJobWorkflow(projectId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(`Marked ${result.data.ticked} earlier item${result.data.ticked === 1 ? "" : "s"} done.`)
       router.refresh()
     })
   }
@@ -201,6 +216,18 @@ export function JobWorkflowPanel({
             )
           })}
         </ul>
+      ) : null}
+
+      {catchUp && !cancelledMessage ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            Job status is {catchUp.jobStatusLabel}, ahead of this checklist. If the earlier steps are behind you, mark their {catchUp.itemCount} open
+            item{catchUp.itemCount === 1 ? "" : "s"} done in one click; you can untick any of them afterwards.
+          </span>
+          <Button type="button" size="sm" variant="outline" disabled={statusPending} onClick={applyCatchUp}>
+            Mark steps before {catchUp.stepLabel} done
+          </Button>
+        </div>
       ) : null}
 
       {statusSuggestion && !cancelledMessage ? (

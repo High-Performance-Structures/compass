@@ -9,6 +9,7 @@ export function JobWorkflowOverviewPanel({ overview }: { readonly overview: JobW
       department={overview.department}
       progress={overview.progress}
       followUp={overview.followUp}
+      catchUp={overview.catchUp ? { ...overview.catchUp, jobStatusLabel: overview.jobStatus.label } : null}
       statusSuggestion={
         overview.suggestedJobStatus ? { current: overview.jobStatus.label, suggested: overview.suggestedJobStatus } : null
       }
