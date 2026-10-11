@@ -46,6 +46,11 @@ export const projectAgingSettingsSchema = z.object({
   statuses: z.record(z.string().min(1).max(80), projectFollowUpThresholdsSchema),
   /** Remind a job's follow-up owner when it turns overdue (missing means yes). */
   remindOnOverdue: z.boolean().optional(),
+  /**
+   * Per-department fallback follow-up owner (user id), used when a job has no
+   * owner and no logged contact. Keyed by department code.
+   */
+  defaultOwners: z.record(z.string().regex(/^[OHND]$/), z.string().min(1).max(200)).optional(),
 })
 
 export type ProjectAgingSettings = z.infer<typeof projectAgingSettingsSchema>

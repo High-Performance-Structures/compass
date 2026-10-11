@@ -360,6 +360,35 @@ export async function getProjectFollowUpOwners(
   }
 }
 
+/** Staff who can own client follow-up, for company-wide settings (no project needed). */
+export async function getOrganizationFollowUpOwners(): Promise<readonly ProjectFollowUpOwner[]> {
+  try {
+    const user = await requireAuth()
+    if (!isInternalStaffRole(user.role)) return []
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const members = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        active: users.isActive,
+        role: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(and(eq(organizationMembers.organizationId, organizationId), eq(users.isActive, true)))
+      .orderBy(asc(users.displayName), asc(users.email))
+    return members
+      .filter((member) => isEligibleFollowUpOwner(member))
+      .map((member) => ({ id: member.id, displayName: member.displayName ?? member.email }))
+  } catch (error) {
+    console.error("Unable to load follow-up owners", error)
+    return []
+  }
+}
+
 export async function getProjectInformation(
   projectId: string,
 ): Promise<ProjectInformation | null> {
