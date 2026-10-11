@@ -21,6 +21,8 @@ type DetailKey = Exclude<keyof NuTechEmailSettings, "templates" | "warehouseTaxE
 const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string; readonly placeholder: string; readonly type?: "email" }[] = [
   { key: "manufacturerName", label: "Manufacturer (PO vendor)", placeholder: "Manufacturer name" },
   { key: "manufacturerVendorId", label: "Manufacturer vendor ID (accounting)", placeholder: "Optional" },
+  { key: "productCostCode", label: "Cost code for catalog products", placeholder: "e.g. 03 11 19" },
+  { key: "shippingCostCode", label: "Cost code for shipping", placeholder: "e.g. 03 11 19" },
   { key: "manufacturerOrdersEmail", label: "Manufacturer orders email", placeholder: "orders@manufacturer.com", type: "email" },
   { key: "manufacturerCcEmail", label: "Manufacturer rep (cc)", placeholder: "rep@manufacturer.com", type: "email" },
   { key: "dealerAccountNumber", label: "Dealer account number", placeholder: "123456" },

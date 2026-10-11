@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button"
 import { DOCUMENT_INPUT_CLASS, DOCUMENT_SELECT_TRIGGER_CLASS, DOCUMENT_TEXTAREA_CLASS } from "@/lib/ui/document-fields"
 import { cn } from "@/lib/utils"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
+import { NuTechEstimateButton } from "@/components/nutech/nutech-estimate-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -852,6 +853,12 @@ export function NuTechOrderWorkspace({
                   <dd className="font-semibold tabular-nums">{money((customerTotalCents + shippingCents + taxCents) / 100)}</dd>
                 </div>
               </dl>
+              <div className="flex flex-wrap items-center gap-3">
+                <NuTechEstimateButton projectId={workspace.projectId} disabled={!order || workspace.orderItems.length === 0 || isPending} />
+                <span className="text-xs text-muted-foreground">
+                  Save the order first; the estimate uses the saved products, shipping and district.
+                </span>
+              </div>
             </div>
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Customer readiness</h3>

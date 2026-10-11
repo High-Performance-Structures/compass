@@ -88,7 +88,7 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
     const shipTo = pickup ? `Customer pickup${warehouse ? `: ${warehouse}` : ""}` : project.address
     const lines: CreatePurchaseOrderLineInput[] = items.map((item) => ({
       description: `${item.sku} ${item.name}`.trim(),
-      costCode: item.costCodeId ? (codeById.get(item.costCodeId) ?? null) : null,
+      costCode: (item.costCodeId ? codeById.get(item.costCodeId) : undefined) ?? (settings.productCostCode.trim() || null),
       phaseCode: null,
       quantity: item.quantity,
       unitCost: item.unitCostCents / 100,
@@ -173,6 +173,7 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
       .limit(1)
       .get()
     if (!version) return []
+    const settings = await readFeatureSettings(db, organizationId, "nutech-emails")
     const rows = await db
       .select({
         id: nuTechProducts.id,
@@ -199,7 +200,7 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
       description: `${row.sku} ${row.name}`.trim(),
       unit: row.unit,
       unitCost: row.costCents / 100,
-      costCode: row.costCode,
+      costCode: row.costCode ?? (settings.productCostCode.trim() || null),
       detail: `$${(row.costCents / 100).toFixed(2)} per ${row.unit}${row.packageLabel ? ` · ${row.packageLabel}` : ""}`,
     }))
   } catch {
