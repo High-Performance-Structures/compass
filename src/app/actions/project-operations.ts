@@ -63,6 +63,7 @@ import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
+import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { nuTechOrderFormAttachment, type EmailAttachment } from "@/lib/nutech/order-form-attachment"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
@@ -2447,6 +2448,7 @@ export async function deletePurchaseOrderRequest(
       return { success: false, error: "Purchase order not found." }
     }
 
+    await releaseNuTechAirlitePoNumber(db, purchaseOrderId)
     await db
       .delete(projectPurchaseOrderLines)
       .where(

@@ -1,4 +1,4 @@
-import { and, eq, max } from "drizzle-orm"
+import { and, eq, isNull, max } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
@@ -66,4 +66,29 @@ export async function assignNuTechAirlitePoNumber(
       )
   }
   return sequence
+}
+
+/**
+ * Before an unreleased manufacturer PO is deleted: frees its Nu-Tech order's
+ * PO number (the latest number is handed out again) and clears the order
+ * form, so the next PO starts fresh. A released order keeps its number.
+ */
+export async function releaseNuTechAirlitePoNumber(db: Db, purchaseOrderId: string): Promise<void> {
+  await db
+    .update(nuTechOrderWorkflows)
+    .set({
+      airlitePoSequence: null,
+      airliteWorkbookId: null,
+      airliteWorkbookUrl: null,
+      airliteWorkbookStatus: "not_generated",
+      airliteWorkbookGeneratedAt: null,
+      airliteWorkbookGeneratedBy: null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(
+      and(
+        eq(nuTechOrderWorkflows.airlitePurchaseOrderOperationId, purchaseOrderId),
+        isNull(nuTechOrderWorkflows.purchaseOrderReleasedAt)
+      )
+    )
 }
