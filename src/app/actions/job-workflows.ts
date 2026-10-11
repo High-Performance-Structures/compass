@@ -10,6 +10,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { DEPARTMENT_WORKFLOWS } from "@/lib/job-workflows/departments"
 import { applyWorkflowOverrides, workflowProgress, type WorkflowProgress } from "@/lib/job-workflows/engine"
+import { forwardJobStatusSuggestion } from "@/lib/job-workflows/status"
 import { loadWorkflowChecks, readWorkflowOverrides, scopeOfWorkFacts } from "@/lib/job-workflows/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -28,7 +29,7 @@ export type JobWorkflowOverview = {
   readonly progress: WorkflowProgress
   readonly followUp: ProjectFollowUpSignal | null
   readonly jobStatus: { readonly id: string; readonly label: string }
-  /** The current step's usual job status when the job is in another one. */
+  /** The current step's usual job status when it would move the job forward. */
   readonly suggestedJobStatus: { readonly id: string; readonly label: string } | null
 }
 
@@ -80,7 +81,7 @@ export async function getJobWorkflowOverview(projectId: string): Promise<JobWork
         .get(),
     ])
     const progress = workflowProgress(applyWorkflowOverrides(definition, overrides), facts, checks)
-    const suggestedId = progress.current?.jobStatusId ?? null
+    const suggestedId = forwardJobStatusSuggestion(project.jobStatusId, progress.current?.jobStatusId ?? null)
     return {
       projectId,
       department,
@@ -88,7 +89,7 @@ export async function getJobWorkflowOverview(projectId: string): Promise<JobWork
       followUp: followUps.get(projectId) ?? null,
       jobStatus: { id: project.jobStatusId, label: projectJobStatusLabel({ jobStatusId: project.jobStatusId, customLabel: customStatus?.label ?? null }) },
       suggestedJobStatus:
-        suggestedId && suggestedId !== project.jobStatusId
+        suggestedId
           ? { id: suggestedId, label: projectJobStatusLabel({ jobStatusId: suggestedId, customLabel: null }) }
           : null,
     }
