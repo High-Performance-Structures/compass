@@ -58,14 +58,14 @@ export function DutyLogWorkspaceView({ workspace }: { readonly workspace: DutyLo
   const projectOptions = [{ value: NO_PROJECT, label: "None" }, ...workspace.relatedProjects]
   const maxHours = Math.max(1, ...workspace.summary.map((row) => row.hours))
 
-  function makeWorkspace(kind: "office" | "field"): void {
+  function makeWorkspace(kind: "office" | "executive" | "field"): void {
     startTransition(async () => {
       const result = await setProjectWorkspaceKind(project.id, kind)
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success(kind === "office" ? "Now an office workspace" : "Now a field workspace")
+      toast.success(kind === "office" ? "Now an office workspace" : kind === "executive" ? "Now an owner's office workspace" : "Now a field workspace")
       router.refresh()
     })
   }
@@ -139,6 +139,9 @@ export function DutyLogWorkspaceView({ workspace }: { readonly workspace: DutyLo
             <Button type="button" variant="outline" disabled={pending} onClick={() => makeWorkspace("office")}>
               Make it an office workspace
             </Button>
+            <Button type="button" variant="outline" disabled={pending} onClick={() => makeWorkspace("executive")}>
+              Make it an owner&apos;s office workspace
+            </Button>
             <Button type="button" variant="outline" disabled={pending} onClick={() => makeWorkspace("field")}>
               Make it a field workspace
             </Button>
@@ -152,7 +155,7 @@ export function DutyLogWorkspaceView({ workspace }: { readonly workspace: DutyLo
     <div className="grid gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {project.workspaceKind === "office" ? "Office workspace" : "Field workspace"}. Each duty is a cost code, so hours match how
+          {project.workspaceKind === "field" ? "Field workspace" : project.workspaceKind === "executive" ? "Owner's office workspace" : "Office workspace"}. Each duty is a cost code, so hours match how
           payroll is coded.
         </p>
         {workspace.canEdit && !form ? (
@@ -220,7 +223,7 @@ export function DutyLogWorkspaceView({ workspace }: { readonly workspace: DutyLo
         </form>
       ) : null}
 
-      {project.workspaceKind === "office" || workspace.recurring.length > 0 ? (
+      {project.workspaceKind !== "field" || workspace.recurring.length > 0 ? (
         <RecurringDutiesBoard
           projectId={project.id}
           duties={workspace.recurring}

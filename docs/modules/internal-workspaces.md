@@ -56,6 +56,22 @@ Overview panel lists what needs attention.
   the 20th) and vendor statement review (due month end). FSB starts from April
   2026, reconciled on Sep 28.
 
+## Work queues
+
+On an internal workspace's Overview, the Role Dashboard shows the workspace's
+own work queues instead of a client job's. Each queue links to where that work
+happens and, where it applies, shows the Sage cost code its hours go under.
+People drag queues into their own order, saved per workspace kind, and
+**Reset order** returns to the default.
+
+| Kind | Leads with |
+| --- | --- |
+| Office | Recurring duties, accounts payable (512), billing and receivables (507), staff messages, office alerts, payroll (505), audits and compliance (504) |
+| Owner's office | Business development (508), new leads (41), managerial accounting (511), recurring duties, legal (510), human resources (514), marketing (506), planning and administration (42) |
+| Field | Crew log, duty log |
+
+An owner's office logs the same administrative duties as the office.
+
 ## Planned
 
 - Saving each reconciliation PDF to the company Drive (07_Banking / account /

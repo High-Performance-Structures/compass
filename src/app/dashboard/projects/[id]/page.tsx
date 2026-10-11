@@ -61,6 +61,9 @@ import { getJobWorkflowOverview, type JobWorkflowOverview } from "@/app/actions/
 import { JobWorkflowOverviewPanel } from "@/components/projects/job-workflow-overview"
 import { getInternalWorkspaceSummary, type InternalWorkspaceSummary } from "@/app/actions/internal-duties"
 import { InternalWorkspacePanel } from "@/components/projects/internal-workspace-panel"
+import { InternalWorkQueues } from "@/components/projects/internal-work-queues"
+import { internalQueueBadges } from "@/lib/internal-duties/queue-badges"
+import { internalQueueRoleId } from "@/lib/internal-duties/queues"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -600,6 +603,16 @@ export default async function ProjectSummaryPage({
           </Link>
         </section>
 
+        {internalWorkspace ? (
+          <div className="mb-4 sm:mb-6">
+            <InternalWorkQueues
+              projectId={id}
+              kind={internalWorkspace.workspaceKind}
+              savedOrder={roleDashboardOrders[internalQueueRoleId(internalWorkspace.workspaceKind)]}
+              badges={internalQueueBadges(internalWorkspace)}
+            />
+          </div>
+        ) : (
         <div className="mb-4 sm:mb-6">
           <ProjectWorkspaceShell
             projectId={id}
@@ -618,6 +631,7 @@ export default async function ProjectSummaryPage({
             roleDashboardOrders={roleDashboardOrders}
           />
         </div>
+        )}
       </div>
 
       {/* right sidebar: week agenda */}

@@ -22,7 +22,7 @@ export function InternalWorkspacePanel({ summary }: { readonly summary: Internal
     <section aria-labelledby="internal-workspace-heading" className="grid gap-4 border-y py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-muted-foreground">{summary.workspaceKind === "office" ? "Office workspace" : "Field workspace"}</p>
+          <p className="text-sm text-muted-foreground">{summary.workspaceKind === "field" ? "Field workspace" : summary.workspaceKind === "executive" ? "Owner's office workspace" : "Office workspace"}</p>
           <h2 id="internal-workspace-heading" className="text-base font-semibold">
             This week since {weekLabel(summary.weekStart)}: {summary.weekHours.toFixed(2)} hours
           </h2>
