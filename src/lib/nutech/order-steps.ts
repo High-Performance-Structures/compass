@@ -6,6 +6,15 @@ import {
   type NuTechQuantitySource,
   type NuTechTakeoffAcknowledgementStatus,
 } from "@/lib/nutech/workflow"
+import {
+  applyWorkflowOverrides,
+  workflowProgress,
+  type WorkflowCheck,
+  type WorkflowDefinition,
+  type WorkflowFacts,
+  type WorkflowOverrides,
+  type WorkflowProgress,
+} from "@/lib/job-workflows/engine"
 
 /** Everything the overview needs to place a Nu-Tech job in its order process. */
 export type NuTechOrderSnapshot = {
@@ -48,40 +57,113 @@ export type NuTechStepId =
   | "vendor_invoice"
   | "complete"
 
-export type NuTechChecklistItem = {
-  readonly label: string
-  readonly done: boolean
-  /** Where to fill it in, relative to the job. */
-  readonly path: string
-}
+export const NUTECH_STEP_IDS: readonly NuTechStepId[] = [
+  "intake",
+  "quantities",
+  "estimate",
+  "payment",
+  "ready",
+  "order",
+  "confirmed",
+  "vendor_invoice",
+  "complete",
+]
 
-export type NuTechOrderStep = {
-  readonly id: NuTechStepId
-  readonly label: string
-  readonly state: "done" | "current" | "upcoming"
-  readonly checklist: readonly NuTechChecklistItem[]
-}
+export type NuTechOrderProgress = WorkflowProgress & { readonly cancelled: boolean }
 
-export type NuTechOrderProgress = {
-  readonly steps: readonly NuTechOrderStep[]
-  readonly current: NuTechOrderStep | null
-  /** The first open item of the current step, as an instruction. */
-  readonly nextAction: string | null
-  readonly cancelled: boolean
+/**
+ * The order process from the Nu-Tech cheat sheet. Every item is completed by
+ * what Compass records on the order, estimate and job.
+ */
+export const NUTECH_ORDER_WORKFLOW: WorkflowDefinition = {
+  title: "order",
+  steps: [
+    {
+      id: "intake",
+      label: "Intake",
+      jobStatusId: null,
+      items: [
+        { id: "client", label: "Add the customer as a client contact", fact: "clientContact", path: "contacts" },
+        { id: "fulfillment", label: "Choose delivery or customer pickup", fact: "fulfillmentChosen", path: "nutech#nutech-fulfillment" },
+        { id: "address", label: "Add the delivery address", fact: "hasAddress", path: "information", when: "delivery" },
+        { id: "order", label: "Start the order and record who supplies quantities", fact: "orderStarted", path: "nutech#nutech-intake" },
+      ],
+    },
+    {
+      id: "quantities",
+      label: "Quantities",
+      jobStatusId: null,
+      items: [{ id: "items", label: "Add catalog items (whole bundles)", fact: "itemsAdded", path: "nutech#nutech-quantities" }],
+    },
+    {
+      id: "estimate",
+      label: "Estimate",
+      jobStatusId: null,
+      items: [
+        { id: "built", label: "Build the estimate", fact: "estimateBuilt", path: "estimate" },
+        { id: "tax", label: "Choose the sales tax district for the delivery address", fact: "estimateTaxChosen", path: "estimate" },
+        { id: "sent", label: "Send the estimate to the customer", fact: "estimateSent", path: "estimate" },
+      ],
+    },
+    {
+      id: "payment",
+      label: "Approval & payment",
+      jobStatusId: null,
+      items: [
+        { id: "takeoff", label: "Get the signed takeoff acknowledgement", fact: "takeoffSigned", path: "nutech#nutech-intake", when: "staffTakeoff" },
+        { id: "paid", label: "Record the customer's payment", fact: "customerPaid", path: "nutech#nutech-fulfillment" },
+      ],
+    },
+    {
+      id: "ready",
+      label: "Ready to order",
+      jobStatusId: null,
+      items: [
+        { id: "delivery_date", label: "Requested delivery date", fact: "requestedDate", path: "nutech#nutech-fulfillment", when: "delivery" },
+        { id: "pickup_date", label: "Requested pickup date", fact: "requestedDate", path: "nutech#nutech-fulfillment", when: "!delivery" },
+        { id: "trailer_size", label: "Trailer dimensions", fact: "trailerDimensions", path: "nutech#nutech-fulfillment", when: "pickup" },
+        { id: "trailer_photo", label: "Trailer photo", fact: "trailerPhoto", path: "nutech#nutech-fulfillment", when: "pickup" },
+        { id: "approved", label: "Signed acknowledgement and payment", fact: "approvedAndPaid", path: "nutech#nutech-fulfillment" },
+      ],
+    },
+    {
+      id: "order",
+      label: "Order placed",
+      jobStatusId: null,
+      items: [
+        { id: "po", label: "Create the Airlite PO and link it", fact: "purchaseOrderLinked", path: "purchase-orders" },
+        { id: "form", label: "Generate the Airlite order form", fact: "workbookGenerated", path: "nutech#nutech-airlite" },
+        { id: "released", label: "Send the order and record the release", fact: "released", path: "nutech#nutech-airlite" },
+      ],
+    },
+    {
+      id: "confirmed",
+      label: "Confirmed",
+      jobStatusId: null,
+      items: [{ id: "confirmation", label: "Record Airlite's EPS confirmation number", fact: "confirmationRecorded", path: "nutech#nutech-airlite" }],
+    },
+    {
+      id: "vendor_invoice",
+      label: "Vendor invoice",
+      jobStatusId: null,
+      items: [
+        { id: "number", label: "Record the Airlite invoice number", fact: "vendorInvoiceRecorded", path: "nutech#nutech-airlite" },
+        { id: "released", label: "Release the invoice for payment", fact: "vendorInvoiceReleased", path: "nutech#nutech-airlite" },
+      ],
+    },
+    {
+      id: "complete",
+      label: "Complete",
+      jobStatusId: null,
+      items: [{ id: "complete", label: "Mark the order complete after pickup or delivery", fact: "orderComplete", path: "nutech#nutech-fulfillment" }],
+    },
+  ],
 }
 
 const ESTIMATE_SENT = new Set(["signature_pending", "accepted"])
 
-function item(label: string, done: boolean, path: string): NuTechChecklistItem {
-  return { label, done, path }
-}
-
-/**
- * The order process from Rebekah's cheat sheet as checklists over what
- * Compass already records. A step is done when its checklist is complete;
- * the first incomplete step is current.
- */
-export function nuTechOrderProgress(snapshot: NuTechOrderSnapshot): NuTechOrderProgress {
+/** What Compass records about the order, as workflow facts. */
+export function nuTechOrderFacts(snapshot: NuTechOrderSnapshot): WorkflowFacts {
   const order = snapshot.order
   const delivery: NuTechDeliveryMethod | null =
     order?.deliveryMethod ??
@@ -92,6 +174,49 @@ export function nuTechOrderProgress(snapshot: NuTechOrderSnapshot): NuTechOrderP
         : null)
   const staffTakeoff = order?.quantitySource === "staff_takeoff"
   const ackDone = order !== null && (!staffTakeoff || order.takeoffAcknowledgementStatus === "signed")
+  return {
+    delivery: delivery === "delivery",
+    pickup: delivery === "customer_pickup",
+    staffTakeoff,
+    clientContact: snapshot.clientContactCount > 0,
+    fulfillmentChosen: delivery !== null,
+    hasAddress: (snapshot.address?.trim() ?? "") !== "",
+    orderStarted: order !== null,
+    itemsAdded: (order?.itemCount ?? 0) > 0,
+    estimateBuilt: snapshot.estimateStatus !== null,
+    estimateTaxChosen: snapshot.estimateTaxChosen,
+    estimateSent: snapshot.estimateStatus !== null && ESTIMATE_SENT.has(snapshot.estimateStatus),
+    takeoffSigned: order?.takeoffAcknowledgementStatus === "signed",
+    customerPaid: order?.customerPaidAt != null,
+    requestedDate: order?.requestedDeliveryDate != null,
+    trailerDimensions: order?.trailerDimensions != null,
+    trailerPhoto: order?.trailerPhotoReceivedAt != null,
+    approvedAndPaid: ackDone && order?.customerPaidAt != null,
+    purchaseOrderLinked: order?.airlitePurchaseOrderLinked ?? false,
+    workbookGenerated: order?.airliteWorkbookGenerated ?? false,
+    released: order?.purchaseOrderReleasedAt != null,
+    confirmationRecorded: (order?.vendorConfirmationNumber ?? null) !== null,
+    vendorInvoiceRecorded: (order?.vendorInvoiceNumber ?? null) !== null,
+    vendorInvoiceReleased: order?.vendorInvoiceReleasedAt != null,
+    orderComplete: order?.orderStatus === "complete",
+  }
+}
+
+export function isNuTechStepId(value: string): value is NuTechStepId {
+  return NUTECH_STEP_IDS.some((id) => id === value)
+}
+
+/**
+ * Where an N job stands in the order process. A step is done when its
+ * checklist is complete; the first incomplete step is current.
+ */
+export function nuTechOrderProgress(
+  snapshot: NuTechOrderSnapshot,
+  overrides: WorkflowOverrides = {},
+  checks: ReadonlyMap<string, WorkflowCheck> = new Map(),
+): NuTechOrderProgress {
+  const order = snapshot.order
+  const progress = workflowProgress(applyWorkflowOverrides(NUTECH_ORDER_WORKFLOW, overrides), nuTechOrderFacts(snapshot), checks)
   const readinessIssues = order
     ? nuTechCustomerReadinessIssues({
         deliveryMethod: order.deliveryMethod,
@@ -101,99 +226,7 @@ export function nuTechOrderProgress(snapshot: NuTechOrderSnapshot): NuTechOrderP
         trailerPhotoReceivedAt: order.trailerPhotoReceivedAt,
       })
     : ["Start the order."]
-  const released = order?.purchaseOrderReleasedAt != null
-
-  const definitions: readonly { readonly id: NuTechStepId; readonly label: string; readonly checklist: readonly NuTechChecklistItem[] }[] = [
-    {
-      id: "intake",
-      label: "Intake",
-      checklist: [
-        item("Add the customer as a client contact", snapshot.clientContactCount > 0, "contacts"),
-        item("Choose delivery or customer pickup", delivery !== null, "nutech#nutech-fulfillment"),
-        ...(delivery === "delivery"
-          ? [item("Add the delivery address", (snapshot.address?.trim() ?? "") !== "", "information")]
-          : []),
-        item("Start the order and record who supplies quantities", order !== null, "nutech#nutech-intake"),
-      ],
-    },
-    {
-      id: "quantities",
-      label: "Quantities",
-      checklist: [item("Add catalog items (whole bundles)", (order?.itemCount ?? 0) > 0, "nutech#nutech-quantities")],
-    },
-    {
-      id: "estimate",
-      label: "Estimate",
-      checklist: [
-        item("Build the estimate", snapshot.estimateStatus !== null, "estimate"),
-        item("Choose the sales tax district for the delivery address", snapshot.estimateTaxChosen, "estimate"),
-        item("Send the estimate to the customer", snapshot.estimateStatus !== null && ESTIMATE_SENT.has(snapshot.estimateStatus), "estimate"),
-      ],
-    },
-    {
-      id: "payment",
-      label: "Approval & payment",
-      checklist: [
-        ...(staffTakeoff
-          ? [item("Get the signed takeoff acknowledgement", order?.takeoffAcknowledgementStatus === "signed", "nutech#nutech-intake")]
-          : []),
-        item("Record the customer's payment", order?.customerPaidAt != null, "nutech#nutech-fulfillment"),
-      ],
-    },
-    {
-      id: "ready",
-      label: "Ready to order",
-      checklist: [
-        item(delivery === "delivery" ? "Requested delivery date" : "Requested pickup date", order?.requestedDeliveryDate != null, "nutech#nutech-fulfillment"),
-        ...(delivery === "customer_pickup"
-          ? [
-              item("Trailer dimensions", order?.trailerDimensions != null, "nutech#nutech-fulfillment"),
-              item("Trailer photo", order?.trailerPhotoReceivedAt != null, "nutech#nutech-fulfillment"),
-            ]
-          : []),
-        item("Signed acknowledgement and payment", ackDone && order?.customerPaidAt != null, "nutech#nutech-fulfillment"),
-      ],
-    },
-    {
-      id: "order",
-      label: "Order placed",
-      checklist: [
-        item("Create the Airlite PO and link it", order?.airlitePurchaseOrderLinked ?? false, "purchase-orders"),
-        item("Generate the Airlite order form", order?.airliteWorkbookGenerated ?? false, "nutech#nutech-airlite"),
-        item("Send the order and record the release", released, "nutech#nutech-airlite"),
-      ],
-    },
-    {
-      id: "confirmed",
-      label: "Confirmed",
-      checklist: [item("Record Airlite's EPS confirmation number", (order?.vendorConfirmationNumber ?? null) !== null, "nutech#nutech-airlite")],
-    },
-    {
-      id: "vendor_invoice",
-      label: "Vendor invoice",
-      checklist: [
-        item("Record the Airlite invoice number", (order?.vendorInvoiceNumber ?? null) !== null, "nutech#nutech-airlite"),
-        item("Release the invoice for payment", order?.vendorInvoiceReleasedAt != null, "nutech#nutech-airlite"),
-      ],
-    },
-    {
-      id: "complete",
-      label: "Complete",
-      checklist: [item("Mark the order complete after pickup or delivery", order?.orderStatus === "complete", "nutech#nutech-fulfillment")],
-    },
-  ]
-
-  let currentFound = false
-  const steps = definitions.map((definition): NuTechOrderStep => {
-    const complete = definition.checklist.every((entry) => entry.done)
-    const state = !currentFound && !complete ? "current" : currentFound ? "upcoming" : "done"
-    if (state === "current") currentFound = true
-    return { ...definition, state }
-  })
-  const current = steps.find((step) => step.state === "current") ?? null
-  const nextItem = current?.checklist.find((entry) => !entry.done) ?? null
   // Readiness issues are already phrased as instructions; prefer them on the ready step.
-  const nextAction =
-    current?.id === "ready" && readinessIssues.length > 0 ? (readinessIssues[0] ?? null) : nextItem ? `${nextItem.label}.` : null
-  return { steps, current, nextAction, cancelled: order?.orderStatus === "cancelled" }
+  const nextAction = progress.current?.id === "ready" && readinessIssues.length > 0 ? (readinessIssues[0] ?? null) : progress.nextAction
+  return { ...progress, nextAction, cancelled: order?.orderStatus === "cancelled" }
 }

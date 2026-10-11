@@ -16,6 +16,7 @@ import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settin
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
+import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
 
@@ -185,6 +186,7 @@ function NuTechCatalogLink(): React.ReactElement {
 export function WorkflowsTab(): React.ReactElement {
   return (
     <div className="space-y-6">
+      <JobWorkflowSettingsSection />
       <MessageDeskSettingsSection />
       <ProjectAgingSettingsSection />
       <NuTechCatalogLink />

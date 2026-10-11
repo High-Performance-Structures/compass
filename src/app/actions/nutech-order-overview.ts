@@ -10,6 +10,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { loadWorkflowChecks, readWorkflowOverrides } from "@/lib/job-workflows/server"
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
@@ -63,7 +64,7 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
     if (!project) return null
     if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") return null
 
-    const [order, estimate, contacts, followUps] = await Promise.all([
+    const [order, estimate, contacts, followUps, overrides, checks] = await Promise.all([
       db.select().from(nuTechOrderWorkflows).where(eq(nuTechOrderWorkflows.projectId, projectId)).limit(1).get(),
       db
         .select({ status: projectEstimates.status, taxEntityId: projectEstimates.defaultTaxEntityId })
@@ -84,6 +85,8 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
         )
         .get(),
       loadProjectFollowUpSignals(db, organizationId, [project], new Date()).catch(() => new Map()),
+      readWorkflowOverrides(db, organizationId, "N"),
+      loadWorkflowChecks(db, organizationId, projectId),
     ])
     const itemCount = order
       ? ((await db.select({ total: count() }).from(nuTechOrderItems).where(eq(nuTechOrderItems.workflowId, order.id)).get())?.total ?? 0)
@@ -123,7 +126,7 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
         ? "delivery"
         : "pickup"
       : snapshot.projectDeliveryMethod
-    return { projectId, progress: nuTechOrderProgress(snapshot), hasOrder: order !== undefined, followUp: snapshot.followUp, fulfillment }
+    return { projectId, progress: nuTechOrderProgress(snapshot, overrides, checks), hasOrder: order !== undefined, followUp: snapshot.followUp, fulfillment }
   } catch (error) {
     console.error("Nu-Tech order overview unavailable", error)
     return null

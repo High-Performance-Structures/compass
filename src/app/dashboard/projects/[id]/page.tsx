@@ -57,6 +57,8 @@ import { getRoleDashboardOrders } from "@/app/actions/view-preferences"
 import { ProjectFamilyPanel } from "@/components/projects/project-family-panel"
 import { getNuTechOrderOverview, type NuTechOrderOverview } from "@/app/actions/nutech-order-overview"
 import { NuTechOrderStepper } from "@/components/nutech/nutech-order-stepper"
+import { getJobWorkflowOverview, type JobWorkflowOverview } from "@/app/actions/job-workflows"
+import { JobWorkflowOverviewPanel } from "@/components/projects/job-workflow-overview"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -159,6 +161,7 @@ export default async function ProjectSummaryPage({
   let registry: ProjectRegistry | null = null
   let roleDashboardOrders: Readonly<Record<string, readonly string[]>> = {}
   let nuTechOrder: NuTechOrderOverview | null = null
+  let jobWorkflow: JobWorkflowOverview | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -330,6 +333,7 @@ export default async function ProjectSummaryPage({
       loadedFamilySummary,
       loadedRoleDashboardOrders,
       loadedNuTechOrder,
+      loadedJobWorkflow,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -354,6 +358,8 @@ export default async function ProjectSummaryPage({
       getRoleDashboardOrders().catch(() => ({})),
       // Null unless this is an N job and the viewer has Nu-Tech office access.
       getNuTechOrderOverview(id).catch(() => null),
+      // Null for Nu-Tech jobs and departments without a workflow yet.
+      getJobWorkflowOverview(id).catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -365,6 +371,7 @@ export default async function ProjectSummaryPage({
     familySummary = loadedFamilySummary
     roleDashboardOrders = loadedRoleDashboardOrders
     nuTechOrder = loadedNuTechOrder
+    jobWorkflow = loadedJobWorkflow
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -460,6 +467,10 @@ export default async function ProjectSummaryPage({
         {nuTechOrder ? (
           <div className="mb-4 sm:mb-5">
             <NuTechOrderStepper overview={nuTechOrder} />
+          </div>
+        ) : jobWorkflow ? (
+          <div className="mb-4 sm:mb-5">
+            <JobWorkflowOverviewPanel overview={jobWorkflow} />
           </div>
         ) : null}
         <div className="mb-4 sm:mb-5">

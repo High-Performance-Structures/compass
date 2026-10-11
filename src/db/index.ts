@@ -24,6 +24,7 @@ import * as socialSchema from "./schema-social"
 import * as documentSchema from "./schema-documents"
 import * as rfqSchema from "./schema-rfqs"
 import * as projectFamilySchema from "./schema-project-families"
+import * as jobWorkflowSchema from "./schema-job-workflows"
 
 import * as correspondenceSchema from "./schema-correspondence"
 import * as correspondenceEmailSchema from "./schema-correspondence-email"
@@ -61,6 +62,7 @@ const allSchemas = {
   ...documentSchema,
   ...rfqSchema,
   ...projectFamilySchema,
+  ...jobWorkflowSchema,
 }
 
 // Legacy function - kept for backwards compatibility
