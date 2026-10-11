@@ -33,6 +33,11 @@ const CHANGED_RECORDS: { readonly [K in PaperTrailRecordType]: SQL } = {
         coalesce((SELECT max(h.created_at) FROM project_change_order_history h WHERE h.change_order_id = c.id), '')
       ) AS changed
     FROM project_change_orders c`,
+  // Drafts are never saved; issued and voided tickets are.
+  shop_ticket: sql`
+    SELECT t.id AS id, t.project_id AS project_id,
+      max(t.updated_at, coalesce((SELECT max(l.updated_at) FROM shop_ticket_lines l WHERE l.ticket_id = t.id), '')) AS changed
+    FROM shop_tickets t WHERE t.status <> 'draft'`,
 }
 
 /** Milestones the sweep can read from stored data; a PO's "sent" comes from the email action. */

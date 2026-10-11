@@ -6,6 +6,7 @@ import { loadChangeOrderRecord } from "@/lib/paper-trail/records/change-order"
 import { loadEstimateRecord } from "@/lib/paper-trail/records/estimate"
 import { loadPurchaseOrderRecord } from "@/lib/paper-trail/records/purchase-order"
 import { loadRfiRecord } from "@/lib/paper-trail/records/rfi"
+import { loadShopTicketRecord } from "@/lib/paper-trail/records/shop-ticket"
 import type { LoadedPaperTrailRecord } from "@/lib/paper-trail/types"
 
 type RecordTypeDefinition = {
@@ -13,7 +14,7 @@ type RecordTypeDefinition = {
   /** The project subfolder the copy is written to. */
   readonly category: ProjectFileCategoryKey
   /** The company setting that turns this record type on or off. */
-  readonly setting: keyof Pick<PaperTrailSettings, "purchaseOrders" | "estimates" | "rfis" | "changeOrders">
+  readonly setting: keyof Pick<PaperTrailSettings, "purchaseOrders" | "estimates" | "rfis" | "changeOrders" | "shopTickets">
   readonly load:
     | ((db: ReturnType<typeof getDb>, recordId: string) => Promise<LoadedPaperTrailRecord | null>)
     | null
@@ -24,6 +25,7 @@ export const PAPER_TRAIL_RECORDS: { readonly [K in PaperTrailRecordType]: Record
   estimate: { label: "Estimates", category: "estimate", setting: "estimates", load: loadEstimateRecord },
   rfi: { label: "RFIs", category: "communications", setting: "rfis", load: loadRfiRecord },
   change_order: { label: "Change orders", category: "change-orders", setting: "changeOrders", load: loadChangeOrderRecord },
+  shop_ticket: { label: "Shop tickets", category: "pay-requests", setting: "shopTickets", load: loadShopTicketRecord },
 }
 
 /** Whether the company's settings allow saving this record type for this project. */

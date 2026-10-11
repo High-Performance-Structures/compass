@@ -308,6 +308,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
           },
           {
             kind: "link",
+            title: "Shop Tickets",
+            url: "/dashboard/projects",
+            icon: IconReceipt,
+            projectPath: "/shop-tickets",
+          },
+          {
+            kind: "link",
             title: "Purchase Orders",
             url: "/dashboard/purchase-orders",
             icon: IconShoppingCart,

@@ -18,6 +18,7 @@ import { ClientInteractionSettingsSection } from "@/components/settings/client-i
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
+import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
 
@@ -198,6 +199,7 @@ export function WorkflowsTab(): React.ReactElement {
       <NuTechCatalogLink />
       <NuTechEmailSettingsSection />
       <PaperTrailSettingsSection />
+      <ShopTicketSettingsSection />
     </div>
   )
 }

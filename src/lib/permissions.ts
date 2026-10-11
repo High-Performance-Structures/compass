@@ -203,6 +203,13 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "project",
   },
   {
+    id: "shop-tickets",
+    group: "Operations",
+    label: "Shop Tickets",
+    description: "Create, issue and void shop tickets that bill a project for labor and machine hours at set rates.",
+    resource: "finance",
+  },
+  {
     id: "nutech-orders",
     group: "Operations",
     label: "Nu-Tech Orders",

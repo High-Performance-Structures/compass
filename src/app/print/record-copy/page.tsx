@@ -6,13 +6,15 @@ import { notFound } from "next/navigation"
 import { getEstimateWorkspaceForRecordCopy } from "@/app/actions/project-estimates"
 import { EstimateClientReport } from "@/components/projects/estimate-client-report"
 import { PurchaseOrderDocument } from "@/components/projects/purchase-order-document"
+import { ShopTicketDocument } from "@/components/projects/shop-ticket-document"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getDb } from "@/db"
 import { getCloudflareContext } from "@/lib/db"
-import { changeOrderCopyData, purchaseOrderCopyData, rfiCopyData } from "@/lib/paper-trail/record-copy-data"
+import { changeOrderCopyData, purchaseOrderCopyData, rfiCopyData, shopTicketCopyData } from "@/lib/paper-trail/record-copy-data"
 import { RECORD_COPY_TOKEN_HEADER, verifyRecordCopyToken } from "@/lib/paper-trail/print-token"
 import { changeOrderReport, rfiReport } from "@/lib/print/audience-record-reports"
 import { portalReportHtml } from "@/lib/print/portal-report"
-import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
+import { brandForDepartment, projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 import { RecordCopyPrintMode } from "./body-print-mode"
 
 /**
@@ -40,6 +42,20 @@ export default async function RecordCopyPage(): Promise<React.ReactElement> {
           projectLabel={data.projectLabel}
           deliveryLocation={data.deliveryLocation}
         />
+        <RecordCopyPrintMode selectionReport={false} />
+      </main>
+    )
+  }
+
+  if (grant.recordType === "shop_ticket") {
+    const data = await shopTicketCopyData(db, grant.projectId, grant.recordId)
+    if (!data) notFound()
+    const settings = await readFeatureSettings(db, data.organizationId, "shop-tickets")
+    const brand = brandForDepartment(settings.issuingDepartment, await currentDepartmentProfiles())
+    return (
+      <main className="bg-white p-0 text-black">
+        <style>{"@page { size: letter; margin: 0.5in; } @media print { body { background: white !important; } }"}</style>
+        <ShopTicketDocument brand={brand} title={settings.title} subtitle={settings.subtitle} ticket={data.ticket} />
         <RecordCopyPrintMode selectionReport={false} />
       </main>
     )

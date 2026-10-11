@@ -186,6 +186,7 @@ async function syncRecord(
       drive: org.drive,
       projectFolderId: rootId,
       category: definition.category,
+      subfolders: record.subfolders,
       internalDomains: org.internalDomains,
       now,
     })
@@ -283,6 +284,7 @@ async function runSnapshots(
         drive: org.drive,
         projectFolderId: rootId,
         category: definition.category,
+        subfolders: record.subfolders,
         internalDomains: org.internalDomains,
         now,
       })

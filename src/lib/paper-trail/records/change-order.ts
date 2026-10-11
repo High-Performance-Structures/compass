@@ -22,5 +22,6 @@ export async function loadChangeOrderRecord(
     projectId: order.projectId,
     version: [order.updatedAt, lines?.count ?? 0, lines?.latest ?? "", documents?.count ?? 0, documents?.latest ?? ""].join("|"),
     fileBaseName: `CO ${number} - ${order.title}`,
+    subfolders: [],
   }
 }

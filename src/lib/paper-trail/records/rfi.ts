@@ -19,5 +19,6 @@ export async function loadRfiRecord(
     // The RFI report shows only the RFI's own fields.
     version: rfi.updatedAt,
     fileBaseName: `RFI ${number} - ${rfi.subject}`,
+    subfolders: [],
   }
 }

@@ -105,6 +105,7 @@ const smallTextExemptFiles = new Set([
   "src/app/dashboard/projects/[id]/purchase-orders/page.tsx",
   "src/components/desktop/sync-indicator.tsx",
   "src/components/projects/purchase-order-document.tsx",
+  "src/components/projects/shop-ticket-document.tsx",
   "src/components/help/help-compass-icon.tsx",
   "src/components/projects/daily-log-print-document.tsx",
   "src/components/projects/owner-update-document.tsx",

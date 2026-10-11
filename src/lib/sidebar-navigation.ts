@@ -30,6 +30,7 @@ export function getProjectTargetSection(
     case "rfqs":
     case "schedule":
     case "selections":
+    case "shop-tickets":
     case "todos":
     case "videos":
     case "warranty":

@@ -28,5 +28,6 @@ export async function loadEstimateRecord(
     projectId: estimate.projectId,
     version: [estimate.updatedAt, lines?.count ?? 0, lines?.latest ?? ""].join("|"),
     fileBaseName: `Estimate ${number}${estimate.title ? ` - ${estimate.title}` : ""}`,
+    subfolders: [],
   }
 }
