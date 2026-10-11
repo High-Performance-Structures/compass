@@ -1,5 +1,6 @@
 "use server"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -61,6 +62,9 @@ import {
 import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
+import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
+import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
+import { nuTechOrderFormAttachment, type EmailAttachment } from "@/lib/nutech/order-form-attachment"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -1002,6 +1006,7 @@ async function sendResendPurchaseOrderEmail(
     readonly subject: string
     readonly text: string
     readonly html: string
+    readonly attachments?: readonly EmailAttachment[]
   }
 ): Promise<{
   readonly status: string
@@ -1029,6 +1034,9 @@ async function sendResendPurchaseOrderEmail(
   }
   if (input.cc.length > 0) {
     requestBody.cc = input.cc
+  }
+  if (input.attachments && input.attachments.length > 0) {
+    requestBody.attachments = input.attachments
   }
 
   const response = await fetch("https://api.resend.com/emails", {
@@ -1848,6 +1856,8 @@ export async function updateProjectOperationStatus(
     revalidatePath("/dashboard")
     if (operationKind === "rfq") {
       revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
+    } else {
+      await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: operationId })
     }
 
     return { success: true, id: operationId }
@@ -1986,6 +1996,7 @@ export async function createPurchaseOrderRequest(
       db.insert(projectOperations).values(inserted),
       ...lineInserts,
     ])
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: id })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
@@ -2139,6 +2150,7 @@ export async function updatePurchaseOrderRequest(
       ...lineInserts,
     ])
 
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
@@ -2421,7 +2433,7 @@ export async function deletePurchaseOrderRequest(
       "purchase-orders"
     )
     const [existing] = await db
-      .select({ id: projectOperations.id })
+      .select({ id: projectOperations.id, status: projectOperations.status })
       .from(projectOperations)
       .where(
         and(
@@ -2436,6 +2448,8 @@ export async function deletePurchaseOrderRequest(
       return { success: false, error: "Purchase order not found." }
     }
 
+    // A draft never reached the vendor, so its manufacturer PO number can be reused.
+    if (existing.status === "draft") await releaseNuTechAirlitePoNumber(db, purchaseOrderId)
     await db
       .delete(projectPurchaseOrderLines)
       .where(
@@ -2454,6 +2468,8 @@ export async function deletePurchaseOrderRequest(
         )
       )
 
+    // The last Drive copy stays as the paper trail of the deleted order.
+    await markPaperTrailRemoved(db, { recordType: "purchase_order", recordId: purchaseOrderId })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath(`/dashboard/projects/${projectId}/financials`)
@@ -3177,7 +3193,7 @@ export async function sendPurchaseOrderEmail(
     }
     const senderName = user.displayName ?? user.email
     const emailInput = {
-      brand: projectBrandFor({
+      brand: projectBrandFor({ profiles: await currentDepartmentProfiles(),
         projectId: project.id,
         projectNumber: project.projectNumber,
       }),
@@ -3191,12 +3207,22 @@ export async function sendPurchaseOrderEmail(
       }),
       order,
     }
+    // The manufacturer's PO goes out with its own filled order form.
+    const orderForm = await nuTechOrderFormAttachment({
+      db,
+      environment: env,
+      organizationId: orgId,
+      user,
+      purchaseOrderId,
+      purchaseOrderNumber: operation.sourceRecordNumber,
+    })
     const delivery = await sendResendPurchaseOrderEmail(env, {
       to,
       cc,
       subject,
       text: purchaseOrderEmailText(emailInput),
       html: purchaseOrderEmailHtml(emailInput),
+      attachments: orderForm ? [orderForm] : [],
     })
 
     if (delivery.status === "failed") {
@@ -3218,6 +3244,8 @@ export async function sendPurchaseOrderEmail(
         updatedAt: now,
       })
       .where(eq(projectOperations.id, purchaseOrderId))
+    // Freeze a dated copy of exactly what the vendor received.
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId, milestone: "sent" })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)

@@ -1,6 +1,7 @@
 import "server-only"
 
 import { and, eq, inArray, or, sql } from "drizzle-orm"
+import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 
 import type { getDb } from "@/db"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -170,6 +171,10 @@ async function recordVerifiedInboundClientInteraction(input: {
       deletedAt: null,
     })
     .onConflictDoNothing()
+  // An inbound client email or text is contact; clear any overdue reminder.
+  await clearOverdueFollowUpReminders(input.db, [input.projectId]).catch((error: unknown) => {
+    console.error("Unable to clear overdue follow-up reminders", error)
+  })
 }
 function inboundActor(
   candidate: InboundCandidate,

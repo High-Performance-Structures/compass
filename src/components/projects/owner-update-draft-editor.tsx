@@ -19,6 +19,7 @@ import {
   draftOwnerProjectUpdateWithJarvis,
   type OwnerProjectUpdateDocument,
 } from "@/app/actions/project-field"
+import { CompassLoadingOverlay } from "@/components/compass-loader"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -185,6 +186,7 @@ export function OwnerUpdateDraftEditor({
     document.todos
   )
   const [status, setStatus] = React.useState<DraftStatus>({ kind: "idle" })
+  const [isJarvisDrafting, setIsJarvisDrafting] = React.useState(false)
   const [failedImageIds, setFailedImageIds] = React.useState<readonly string[]>(
     []
   )
@@ -489,6 +491,15 @@ export function OwnerUpdateDraftEditor({
   }
 
   async function draftWithJarvis(): Promise<void> {
+    setIsJarvisDrafting(true)
+    try {
+      await saveAndDraftWithJarvis()
+    } finally {
+      setIsJarvisDrafting(false)
+    }
+  }
+
+  async function saveAndDraftWithJarvis(): Promise<void> {
     const saved = await saveDraft()
     if (!saved) return
     setStatus({ kind: "saving", message: "Jarvis is drafting the update..." })
@@ -518,6 +529,9 @@ export function OwnerUpdateDraftEditor({
 
   return (
     <section className="bg-background p-5 shadow-sm sm:p-6 print:hidden">
+      {isJarvisDrafting && (
+        <CompassLoadingOverlay label="Jarvis is writing the update…" />
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -546,7 +560,7 @@ export function OwnerUpdateDraftEditor({
               type="button"
               variant="outline"
               onClick={() => void draftWithJarvis()}
-              disabled={status.kind === "saving"}
+              disabled={status.kind === "saving" || isJarvisDrafting}
             >
               <IconRobot className="size-4" />
               Draft with Jarvis

@@ -1,5 +1,6 @@
 "use server"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
@@ -538,7 +539,7 @@ export async function createProjectContractPacket(
         versionNumber,
         title: "Construction Contract",
         status: "draft",
-        legalEntityName: projectLegalEntityName(access.department),
+        legalEntityName: projectLegalEntityName(access.department, await currentDepartmentProfiles()),
         contractDraftDate: new Date().toISOString().slice(0, 10),
         detailsJson: JSON.stringify({
           projectName: access.projectName,
@@ -1084,6 +1085,7 @@ export async function prepareProjectContractPacketForSignature(
         origin,
         projectId,
         projectNumber: workspace.projectNumber,
+        profiles: await currentDepartmentProfiles(),
       }),
     ])
     const prepared = await prepareContractPacketPdf({

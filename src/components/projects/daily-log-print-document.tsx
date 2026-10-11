@@ -1,3 +1,6 @@
+"use client"
+
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import type * as React from "react"
 
 import type { ProjectDailyLogItem } from "@/app/actions/project-field"
@@ -69,7 +72,8 @@ export function DailyLogPrintDocument({
   readonly projectName: string
   readonly projectNumber: string | null
 }): React.ReactElement {
-  const brand = projectBrandFor({ projectId, projectNumber })
+  const departmentProfiles = useDepartmentProfiles()
+  const brand = projectBrandFor({ projectId, projectNumber, profiles: departmentProfiles })
 
   return (
     <article

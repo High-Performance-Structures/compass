@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { clientFollowUpState } from "@/lib/project-follow-up"
+import { clientFollowUpState, followUpThresholds, projectAgingLevel, PROJECT_AGING_LEVELS } from "@/lib/project-follow-up"
 
 describe("client follow-up state", () => {
   it("shows business days since the last meaningful client interaction", () => {
@@ -119,5 +119,72 @@ describe("client follow-up state", () => {
         now: new Date("2026-08-21T16:00:00.000Z"),
       }),
     ).toMatchObject({ eligible: false, state: "excluded" })
+  })
+})
+
+describe("project aging thresholds", () => {
+  const now = new Date("2026-10-09T18:00:00.000Z") // Friday
+  const contact = (occurredAt: string) => [{ occurredAt, deletedAt: null, qualifiesForClientTouch: true }]
+
+  it("uses the status cadence unless the company overrides it", () => {
+    expect(followUpThresholds({ jobStatusId: "follow_up", settings: { statuses: {} } })).toEqual({ dueDays: 2, overdueDays: 3 })
+    expect(
+      followUpThresholds({ jobStatusId: "follow_up", settings: { statuses: { follow_up: { dueDays: 4, overdueDays: 8 } } } }),
+    ).toEqual({ dueDays: 4, overdueDays: 8 })
+    expect(followUpThresholds({ jobStatusId: "complete", settings: { statuses: {} } })).toBeNull()
+    expect(followUpThresholds({ jobStatusId: "custom-1", customCadenceDays: 5, settings: { statuses: {} } })).toEqual({ dueDays: 5, overdueDays: 6 })
+    // Settings → Workflows is the one source: it applies even to a status with no default cadence.
+    expect(followUpThresholds({ jobStatusId: "complete", settings: { statuses: { complete: { dueDays: 10, overdueDays: 20 } } } })).toEqual({ dueDays: 10, overdueDays: 20 })
+    expect(followUpThresholds({ jobStatusId: "custom-2", customCadenceDays: null, settings: { statuses: { "custom-2": { dueDays: 3, overdueDays: 6 } } } })).toEqual({ dueDays: 3, overdueDays: 6 })
+  })
+
+  it("turns due, then overdue, by the company thresholds", () => {
+    const thresholds = { dueDays: 3, overdueDays: 5 }
+    const state = (occurredAt: string) =>
+      clientFollowUpState({ jobStatusId: "estimate_sent", thresholds, interactions: contact(occurredAt), nextFollowUpAt: null, now }).state
+    expect(state("2026-10-07T15:00:00.000Z")).toBe("current") // 2 business days
+    expect(state("2026-10-06T15:00:00.000Z")).toBe("due") // 3
+    expect(state("2026-10-02T15:00:00.000Z")).toBe("overdue") // 5
+  })
+
+  it("treats a future follow-up as scheduled even before any contact is logged", () => {
+    const result = clientFollowUpState({
+      jobStatusId: "estimate_sent",
+      interactions: [],
+      nextFollowUpAt: "2026-10-12T14:00:00.000Z",
+      now,
+    })
+    expect(result.state).toBe("scheduled")
+    expect(projectAgingLevel(result.state)).toBe("scheduled")
+  })
+
+  it("maps states to the shared aging levels", () => {
+    expect(projectAgingLevel("overdue")).toBe("overdue")
+    expect(projectAgingLevel("unrecorded")).toBe("no_contact")
+    expect(projectAgingLevel("excluded")).toBeNull()
+    expect(PROJECT_AGING_LEVELS.overdue.colorToken).toBe("--destructive")
+  })
+})
+
+describe("no-contact clock", () => {
+  const thresholds = { dueDays: 2, overdueDays: 5 }
+  const base = { jobStatusId: "estimating", thresholds, interactions: [], nextFollowUpAt: null }
+
+  it("keeps never-contacted jobs as No contact logged without a clock", () => {
+    expect(clientFollowUpState({ ...base, now: new Date("2026-10-20T16:00:00.000Z") }).state).toBe("unrecorded")
+  })
+
+  it("ages never-contacted jobs from the clock start in business days", () => {
+    // Clock starts Friday 2026-10-09.
+    const since = "2026-10-09T15:00:00.000Z"
+    expect(clientFollowUpState({ ...base, noContactSince: since, now: new Date("2026-10-12T16:00:00.000Z") }).state).toBe("unrecorded")
+    expect(clientFollowUpState({ ...base, noContactSince: since, now: new Date("2026-10-13T16:00:00.000Z") }).state).toBe("due")
+    expect(clientFollowUpState({ ...base, noContactSince: since, now: new Date("2026-10-16T16:00:00.000Z") }).state).toBe("overdue")
+  })
+
+  it("lets a scheduled follow-up still quiet a never-contacted job", () => {
+    expect(
+      clientFollowUpState({ ...base, noContactSince: "2026-09-01T15:00:00.000Z", nextFollowUpAt: "2026-11-01T15:00:00.000Z", now: new Date("2026-10-16T16:00:00.000Z") }).state,
+    ).toBe("scheduled")
   })
 })

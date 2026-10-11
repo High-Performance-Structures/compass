@@ -37,7 +37,16 @@ vi.mock("@/components/conversations/thread-panel", () => ({
   ThreadPanel: () => null,
 }))
 
+import { ClientRedirect } from "@/components/client-redirect"
 import ChannelPage from "../page"
+
+/** The address a page sends the browser to, if it returned a ClientRedirect. */
+function redirectTarget(element: unknown): string | null {
+  if (typeof element !== "object" || element === null) return null
+  if (!("type" in element) || element.type !== ClientRedirect) return null
+  if (!("props" in element) || typeof element.props !== "object" || element.props === null) return null
+  return "href" in element.props && typeof element.props.href === "string" ? element.props.href : null
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -70,8 +79,8 @@ describe("shared conversation notification entry", () => {
     "redirects authenticated %s recipients into their workspace",
     async (role) => {
       mocks.getCurrentUser.mockResolvedValue({ id: "vendor-user", role })
-      await expect(ChannelPage({ params: params() })).rejects.toThrow(
-        "REDIRECT:/preview/projects/project-a/sub-vendor/conversations/vendor-channel",
+      expect(redirectTarget(await ChannelPage({ params: params() }))).toBe(
+        "/preview/projects/project-a/sub-vendor/conversations/vendor-channel",
       )
       expect(mocks.getMessages).not.toHaveBeenCalled()
     },
@@ -87,8 +96,8 @@ describe("shared conversation notification entry", () => {
         audience: "clients",
       },
     })
-    await expect(ChannelPage({ params: params() })).rejects.toThrow(
-      "REDIRECT:/preview/projects/project-a/owner/conversations/owner-channel",
+    expect(redirectTarget(await ChannelPage({ params: params() }))).toBe(
+      "/preview/projects/project-a/owner/conversations/owner-channel",
     )
   })
 

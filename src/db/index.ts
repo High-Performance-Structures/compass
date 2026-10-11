@@ -14,6 +14,7 @@ import * as sageSchema from "./schema-sage"
 import * as buildertrendSchema from "./schema-buildertrend"
 import * as estimatesSchema from "./schema-estimates"
 import * as rateBookSchema from "./schema-rate-book"
+import * as paperTrailSchema from "./schema-paper-trail"
 import * as nuTechSchema from "./schema-nutech"
 import * as templateSchema from "./schema-templates"
 import * as warrantySchema from "./schema-warranty"
@@ -23,15 +24,21 @@ import * as socialSchema from "./schema-social"
 import * as documentSchema from "./schema-documents"
 import * as rfqSchema from "./schema-rfqs"
 import * as projectFamilySchema from "./schema-project-families"
+import * as jobWorkflowSchema from "./schema-job-workflows"
 
 import * as correspondenceSchema from "./schema-correspondence"
 import * as correspondenceEmailSchema from "./schema-correspondence-email"
 import * as correspondenceSourceSchema from "./schema-correspondence-source"
 
 import * as selectionDecisionSchema from "./schema-selection-decisions"
+import * as internalDutySchema from "./schema-internal-duties"
+import * as shopTicketSchema from "./schema-shop-tickets"
 
 const allSchemas = {
   ...rateBookSchema,
+  ...internalDutySchema,
+  ...shopTicketSchema,
+  ...paperTrailSchema,
   ...selectionDecisionSchema,
   ...correspondenceSchema,
   ...correspondenceEmailSchema,
@@ -59,6 +66,7 @@ const allSchemas = {
   ...documentSchema,
   ...rfqSchema,
   ...projectFamilySchema,
+  ...jobWorkflowSchema,
 }
 
 // Legacy function - kept for backwards compatibility

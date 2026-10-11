@@ -10,7 +10,8 @@ import {
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import { ProjectDailyLogWorkspace } from "@/components/projects/project-daily-log-workspace"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -34,7 +35,8 @@ export default async function ProjectDailyLogsPage({
     workspace = await getProjectDailyLogWorkspace(id)
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     notFound()
   }
 

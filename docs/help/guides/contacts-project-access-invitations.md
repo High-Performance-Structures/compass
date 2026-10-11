@@ -12,7 +12,7 @@
   "permissions": ["help:read", "vendor:read"],
   "routes": ["/dashboard/contacts", "/dashboard/projects/[id]/contacts"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-09"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -41,7 +41,7 @@ For an unlinked contact, **Verify Sage link** looks up the exact Sage number wit
 1. Create or correct the directory record, paying special attention to the email address.
 2. From the project **Contacts** page, add the existing contact to that project. An account administrator can also use **Manage Compass access** within Contacts to select multiple accounts and grant specific projects together.
 3. Review the project, contact type, email, intended role, and audience visibility.
-4. Select **Invite contact** and review the project and welcome message before sending.
+4. Select **Invite to Compass**, or **Grant project access** if the person already has a Compass login, and review the project and welcome message before sending. While an invitation is pending, the button reads **Resend invitation**.
 
 For a new user, Compass creates a secure account invitation. For an existing user, Compass adds the explicit project assignment. Neither path grants unrelated projects.
 
@@ -56,6 +56,20 @@ If the person does not appear in the invitation list, check that the contact is 
 ## Correct Mistakes Safely {#correct-mistakes}
 
 Stop before inviting either record when you find a likely duplicate. Ask an administrator to reconcile identity and assignments. If access was granted to the wrong person or project, treat it as a potential data-exposure issue and contact an administrator immediately.
+
+## Compare the Directory with Sage {#compare-sage}
+
+Use **Compare clients with Sage** to search Compass clients and the read-only Sage directory side by side. Request a fresh Sage list when needed and compare the names and exact Sage identifiers. Selecting a pair does not link or merge it. Imported links can use their verification workflow; other identity links still require the review appropriate to that record. Proposed Sage edits and new Sage people require independent approval and confirmed read-back.
+
+Project-phase contacts remain project assignments, separate from the underlying Sage client. Reuse an existing named person when assigning the same client to another phase instead of creating a duplicate.
+
+## Merge Duplicate Companies or People {#merge-contacts}
+
+Authorized directory managers can select duplicate company records or use **Merge 2 people** within a company. Choose the record to keep and review linked identities, project relationships, and any conflicts before confirming. Imported directory identities can be eligible for merging, but a conflicting Sage identity must be resolved through the proper review. A merge reconciles directory records; it does not authorize an unrelated Sage write or an invitation. Use the permission-appropriate delete action only for an unnecessary record and review the displayed dependencies first.
+
+## Resend a Pending Invitation {#resend-invitation}
+
+If an invited person has not joined, use the pending invitation's resend action rather than creating another person or assignment. Verify the email, project, and role first. Pending invitee links can exist before a Compass account ID is available. After acceptance, verify the actual workspace and feature access.
 
 ## Quick Check {#quick-check}
 

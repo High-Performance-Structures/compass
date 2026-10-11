@@ -1,5 +1,7 @@
 "use client"
 
+import { TanstackSortableHeader } from "@/components/ui/sortable-header"
+
 import * as React from "react"
 import {
   closestCenter,
@@ -513,12 +515,7 @@ export function DataTable({
                             colSpan={header.colSpan}
                             className={meta?.className}
                           >
-                            {header.isPlaceholder
-                              ? null
-                              : flexRender(
-                                  header.column.columnDef.header,
-                                  header.getContext()
-                                )}
+                            <TanstackSortableHeader header={header} />
                           </TableHead>
                         )
                       })}

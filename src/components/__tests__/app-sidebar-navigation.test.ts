@@ -153,6 +153,36 @@ describe("restricted sidebar navigation", () => {
   })
 })
 
+describe("Nu-Tech Price List sidebar navigation", () => {
+  it("links staff straight to the Nu-Tech product catalog", () => {
+    const office = officeNavigation(false)
+
+    expect(
+      office?.items.find(
+        (item) => item.kind === "link" && item.title === "Nu-Tech Price List",
+      ),
+    ).toMatchObject({ kind: "link", url: "/dashboard/nutech/catalog" })
+  })
+
+  it("keeps the price list away from outside users", () => {
+    const office = buildMainNavigation({
+      activeProjectId: null,
+      canViewActivity: false,
+      canManageFeedback: false,
+      canUseExecutiveAdmin: false,
+    }).find(
+      (item): item is NavGroupItem =>
+        item.kind === "group" && item.title === "Office Tools",
+    )
+
+    expect(
+      office?.items.some(
+        (item) => item.kind === "link" && item.title === "Nu-Tech Price List",
+      ) ?? false,
+    ).toBe(false)
+  })
+})
+
 describe("Greeting Cards sidebar navigation", () => {
   it("shows the office greeting-card workspace to preparers", () => {
     const office = buildMainNavigation({

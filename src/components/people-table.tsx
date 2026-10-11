@@ -1,5 +1,7 @@
 "use client"
 
+import { TanstackSortableHeader } from "@/components/ui/sortable-header"
+
 import * as React from "react"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
@@ -397,12 +399,7 @@ export function PeopleTable({
                     <TableRow key={headerGroup.id}>
                       {headerGroup.headers.map((header) => (
                         <TableHead key={header.id} className="whitespace-nowrap">
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
+                          <TanstackSortableHeader header={header} />
                         </TableHead>
                       ))}
                     </TableRow>

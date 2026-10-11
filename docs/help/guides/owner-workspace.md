@@ -10,24 +10,9 @@
   "tags": ["owner", "client", "portal", "project dashboard", "selections", "G703", "pay applications", "change orders", "warranty"],
   "audiences": ["owner"],
   "permissions": ["help:read", "project:read"],
-  "routes": [
-    "/preview/projects/[id]/owner",
-    "/preview/projects/[id]/owner/budget",
-    "/preview/projects/[id]/owner/change-orders",
-    "/preview/projects/[id]/owner/change-orders/[changeOrderId]",
-    "/preview/projects/[id]/owner/conversations",
-    "/preview/projects/[id]/owner/conversations/[channelId]",
-    "/preview/projects/[id]/owner/documents",
-    "/preview/projects/[id]/owner/photos",
-    "/preview/projects/[id]/owner/schedule",
-    "/preview/projects/[id]/owner/selections",
-    "/preview/projects/[id]/owner/team",
-    "/preview/projects/[id]/owner/updates",
-    "/preview/projects/[id]/owner/updates/[updateId]",
-    "/preview/projects/[id]/owner/warranty"
-  ],
+  "routes": ["/preview/projects/[id]/owner", "/preview/projects/[id]/owner/budget", "/preview/projects/[id]/owner/change-orders", "/preview/projects/[id]/owner/change-orders/[changeOrderId]", "/preview/projects/[id]/owner/conversations", "/preview/projects/[id]/owner/conversations/[channelId]", "/preview/projects/[id]/owner/documents", "/preview/projects/[id]/owner/photos", "/preview/projects/[id]/owner/schedule", "/preview/projects/[id]/owner/selections", "/preview/projects/[id]/owner/team", "/preview/projects/[id]/owner/updates", "/preview/projects/[id]/owner/updates/[updateId]", "/preview/projects/[id]/owner/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-06"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -39,9 +24,9 @@ The navigation shows only the areas available for the active project and your as
 
 ## Use the Dashboard {#dashboard}
 
-**Dashboard** is the owner summary. Use it to see current published information and jump to the full area for details. Counts and status summaries reflect the active project and the information currently shared with you.
+**Dashboard** uses the same overall layout as the office workspace while showing only information shared with you. Open your project's map panel for site context and use **Messages** to find your unread items when available. Counts, summaries, and links remain limited to your project assignment and published owner information.
 
-Use the left navigation on a larger screen or the project controls on a smaller screen to move between areas. **Print** creates a printable view of the information currently shown; it does not change or approve a record.
+Use the left navigation on a larger screen or project controls on a smaller screen. **Print** creates a point-in-time copy; it does not change or approve a record. A shared layout does not expose staff financials or internal messages.
 
 ## Review Selections and Decisions {#selections}
 
@@ -90,6 +75,10 @@ Open a claim to follow its status, planned visit, attachments, and owner-visible
 Your workspace is limited to projects assigned to your account. Do not share sign-in links, authentication codes, downloaded financial documents, or private project files. If you see an unfamiliar project or information that appears intended for another audience, stop and report it to the project team immediately.
 
 Small compass-and-question-mark symbols beside selected controls are Help beacons. Hover over one for a short explanation, click or tap it for a compact Help card, or double-click it to open the matching full guide without replacing your workspace. For a Compass product or access problem, email [compasshelp@hps-colorado.com](mailto:compasshelp@hps-colorado.com?subject=Compass%20Help%20Request) or call or text [719-896-6149](tel:+17198966149), and include the project, page, approximate time, what you expected, and what happened. Do not include passwords, sign-in links, or authentication codes. Continue to use your project contact or project conversation for schedule, pricing, approval, warranty, and construction questions.
+
+## Follow Assigned Warranty Service {#warranty-assignee}
+
+On **Warranty**, follow the claim's scheduled visit, progress notes, and assigned person's name when provided. Assigned trade partners can report **Visit scheduled**, **In progress**, or **Resolved**. Review the result and use the available owner confirmation for resolution; the project team controls assignment, priority, and closing. An internal account identifier is not a contact instruction.
 
 ## Quick Check {#quick-check}
 

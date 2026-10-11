@@ -30,6 +30,9 @@ const VALID_AUDIENCES = new Set([
   "guest",
 ])
 const VALID_FEATURE_IDS = new Set([
+  "agent",
+  "nutech-orders",
+  "social-publishing",
   "project-hub",
   "project-contacts",
   "daily-logs",

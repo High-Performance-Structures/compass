@@ -57,11 +57,11 @@ import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
 } from "@/lib/project-todos"
-import {
-  isJarvisAgentBridgeEnabled,
-  relayAgentRequest,
-} from "@/lib/jarvis/agent-relay"
-import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
+import { generateOrganizationText } from "@/lib/agent/one-shot"
+
+// The drafting prompt is built from the selected logs, schedule items and
+// to-dos; long reporting periods can run past the old relay's 3,950 limit.
+const OWNER_UPDATE_PROMPT_MAX_CHARACTERS = 24_000
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
@@ -2860,7 +2860,7 @@ export async function draftOwnerProjectUpdateWithJarvis(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const { db, user } = await verifyProjectMutationAccess(
+    const { db } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
     )
@@ -2994,50 +2994,27 @@ export async function draftOwnerProjectUpdateWithJarvis(
       lookAheadScheduleItems:
         composerSnapshot.lookAheadScheduleItems,
       todos: composerSnapshot.todos,
-    }).slice(0, 3_950)
+    }).slice(0, OWNER_UPDATE_PROMPT_MAX_CHARACTERS)
 
+    // Drafting runs on the organization's AI provider directly, not the
+    // private Jarvis relay, so owner-update content never reaches Signet.
     const { env } = await getCloudflareContext()
-    const configuredBridgeEnabled = Reflect.get(
-      env,
-      "JARVIS_AGENT_BRIDGE_ENABLED"
-    )
-    const configuredBridgeSecret = Reflect.get(env, "JARVIS_BRIDGE_SECRET")
-    if (
-      !isJarvisAgentBridgeEnabled(
-        typeof configuredBridgeEnabled === "string"
-          ? configuredBridgeEnabled
-          : undefined
-      ) ||
-      typeof configuredBridgeSecret !== "string" ||
-      configuredBridgeSecret.length === 0
-    ) {
-      return {
-        success: false,
-        error: "Jarvis drafting is not configured in this deployment.",
-      }
-    }
-
-    const result = await relayAgentRequest({
+    const result = await generateOrganizationText({
       db,
-      organizationId: user.organizationId,
-      user: {
-        id: user.id,
-        displayName: user.displayName,
-        email: user.email,
-        role: user.role,
-          readCapabilities: await jarvisReadCapabilitiesForUser(user),
-      },
-      sessionId: `owner-update:${updateId}:${Date.now()}`,
-      currentPage:
-        `/dashboard/projects/${projectId}/owner-updates/${updateId}`,
-      timezone: "America/Denver",
-      messages: [{ role: "user", content: prompt }],
+      env: Object.fromEntries(
+        Object.entries(env).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string"
+        )
+      ),
+      systemPrompt:
+        "You write owner-facing construction project updates for Compass.",
+      prompt,
     })
     if (!result.success) {
       return { success: false, error: result.error }
     }
 
-    const summary = cleanOwnerUpdateDraft(result.content)
+    const summary = cleanOwnerUpdateDraft(result.text)
     if (summary.length === 0) {
       return { success: false, error: "Jarvis returned an empty draft." }
     }

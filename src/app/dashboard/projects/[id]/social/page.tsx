@@ -6,7 +6,8 @@ import { notFound } from "next/navigation"
 
 import { getSocialPostWorkspace } from "@/app/actions/social-posts"
 import { ProjectSocialWorkspace } from "@/components/projects/project-social-workspace"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -24,7 +25,8 @@ export default async function ProjectSocialPage({
     workspace = await getSocialPostWorkspace(id)
   } catch (error) {
     if (hasDigest(error)) throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     if (error instanceof Error && error.message.includes("Project not found")) notFound()
     throw error
   }

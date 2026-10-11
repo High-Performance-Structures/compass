@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import {
   IconEye,
@@ -68,7 +69,7 @@ export default async function ProjectBudgetPage({
       console.warn("Sage sync unavailable", error)
     }
   }
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber ?? null,
   })

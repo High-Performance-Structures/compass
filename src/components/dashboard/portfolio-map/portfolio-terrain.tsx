@@ -23,6 +23,15 @@ import {
 } from "@/components/dashboard/portfolio-map/portfolio-layers"
 import type { TravelChargeSettings } from "@/lib/portfolio-map/travel-zones"
 
+/**
+ * A different marker key in place of the phase key (a sales pipeline's
+ * stages): each job's color token and the key entries shown under the map.
+ */
+export type PortfolioMarkerKey = {
+  readonly entries: readonly { readonly id: string; readonly label: string; readonly colorToken: string }[]
+  readonly colorTokenByJobId: ReadonlyMap<string, string>
+}
+
 type PortfolioTerrainProps = {
   readonly jobs: readonly PortfolioMapJob[]
   readonly highlight: SceneHighlight
@@ -33,6 +42,7 @@ type PortfolioTerrainProps = {
   readonly focusSelectedOnLoad?: boolean
   /** The office phase key under the map; the owner view uses its own stepper instead. */
   readonly showPhaseKey?: boolean
+  readonly markerKey?: PortfolioMarkerKey | null
   /** Messages layer: unread item kinds per job id, or null when the layer is off. */
   readonly messageStacks?: MessageStacks | null
   /** Zone and mountain layers; omitted where travel charges do not apply (owner and vendor maps). */
@@ -66,6 +76,7 @@ export default function PortfolioTerrain({
   onUnavailable,
   focusSelectedOnLoad = false,
   showPhaseKey = true,
+  markerKey = null,
   layers,
   messageStacks = null,
 }: PortfolioTerrainProps): React.ReactElement {
@@ -111,7 +122,17 @@ export default function PortfolioTerrain({
 
   React.useEffect(() => {
     // Theme colors are lifted for contrast against the dark terrain.
+    const hexByToken = new Map(
+      (markerKey?.entries ?? []).map((entry) => [entry.colorToken, themeColorHex(entry.colorToken, 0.35)]),
+    )
+    const byJobId = new Map(
+      [...(markerKey?.colorTokenByJobId ?? [])].flatMap(([jobId, token]): [string, number][] => {
+        const hex = hexByToken.get(token)
+        return hex === undefined ? [] : [[jobId, hex]]
+      }),
+    )
     sceneRef.current?.setJobs(jobs, {
+      byJobId,
       phase: {
         intake: themeColorHex(PHASE_COLOR_TOKEN.intake, 0.4),
         estimating: themeColorHex(PHASE_COLOR_TOKEN.estimating, 0.45),
@@ -124,7 +145,7 @@ export default function PortfolioTerrain({
       risk: themeColorHex("--warning", 0.35),
       late: themeColorHex("--destructive", 0.3),
     })
-  }, [jobs])
+  }, [jobs, markerKey])
 
   React.useEffect(() => {
     sceneRef.current?.setHighlight(highlight)
@@ -243,7 +264,16 @@ export default function PortfolioTerrain({
           <PortfolioLayerLegend state={layers.state} settings={layers.settings} />
         </div>
       ) : null}
-      {showPhaseKey ? (
+      {markerKey ? (
+        <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">
+          {markerKey.entries.map((entry) => (
+            <li key={entry.id} className="flex items-center gap-1.5">
+              <span className="size-2" style={{ background: `var(${entry.colorToken})` }} aria-hidden="true" />
+              {entry.label.toUpperCase()}
+            </li>
+          ))}
+        </ul>
+      ) : showPhaseKey ? (
         <ul className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-xs tracking-[0.12em] text-muted-foreground">
           {PORTFOLIO_PHASES.map((phase) => (
             <li key={phase.id} className="flex items-center gap-1.5">

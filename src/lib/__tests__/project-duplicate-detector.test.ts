@@ -300,3 +300,51 @@ describe("project duplicate detector", () => {
     expect(projectDuplicatePairKey("z", "a")).toBe('["a","z"]')
   })
 })
+
+describe("repeat-order departments", () => {
+  const repeatOrders = { repeatOrderDepartments: new Set(["N"]) }
+  const order = (id: string, projectNumber: string, values: Partial<ProjectDuplicateIdentity> = {}) =>
+    project(id, { projectNumber, name: "Richards Fox Blocks", clientName: "Richards", ...values })
+
+  it("doesn't flag a repeat customer's separate orders", () => {
+    const orders = [order("a", "N-19-00"), order("b", "N-38-00"), order("c", "N-66-00")]
+    expect(findProjectDuplicateCandidates(orders)).not.toHaveLength(0)
+    expect(findProjectDuplicateCandidates(orders, repeatOrders)).toHaveLength(0)
+  })
+
+  it("doesn't flag a build and its order in a repeat-order department", () => {
+    const build = project("build", { projectNumber: "H-278-1602", name: "H-278-1602 Co Rd 51 - Skinner Residence", clientName: "Skinner" })
+    const blocks = project("blocks", { projectNumber: "N-440-1602", name: "Skinner Fox Blocks", clientName: "Skinner" })
+    expect(findProjectDuplicateCandidates([build, blocks], repeatOrders)).toHaveLength(0)
+  })
+
+  it("doesn't flag follow-up orders for the same site placed on different days", () => {
+    const followUps = [
+      order("a", "N-451-11085", { address: "11085 Ridge Rd", createdAt: "2022-01-31T00:00:00.000Z" }),
+      order("b", "N-548-11085", { address: "11085 Ridge Rd", createdAt: "2022-10-03T00:00:00.000Z" }),
+    ]
+    expect(findProjectDuplicateCandidates(followUps, repeatOrders)).toHaveLength(0)
+  })
+
+  it("still flags same-day orders for one site and shared system identifiers", () => {
+    const sameSite = [
+      order("a", "N-451-11085", { address: "11085 Ridge Rd", createdAt: "2022-01-31T09:00:00.000Z" }),
+      order("b", "N-548-11085", { address: "11085 Ridge Rd", createdAt: "2022-01-31T15:00:00.000Z" }),
+    ]
+    expect(findProjectDuplicateCandidates(sameSite, repeatOrders)).toHaveLength(1)
+    const sameSage = [order("a", "N-12-00", { sageJobNumber: "4410" }), order("b", "N-13-00", { sageJobNumber: "4410" })]
+    expect(findProjectDuplicateCandidates(sameSage, repeatOrders)).toHaveLength(1)
+  })
+
+  it("still flags the same order number entered twice", () => {
+    expect(findProjectDuplicateCandidates([order("a", "N-19-00"), order("b", "N-19-00")], repeatOrders)).toHaveLength(1)
+  })
+
+  it("keeps the stricter check in other departments", () => {
+    const builds = [
+      project("a", { projectNumber: "O-120-3790", name: "Vance Residence", clientName: "Vance" }),
+      project("b", { projectNumber: "O-121-3790", name: "Vance Residence", clientName: "Vance" }),
+    ]
+    expect(findProjectDuplicateCandidates(builds, repeatOrders)).toHaveLength(1)
+  })
+})

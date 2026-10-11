@@ -19,7 +19,8 @@ import { cookies } from "next/headers"
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { rateBookEntries } from "@/db/schema-rate-book"
-import { estimateAccess, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess } from "@/lib/estimates/access"
+import { estimateAccess, estimateSourceForRecordCopy, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess, type EstimateWorkspaceSource } from "@/lib/estimates/access"
+import { verifyRecordCopyToken } from "@/lib/paper-trail/print-token"
 import {
   projectBudgetLines,
   projectContacts,
@@ -966,8 +967,39 @@ export async function getProjectEstimateWorkspace(
   estimateId?: string
 ): Promise<ProjectEstimateWorkspace> {
   const access = await estimateAccess(projectId, false)
-  const canEdit = isInternalStaffRole(access.user.role)
-  const canDelete = can(access.user, "budget", "delete")
+  return loadProjectEstimateWorkspace(access, projectId, estimateId, {
+    canEdit: isInternalStaffRole(access.user.role),
+    canDelete: can(access.user, "budget", "delete"),
+  })
+}
+
+/**
+ * The estimate report data for the project paper trail's record-copy page.
+ * Callable only with a valid single-record pass for this estimate; the copy
+ * is read-only, so edit and delete controls are off.
+ */
+export async function getEstimateWorkspaceForRecordCopy(
+  token: string
+): Promise<ProjectEstimateWorkspace | null> {
+  const { env } = await getCloudflareContext()
+  const grant = await verifyRecordCopyToken(env, token)
+  if (!grant || grant.recordType !== "estimate") return null
+  const source = await estimateSourceForRecordCopy(env, grant.projectId)
+  if (!source) return null
+  const workspace = await loadProjectEstimateWorkspace(source, grant.projectId, grant.recordId, {
+    canEdit: false,
+    canDelete: false,
+  })
+  // Never fall back to another estimate when the requested one is gone.
+  return workspace.activeEstimate?.id === grant.recordId ? workspace : null
+}
+
+async function loadProjectEstimateWorkspace(
+  access: EstimateWorkspaceSource,
+  projectId: string,
+  estimateId: string | undefined,
+  { canEdit, canDelete }: { readonly canEdit: boolean; readonly canDelete: boolean }
+): Promise<ProjectEstimateWorkspace> {
   const estimateRows = await access.db
     .select()
     .from(projectEstimates)

@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation"
+import { ClientRedirect } from "@/components/client-redirect"
 
-export default function VendorsRedirect(): never {
-  redirect("/dashboard/contacts?tab=vendors")
+export default function VendorsRedirect(): React.ReactElement {
+  return <ClientRedirect href={"/dashboard/contacts?tab=vendors"} />
 }

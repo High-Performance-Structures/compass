@@ -10,6 +10,8 @@ import {
 } from "@tabler/icons-react"
 
 import { getNuTechOrderDashboard } from "@/app/actions/nutech-orders"
+import { getBracingInventory } from "@/app/actions/nutech-bracing"
+import { BracingInventoryPanel } from "@/components/nutech/bracing-inventory"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { nuTechOrderStatusLabel } from "@/lib/nutech/workflow"
@@ -25,7 +27,7 @@ function dateLabel(value: string | null): string {
 }
 
 export default async function NuTechOrdersPage(): Promise<React.ReactElement> {
-  const orders = await getNuTechOrderDashboard()
+  const [orders, bracing] = await Promise.all([getNuTechOrderDashboard(), getBracingInventory()])
   const activeOrders = orders.filter(
     (order) => !["complete", "cancelled"].includes(order.orderStatus)
   )
@@ -115,6 +117,7 @@ export default async function NuTechOrdersPage(): Promise<React.ReactElement> {
           </div>
         )}
       </section>
+      {bracing.success ? <BracingInventoryPanel inventory={bracing.data} /> : null}
     </div>
   )
 }

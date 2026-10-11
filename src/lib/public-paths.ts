@@ -53,9 +53,14 @@ const scheduledMaintenancePaths = [
   "/api/email/gmail-sync",
   "/api/operations/feedback/reconcile",
   "/api/operations/goto/recover-message-bodies",
+  "/api/operations/paper-trail/run",
+  // Opens only with a single-record pass header; see src/lib/paper-trail/print-token.ts.
+  "/print/record-copy",
   "/api/operations/sage/health",
   "/api/operations/sage/square-receipts",
   "/api/operations/square/auth-health",
+  "/api/operations/staff-message-desk/stale-reminders",
+  "/api/operations/project-follow-up/overdue-reminders",
 ]
 
 export function isPublicPath(pathname: string): boolean {

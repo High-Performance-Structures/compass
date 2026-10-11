@@ -19,6 +19,13 @@ export function isAnthropicFormatProvider(
   return provider.type !== "openai"
 }
 
+/** An image the user attached to their latest message (e.g. a screenshot). */
+export interface AgentImage {
+  readonly mediaType: "image/jpeg" | "image/png" | "image/webp"
+  /** Base64 data without the data: URL prefix. */
+  readonly base64: string
+}
+
 export interface AgentContext {
   readonly userId: string
   readonly orgId: string

@@ -16,7 +16,16 @@ function restrictedAccessUrl(error: FeaturePermissionDeniedError): string {
   return `/dashboard/access-restricted?${params.toString()}`
 }
 
+/**
+ * Where to send someone a feature permission check turned away, or null for
+ * any other error. Dashboard pages return `<ClientRedirect href={…} />` with
+ * it; see that component for why they don't call `redirect()`.
+ */
+export function permissionDeniedRedirectHref(error: unknown): string | null {
+  return isFeaturePermissionDeniedError(error) ? restrictedAccessUrl(error) : null
+}
+
 export function redirectIfFeaturePermissionDenied(error: unknown): void {
-  if (!isFeaturePermissionDeniedError(error)) return
-  redirect(restrictedAccessUrl(error))
+  const href = permissionDeniedRedirectHref(error)
+  if (href) redirect(href)
 }

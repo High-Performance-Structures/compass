@@ -10,24 +10,9 @@
   "tags": ["subcontractor", "supplier", "vendor", "trade partner", "portal", "commitments", "purchase orders", "RFI", "RFQ", "quote", "warranty"],
   "audiences": ["subcontractor", "supplier"],
   "permissions": ["help:read", "project:read"],
-  "routes": [
-    "/preview/projects/[id]/sub-vendor",
-    "/preview/projects/[id]/sub-vendor/change-orders",
-    "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]",
-    "/preview/projects/[id]/sub-vendor/commitments",
-    "/preview/projects/[id]/sub-vendor/conversations",
-    "/preview/projects/[id]/sub-vendor/conversations/[channelId]",
-    "/preview/projects/[id]/sub-vendor/documents",
-    "/preview/projects/[id]/sub-vendor/photos",
-    "/preview/projects/[id]/sub-vendor/rfis",
-    "/preview/projects/[id]/sub-vendor/rfqs",
-    "/preview/projects/[id]/sub-vendor/schedule",
-    "/preview/projects/[id]/sub-vendor/selections",
-    "/preview/projects/[id]/sub-vendor/team",
-    "/preview/projects/[id]/sub-vendor/warranty"
-  ],
+  "routes": ["/preview/projects/[id]/sub-vendor", "/preview/projects/[id]/sub-vendor/change-orders", "/preview/projects/[id]/sub-vendor/change-orders/[changeOrderId]", "/preview/projects/[id]/sub-vendor/commitments", "/preview/projects/[id]/sub-vendor/conversations", "/preview/projects/[id]/sub-vendor/conversations/[channelId]", "/preview/projects/[id]/sub-vendor/documents", "/preview/projects/[id]/sub-vendor/photos", "/preview/projects/[id]/sub-vendor/rfis", "/preview/projects/[id]/sub-vendor/rfqs", "/preview/projects/[id]/sub-vendor/schedule", "/preview/projects/[id]/sub-vendor/selections", "/preview/projects/[id]/sub-vendor/team", "/preview/projects/[id]/sub-vendor/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-09"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -39,9 +24,9 @@ Compass shows only records assigned or published to your company and audience. I
 
 ## Use the Dashboard {#dashboard}
 
-**Dashboard** summarizes current trade-partner information and links to each full area. Counts and status labels reflect the active project and the work visible to your account.
+**Dashboard** summarizes your assigned work using the same overall layout as the office workspace. **Your jobs** provides a map of projects available to you; select a job for its panel and links. The **Messages** layer highlights your unread items when available. Counts and status labels reflect your permitted project and company audience.
 
-Use the navigation to move between assigned work. **Print** creates a point-in-time copy of the visible report; it does not acknowledge, accept, or update a record.
+Use navigation to move between assigned work. **Print** creates a point-in-time copy of the visible report; it does not acknowledge, accept, or update a record. The map does not grant access to another company's work.
 
 ## Review Schedule and Selections {#schedule-selections}
 

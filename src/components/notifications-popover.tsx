@@ -239,6 +239,11 @@ export function NotificationsPopover({
   )
   const sections = useMemo(() => groupInbox(notifications), [notifications])
   const hasUnread = unreadCount > 0
+  // Urgent reminders (e.g. a stale Message Desk message) turn the bell red until read.
+  const hasUrgentUnread = useMemo(
+    () => notifications.some((item) => item.readAt === null && item.priority === "urgent"),
+    [notifications]
+  )
 
   const loadNotifications = useCallback(
     async (showLoading: boolean): Promise<void> => {
@@ -415,12 +420,22 @@ export function NotificationsPopover({
   }
 
   const trigger = (
-    <Button variant="ghost" size="icon" className="relative size-8" aria-label="Notifications">
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("relative size-8", hasUrgentUnread && "text-destructive hover:text-destructive")}
+      aria-label={hasUrgentUnread ? "Notifications, urgent reminder waiting" : "Notifications"}
+    >
       <BadgeIndicator dot={hasUnread}>
         <IconBell className="size-4" />
       </BadgeIndicator>
       {unreadCount > 0 && (
-        <span className="absolute -right-0.5 -top-0.5 rounded-full bg-primary px-1 text-xs font-semibold leading-4 text-primary-foreground">
+        <span
+          className={cn(
+            "absolute -right-0.5 -top-0.5 rounded-full px-1 text-xs font-semibold leading-4",
+            hasUrgentUnread ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"
+          )}
+        >
           {unreadCount > 9 ? "9+" : unreadCount}
         </span>
       )}

@@ -26,6 +26,52 @@ export type NuTechVendorInvoiceStatus =
   | "released"
   | "posted"
 
+export type NuTechPaymentMethod = "check" | "cash" | "ach" | "card"
+
+export const NUTECH_PAYMENT_METHOD_OPTIONS: readonly {
+  readonly value: NuTechPaymentMethod
+  readonly label: string
+}[] = [
+  { value: "check", label: "Check" },
+  { value: "cash", label: "Cash" },
+  { value: "ach", label: "ACH / online check" },
+  { value: "card", label: "Card" },
+]
+
+export function isNuTechPaymentMethod(value: unknown): value is NuTechPaymentMethod {
+  return NUTECH_PAYMENT_METHOD_OPTIONS.some((option) => option.value === value)
+}
+
+/**
+ * What the customer must provide before the order goes to the manufacturer:
+ * a paid invoice and a requested date, and for customer pickup the trailer
+ * dimensions and a photo of the trailer.
+ */
+export function nuTechCustomerReadinessIssues({
+  deliveryMethod,
+  customerPaidAt,
+  requestedDeliveryDate,
+  trailerDimensions,
+  trailerPhotoReceivedAt,
+}: {
+  readonly deliveryMethod: NuTechDeliveryMethod
+  readonly customerPaidAt: string | null
+  readonly requestedDeliveryDate: string | null
+  readonly trailerDimensions: string | null
+  readonly trailerPhotoReceivedAt: string | null
+}): readonly string[] {
+  const issues: string[] = []
+  if (customerPaidAt === null) issues.push("Record the customer's payment.")
+  if (requestedDeliveryDate === null) {
+    issues.push(deliveryMethod === "delivery" ? "Get the requested delivery date." : "Get the requested pickup date.")
+  }
+  if (deliveryMethod === "customer_pickup") {
+    if (trailerDimensions === null) issues.push("Get the trailer dimensions.")
+    if (trailerPhotoReceivedAt === null) issues.push("Get a photo of the trailer.")
+  }
+  return issues
+}
+
 export const NUTECH_CUSTOMER_TYPE_OPTIONS: readonly {
   readonly value: NuTechCustomerType
   readonly label: string
@@ -208,6 +254,7 @@ export function nuTechPurchaseOrderReleaseReadiness({
   airlitePurchaseOrderOperationId,
   orderItemCount,
   airliteWorkbookStatus,
+  customerReadinessIssues = [],
 }: {
   readonly customerType: NuTechCustomerType | null
   readonly pricingMode: NuTechPricingMode | null
@@ -216,8 +263,10 @@ export function nuTechPurchaseOrderReleaseReadiness({
   readonly airlitePurchaseOrderOperationId: string | null
   readonly orderItemCount?: number | null
   readonly airliteWorkbookStatus?: string | null
+  /** From nuTechCustomerReadinessIssues: payment, date, and pickup trailer details. */
+  readonly customerReadinessIssues?: readonly string[]
 }): NuTechPurchaseOrderReleaseReadiness {
-  const issues: string[] = []
+  const issues: string[] = [...customerReadinessIssues]
   if (customerType === null) issues.push("Select new or returning customer pricing.")
   if (pricingMode === null) issues.push("Select standard or cash-discount pricing.")
   if (quantitySource === null) issues.push("Record who supplied the quantities.")
@@ -246,4 +295,32 @@ export function nuTechPurchaseOrderReleaseReadiness({
 export function nuTechOrderStatusLabel(value: string): string {
   const match = NUTECH_ORDER_STATUS_OPTIONS.find((option) => option.value === value)
   return match?.label ?? value
+}
+
+/**
+ * The job status (and so the Nu-Tech Sales pipeline stage) an order status
+ * puts the job in. Null leaves the job status alone (cancelled orders are
+ * closed on the job page, where the reason is chosen).
+ */
+const JOB_STATUS_BY_ORDER_STATUS: Readonly<Record<NuTechOrderStatus, string | null>> = {
+  intake: "intake",
+  quantities_ready: "estimating",
+  estimate_ready: "estimating",
+  customer_approved: "awaiting_payment",
+  po_ready: "awaiting_payment",
+  po_released: "ordered",
+  vendor_confirmed: "ordered",
+  invoice_received: "ordered",
+  invoice_released: "ordered",
+  complete: "complete",
+  cancelled: null,
+}
+
+export function jobStatusForNuTechOrderStatus(status: NuTechOrderStatus): string | null {
+  return JOB_STATUS_BY_ORDER_STATUS[status]
+}
+
+/** The project's delivery method (delivery or pickup) for an order's fulfillment. */
+export function projectDeliveryMethodForNuTech(method: NuTechDeliveryMethod): "delivery" | "pickup" {
+  return method === "delivery" ? "delivery" : "pickup"
 }

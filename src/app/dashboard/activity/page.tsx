@@ -1,5 +1,4 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import { IconActivity, IconChevronRight } from "@tabler/icons-react"
 
 import { getActivityEvents } from "@/app/actions/activity"
@@ -10,6 +9,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { ACTIVITY_CATEGORIES, type ActivityCategory } from "@/lib/activity-log"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {
   access: "Access",
@@ -51,7 +51,7 @@ export default async function ActivityPage({
 }: ActivityPageProps): Promise<React.ReactElement> {
   const user = await getCurrentUser()
   if (!user || !isInternalStaffRole(user.role)) {
-    redirect("/dashboard/access-restricted")
+    return <ClientRedirect href={"/dashboard/access-restricted"} />
   }
 
   const params = await searchParams

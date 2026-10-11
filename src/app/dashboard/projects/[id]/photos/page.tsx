@@ -6,7 +6,8 @@ import { notFound } from "next/navigation"
 
 import { getProjectPhotoLibrary } from "@/app/actions/project-photos"
 import { ProjectPhotoReview } from "@/components/projects/project-photo-review"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -29,7 +30,8 @@ export default async function ProjectPhotosPage({
     library = await getProjectPhotoLibrary(id)
   } catch (error) {
     if (hasDigest(error)) throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     if (isProjectNotFound(error)) notFound()
     throw error
   }
