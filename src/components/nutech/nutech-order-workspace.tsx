@@ -215,6 +215,15 @@ export function NuTechOrderWorkspace({
   }
 
   const formRef = useRef<HTMLFormElement | null>(null)
+  const [fulfillment, setFulfillment] = useState<string>(order?.deliveryMethod ?? "delivery")
+  const [shipping, setShipping] = useState(order?.shippingCents != null ? (order.shippingCents / 100).toFixed(2) : "")
+  const [taxEntityId, setTaxEntityId] = useState(order?.taxEntityId ?? "")
+  const isDelivery = fulfillment === "delivery"
+  // Pickups are taxed at the warehouse unless someone picked a district.
+  const effectiveTaxEntityId = taxEntityId || (isDelivery ? "" : (workspace.warehouseTaxEntityId ?? ""))
+  const taxDistrict = workspace.taxDistricts.find((district) => district.id === effectiveTaxEntityId) ?? null
+  const shippingCents = isDelivery ? Math.max(0, Math.round((Number.parseFloat(shipping.replace(/[$,]/g, "")) || 0) * 100)) : 0
+  const taxCents = taxDistrict ? Math.round((customerTotalCents * taxDistrict.rateBasisPoints) / 10_000) : 0
 
   function orderInput(formData: FormData): Parameters<typeof saveProjectNuTechOrder>[1] {
     return {
@@ -261,6 +270,9 @@ export function NuTechOrderWorkspace({
         formData,
         "vendorInvoiceReceivedAt"
       ),
+      shippingCents: isDelivery && shipping.trim() !== "" ? shippingCents : null,
+      shippingNote: optionalFormText(formData, "shippingNote"),
+      taxEntityId: optionalFormText(formData, "taxEntityId"),
       notes: optionalFormText(formData, "notes"),
     }
   }
@@ -699,10 +711,9 @@ export function NuTechOrderWorkspace({
 
           <section id="nutech-fulfillment" className="scroll-mt-4 space-y-5 border-b pb-8">
             <div>
-              <h2 className="text-base font-semibold">3. Bracing and delivery</h2>
+              <h2 className="text-base font-semibold">3. Delivery, shipping and tax</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Bracing rental rates remain on the applicable 2026 Fox Blocks price
-                sheet.
+                Deliveries add the shipping charge quoted for the order (not taxed). Sales tax follows where the block is delivered, or the warehouse for pickups.
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -725,9 +736,7 @@ export function NuTechOrderWorkspace({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nutech-delivery-method">Fulfillment</Label>
-                <Select name="deliveryMethod"
-                  defaultValue={order?.deliveryMethod ?? "delivery"}
-                >
+                <Select name="deliveryMethod" value={fulfillment} onValueChange={setFulfillment}>
                   <SelectTrigger id="nutech-delivery-method" className={DOCUMENT_SELECT_TRIGGER_CLASS}>
                     <SelectValue />
                   </SelectTrigger>
@@ -765,6 +774,84 @@ export function NuTechOrderWorkspace({
                   emptyMessage="No matching statuses."
                 />
               </div>
+            </div>
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Shipping and sales tax</h3>
+              <div className="grid gap-4 md:grid-cols-4">
+                {isDelivery ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="nutech-shipping">Shipping charge ($)</Label>
+                      <Input
+                        className={DOCUMENT_INPUT_CLASS}
+                        id="nutech-shipping"
+                        inputMode="decimal"
+                        placeholder="Quoted for this order"
+                        value={shipping}
+                        onChange={(event) => setShipping(event.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="nutech-shipping-note">Quote from</Label>
+                      <Input
+                        className={DOCUMENT_INPUT_CLASS}
+                        id="nutech-shipping-note"
+                        name="shippingNote"
+                        placeholder="Who quoted it, and when"
+                        defaultValue={order?.shippingNote ?? ""}
+                      />
+                    </div>
+                  </>
+                ) : null}
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="nutech-tax-district">
+                    {isDelivery ? "Sales tax district (delivery address)" : "Sales tax district (pickup warehouse)"}
+                  </Label>
+                  <input type="hidden" name="taxEntityId" value={effectiveTaxEntityId} />
+                  <SearchableCombobox
+                    id="nutech-tax-district"
+                    className={cn(DOCUMENT_SELECT_TRIGGER_CLASS, "h-9")}
+                    ariaLabel="Sales tax district"
+                    placeholder="Choose the district"
+                    searchPlaceholder="Search districts..."
+                    emptyMessage="No matching district."
+                    value={effectiveTaxEntityId}
+                    options={workspace.taxDistricts.map((district) => ({
+                      value: district.id,
+                      label: `${district.name} · ${(district.rateBasisPoints / 100).toFixed(2)}%`,
+                      keywords: district.code,
+                    }))}
+                    onValueChange={(value) => {
+                      if (value !== "") setTaxEntityId(value)
+                    }}
+                  />
+                  {!isDelivery && !workspace.warehouseTaxEntityId ? (
+                    <p className="text-xs text-muted-foreground">
+                      Set the warehouse&apos;s district once in Settings → Workflows → Nu-Tech emails to fill this in for every pickup.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-1 border-t pt-3 text-sm sm:grid-cols-4">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Products</dt>
+                  <dd className="tabular-nums">{money(customerTotalCents / 100)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Shipping (not taxed)</dt>
+                  <dd className="tabular-nums">{isDelivery ? money(shippingCents / 100) : "Pickup"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">
+                    Sales tax{taxDistrict ? ` (${(taxDistrict.rateBasisPoints / 100).toFixed(2)}%)` : ""}
+                  </dt>
+                  <dd className="tabular-nums">{taxDistrict ? money(taxCents / 100) : "Choose a district"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Customer total</dt>
+                  <dd className="font-semibold tabular-nums">{money((customerTotalCents + shippingCents + taxCents) / 100)}</dd>
+                </div>
+              </dl>
             </div>
             <div className="space-y-2">
               <h3 className="text-sm font-medium">Customer readiness</h3>

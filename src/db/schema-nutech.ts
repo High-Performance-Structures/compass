@@ -201,6 +201,11 @@ export const nuTechOrderWorkflows = sqliteTable(
       () => users.id,
       { onDelete: "set null" }
     ),
+    /** Delivery charge quoted for this order, in cents; not taxable. */
+    shippingCents: integer("shipping_cents"),
+    shippingNote: text("shipping_note"),
+    /** Sales tax district (sage_tax_entities.id): delivery site, or the pickup warehouse's. */
+    taxEntityId: text("tax_entity_id"),
     notes: text("notes"),
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",

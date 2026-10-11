@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
-import { projectEstimates } from "@/db/schema-estimates"
+import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import {
   nuTechCatalogPrices,
   nuTechCatalogVersions,
@@ -99,8 +100,18 @@ export type NuTechOrderRecord = {
   readonly vendorInvoiceStatus: NuTechVendorInvoiceStatus
   readonly vendorInvoiceReceivedAt: string | null
   readonly vendorInvoiceReleasedAt: string | null
+  readonly shippingCents: number | null
+  readonly shippingNote: string | null
+  readonly taxEntityId: string | null
   readonly notes: string | null
   readonly updatedAt: string
+}
+
+export type NuTechTaxDistrict = {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly rateBasisPoints: number
 }
 
 export type NuTechCatalogProductOption = {
@@ -145,6 +156,10 @@ export type ProjectNuTechOrderWorkspace = {
   readonly orderItems: readonly NuTechOrderItemRecord[]
   readonly estimate: NuTechEstimateSummary | null
   readonly purchaseOrders: readonly NuTechPurchaseOrderOption[]
+  /** Active sales tax districts (synced from the accounting system). */
+  readonly taxDistricts: readonly NuTechTaxDistrict[]
+  /** District for customer pickups at the warehouse (Settings → Nu-Tech emails). */
+  readonly warehouseTaxEntityId: string | null
 }
 
 export type NuTechOrderDashboardItem = {
@@ -182,6 +197,9 @@ export type SaveNuTechOrderInput = {
   readonly vendorInvoiceNumber: string | null
   readonly vendorInvoiceStatus: string
   readonly vendorInvoiceReceivedAt: string | null
+  readonly shippingCents: number | null
+  readonly shippingNote: string | null
+  readonly taxEntityId: string | null
   readonly notes: string | null
 }
 
@@ -327,6 +345,9 @@ function toOrderRecord(
     vendorInvoiceStatus: vendorInvoiceStatus(row.vendorInvoiceStatus),
     vendorInvoiceReceivedAt: row.vendorInvoiceReceivedAt,
     vendorInvoiceReleasedAt: row.vendorInvoiceReleasedAt,
+    shippingCents: row.shippingCents,
+    shippingNote: row.shippingNote,
+    taxEntityId: row.taxEntityId,
     notes: row.notes,
     updatedAt: row.updatedAt,
   }
@@ -498,6 +519,14 @@ export async function getProjectNuTechOrderWorkspace(
         .orderBy(desc(nuTechCatalogVersions.effectiveDate))
         .limit(1)
         .get()
+  const [taxDistricts, nuTechSettings] = await Promise.all([
+    access.db
+      .select({ id: sageTaxEntities.id, code: sageTaxEntities.code, name: sageTaxEntities.name, rateBasisPoints: sageTaxEntities.rateBasisPoints })
+      .from(sageTaxEntities)
+      .where(eq(sageTaxEntities.active, true))
+      .orderBy(asc(sageTaxEntities.name)),
+    readFeatureSettings(access.db, access.organizationId, "nutech-emails"),
+  ])
   const [catalogProducts, orderItems] = await Promise.all([
     catalogVersion
       ? access.db
@@ -563,6 +592,8 @@ export async function getProjectNuTechOrderWorkspace(
     orderItems,
     estimate: estimateRow ?? null,
     purchaseOrders: purchaseOrderRows,
+    taxDistricts,
+    warehouseTaxEntityId: nuTechSettings.warehouseTaxEntityId || null,
   }
 }
 
@@ -705,6 +736,25 @@ export async function saveProjectNuTechOrder(
       throw new Error("Choose check, cash, ACH, or card.")
     }
     const trailerPhotoReceivedAt = cleanDate(input.trailerPhotoReceivedAt, "Trailer photo received date")
+    const parsedDeliveryMethod = deliveryMethod(input.deliveryMethod)
+    if (input.shippingCents !== null && (!Number.isInteger(input.shippingCents) || input.shippingCents < 0 || input.shippingCents > 100_000_000)) {
+      throw new Error("Enter the shipping charge in dollars and cents.")
+    }
+    // Shipping applies to deliveries only; pickups default to the warehouse's tax district.
+    const shippingCents = parsedDeliveryMethod === "delivery" ? input.shippingCents : null
+    let taxEntityId = cleanText(input.taxEntityId)
+    if (taxEntityId === null && parsedDeliveryMethod !== "delivery") {
+      const settings = await readFeatureSettings(access.db, access.organizationId, "nutech-emails")
+      taxEntityId = settings.warehouseTaxEntityId || null
+    }
+    if (taxEntityId !== null) {
+      const district = await access.db
+        .select({ id: sageTaxEntities.id })
+        .from(sageTaxEntities)
+        .where(and(eq(sageTaxEntities.id, taxEntityId), eq(sageTaxEntities.active, true)))
+        .get()
+      if (!district) throw new Error("Choose an active sales tax district.")
+    }
     const parsedOrderStatus = orderStatus(input.orderStatus)
     const parsedVendorInvoiceStatus = vendorInvoiceStatus(
       input.vendorInvoiceStatus
@@ -766,7 +816,7 @@ export async function saveProjectNuTechOrder(
       bracingRentalStartDate,
       bracingRentalEndDate,
       bracingNotes: bracingIncluded ? cleanText(input.bracingNotes) : null,
-      deliveryMethod: deliveryMethod(input.deliveryMethod),
+      deliveryMethod: parsedDeliveryMethod,
       requestedDeliveryDate,
       customerPaidAt,
       customerPaymentMethod: paymentMethod,
@@ -782,6 +832,9 @@ export async function saveProjectNuTechOrder(
       vendorInvoiceReceivedAt,
       vendorInvoiceReleasedAt: existing?.vendorInvoiceReleasedAt ?? null,
       vendorInvoiceReleasedBy: existing?.vendorInvoiceReleasedBy ?? null,
+      shippingCents,
+      shippingNote: shippingCents === null ? null : cleanText(input.shippingNote),
+      taxEntityId,
       notes: cleanText(input.notes),
       createdBy: existing?.createdBy ?? access.user.id,
       updatedBy: access.user.id,
@@ -827,6 +880,9 @@ export async function saveProjectNuTechOrder(
           vendorInvoiceStatus: values.vendorInvoiceStatus,
           vendorInvoiceReceivedAt: values.vendorInvoiceReceivedAt,
           airliteWorkbookStatus: nextWorkbookStatus,
+          shippingCents: values.shippingCents,
+          shippingNote: values.shippingNote,
+          taxEntityId: values.taxEntityId,
           notes: values.notes,
           updatedBy: access.user.id,
           updatedAt: now,
@@ -1042,5 +1098,21 @@ export async function deleteProjectNuTechOrder(
       error:
         error instanceof Error ? error.message : "Failed to delete Nu-Tech order.",
     }
+  }
+}
+
+/** Active sales tax districts, for choosing the warehouse's district in Settings. */
+export async function getNuTechTaxDistricts(): Promise<readonly NuTechTaxDistrict[]> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const { env } = await getCloudflareContext()
+    return await getDb(env.DB)
+      .select({ id: sageTaxEntities.id, code: sageTaxEntities.code, name: sageTaxEntities.name, rateBasisPoints: sageTaxEntities.rateBasisPoints })
+      .from(sageTaxEntities)
+      .where(eq(sageTaxEntities.active, true))
+      .orderBy(asc(sageTaxEntities.name))
+  } catch {
+    return []
   }
 }

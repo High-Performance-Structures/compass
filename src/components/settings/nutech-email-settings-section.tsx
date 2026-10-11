@@ -9,12 +9,14 @@ import {
 } from "@/app/actions/feature-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import { getNuTechTaxDistricts, type NuTechTaxDistrict } from "@/app/actions/nutech-orders"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FEATURE_SETTINGS, nuTechEmailSettingsSchema, type NuTechEmailSettings } from "@/lib/feature-settings/registry"
 import { NUTECH_EMAIL_MERGE_FIELDS, NUTECH_EMAIL_TEMPLATES } from "@/lib/nutech/email-templates"
 
-type DetailKey = Exclude<keyof NuTechEmailSettings, "templates">
+type DetailKey = Exclude<keyof NuTechEmailSettings, "templates" | "warehouseTaxEntityId">
 
 const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string; readonly placeholder: string; readonly type?: "email" }[] = [
   { key: "manufacturerName", label: "Manufacturer (PO vendor)", placeholder: "Manufacturer name" },
@@ -48,6 +50,8 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
   const [customized, setCustomized] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [details, setDetails] = React.useState<Readonly<Record<DetailKey, string>>>(defaults)
+  const [warehouseTaxEntityId, setWarehouseTaxEntityId] = React.useState("")
+  const [taxDistricts, setTaxDistricts] = React.useState<readonly NuTechTaxDistrict[]>([])
   const [templates, setTemplates] = React.useState<Readonly<Record<string, TemplateText>>>({})
   const [pending, startTransition] = React.useTransition()
 
@@ -59,8 +63,10 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
     }
     const parsed = nuTechEmailSettingsSchema.safeParse(result.data.settings)
     const settings = parsed.success ? parsed.data : FEATURE_SETTINGS["nutech-emails"].defaults
-    const { templates: stored, ...rest } = settings
+    const { templates: stored, warehouseTaxEntityId: storedDistrict, ...rest } = settings
     setDetails(rest)
+    setWarehouseTaxEntityId(storedDistrict)
+    setTaxDistricts(await getNuTechTaxDistricts())
     setTemplates(Object.fromEntries(NUTECH_EMAIL_TEMPLATES.map((template) => [template.id, stored[template.id] ?? builtIn(template.id)])))
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
@@ -81,7 +87,7 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
       const original = builtIn(template.id)
       if (text.subject !== original.subject || text.body !== original.body) changed[template.id] = text
     }
-    const value: NuTechEmailSettings = { ...details, templates: changed }
+    const value: NuTechEmailSettings = { ...details, warehouseTaxEntityId, templates: changed }
     startTransition(async () => {
       const result = await saveFeatureSettings("nutech-emails", value)
       if (!result.success) {
@@ -130,6 +136,28 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
                 />
               </div>
             ))}
+          </div>
+
+          <div className="max-w-md space-y-1.5">
+            <Label htmlFor="nutech-setting-warehouse-tax">Warehouse sales tax district (customer pickups)</Label>
+            <SearchableCombobox
+              id="nutech-setting-warehouse-tax"
+              ariaLabel="Warehouse sales tax district"
+              placeholder="Choose the district"
+              searchPlaceholder="Search districts..."
+              emptyMessage="No matching district."
+              disabled={disabled}
+              value={warehouseTaxEntityId}
+              options={taxDistricts.map((district) => ({
+                value: district.id,
+                label: `${district.name} · ${(district.rateBasisPoints / 100).toFixed(2)}%`,
+                keywords: district.code,
+              }))}
+              onValueChange={(next) => {
+                if (next !== "") setWarehouseTaxEntityId(next)
+              }}
+            />
+            <p className="text-xs text-muted-foreground">Pickup orders are taxed here; deliveries use the delivery address&apos;s district.</p>
           </div>
 
           <p className="text-xs text-muted-foreground">
