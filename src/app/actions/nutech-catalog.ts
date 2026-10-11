@@ -18,7 +18,13 @@ import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 import { buildNuTechCatalogImport } from "@/lib/nutech/catalog-import"
 import { ensureNuTechFreightProduct, isNuTechFreight } from "@/lib/nutech/freight"
 import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
-import { NUTECH_2026_CATALOG_SOURCES } from "@/lib/nutech/resources"
+import {
+  NUTECH_2026_CATALOG_SOURCES,
+  nuTechCatalogSourceRange,
+  spreadsheetIdFromValue,
+} from "@/lib/nutech/resources"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -64,6 +70,14 @@ export type NuTechCatalogProductItem = {
 export type NuTechCatalogWorkspace = {
   readonly canImport: boolean
   readonly canDelete: boolean
+  /** Where the next import reads from (Settings → Workflows → Nu-Tech product catalog). */
+  readonly priceSources: {
+    readonly catalogName: string
+    readonly effectiveDate: string
+    readonly sourceTab: string
+    readonly sheets: readonly { readonly label: string; readonly id: string | null }[]
+  }
+  readonly canEditPriceSources: boolean
   readonly versions: readonly NuTechCatalogVersionSummary[]
   readonly activeVersionId: string | null
   readonly products: readonly NuTechCatalogProductItem[]
@@ -181,9 +195,22 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
     return getNuTechCatalogWorkspace()
   }
   const sageCodes = new Set(sageRows.map((row) => row.code))
+  const sources = await readFeatureSettings(db, organizationId, "nutech-price-sources")
   return {
     canImport: canImport && !isDemoUser(user.id),
     canDelete: canDelete && !isDemoUser(user.id),
+    priceSources: {
+      catalogName: sources.catalogName,
+      effectiveDate: sources.effectiveDate,
+      sourceTab: sources.sourceTab,
+      sheets: [
+        { label: "New client – standard", id: spreadsheetIdFromValue(sources.newStandardSheet) },
+        { label: "New client – cash", id: spreadsheetIdFromValue(sources.newCashSheet) },
+        { label: "Returning customer – standard", id: spreadsheetIdFromValue(sources.returningStandardSheet) },
+        { label: "Returning customer – cash", id: spreadsheetIdFromValue(sources.returningCashSheet) },
+      ],
+    },
+    canEditPriceSources: canEditFeatureSettings(user.role, "nutech-price-sources"),
     activeVersionId: activeVersion?.id ?? null,
     versions: versionRows.map((version) => ({
       id: version.id,
@@ -228,7 +255,7 @@ export async function getNuTechCatalogWorkspace(): Promise<NuTechCatalogWorkspac
   }
 }
 
-export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResult> {
+export async function importNuTechCatalog(): Promise<NuTechCatalogActionResult> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
@@ -236,6 +263,25 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    // The sheets come from Settings → Workflows → Nu-Tech product catalog, so
+    // a new price year doesn't need a code change.
+    const sources = await readFeatureSettings(db, organizationId, "nutech-price-sources")
+    const sheetIds = {
+      newStandard: spreadsheetIdFromValue(sources.newStandardSheet),
+      newCash: spreadsheetIdFromValue(sources.newCashSheet),
+      returningStandard: spreadsheetIdFromValue(sources.returningStandardSheet),
+      returningCash: spreadsheetIdFromValue(sources.returningCashSheet),
+    }
+    if (
+      !sheetIds.newStandard ||
+      !sheetIds.newCash ||
+      !sheetIds.returningStandard ||
+      !sheetIds.returningCash
+    ) {
+      throw new Error(
+        "Check the price sheet links in Settings → Workflows → Nu-Tech product catalog."
+      )
+    }
     const { sheetsClient, userEmail } = await getOrganizationDriveContext({
       db,
       environment: env,
@@ -243,16 +289,16 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       user,
     })
     const sourceIds = [
-      NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
-      NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
-      NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
-      NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
+      sheetIds.newStandard,
+      sheetIds.newCash,
+      sheetIds.returningStandard,
+      sheetIds.returningCash,
     ]
     const sourceRows = await Promise.all(
       sourceIds.map((spreadsheetId) =>
         sheetsClient.getValues(userEmail, {
           spreadsheetId,
-          range: NUTECH_2026_CATALOG_SOURCES.sourceRange,
+          range: nuTechCatalogSourceRange(sources.sourceTab),
           valueRenderOption: "UNFORMATTED_VALUE",
         })
       )
@@ -267,7 +313,9 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       !returningStandardRows ||
       !returningCashRows
     ) {
-      throw new Error("One or more 2026 Nu-Tech price sheets could not be read.")
+      throw new Error(
+        `One or more Nu-Tech price sheets could not be read. Check the links and the "${sources.sourceTab}" tab in Settings → Workflows → Nu-Tech product catalog.`
+      )
     }
     const imported = buildNuTechCatalogImport({
       newStandard: newStandardRows,
@@ -299,17 +347,17 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
     }
     const baseDraft = existingVersions.find(
       (version) =>
-        version.name === NUTECH_2026_CATALOG_SOURCES.name &&
+        version.name === sources.catalogName &&
         version.status === "draft"
     )
     const existingVersion = matchingVersion ?? baseDraft
     const versionName =
       existingVersion?.name ??
       (existingVersions.some(
-        (version) => version.name === NUTECH_2026_CATALOG_SOURCES.name
+        (version) => version.name === sources.catalogName
       )
-        ? `${NUTECH_2026_CATALOG_SOURCES.name} · revision ${hash.slice(0, 8)}`
-        : NUTECH_2026_CATALOG_SOURCES.name)
+        ? `${sources.catalogName} · revision ${hash.slice(0, 8)}`
+        : sources.catalogName)
     const versionId = existingVersion?.id ?? crypto.randomUUID()
     await db
       .insert(nuTechCatalogVersions)
@@ -317,13 +365,12 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
         id: versionId,
         organizationId,
         name: versionName,
-        effectiveDate: NUTECH_2026_CATALOG_SOURCES.effectiveDate,
+        effectiveDate: sources.effectiveDate,
         status: existingVersion?.status ?? "draft",
-        newStandardSheetId: NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
-        newCashSheetId: NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
-        returningStandardSheetId:
-          NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
-        returningCashSheetId: NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
+        newStandardSheetId: sheetIds.newStandard,
+        newCashSheetId: sheetIds.newCash,
+        returningStandardSheetId: sheetIds.returningStandard,
+        returningCashSheetId: sheetIds.returningCash,
         airliteTemplateId: NUTECH_2026_CATALOG_SOURCES.airliteTemplateId,
         sourceHash: hash,
         importedAt: now,
@@ -334,6 +381,12 @@ export async function importNuTech2026Catalog(): Promise<NuTechCatalogActionResu
       .onConflictDoUpdate({
         target: [nuTechCatalogVersions.organizationId, nuTechCatalogVersions.name],
         set: {
+          // Refreshing a draft picks up sheet links changed in Settings.
+          effectiveDate: sources.effectiveDate,
+          newStandardSheetId: sheetIds.newStandard,
+          newCashSheetId: sheetIds.newCash,
+          returningStandardSheetId: sheetIds.returningStandard,
+          returningCashSheetId: sheetIds.returningCash,
           sourceHash: hash,
           importedAt: now,
           importedBy: user.id,

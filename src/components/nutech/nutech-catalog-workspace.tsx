@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTransition } from "react"
 import {
@@ -12,7 +13,7 @@ import { toast } from "sonner"
 import {
   activateNuTechCatalogVersion,
   deleteNuTechCatalogVersion,
-  importNuTech2026Catalog,
+  importNuTechCatalog,
   mapNuTechProductToSageCostCode,
   setNuTechProductTaxable,
   type NuTechCatalogWorkspace,
@@ -20,7 +21,6 @@ import {
 } from "@/app/actions/nutech-catalog"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
-  NUTECH_2026_CATALOG_SOURCES,
   NUTECH_RESOURCE_LINKS,
 } from "@/lib/nutech/resources"
 import { SortableTh, useTableSort } from "@/components/ui/sortable-header"
@@ -76,16 +76,7 @@ function sheetUrl(spreadsheetId: string): string {
   return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`
 }
 
-// The four sheets "Import 2026 catalog" reads, in the order staff think of
-// them. Kept next to the import source so the links can't drift from it.
-const PRICE_SHEETS: readonly { readonly label: string; readonly id: string }[] = [
-  { label: "New client – standard", id: NUTECH_2026_CATALOG_SOURCES.newStandardSheetId },
-  { label: "New client – cash", id: NUTECH_2026_CATALOG_SOURCES.newCashSheetId },
-  { label: "Returning customer – standard", id: NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId },
-  { label: "Returning customer – cash", id: NUTECH_2026_CATALOG_SOURCES.returningCashSheetId },
-]
-
-const SOURCE_TAB = NUTECH_2026_CATALOG_SOURCES.sourceRange.split("!")[0]?.replaceAll("'", "") ?? ""
+const PRICE_SOURCES_SETTINGS_HREF = "/dashboard/settings?section=workflows&workflow=nutech-catalog"
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -102,27 +93,39 @@ function CatalogSourcePanel({
   readonly workspace: NuTechCatalogWorkspace
 }): React.ReactElement {
   const active = workspace.versions.find((version) => version.id === workspace.activeVersionId)
+  const sources = workspace.priceSources
   return (
     <section aria-labelledby="nutech-price-source" className="rounded-lg border bg-background p-4">
-      <h2 id="nutech-price-source" className="text-sm font-semibold">
-        Where these prices come from
-      </h2>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h2 id="nutech-price-source" className="text-sm font-semibold">
+          Where these prices come from
+        </h2>
+        {workspace.canEditPriceSources && (
+          <Button asChild size="sm" variant="outline">
+            <Link href={PRICE_SOURCES_SETTINGS_HREF}>Change price sheets</Link>
+          </Button>
+        )}
+      </div>
       <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
         {active
           ? `In use: ${active.name}, effective ${active.effectiveDate}, imported ${formatDate(active.importedAt)}${active.activatedAt ? ` and activated ${formatDate(active.activatedAt)}` : ""}.`
           : "No catalog version is active yet."}{" "}
-        Prices are read from the “{SOURCE_TAB}” tab of these Google Sheets, with costs and SKUs from the{" "}
+        The next import reads “{sources.catalogName}” (effective {sources.effectiveDate}) from the “{sources.sourceTab}” tab of these Google Sheets, with costs and SKUs from the{" "}
         <a className="underline underline-offset-2" href={NUTECH_RESOURCE_LINKS.airliteOrderForm} target="_blank" rel="noreferrer">
           Airlite order form
         </a>
         :
       </p>
       <ul className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-        {PRICE_SHEETS.map((sheet) => (
-          <li key={sheet.id}>
-            <a className="underline underline-offset-2" href={sheetUrl(sheet.id)} target="_blank" rel="noreferrer">
-              {sheet.label}
-            </a>
+        {sources.sheets.map((sheet) => (
+          <li key={sheet.label}>
+            {sheet.id ? (
+              <a className="underline underline-offset-2" href={sheetUrl(sheet.id)} target="_blank" rel="noreferrer">
+                {sheet.label}
+              </a>
+            ) : (
+              <span className="text-destructive">{sheet.label}: link missing in Settings</span>
+            )}
           </li>
         ))}
       </ul>
@@ -144,11 +147,12 @@ function CatalogSourcePanel({
       <h3 className="mt-4 text-sm font-semibold">To update pricing</h3>
       <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
         <li>
-          Change the prices on the “{SOURCE_TAB}” tab of the sheet(s) above. Keep the column
-          layout, and keep the same SKUs in all four sheets and the Airlite order form.
+          Change the prices on the “{sources.sourceTab}” tab of the sheet(s) above. Keep the layout (a
+          “Target gross margin” row, and a header row with Origin in column A and SKU in column C), and
+          keep the same SKUs in all four sheets and the Airlite order form.
         </li>
         <li>
-          Here, select <span className="font-medium text-foreground">Import 2026 catalog</span>.
+          Here, select <span className="font-medium text-foreground">Import catalog</span>.
           Compass reads all four sheets and adds a <span className="font-medium text-foreground">draft</span> version
           if anything changed.
         </li>
@@ -162,7 +166,8 @@ function CatalogSourcePanel({
         {workspace.canImport
           ? "Importing and activating need Nu-Tech approval access, which you have."
           : "Importing and activating need Nu-Tech approval access; ask an administrator if you need to update prices."}{" "}
-        Moving to a new year’s price sheets (new files) needs a Compass update; ask the Compass admin.
+        For a new price year, an administrator points Compass at the new sheets in Settings → Workflows →
+        Nu-Tech product catalog, then imports and activates as above.
       </p>
     </section>
   )
@@ -179,7 +184,7 @@ export function NuTechCatalogWorkspacePanel({
 
   function importCatalog(): void {
     startTransition(async () => {
-      const result = await importNuTech2026Catalog()
+      const result = await importNuTechCatalog()
       if (!result.success) {
         toast.error(result.error)
         return
@@ -249,14 +254,14 @@ export function NuTechCatalogWorkspacePanel({
           <div>
             <h2 className="text-sm font-semibold">Catalog versions</h2>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Imports validate all four published 2026 price sheets against the
+              Imports validate all four price sheets set in Settings against the
               same Airlite cost and SKU list before anything can be activated.
             </p>
           </div>
           {workspace.canImport && (
             <Button onClick={importCatalog} disabled={isPending}>
               <IconDatabaseImport className="size-4" />
-              Import 2026 catalog
+              Import catalog
             </Button>
           )}
         </div>

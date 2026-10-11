@@ -22,6 +22,25 @@ export const NUTECH_2026_CATALOG_SOURCES = {
   sourceRange: "'2026 Cost & Margin'!A1:H100",
 } as const
 
+/**
+ * The Google Sheets id in a pasted sheet link, or a bare id. Returns null
+ * for anything else, so Settings can reject a bad link before an import.
+ */
+export function spreadsheetIdFromValue(value: string): string | null {
+  const cleaned = value.trim()
+  if (!cleaned) return null
+  const fileMatch = cleaned.match(/\/d\/([a-zA-Z0-9_-]+)/)
+  if (fileMatch?.[1]) return fileMatch[1]
+  const queryMatch = cleaned.match(/[?&]id=([a-zA-Z0-9_-]+)/)
+  if (queryMatch?.[1]) return queryMatch[1]
+  return /^[a-zA-Z0-9_-]{20,}$/.test(cleaned) ? cleaned : null
+}
+
+/** The range the catalog import reads from each price sheet's tab. */
+export function nuTechCatalogSourceRange(tab: string): string {
+  return `'${tab.replaceAll("'", "''")}'!A1:H100`
+}
+
 export function nuTechPricingFolderUrl(
   customerType: "new" | "returning" | null
 ): string | null {
