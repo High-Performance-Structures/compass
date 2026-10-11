@@ -159,7 +159,7 @@ function PurchaseOrderCard({
   /** The manufacturer's price list, for its POs' line items. */
   readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
   /** Set on the PO linked to the Nu-Tech order: its manufacturer order form, beside the pickup copy. */
-  readonly orderForm?: { readonly workbookUrl: string | null; readonly released: boolean }
+  readonly orderForm?: { readonly workbookUrl: string | null; readonly released: boolean; readonly needsDriveFolder: boolean }
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -243,7 +243,7 @@ function PurchaseOrderCard({
               assigneeOptions={taskAssigneeOptions}
             />
             {orderForm && (
-              <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} />
+              <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} needsDriveFolder={orderForm.needsDriveFolder} />
             )}
             <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
           </div>
@@ -415,6 +415,9 @@ export default async function ProjectPurchaseOrdersPage({
           getNuTechOrderFormLink(id),
         ])
       : ["", [], null, null]
+  // Admins can create the missing Drive folder right where the form would go.
+  const orderFormNeedsDriveFolder =
+    !project?.googleDriveFolderId && canManageProjectRegistry(currentUser)
   // The manufacturer's POs can also code freight to the shipping cost code.
   const manufacturerCostCodes =
     shippingCostCode && !purchaseOrderCodingOptions.costCodes.some((option) => option.value === shippingCostCode.value)
@@ -568,7 +571,11 @@ export default async function ProjectPurchaseOrdersPage({
               catalogItems={
                 manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
               }
-              orderForm={orderFormLink?.purchaseOrderId === order.id ? orderFormLink : undefined}
+              orderForm={
+                orderFormLink?.purchaseOrderId === order.id
+                  ? { ...orderFormLink, needsDriveFolder: orderFormNeedsDriveFolder }
+                  : undefined
+              }
             />
           ))
         ) : (

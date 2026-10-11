@@ -1145,7 +1145,7 @@ export async function createProjectIntake(
         driveStatus = "pending"
         warning = appendWarning(
           warning,
-          "The Drive folder was created, but Compass could not save its link. Use Retry Drive setup in the Project Registry; it will reuse the folder."
+          "The Drive folder was created, but Compass could not save its link. Use Create Drive folder on the project page; it will reuse the folder."
         )
         console.error("Unable to save the project Drive receipt", error)
       }
