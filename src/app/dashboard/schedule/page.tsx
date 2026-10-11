@@ -14,6 +14,7 @@ import {
 import { ScheduleView } from "@/components/schedule/schedule-view"
 import { isValidDateKey } from "@/lib/work-calendar"
 import { projectDepartment } from "@/lib/project-branding"
+import { projectJobStatusBucket } from "@/lib/project-profile"
 import type {
   ScheduleScope,
   ScheduleScopeKind,
@@ -91,6 +92,12 @@ function isScopeKind(value: string | undefined): value is ScheduleScopeKind {
   )
 }
 
+/** Jobs shown by default in "All" and department schedule views. */
+function isActiveScheduleProject(project: { readonly jobStatusId: string; readonly jobStatusLabel: string }): boolean {
+  const bucket = projectJobStatusBucket(project)
+  return bucket !== "complete" && bucket !== "inactive" && bucket !== "archive" && bucket !== "warranty" && bucket !== "internal"
+}
+
 function isDepartment(
   value: string | undefined
 ): value is ProjectDepartment {
@@ -112,6 +119,7 @@ export default async function SchedulePage({
     readonly projects?: string | readonly string[]
     readonly department?: string | readonly string[]
     readonly people?: string | readonly string[]
+    readonly jobs?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const query = await searchParams
@@ -158,6 +166,12 @@ export default async function SchedulePage({
       ? requestedDepartment
       : "O"
     const accessibleIds = new Set(allProjects.map((project) => project.id))
+    // "All" and department views open with active jobs only; finished,
+    // inactive and warranty jobs hold most schedule rows and slow the Gantt.
+    const includeAllJobs = firstValue(query.jobs) === "all"
+    const broadScopeProjects = includeAllJobs
+      ? allProjects
+      : allProjects.filter((project) => isActiveScheduleProject(project))
     const scopeProjectIds =
       scopeKind === "project"
         ? requestedProjectId && accessibleIds.has(requestedProjectId)
@@ -170,7 +184,7 @@ export default async function SchedulePage({
               accessibleIds.has(projectId)
             )
           : scopeKind === "department"
-            ? allProjects
+            ? broadScopeProjects
                 .filter(
                   (project) =>
                     projectDepartment({
@@ -179,7 +193,7 @@ export default async function SchedulePage({
                     }) === department
                 )
                 .map((project) => project.id)
-            : allProjects.map((project) => project.id)
+            : broadScopeProjects.map((project) => project.id)
     const safeProjectIds = scopeProjectIds
     const data = await getScopedSchedule(safeProjectIds)
     const scope: ScheduleScope =
