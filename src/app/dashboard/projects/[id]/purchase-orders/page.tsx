@@ -1,5 +1,5 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { getNuTechManufacturerName, getNuTechPurchaseOrderCatalog } from "@/app/actions/nutech-airlite-po"
+import { getNuTechManufacturerName, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
@@ -399,8 +399,15 @@ export default async function ProjectPurchaseOrdersPage({
     projectNumber: project?.projectNumber,
   })
   // N jobs order from the block manufacturer, built from the Nu-Tech order.
-  const [manufacturerName, manufacturerCatalog] =
-    brand.department === "N" ? await Promise.all([getNuTechManufacturerName(), getNuTechPurchaseOrderCatalog(id)]) : ["", []]
+  const [manufacturerName, manufacturerCatalog, shippingCostCode] =
+    brand.department === "N"
+      ? await Promise.all([getNuTechManufacturerName(), getNuTechPurchaseOrderCatalog(id), getNuTechShippingCostCodeOption()])
+      : ["", [], null]
+  // The manufacturer's POs can also code freight to the shipping cost code.
+  const manufacturerCostCodes =
+    shippingCostCode && !purchaseOrderCodingOptions.costCodes.some((option) => option.value === shippingCostCode.value)
+      ? [...purchaseOrderCodingOptions.costCodes, shippingCostCode]
+      : purchaseOrderCodingOptions.costCodes
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
@@ -538,7 +545,11 @@ export default async function ProjectPurchaseOrdersPage({
               emailRecipientOptions={emailRecipientOptions}
               jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               phaseOptions={purchaseOrderCodingOptions.phases}
-              costCodeOptions={purchaseOrderCodingOptions.costCodes}
+              costCodeOptions={
+                manufacturerName !== "" && order.companyName?.trim() === manufacturerName
+                  ? manufacturerCostCodes
+                  : purchaseOrderCodingOptions.costCodes
+              }
               developerModeEnabled={developerModeEnabled}
               paperTrail={paperTrail.enabled ? paperTrail.records[order.id] ?? null : undefined}
               // Only the manufacturer's own POs pick lines from its price list.

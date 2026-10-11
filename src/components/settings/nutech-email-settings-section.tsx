@@ -11,18 +11,23 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { getNuTechTaxDistricts, type NuTechTaxDistrict } from "@/app/actions/nutech-orders"
+import { getNuTechCostCodeOptions, type NuTechCostCodeOption } from "@/app/actions/nutech-airlite-po"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { FEATURE_SETTINGS, nuTechEmailSettingsSchema, type NuTechEmailSettings } from "@/lib/feature-settings/registry"
 import { NUTECH_EMAIL_MERGE_FIELDS, NUTECH_EMAIL_TEMPLATES } from "@/lib/nutech/email-templates"
 
-type DetailKey = Exclude<keyof NuTechEmailSettings, "templates" | "warehouseTaxEntityId">
+type CostCodeKey = "productCostCode" | "shippingCostCode"
+type DetailKey = Exclude<keyof NuTechEmailSettings, "templates" | "warehouseTaxEntityId" | CostCodeKey>
+
+const COST_CODE_FIELDS: readonly { readonly key: CostCodeKey; readonly label: string }[] = [
+  { key: "productCostCode", label: "Cost code for catalog products" },
+  { key: "shippingCostCode", label: "Cost code for shipping" },
+]
 
 const DETAIL_FIELDS: readonly { readonly key: DetailKey; readonly label: string; readonly placeholder: string; readonly type?: "email" }[] = [
   { key: "manufacturerName", label: "Manufacturer (PO vendor)", placeholder: "Manufacturer name" },
   { key: "manufacturerVendorId", label: "Manufacturer vendor ID (accounting)", placeholder: "Optional" },
-  { key: "productCostCode", label: "Cost code for catalog products", placeholder: "e.g. 03 11 19" },
-  { key: "shippingCostCode", label: "Cost code for shipping", placeholder: "e.g. 03 11 19" },
   { key: "manufacturerOrdersEmail", label: "Manufacturer orders email", placeholder: "orders@manufacturer.com", type: "email" },
   { key: "manufacturerCcEmail", label: "Manufacturer rep (cc)", placeholder: "rep@manufacturer.com", type: "email" },
   { key: "dealerAccountNumber", label: "Dealer account number", placeholder: "123456" },
@@ -52,6 +57,11 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
   const [customized, setCustomized] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [details, setDetails] = React.useState<Readonly<Record<DetailKey, string>>>(defaults)
+  const [costCodes, setCostCodes] = React.useState<Readonly<Record<CostCodeKey, string>>>({
+    productCostCode: defaults.productCostCode,
+    shippingCostCode: defaults.shippingCostCode,
+  })
+  const [costCodeOptions, setCostCodeOptions] = React.useState<readonly NuTechCostCodeOption[]>([])
   const [warehouseTaxEntityId, setWarehouseTaxEntityId] = React.useState("")
   const [taxDistricts, setTaxDistricts] = React.useState<readonly NuTechTaxDistrict[]>([])
   const [templates, setTemplates] = React.useState<Readonly<Record<string, TemplateText>>>({})
@@ -65,8 +75,10 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
     }
     const parsed = nuTechEmailSettingsSchema.safeParse(result.data.settings)
     const settings = parsed.success ? parsed.data : FEATURE_SETTINGS["nutech-emails"].defaults
-    const { templates: stored, warehouseTaxEntityId: storedDistrict, ...rest } = settings
+    const { templates: stored, warehouseTaxEntityId: storedDistrict, productCostCode, shippingCostCode, ...rest } = settings
     setDetails(rest)
+    setCostCodes({ productCostCode, shippingCostCode })
+    setCostCodeOptions(await getNuTechCostCodeOptions())
     setWarehouseTaxEntityId(storedDistrict)
     setTaxDistricts(await getNuTechTaxDistricts())
     setTemplates(Object.fromEntries(NUTECH_EMAIL_TEMPLATES.map((template) => [template.id, stored[template.id] ?? builtIn(template.id)])))
@@ -89,7 +101,7 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
       const original = builtIn(template.id)
       if (text.subject !== original.subject || text.body !== original.body) changed[template.id] = text
     }
-    const value: NuTechEmailSettings = { ...details, warehouseTaxEntityId, templates: changed }
+    const value: NuTechEmailSettings = { ...details, ...costCodes, warehouseTaxEntityId, templates: changed }
     startTransition(async () => {
       const result = await saveFeatureSettings("nutech-emails", value)
       if (!result.success) {
@@ -138,6 +150,32 @@ export function NuTechEmailSettingsSection(): React.ReactElement {
                 />
               </div>
             ))}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {COST_CODE_FIELDS.map((field) => {
+              const current = costCodes[field.key]
+              const known = costCodeOptions.some((option) => option.value === current)
+              return (
+                <div key={field.key} className="space-y-1.5">
+                  <Label htmlFor={`nutech-setting-${field.key}`}>{field.label}</Label>
+                  <SearchableCombobox
+                    id={`nutech-setting-${field.key}`}
+                    ariaLabel={field.label}
+                    placeholder="Choose a cost code"
+                    searchPlaceholder="Search cost codes..."
+                    emptyMessage="No matching cost code."
+                    disabled={disabled}
+                    value={current}
+                    options={[
+                      ...(current !== "" && !known ? [{ value: current, label: current }] : []),
+                      ...costCodeOptions.map((option) => ({ value: option.value, label: option.label, keywords: option.divisionCode })),
+                    ]}
+                    onValueChange={(next) => setCostCodes((codes) => ({ ...codes, [field.key]: next }))}
+                  />
+                </div>
+              )
+            })}
           </div>
 
           <div className="max-w-md space-y-1.5">

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectOperations, projects, sageCostCodes } from "@/db/schema"
 import { nuTechCatalogPrices, nuTechCatalogVersions, nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
-import { createPurchaseOrderRequest, type CreatePurchaseOrderLineInput } from "@/app/actions/project-operations"
+import { createPurchaseOrderRequest, type CreatePurchaseOrderLineInput, type ProjectPurchaseOrderCostCodeOption } from "@/app/actions/project-operations"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -13,6 +13,7 @@ import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
 import { projectDepartment } from "@/lib/project-branding"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
@@ -209,7 +210,7 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
         ),
       )
       .orderBy(asc(nuTechProducts.manufacturerSku))
-    return rows.map((row) => ({
+    const products = rows.map((row) => ({
       id: row.id,
       description: `${row.sku} ${row.name}`.trim(),
       unit: row.unit,
@@ -217,7 +218,66 @@ export async function getNuTechPurchaseOrderCatalog(projectId: string): Promise<
       costCode: row.costCode ?? (settings.productCostCode.trim() || null),
       detail: `$${(row.costCents / 100).toFixed(2)} per ${row.unit}${row.packageLabel ? ` · ${row.packageLabel}` : ""}`,
     }))
+    // Optional freight line, coded to the shipping cost code from Settings.
+    const shippingCostCode = settings.shippingCostCode.trim()
+    const shipping: readonly PurchaseOrderCatalogItem[] = shippingCostCode
+      ? [{
+          id: "shipping",
+          description: `Freight (${settings.manufacturerName.trim() || "manufacturer"})`,
+          unit: "ea",
+          unitCost: 0,
+          costCode: shippingCostCode,
+          detail: `Shipping · enter the quoted amount · ${shippingCostCode}`,
+        }]
+      : []
+    return [...products, ...shipping]
   } catch {
     return []
+  }
+}
+
+export type NuTechCostCodeOption = { readonly value: string; readonly label: string; readonly divisionCode: string }
+
+/** The company cost code list (numbered Sage codes plus named items like "ICF Shipping") for the Nu-Tech settings pickers. */
+export async function getNuTechCostCodeOptions(): Promise<readonly NuTechCostCodeOption[]> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const { env } = await getCloudflareContext()
+    const sageRows = await getDb(env.DB)
+      .select({
+        code: sageCostCodes.code,
+        description: sageCostCodes.description,
+        displayLabel: sageCostCodes.displayLabel,
+        divisionCode: sageCostCodes.divisionCode,
+        divisionDescription: sageCostCodes.divisionDescription,
+        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
+      })
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+    return projectEstimateCostCodeCatalog(sageRows, []).map((item) => ({ value: item.code, label: item.displayLabel, divisionCode: item.divisionCode }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * The shipping cost code from Settings as a PO cost code choice. Named
+ * company codes such as "ICF Shipping" aren't in the numbered Sage list the
+ * PO picker reads, so the manufacturer PO adds this one.
+ */
+export async function getNuTechShippingCostCodeOption(): Promise<ProjectPurchaseOrderCostCodeOption | null> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const organizationId = requireOrg(user)
+    const code = (await readFeatureSettings(db, organizationId, "nutech-emails")).shippingCostCode.trim()
+    if (!code) return null
+    const match = (await getNuTechCostCodeOptions()).find((option) => option.value === code)
+    return { value: code, label: match?.label ?? code, description: match?.label ?? code, divisionCode: match?.divisionCode ?? "" }
+  } catch {
+    return null
   }
 }
