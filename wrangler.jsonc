@@ -52,6 +52,13 @@
 			"migrations_dir": "drizzle"
 		}
 	],
+	// Private Help tutorial videos, streamed by /api/help/videos/<id>.
+	"r2_buckets": [
+		{
+			"binding": "HELP_VIDEOS",
+			"bucket_name": "compass-help-videos"
+		}
+	],
 	"durable_objects": {
 		"bindings": [
 			{

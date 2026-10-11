@@ -287,6 +287,13 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
     }
 
     for (const key of [
+        // Signs Jarvis tool tokens; without it local Ask Jarvis always fails.
+        "AGENT_AUTH_SECRET",
+        // Jarvis prefers OpenAI, then OpenRouter, then Anthropic.
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+        "OPENAI_REASONING_EFFORT",
+        "ANTHROPIC_API_KEY",
         "JARVIS_BRIDGE_SECRET",
         "JARVIS_BRIDGE_SECONDARY_SECRET",
         "JARVIS_BRIDGE_ORGANIZATION_ID",
@@ -301,12 +308,37 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
     return localEnv as unknown as CloudflareEnv
 }
 
+// Production's OpenAI model settings, so local Jarvis calls the same model
+// with the same options unless they are overridden in the environment.
+const PRODUCTION_MODEL_SETTINGS = ["OPENAI_MODEL", "OPENAI_REASONING_EFFORT"] as const
+let productionModelSettings: Promise<Readonly<Record<string, string>>> | null = null
+
+async function loadProductionModelSettings(): Promise<Readonly<Record<string, string>>> {
+    try {
+        const { readFile } = await import("fs/promises")
+        const config = await readFile("wrangler.jsonc", "utf8")
+        const settings: Record<string, string> = {}
+        for (const key of PRODUCTION_MODEL_SETTINGS) {
+            const match = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`).exec(config)
+            if (match?.[1]) settings[key] = match[1]
+        }
+        return settings
+    } catch {
+        return {}
+    }
+}
+
 export async function getCloudflareContext(): Promise<CompassCloudflareContext> {
     const localDb = await getLocalDb()
     const d1 = new LocalD1Database(localDb) as unknown as D1Database
+    const env = createLocalEnv(d1)
+    productionModelSettings ??= loadProductionModelSettings()
+    for (const [key, value] of Object.entries(await productionModelSettings)) {
+        if (!Reflect.get(env, key)) Reflect.set(env, key, value)
+    }
 
     return {
-        env: createLocalEnv(d1),
+        env,
         ctx: {
             waitUntil: () => {},
         },
