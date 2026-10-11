@@ -482,7 +482,7 @@ export function ProjectInformationWorkspace({
             {developerModeEnabled && <div className="space-y-2"><Label htmlFor="new-job-status-code">Optional Sage reference code</Label><Input id="new-job-status-code" value={newJobStatusSageCode} onChange={(event) => setNewJobStatusSageCode(event.target.value)} /></div>}
             <p className="text-sm text-muted-foreground md:col-span-2 md:self-end">
               Follow-up timing for every status, including new ones, is set in{" "}
-              <Link href="/dashboard/settings?section=workflows" className="text-primary underline-offset-4 hover:underline">Settings → Workflows</Link>.
+              <Link href="/dashboard/settings?section=workflows&workflow=project-aging" className="text-primary underline-offset-4 hover:underline">Settings → Workflows → Project aging</Link>.
             </p>
             <div className="md:col-span-4"><Button type="submit" disabled={pending}>Add custom status</Button></div>
           </form>
