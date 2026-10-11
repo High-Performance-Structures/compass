@@ -123,6 +123,17 @@ export type PaperTrailSettings = z.infer<typeof paperTrailSettingsSchema>
 /** Settings type for each registered feature key. */
 const LOGO_DATA_URL = /^data:image\/png;base64,[a-z0-9+/]+={0,2}$/i
 
+/**
+ * Duplicate project check: departments whose customers place repeat orders,
+ * each its own job and number. Their jobs aren't flagged as duplicates just
+ * for sharing a customer and name.
+ */
+export const projectDuplicateSettingsSchema = z.object({
+  repeatOrderDepartments: z.array(z.enum(["O", "H", "N", "D"])).max(4),
+})
+
+export type ProjectDuplicateSettings = z.infer<typeof projectDuplicateSettingsSchema>
+
 /** One department's identity; see DepartmentProfile in src/lib/department-profiles.ts. */
 export const departmentProfileSchema = z.object({
   displayName: z.string().trim().min(1, "Enter a display name.").max(80),
@@ -310,6 +321,7 @@ type FeatureSettingsTypes = {
   readonly "job-emails": JobEmailSettings
   readonly "shop-tickets": ShopTicketSettings
   readonly "bracing-rentals": BracingRentalSettings
+  readonly "project-duplicates": ProjectDuplicateSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -352,6 +364,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "How the Client follow-up page shows team activity: the leaderboard, streaks and the period it opens on.",
     defaults: DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
     schema: clientFollowUpSettingsSchema,
+  },
+  "project-duplicates": {
+    label: "Duplicate project check",
+    description: "Departments whose customers place repeat orders. Their separate orders aren't flagged as duplicates just for having the same customer.",
+    defaults: { repeatOrderDepartments: ["N"] },
+    schema: projectDuplicateSettingsSchema,
   },
   "client-interactions": {
     label: "Client contact records",

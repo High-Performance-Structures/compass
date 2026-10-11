@@ -23,6 +23,7 @@ import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-set
 import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
+import { ProjectDuplicateSettingsSection } from "@/components/settings/project-duplicate-settings-section"
 
 const DEFAULTS = FEATURE_SETTINGS["message-desk"].defaults
 
@@ -194,6 +195,7 @@ const WORKFLOW_AREAS = [
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
   { value: "client-interactions", label: "Client interactions", description: "How client contact is logged." },
+  { value: "project-duplicates", label: "Duplicate project check", description: "Departments whose customers place repeat orders." },
   { value: "client-follow-up", label: "Client follow-up", description: "Follow-up cadence for clients." },
   { value: "nutech-catalog", label: "Nu-Tech product catalog", description: "Price sheets and cost code mapping." },
   { value: "nutech-emails", label: "Nu-Tech emails", description: "Order and quote email templates." },
@@ -227,6 +229,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <ProjectAgingSettingsSection />
     case "client-interactions":
       return <ClientInteractionSettingsSection />
+    case "project-duplicates":
+      return <ProjectDuplicateSettingsSection />
     case "client-follow-up":
       return <ClientFollowUpSettingsSection />
     case "nutech-catalog":

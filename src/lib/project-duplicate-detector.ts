@@ -277,8 +277,53 @@ export function projectDuplicatePairKey(
   return JSON.stringify([firstProjectId, secondProjectId].sort())
 }
 
+/** Evidence that only says two jobs are for the same customer. */
+const SAME_CUSTOMER_REASON_CODES: ReadonlySet<ProjectDuplicateReasonCode> =
+  new Set([
+    "project_name",
+    "similar_project_name",
+    "client_name",
+    "project_location_suffix",
+  ])
+
+export type ProjectDuplicateScanOptions = {
+  /**
+   * Department codes whose customers routinely place repeat orders, each its
+   * own job with its own number (a company setting).
+   */
+  readonly repeatOrderDepartments?: ReadonlySet<string>
+}
+
+/**
+ * Separate orders from a repeat customer: different project numbers, at least
+ * one in a repeat-order department, and nothing in common beyond the
+ * customer. A shared address, Sage job, Drive folder or Buildertrend project
+ * still counts as a possible duplicate.
+ */
+export function isRepeatOrderPair(
+  first: ProjectDuplicateIdentity,
+  second: ProjectDuplicateIdentity,
+  reasons: readonly ProjectDuplicateReason[],
+  repeatOrderDepartments: ReadonlySet<string> | undefined,
+): boolean {
+  if (!repeatOrderDepartments || repeatOrderDepartments.size === 0) return false
+  const firstKey = projectNumberDepartmentSequence(first.projectNumber, first.name)
+  const secondKey = projectNumberDepartmentSequence(second.projectNumber, second.name)
+  if (!firstKey || !secondKey || firstKey === secondKey) return false
+  const firstDepartment = firstKey.charAt(0)
+  const secondDepartment = secondKey.charAt(0)
+  if (
+    !repeatOrderDepartments.has(firstDepartment) &&
+    !repeatOrderDepartments.has(secondDepartment)
+  ) {
+    return false
+  }
+  return reasons.every((reason) => SAME_CUSTOMER_REASON_CODES.has(reason.code))
+}
+
 export function findProjectDuplicateCandidates(
   projects: readonly ProjectDuplicateIdentity[],
+  options: ProjectDuplicateScanOptions = {},
 ): ProjectDuplicateCandidate[] {
   const candidates: ProjectDuplicateCandidate[] = []
   const collisionGroups = new Map<string, ProjectDuplicateIdentity[]>()
@@ -323,6 +368,9 @@ export function findProjectDuplicateCandidates(
       if (!second) continue
       const match = compareProjectDuplicateIdentity(first, second)
       if (!match) continue
+      if (isRepeatOrderPair(first, second, match.reasons, options.repeatOrderDepartments)) {
+        continue
+      }
 
       const collisionKey = projectNumberDepartmentSequence(
         first.projectNumber,
