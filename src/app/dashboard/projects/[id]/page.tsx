@@ -17,7 +17,7 @@ import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { and, eq } from "drizzle-orm"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import Link from "next/link"
 import { MobileProjectSwitcher } from "@/components/mobile-project-switcher"
 import {
@@ -69,6 +69,7 @@ import {
   projectJobStatusLabel,
 } from "@/lib/project-profile"
 import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -135,6 +136,37 @@ async function loadOptionalSummary<T>(
   }
 }
 
+/** The owner or partner workspace for someone with that project role, if any. */
+async function projectAudienceRedirectHref(projectId: string): Promise<string | null> {
+  try {
+    const currentUser = await getCurrentUser()
+    if (!currentUser) return null
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return null
+    const membership = await getDb(env.DB)
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, currentUser.id),
+        ),
+      )
+      .get()
+    const role = membership?.role ?? null
+    if (role === "client" || role === "owner") {
+      return projectAudiencePreviewHref(projectId, "owner")
+    }
+    if (role === "subcontractor" || role === "supplier") {
+      return projectAudiencePreviewHref(projectId, "sub-vendor")
+    }
+    return null
+  } catch {
+    // The main page load reports lookup failures.
+    return null
+  }
+}
+
 export default async function ProjectSummaryPage({
   params,
 }: {
@@ -175,6 +207,11 @@ export default async function ProjectSummaryPage({
   let projectRole: string | null = null
   let projectTextPhoneNumber: string | null = null
 
+  // Owners and project partners use their own workspace views. Checked before
+  // the main load so the redirect isn't built inside its try/catch.
+  const audienceRedirectHref = await projectAudienceRedirectHref(id)
+  if (audienceRedirectHref) return <ClientRedirect href={audienceRedirectHref} />
+
   try {
     const currentUser = await getCurrentUser()
     canEditRegistry = canManageProjectRegistry(currentUser)
@@ -199,15 +236,6 @@ export default async function ProjectSummaryPage({
       )
       .get()
     projectRole = routeMembership?.role ?? null
-    if (projectRole === "client" || projectRole === "owner") {
-      redirect(projectAudiencePreviewHref(id, "owner"))
-    }
-    if (
-      projectRole === "subcontractor" ||
-      projectRole === "supplier"
-    ) {
-      redirect(projectAudiencePreviewHref(id, "sub-vendor"))
-    }
 
     const [foundRow] = await db
       .select({

@@ -1,6 +1,5 @@
 export const dynamic = "force-dynamic"
 
-import { redirect } from "next/navigation"
 import { IconDatabase } from "@tabler/icons-react"
 
 import { getBuildertrendCutoverCoverage } from "@/app/actions/buildertrend-cutover-coverage"
@@ -9,6 +8,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function generatedLabel(value: string): string {
   const date = new Date(value)
@@ -20,7 +20,7 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(user),
   )
-  if (!developerModeEnabled) redirect("/dashboard")
+  if (!developerModeEnabled) return <ClientRedirect href={"/dashboard"} />
 
   const coverage = await getBuildertrendCutoverCoverage()
 

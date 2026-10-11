@@ -1,6 +1,5 @@
 import type * as React from "react"
 import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
 
 import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
@@ -23,6 +22,7 @@ import {
   canPrepareGreetingCards,
   canManageProjectRegistry,
 } from "@/lib/permissions"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function Page(): Promise<React.ReactElement> {
   const currentUser = await getCurrentUser()
@@ -47,9 +47,7 @@ export default async function Page(): Promise<React.ReactElement> {
         ?.value ?? null
     )
     if (projectId) {
-      redirect(
-        `/preview/projects/${encodeURIComponent(projectId)}/${audience}`
-      )
+      return <ClientRedirect href={`/preview/projects/${encodeURIComponent(projectId)}/${audience}`} />
     }
   }
 

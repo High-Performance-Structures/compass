@@ -30,7 +30,8 @@ import {
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { OwnerUpdateCreateButton } from "@/components/projects/owner-update-create-button"
 import { getCurrentUser } from "@/lib/auth"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { PageHeader } from "@/components/page-header"
 
@@ -128,7 +129,8 @@ export default async function ProjectOwnerUpdatesPage({
     }
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     notFound()
   }
 

@@ -2,8 +2,12 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
+import {
+  getConversationTranscript,
+  listRecentConversations,
+} from "@/lib/agent/conversation-recall"
 
-type MemoryAction = "save" | "search"
+type MemoryAction = "save" | "search" | "recentConversations" | "conversation"
 
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
@@ -106,6 +110,25 @@ export async function POST(req: Request): Promise<Response> {
             headers: { "Content-Type": "application/json" },
           }
         )
+      }
+
+      // Earlier Ask Jarvis chats, only when the user asks to recall one.
+      case "recentConversations": {
+        const limit = typeof body.limit === "number" ? body.limit : 10
+        const conversations = await listRecentConversations(db, auth.userId, limit)
+        return Response.json({ success: true, conversations, count: conversations.length })
+      }
+
+      case "conversation": {
+        const conversationId =
+          typeof body.conversationId === "string" ? body.conversationId : ""
+        const transcript = conversationId
+          ? await getConversationTranscript(db, auth.userId, conversationId)
+          : null
+        if (!transcript) {
+          return Response.json({ error: "Conversation not found" }, { status: 404 })
+        }
+        return Response.json({ success: true, conversation: transcript })
       }
 
       default:

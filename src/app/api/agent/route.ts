@@ -50,6 +50,7 @@ import {
   resolveJarvisHelpContext,
 } from "@/lib/help/jarvis-context"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { resolveCurrentProjectContext } from "@/lib/agent/current-project-context"
 import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
 import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
 import {
@@ -384,9 +385,18 @@ export async function POST(
         ? externalMcpTools
         : undefined,
   })
-  const systemPrompt = helpContext
-    ? `${baseSystemPrompt}\n\n${helpContext.prompt}`
-    : baseSystemPrompt
+  const currentProjectContext = await resolveCurrentProjectContext(
+    db,
+    user,
+    currentPage
+  )
+  const systemPrompt = [
+    baseSystemPrompt,
+    currentProjectContext,
+    helpContext?.prompt,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n")
 
   const isOAuth =
     provider.apiKey?.startsWith("sk-ant-oat") ?? false

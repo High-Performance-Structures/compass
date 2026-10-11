@@ -15,10 +15,11 @@ vi.mock("@/app/actions/project-field", () => ({
   getOwnerProjectUpdateDocument: mocks.getOwnerProjectUpdateDocument,
 }))
 vi.mock("@/lib/department-profiles-server", () => ({ currentDepartmentProfiles: vi.fn() }))
-vi.mock("@/lib/permission-redirect", () => ({ redirectIfFeaturePermissionDenied: vi.fn() }))
+vi.mock("@/lib/permission-redirect", () => ({ permissionDeniedRedirectHref: vi.fn(() => null) }))
 vi.mock("@/components/projects/owner-update-document", () => ({ OwnerUpdateDocument: vi.fn() }))
 
 import OwnerUpdatePage from "../page"
+import { ClientRedirect } from "@/components/client-redirect"
 
 const params = Promise.resolve({ id: "project-1", updateId: "update-1" })
 
@@ -30,8 +31,11 @@ describe("owner update page", () => {
   it("sends a deleted draft back to the project's owner updates", async () => {
     mocks.getOwnerProjectUpdateDocument.mockRejectedValue(new Error("Owner update not found"))
 
-    await expect(OwnerUpdatePage({ params })).rejects.toThrow("NEXT_REDIRECT")
-    expect(mocks.redirect).toHaveBeenCalledWith("/dashboard/projects/project-1/owner-updates")
+    const page = await OwnerUpdatePage({ params })
+    expect(page).toMatchObject({
+      type: ClientRedirect,
+      props: { href: "/dashboard/projects/project-1/owner-updates" },
+    })
     expect(mocks.notFound).not.toHaveBeenCalled()
   })
 

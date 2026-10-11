@@ -150,6 +150,39 @@ export function friendlyDate(value: string): string {
   })
 }
 
+const STATUS_LABELS: Readonly<Record<string, string>> = {
+  PENDING: "not started",
+  IN_PROGRESS: "in progress",
+  COMPLETE: "complete",
+  BLOCKED: "blocked",
+}
+
+/** One schedule-task change in plain words, such as "start date to Mon, Oct 19, 2026". */
+export function describeTaskChange(key: string, value: unknown): string {
+  const text = typeof value === "string" ? value : String(value)
+  switch (key) {
+    case "title":
+      return `rename to "${text}"`
+    case "startDate":
+      return `start date to ${friendlyDate(text)}`
+    case "workdays":
+      return `duration to ${text} workday${value === 1 ? "" : "s"}`
+    case "phase":
+      return `phase to ${text}`
+    case "status":
+      return `status to ${STATUS_LABELS[text] ?? text.toLowerCase().replace(/_/g, " ")}`
+    case "percentComplete":
+      return `progress to ${text}%`
+    case "isMilestone":
+      return value === true ? "mark as a milestone" : "unmark as a milestone"
+    case "assignedTo":
+      return value === null || text.length === 0 ? "remove the assignee" : `assign to ${text}`
+    default:
+      // Unknown fields still appear, with camelCase split into words.
+      return `${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()} to ${text}`
+  }
+}
+
 /** A plain-language description of the pending action for the Confirm card. */
 export async function describePendingAction(
   db: ReturnType<typeof getDb>,
@@ -176,8 +209,10 @@ export async function describePendingAction(
     }
     case "updateTask": {
       const task = await taskLabel(db, organizationId, stringField(body, "taskId"))
-      const changes = Object.keys(body).filter((key) => key !== "action" && key !== "taskId")
-      return `Update ${task}${changes.length > 0 ? ` (${changes.join(", ")})` : ""}.`
+      const changes = Object.entries(body)
+        .filter(([key]) => key !== "action" && key !== "taskId")
+        .map(([key, value]) => describeTaskChange(key, value))
+      return `Update ${task}${changes.length > 0 ? `: ${changes.join("; ")}` : ""}.`
     }
     case "deleteTask": {
       const task = await taskLabel(db, organizationId, stringField(body, "taskId"))

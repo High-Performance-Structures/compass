@@ -13,6 +13,7 @@ vi.mock("@/app/api/compass/themes/route", () => ({ POST: vi.fn() }))
 import { generateAgentToken, validateAgentAuth } from "@/lib/agent/api-auth"
 import { createInProcessDataSource } from "@/lib/agent/in-process-data-source"
 import {
+  describeTaskChange,
   friendlyDate,
   requiresConfirmation,
   signPendingAction,
@@ -26,6 +27,23 @@ describe("friendlyDate", () => {
 
   it("leaves anything else as given", () => {
     expect(friendlyDate("next Monday")).toBe("next Monday")
+  })
+})
+
+describe("describeTaskChange", () => {
+  it("describes schedule changes in plain words, not field names", () => {
+    expect(describeTaskChange("startDate", "2026-10-19")).toBe("start date to Mon, Oct 19, 2026")
+    expect(describeTaskChange("workdays", 3)).toBe("duration to 3 workdays")
+    expect(describeTaskChange("workdays", 1)).toBe("duration to 1 workday")
+    expect(describeTaskChange("status", "IN_PROGRESS")).toBe("status to in progress")
+    expect(describeTaskChange("percentComplete", 50)).toBe("progress to 50%")
+    expect(describeTaskChange("title", "Pour footing")).toBe('rename to "Pour footing"')
+    expect(describeTaskChange("assignedTo", null)).toBe("remove the assignee")
+    expect(describeTaskChange("isMilestone", true)).toBe("mark as a milestone")
+  })
+
+  it("still shows unknown fields, readably", () => {
+    expect(describeTaskChange("crewSize", 4)).toBe("crew size to 4")
   })
 })
 

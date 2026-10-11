@@ -20,7 +20,8 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import { projectBrandFor } from "@/lib/project-branding"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
@@ -65,7 +66,8 @@ export default async function ProjectSelectionsPage({
     ])
   } catch (error) {
     if (hasDigest(error)) throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     if (isProjectNotFound(error)) notFound()
     throw error
   }

@@ -4,11 +4,7 @@ import * as React from "react"
 import { useVisibleInterval } from "@/hooks/use-visible-interval"
 import { useUIStream, type Spec } from "@json-render/react"
 import { usePathname, useRouter } from "next/navigation"
-import {
-  saveConversation,
-  loadConversation,
-  loadConversations,
-} from "@/app/actions/agent"
+import { saveConversation } from "@/app/actions/agent"
 import { getTextFromParts } from "@/lib/agent/chat-adapter"
 import { useCompassChat } from "@/hooks/use-compass-chat"
 import type { AgentMessage } from "@/lib/agent/message-types"
@@ -174,6 +170,9 @@ export function useAgentOptional(): PanelContextValue | null {
 
 // --- Helper: extract generateUI output from parts ---
 
+/** Reopening Jarvis after this long closed starts a new chat. */
+const FRESH_CHAT_AFTER_CLOSED_MS = 15 * 60 * 1000
+
 function findGenerateUIOutput(
   parts: ReadonlyArray<AgentMessage["parts"][number]>,
   dispatched: Set<string>
@@ -253,8 +252,6 @@ function EnabledChatProvider({
         : prev
     )
   }, [])
-  const [resumeLoaded, setResumeLoaded] =
-    React.useState(false)
   const [dataContext, setDataContext] = React.useState<
     Record<string, unknown>
   >({})
@@ -539,84 +536,36 @@ function EnabledChatProvider({
       )
   }, [])
 
-  // resume last conversation on first open
-  React.useEffect(() => {
-    if (!isOpen || resumeLoaded) return
-
-    const resume = async () => {
-      try {
-        const result = await loadConversations()
-        if (
-          !result.success ||
-          !result.data ||
-          result.data.length === 0
-        ) {
-          setResumeLoaded(true)
-          return
-        }
-
-        const lastConv = result.data[0]
-        const msgResult = await loadConversation(lastConv.id)
-        if (
-          !msgResult.success ||
-          !msgResult.data ||
-          msgResult.data.length === 0
-        ) {
-          setResumeLoaded(true)
-          return
-        }
-
-        setConversationId(lastConv.id)
-
-        const restored: AgentMessage[] = msgResult.data.map(
-          (m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            parts:
-              (m.parts as AgentMessage["parts"]) ?? [
-                { type: "text" as const, text: m.content },
-              ],
-            createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
-          })
-        )
-
-        // mark all generateUI tool calls from restored messages
-        // as already-dispatched so the watcher doesn't re-trigger
-        // renders or navigate to /dashboard on resume
-        for (const m of restored) {
-          if (m.role !== "assistant") continue
-          let result = findGenerateUIOutput(
-            m.parts,
-            renderDispatchedRef.current
-          )
-          while (result) {
-            renderDispatchedRef.current.add(result.callId)
-            result = findGenerateUIOutput(
-              m.parts,
-              renderDispatchedRef.current
-            )
-          }
-        }
-
-        chat.setMessages(restored)
-        setResumeLoaded(true)
-      } catch {
-        // Offline field users can still open Jarvis and queue a message.
-        setResumeLoaded(true)
-      }
-    }
-
-    resume()
-  }, [isOpen, resumeLoaded, chat.setMessages])
-
   const newChat = React.useCallback(() => {
     chat.setMessages([])
     setConversationId(crypto.randomUUID())
-    setResumeLoaded(true)
     clearRender()
     setLoadedSpec(null)
     renderDispatchedRef.current.clear()
   }, [chat.setMessages, clearRender])
+
+  // Each visit starts a fresh chat; earlier chats stay saved, and Jarvis
+  // can recall them on request. Briefly closing the panel keeps the current
+  // chat; reopening after a longer break starts over.
+  const closedAtRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    if (!isOpen) {
+      closedAtRef.current = Date.now()
+      return
+    }
+    const closedAt = closedAtRef.current
+    closedAtRef.current = null
+    if (
+      closedAt !== null &&
+      Date.now() - closedAt > FRESH_CHAT_AFTER_CLOSED_MS &&
+      chat.messages.length > 0 &&
+      chat.status === "ready"
+    ) {
+      newChat()
+    }
+    // Only react to the panel opening or closing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
   const panelValue = React.useMemo(
     () => ({

@@ -35,6 +35,7 @@ const SAMPLE_INPUT: Readonly<Record<string, unknown>> = {
   editTheme: { themeId: "theme-1" },
   rememberContext: { content: "Prefers weekly summaries", memoryType: "preference" },
   recallMemory: { query: "summaries" },
+  recallConversations: {},
   installSkill: { source: "owner/repo/skill" },
   toggleInstalledSkill: { pluginId: "skill-1", enabled: true },
   uninstallSkill: { pluginId: "skill-1" },

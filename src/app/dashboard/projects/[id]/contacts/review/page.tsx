@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic"
 
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { IconAddressBook, IconGitMerge, IconShieldCheck } from "@tabler/icons-react"
-import { redirect } from "next/navigation"
 
 import {
   getProjectContactMatchReview,
@@ -14,6 +13,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function ProjectContactMatchReviewPage({
   params,
@@ -26,7 +26,7 @@ export default async function ProjectContactMatchReviewPage({
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
   )
-  if (!developerModeEnabled) redirect(`/dashboard/projects/${id}/contacts`)
+  if (!developerModeEnabled) return <ClientRedirect href={`/dashboard/projects/${id}/contacts`} />
 
   let review: ProjectContactMatchReview | null = null
   let reviewError: string | null = null
