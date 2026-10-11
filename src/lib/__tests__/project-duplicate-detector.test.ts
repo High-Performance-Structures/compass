@@ -318,8 +318,19 @@ describe("repeat-order departments", () => {
     expect(findProjectDuplicateCandidates([build, blocks], repeatOrders)).toHaveLength(0)
   })
 
-  it("still flags orders that share a site address or a system identifier", () => {
-    const sameSite = [order("a", "N-451-11085", { address: "11085 Ridge Rd" }), order("b", "N-548-11085", { address: "11085 Ridge Rd" })]
+  it("doesn't flag follow-up orders for the same site placed on different days", () => {
+    const followUps = [
+      order("a", "N-451-11085", { address: "11085 Ridge Rd", createdAt: "2022-01-31T00:00:00.000Z" }),
+      order("b", "N-548-11085", { address: "11085 Ridge Rd", createdAt: "2022-10-03T00:00:00.000Z" }),
+    ]
+    expect(findProjectDuplicateCandidates(followUps, repeatOrders)).toHaveLength(0)
+  })
+
+  it("still flags same-day orders for one site and shared system identifiers", () => {
+    const sameSite = [
+      order("a", "N-451-11085", { address: "11085 Ridge Rd", createdAt: "2022-01-31T09:00:00.000Z" }),
+      order("b", "N-548-11085", { address: "11085 Ridge Rd", createdAt: "2022-01-31T15:00:00.000Z" }),
+    ]
     expect(findProjectDuplicateCandidates(sameSite, repeatOrders)).toHaveLength(1)
     const sameSage = [order("a", "N-12-00", { sageJobNumber: "4410" }), order("b", "N-13-00", { sageJobNumber: "4410" })]
     expect(findProjectDuplicateCandidates(sameSage, repeatOrders)).toHaveLength(1)

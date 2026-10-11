@@ -294,11 +294,24 @@ export type ProjectDuplicateScanOptions = {
   readonly repeatOrderDepartments?: ReadonlySet<string>
 }
 
+/** Orders this far apart are separate orders, even at the same site. */
+const SEPARATE_ORDER_MINIMUM_MS = 24 * 60 * 60 * 1000
+
+function placedOnDifferentDays(first: string, second: string): boolean {
+  const firstTime = Date.parse(first)
+  const secondTime = Date.parse(second)
+  if (Number.isNaN(firstTime) || Number.isNaN(secondTime)) return false
+  return Math.abs(firstTime - secondTime) > SEPARATE_ORDER_MINIMUM_MS
+}
+
 /**
  * Separate orders from a repeat customer: different project numbers, at least
  * one in a repeat-order department, and nothing in common beyond the
- * customer. A shared address, Sage job, Drive folder or Buildertrend project
- * still counts as a possible duplicate.
+ * customer. A shared site address also counts as a repeat order when the two
+ * were placed more than a day apart (follow-up orders for the same
+ * building); same-day orders at one address may be a double entry. A shared
+ * Sage job, Drive folder or Buildertrend project still counts as a possible
+ * duplicate.
  */
 export function isRepeatOrderPair(
   first: ProjectDuplicateIdentity,
@@ -318,7 +331,12 @@ export function isRepeatOrderPair(
   ) {
     return false
   }
-  return reasons.every((reason) => SAME_CUSTOMER_REASON_CODES.has(reason.code))
+  const separateDays = placedOnDifferentDays(first.createdAt, second.createdAt)
+  return reasons.every(
+    (reason) =>
+      SAME_CUSTOMER_REASON_CODES.has(reason.code) ||
+      (reason.code === "project_address" && separateDays),
+  )
 }
 
 export function findProjectDuplicateCandidates(
