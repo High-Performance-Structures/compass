@@ -1,4 +1,9 @@
 import { z } from "zod/v4"
+import {
+  DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
+  clientFollowUpSettingsSchema,
+  type ClientFollowUpSettings,
+} from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 
 /**
@@ -184,6 +189,7 @@ export type JobEmailSettings = z.infer<typeof jobEmailSettingsSchema>
 
 type FeatureSettingsTypes = {
   readonly "client-interactions": ClientInteractionSettings
+  readonly "client-follow-up": ClientFollowUpSettings
   readonly "department-profiles": DepartmentProfilesSettings
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
@@ -206,6 +212,12 @@ export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "client-follow-up": {
+    label: "Client follow-up page",
+    description: "How the Client follow-up page shows team activity: the leaderboard, streaks and the period it opens on.",
+    defaults: DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
+    schema: clientFollowUpSettingsSchema,
+  },
   "client-interactions": {
     label: "Client contact records",
     description: "What a logged client contact must include before it counts toward project follow-up.",

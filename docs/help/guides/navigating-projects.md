@@ -10,7 +10,7 @@
   "tags": ["projects", "navigation", "dashboard", "portfolio map", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
-  "routes": ["/dashboard", "/dashboard/projects", "/dashboard/executive-admin/project-archive"],
+  "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
   "lastReviewed": "2026-10-10"
 }
@@ -102,6 +102,19 @@ Follow-up flags appear on the map, pipelines, and tracker for job statuses that 
 **Log contact** opens the client interaction record, which is also at the top of the project's **Information** page. Choose the client contact, how you reached them (call, email, text, meeting, site visit, or your own type), who reached out, and when, then describe what happened and the next step. Only a completed record counts as client contact and resets the clock. **Snooze** moves the next follow-up date but does not count as contact.
 
 Admins set every status's thresholds in one place: **Settings → Workflows → Project aging**. This includes statuses your organization added, and leaving both values blank means a status isn't followed up. **Settings → Workflows → Client contact records** sets how much a record must describe and how far back it may be dated. Changing a threshold changes when jobs are flagged; it does not record a client response or complete a follow-up.
+
+## Use the Client Follow-Up Page {#client-follow-up-page}
+
+**Client follow-up** in the sidebar brings every followed-up job together in one place:
+
+- **Counts:** how many jobs are overdue, due, or have no logged contact, and how many contacts were logged in the period.
+- **Team client contact:** a leaderboard of towers, one per person, sized by logged contacts and colored by type. Streaks count consecutive business days with logged contact.
+- **Jobs by follow-up:** a tower for each job, colored by its follow-up level, so neglected jobs stand out in red.
+- **Lists:** jobs needing follow-up, and every logged client interaction across all jobs.
+
+Choose the period at the top. Click a person or a job to filter everything below it. A selected job shows its follow-up details with **Log contact**, plus links to show it on the dashboard map or pipeline and to open the job. **Log contact** at the top of the page lets you pick any job and record an interaction. On the dashboard map, a job's follow-up panel links back here with **Client follow-up**.
+
+Only completed interaction records count, so the numbers reflect real client contact. Admins choose what the page shows, including the leaderboard, streaks, the leader highlight, the opening period, and whether emails sent from Compass count, in **Settings → Workflows → Client follow-up page**.
 
 ## Search, Sort, and Page Through Lists {#list-controls}
 
