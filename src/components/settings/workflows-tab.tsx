@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
+import { ClientInteractionSettingsSection } from "@/components/settings/client-interaction-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
@@ -191,6 +192,7 @@ export function WorkflowsTab(): React.ReactElement {
       <JobEmailSettingsSection />
       <MessageDeskSettingsSection />
       <ProjectAgingSettingsSection />
+      <ClientInteractionSettingsSection />
       <NuTechCatalogLink />
       <NuTechEmailSettingsSection />
       <PaperTrailSettingsSection />

@@ -3,13 +3,15 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { createProjectInteraction, getProjectQuickLogContacts, snoozeProjectFollowUp } from "@/app/actions/project-profile"
+import {
+  getProjectInteractionFormOptions,
+  snoozeProjectFollowUp,
+  type ProjectInteractionFormOptions,
+} from "@/app/actions/project-profile"
+import { ClientInteractionForm } from "@/components/projects/client-interaction-form"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { SearchableCombobox } from "@/components/searchable-combobox"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PROJECT_AGING_LEVELS, type ProjectAgingLevel, type ProjectFollowUpSignal } from "@/lib/project-follow-up"
-import { PROJECT_INTERACTION_TYPE_DEFINITIONS } from "@/lib/project-profile"
-import { cn } from "@/lib/utils"
 
 export function agingColor(level: ProjectAgingLevel): string {
   return `var(${PROJECT_AGING_LEVELS[level].colorToken})`
@@ -47,8 +49,6 @@ export function FollowUpChip({ signal }: { readonly signal: ProjectFollowUpSigna
   )
 }
 
-const QUICK_TYPES = PROJECT_INTERACTION_TYPE_DEFINITIONS.filter((type) => type.id !== "client_send")
-
 /** Next morning `days` calendar days out, 8:00 local. */
 function snoozeDate(days: number): string {
   const date = new Date()
@@ -63,16 +63,17 @@ const SNOOZE_OPTIONS: readonly { readonly label: string; readonly days: number }
   { label: "1 week", days: 7 },
 ]
 
-type ContactsState =
+type FormOptionsState =
   | { readonly kind: "idle" }
   | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly contacts: readonly { readonly id: string; readonly displayName: string }[] }
+  | { readonly kind: "ready"; readonly options: ProjectInteractionFormOptions }
   | { readonly kind: "error"; readonly error: string }
 
 /**
- * A job's follow-up aging with one-click actions: log a client contact (which
- * resets the clock and lands in the project's interaction history) or snooze
- * the follow-up. Shared by the map panels and the project's follow-up tracker.
+ * A job's follow-up aging with its actions: log a client interaction (a full
+ * record of who, how, when and what happened, which resets the clock) or
+ * snooze the follow-up (which does not count as contact). Shared by the map
+ * panels, job pages and the project's follow-up tracker.
  */
 export function FollowUpSection({
   projectId,
@@ -85,49 +86,22 @@ export function FollowUpSection({
   readonly compact?: boolean
 }): React.ReactElement {
   const router = useRouter()
-  const [mode, setMode] = React.useState<"none" | "log" | "snooze">("none")
-  const [contacts, setContacts] = React.useState<ContactsState>({ kind: "idle" })
-  const [contactId, setContactId] = React.useState("")
-  const [type, setType] = React.useState<string>("call")
-  const [summary, setSummary] = React.useState("")
+  const [mode, setMode] = React.useState<"none" | "snooze">("none")
+  const [logOpen, setLogOpen] = React.useState(false)
+  const [formOptions, setFormOptions] = React.useState<FormOptionsState>({ kind: "idle" })
+  const [formKey, setFormKey] = React.useState(0)
   const [message, setMessage] = React.useState<string | null>(null)
   const [pending, startTransition] = React.useTransition()
   const level = PROJECT_AGING_LEVELS[signal.level]
 
   const openLog = (): void => {
-    setMode(mode === "log" ? "none" : "log")
     setMessage(null)
-    if (contacts.kind !== "idle") return
-    setContacts({ kind: "loading" })
-    void getProjectQuickLogContacts(projectId).then((result) => {
-      if (!result.success) {
-        setContacts({ kind: "error", error: result.error })
-        return
-      }
-      setContacts({ kind: "ready", contacts: result.contacts })
-      setContactId(result.contacts[0]?.id ?? "")
-    })
-  }
-
-  const log = (event: React.FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
-    setMessage(null)
-    startTransition(async () => {
-      const result = await createProjectInteraction({
-        projectId,
-        interactionType: type,
-        direction: "outbound",
-        summary,
-        occurredAt: new Date().toISOString(),
-        contactId: contactId || null,
-      })
-      if (!result.success) {
-        setMessage(result.error)
-        return
-      }
-      setSummary("")
-      setMode("none")
-      router.refresh()
+    setMode("none")
+    setLogOpen(true)
+    if (formOptions.kind === "ready" || formOptions.kind === "loading") return
+    setFormOptions({ kind: "loading" })
+    void getProjectInteractionFormOptions(projectId).then((result) => {
+      setFormOptions(result.success ? { kind: "ready", options: result.options } : { kind: "error", error: result.error })
     })
   }
 
@@ -163,7 +137,7 @@ export function FollowUpSection({
         {compact ? null : " (set per status in Settings → Workflows)"}
       </p>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant={mode === "log" ? "default" : "outline"} disabled={pending} onClick={openLog}>
+        <Button type="button" size="sm" variant="outline" disabled={pending} onClick={openLog}>
           Log contact
         </Button>
         <Button
@@ -196,68 +170,34 @@ export function FollowUpSection({
           ))}
         </div>
       ) : null}
-      {mode === "log" ? (
-        contacts.kind === "loading" || contacts.kind === "idle" ? (
-          <p className="text-xs text-muted-foreground">Loading client contacts…</p>
-        ) : contacts.kind === "error" ? (
-          <p role="alert" className="text-xs text-destructive">{contacts.error}</p>
-        ) : contacts.contacts.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            This job has no client contact yet.{" "}
-            <Link
-              href={`/dashboard/projects/${encodeURIComponent(projectId)}/contacts`}
-              className="text-primary underline-offset-4 hover:underline"
-            >
-              Add one
-            </Link>{" "}
-            to log contacts.
-          </p>
-        ) : (
-          <form className="flex flex-col gap-2" onSubmit={log}>
-            <div role="group" aria-label="Contact type" className="flex flex-wrap gap-1">
-              {QUICK_TYPES.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={type === option.id}
-                  onClick={() => setType(option.id)}
-                  className={cn(
-                    "min-h-7 border border-border px-2 text-xs transition-colors",
-                    type === option.id ? "bg-foreground text-background" : "hover:bg-accent",
-                  )}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            {contacts.contacts.length > 1 ? (
-              <SearchableCombobox
-                className="h-8 text-xs"
-                value={contactId}
-                onValueChange={setContactId}
-                options={contacts.contacts.map((contact) => ({ value: contact.id, label: contact.displayName }))}
-                ariaLabel="Client contact"
-                placeholder="Choose a client contact"
-                searchPlaceholder="Search client contacts..."
-                emptyMessage="No matching client contacts."
-              />
-            ) : (
-              <span className="text-xs text-muted-foreground">With {contacts.contacts[0]?.displayName}</span>
-            )}
-            <Input
-              value={summary}
-              onChange={(event) => setSummary(event.target.value)}
-              placeholder="What happened? (left voicemail, sent revised estimate…)"
-              aria-label="Contact summary"
-              className="h-8 text-xs"
-              required
+      <Dialog open={logOpen} onOpenChange={setLogOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Log client interaction</DialogTitle>
+            <DialogDescription>
+              Record who you talked with, how, when and what happened. Only a completed record counts as client contact.
+            </DialogDescription>
+          </DialogHeader>
+          {formOptions.kind === "ready" ? (
+            <ClientInteractionForm
+              key={formKey}
+              projectId={projectId}
+              idPrefix={`follow-up-${projectId}`}
+              options={formOptions.options}
+              onCancel={() => setLogOpen(false)}
+              onLogged={() => {
+                setLogOpen(false)
+                setFormKey((value) => value + 1)
+                router.refresh()
+              }}
             />
-            <Button type="submit" size="sm" disabled={pending || summary.trim().length === 0}>
-              Log {QUICK_TYPES.find((option) => option.id === type)?.label.toLowerCase() ?? "contact"}
-            </Button>
-          </form>
-        )
-      ) : null}
+          ) : formOptions.kind === "error" ? (
+            <p role="alert" className="text-sm text-destructive">{formOptions.error}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading client contacts…</p>
+          )}
+        </DialogContent>
+      </Dialog>
       {message ? <p role="alert" className="text-xs text-destructive">{message}</p> : null}
     </div>
   )

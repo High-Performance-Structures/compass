@@ -99,7 +99,9 @@ Turn on **Messages** to see your unread items stacked on jobs and listed in the 
 
 Follow-up flags appear on the map, pipelines, and tracker for job statuses that require client contact. **Follow-up due** is amber and **Overdue** is red. Aging is counted in business days since the last logged client contact, so record the actual contact in the job's follow-up workflow. Schedule lateness can also flag a construction job; inspect the panel to understand the reason.
 
-Admins set status-specific thresholds in **Settings → Workflows → Project aging**. Changing a threshold changes when jobs are flagged; it does not record a client response or complete a follow-up.
+**Log contact** opens the client interaction record, which is also at the top of the project's **Information** page. Choose the client contact, how you reached them (call, email, text, meeting, site visit, or your own type), who reached out, and when, then describe what happened and the next step. Only a completed record counts as client contact and resets the clock. **Snooze** moves the next follow-up date but does not count as contact.
+
+Admins set every status's thresholds in one place: **Settings → Workflows → Project aging**. This includes statuses your organization added, and leaving both values blank means a status isn't followed up. **Settings → Workflows → Client contact records** sets how much a record must describe and how far back it may be dated. Changing a threshold changes when jobs are flagged; it does not record a client response or complete a follow-up.
 
 ## Search, Sort, and Page Through Lists {#list-controls}
 

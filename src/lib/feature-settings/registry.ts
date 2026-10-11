@@ -163,6 +163,15 @@ export const jobWorkflowsSettingsSchema = z.object({
 
 export type JobWorkflowsSettings = z.infer<typeof jobWorkflowsSettingsSchema>
 
+export const clientInteractionSettingsSchema = z.object({
+  /** A logged contact needs at least this much written about what happened. */
+  minimumSummaryCharacters: z.number().int().min(1).max(500),
+  /** How far back a contact may be dated. */
+  maximumBackdateDays: z.number().int().min(1).max(365),
+})
+
+export type ClientInteractionSettings = z.infer<typeof clientInteractionSettingsSchema>
+
 /** HPS, ORC and Design job emails: per-template wording, keyed `${department}.${templateId}`. */
 export const jobEmailSettingsSchema = z.object({
   templates: z.record(
@@ -174,6 +183,7 @@ export const jobEmailSettingsSchema = z.object({
 export type JobEmailSettings = z.infer<typeof jobEmailSettingsSchema>
 
 type FeatureSettingsTypes = {
+  readonly "client-interactions": ClientInteractionSettings
   readonly "department-profiles": DepartmentProfilesSettings
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
@@ -196,6 +206,12 @@ export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "client-interactions": {
+    label: "Client contact records",
+    description: "What a logged client contact must include before it counts toward project follow-up.",
+    defaults: { minimumSummaryCharacters: 15, maximumBackdateDays: 30 },
+    schema: clientInteractionSettingsSchema,
+  },
   "department-profiles": {
     label: "Departments",
     description: "Each department's name, legal name, logo and contact details. Documents, emails, portals and print views read them from here.",

@@ -133,6 +133,9 @@ describe("project aging thresholds", () => {
     ).toEqual({ dueDays: 4, overdueDays: 8 })
     expect(followUpThresholds({ jobStatusId: "complete", settings: { statuses: {} } })).toBeNull()
     expect(followUpThresholds({ jobStatusId: "custom-1", customCadenceDays: 5, settings: { statuses: {} } })).toEqual({ dueDays: 5, overdueDays: 6 })
+    // Settings → Workflows is the one source: it applies even to a status with no default cadence.
+    expect(followUpThresholds({ jobStatusId: "complete", settings: { statuses: { complete: { dueDays: 10, overdueDays: 20 } } } })).toEqual({ dueDays: 10, overdueDays: 20 })
+    expect(followUpThresholds({ jobStatusId: "custom-2", customCadenceDays: null, settings: { statuses: { "custom-2": { dueDays: 3, overdueDays: 6 } } } })).toEqual({ dueDays: 3, overdueDays: 6 })
   })
 
   it("turns due, then overdue, by the company thresholds", () => {
