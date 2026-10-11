@@ -305,7 +305,7 @@ export async function generateNuTechAirliteWorkbook(
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
-      throw new Error("Provision the project Google Drive folder before generating the Airlite workbook.")
+      throw new Error("This job has no Google Drive folder yet, so the order form has nowhere to go. An admin can create it with "Retry Drive setup" in the project's registry panel.")
     }
     const workflow = await access.db
       .select()
