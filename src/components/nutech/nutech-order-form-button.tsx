@@ -8,8 +8,8 @@ import { generateNuTechAirliteWorkbook } from "@/app/actions/nutech-order-items"
 import { Button } from "@/components/ui/button"
 
 /**
- * Takes the place of the pickup copy on the manufacturer's PO: the
- * manufacturer's own order form, filled from the Nu-Tech order. Opens the
+ * Beside the pickup copy on the manufacturer's PO: the manufacturer's own
+ * order form, filled from the Nu-Tech order. Opens the
  * latest copy, or generates one (again, while the PO is unreleased).
  */
 export function NuTechOrderFormButton({
