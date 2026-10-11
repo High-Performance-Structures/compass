@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 
 /**
  * The main "New PO" on an N job: builds the manufacturer purchase order from
- * the Nu-Tech order and links it, or opens the one already linked.
+ * the Nu-Tech order and links it (or opens the one already linked), and
+ * fills the manufacturer's order form for it.
  */
 export function NuTechManufacturerPoButton({
   projectId,
@@ -36,6 +37,8 @@ export function NuTechManufacturerPoButton({
           ? `${manufacturerName || "Manufacturer"} PO created from the Nu-Tech order and linked to it.`
           : "This order already has a linked PO; it's in the list below.",
       )
+      if (result.data.formError) toast.error(`The order form wasn't filled: ${result.data.formError}`)
+      else if (result.data.created && result.data.workbookUrl) toast.success("Order form filled in the project's Drive folder.")
       router.push(`/dashboard/projects/${encodeURIComponent(projectId)}/purchase-orders#purchase-order-${result.data.purchaseOrderId}`)
       router.refresh()
     })

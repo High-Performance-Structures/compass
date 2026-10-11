@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectOperations, projects, sageCostCodes } from "@/db/schema"
 import { nuTechCatalogPrices, nuTechCatalogVersions, nuTechOrderItems, nuTechOrderWorkflows, nuTechProducts } from "@/db/schema-nutech"
+import { generateNuTechAirliteWorkbook } from "@/app/actions/nutech-order-items"
 import { createPurchaseOrderRequest, type CreatePurchaseOrderLineInput, type ProjectPurchaseOrderCostCodeOption } from "@/app/actions/project-operations"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { requireAuth } from "@/lib/auth"
@@ -14,19 +15,41 @@ import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectEstimateCostCodeCatalog } from "@/lib/estimates/project-cost-code-catalog"
+import { assignNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
 import { isNuTechFreight, loadNuTechFreight, nuTechProductCostCode } from "@/lib/nutech/freight"
 import { projectDepartment } from "@/lib/project-branding"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
+
+type NuTechManufacturerPoResult = {
+  readonly purchaseOrderId: string
+  readonly created: boolean
+  /** The manufacturer's filled order form; null with formError when it couldn't be filled. */
+  readonly workbookUrl: string | null
+  readonly formError: string | null
+}
+
+/** Fills the manufacturer's order form for the new PO, unless one is already filled. */
+async function fillOrderForm(
+  projectId: string,
+  existingUrl: string | null
+): Promise<{ readonly workbookUrl: string | null; readonly formError: string | null }> {
+  if (existingUrl) return { workbookUrl: existingUrl, formError: null }
+  const result = await generateNuTechAirliteWorkbook(projectId)
+  return result.success
+    ? { workbookUrl: result.workbookUrl ?? null, formError: null }
+    : { workbookUrl: null, formError: result.error }
+}
 
 /**
  * The manufacturer purchase order for an N job, built from its Nu-Tech order:
  * the manufacturer as vendor, each catalog item at cost with its cost code,
  * ship-to for delivery or warehouse pickup, the requested date, and the
  * dealer account. The new PO is linked to the order. When the order already
- * has a linked PO, that one is returned instead of creating a second.
+ * has a linked PO, that one is returned instead of creating a second. Either
+ * way the manufacturer's own order form is filled for it.
  */
-export async function createNuTechManufacturerPurchaseOrder(projectId: string): Promise<Result<{ readonly purchaseOrderId: string; readonly created: boolean }>> {
+export async function createNuTechManufacturerPurchaseOrder(projectId: string): Promise<Result<NuTechManufacturerPoResult>> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
@@ -53,7 +76,18 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
         .from(projectOperations)
         .where(and(eq(projectOperations.id, order.airlitePurchaseOrderOperationId), eq(projectOperations.projectId, projectId)))
         .get()
-      if (linked) return { success: true, data: { purchaseOrderId: linked.id, created: false } }
+      if (linked) {
+        await assignNuTechAirlitePoNumber(db, {
+          organizationId,
+          workflowId: order.id,
+          projectId,
+          projectNumber: project.projectNumber,
+          assigned: order.airlitePoSequence,
+          purchaseOrderId: linked.id,
+          purchaseOrderReleased: order.purchaseOrderReleasedAt !== null,
+        })
+        return { success: true, data: { purchaseOrderId: linked.id, created: false, ...(await fillOrderForm(projectId, order.airliteWorkbookUrl)) } }
+      }
     }
     if (order.purchaseOrderReleasedAt !== null) {
       return { success: false, error: "This order's purchase order was already released; it can't be replaced." }
@@ -145,10 +179,19 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
       .update(nuTechOrderWorkflows)
       .set({ airlitePurchaseOrderOperationId: purchaseOrderId, updatedBy: user.id, updatedAt: new Date().toISOString() })
       .where(eq(nuTechOrderWorkflows.id, order.id))
+    await assignNuTechAirlitePoNumber(db, {
+      organizationId,
+      workflowId: order.id,
+      projectId,
+      projectNumber: project.projectNumber,
+      assigned: order.airlitePoSequence,
+      purchaseOrderId,
+      purchaseOrderReleased: false,
+    })
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath(`/dashboard/projects/${projectId}/nutech`)
     revalidatePath(`/dashboard/projects/${projectId}`)
-    return { success: true, data: { purchaseOrderId, created: true } }
+    return { success: true, data: { purchaseOrderId, created: true, ...(await fillOrderForm(projectId, null)) } }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to create the purchase order." }
   }
@@ -286,6 +329,32 @@ export async function getNuTechShippingCostCodeOption(): Promise<ProjectPurchase
     if (!code) return null
     const match = (await getNuTechCostCodeOptions()).find((option) => option.value === code)
     return { value: code, label: match?.label ?? code, description: match?.label ?? code, divisionCode: match?.divisionCode ?? "" }
+  } catch {
+    return null
+  }
+}
+
+/** The PO linked to a job's Nu-Tech order and its filled order form, for the Purchase Orders page; null when none is linked. */
+export async function getNuTechOrderFormLink(
+  projectId: string
+): Promise<{ readonly purchaseOrderId: string; readonly workbookUrl: string | null; readonly released: boolean } | null> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const row = await getDb(env.DB)
+      .select({
+        purchaseOrderId: nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
+        workbookUrl: nuTechOrderWorkflows.airliteWorkbookUrl,
+        releasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
+      })
+      .from(nuTechOrderWorkflows)
+      .innerJoin(projects, eq(projects.id, nuTechOrderWorkflows.projectId))
+      .where(and(eq(nuTechOrderWorkflows.projectId, projectId), eq(projects.organizationId, organizationId)))
+      .get()
+    if (!row?.purchaseOrderId) return null
+    return { purchaseOrderId: row.purchaseOrderId, workbookUrl: row.workbookUrl, released: row.releasedAt !== null }
   } catch {
     return null
   }
