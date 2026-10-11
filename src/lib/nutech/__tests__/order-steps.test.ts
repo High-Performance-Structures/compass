@@ -48,9 +48,9 @@ describe("nuTechOrderProgress", () => {
 
   it("asks for the delivery address only for deliveries", () => {
     const progress = nuTechOrderProgress(snapshot({ address: null, projectDeliveryMethod: "delivery" }))
-    expect(progress.current?.checklist.map((entry) => entry.label)).toContain("Add the delivery address")
+    expect(progress.current?.items.map((entry) => entry.label)).toContain("Add the delivery address")
     const pickup = nuTechOrderProgress(snapshot({ address: null, projectDeliveryMethod: "pickup" }))
-    expect(pickup.current?.checklist.map((entry) => entry.label)).not.toContain("Add the delivery address")
+    expect(pickup.current?.items.map((entry) => entry.label)).not.toContain("Add the delivery address")
   })
 
   it("moves through quantities and estimate to payment", () => {

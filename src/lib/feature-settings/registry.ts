@@ -127,12 +127,49 @@ export const departmentProfilesSchema = z.object({
 
 export type DepartmentProfilesSettings = z.infer<typeof departmentProfilesSchema>
 
+/** A company's changes to one workflow step; see WorkflowStepOverride in src/lib/job-workflows/engine.ts. */
+export const workflowStepOverrideSchema = z.object({
+  label: z.string().trim().max(60).optional(),
+  hidden: z.boolean().optional(),
+  jobStatusId: z.string().min(1).max(80).nullable().optional(),
+  items: z
+    .record(
+      z.string().min(1).max(60),
+      z.object({ label: z.string().trim().max(160).optional(), hidden: z.boolean().optional() }),
+    )
+    .optional(),
+  extraItems: z
+    .array(
+      z.object({
+        id: z.string().regex(/^custom-[a-z0-9-]{1,40}$/),
+        label: z.string().trim().min(1, "Enter the checklist item.").max(160),
+      }),
+    )
+    .max(20)
+    .optional(),
+})
+
+const workflowOverridesSchema = z.record(z.string().min(1).max(60), workflowStepOverrideSchema)
+
+/** Job workflows: per department, changes to the built-in steps. */
+export const jobWorkflowsSettingsSchema = z.object({
+  departments: z.object({
+    O: workflowOverridesSchema.optional(),
+    H: workflowOverridesSchema.optional(),
+    N: workflowOverridesSchema.optional(),
+    D: workflowOverridesSchema.optional(),
+  }),
+})
+
+export type JobWorkflowsSettings = z.infer<typeof jobWorkflowsSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "department-profiles": DepartmentProfilesSettings
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
   readonly "nutech-emails": NuTechEmailSettings
   readonly "paper-trail": PaperTrailSettings
+  readonly "job-workflows": JobWorkflowsSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -199,6 +236,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       internalDomains: [],
     },
     schema: paperTrailSettingsSchema,
+  },
+  "job-workflows": {
+    label: "Job workflows",
+    description: "The steps and checklists on each department's job overview. Rename or hide steps and items, add your own checklist items, and choose the job status each step goes with.",
+    defaults: { departments: {} },
+    schema: jobWorkflowsSettingsSchema,
   },
 }
 
