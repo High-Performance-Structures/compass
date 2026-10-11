@@ -231,6 +231,33 @@ export const shopTicketSettingsSchema = z.object({
 
 export type ShopTicketSettings = z.infer<typeof shopTicketSettingsSchema>
 
+/**
+ * Nu-Tech bracing rentals: the equipment and sizes on the rental form, how
+ * many the company owns (for availability), the daily rate per brace, and
+ * what is required before equipment goes out.
+ */
+export const bracingRentalSettingsSchema = z.object({
+  dailyRateCents: z.number().int().min(0).max(100_000),
+  /** The item whose count is the number of braces billed per day. */
+  billedItemKey: z.string().min(1).max(40),
+  sizes: z.array(z.string().trim().min(1).max(20)).max(8),
+  items: z
+    .array(
+      z.object({
+        key: z.string().regex(/^[a-z0-9_]{1,40}$/),
+        label: z.string().trim().min(1, "Name the item.").max(60),
+        /** Owned, by size ("" when the item has no size). */
+        owned: z.record(z.string().max(20), z.number().int().min(0).max(100_000)),
+      }),
+    )
+    .min(1)
+    .max(30),
+  minDepositPercent: z.number().int().min(0).max(100),
+  requireIdCopy: z.boolean(),
+})
+
+export type BracingRentalSettings = z.infer<typeof bracingRentalSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
@@ -242,6 +269,7 @@ type FeatureSettingsTypes = {
   readonly "job-workflows": JobWorkflowsSettings
   readonly "job-emails": JobEmailSettings
   readonly "shop-tickets": ShopTicketSettings
+  readonly "bracing-rentals": BracingRentalSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -345,6 +373,28 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       subtitle: "Labor and Machine Hours",
     },
     schema: shopTicketSettingsSchema,
+  },
+  "bracing-rentals": {
+    label: "Bracing rentals",
+    description: "The rental equipment and sizes, how many you own, the daily rate per brace, and what's needed before bracing goes out.",
+    defaults: {
+      dailyRateCents: 400,
+      billedItemKey: "strongback_channel",
+      sizes: ["9 ft", "10 ft", "12 ft", "Tall"],
+      items: [
+        { key: "turnbuckle", label: "7-11 Turnbuckle", owned: {} },
+        { key: "strongback_channel", label: "Strongback Channel", owned: {} },
+        { key: "platform_bracket", label: "Platform Bracket", owned: {} },
+        { key: "guardrail_post", label: "Guardrail Post", owned: {} },
+        { key: "platform_pin", label: "9/16 x 6 Platform Pin", owned: {} },
+        { key: "safety_pin", label: "Safety Pin", owned: {} },
+        { key: "tall_wall_turnbuckle", label: "Tall Wall Turnbuckle", owned: {} },
+        { key: "strongback_coupler", label: "Strongback Coupler", owned: {} },
+      ],
+      minDepositPercent: 50,
+      requireIdCopy: true,
+    },
+    schema: bracingRentalSettingsSchema,
   },
 }
 

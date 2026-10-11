@@ -29,6 +29,8 @@ export type NuTechOrderSnapshot = {
   readonly estimateStatus: string | null
   /** The estimate has a sales tax district (synced from Sage) chosen. */
   readonly estimateTaxChosen: boolean
+  /** Bracing on the order or a rental on the job, and how far it has gone. */
+  readonly bracing: { readonly included: boolean; readonly signedOut: boolean; readonly returned: boolean }
   readonly order: {
     readonly quantitySource: NuTechQuantitySource
     readonly takeoffAcknowledgementStatus: NuTechTakeoffAcknowledgementStatus
@@ -157,7 +159,11 @@ export const NUTECH_ORDER_WORKFLOW: WorkflowDefinition = {
       id: "complete",
       label: "Complete",
       jobStatusId: null,
-      items: [{ id: "complete", label: "Mark the order complete after pickup or delivery", fact: "orderComplete", path: "nutech#nutech-fulfillment" }],
+      items: [
+        { id: "bracing_out", label: "Sign out the bracing", fact: "bracingSignedOut", path: "nutech#nutech-bracing", when: "bracing" },
+        { id: "bracing_back", label: "Check the bracing back in", fact: "bracingReturned", path: "nutech#nutech-bracing", when: "bracing" },
+        { id: "complete", label: "Mark the order complete after pickup or delivery", fact: "orderComplete", path: "nutech#nutech-fulfillment" },
+      ],
     },
   ],
 }
@@ -201,6 +207,9 @@ export function nuTechOrderFacts(snapshot: NuTechOrderSnapshot): WorkflowFacts {
     vendorInvoiceRecorded: (order?.vendorInvoiceNumber ?? null) !== null,
     vendorInvoiceReleased: order?.vendorInvoiceReleasedAt != null,
     orderComplete: order?.orderStatus === "complete",
+    bracing: snapshot.bracing.included,
+    bracingSignedOut: snapshot.bracing.signedOut,
+    bracingReturned: snapshot.bracing.returned,
   }
 }
 
