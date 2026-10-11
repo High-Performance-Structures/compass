@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
-import { resolveLegacyProjectRoute } from "@/lib/legacy-project-route-resolution"
+import { ClientRedirect } from "@/components/client-redirect"
+import { legacyProjectRouteDestination } from "@/lib/legacy-project-route-resolution"
 
 export default async function LegacyProjectRoutePage({
   searchParams,
@@ -10,6 +11,6 @@ export default async function LegacyProjectRoutePage({
     readonly suffix?: string | readonly string[]
     readonly originalSearch?: string | readonly string[]
   }>
-}>): Promise<never> {
-  return resolveLegacyProjectRoute(await searchParams)
+}>): Promise<React.ReactElement> {
+  return <ClientRedirect href={await legacyProjectRouteDestination(await searchParams)} />
 }

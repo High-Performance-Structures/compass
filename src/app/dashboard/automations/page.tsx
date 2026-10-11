@@ -1,5 +1,4 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import {
   IconAutomation,
   IconBrandGoogleDrive,
@@ -27,6 +26,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 type ScriptStatus = "google-native" | "bridge-candidate" | "retire-later"
 
@@ -158,7 +158,7 @@ export default async function AutomationsPage() {
   const canManageAutomations = canManageProjectRegistry(user)
   const developerModeEnabled = await isDeveloperModeEnabled(canManageAutomations)
 
-  if (!developerModeEnabled) redirect("/dashboard")
+  if (!developerModeEnabled) return <ClientRedirect href={"/dashboard"} />
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-3 sm:p-4 lg:p-6">

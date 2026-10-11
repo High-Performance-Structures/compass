@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation"
 
 import {
   getActiveFieldProjects,
@@ -6,6 +5,7 @@ import {
 } from "@/app/actions/field-mode"
 import { NativeFieldBootstrap } from "@/components/field/native-field-bootstrap"
 import { requireAuth } from "@/lib/auth"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -19,7 +19,7 @@ export default async function NativeFieldBootstrapPage({
 }): Promise<React.ReactElement> {
   const { nativePlatform, projectId } = await searchParams
   if (nativePlatform !== "ios" && nativePlatform !== "android") {
-    redirect("/dashboard/field")
+    return <ClientRedirect href={"/dashboard/field"} />
   }
 
   const [user, projects] = await Promise.all([

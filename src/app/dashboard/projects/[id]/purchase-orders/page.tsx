@@ -36,7 +36,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import {
   isClosedProjectOperationStatus,
   parseProjectOperationStatusFilter,
@@ -358,6 +359,24 @@ export default async function ProjectPurchaseOrdersPage({
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
   )
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
+    getProjects(),
+    getProjectPurchaseOrders(id),
+    getProjectTaskAssigneeOptions(id),
+    getProjectPurchaseOrderSiteContactOptions(id),
+    getProjectContactsSummary(id, "internal"),
+    getProjectPurchaseOrderFormOptions(id),
+    getProjectPaperTrail(id, "purchase_order"),
+  ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
+      throw error
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
   const [
     projects,
     purchaseOrders,
@@ -366,18 +385,7 @@ export default async function ProjectPurchaseOrdersPage({
     contactsSummary,
     purchaseOrderCodingOptions,
     paperTrail,
-  ] = await Promise.all([
-    getProjects(),
-    getProjectPurchaseOrders(id),
-    getProjectTaskAssigneeOptions(id),
-    getProjectPurchaseOrderSiteContactOptions(id),
-    getProjectContactsSummary(id, "internal"),
-    getProjectPurchaseOrderFormOptions(id),
-    getProjectPaperTrail(id, "purchase_order"),
-  ]).catch((error: unknown) => {
-    redirectIfFeaturePermissionDenied(error)
-    throw error
-  })
+  ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,

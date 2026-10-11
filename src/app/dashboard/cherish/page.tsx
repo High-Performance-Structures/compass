@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation"
 import { IconHeartHandshake } from "@tabler/icons-react"
 
 import { getCherishStoryArchive } from "@/app/actions/cherish-stories"
@@ -8,6 +7,7 @@ import { CherishStoryArchive } from "@/components/cherish/cherish-story-archive"
 import { getCurrentUser } from "@/lib/auth"
 import { canUseFieldDesk } from "@/lib/permissions"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -20,7 +20,7 @@ export default async function CherishPage({
 }): Promise<React.ReactElement> {
   const user = await getCurrentUser()
   if (!canUseFieldDesk(user)) {
-    redirect("/dashboard/access-restricted?action=submit%20CHERISH%20feedback")
+    return <ClientRedirect href={"/dashboard/access-restricted?action=submit%20CHERISH%20feedback"} />
   }
   const [params, archiveResult, recipientResult] = await Promise.all([
     searchParams,

@@ -1,18 +1,18 @@
 import type * as React from "react"
-import { redirect } from "next/navigation"
 import { IconHeartHandshake, IconLock } from "@tabler/icons-react"
 
 import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { getCurrentUser } from "@/lib/auth"
 import { canFeature } from "@/lib/permission-enforcement"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
 export default async function CherishReviewPage(): Promise<React.ReactElement> {
   const user = await getCurrentUser()
   if (!(await canFeature(user, "cherish-review", "read"))) {
-    redirect("/dashboard/access-restricted?action=review%20CHERISH")
+    return <ClientRedirect href={"/dashboard/access-restricted?action=review%20CHERISH"} />
   }
 
   return (

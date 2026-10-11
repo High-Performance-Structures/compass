@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { conversationFullViewHref, conversationRecipientHref } from "@/lib/conversations/notification-route"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { getChannel } from "@/app/actions/conversations"
 import { getMessages } from "@/app/actions/chat-messages"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
@@ -13,6 +13,7 @@ import {
 } from "@/components/conversations/message-composer"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
 import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function ChannelPage({
   params,
@@ -33,7 +34,7 @@ export default async function ChannelPage({
   // Shared notification URLs land here. Keep external recipients in their portal
   // after getChannel has verified organization and channel access.
   const recipientHref = conversationRecipientHref(channel, user.role)
-  if (recipientHref !== conversationFullViewHref(channel.id)) redirect(recipientHref)
+  if (recipientHref !== conversationFullViewHref(channel.id)) return <ClientRedirect href={recipientHref} />
   const messagesResult = await getMessages(channelId)
   const isBuildertrendArchive = isBuildertrendArchiveChannelId(channel.id)
   const messages = messagesResult.success && messagesResult.data ? messagesResult.data : []

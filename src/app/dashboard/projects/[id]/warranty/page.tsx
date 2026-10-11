@@ -8,7 +8,8 @@ import { getProjectWarrantyWorkspace } from "@/app/actions/project-warranty"
 import { ProjectWarrantyWorkspace } from "@/components/projects/project-warranty-workspace"
 import { warrantyAssigneeOptions } from "@/lib/warranty/assignee"
 import { Button } from "@/components/ui/button"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -19,13 +20,20 @@ export default async function ProjectWarrantyPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const [workspace, assigneeOptions] = await Promise.all([
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
     getProjectWarrantyWorkspace(id),
     getProjectTaskAssigneeOptions(id),
-  ]).catch((error: unknown) => {
-    redirectIfFeaturePermissionDenied(error)
-    throw error
-  })
+  ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
+      throw error
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
+  const [workspace, assigneeOptions] = loaded.data
   const warrantyOptions = warrantyAssigneeOptions(assigneeOptions)
 
   return (

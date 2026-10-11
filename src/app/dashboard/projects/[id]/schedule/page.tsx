@@ -5,7 +5,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { projectMembers, projects } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import {
   getSchedule,
   getScheduleProjectSwitcherProjects,
@@ -31,6 +31,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { can } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
+import { ClientRedirect } from "@/components/client-redirect"
 
 const emptySchedule: ScheduleData = {
   tasks: [],
@@ -82,10 +83,10 @@ export default async function SchedulePage({
       .where(and(eq(projectMembers.projectId, id), eq(projectMembers.userId, currentUser.id)))
       .get()
     if (membership?.role === "client" || membership?.role === "owner") {
-      redirect(projectAudienceSectionHref(id, "owner", "schedule"))
+      return <ClientRedirect href={projectAudienceSectionHref(id, "owner", "schedule")} />
     }
     if (membership?.role === "subcontractor" || membership?.role === "supplier") {
-      redirect(projectAudienceSectionHref(id, "sub-vendor", "schedule"))
+      return <ClientRedirect href={projectAudienceSectionHref(id, "sub-vendor", "schedule")} />
     }
     notFound()
   }

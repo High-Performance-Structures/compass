@@ -38,9 +38,10 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { projectMembers } from "@/db/schema"
 import { eq } from "drizzle-orm"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { can } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function kindFilter(
   value: string | readonly string[] | undefined
@@ -135,7 +136,7 @@ export default async function SchedulePage({
       const audience = membership.role === "client" || membership.role === "owner"
         ? "owner"
         : "sub-vendor"
-      redirect(projectAudienceSectionHref(membership.projectId, audience, "schedule"))
+      return <ClientRedirect href={projectAudienceSectionHref(membership.projectId, audience, "schedule")} />
     }
     const [savedViews, schedulePreferences] = await Promise.all([
       getScheduleSavedViews(),

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import { IconArrowLeft, IconBook2 } from "@tabler/icons-react"
 
 import { HelpArticle } from "@/components/help/help-article"
@@ -14,6 +14,7 @@ import { getHelpGuide } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
 import { getHelpVideosForGuide } from "@/lib/help/videos"
 import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -36,7 +37,7 @@ export default async function HelpGuidePage({
   const helpAccess = await getEffectiveHelpGuideAccess(user)
 
   if (!helpAccess.canViewHelp) {
-    redirect("/dashboard/access-restricted?feature=help-resources&action=view")
+    return <ClientRedirect href={"/dashboard/access-restricted?feature=help-resources&action=view"} />
   }
 
   const { slug } = await params

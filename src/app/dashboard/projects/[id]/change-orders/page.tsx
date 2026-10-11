@@ -12,7 +12,8 @@ import { getProjects } from "@/app/actions/projects"
 import { ProjectChangeOrderList } from "@/components/projects/project-change-order-list"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Button } from "@/components/ui/button"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function ProjectChangeOrdersPage({
   params,
@@ -21,15 +22,22 @@ export default async function ProjectChangeOrdersPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const [projects, items, capabilities, formOptions] = await Promise.all([
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
     getProjects(),
     getProjectChangeOrders(id),
     getProjectChangeOrderCapabilities(id),
     getProjectChangeOrderFormOptions(id),
-  ]).catch((error: unknown) => {
-    redirectIfFeaturePermissionDenied(error)
-    throw error
-  })
+  ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
+      throw error
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
+  const [projects, items, capabilities, formOptions] = loaded.data
   const project = projects.find((item) => item.id === id)
   const baseHref = `/dashboard/projects/${encodeURIComponent(id)}/change-orders`
 

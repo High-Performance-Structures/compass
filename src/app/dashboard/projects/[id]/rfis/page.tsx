@@ -36,7 +36,8 @@ import { buildProjectEmailRecipientOptions } from "@/lib/email/recipient-options
 import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
 import { viewableRfiAttachmentUrl } from "@/lib/rfis/attachment-url"
 import { cn } from "@/lib/utils"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
@@ -114,18 +115,24 @@ export default async function ProjectRfisPage({
     ? query.item[0] ?? null
     : query.item ?? null
   const statusFilter = parseRfiStatusFilter(query.status)
-  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail] =
-    await Promise.all([
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
       getProjects(),
       getProjectRfis(id),
       getProjectContactsSummary(id, "internal"),
       getProjectTaskAssigneeOptions(id),
       getProjectRfiInboundEmails(id),
       getProjectPaperTrail(id, "rfi"),
-    ]).catch((error: unknown) => {
-      redirectIfFeaturePermissionDenied(error)
+    ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
       throw error
-    })
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
+  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,

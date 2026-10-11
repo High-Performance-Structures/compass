@@ -6,7 +6,8 @@ import { notFound } from "next/navigation"
 
 import { getProjectVideoWorkspace } from "@/app/actions/project-videos"
 import { ProjectVideoReview } from "@/components/projects/project-video-review"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -24,7 +25,8 @@ export default async function ProjectVideosPage({
     workspace = await getProjectVideoWorkspace(id)
   } catch (error) {
     if (hasDigest(error)) throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     if (error instanceof Error && error.message === "Project not found") notFound()
     throw error
   }
