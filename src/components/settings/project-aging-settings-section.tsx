@@ -9,6 +9,8 @@ import {
 } from "@/app/actions/feature-settings"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { FEATURE_SETTINGS, projectAgingSettingsSchema, type ProjectAgingSettings } from "@/lib/feature-settings/registry"
 import { PROJECT_AGING_LEVELS } from "@/lib/project-follow-up"
 import { getProjectAgingStatusRows, type ProjectAgingStatusRow } from "@/app/actions/project-profile"
@@ -57,6 +59,7 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
   const [loaded, setLoaded] = React.useState(false)
   const [canEdit, setCanEdit] = React.useState(false)
   const [customized, setCustomized] = React.useState(false)
+  const [remindOnOverdue, setRemindOnOverdue] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [statuses, setStatuses] = React.useState<readonly StatusOption[]>([])
   const [rows, setRows] = React.useState<Readonly<Record<string, Row>>>({})
@@ -75,7 +78,9 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
     const options = statusOptions(statusResult.rows)
     const parsed = projectAgingSettingsSchema.safeParse(result.data.settings)
     setStatuses(options)
-    setRows(rowsFrom(options, parsed.success ? parsed.data : FEATURE_SETTINGS["project-aging"].defaults))
+    const settings = parsed.success ? parsed.data : FEATURE_SETTINGS["project-aging"].defaults
+    setRows(rowsFrom(options, settings))
+    setRemindOnOverdue(settings.remindOnOverdue !== false)
     setCanEdit(result.data.canEdit)
     setCustomized(result.data.customized)
     setLoaded(true)
@@ -110,7 +115,7 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
       configured[status.id] = { dueDays, overdueDays }
     }
     startTransition(async () => {
-      const result = await saveFeatureSettings("project-aging", { statuses: configured })
+      const result = await saveFeatureSettings("project-aging", { statuses: configured, remindOnOverdue })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -182,6 +187,15 @@ export function ProjectAgingSettingsSection(): React.ReactElement {
               })}
             </tbody>
           </table>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="project-aging-remind">Remind when a job&apos;s follow-up is overdue</Label>
+              <p className="text-xs text-muted-foreground">
+                Sends the follow-up owner (or whoever last contacted the client) one urgent reminder per overdue stretch, and turns their Client follow-up link and bell red.
+              </p>
+            </div>
+            <Switch id="project-aging-remind" checked={remindOnOverdue} onCheckedChange={setRemindOnOverdue} disabled={disabled} />
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {canEdit ? (
               <>

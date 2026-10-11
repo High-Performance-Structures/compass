@@ -114,6 +114,8 @@ Admins set every status's thresholds in one place: **Settings → Workflows → 
 
 Choose the period at the top. Click a person or a job to filter everything below it. A selected job shows its follow-up details with **Log contact**, plus links to show it on the dashboard map or pipeline and to open the job. **Log contact** at the top of the page lets you pick any job and record an interaction. On the dashboard map, a job's follow-up panel links back here with **Client follow-up**.
 
+When a job's follow-up turns **Overdue**, the person responsible gets one urgent reminder. That's its follow-up owner, or whoever last logged contact if no owner is set. Their **Client follow-up** link in the sidebar turns red with a count of their overdue jobs, and the bell turns red until the reminder is read. Logging a client contact on the job, including an email sent from Compass or an inbound client email or text, clears the reminder. If the job goes overdue again later, it sends one new reminder. Admins can turn these reminders off in **Settings → Workflows → Project aging**.
+
 Only completed interaction records count, so the numbers reflect real client contact. Admins choose what the page shows, including the leaderboard, streaks, the leader highlight, the opening period, and whether emails sent from Compass count, in **Settings → Workflows → Client follow-up page**.
 
 ## Search, Sort, and Page Through Lists {#list-controls}

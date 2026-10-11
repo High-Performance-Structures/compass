@@ -619,10 +619,11 @@ export function buildCherishNavigation(
 const STALE_MESSAGE_REFRESH_MS = 5 * 60 * 1000
 
 /**
- * Stale Message Desk messages assigned to the viewer. Refreshes on page
- * changes and every few minutes so the red link appears without a reload.
+ * A red-alert count for a sidebar link (stale messages, overdue follow-ups)
+ * from a GET endpoint. Refreshes on page changes and every few minutes so the
+ * red link appears without a reload; a plain GET never blocks navigation.
  */
-function useStaleMessageCount(enabled: boolean, pathname: string): number {
+function useAlertCount(endpoint: string, enabled: boolean, pathname: string): number {
   const [count, setCount] = React.useState(0)
   React.useEffect(() => {
     if (!enabled) {
@@ -631,7 +632,7 @@ function useStaleMessageCount(enabled: boolean, pathname: string): number {
     }
     let cancelled = false
     const load = (): void => {
-      void fetch("/api/staff-message-desk/stale-count", { cache: "no-store" })
+      void fetch(endpoint, { cache: "no-store" })
         .then((response) => (response.ok ? response.json() : null))
         .then((body: unknown) => {
           const next = typeof body === "object" && body !== null ? Reflect.get(body, "count") : null
@@ -645,7 +646,7 @@ function useStaleMessageCount(enabled: boolean, pathname: string): number {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [enabled, pathname])
+  }, [enabled, endpoint, pathname])
   return count
 }
 
@@ -694,7 +695,8 @@ function SidebarNav({
     canPrepareGreetingCards,
     canViewProjectArchive,
   })
-  const staleMessageCount = useStaleMessageCount(canViewActivity, pathname)
+  const staleMessageCount = useAlertCount("/api/staff-message-desk/stale-count", canViewActivity, pathname)
+  const overdueFollowUpCount = useAlertCount("/api/client-follow-up/overdue-count", canViewActivity, pathname)
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
         {
@@ -712,6 +714,10 @@ function SidebarNav({
           title: "Client follow-up",
           url: "/dashboard/client-follow-up",
           icon: IconAddressBook,
+          alert: {
+            count: overdueFollowUpCount,
+            label: `${overdueFollowUpCount} overdue client ${overdueFollowUpCount === 1 ? "follow-up" : "follow-ups"} for you`,
+          },
         },
       ]
     : []

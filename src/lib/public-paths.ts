@@ -59,6 +59,7 @@ const scheduledMaintenancePaths = [
   "/api/operations/sage/square-receipts",
   "/api/operations/square/auth-health",
   "/api/operations/staff-message-desk/stale-reminders",
+  "/api/operations/project-follow-up/overdue-reminders",
 ]
 
 export function isPublicPath(pathname: string): boolean {

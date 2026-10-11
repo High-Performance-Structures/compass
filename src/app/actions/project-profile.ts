@@ -80,6 +80,7 @@ import { clientFollowUpState, followUpThresholds, type ProjectFollowUpSignal } f
 import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { clientInteractionRecordProblem } from "@/lib/client-interactions/record-rules"
+import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import {
   isProjectDepartment,
@@ -1896,6 +1897,12 @@ export async function createProjectInteraction(input: {
       deletedBy: null,
     })
     await writeAuditEvent({ db, organizationId, projectId: input.projectId, actorId: user.id, eventType: "client_interaction_created", entityType: "project_interaction", entityId: id, before: null, after: { interactionType, direction: input.direction, summary, occurredAt } })
+    try {
+      // Logged contact ends the overdue stretch, so its reminder (and red bell) clears.
+      await clearOverdueFollowUpReminders(db, [input.projectId])
+    } catch (error) {
+      console.error("Unable to clear overdue follow-up reminders", error)
+    }
     revalidateProjectProfile(input.projectId)
     return { success: true }
   } catch (error) {
