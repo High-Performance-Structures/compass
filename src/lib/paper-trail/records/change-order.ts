@@ -1,6 +1,7 @@
 import { count, eq, max } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectChangeOrderDocuments, projectChangeOrderLines, projectChangeOrders } from "@/db/schema"
+import { recordNumberKeys } from "@/lib/paper-trail/duplicates"
 import type { LoadedPaperTrailRecord } from "@/lib/paper-trail/types"
 
 export async function loadChangeOrderRecord(
@@ -23,5 +24,6 @@ export async function loadChangeOrderRecord(
     version: [order.updatedAt, lines?.count ?? 0, lines?.latest ?? "", documents?.count ?? 0, documents?.latest ?? ""].join("|"),
     fileBaseName: `CO ${number} - ${order.title}`,
     subfolders: [],
+    duplicateKeys: recordNumberKeys(order.number, ["CO", "Change Order"]),
   }
 }

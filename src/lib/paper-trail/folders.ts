@@ -125,6 +125,20 @@ async function findChildFolder(
   return children.files.find((file) => match(file.name))?.id ?? null
 }
 
+/** The files (not folders) directly inside a folder, by id and name. */
+export async function listFolderFiles(
+  drive: PaperTrailDrive,
+  folderId: string,
+): Promise<readonly { readonly id: string; readonly name: string }[]> {
+  const children = await drive.client.listFiles(drive.googleEmail, {
+    folderId,
+    query: `mimeType != '${GOOGLE_FOLDER_MIME_TYPE}'`,
+    pageSize: 200,
+    ...(drive.sharedDriveId ? { driveId: drive.sharedDriveId } : {}),
+  })
+  return children.files.map((file) => ({ id: file.id, name: file.name }))
+}
+
 /**
  * The folder a record's copy belongs in: its category subfolder, or the
  * private records folder when that subfolder is shared outside the company.

@@ -19,6 +19,11 @@ export const PAPER_TRAIL_FILE_STATUSES = [
   "held_private",
   // The record no longer exists; its last Drive copy is kept.
   "removed",
+  // A file that looks like this record was already in the folder (saved by
+  // hand); nothing is written until someone chooses what to do.
+  "needs_choice",
+  // Someone chose to keep the hand-saved file; Compass stops saving this record.
+  "kept_existing",
 ] as const
 export type PaperTrailFileStatus = (typeof PAPER_TRAIL_FILE_STATUSES)[number]
 
@@ -54,6 +59,11 @@ export const projectRecordDriveFiles = sqliteTable(
     contentVersion: text("content_version"),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
+    /** The hand-saved file found when the status is needs_choice or kept_existing. */
+    existingFileId: text("existing_file_id"),
+    existingFileName: text("existing_file_name"),
+    /** Someone chose "keep both": save Compass's copy beside the existing file. */
+    allowDuplicate: integer("allow_duplicate", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

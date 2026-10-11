@@ -1,6 +1,7 @@
 import { count, eq, max } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectEstimateLines, projectEstimates } from "@/db/schema-estimates"
+import { recordNumberKeys } from "@/lib/paper-trail/duplicates"
 import type { LoadedPaperTrailRecord } from "@/lib/paper-trail/types"
 
 export async function loadEstimateRecord(
@@ -29,5 +30,6 @@ export async function loadEstimateRecord(
     version: [estimate.updatedAt, lines?.count ?? 0, lines?.latest ?? ""].join("|"),
     fileBaseName: `Estimate ${number}${estimate.title ? ` - ${estimate.title}` : ""}`,
     subfolders: [],
+    duplicateKeys: recordNumberKeys(estimate.number, ["Estimate"]),
   }
 }

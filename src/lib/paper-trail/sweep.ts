@@ -95,7 +95,7 @@ export async function sweepPaperTrailChanges(
       JOIN projects p ON p.id = x.project_id
       LEFT JOIN project_record_drive_files f ON f.record_type = ${recordType} AND f.record_id = x.id
       WHERE ${scope}
-        AND (f.id IS NULL OR (f.status <> 'removed' AND x.changed > coalesce(f.source_changed_at, '')))
+        AND (f.id IS NULL OR (f.status NOT IN ('removed', 'needs_choice', 'kept_existing') AND x.changed > coalesce(f.source_changed_at, '')))
       ON CONFLICT (record_type, record_id) DO UPDATE SET
         status = 'pending',
         due_at = excluded.due_at,

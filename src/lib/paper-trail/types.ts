@@ -15,6 +15,11 @@ export type LoadedPaperTrailRecord = {
    * category folders themselves always come from the department template.
    */
   readonly subfolders: readonly PaperTrailSubfolder[]
+  /**
+   * Names a hand-saved copy of this record would carry (its number), used to
+   * avoid writing a second copy beside it. Empty skips the check.
+   */
+  readonly duplicateKeys: readonly string[]
 }
 
 export type PaperTrailSubfolder = { readonly name: string; readonly alternatives: readonly string[] }

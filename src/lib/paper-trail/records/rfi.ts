@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectRfis } from "@/db/schema"
+import { recordNumberKeys } from "@/lib/paper-trail/duplicates"
 import type { LoadedPaperTrailRecord } from "@/lib/paper-trail/types"
 
 export async function loadRfiRecord(
@@ -20,5 +21,6 @@ export async function loadRfiRecord(
     version: rfi.updatedAt,
     fileBaseName: `RFI ${number} - ${rfi.subject}`,
     subfolders: [],
+    duplicateKeys: recordNumberKeys(rfi.number, ["RFI"]),
   }
 }

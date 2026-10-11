@@ -3,7 +3,12 @@
 import * as React from "react"
 import { IconBrandGoogleDrive, IconExternalLink } from "@tabler/icons-react"
 import { toast } from "sonner"
-import { requestPaperTrailSave, type PaperTrailRecordView } from "@/app/actions/paper-trail"
+import {
+  requestPaperTrailSave,
+  resolvePaperTrailDuplicate,
+  type PaperTrailDuplicateChoice,
+  type PaperTrailRecordView,
+} from "@/app/actions/paper-trail"
 import { Button } from "@/components/ui/button"
 import type { PaperTrailRecordType } from "@/db/schema-paper-trail"
 import { cn } from "@/lib/utils"
@@ -47,6 +52,52 @@ export function PaperTrailRecordStatus({
     })
   }
 
+  function choose(choice: PaperTrailDuplicateChoice): void {
+    startTransition(async () => {
+      const result = await resolvePaperTrailDuplicate(projectId, recordType, recordId, choice)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setQueued(choice !== "keep_existing")
+      toast.success(
+        choice === "keep_existing"
+          ? "Keeping the existing file; Compass won't save this record"
+          : choice === "replace"
+            ? "Compass will update the existing file within a minute"
+            : "Saving Compass's copy beside the existing file",
+      )
+    })
+  }
+
+  if (record?.status === "needs_choice" && !queued) {
+    return (
+      <div className={cn("grid gap-1.5 text-xs", className)}>
+        <span className="inline-flex flex-wrap items-center gap-1.5 text-warning">
+          <IconBrandGoogleDrive className="size-3.5 shrink-0" aria-hidden="true" />
+          This record is already in Drive
+          {record.existingFile ? (
+            <a href={record.existingFile.url} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              {record.existingFile.name}
+            </a>
+          ) : null}
+          , so Compass hasn&apos;t saved a copy.
+        </span>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={pending} onClick={() => choose("replace")}>
+            Replace with Compass copy
+          </Button>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={pending} onClick={() => choose("keep_both")}>
+            Keep both
+          </Button>
+          <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" disabled={pending} onClick={() => choose("keep_existing")}>
+            Keep existing only
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   let message: string
   let tone: "muted" | "warning" | "destructive" = "muted"
   if (queued || !record || record.status === "pending") {
@@ -59,6 +110,8 @@ export function PaperTrailRecordStatus({
     tone = "warning"
   } else if (record.status === "removed") {
     message = "Deleted in Compass; the last Drive copy is kept"
+  } else if (record.status === "kept_existing") {
+    message = `Using the file already in Drive${record.existingFile ? ` (${record.existingFile.name})` : ""}; Compass doesn't save this record`
   } else {
     message = `Saved to Drive ${record.lastSyncedAt ? savedTime(record.lastSyncedAt) : ""}`
   }
@@ -86,7 +139,7 @@ export function PaperTrailRecordStatus({
           Open copy <IconExternalLink className="size-3" aria-hidden="true" />
         </a>
       ) : null}
-      {record?.status !== "removed" ? (
+      {record?.status !== "removed" && record?.status !== "kept_existing" ? (
         <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" disabled={pending || queued} onClick={saveNow}>
           Save to Drive now
         </Button>

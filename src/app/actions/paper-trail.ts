@@ -1,25 +1,35 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { projectRecordDriveFiles, type PaperTrailRecordType } from "@/db/schema-paper-trail"
+import { projectRecordDriveFiles, type PaperTrailFileStatus, type PaperTrailRecordType } from "@/db/schema-paper-trail"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
-import { paperTrailAllows } from "@/lib/paper-trail/record-types"
+import { PAPER_TRAIL_RECORDS, paperTrailAllows } from "@/lib/paper-trail/record-types"
+import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
+import { projectNumberAndName } from "@/lib/project-display-name"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
 export type PaperTrailRecordView = {
-  readonly status: "pending" | "synced" | "failed" | "held_private" | "removed"
+  readonly status: PaperTrailFileStatus
   readonly lastSyncedAt: string | null
   readonly driveUrl: string | null
   readonly error: string | null
+  /** The hand-saved file found in the folder, when the status is needs_choice or kept_existing. */
+  readonly existingFile: { readonly name: string; readonly url: string } | null
+}
+
+export type PaperTrailDuplicateChoice = "replace" | "keep_both" | "keep_existing"
+
+function driveFileUrl(id: string): string {
+  return `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`
 }
 
 export type PaperTrailProjectView = {
@@ -74,8 +84,12 @@ export async function getProjectPaperTrail(
           {
             status: row.status,
             lastSyncedAt: row.lastSyncedAt,
-            driveUrl: row.driveFileId ? `https://drive.google.com/file/d/${encodeURIComponent(row.driveFileId)}/view` : null,
+            driveUrl: row.driveFileId ? driveFileUrl(row.driveFileId) : null,
             error: row.lastError,
+            existingFile:
+              row.existingFileId && row.existingFileName
+                ? { name: row.existingFileName, url: driveFileUrl(row.existingFileId) }
+                : null,
           },
         ]),
       ),
@@ -128,5 +142,109 @@ export async function requestPaperTrailSave(
     return { success: true, data: null }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to queue the Drive copy." }
+  }
+}
+
+/**
+ * What to do when a record's file was already saved by hand:
+ * replace — Compass takes over that file and updates it (Drive keeps the
+ *   hand-saved version in its history);
+ * keep_both — save Compass's copy beside it;
+ * keep_existing — keep the hand-saved file and stop saving this record.
+ */
+export async function resolvePaperTrailDuplicate(
+  projectId: string,
+  recordType: PaperTrailRecordType,
+  recordId: string,
+  choice: PaperTrailDuplicateChoice,
+): Promise<Result<null>> {
+  try {
+    const { db } = await projectContext(projectId, recordType, "update")
+    const [row] = await db
+      .select()
+      .from(projectRecordDriveFiles)
+      .where(
+        and(
+          eq(projectRecordDriveFiles.projectId, projectId),
+          eq(projectRecordDriveFiles.recordType, recordType),
+          eq(projectRecordDriveFiles.recordId, recordId),
+        ),
+      )
+      .limit(1)
+    if (!row || (row.status !== "needs_choice" && row.status !== "kept_existing")) {
+      return { success: false, error: "This record isn't waiting for a choice." }
+    }
+    const now = new Date()
+    const longAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+    const due = { dueAt: now.toISOString(), changedAt: longAgo, attempts: 0, lastError: null, updatedAt: now.toISOString() }
+    if (choice === "keep_existing") {
+      await db.update(projectRecordDriveFiles).set({ status: "kept_existing", updatedAt: now.toISOString() }).where(eq(projectRecordDriveFiles.id, row.id))
+    } else if (choice === "replace") {
+      if (!row.existingFileId) return { success: false, error: "The existing file is no longer known. Save to Drive again." }
+      // The job updates this file in place, so its link and sharing stay the same.
+      await db
+        .update(projectRecordDriveFiles)
+        .set({ status: "pending", driveFileId: row.existingFileId, fileName: row.existingFileName, ...due })
+        .where(eq(projectRecordDriveFiles.id, row.id))
+    } else {
+      await db
+        .update(projectRecordDriveFiles)
+        .set({ status: "pending", allowDuplicate: true, ...due })
+        .where(eq(projectRecordDriveFiles.id, row.id))
+    }
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath("/dashboard/settings")
+    return { success: true, data: null }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to save that choice." }
+  }
+}
+
+export type PaperTrailChoiceItem = {
+  readonly projectId: string
+  readonly projectLabel: string
+  readonly recordType: PaperTrailRecordType
+  readonly recordTypeLabel: string
+  readonly recordId: string
+  readonly existingFile: { readonly name: string; readonly url: string } | null
+}
+
+/** Every record across the company waiting for a duplicate choice, for Settings. */
+export async function getPaperTrailChoices(): Promise<Result<readonly PaperTrailChoiceItem[]>> {
+  try {
+    const user = await requireAuth()
+    if (!canEditFeatureSettings(user.role, "paper-trail")) return { success: true, data: [] }
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const rows = await db
+      .select({
+        projectId: projectRecordDriveFiles.projectId,
+        recordType: projectRecordDriveFiles.recordType,
+        recordId: projectRecordDriveFiles.recordId,
+        existingFileId: projectRecordDriveFiles.existingFileId,
+        existingFileName: projectRecordDriveFiles.existingFileName,
+        projectName: projects.name,
+        projectNumber: projects.projectNumber,
+      })
+      .from(projectRecordDriveFiles)
+      .innerJoin(projects, eq(projects.id, projectRecordDriveFiles.projectId))
+      .where(and(eq(projectRecordDriveFiles.organizationId, organizationId), eq(projectRecordDriveFiles.status, "needs_choice")))
+      .orderBy(desc(projectRecordDriveFiles.updatedAt))
+      .limit(500)
+    return {
+      success: true,
+      data: rows.map((row) => ({
+        projectId: row.projectId,
+        projectLabel: projectNumberAndName({ name: row.projectName, projectNumber: row.projectNumber }),
+        recordType: row.recordType,
+        recordTypeLabel: PAPER_TRAIL_RECORDS[row.recordType].label,
+        recordId: row.recordId,
+        existingFile:
+          row.existingFileId && row.existingFileName ? { name: row.existingFileName, url: driveFileUrl(row.existingFileId) } : null,
+      })),
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to load records waiting for a choice." }
   }
 }
