@@ -1,6 +1,7 @@
 import { and, count, eq, max } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectOperations, projectPurchaseOrderLines } from "@/db/schema"
+import { recordNumberKeys } from "@/lib/paper-trail/duplicates"
 import type { LoadedPaperTrailRecord } from "@/lib/paper-trail/types"
 
 export async function loadPurchaseOrderRecord(
@@ -23,5 +24,6 @@ export async function loadPurchaseOrderRecord(
     version: [order.updatedAt, lines?.count ?? 0, lines?.latest ?? ""].join("|"),
     fileBaseName: `PO ${number}${order.title ? ` - ${order.title}` : ""}`,
     subfolders: [],
+    duplicateKeys: recordNumberKeys(order.number, ["PO", "Purchase Order"]),
   }
 }

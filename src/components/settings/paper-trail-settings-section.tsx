@@ -19,6 +19,7 @@ import {
   paperTrailSettingsSchema,
   type PaperTrailSettings,
 } from "@/lib/feature-settings/registry"
+import { PaperTrailChoices } from "@/components/settings/paper-trail-choices"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
 const DEFAULTS = FEATURE_SETTINGS["paper-trail"].defaults
@@ -247,6 +248,7 @@ export function PaperTrailSettingsSection(): React.ReactElement {
           )}
         </form>
       ) : null}
+      <PaperTrailChoices />
     </section>
   )
 }

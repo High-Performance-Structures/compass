@@ -7,6 +7,7 @@ import {
   PAY_APPLICATION_RECEIPTS_FOLDER,
   payApplicationFolderName,
 } from "@/lib/shop-tickets/model"
+import { recordNumberKeys } from "@/lib/paper-trail/duplicates"
 import type { LoadedPaperTrailRecord } from "@/lib/paper-trail/types"
 
 /**
@@ -46,5 +47,6 @@ export async function loadShopTicketRecord(
           { name: PAY_APPLICATION_RECEIPTS_FOLDER, alternatives: LEGACY_RECEIPTS_FOLDER_NAMES },
         ]
       : [],
+    duplicateKeys: recordNumberKeys(ticket.number, ["Shop Ticket"]),
   }
 }

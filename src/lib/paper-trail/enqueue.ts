@@ -30,7 +30,7 @@ export async function markPaperTrailDue(
       FROM projects p
       WHERE p.id = ${input.projectId} AND p.organization_id IS NOT NULL
       ON CONFLICT (record_type, record_id) DO UPDATE SET
-        status = CASE WHEN status = 'removed' THEN 'removed' ELSE 'pending' END,
+        status = CASE WHEN status IN ('removed', 'needs_choice', 'kept_existing') THEN status ELSE 'pending' END,
         due_at = excluded.due_at,
         changed_at = excluded.changed_at,
         attempts = 0,

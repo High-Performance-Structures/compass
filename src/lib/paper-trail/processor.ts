@@ -9,7 +9,8 @@ import {
 import { parseFeatureSettings, type PaperTrailSettings } from "@/lib/feature-settings/registry"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
-import { internalDomainSet, resolveRecordFolder, type PaperTrailDrive } from "@/lib/paper-trail/folders"
+import { findExistingCopy } from "@/lib/paper-trail/duplicates"
+import { internalDomainSet, listFolderFiles, resolveRecordFolder, type PaperTrailDrive } from "@/lib/paper-trail/folders"
 import { PAPER_TRAIL_RECORDS, paperTrailAllows } from "@/lib/paper-trail/record-types"
 import { sweepPaperTrailChanges } from "@/lib/paper-trail/sweep"
 import { renderRecordCopyPdf } from "@/lib/paper-trail/render"
@@ -193,6 +194,35 @@ async function syncRecord(
     if (!folder.ok) {
       await failRow(db, row, folder.error, now)
       return "failed"
+    }
+    // First copy only: if someone already saved this record by hand, hold
+    // and let staff choose instead of writing a duplicate beside it.
+    if (!row.driveFileId && !row.allowDuplicate && record.duplicateKeys.length > 0) {
+      const [files, compassRows] = await Promise.all([
+        listFolderFiles(org.drive, folder.folderId),
+        db
+          .select({ fileId: projectRecordDriveFiles.driveFileId })
+          .from(projectRecordDriveFiles)
+          .where(eq(projectRecordDriveFiles.driveFolderId, folder.folderId)),
+      ])
+      const compassIds = new Set(compassRows.flatMap((item) => (item.fileId ? [item.fileId] : [])))
+      const existing = findExistingCopy(files, record.duplicateKeys, compassIds)
+      if (existing) {
+        await db
+          .update(projectRecordDriveFiles)
+          .set({
+            status: "needs_choice",
+            existingFileId: existing.id,
+            existingFileName: existing.name,
+            driveFolderId: folder.folderId,
+            inPrivateFolder: folder.heldPrivate,
+            attempts: 0,
+            lastError: null,
+            updatedAt: now.toISOString(),
+          })
+          .where(eq(projectRecordDriveFiles.id, row.id))
+        return "unchanged"
+      }
     }
     const pdf = await renderRecordCopyPdf(env, { recordType: row.recordType, recordId: row.recordId, projectId: row.projectId })
     const blob = new Blob([pdf], { type: "application/pdf" })
