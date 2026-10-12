@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gt, isNull, ne, or, sql } from "drizzle-orm"
+import { and, asc, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
@@ -194,6 +194,31 @@ export async function authorizeListeningRoomSync(
   }
 }
 
+/** How recently a listener's room must have checked in to count as listening. */
+const LISTENING_PRESENCE_WINDOW_MS = 150_000
+const LISTENING_PRESENCE_WRITE_INTERVAL_MS = 25_000
+
+/** Each poll from an open room marks its listener as present. */
+async function recordListeningPresence(context: ListeningContext): Promise<void> {
+  if (isDemoUser(context.user.id)) return
+  const room = await roomForChannel(context.db, context.channel.id)
+  if (!room) return
+  const now = new Date()
+  await context.db
+    .update(listeningRoomParticipants)
+    .set({ updatedAt: now.toISOString() })
+    .where(
+      and(
+        eq(listeningRoomParticipants.roomId, room.id),
+        eq(listeningRoomParticipants.userId, context.user.id),
+        lt(
+          listeningRoomParticipants.updatedAt,
+          new Date(now.getTime() - LISTENING_PRESENCE_WRITE_INTERVAL_MS).toISOString()
+        )
+      )
+    )
+}
+
 async function canControlPlayback(
   context: ListeningContext,
   room: { readonly id: string; readonly hostUserId: string }
@@ -258,6 +283,7 @@ async function roomSnapshot(
       .select({
         userId: listeningRoomParticipants.userId,
         preferredProvider: listeningRoomParticipants.preferredProvider,
+        updatedAt: listeningRoomParticipants.updatedAt,
         displayName: users.displayName,
         email: users.email,
       })
@@ -299,8 +325,15 @@ async function roomSnapshot(
     playedAt: row.playedAt,
     links: linksByItem.get(row.id) ?? [],
   }))
-  const participants: ListeningParticipantData[] = participantRows.map(
-    (row) => ({
+  // People stay participants until they leave, but only those whose room
+  // checked in recently count as listening right now.
+  const activeSince = Date.now() - LISTENING_PRESENCE_WINDOW_MS
+  const participants: ListeningParticipantData[] = participantRows
+    .filter(
+      (row) =>
+        row.userId === context.user.id || Date.parse(row.updatedAt) >= activeSince
+    )
+    .map((row) => ({
       userId: row.userId,
       displayName: displayName(row),
       preferredProvider:
@@ -332,12 +365,12 @@ async function roomSnapshot(
     queue,
     participants,
     currentUserId: context.user.id,
-    currentUserJoined: participants.some(
+    currentUserJoined: participantRows.some(
       (participant) => participant.userId === context.user.id
     ),
     // Anyone who has joined the room shares the playback controls.
     canControl:
-      participants.some((participant) => participant.userId === context.user.id) ||
+      participantRows.some((participant) => participant.userId === context.user.id) ||
       room.hostUserId === context.user.id ||
       canModerate,
     canModerate,
@@ -364,6 +397,7 @@ export async function getListeningRoom(
     const parsed = channelIdSchema.safeParse(channelId)
     if (!parsed.success) return { success: false, error: "Invalid channel" }
     const context = await listeningContext(parsed.data)
+    await recordListeningPresence(context)
     return { success: true, data: { room: await roomSnapshot(context) } }
   } catch (error) {
     return { success: false, error: actionError(error, "Failed to load listening room") }

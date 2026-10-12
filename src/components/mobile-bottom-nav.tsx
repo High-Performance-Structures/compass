@@ -1,5 +1,6 @@
 "use client"
 
+import { isListeningRoomWindowPath } from "@/lib/listening-room"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -95,6 +96,9 @@ export function MobileBottomNav({
     if (path === "/dashboard") return pathname === "/dashboard"
     return pathname.startsWith(path)
   }
+
+  // The popped-out Listening Room window is only for music, not navigation.
+  if (isListeningRoomWindowPath(pathname)) return null
 
   return (
     <nav

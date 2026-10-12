@@ -10,6 +10,7 @@ import {
   useChatPanel,
 } from "./chat-provider"
 import { isNative } from "@/lib/native/platform"
+import { isListeningRoomWindowPath } from "@/lib/listening-room"
 import { prefetchWhenIdle } from "@/lib/client/prefetch-when-idle"
 
 // The chat view brings markdown, code highlighting, and diagram rendering.
@@ -130,7 +131,7 @@ export function ChatPanelShell() {
   // Field Mode has its own company and project messaging interface. Keeping
   // the AI panel out of this route prevents the two communication tools from
   // appearing to be the same feature in the native app.
-  if (pathname.startsWith("/dashboard/field")) return null
+  if (pathname.startsWith("/dashboard/field") || isListeningRoomWindowPath(pathname)) return null
 
   return (
     <>

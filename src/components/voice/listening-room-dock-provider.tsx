@@ -3,6 +3,7 @@
 import * as React from "react"
 import { usePathname } from "next/navigation"
 import { ListeningRoom } from "@/components/voice/listening-room"
+import { isListeningRoomWindowPath } from "@/lib/listening-room"
 
 const DOCK_STORAGE_KEY = "compass-listening-room-dock"
 
@@ -14,6 +15,16 @@ type DockedRoom = {
 type ListeningRoomDockContextValue = {
   readonly openRoom: (room: DockedRoom) => void
 }
+
+type ListeningRoomSlotValue = {
+  readonly room: DockedRoom | null
+  readonly expanded: boolean
+  readonly setExpanded: (expanded: boolean) => void
+  readonly onJoinedChange: (joined: boolean) => void
+  readonly onDismiss: () => void
+}
+
+const ListeningRoomSlotContext = React.createContext<ListeningRoomSlotValue | null>(null)
 
 const ListeningRoomDockContext =
   React.createContext<ListeningRoomDockContextValue | null>(null)
@@ -49,9 +60,9 @@ function writeDockedRoom(room: DockedRoom | null): void {
 }
 
 /**
- * Hosts the Listening Room inside the dashboard so music keeps playing while
- * people move between pages. Collapsed, it is the mini player; the room is only
- * mounted for someone who opened or joined it, so nobody else polls for it.
+ * Keeps the Listening Room open across dashboard pages so music keeps playing.
+ * The room is only mounted for someone who opened or joined it, so nobody else
+ * polls for it.
  */
 export function ListeningRoomDockProvider({
   enabled,
@@ -64,7 +75,7 @@ export function ListeningRoomDockProvider({
   const [expanded, setExpanded] = React.useState(false)
   // The pop-out window renders its own room; a dock there would play twice.
   const pathname = usePathname()
-  const active = enabled && !pathname.endsWith("/listening-room")
+  const active = enabled && !isListeningRoomWindowPath(pathname)
 
   React.useEffect(() => {
     if (active) setRoom(readDockedRoom())
@@ -86,22 +97,42 @@ export function ListeningRoomDockProvider({
   }, [])
 
   const value = React.useMemo(() => ({ openRoom }), [openRoom])
+  const slot = React.useMemo<ListeningRoomSlotValue>(
+    () => ({
+      room: active ? room : null,
+      expanded,
+      setExpanded,
+      onJoinedChange: handleJoinedChange,
+      onDismiss: handleDismiss,
+    }),
+    [active, room, expanded, handleJoinedChange, handleDismiss]
+  )
 
   return (
     <ListeningRoomDockContext.Provider value={value}>
-      {children}
-      {active && room ? (
-        <ListeningRoom
-          key={room.channelId}
-          channelId={room.channelId}
-          channelName={room.channelName}
-          expanded={expanded}
-          onExpandedChange={setExpanded}
-          onJoinedChange={handleJoinedChange}
-          onDismiss={handleDismiss}
-        />
-      ) : null}
+      <ListeningRoomSlotContext.Provider value={slot}>{children}</ListeningRoomSlotContext.Provider>
     </ListeningRoomDockContext.Provider>
+  )
+}
+
+/**
+ * Where the room renders: beside the page content (like Ask Jarvis), so the
+ * open room pushes the page over instead of covering it. Minimized, the same
+ * element becomes the floating mini player, so the music never restarts.
+ */
+export function ListeningRoomPanel(): React.ReactElement | null {
+  const slot = React.useContext(ListeningRoomSlotContext)
+  if (!slot?.room) return null
+  return (
+    <ListeningRoom
+      key={slot.room.channelId}
+      channelId={slot.room.channelId}
+      channelName={slot.room.channelName}
+      expanded={slot.expanded}
+      onExpandedChange={slot.setExpanded}
+      onJoinedChange={slot.onJoinedChange}
+      onDismiss={slot.onDismiss}
+    />
   )
 }
 

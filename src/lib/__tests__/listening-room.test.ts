@@ -5,6 +5,7 @@ import {
   findPreferredMusicLink,
   findMatchingPlaylistRun,
   formatListeningPosition,
+  isListeningRoomWindowPath,
   listeningPlaybackPositionMs,
   musicPlaybackTarget,
   musicProviderFromUrl,
@@ -251,5 +252,13 @@ describe("song details from embeds", () => {
         authorName: "Some Producer",
       })
     ).toEqual({ title: "Night Drive - Extended Mix", artist: "Some Producer" })
+  })
+})
+
+describe("listening room window path", () => {
+  it("matches only the popped-out room page", () => {
+    expect(isListeningRoomWindowPath("/dashboard/conversations/voice-1/listening-room")).toBe(true)
+    expect(isListeningRoomWindowPath("/dashboard/conversations/voice-1")).toBe(false)
+    expect(isListeningRoomWindowPath("/dashboard/conversations/voice-1/meeting")).toBe(false)
   })
 })

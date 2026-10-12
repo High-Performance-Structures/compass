@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   ExternalLink,
   Link2,
+  ListPlus,
   Loader2,
   MoreHorizontal,
   Play,
@@ -178,12 +179,14 @@ export function ListeningQueue({
   onPlayNow,
   onRemove,
   onAddLink,
+  onAddToPlaylist,
 }: {
   readonly room: ListeningRoomSnapshot
   readonly busy: boolean
   readonly onPlayNow: (track: ListeningQueueItemData) => void
   readonly onRemove: (track: ListeningQueueItemData) => void
   readonly onAddLink: (track: ListeningQueueItemData, url: string) => Promise<boolean>
+  readonly onAddToPlaylist: (track: ListeningQueueItemData) => void
 }): React.ReactElement {
   const [linkTrackId, setLinkTrackId] = React.useState<string | null>(null)
   const [linkUrl, setLinkUrl] = React.useState("")
@@ -295,6 +298,9 @@ export function ListeningQueue({
                           </DropdownMenuItem>
                         ) : null
                       })}
+                      <DropdownMenuItem onSelect={() => onAddToPlaylist(track)}>
+                        <ListPlus /> Add to playlist…
+                      </DropdownMenuItem>
                       {room.currentUserJoined ? (
                         <DropdownMenuItem
                           onSelect={() => {
