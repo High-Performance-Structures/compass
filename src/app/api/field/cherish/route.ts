@@ -5,6 +5,7 @@ import {
   getCherishPulseTeamStream,
   submitCherishPulseResponse,
 } from "@/app/actions/cherish-pulse"
+import { getActiveCherishStories } from "@/app/actions/cherish-stories"
 import { toFieldCherishRecognitions } from "@/lib/field/cherish-recognition"
 import {
   cherishResponseTypeSchema,
@@ -21,15 +22,25 @@ const requestSchema = z.object({
 
 export async function GET(): Promise<Response> {
   try {
-    const result = await getCherishPulseTeamStream()
+    const [result, stories] = await Promise.all([
+      getCherishPulseTeamStream(),
+      getActiveCherishStories(),
+    ])
     if (!result.success) {
       return NextResponse.json(result, { status: 403 })
     }
+    // Same rule as the web dashboard: a story is new until this person views
+    // it, and only within the 24-hour story window.
+    const newIds = new Set(
+      stories.success
+        ? stories.data.filter((story) => story.viewedAt === null).map((story) => story.id)
+        : [],
+    )
 
     return NextResponse.json(
       {
         success: true,
-        items: toFieldCherishRecognitions(result.data),
+        items: toFieldCherishRecognitions(result.data, newIds),
       },
       {
         headers: {

@@ -357,10 +357,14 @@ function todayView(): string {
   const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
   const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
-  const latestRecognition = cherishRecognitions[0]
+  // Like the web dashboard: the spotlight is for something new; once viewed it
+  // folds down to a quiet replay link.
+  const latestRecognition = cherishRecognitions.find((recognition) => recognition.isNew)
   const cherishSpotlight = online && latestRecognition
-    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"}${latestRecognition.audienceScope === "user" ? " · Just for you" : ""} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
-    : ""
+    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>New CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"}${latestRecognition.audienceScope === "user" ? " · Just for you" : ""} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
+    : cherishRecognitions.length > 0
+      ? `<button id="today-cherish" class="cherish-replay" type="button">${fieldIcon("cherish", "cherish-replay-icon")}Today’s CHERISH · Replay</button>`
+      : ""
   return cherishSpotlight + sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
 
@@ -690,6 +694,7 @@ function bindEvents(): void {
     if (isTab(button.dataset.tab)) activeTab = button.dataset.tab
     render()
     if (activeTab === "chat" && online) void refreshProjectPacket()
+    if (activeTab === "cherish") void markCherishViewed()
     if (activeTab === "cherish" && online) void refreshCherishRecognition()
   }))
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
@@ -1325,6 +1330,7 @@ async function refreshCherishRecognition(force = false): Promise<void> {
     }
     cherishRecognitions = result.data.items
     lastCherishRecognitionRefreshAt = Date.now()
+    if (activeTab === "cherish") void markCherishViewed()
   } catch (error) {
     cherishRecognitionError =
       error instanceof Error
@@ -1774,8 +1780,30 @@ async function openInBrowser(): Promise<void> {
 
 function openCherish(): void {
   activeTab = "cherish"
+  void markCherishViewed()
   render()
   if (online) void refreshCherishRecognition()
+}
+
+// Opening CHERISH counts as viewing what is new, as on the web dashboard. If
+// the request fails, the next refresh simply shows the story as new again.
+async function markCherishViewed(): Promise<void> {
+  const ids = cherishRecognitions.filter((recognition) => recognition.isNew).map((recognition) => recognition.id)
+  if (ids.length === 0) return
+  cherishRecognitions = cherishRecognitions.map((recognition) => (
+    recognition.isNew ? { ...recognition, isNew: false } : recognition
+  ))
+  if (!online) return
+  try {
+    await fieldHttp.post({
+      url: `${LIVE_URL}/api/field/cherish/viewed`,
+      headers: { "Content-Type": "application/json" },
+      data: { ids },
+      responseType: "json",
+    })
+  } catch {
+    // Left for the next refresh.
+  }
 }
 
 class SessionExpiredError extends Error {
