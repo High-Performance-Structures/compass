@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { IconFolderPlus, IconRefresh } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { provisionProjectDriveFolder } from "@/app/actions/projects"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Button } from "@/components/ui/button"
 
 /**
@@ -37,20 +38,22 @@ export function ProjectDriveFolderButton({
   }
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={pending}
-      onClick={create}
-      className="print:hidden"
-    >
-      {pending ? (
-        <IconRefresh className="size-4 animate-spin" />
-      ) : (
-        <IconFolderPlus className="size-4" />
-      )}
-      {pending ? "Creating…" : "Create Drive folder"}
-    </Button>
+    <div className="flex items-center gap-1 print:hidden">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={pending}
+        onClick={create}
+      >
+        {pending ? (
+          <IconRefresh className="size-4 animate-spin" />
+        ) : (
+          <IconFolderPlus className="size-4" />
+        )}
+        {pending ? "Creating…" : "Create Drive folder"}
+      </Button>
+      <ContextualHelpBeacon topicId="projects.navigation.create-drive-folder" />
+    </div>
   )
 }

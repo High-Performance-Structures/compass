@@ -9,6 +9,7 @@ import {
   startAccountDeletionProcessing,
   type AdminAccountDeletionRequest,
 } from "@/app/actions/account-deletion-admin"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -100,7 +101,10 @@ export function AccountDeletionRequestsCard(): React.ReactElement | null {
   return (
     <section className="space-y-3 border-t pt-6">
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold">Account deletion requests</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">Account deletion requests</h3>
+          <ContextualHelpBeacon topicId="settings.company.account-deletion-requests" />
+        </div>
         <p className="text-xs text-muted-foreground">
           Requests must be completed within 30 days. Before completing one,
           check whether any of the person&apos;s records must be kept for

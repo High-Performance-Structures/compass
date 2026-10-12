@@ -12,6 +12,7 @@ import {
 import { getNuTechOrderDashboard } from "@/app/actions/nutech-orders"
 import { getBracingInventory } from "@/app/actions/nutech-bracing"
 import { BracingInventoryPanel } from "@/components/nutech/bracing-inventory"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { nuTechOrderStatusLabel } from "@/lib/nutech/workflow"
@@ -40,6 +41,7 @@ export default async function NuTechOrdersPage(): Promise<React.ReactElement> {
         title="Nu-Tech Orders"
         actions={
           <>
+            <ContextualHelpBeacon topicId="nutech.orders.sales" />
             <Badge variant="secondary">{activeOrders.length} active</Badge>
             <Badge variant="outline">{orders.length} N projects</Badge>
           </>

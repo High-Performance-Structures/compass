@@ -4,6 +4,7 @@ import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { IconTool } from "@tabler/icons-react"
 
 import { getProjectNuTechOrderWorkspace } from "@/app/actions/nutech-orders"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { getProjectBracingRentals } from "@/app/actions/nutech-bracing"
 import { NuTechBracingRentals } from "@/components/nutech/nutech-bracing-rentals"
 import { getNuTechManufacturerName } from "@/app/actions/nutech-airlite-po"
@@ -37,12 +38,15 @@ export default async function ProjectNuTechOrderPage({
           .filter(Boolean)
           .join(" · ")}
         actions={
-          <ProjectContextSwitcher
-            currentProjectId={id}
-            targetSection="nutech"
-            placeholder="Switch Nu-Tech project..."
-            className="w-full sm:w-[280px]"
-          />
+          <>
+            <ContextualHelpBeacon topicId="nutech.orders.stepper" />
+            <ProjectContextSwitcher
+              currentProjectId={id}
+              targetSection="nutech"
+              placeholder="Switch Nu-Tech project..."
+              className="w-full sm:w-[280px]"
+            />
+          </>
         }
       />
       <NuTechOrderSwitcher

@@ -7,12 +7,12 @@
   "summary": "Email or call Compass Help with a clear problem report while protecting project, account, and financial data.",
   "contextSummary": "Stop risky retries, preserve the exact error and context, then contact compasshelp@hps-colorado.com or 719-896-6149 without sharing credentials.",
   "category": "Support",
-  "tags": ["help", "feedback", "bug report", "permissions", "authentication", "support"],
+  "tags": ["help", "feedback", "bug report", "permissions", "authentication", "support", "account deletion", "privacy"],
   "audiences": ["staff", "owner", "subcontractor", "supplier", "guest"],
   "permissions": ["help:read"],
-  "routes": ["/dashboard/settings"],
+  "routes": ["/dashboard/settings", "/dashboard/account"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-12"
 }
 ---
 
@@ -49,6 +49,12 @@ For access requests, include the feature and whether you need to view, create, e
 For sign-in or invitation problems, include the email used, platform, time, exact message, and whether the link stayed on the same device/browser. Do not include the secret link or token.
 
 For offline sync, preserve the device data and report the project, item, time, waiting count, and connection state. For Sage, report the Compass record, project, company, amount, status, and whether someone may have entered the same transaction directly.
+
+## Request Account Deletion {#account-deletion}
+
+Open **Account → Delete Account**, choose **Request account deletion**, type `DELETE`, and review the confirmation before submitting. Your access remains active while the request is pending, and Compass will review it within 30 days. You can use **Cancel request** until an administrator starts processing it; processing and completed requests cannot be cancelled from the account page.
+
+Deletion removes the sign-in and removable personal data. Project, financial, contractual, security, and legal history that must be retained remains and is de-identified where possible. Use **Learn about deletion** for the public policy details. Contact Compass Help before submitting if you need a copy of information or do not understand what the retained project history includes.
 
 ## Escalate Urgent Issues {#urgent-issues}
 

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { IconReceipt } from "@tabler/icons-react"
 
 import { getShopTicketWorkspace } from "@/app/actions/shop-tickets"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
@@ -28,12 +29,15 @@ export default async function ProjectShopTicketsPage({
           eyebrow={[workspace.project.projectNumber, workspace.project.name].filter(Boolean).join(" · ")}
           title="Shop Tickets"
           actions={
-            <ProjectContextSwitcher
-              currentProjectId={id}
-              targetSection="shop-tickets"
-              placeholder="Switch project..."
-              className="w-full sm:w-[280px]"
-            />
+            <>
+              <ContextualHelpBeacon topicId="shop.tickets.create-draft" />
+              <ProjectContextSwitcher
+                currentProjectId={id}
+                targetSection="shop-tickets"
+                placeholder="Switch project..."
+                className="w-full sm:w-[280px]"
+              />
+            </>
           }
         />
         <ShopTicketsWorkspace projectId={id} workspace={workspace} />

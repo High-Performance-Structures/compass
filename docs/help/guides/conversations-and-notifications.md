@@ -7,10 +7,10 @@
   "summary": "Use project channels, project email, private drafts, attachments, Talk, Message Desk follow-up, texts, and notifications.",
   "contextSummary": "Choose the correct project or private communication lane, confirm who can see it, and keep project email drafts, sent history, attachments, and delivery status with the project record.",
   "category": "Communication",
-  "tags": ["conversations", "messages", "project email", "drafts", "sent", "attachments", "Bcc", "Talk", "video", "microphone", "transcript", "sms", "texting", "Message Desk", "announcements", "mentions", "notifications", "channels", "Jarvis"],
+  "tags": ["conversations", "messages", "project email", "drafts", "sent", "attachments", "Bcc", "Talk", "video", "microphone", "transcript", "Listening Room", "music", "queue", "playlists", "sms", "texting", "Message Desk", "announcements", "mentions", "notifications", "channels", "Jarvis"],
   "audiences": ["staff"],
   "permissions": ["help:read", "channels:read"],
-  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
+  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/conversations/[channelId]/listening-room", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
   "lastReviewed": "2026-10-12"
 }
@@ -99,6 +99,14 @@ Read the call's recovery message when a device fails. Check browser and operatin
 ## Use the Notification Inbox {#notification-inbox}
 
 The bell is an inbox for unread and recent items. Open a notification to go to its source, or use its read control. Reading a supported message, RFI, or other linked item also clears its corresponding unread notification, so the bell and the dashboard's **Messages** layer reflect what still needs attention. An urgent unread reminder can turn the bell red. Reading the reminder clears its unread alert; completing the underlying work is a separate action.
+
+## Use the Listening Room {#listening-room}
+
+Open a supported conversation channel's **Listening Room** when the team wants synchronized music. If the room is quiet, paste an optional YouTube or SoundCloud link and choose **Start the music**; the first song starts the room. If another person already started it, choose **Join & listen**. The listener count and **In sync** indicator show the shared room state.
+
+Play, pause, restart, skip, and **Play now** change the music for everyone. **Your volume** changes only your device. Add a supported link to the queue, remove an incorrect item, add an alternate provider link, or use a song's menu to add it to a playlist. The room stays beside the page on larger screens and fills the screen on phones. Minimize it to the mini player or use **Pop out into its own window** when offered. **Leave the room** exits only your session; a host or moderator's **Close the room for everyone** stops playback and clears the shared queue after confirmation.
+
+Use the **Playlists** tab to create an empty playlist or start one from the current queue. Open a playlist to play it now, add it to the queue, add or remove songs, or move songs between playlists. The playlist owner or a moderator can rename it, replace it with the current queue, or delete it. Replacement and deletion require confirmation; saved playlists remain when the room itself closes.
 
 ## Ask Jarvis About Conversations {#jarvis-messages}
 
