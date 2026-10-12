@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { ShopTicketSageHours, type SageHoursClaim, type SageHoursSelection } from "@/components/projects/shop-ticket-sage-hours"
 import type { ShopTicketRateKind } from "@/db/schema-shop-tickets"
 import type { ShopTicketWithLines } from "@/lib/shop-tickets/data"
 import {
@@ -81,6 +82,15 @@ export function ShopTicketEditor({
       : [blankLine()],
   )
 
+  // Sage timecard hours this ticket bills; null until the Sage panel has loaded them.
+  const [sageClaims, setSageClaims] = React.useState<ReadonlyMap<string, SageHoursClaim> | null>(null)
+  const laborCodes = new Set(lines.filter((line) => line.rateKind === "labor").map((line) => line.costCode))
+  // Claims only count while the ticket still has a labor line with their cost code.
+  const effectiveClaims =
+    sageClaims === null
+      ? null
+      : new Map([...sageClaims].flatMap(([lineId, claim]) => (claim.costCode && laborCodes.has(claim.costCode) ? [[lineId, claim.hours] as const] : [])))
+
   const budget = React.useMemo(() => budgetCostCodeSet(workspace.budgetCostCodes), [workspace.budgetCostCodes])
   const costCodeOptions = React.useMemo(
     () =>
@@ -109,6 +119,40 @@ export function ShopTicketEditor({
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)))
   }
 
+  function addSageHours(selections: readonly SageHoursSelection[]): void {
+    setLines((current) => {
+      let next = current.filter((line) => line.costCode !== "" || line.hours.trim() !== "")
+      for (const selection of selections) {
+        const existing = next.find((line) => line.rateKind === "labor" && line.costCode === selection.costCode)
+        if (existing) {
+          const hours = (Number.parseFloat(existing.hours) || 0) + selection.hours
+          next = next.map((line) => (line.key === existing.key ? { ...line, hours: String(Math.round(hours * 100) / 100) } : line))
+        } else {
+          next = [
+            ...next,
+            {
+              key: crypto.randomUUID(),
+              costCode: selection.costCode,
+              description: descriptionFor.get(selection.costCode) ?? selection.sageCostCodeName ?? "",
+              rateKind: "labor",
+              hours: String(selection.hours),
+            },
+          ]
+        }
+      }
+      return next.length > 0 ? next : [blankLine()]
+    })
+    setSageClaims((current) => {
+      const next = new Map(current ?? [])
+      for (const selection of selections) {
+        for (const claim of selection.claims) {
+          next.set(claim.laborLineId, { hours: (next.get(claim.laborLineId)?.hours ?? 0) + claim.hours, costCode: selection.costCode })
+        }
+      }
+      return next
+    })
+  }
+
   function input(): ShopTicketInput {
     const number = Number.parseInt(payAppNumber, 10)
     const application = workspace.payApplications.find((option) => option.number === number)
@@ -128,6 +172,7 @@ export function ShopTicketEditor({
           rateKind: line.rateKind,
           hours: Number.parseFloat(line.hours),
         })),
+      laborClaims: effectiveClaims ? [...effectiveClaims].map(([laborLineId, hours]) => ({ laborLineId, hours })) : undefined,
     }
   }
 
@@ -318,6 +363,16 @@ export function ShopTicketEditor({
           Add line
         </Button>
       </div>
+
+      <ShopTicketSageHours
+        projectId={projectId}
+        ticketId={ticket?.id ?? null}
+        laborFrom={laborFrom}
+        laborTo={laborTo}
+        claims={effectiveClaims}
+        onLoadedClaims={setSageClaims}
+        onAdd={addSageHours}
+      />
 
       {!workspace.rates.labor || !workspace.rates.machine ? (
         <p className="text-sm text-muted-foreground">

@@ -1,11 +1,13 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
-import { shopTicketLines, shopTickets } from "@/db/schema-shop-tickets"
+import { sageLaborLines, shopTicketLaborClaims, shopTicketLines, shopTickets } from "@/db/schema-shop-tickets"
+import { compassCostCodeFromSage } from "@/lib/shop-tickets/sage-labor"
+import { chunkD1Rows, chunkD1Values } from "@/lib/d1-query"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -78,6 +80,14 @@ const ticketInputSchema = z.object({
       }),
     )
     .max(80, "A ticket can hold up to 80 lines."),
+  /**
+   * Sage timecard hours this ticket bills, by timecard line. Left out, the
+   * ticket's existing claims stay as they are.
+   */
+  laborClaims: z
+    .array(z.object({ laborLineId: z.string().min(1).max(200), hours: z.number().positive().max(1000) }))
+    .max(2000)
+    .optional(),
 })
 
 export type ShopTicketInput = z.infer<typeof ticketInputSchema>
@@ -159,6 +169,55 @@ async function writeLines(db: Db, ticketId: string, lines: Extract<ReturnType<ty
   )
 }
 
+/**
+ * Replaces the Sage timecard hours this ticket bills. Each claim is capped at
+ * the hours not already on another (not void) ticket, and kept only when the
+ * ticket still has a labor line with that hour's cost code.
+ */
+async function writeLaborClaims(
+  db: Db,
+  orgId: string,
+  projectId: string,
+  ticketId: string,
+  claims: readonly { readonly laborLineId: string; readonly hours: number }[],
+  lines: Extract<ReturnType<typeof priceShopTicketLines>, { ok: true }>["lines"],
+  now: string,
+): Promise<void> {
+  await db.delete(shopTicketLaborClaims).where(eq(shopTicketLaborClaims.ticketId, ticketId))
+  const ids = [...new Set(claims.map((claim) => claim.laborLineId))]
+  if (ids.length === 0) return
+  const laborCodes = new Set(lines.filter((line) => line.rateKind === "labor").map((line) => line.costCode))
+  const laborLines = []
+  const others = []
+  for (const chunk of chunkD1Values(ids)) {
+    const [lineRows, otherRows] = await Promise.all([
+      db
+        .select()
+        .from(sageLaborLines)
+        .where(and(inArray(sageLaborLines.id, chunk), eq(sageLaborLines.projectId, projectId), eq(sageLaborLines.organizationId, orgId))),
+      db
+        .select({ lineId: shopTicketLaborClaims.laborLineId, hours: shopTicketLaborClaims.hours })
+        .from(shopTicketLaborClaims)
+        .innerJoin(shopTickets, eq(shopTickets.id, shopTicketLaborClaims.ticketId))
+        .where(and(inArray(shopTicketLaborClaims.laborLineId, chunk), ne(shopTickets.status, "void"))),
+    ])
+    laborLines.push(...lineRows)
+    others.push(...otherRows)
+  }
+  const billed = new Map<string, number>()
+  for (const other of others) billed.set(other.lineId, (billed.get(other.lineId) ?? 0) + other.hours)
+  const byId = new Map(laborLines.map((line) => [line.id, line]))
+  const rows = claims.flatMap((claim) => {
+    const line = byId.get(claim.laborLineId)
+    if (!line) return []
+    const code = compassCostCodeFromSage(line.sageCostCode, line.sageCostCodeName)
+    if (!code || !laborCodes.has(code)) return []
+    const hours = Math.min(claim.hours, Math.max(0, line.hours - (billed.get(line.id) ?? 0)))
+    return hours > 0 ? [{ ticketId, laborLineId: line.id, hours, createdAt: now }] : []
+  })
+  for (const chunk of chunkD1Rows(rows)) await db.insert(shopTicketLaborClaims).values(chunk)
+}
+
 function monthStart(date: string | null): string | null {
   return date ? `${date.slice(0, 7)}-01` : null
 }
@@ -195,6 +254,7 @@ export async function createShopTicket(projectId: string, raw: ShopTicketInput):
           updatedAt: now,
         })
         await writeLines(db, id, priced.lines, now)
+        if (input.laborClaims) await writeLaborClaims(db, orgId, projectId, id, input.laborClaims, priced.lines, now)
         revalidate(projectId)
         return { success: true, ticketId: id }
       } catch (error) {
@@ -235,6 +295,7 @@ export async function updateShopTicket(projectId: string, ticketId: string, raw:
       })
       .where(and(eq(shopTickets.id, ticketId), eq(shopTickets.status, "draft")))
     await writeLines(db, ticketId, priced.lines, now)
+    if (input.laborClaims) await writeLaborClaims(db, orgId, projectId, ticketId, input.laborClaims, priced.lines, now)
     revalidate(projectId)
     return { success: true, ticketId }
   } catch (error) {
