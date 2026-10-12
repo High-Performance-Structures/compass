@@ -435,7 +435,7 @@ export function MessageList({
                     </div>
                   ) : (
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={loadMoreMessages}
                       disabled={loading}
@@ -475,7 +475,7 @@ export function MessageList({
           type="button"
           variant="secondary"
           size="sm"
-          className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-lg border shadow-lg"
+          className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-lg border shadow-sm"
           onClick={() => scrollToNewest("smooth")}
           aria-label="Jump to newest messages"
         >

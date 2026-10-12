@@ -293,6 +293,26 @@ const upsert = db.transaction(() => {
     now,
   )
 
+  db.prepare(`INSERT INTO project_correspondence (id, organization_id, project_id, subject, created_at)
+    VALUES ('e2e-correspondence-001', 'demo-org-meridian', 'e2e-project-001', 'Quiet rows regression conversation', ?)
+    ON CONFLICT(id) DO NOTHING`).run(now)
+  const insertParticipant = db.prepare(`INSERT INTO correspondence_participants (id, conversation_id, user_id, name, email, role)
+    VALUES (?, 'e2e-correspondence-001', ?, ?, ?, 'staff') ON CONFLICT(id) DO NOTHING`)
+  insertParticipant.run('e2e-correspondence-person-001', 'demo-user-001', 'Demo User', 'demo@compass.build')
+  insertParticipant.run('e2e-correspondence-person-002', 'e2e-user-002', 'Field Tester', 'field@compass.build')
+  const insertCorrespondence = db.prepare(`INSERT INTO correspondence_messages
+    (id, conversation_id, author_user_id, author_name, source, body, sent_at, request_hash)
+    VALUES (?, 'e2e-correspondence-001', ?, ?, 'compass', ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
+  const insertRecipient = db.prepare(`INSERT INTO correspondence_recipients (id, message_id, user_id, name, kind, baseline)
+    VALUES (?, ?, 'demo-user-001', 'Demo User', ?, 1) ON CONFLICT(id) DO NOTHING`)
+  for (let index = 1; index <= 65; index += 1) {
+    const id = `e2e-correspondence-message-${String(index).padStart(3, '0')}`
+    const own = index % 2 === 1
+    insertCorrespondence.run(id, own ? 'demo-user-001' : 'e2e-user-002', own ? 'Demo User' : 'Field Tester',
+      `Correspondence history ${String(index).padStart(3, '0')}`, new Date(Date.now() - (66 - index) * 60_000).toISOString(), id)
+    insertRecipient.run(`${id}-recipient`, id, own ? 'author' : 'to')
+  }
+
   const overflowScheduleItems = [
     ["e2e-schedule-002", "Overflow schedule item two", 2],
     ["e2e-schedule-003", "Overflow schedule item three", 3],

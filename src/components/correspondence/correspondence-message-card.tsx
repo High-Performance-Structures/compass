@@ -3,6 +3,7 @@ import { CorrespondenceAttachmentRow } from "./correspondence-attachment"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import type {
   CorrespondenceMessage,
 } from "@/lib/correspondence/types"
@@ -20,11 +21,18 @@ export function MessageCard({ projectId, message, viewerId, editDisabled, onEdit
   const initials = message.authorName.split(" ").map((part) => part[0]).join("").slice(0, 2)
   const openable = !projectHistory && message.authorUserId !== viewerId && message.retractedAt === null
   const sourceSentLabel = unknownSourceSentLabel(message)
+  const isOwnMessage = message.authorUserId === viewerId
   // Observe the header so even messages taller than the viewport can be opened.
-  return <article id={`correspondence-message-${message.id}`} className="border p-4 scroll-mt-48">
-    <div data-correspondence-message-id={openable ? message.id : undefined} data-correspondence-message-edited-at={openable ? message.editedAt ?? undefined : undefined} className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><Avatar><AvatarFallback>{initials}</AvatarFallback></Avatar><div className="min-w-0"><p className="font-medium">{message.authorName}</p><p className="text-sm text-muted-foreground">{sourceSentLabel === null ? <time dateTime={message.sentAt}>{formatDate(message.sentAt)}</time> : <span title="Source-local timestamp; timezone not proven">Source time: {sourceSentLabel}</span>}{message.editedAt !== null && " · Edited"}{message.retractedAt !== null && " · Retracted"}</p></div></div><Badge variant={message.delivery === "imported" ? "outline" : "secondary"}>{message.emailDeliveryStatus ? emailStatusLabel(message.emailDeliveryStatus) : message.delivery === "imported" ? sourceName(message.source) : "Saved in Compass"}</Badge></div>
+  return <article id={`correspondence-message-${message.id}`} data-message-author={isOwnMessage ? "self" : "other"} className={cn("w-[92%] min-w-0 max-w-3xl scroll-mt-4 py-3 sm:w-[85%]", isOwnMessage && "ml-auto text-right")}>
+    <div data-correspondence-message-id={openable ? message.id : undefined} data-correspondence-message-edited-at={openable ? message.editedAt ?? undefined : undefined} className={cn("flex flex-wrap items-start justify-between gap-3", isOwnMessage && "flex-row-reverse")}>
+      <div className={cn("flex min-w-0 gap-3", isOwnMessage && "flex-row-reverse")}>
+        <Avatar className="shrink-0"><AvatarFallback>{initials}</AvatarFallback></Avatar>
+        <div className="min-w-0"><p className="break-words font-medium">{message.authorName}</p><p className="text-sm text-muted-foreground">{sourceSentLabel === null ? <time dateTime={message.sentAt}>{formatDate(message.sentAt)}</time> : <span title="Source-local timestamp; timezone not proven">Source time: {sourceSentLabel}</span>}{message.editedAt !== null && " · Edited"}{message.retractedAt !== null && " · Retracted"}</p></div>
+      </div>
+      <Badge variant={message.delivery === "imported" ? "outline" : "secondary"}>{message.emailDeliveryStatus ? emailStatusLabel(message.emailDeliveryStatus) : message.delivery === "imported" ? sourceName(message.source) : "Saved in Compass"}</Badge>
+    </div>
     <details className="mt-3 text-sm"><summary className="cursor-pointer text-muted-foreground">Original headers</summary><div className="mt-2 border-l-2 pl-3 text-muted-foreground"><p>From: {message.authorName}</p><p>To: {recipientNames(message)}</p>{message.emailBcc.length > 0 && <p>Bcc (only you can see this): {message.emailBcc.join(", ")}</p>}</div></details>
-    {message.retractedAt === null ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{message.body}</p> : <p className="mt-3 text-sm italic text-muted-foreground">This message was retracted.</p>}
+    {message.retractedAt === null ? <p className="mt-3 break-words whitespace-pre-wrap text-sm leading-6">{message.body}</p> : <p className="mt-3 text-sm italic text-muted-foreground">This message was retracted.</p>}
     {message.emailDeliveryStatus === "sent" && <p className="mt-3 text-xs text-muted-foreground">Email recipients can reply to this conversation. Replies written inside Compass stay with the internal project team; use New email to send another update outside Compass.</p>}
     {message.emailDeliveryStatus === "failed" && <p className="mt-3 text-xs text-muted-foreground">Delivery failed. The original sender can retry this saved email without changing its recipients or message.</p>}
     {(message.emailDeliveryStatus === "unknown" || message.emailDeliveryStatus === "dispatching") && <p className="mt-3 text-xs text-muted-foreground">Delivery may have occurred. Check the provider outcome before attempting another email.</p>}

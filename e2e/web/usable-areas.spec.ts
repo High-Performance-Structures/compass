@@ -750,7 +750,7 @@ test.describe("usable Compass areas", () => {
   test("project conversation history aligns messages and preserves navigation", async ({
     page,
   }, testInfo) => {
-    await page.setViewportSize({ width: 1366, height: 768 })
+    await page.setViewportSize(testInfo.project.name.startsWith("mobile") ? { width: 390, height: 844 } : { width: 1366, height: 768 })
     const path = "/dashboard/conversations/e2e-channel-001"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)
@@ -848,6 +848,30 @@ test.describe("usable Compass areas", () => {
 
     await page.getByRole("button", { name: "Jump to newest messages" }).click()
     await expect.poll(async () => (await newestEdge()).distance).toBeLessThanOrEqual(24)
+  })
+
+  test("project Messages opens newest, aligns quiet rows and preserves older history", async ({ page }, testInfo) => {
+    await page.setViewportSize(testInfo.project.name.startsWith("mobile") ? { width: 390, height: 844 } : { width: 1366, height: 768 })
+    const path = "/dashboard/projects/e2e-project-001/messages?conversationId=e2e-correspondence-001"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/projects/e2e-project-001/messages")
+    const viewport = page.locator("[data-correspondence-viewport]:visible").last()
+    await expect(viewport).toBeVisible()
+    await expect(viewport.locator('[data-message-author="self"]').last()).toHaveClass(/ml-auto/)
+    const distance = async () => viewport.evaluate(element => element.scrollHeight - element.scrollTop - element.clientHeight)
+    await expect.poll(distance).toBeLessThanOrEqual(24)
+    await viewport.evaluate(element => { element.scrollTop = 0 })
+    await expect(page.getByRole("button", { name: "Jump to newest messages" })).toBeVisible()
+    const before = await viewport.evaluate(element => ({ height: element.scrollHeight, top: element.scrollTop }))
+    await page.getByRole("button", { name: "Load earlier messages", exact: true }).click()
+    await expect(viewport.getByText("Correspondence history 001", { exact: true })).toBeAttached()
+    await expect.poll(() => viewport.evaluate(element => element.scrollTop)).toBeGreaterThan(before.top)
+    const after = await viewport.evaluate(element => ({ height: element.scrollHeight, top: element.scrollTop, width: element.clientWidth, contentWidth: element.scrollWidth }))
+    expect(Math.abs(after.top - (before.top + after.height - before.height))).toBeLessThan(24)
+    expect(after.contentWidth).toBeLessThanOrEqual(after.width + 1)
+    await page.getByRole("button", { name: "Jump to newest messages" }).click()
+    await expect.poll(distance).toBeLessThanOrEqual(24)
+    await page.screenshot({ path: testInfo.outputPath("correspondence-quiet-rows.png") })
   })
 
   test("schedule list exposes edit and selection actions", async ({ page }) => {
