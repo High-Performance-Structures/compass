@@ -185,7 +185,10 @@ export async function notifySquareAuthHealth(
       updatedAt: now.toISOString(),
     })
     .onConflictDoNothing()
-  const admins = await db
+  // Authentication incidents belong to the designated developer, regardless
+  // of their business role. Missing configuration must never alert all staff.
+  const recipientUserId = getJarvisEnvValue(env, "SQUARE_AUTH_NOTIFICATION_USER_ID")
+  const developer = await db
     .select({ userId: users.id, inApp: notificationPreferences.inAppEnabled })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
@@ -197,10 +200,10 @@ export async function notifySquareAuthHealth(
       and(
         eq(organizationMembers.organizationId, organizationId),
         eq(users.isActive, true),
-        inArray(users.role, ["admin", "secondary_admin"])
+        eq(users.id, recipientUserId ?? "")
       )
     )
-  const recipients = admins.filter((admin) => admin.inApp !== false)
+  const recipients = developer.filter((recipient) => recipient.inApp !== false)
   const heartbeats = await db
     .select()
     .from(feedbackServiceHealth)
