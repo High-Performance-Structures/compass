@@ -1,6 +1,7 @@
 import { App } from "@capacitor/app"
+import { AppLauncher } from "@capacitor/app-launcher"
 import { Browser } from "@capacitor/browser"
-import { Capacitor, CapacitorHttp } from "@capacitor/core"
+import { Capacitor, CapacitorHttp, type HttpOptions, type HttpResponse } from "@capacitor/core"
 import { FileViewer } from "@capacitor/file-viewer"
 import { Directory, Filesystem } from "@capacitor/filesystem"
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
@@ -34,6 +35,12 @@ import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
 import { conversationChannelIdFromNotificationHref } from "../src/lib/conversations/notification-route"
 import { fieldMessageHtml, isLongFieldMessage } from "../src/lib/field/message-format"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
+import { browserHandoffUrl } from "../src/lib/native/browser-handoff"
+import {
+  createSerialQueue,
+  nativeResponseRequiresAuthentication,
+  webResponseRequiresAuthentication,
+} from "./native-http"
 import {
   appendOptimisticDirectMessage,
   PROJECT_CONVERSATION_KEY,
@@ -62,6 +69,8 @@ const DOCUMENTS_KEY = "compass_field_documents_v1"
 const AUTH_STATE_KEY = "compass_native_auth_state_v1"
 const AUTH_VERIFIER_KEY = "compass_native_auth_verifier_v1"
 const PROFILE_KEY = "compass_field_profile_v1"
+const SESSION_EXPIRED_KEY = "compass_field_session_expired_v1"
+const SESSION_EXPIRED_MESSAGE = "Your Compass sign-in has ended. Sign in again to keep syncing. Work saved on this device is kept and will sync after you sign in."
 const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
 const FIELD_ATTACHMENT_DIRECTORY = "compass-field-attachments"
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
@@ -121,6 +130,10 @@ const app = document.querySelector<HTMLDivElement>("#app")
 let projects: Project[] = []
 let packet: Packet | null = null
 let profile: FieldUserProfile | null = null
+// Set when the server no longer accepts this device's session. Cached projects
+// stay readable offline, but Field Mode asks for sign-in instead of failing
+// every refresh with a generic download error.
+let sessionExpired = false
 let outbox: QueuedItem[] = []
 let documents: SavedDocument[] = []
 let activeTab: Tab = "today"
@@ -262,8 +275,8 @@ function sectionHead(title: string, note = ""): string {
 function empty(text: string): string { return `<div class="empty">${escapeHtml(text)}</div>` }
 
 function projectsView(): string {
-  if (projects.length === 0) {
-    if (profile) {
+  if (projects.length === 0 || sessionExpired) {
+    if (profile && !sessionExpired) {
       return sectionHead("Active projects") + `<div class="empty auth-empty"><p>No active projects are assigned to your Compass account yet.</p><div class="auth-actions"><button id="open-live-empty" class="secondary auth-button" type="button" ${online ? "" : "disabled"}>Open Full Compass</button></div></div>`
     }
     if (authMode === "password") {
@@ -281,7 +294,7 @@ function projectsView(): string {
     const googleSignIn = isIos
       ? `<p class="auth-note">Google sign-in is temporarily unavailable in the iPhone app. Use your Compass email and password.</p>`
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
-    return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}</div></div>`
+    return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}<button class="text-button" data-open-in-browser type="button" ${online ? "" : "disabled"}>Use Compass in your browser instead</button></div></div>`
   }
   return sectionHead("Active projects", "Filter by department or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
     <label class="field">Department<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All departments (${projects.length})</option>${projectCompanyOptions()}</select></label>
@@ -545,7 +558,7 @@ function settingsView(): string {
   const pushButton = pushStatus === "enabled" || pushStatus === "checking"
     ? ""
     : `<button id="enable-push" class="secondary" type="button">Try notification setup again</button>`
-  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Use Compass in your browser")}<div class="guide-copy"><p>Open the full Compass website in Safari, Chrome, or your default browser. Sign in there once; the app stays signed in separately.</p><button class="secondary" data-open-in-browser type="button" ${online ? "" : "disabled"}>Open in browser</button></div></div><div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
 }
 
 function view(): string {
@@ -665,6 +678,7 @@ function bindEvents(): void {
     render()
   })
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
+  document.querySelectorAll<HTMLButtonElement>("[data-open-in-browser]").forEach((button) => button.addEventListener("click", () => void openInBrowser()))
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#today-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
@@ -797,7 +811,7 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
   messageActionError = ""
   if (showProgress) render()
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       // CapacitorHttp uses the native URL cache on iOS. A unique URL plus
       // explicit request headers prevents a previous project packet from
       // hiding a newly delivered message or notification.
@@ -892,7 +906,7 @@ async function openNotification(button: HTMLButtonElement): Promise<void> {
 
 async function markNotificationRead(notificationId: string): Promise<void> {
   try {
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`,
       headers: { "Content-Type": "application/json" },
       data: {},
@@ -994,10 +1008,15 @@ async function uploadQueuedDailyLogAttachment(
   formData.set("capturedDate", item.payload.logDate)
   formData.set("photoKind", "progress")
 
-  const response = await fetch(
+  if (sessionExpired) throw new SessionExpiredError()
+  const response = await fieldRequestQueue(() => fetch(
     `${LIVE_URL}/api/projects/${encodeURIComponent(item.projectId)}/photos/upload`,
     { method: "POST", body: formData, credentials: "include" }
-  )
+  ))
+  if (webResponseRequiresAuthentication(response)) {
+    await markSessionExpired()
+    throw new SessionExpiredError()
+  }
   const responseBody: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const message =
@@ -1027,7 +1046,7 @@ async function syncDailyLogOutbox(): Promise<void> {
   try {
     syncedCount = await drainDailyLogOutbox(outbox, {
       createDailyLog: async (item) => {
-        const response = await CapacitorHttp.post({
+        const response = await fieldHttp.post({
           url: `${LIVE_URL}/api/field/daily-logs`,
           headers: { "Content-Type": "application/json" },
           data: { id: item.id, projectId: item.projectId, payload: item.payload },
@@ -1190,7 +1209,7 @@ async function syncCherishOutbox(): Promise<void> {
   try {
     for (const item of pending) {
       try {
-        const response = await CapacitorHttp.post({
+        const response = await fieldHttp.post({
           url: `${LIVE_URL}/api/field/cherish`,
           headers: { "Content-Type": "application/json" },
           data: {
@@ -1246,7 +1265,7 @@ async function refreshCherishRecognition(force = false): Promise<void> {
   cherishRecognitionError = ""
   if (activeTab === "cherish") render()
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       url: `${LIVE_URL}/api/field/cherish?refresh=${Date.now()}`,
       headers: {
         "Cache-Control": "no-cache",
@@ -1322,7 +1341,7 @@ async function syncChatOutbox(): Promise<void> {
   let syncedCount = 0
   try {
     for (const item of pending) {
-      const response = await CapacitorHttp.post({
+      const response = await fieldHttp.post({
         url: `${LIVE_URL}/api/field/conversations/message`,
         headers: { "Content-Type": "application/json" },
         data: item.payload,
@@ -1378,7 +1397,7 @@ async function persistPushToken(token: string): Promise<void> {
     if (platform !== "ios" && platform !== "android") {
       throw new Error("Push notifications require a native platform.")
     }
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/push/register`,
       headers: { "Content-Type": "application/json" },
       data: { token, platform },
@@ -1455,7 +1474,7 @@ async function startProjectChannel(): Promise<void> {
   messageActionError = ""
   render()
   try {
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/field/conversations/project`,
       headers: { "Content-Type": "application/json" },
       data: { projectId: packet.project.id },
@@ -1499,7 +1518,7 @@ async function sendDirectMessage(event: SubmitEvent): Promise<void> {
   messageActionError = ""
   render()
   try {
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/field/conversations/direct`,
       headers: { "Content-Type": "application/json" },
       data: { targetUserId, content },
@@ -1554,7 +1573,7 @@ async function browseDocumentFolder(folder: FieldDocument): Promise<void> {
   render()
 
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folder.id)}`,
       responseType: "json",
     })
@@ -1631,7 +1650,7 @@ async function downloadDocumentForOffline(
   render()
 
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       url: `${LIVE_URL}/api/google/download/${encodeURIComponent(document.id)}?projectId=${encodeURIComponent(projectId)}`,
       responseType: "arraybuffer",
     })
@@ -1700,10 +1719,67 @@ function openFullCompass(): void {
   window.location.assign(liveAppUrl(path))
 }
 
+async function openInBrowser(): Promise<void> {
+  if (!online) return
+  const path = packet
+    ? `/dashboard/projects/${encodeURIComponent(packet.project.id)}`
+    : "/dashboard"
+  try {
+    await AppLauncher.openUrl({ url: browserHandoffUrl(LIVE_URL, path) })
+  } catch {
+    // Fall back to the in-app browser sheet if no external browser accepts it.
+    await Browser.open({ url: browserHandoffUrl(LIVE_URL, path) })
+  }
+}
+
 function openCherish(): void {
   activeTab = "cherish"
   render()
   if (online) void refreshCherishRecognition()
+}
+
+class SessionExpiredError extends Error {
+  constructor() {
+    super(SESSION_EXPIRED_MESSAGE)
+    this.name = "SessionExpiredError"
+  }
+}
+
+// AuthKit refresh tokens are single use. When several Field Mode requests
+// arrive together with an expired access token, each tries to refresh and the
+// loser clears the session cookie the winner just saved, signing the device
+// out at random. Sending authenticated requests one at a time prevents that.
+const fieldRequestQueue = createSerialQueue()
+
+async function sendFieldRequest(run: () => Promise<HttpResponse>): Promise<HttpResponse> {
+  if (sessionExpired) throw new SessionExpiredError()
+  const response = await fieldRequestQueue(run)
+  if (nativeResponseRequiresAuthentication(response)) {
+    await markSessionExpired()
+    throw new SessionExpiredError()
+  }
+  return response
+}
+
+const fieldHttp = {
+  get: (options: HttpOptions) => sendFieldRequest(() => CapacitorHttp.get(options)),
+  post: (options: HttpOptions) => sendFieldRequest(() => CapacitorHttp.post(options)),
+}
+
+async function markSessionExpired(): Promise<void> {
+  if (sessionExpired) return
+  sessionExpired = true
+  signingIn = false
+  authMode = "choice"
+  authError = SESSION_EXPIRED_MESSAGE
+  activeTab = "projects"
+  await Preferences.set({ key: SESSION_EXPIRED_KEY, value: "true" })
+  render()
+}
+
+async function clearSessionExpired(): Promise<void> {
+  sessionExpired = false
+  await Preferences.remove({ key: SESSION_EXPIRED_KEY })
 }
 
 async function resumePendingSync(): Promise<void> {
@@ -1711,7 +1787,7 @@ async function resumePendingSync(): Promise<void> {
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
+  if (sessionExpired || syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
   await syncDailyLogOutbox()
   await syncCherishOutbox()
   await syncChatOutbox()
@@ -1789,10 +1865,13 @@ function nativeAuthData(value: unknown): z.infer<typeof nativeAuthResponseSchema
 }
 
 async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
+  // Only called right after a sign-in or for an explicit project download, so
+  // let the request through; it marks the session expired again if rejected.
+  sessionExpired = false
   const params = new URLSearchParams()
   if (projectId) params.set("projectId", projectId)
   const query = params.toString()
-  const response = await CapacitorHttp.get({
+  const response = await fieldHttp.get({
     url: `${LIVE_URL}/api/field/native-bootstrap${query ? `?${query}` : ""}`,
     responseType: "json",
   })
@@ -1821,6 +1900,7 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
     writeJson(ACTIVE_PROJECT_KEY, activeProjectId),
     packet ? writeJson(packetKey(packet.project.id), packet) : Promise.resolve(),
   ])
+  await clearSessionExpired()
   authMode = "choice"
   authError = ""
   projectError = ""
@@ -2125,7 +2205,9 @@ async function initialize(): Promise<void> {
   outbox = outboxResult.success ? outboxResult.data : []
   documents = documentResult.success ? documentResult.data : []
   profile = profileResult.success ? profileResult.data : null
-  if (projects.length === 0) activeTab = "projects"
+  sessionExpired = (await Preferences.get({ key: SESSION_EXPIRED_KEY })).value === "true"
+  if (sessionExpired) authError = SESSION_EXPIRED_MESSAGE
+  if (projects.length === 0 || sessionExpired) activeTab = "projects"
   const activeProjectId = activeProjectResult.success ? activeProjectResult.data : null
   const selectedId = projects.some((project) => project.id === activeProjectId)
     ? activeProjectId
@@ -2139,8 +2221,8 @@ async function initialize(): Promise<void> {
   if (launchUrl?.url && !launchUrlQueued && !biometricLocked) {
     await handleAppUrl(launchUrl.url)
   }
-  if (online && packet) void refreshProjectPacket()
-  if (online && profile) void refreshCherishRecognition(true)
+  if (online && packet && !sessionExpired) void refreshProjectPacket()
+  if (online && profile && !sessionExpired) void refreshCherishRecognition(true)
   void resumePendingSync()
 
   await Network.addListener("networkStatusChange", () => void refreshConnectivityAndSync())
