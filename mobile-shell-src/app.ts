@@ -36,6 +36,16 @@ import { conversationChannelIdFromNotificationHref } from "../src/lib/conversati
 import { fieldMessageHtml, isLongFieldMessage } from "../src/lib/field/message-format"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
 import { browserHandoffUrl } from "../src/lib/native/browser-handoff"
+import { DEFAULT_DEPARTMENT_PROFILES } from "../src/lib/department-profiles"
+import type { ProjectDepartment } from "../src/lib/project-branding"
+import {
+  companyLogoSrc,
+  compassMarkSvg,
+  fieldCompaniesSchema,
+  fieldIcon,
+  type FieldCompanies,
+  type FieldIcon,
+} from "./brand"
 import {
   createSerialQueue,
   nativeResponseRequiresAuthentication,
@@ -56,7 +66,7 @@ import {
   filterFieldProjects,
   isProjectCompanyFilter,
   PROJECT_COMPANY_OPTIONS,
-  projectCompanyLabel,
+  projectCompany,
   type ProjectCompanyFilter,
 } from "./project-picker"
 
@@ -69,6 +79,7 @@ const DOCUMENTS_KEY = "compass_field_documents_v1"
 const AUTH_STATE_KEY = "compass_native_auth_state_v1"
 const AUTH_VERIFIER_KEY = "compass_native_auth_verifier_v1"
 const PROFILE_KEY = "compass_field_profile_v1"
+const COMPANIES_KEY = "compass_field_companies_v1"
 const SESSION_EXPIRED_KEY = "compass_field_session_expired_v1"
 const SESSION_EXPIRED_MESSAGE = "Your Compass sign-in has ended. Sign in again to keep syncing. Work saved on this device is kept and will sync after you sign in."
 const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
@@ -113,6 +124,7 @@ const nativeFieldBootstrapResponseSchema = z.object({
   profile: fieldUserProfileSchema.optional(),
   projects: projectsSchema.optional(),
   initialPacket: fieldProjectPacketSchema.nullable().optional(),
+  companies: fieldCompaniesSchema.optional(),
 })
 const nativeFieldFolderResponseSchema = z.object({
   success: z.boolean(),
@@ -130,6 +142,7 @@ const app = document.querySelector<HTMLDivElement>("#app")
 let projects: Project[] = []
 let packet: Packet | null = null
 let profile: FieldUserProfile | null = null
+let companies: FieldCompanies = {}
 // Set when the server no longer accepts this device's session. Cached projects
 // stay readable offline, but Field Mode asks for sign-in instead of failing
 // every refresh with a generic download error.
@@ -235,6 +248,26 @@ function projectLabel(project: Project): string {
   return project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
 }
 
+// Saved company names win; the shipped defaults cover the first launch.
+function companyShortName(department: ProjectDepartment): string {
+  return companies[department]?.shortName || DEFAULT_DEPARTMENT_PROFILES[department].shortName
+}
+
+function companyDisplayName(department: ProjectDepartment): string {
+  return companies[department]?.displayName || DEFAULT_DEPARTMENT_PROFILES[department].displayName
+}
+
+function companyLogo(department: ProjectDepartment, className: string): string {
+  return `<img class="${className}" src="${escapeHtml(companyLogoSrc(department, companies[department]))}" alt="" />`
+}
+
+// The open project's company, shown under the Compass header.
+function companyBand(): string {
+  if (!packet) return ""
+  const department = projectCompany(packet.project)
+  return `<section class="company-band company-${department}" aria-label="Current project">${companyLogo(department, "company-band-logo")}<div class="company-band-text"><span class="company-band-name">${escapeHtml(companyDisplayName(department))}</span><span class="company-band-project">${escapeHtml(projectLabel(packet.project))}</span>${packet.project.address ? `<span class="company-band-address">${escapeHtml(packet.project.address)}</span>` : ""}</div><button class="company-switch" type="button" data-tab="projects" aria-label="Switch project">${fieldIcon("switch", "header-icon")}</button></section>`
+}
+
 function filteredProjectList(): readonly Project[] {
   return filterFieldProjects(projects, projectCompanyFilter, projectSearch)
 }
@@ -254,18 +287,19 @@ function projectPickerResults(): string {
   }
 
   return `<div class="project-result-summary"><span>${escapeHtml(summary)}</span>${clearButton}</div><div class="rows project-results">${filteredProjects.map((project) => `
-    <button class="row project-row" data-project-id="${escapeHtml(project.id)}" type="button">
-      <div class="row-main"><div class="project-row-heading"><p class="row-title">${escapeHtml(projectLabel(project))}</p><span class="project-company-badge">${escapeHtml(projectCompanyLabel(project))}</span></div><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
-      <strong>${packet?.project.id === project.id ? "Selected" : "Open"}</strong>
+    <button class="row project-row ${packet?.project.id === project.id ? "selected" : ""}" data-project-id="${escapeHtml(project.id)}" type="button">
+      ${companyLogo(projectCompany(project), "project-row-logo")}
+      <div class="row-main"><p class="row-title">${escapeHtml(projectLabel(project))}</p><p class="row-note">${escapeHtml([companyDisplayName(projectCompany(project)), project.address].filter(Boolean).join(" · "))}</p></div>
+      ${packet?.project.id === project.id ? `<strong class="project-row-current">Open now</strong>` : fieldIcon("chevron", "row-chevron")}
     </button>`).join("")}</div>`
 }
 
-function projectCompanyOptions(): string {
-  return PROJECT_COMPANY_OPTIONS.map((option) => {
-    const count = projects.filter((project) => projectCompanyLabel(project) === option.label).length
-    const selected = projectCompanyFilter === option.value ? " selected" : ""
-    return `<option value="${option.value}"${selected}>${escapeHtml(option.label)} (${count})</option>`
-  }).join("")
+function projectCompanyChips(): string {
+  const chips = PROJECT_COMPANY_OPTIONS
+    .filter((option) => projects.some((project) => projectCompany(project) === option.value))
+    .map((option) => `<button class="company-chip" type="button" data-company-filter="${option.value}" aria-pressed="${projectCompanyFilter === option.value}">${companyLogo(option.value, "company-chip-logo")}${escapeHtml(companyShortName(option.value))}</button>`)
+    .join("")
+  return `<div class="company-chips" role="group" aria-label="Filter by company"><button class="company-chip" type="button" data-company-filter="all" aria-pressed="${projectCompanyFilter === "all"}">All</button>${chips}</div>`
 }
 
 function sectionHead(title: string, note = ""): string {
@@ -294,11 +328,11 @@ function projectsView(): string {
     const googleSignIn = isIos
       ? `<p class="auth-note">Google sign-in is temporarily unavailable in the iPhone app. Use your Compass email and password.</p>`
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
-    return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}<button class="text-button" data-open-in-browser type="button" ${online ? "" : "disabled"}>Use Compass in your browser instead</button></div></div>`
+    return `<div class="auth-hero"><span class="auth-hero-mark">${compassMarkSvg()}</span><h2>Compass</h2><span class="brand-mode">Field</span></div><div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}<button class="text-button" data-open-in-browser type="button" ${online ? "" : "disabled"}>Use Compass in your browser instead</button></div></div>`
   }
-  return sectionHead("Active projects", "Filter by department or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
-    <label class="field">Department<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All departments (${projects.length})</option>${projectCompanyOptions()}</select></label>
+  return sectionHead("Active projects", "Each project shows the company it belongs to.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
     <label class="field">Find a project<input id="project-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" aria-controls="project-picker-results" placeholder="Number, name, or address" value="${escapeHtml(projectSearch)}" /></label>
+    ${projectCompanyChips()}
     <div id="project-picker-results" aria-live="polite">${projectPickerResults()}</div>
   </div>`
 }
@@ -575,7 +609,7 @@ function view(): string {
 function render(): void {
   if (!app) return
   if (biometricLocked) {
-    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
+    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">${compassMarkSvg()}</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
     document.querySelector<HTMLButtonElement>("#unlock-compass")?.addEventListener("click", () => void unlockCompass())
     document.querySelector<HTMLButtonElement>("#unlock-with-password")?.addEventListener("click", () => {
       if (online) window.location.assign(`${LIVE_URL}/login`)
@@ -585,16 +619,16 @@ function render(): void {
   const title = packet ? projectLabel(packet.project) : "Compass"
   const queued = outbox.length > 0 ? ` - ${outbox.length} waiting to sync` : ""
   const unreadNotifications = packet?.notifications.filter((notification) => notification.readAt === null).length ?? 0
-  const tabs: { value: Tab; symbol: string; label: string }[] = [
-    { value: "projects", symbol: "P", label: "Projects" },
-    { value: "today", symbol: "T", label: "Today" },
-    { value: "log", symbol: "L", label: "Log" },
-    { value: "documents", symbol: "D", label: "Docs" },
-    { value: "chat", symbol: "M", label: "Messages" },
-    { value: "cherish", symbol: "C", label: "Cherish" },
+  const tabs: { value: Tab & FieldIcon; label: string }[] = [
+    { value: "projects", label: "Projects" },
+    { value: "today", label: "Today" },
+    { value: "log", label: "Log" },
+    { value: "documents", label: "Docs" },
+    { value: "chat", label: "Messages" },
+    { value: "cherish", label: "Cherish" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><h1 class="brand" aria-label="${escapeHtml(`Compass Field Mode, ${title}`)}"><span class="brand-mark">${compassMarkSvg()}</span><span class="brand-text"><span class="brand-name">Compass</span><span class="brand-mode">Field</span></span></h1><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="icon-button" type="button" aria-label="Field settings" ${activeTab === "settings" ? 'aria-current="page"' : ""}>${fieldIcon("settings", "header-icon")}</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${profile ? fieldIcon("external", "live-icon") : ""}${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header>${companyBand()}<main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}" ${activeTab === tab.value ? 'aria-current="page"' : ""}>${fieldIcon(tab.value, "tab-icon")}${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -659,12 +693,13 @@ function bindEvents(): void {
     if (activeTab === "cherish" && online) void refreshCherishRecognition()
   }))
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
-  document.querySelector("#project-company-filter")?.addEventListener("change", (event) => {
-    if (!(event.currentTarget instanceof HTMLSelectElement)) return
-    if (!isProjectCompanyFilter(event.currentTarget.value)) return
-    projectCompanyFilter = event.currentTarget.value
+  document.querySelectorAll<HTMLButtonElement>("[data-company-filter]").forEach((button) => button.addEventListener("click", () => {
+    const value = button.dataset.companyFilter ?? "all"
+    if (!isProjectCompanyFilter(value)) return
+    projectCompanyFilter = value
+    syncCompanyChips()
     refreshProjectPickerResults()
-  })
+  }))
   document.querySelector<HTMLInputElement>("#project-search")?.addEventListener("input", (event) => {
     if (!(event.currentTarget instanceof HTMLInputElement)) return
     projectSearch = event.currentTarget.value
@@ -775,13 +810,18 @@ function bindEvents(): void {
   })
 }
 
+function syncCompanyChips(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-company-filter]").forEach((chip) => {
+    chip.setAttribute("aria-pressed", String(chip.dataset.companyFilter === projectCompanyFilter))
+  })
+}
+
 function bindProjectPickerResultEvents(): void {
   document.querySelector<HTMLButtonElement>("#clear-project-filters")?.addEventListener("click", () => {
     projectCompanyFilter = "all"
     projectSearch = ""
-    const companySelect = document.querySelector("#project-company-filter")
     const searchInput = document.querySelector<HTMLInputElement>("#project-search")
-    if (companySelect instanceof HTMLSelectElement) companySelect.value = "all"
+    syncCompanyChips()
     if (searchInput) {
       searchInput.value = ""
       searchInput.focus()
@@ -1893,9 +1933,11 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   projects = result.data.projects
   profile = result.data.profile
   packet = result.data.initialPacket ?? null
+  if (result.data.companies) companies = result.data.companies
   const activeProjectId = packet?.project.id ?? projects[0]?.id ?? null
   await Promise.all([
     writeJson(PROFILE_KEY, profile),
+    writeJson(COMPANIES_KEY, companies),
     writeJson(PROJECTS_KEY, projects),
     writeJson(ACTIVE_PROJECT_KEY, activeProjectId),
     packet ? writeJson(packetKey(packet.project.id), packet) : Promise.resolve(),
@@ -2200,6 +2242,8 @@ async function initialize(): Promise<void> {
   const outboxResult = fieldOutboxSchema.safeParse(await readJson(OUTBOX_KEY))
   const documentResult = savedDocumentsSchema.safeParse(await readJson(DOCUMENTS_KEY))
   const profileResult = fieldUserProfileSchema.safeParse(await readJson(PROFILE_KEY))
+  const companiesResult = fieldCompaniesSchema.safeParse(await readJson(COMPANIES_KEY))
+  companies = companiesResult.success ? companiesResult.data : {}
   const activeProjectResult = z.string().nullable().safeParse(await readJson(ACTIVE_PROJECT_KEY))
   projects = projectResult.success ? projectResult.data : []
   outbox = outboxResult.success ? outboxResult.data : []
