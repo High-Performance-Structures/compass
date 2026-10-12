@@ -9,6 +9,7 @@ import Link from "next/link"
 import {
   IconArrowLeft,
   IconExternalLink,
+  IconPrinter,
   IconShoppingCart,
 } from "@tabler/icons-react"
 
@@ -245,7 +246,17 @@ function PurchaseOrderCard({
             {orderForm && (
               <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} needsDriveFolder={orderForm.needsDriveFolder} />
             )}
-            <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+            {orderForm?.workbookUrl ? (
+              // The manufacturer's PO prints on the manufacturer's own form.
+              <Button asChild type="button" variant="outline" size="sm" className="print:hidden">
+                <a href={`/api/projects/${projectId}/nutech-order-form`} target="_blank" rel="noreferrer">
+                  <IconPrinter className="size-4" />
+                  Pickup copy
+                </a>
+              </Button>
+            ) : (
+              <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+            )}
           </div>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">

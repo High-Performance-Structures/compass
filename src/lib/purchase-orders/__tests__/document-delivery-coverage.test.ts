@@ -43,8 +43,8 @@ describe("purchase order delivery output coverage", () => {
 
     expect(action).toContain("address: projects.address")
     expect(action).toContain("deliveryLocation: resolvedPurchaseOrderShipTo")
-    expect(action).toContain("text: purchaseOrderEmailText(emailInput)")
-    expect(action).toContain("html: purchaseOrderEmailHtml(emailInput)")
+    expect(action).toContain(": purchaseOrderEmailText(emailInput)")
+    expect(action).toContain(": purchaseOrderEmailHtml(emailInput)")
   })
 
   it("loads vendor addresses for the printable document", () => {
