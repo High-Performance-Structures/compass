@@ -14,6 +14,7 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 
 vi.mock("@/app/actions/chat-messages", () => ({
   getMessages: vi.fn(),
+  markChannelRead: vi.fn().mockResolvedValue({ success: true }),
 }))
 
 const realtimeState = vi.hoisted(() => ({
@@ -64,6 +65,34 @@ describe("MessageList scrolling", () => {
     realtimeState.messages = []
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it("keeps unseen realtime arrivals unread until the reader returns to newest", async () => {
+    const { markChannelRead } = await import("@/app/actions/chat-messages")
+    vi.mocked(markChannelRead).mockClear()
+    vi.useFakeTimers()
+    const message = {
+      id: "read-message-1", channelId: "channel-1", threadId: null,
+      content: "Newest", contentHtml: null, editedAt: null, deletedAt: null,
+      isPinned: false, replyCount: 0, lastReplyAt: null,
+      createdAt: "2026-10-12T06:00:00.000Z", user: null,
+    }
+    const initialMessages = [message]
+    await act(async () => root.render(React.createElement(MessageList, { channelId: "channel-1", initialMessages, currentUserId: null })))
+    const viewport = host.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')
+    if (viewport === null) throw new Error("Missing message viewport")
+    Object.defineProperties(viewport, { clientHeight: { configurable: true, value: 200 }, scrollHeight: { configurable: true, value: 1000 } })
+    await act(async () => { viewport.scrollTop = 100; viewport.dispatchEvent(new Event("scroll")) })
+    realtimeState.messages = [{ ...message, id: "read-message-2", createdAt: "2026-10-12T06:01:00.000Z" }]
+    await act(async () => root.render(React.createElement(MessageList, { channelId: "channel-1", initialMessages, currentUserId: null })))
+    await act(async () => vi.advanceTimersByTime(900))
+    expect(markChannelRead).not.toHaveBeenCalled()
+    const jump = host.querySelector<HTMLButtonElement>('[aria-label="Jump to newest messages"]')
+    if (jump === null) throw new Error("Missing newest control")
+    await act(async () => jump.click())
+    await act(async () => vi.advanceTimersByTime(900))
+    expect(markChannelRead).toHaveBeenCalledWith("channel-1", "read-message-2")
   })
 
   it("shows newest navigation after an empty conversation receives realtime messages and is manually scrolled", async () => {

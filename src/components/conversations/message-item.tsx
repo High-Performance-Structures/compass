@@ -157,7 +157,7 @@ export const MessageItem = React.memo(function MessageItem({
         <Avatar className={cn("h-8 w-8 shrink-0", isOwnMessage && "order-last")}>
           <AvatarFallback className="text-xs">{avatarFallback}</AvatarFallback>
         </Avatar>
-        <div className={cn("min-w-0 max-w-[min(calc(100%-2.75rem),42rem)] flex-none", isOwnMessage && "text-right")}>
+        <div className={cn("min-w-0 max-w-[min(calc(100%_-_2.75rem),42rem)] flex-none", isOwnMessage && "text-right")}>
           <div className={cn("flex flex-wrap items-baseline gap-x-2 gap-y-1", isOwnMessage && "justify-end")}>
             <span className="text-sm font-medium">{displayName}</span>
             <span className="text-xs text-muted-foreground">{timeDisplay}</span>
@@ -185,7 +185,7 @@ export const MessageItem = React.memo(function MessageItem({
         <AvatarFallback className="text-xs">{avatarFallback}</AvatarFallback>
       </Avatar>
 
-      <div className={cn("min-w-0 max-w-[min(calc(100%-2.75rem),42rem)] flex-none", isOwnMessage && "text-right")}>
+      <div className={cn("min-w-0 max-w-[min(calc(100%_-_2.75rem),42rem)] flex-none", isOwnMessage && "text-right")}>
         <div className={cn("flex flex-wrap items-baseline gap-x-2 gap-y-1", isOwnMessage && "justify-end")}>
           <span className="text-sm font-medium">{displayName}</span>
           {roleBadge && (

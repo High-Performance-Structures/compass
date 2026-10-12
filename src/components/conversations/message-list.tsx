@@ -117,13 +117,15 @@ export function MessageList({
   // messages sends one request.
   const lastReportedReadRef = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!lastMessageId) return
+    if (!lastMessageId || !atNewestEdge) return
     let timer: number | null = null
     const report = (): void => {
       if (document.visibilityState !== "visible") return
       if (lastReportedReadRef.current === lastMessageId) return
       if (timer !== null) window.clearTimeout(timer)
       timer = window.setTimeout(() => {
+        // A realtime arrival below the reader's viewport is still unread.
+        if (!atNewestEdgeRef.current || document.visibilityState !== "visible") return
         lastReportedReadRef.current = lastMessageId
         void markChannelRead(channelId, lastMessageId).then((result) => {
           if (result.success) announceNotificationsChanged()
@@ -137,7 +139,7 @@ export function MessageList({
       document.removeEventListener("visibilitychange", report)
       if (timer !== null) window.clearTimeout(timer)
     }
-  }, [channelId, lastMessageId])
+  }, [atNewestEdge, channelId, lastMessageId])
 
   // consume new messages from real-time polling
   const consumedNewMessagesRef = React.useRef<Set<string>>(new Set())

@@ -851,10 +851,11 @@ test.describe("usable Compass areas", () => {
   })
 
   test("project Messages opens newest, aligns quiet rows and preserves older history", async ({ page }, testInfo) => {
+    await page.context().clearCookies()
     await page.setViewportSize(testInfo.project.name.startsWith("mobile") ? { width: 390, height: 844 } : { width: 1366, height: 768 })
-    const path = "/dashboard/projects/e2e-project-001/messages?conversationId=e2e-correspondence-001"
+    const path = "/dashboard/projects/e2e-correspondence-project-001/messages?conversationId=e2e-quiet-correspondence-001"
     const response = await page.goto(path)
-    await expectHealthyNavigation(page, response, "/dashboard/projects/e2e-project-001/messages")
+    await expectHealthyNavigation(page, response, "/dashboard/projects/e2e-correspondence-project-001/messages")
     const viewport = page.locator("[data-correspondence-viewport]:visible").last()
     await expect(viewport).toBeVisible()
     await expect(viewport.locator('[data-message-author="self"]').last()).toHaveClass(/ml-auto/)
