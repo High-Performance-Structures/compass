@@ -2239,6 +2239,9 @@ async function initialize(): Promise<void> {
     document.body.classList.add("platform-ios")
     await Keyboard.setResizeMode({ mode: KeyboardResize.Native })
     await Keyboard.setScroll({ isDisabled: false })
+    // The keyboard plugin hides iOS's Done bar by default, which left fields
+    // like project search with no way to put the keyboard away.
+    await Keyboard.setAccessoryBarVisible({ isVisible: true })
   }
   const initialStatus = await Network.getStatus()
   online = initialStatus.connected
@@ -2262,6 +2265,21 @@ async function initialize(): Promise<void> {
   await Keyboard.addListener("keyboardWillHide", () => {
     document.body.classList.remove("keyboard-open")
     document.documentElement.style.setProperty("--keyboard-height", "0px")
+  })
+  // Tapping outside a text field puts the keyboard away, as people expect.
+  document.addEventListener("pointerdown", (event) => {
+    const focused = document.activeElement
+    if (!(focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement || focused instanceof HTMLSelectElement)) return
+    if (event.target instanceof Element && event.target.closest("input, textarea, select, label, button, a")) return
+    focused.blur()
+    void Keyboard.hide().catch(() => undefined)
+  })
+  // The Search key on a search field finishes typing instead of submitting.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "search") return
+    event.preventDefault()
+    event.target.blur()
+    void Keyboard.hide().catch(() => undefined)
   })
   await App.addListener("appUrlOpen", ({ url }) => void handleAppUrl(url))
   await Browser.addListener("browserFinished", resetAbandonedSignIn)
