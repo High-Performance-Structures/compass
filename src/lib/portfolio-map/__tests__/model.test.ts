@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   isMappedDepartment,
   portfolioPhaseFor,
+  portfolioPhaseStatuses,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
@@ -186,5 +187,33 @@ describe("portfolioMarkerAlert", () => {
     expect(portfolioMarkerAlert(job({ id: "c", followUp: signal("overdue") }))).toBe("late")
     expect(portfolioMarkerAlert(job({ id: "d", health: "late", followUp: signal("on_track") }))).toBe("late")
     expect(portfolioMarkerAlert(job({ id: "e", health: "risk", followUp: signal("overdue") }))).toBe("late")
+  })
+})
+
+describe("company map rules", () => {
+  const rule = {
+    projectId: "p1",
+    projectNumber: "H-430-1900",
+    department: "H",
+    jobStatusId: "under_construction",
+    jobStatusLabel: "Under Construction",
+    visibility: "default" as const,
+  }
+
+  it("puts a status in the phase the company chose, or leaves it off", () => {
+    const rules = { statusPhases: { complete: "closeout" as const, under_construction: "off" as const }, departments: {} }
+    expect(phaseForJobStatus("complete", "Complete", rules)).toBe("closeout")
+    expect(portfolioPhaseFor(rule, rules)).toBeNull()
+    expect(portfolioPhaseFor({ ...rule, jobStatusId: "custom-1", jobStatusLabel: "Complete" }, rules)).toBe("closeout")
+  })
+
+  it("lets a company show Nu-Tech jobs or leave a department off", () => {
+    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null }, { statusPhases: {}, departments: { N: true } })).toBe(true)
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departments: { H: false } })).toBeNull()
+  })
+
+  it("lists a phase's statuses for moves, in workflow order, with the company's changes", () => {
+    expect(portfolioPhaseStatuses("closeout")).toEqual(["punchlist", "under_warranty"])
+    expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departments: {} })).toContain("complete")
   })
 })

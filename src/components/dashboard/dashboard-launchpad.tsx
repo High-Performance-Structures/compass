@@ -1260,6 +1260,8 @@ export function DashboardLaunchpad({
         jobs={portfolio.jobs}
         unplaced={portfolio.unplaced}
         hidden={portfolio.hidden}
+        internal={portfolio.internal}
+        rules={portfolio.rules}
         travel={portfolio.travel}
         salesPipelines={salesPipelines}
       />

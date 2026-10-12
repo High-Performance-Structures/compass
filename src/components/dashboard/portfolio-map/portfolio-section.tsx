@@ -8,8 +8,15 @@ import { PortfolioPanel, type PortfolioSelection } from "@/components/dashboard/
 import { usePortfolioStatusMoves } from "@/components/dashboard/portfolio-map/use-portfolio-status-moves"
 import { PortfolioPipeline } from "@/components/dashboard/portfolio-map/portfolio-pipeline"
 import type { SceneHighlight } from "@/components/dashboard/portfolio-map/portfolio-scene"
-import type { PortfolioMapJob, PortfolioPhaseId } from "@/lib/portfolio-map/model"
-import type { PortfolioHiddenJob, PortfolioTravelData, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import { DEFAULT_PORTFOLIO_MAP_RULES, type PortfolioMapJob, type PortfolioMapRules, type PortfolioPhaseId } from "@/lib/portfolio-map/model"
+import type { PortfolioHiddenJob, PortfolioInternalJob, PortfolioTravelData, PortfolioUnplacedJob } from "@/lib/portfolio-map/load"
+import {
+  INTERNAL_SCOPE,
+  InternalMapPanel,
+  InternalWorkspaceList,
+  internalMarkerKey,
+  internalSummary,
+} from "@/components/dashboard/portfolio-map/internal-map-view"
 import {
   NO_LAYERS,
   readStoredLayers,
@@ -48,13 +55,14 @@ function readStoredView(): PortfolioView | null {
   }
 }
 
-// Which jobs the map and pipeline show: the projects (null) or a sales
-// department's pipeline, by department code.
+// Which jobs the map and pipeline show: the projects (null), a sales
+// department's pipeline by department code, or the internal workspaces.
 const SCOPE_STORAGE_KEY = "compass:portfolio-scope:v1"
 
-function readStoredScope(salesPipelines: readonly SalesPipeline[]): string | null {
+function readStoredScope(salesPipelines: readonly SalesPipeline[], hasInternal: boolean): string | null {
   try {
     const value = window.localStorage.getItem(SCOPE_STORAGE_KEY)
+    if (value === INTERNAL_SCOPE) return hasInternal ? value : null
     return salesPipelines.some((pipeline) => pipeline.department === value) ? value : null
   } catch {
     return null
@@ -74,15 +82,19 @@ export function PortfolioSection({
   hidden,
   travel,
   salesPipelines = [],
+  internal = [],
+  rules = DEFAULT_PORTFOLIO_MAP_RULES,
 }: {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
   readonly hidden: readonly PortfolioHiddenJob[]
   readonly travel: PortfolioTravelData | null
   readonly salesPipelines?: readonly SalesPipeline[]
+  readonly internal?: readonly PortfolioInternalJob[]
+  readonly rules?: PortfolioMapRules
 }): React.ReactElement | null {
   const sectionRef = React.useRef<HTMLElement | null>(null)
-  const { jobs, statusMove } = usePortfolioStatusMoves(serverJobs)
+  const { jobs, statusMove } = usePortfolioStatusMoves(serverJobs, rules)
   const [view, setView] = React.useState<PortfolioView>("pipeline")
   const [mapUnavailable, setMapUnavailable] = React.useState(false)
   const [nearViewport, setNearViewport] = React.useState(false)
@@ -92,12 +104,15 @@ export function PortfolioSection({
   const [scope, setScope] = React.useState<string | null>(null)
   const activeSales = salesPipelines.find((pipeline) => pipeline.department === scope) ?? null
   const sales = useSalesPipeline(activeSales)
+  const internalActive = scope === INTERNAL_SCOPE && internal.length > 0
+  const [internalSelected, setInternalSelected] = React.useState<string | null>(null)
 
   const firstSalesPipelines = React.useRef(salesPipelines)
+  const firstInternal = React.useRef(internal)
   React.useEffect(() => {
     setView(readStoredView() ?? defaultView())
     setLayerState(readStoredLayers())
-    setScope(readStoredScope(firstSalesPipelines.current))
+    setScope(readStoredScope(firstSalesPipelines.current, firstInternal.current.length > 0))
   }, [])
 
   // Deep link to a job: /dashboard?job=<id> selects and focuses it (used by
@@ -119,8 +134,13 @@ export function PortfolioSection({
       storeLayers(next)
     }
     setView(linkedView === "pipeline" && linkedLayer !== "messages" ? "pipeline" : "map")
-    setScope(linkedScope === "sales" ? (firstSalesPipelines.current[0]?.department ?? null) : null)
-    setSelection({ kind: "job", jobId: linkedJob })
+    if (firstInternal.current.some((job) => job.id === linkedJob)) {
+      setScope(INTERNAL_SCOPE)
+      setInternalSelected(linkedJob)
+    } else {
+      setScope(linkedScope === "sales" ? (firstSalesPipelines.current[0]?.department ?? null) : null)
+      setSelection({ kind: "job", jobId: linkedJob })
+    }
     sectionRef.current?.scrollIntoView({ block: "start" })
   }, [linkedJob, linkedLayer, linkedScope, linkedView])
 
@@ -202,30 +222,40 @@ export function PortfolioSection({
   const salesSelectedId = sales.selected?.id ?? null
   const highlight = React.useMemo<SceneHighlight>(
     () =>
-      activeSales
+      internalActive
+        ? { selectedJobId: internalSelected, selectedPhase: null, hoveredJobId }
+        : activeSales
         ? { selectedJobId: salesSelectedId, selectedPhase: null, hoveredJobId }
         : {
             selectedJobId: selection.kind === "job" ? selection.jobId : null,
             selectedPhase: selection.kind === "phase" ? selection.phase : null,
             hoveredJobId,
           },
-    [activeSales, hoveredJobId, salesSelectedId, selection],
+    [activeSales, hoveredJobId, internalActive, internalSelected, salesSelectedId, selection],
   )
 
   // A sales scope puts its jobs on the map, colored by sales stage, with its own key.
   const salesJobs = sales.jobs
-  const mapJobs = React.useMemo(() => (activeSales ? salesMapJobs(salesJobs) : jobs), [activeSales, jobs, salesJobs])
+  const mapJobs = React.useMemo(
+    () => (internalActive ? internal : activeSales ? salesMapJobs(salesJobs) : jobs),
+    [activeSales, internal, internalActive, jobs, salesJobs],
+  )
   const markerKey = React.useMemo<PortfolioMarkerKey | null>(
     () =>
-      activeSales ? { entries: SALES_MAP_KEY_ENTRIES, colorTokenByJobId: salesMarkerColorTokens(salesJobs) } : null,
-    [activeSales, salesJobs],
+      internalActive
+        ? internalMarkerKey(internal)
+        : activeSales
+          ? { entries: SALES_MAP_KEY_ENTRIES, colorTokenByJobId: salesMarkerColorTokens(salesJobs) }
+          : null,
+    [activeSales, internal, internalActive, salesJobs],
   )
 
-  if (jobs.length === 0 && unplaced.length === 0 && hidden.length === 0 && salesPipelines.length === 0) return null
+  if (jobs.length === 0 && unplaced.length === 0 && hidden.length === 0 && salesPipelines.length === 0 && internal.length === 0) return null
 
   const scopes: readonly { readonly scope: string | null; readonly label: string }[] = [
     { scope: null, label: "PROJECTS" },
     ...salesPipelines.map((pipeline) => ({ scope: pipeline.department, label: pipeline.title.toUpperCase() })),
+    ...(internal.length > 0 ? [{ scope: INTERNAL_SCOPE, label: "INTERNAL" }] : []),
   ]
 
   const showMap = view === "map" && !mapUnavailable
@@ -239,7 +269,9 @@ export function PortfolioSection({
         <div className="flex flex-wrap items-baseline gap-3">
           <h2 id="portfolio-title" className="text-lg font-semibold">Portfolio</h2>
           <span className="font-mono text-xs tracking-[0.12em] text-muted-foreground">
-            {activeSales
+            {internalActive
+              ? internalSummary(internal)
+              : activeSales
               ? salesPipelineSummary(sales.jobs)
               : `${building} BUILDING · ${pipeline} IN PIPELINE · ${closing} CLOSING OUT`}
           </span>
@@ -293,7 +325,7 @@ export function PortfolioSection({
               <PortfolioTerrain
                 jobs={mapJobs}
                 highlight={highlight}
-                onSelectJob={activeSales ? sales.select : selectJob}
+                onSelectJob={internalActive ? setInternalSelected : activeSales ? sales.select : selectJob}
                 markerKey={markerKey}
                 onHoverJob={setHoveredJobId}
                 onUnavailable={handleUnavailable}
@@ -304,6 +336,8 @@ export function PortfolioSection({
             ) : (
               <div className="h-full" />
             )
+          ) : internalActive ? (
+            <InternalWorkspaceList jobs={internal} selectedId={internalSelected} onSelect={setInternalSelected} />
           ) : activeSales ? (
             <SalesPipelineColumns state={sales} />
           ) : (
@@ -317,7 +351,9 @@ export function PortfolioSection({
           )}
         </div>
         <aside aria-label="Job details" className="max-h-[34rem] min-w-0 flex-[1_1_20rem] overflow-y-auto border-l border-border bg-card">
-          {activeSales ? (
+          {internalActive ? (
+            <InternalMapPanel jobs={internal} selectedId={internalSelected} onSelect={setInternalSelected} />
+          ) : activeSales ? (
             <SalesJobPanel state={sales} title={activeSales.title} />
           ) : (
             <PortfolioPanel

@@ -5,6 +5,7 @@ import {
   type ClientFollowUpSettings,
 } from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
+import { PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -23,6 +24,19 @@ export const messageDeskSettingsSchema = z
     message: "Stale must be longer than Aging.",
     path: ["staleDays"],
   })
+
+/**
+ * Portfolio map: which job statuses appear and in which pipeline phase, and
+ * which departments appear. Only changes from the built-in mapping are stored;
+ * "off" keeps a status off the map. A job's own Show/Hide still wins.
+ */
+export const portfolioMapSettingsSchema = z.object({
+  statusPhases: z.record(z.string().min(1).max(80), z.enum([...PORTFOLIO_PHASE_IDS, "off"])),
+  /** Per-department override of whether its jobs appear; missing uses the default. */
+  departments: z.record(z.string().min(1).max(8), z.boolean()),
+})
+
+export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
 
 export type MessageDeskSettings = z.infer<typeof messageDeskSettingsSchema>
 
@@ -329,6 +343,7 @@ type FeatureSettingsTypes = {
   readonly "shop-tickets": ShopTicketSettings
   readonly "bracing-rentals": BracingRentalSettings
   readonly "project-duplicates": ProjectDuplicateSettings
+  readonly "portfolio-map": PortfolioMapSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -436,6 +451,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       templates: {},
     },
     schema: nuTechEmailSettingsSchema,
+  },
+  "portfolio-map": {
+    label: "Portfolio map",
+    description: "Which job statuses and departments appear on the dashboard map and pipelines, and the phase each status falls in. Any single job can still be shown or hidden from the map.",
+    defaults: { statusPhases: {}, departments: {} },
+    schema: portfolioMapSettingsSchema,
   },
   "paper-trail": {
     label: "Project paper trail",
