@@ -127,10 +127,34 @@ const upsert = db.transaction(() => {
   `).run(now, now)
 
   db.prepare(`
+    INSERT INTO users (
+      id, email, first_name, last_name, display_name, role, is_active,
+      created_at, updated_at
+    ) VALUES (
+      'e2e-user-002', 'field@compass.build', 'Field', 'Tester', 'Field Tester',
+      'field', 1, ?, ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      display_name = excluded.display_name,
+      role = excluded.role,
+      is_active = excluded.is_active,
+      updated_at = excluded.updated_at
+  `).run(now, now)
+
+  db.prepare(`
     INSERT INTO organization_members (
       id, organization_id, user_id, role, joined_at
     ) VALUES (
       'e2e-membership-001', 'demo-org-meridian', 'demo-user-001', 'admin', ?
+    )
+    ON CONFLICT(id) DO UPDATE SET role = excluded.role
+  `).run(now)
+
+  db.prepare(`
+    INSERT INTO organization_members (
+      id, organization_id, user_id, role, joined_at
+    ) VALUES (
+      'e2e-membership-002', 'demo-org-meridian', 'e2e-user-002', 'member', ?
     )
     ON CONFLICT(id) DO UPDATE SET role = excluded.role
   `).run(now)
@@ -230,15 +254,73 @@ const upsert = db.transaction(() => {
   `).run(now)
 
   db.prepare(`
-    INSERT INTO messages (
-      id, channel_id, user_id, content, is_pinned, reply_count, created_at
+    INSERT INTO channel_members (
+      id, channel_id, user_id, role, notify_level, joined_at
     ) VALUES (
-      'e2e-message-001', 'e2e-channel-001', 'demo-user-001',
-      'Regression conversation message', 0, 0, ?
+      'e2e-channel-member-002', 'e2e-channel-001', 'e2e-user-002',
+      'member', 'all', ?
     )
     ON CONFLICT(id) DO UPDATE SET
-      content = excluded.content
+      role = excluded.role,
+      notify_level = excluded.notify_level
   `).run(now)
+
+  db.prepare(`
+    DELETE FROM messages
+    WHERE channel_id = 'e2e-channel-001'
+      AND id LIKE 'e2e-message-%'
+  `).run()
+
+  const insertConversationMessage = db.prepare(`
+    INSERT INTO messages (
+      id, channel_id, user_id, content, is_pinned, reply_count, created_at
+    ) VALUES (?, 'e2e-channel-001', ?, ?, 0, 0, ?)
+  `)
+  for (let index = 1; index <= 64; index += 1) {
+    const createdAt = new Date(Date.now() - (65 - index) * 60 * 1000).toISOString()
+    const userId = index % 2 === 0 ? 'e2e-user-002' : 'demo-user-001'
+    insertConversationMessage.run(
+      `e2e-message-history-${String(index).padStart(3, "0")}`,
+      userId,
+      `History message ${String(index).padStart(3, "0")}`,
+      createdAt,
+    )
+  }
+  insertConversationMessage.run(
+    'e2e-message-001',
+    'demo-user-001',
+    'Regression conversation message',
+    now,
+  )
+
+  // Correspondence deliberately rejects demo users; use the existing local dev identity.
+  db.prepare(`INSERT INTO organizations (id, name, slug, type, is_active, created_at, updated_at)
+    VALUES ('hps-org-001', 'HPS test organization', 'e2e-hps', 'internal', 1, ?, ?) ON CONFLICT(id) DO NOTHING`).run(now, now)
+  db.prepare(`INSERT INTO users (id, email, display_name, role, is_active, created_at, updated_at)
+    VALUES ('dev-user-1', 'dev@compass.io', 'Dev User', 'admin', 1, ?, ?) ON CONFLICT(id) DO NOTHING`).run(now, now)
+  db.prepare(`INSERT INTO organization_members (id, organization_id, user_id, role, joined_at)
+    VALUES ('e2e-hps-membership', 'hps-org-001', 'dev-user-1', 'admin', ?) ON CONFLICT(id) DO NOTHING`).run(now)
+  db.prepare(`INSERT INTO projects (id, project_number, name, status, organization_id, created_at, updated_at)
+    VALUES ('e2e-correspondence-project-001', 'H-E2E-002', 'Correspondence Regression Project', 'OPEN', 'hps-org-001', ?, ?) ON CONFLICT(id) DO NOTHING`).run(now, now)
+  db.prepare(`INSERT INTO project_correspondence (id, organization_id, project_id, subject, created_at)
+    VALUES ('e2e-quiet-correspondence-001', 'hps-org-001', 'e2e-correspondence-project-001', 'Quiet rows regression conversation', ?)
+    ON CONFLICT(id) DO NOTHING`).run(now)
+  const insertParticipant = db.prepare(`INSERT INTO correspondence_participants (id, conversation_id, user_id, name, email, role)
+    VALUES (?, 'e2e-quiet-correspondence-001', ?, ?, ?, 'staff') ON CONFLICT(id) DO NOTHING`)
+  insertParticipant.run('e2e-quiet-correspondence-person-001', 'dev-user-1', 'Dev User', 'dev@compass.io')
+  insertParticipant.run('e2e-quiet-correspondence-person-002', 'e2e-user-002', 'Field Tester', 'field@compass.build')
+  const insertCorrespondence = db.prepare(`INSERT INTO correspondence_messages
+    (id, conversation_id, author_user_id, author_name, source, body, sent_at, request_hash)
+    VALUES (?, 'e2e-quiet-correspondence-001', ?, ?, 'compass', ?, ?, ?) ON CONFLICT(id) DO NOTHING`)
+  const insertRecipient = db.prepare(`INSERT INTO correspondence_recipients (id, message_id, user_id, name, kind, baseline)
+    VALUES (?, ?, 'dev-user-1', 'Dev User', ?, 1) ON CONFLICT(id) DO NOTHING`)
+  for (let index = 1; index <= 65; index += 1) {
+    const id = `e2e-quiet-correspondence-message-${String(index).padStart(3, '0')}`
+    const own = index % 2 === 1
+    insertCorrespondence.run(id, own ? 'dev-user-1' : 'e2e-user-002', own ? 'Dev User' : 'Field Tester',
+      `Correspondence history ${String(index).padStart(3, '0')}`, new Date(Date.now() - (66 - index) * 60_000).toISOString(), id)
+    insertRecipient.run(`${id}-recipient`, id, own ? 'author' : 'to')
+  }
 
   const overflowScheduleItems = [
     ["e2e-schedule-002", "Overflow schedule item two", 2],

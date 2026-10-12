@@ -1,7 +1,7 @@
 "use client"
 import * as React from "react"
 import { announceNotificationsChanged } from "@/lib/notifications/client-events"
-import { ArrowLeft, ChevronDown, LoaderCircle } from "lucide-react"
+import { ArrowDown, ArrowLeft, ChevronDown, LoaderCircle } from "lucide-react"
 import {
   discardCorrespondenceDraft,
   getCorrespondenceDetail,
@@ -26,6 +26,7 @@ import {
   EmptyDetail,
 } from "./correspondence-workspace-parts"
 import { MessageCard } from "./correspondence-message-card"
+import { useConversationScroll } from "./use-conversation-scroll"
 import { Composer, NewMessagePanel } from "./correspondence-composer"
 import { ProjectEmailComposer } from "./project-email-composer"
 import {
@@ -223,10 +224,22 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
     ): Promise<void> => {
       const request = ++detailRequest.current
       setIsLoadingDetail(true)
-      const result = await getCorrespondenceDetail(projectId, conversationId, beforeSequence)
+      let result: Awaited<ReturnType<typeof getCorrespondenceDetail>>
+      try {
+        result = await getCorrespondenceDetail(projectId, conversationId, beforeSequence)
+      } catch {
+        if (request !== detailRequest.current) return
+        setIsLoadingDetail(false)
+        setStatus(beforeSequence === undefined ? "This conversation is unavailable. Try opening it again." : "Older messages could not be loaded. Try Load earlier messages again.")
+        return
+      }
       if (request !== detailRequest.current) return
       setIsLoadingDetail(false)
       if (!result.success) {
+        if (beforeSequence !== undefined) {
+          setStatus("Older messages could not be loaded. Try Load earlier messages again.")
+          return
+        }
         detailRef.current = null
         setDetail(null)
         setStatus("This conversation is unavailable.")
@@ -861,7 +874,7 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
   return (
     <section className="flex min-h-0 flex-1 overflow-hidden bg-background" aria-label="Project messages">
       <CorrespondenceInboxPanel projectId={projectId} inbox={inbox} activeId={activeId} hiddenOnMobile={mobileDetail} filter={filter} query={query} hits={searchHits} hasMore={searchHasMore} busy={isSending || isNavigating || hasPendingSend} onQuery={setQuery} drafts={drafts} onOpenDraft={openDraft} onFilter={(next) => { void (async () => { if (blockComposerTransition("changing folders") || !await flushComposerBeforeNavigation()) return; setFilter(next); if (next === "drafts") void refreshDrafts() })() }} onNewMessage={startNewMessage} onNewEmail={startProjectEmail} onOpen={openConversation} onRefresh={refreshInbox} />
-      <main className={cn("min-w-0 flex-1 overflow-y-auto", !mobileDetail && "hidden md:block")}>
+      <main className={cn("min-h-0 min-w-0 flex-1", !composingEmail && !composingNew && activeSummary !== null ? "overflow-hidden" : "overflow-y-auto", !mobileDetail && "hidden md:block")}>
         {composingEmail ? (
           <ProjectEmailComposer key={emailKey} ref={emailHandle} initialDraft={emailDraft} onDraftSaved={() => { void refreshDrafts() }} projectId={projectId} onBack={() => { void backFromEmailCompose() }} onBusyChange={(busy) => { sendInProgress.current = busy; setIsSending(busy) }} onSent={projectEmailSent} />
         ) : composingNew ? (
@@ -991,6 +1004,14 @@ function ConversationDetail(props: {
 }): React.ReactElement {
   const { detail, activeSummary, targetMessageId, onTargetHandled } = props
   const streamRef = React.useRef<HTMLDivElement>(null)
+  const { viewportRef, contentRef, atNewest, jumpToNewest } = useConversationScroll({
+    conversationId: activeSummary.id,
+    firstId: detail?.messages[0]?.id ?? null,
+    lastId: detail?.messages.at(-1)?.id ?? null,
+    messageCount: detail?.messages.length ?? 0,
+    ready: detail !== null,
+    targetMessageId,
+  })
   const onVisibleMessages = props.onVisibleMessages
   React.useEffect(() => {
     if (detail === null || streamRef.current === null) return
@@ -1042,8 +1063,8 @@ function ConversationDetail(props: {
     return () => window.cancelAnimationFrame(frame)
   }, [detail, onTargetHandled, targetMessageId])
   return (
-    <div className="mx-auto flex min-h-full max-w-4xl flex-col">
-      <header className="sticky top-0 z-10 border-b bg-background px-4 py-3 md:px-6">
+    <div className="mx-auto flex h-full min-h-0 max-w-4xl flex-col">
+      <header className="z-10 shrink-0 border-b bg-background px-4 py-3 md:px-6">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <Button className="mb-2 md:hidden" variant="ghost" size="sm" disabled={props.hasPendingSend} onClick={() => void props.onBack()}><ArrowLeft />Messages</Button>
@@ -1061,9 +1082,17 @@ function ConversationDetail(props: {
         </details>
       </header>
       {props.isLoading && detail === null ? <div className="flex flex-1 items-center justify-center"><LoaderCircle className="animate-spin text-muted-foreground" /></div> : detail === null ? <p className="p-6 text-sm text-muted-foreground">This conversation is unavailable.</p> : <>
-        <div ref={streamRef} className="flex-1 space-y-5 p-4 md:p-6">
-          {detail.hasEarlier && <Button variant="outline" className="mx-auto flex" onClick={() => void props.onLoadEarlier()}>Load earlier messages</Button>}
-          {detail.messages.map((message) => <MessageCard key={message.id} projectId={activeSummary.projectId} message={message} viewerId={props.viewerId} editDisabled={props.hasPendingSend || props.editingMessage !== null} onEdit={props.onEdit} onRetract={props.onRetract} onRetryEmail={props.onRetryEmail} />)}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div ref={viewportRef} className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]" data-correspondence-viewport>
+            <div ref={contentRef}>
+              <div ref={streamRef} className="space-y-5 p-4 md:p-6">
+                {detail.hasEarlier && <Button variant="ghost" className="mx-auto flex text-muted-foreground" disabled={props.isLoading} onClick={() => void props.onLoadEarlier()}>{props.isLoading ? "Loading earlier messages…" : "Load earlier messages"}</Button>}
+                {detail.messages.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No messages yet.</p>}
+                {detail.messages.map((message) => <MessageCard key={message.id} projectId={activeSummary.projectId} message={message} viewerId={props.viewerId} editDisabled={props.hasPendingSend || props.editingMessage !== null} onEdit={props.onEdit} onRetract={props.onRetract} onRetryEmail={props.onRetryEmail} />)}
+              </div>
+            </div>
+          </div>
+          {!atNewest && <Button type="button" variant="secondary" size="sm" className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-lg border shadow-sm" aria-label="Jump to newest messages" onClick={jumpToNewest}><ArrowDown className="size-4" />Newest messages</Button>}
         </div>
         {props.status !== null && <p className="mx-4 border px-3 py-2 text-sm md:mx-6" role="status">{props.status}</p>}
         {props.compose !== null && <>

@@ -14,7 +14,7 @@ import { MessageItem } from "./message-item"
 import { MessageComposer } from "./message-composer"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-export function ThreadPanel() {
+export function ThreadPanel({ currentUserId }: { readonly currentUserId: string | null }): React.ReactElement | null {
   const { threadOpen, threadMessageId, threadParentMessage, closeThread } = useConversations()
   const isMobile = useIsMobile()
   const [replies, setReplies] = React.useState<readonly ThreadMessage[]>([])
@@ -139,7 +139,7 @@ export function ThreadPanel() {
           "flex min-h-0 flex-col border-l bg-background",
           "transition-[width,opacity,transform] duration-300 ease-in-out",
           isMobile
-            ? "fixed inset-0 z-50"
+            ? "fixed inset-0 z-[60]"
             : "relative shrink-0",
           isResizing && "transition-none",
           threadOpen ? "opacity-100" : "w-0 opacity-0 border-transparent"
@@ -192,7 +192,7 @@ export function ThreadPanel() {
                       Original message
                     </div>
                     <div className="rounded-lg border bg-muted/50 p-2">
-                      <MessageItem message={threadParentMessage} />
+                      <MessageItem message={threadParentMessage} currentUserId={currentUserId} />
                     </div>
                     <Separator className="my-4" />
                     <div className="mb-2 text-xs font-medium text-muted-foreground">
@@ -208,7 +208,7 @@ export function ThreadPanel() {
                 ) : (
                   <div className="space-y-2">
                     {replies.map((reply) => (
-                      <MessageItem key={reply.id} message={reply} />
+                      <MessageItem key={reply.id} message={reply} currentUserId={currentUserId} />
                     ))}
                   </div>
                 )}

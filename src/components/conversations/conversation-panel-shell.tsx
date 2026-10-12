@@ -65,6 +65,8 @@ function ConversationPanelContent() {
   const [isResizing, setIsResizing] = React.useState(false)
   const dragStartX = React.useRef(0)
   const dragStartWidth = React.useRef(0)
+  const conversationLoadIdRef = React.useRef(0)
+  const activeChannelIdRef = React.useRef<string | null>(null)
 
   const loadChannels = React.useCallback(async () => {
     setChannelsLoading(true)
@@ -97,17 +99,25 @@ function ConversationPanelContent() {
   }, [isOpen, loadChannels])
 
   const loadConversation = React.useCallback(async (id: string) => {
+    const requestId = conversationLoadIdRef.current + 1
+    conversationLoadIdRef.current = requestId
+    activeChannelIdRef.current = id
+    const isCurrentRequest = () =>
+      conversationLoadIdRef.current === requestId && activeChannelIdRef.current === id
+
     setLoading(true)
     setLoadError(null)
     setData(null)
     try {
       const result = await getConversationPanelData(id)
+      if (!isCurrentRequest()) return
       if (!result.success || !result.data) {
         setLoadError(result.success ? "Unable to load this conversation." : result.error)
         return
       }
       setData(result.data)
     } catch (error: unknown) {
+      if (!isCurrentRequest()) return
       const message = error instanceof Error ? error.message : ""
       setLoadError(
         /server action|unrecognizedaction/i.test(message)
@@ -115,12 +125,14 @@ function ConversationPanelContent() {
           : "Unable to load this conversation."
       )
     } finally {
-      setLoading(false)
+      if (isCurrentRequest()) setLoading(false)
     }
   }, [])
 
   React.useEffect(() => {
     if (!isOpen || !channelId) {
+      conversationLoadIdRef.current += 1
+      activeChannelIdRef.current = null
       setData(null)
       setLoadError(null)
       return
@@ -158,6 +170,10 @@ function ConversationPanelContent() {
     document.body.style.userSelect = "none"
   }, [panelWidth])
 
+  const panelStyle: React.CSSProperties & { readonly "--conversation-panel-width": string } = {
+    "--conversation-panel-width": `${panelWidth}px`,
+  }
+
   const showDirectMessagePicker = view === "direct-message-picker"
   const showChannelList = channelId === null && !showDirectMessagePicker
 
@@ -170,13 +186,13 @@ function ConversationPanelContent() {
         className={cn(
           "flex flex-col bg-background",
           "transition-[width,border-color,box-shadow,opacity,transform] duration-300 ease-in-out",
-          "fixed inset-0 z-50 md:relative md:inset-auto md:z-auto md:my-2 md:mr-2 md:shrink-0 md:overflow-hidden md:rounded-lg md:border md:border-border md:shadow-lg",
+          "fixed inset-0 z-[60] w-full md:relative md:inset-auto md:z-auto md:my-2 md:mr-2 md:w-[var(--conversation-panel-width)] md:shrink-0 md:overflow-hidden md:rounded-lg md:border md:border-border md:shadow-lg",
           isResizing && "transition-none",
           isOpen
             ? "translate-x-0 md:opacity-100"
             : "pointer-events-none translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0"
         )}
-        style={isOpen ? { width: panelWidth } : undefined}
+        style={isOpen ? panelStyle : undefined}
         aria-hidden={!isOpen}
         aria-label="Conversations"
       >
@@ -295,6 +311,7 @@ function ConversationPanelContent() {
               channelId={data.channel.id}
               initialMessages={data.messages}
               showThreadActions={false}
+              currentUserId={data.currentUserId}
             />
             {data.channel.archivedAt ? (
               <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
