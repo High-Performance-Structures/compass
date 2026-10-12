@@ -52,6 +52,8 @@ describe("middleware public routes", () => {
     expect(
       isPublicPath("/api/integrations/sage/tax-catalog/results")
     ).toBe(true)
+    expect(isPublicPath("/api/integrations/sage/labor-hours/requests")).toBe(true)
+    expect(isPublicPath("/api/integrations/sage/labor-hours/results")).toBe(true)
     expect(
       isPublicPath("/api/integrations/sage/client-project-writes/requests")
     ).toBe(true)

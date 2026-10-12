@@ -31,6 +31,8 @@ const sageBridgePaths = [
   "/api/integrations/sage/pay-applications/requests",
   "/api/integrations/sage/pay-applications/results",
   "/api/integrations/sage/tax-catalog/results",
+  "/api/integrations/sage/labor-hours/requests",
+  "/api/integrations/sage/labor-hours/results",
   "/api/integrations/sage/client-project-writes/requests",
   "/api/integrations/sage/client-project-writes/results",
   "/api/integrations/sage/contact-changes/requests",
