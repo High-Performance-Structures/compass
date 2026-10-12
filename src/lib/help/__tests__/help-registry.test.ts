@@ -36,6 +36,8 @@ describe("help registry", () => {
         "greeting.cards",
         "jarvis",
         "nutech.orders",
+        "internal.workspaces",
+        "shop.tickets",
         "social.posts",
         "settings.company",
       ])
@@ -112,6 +114,16 @@ describe("help registry", () => {
         "/dashboard/projects/project-123/contracts"
       ).map((guide) => guide.id)
     ).toContain("financials")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/projects/project-123/shop-tickets"
+      ).map((guide) => guide.id)
+    ).toContain("shop.tickets")
+    expect(
+      getHelpGuidesForRoute(
+        "/dashboard/conversations/channel-123/listening-room"
+      ).map((guide) => guide.id)
+    ).toContain("conversations")
     expect(
       getHelpGuidesForRoute(
         "/dashboard/projects/project-123/messages"
@@ -256,6 +268,29 @@ describe("help registry", () => {
     expect(contactsGuide?.content).toContain("**Merge 2 duplicates**")
     expect(contactsGuide?.content).toContain("**Resend invitation**")
     expect(contactsGuide?.content).toContain("does not overwrite the survivor's")
+  })
+
+  it("documents internal duties, shop tickets, listening rooms, and account deletion", () => {
+    expect(getHelpTopic("internal.workspaces.duty-log")?.href).toBe(
+      "/dashboard/help/internal-workspaces-and-duties#duty-log"
+    )
+    expect(getHelpGuide("internal-workspaces-and-duties")?.content).toContain(
+      "**Undo last**"
+    )
+    expect(getHelpTopic("shop.tickets.sage-labor-hours")?.href).toBe(
+      "/dashboard/help/shop-tickets#sage-labor-hours"
+    )
+    expect(getHelpGuide("shop-tickets")?.content).toContain(
+      "**Get hours from Sage**"
+    )
+    expect(getHelpGuide("conversations-and-notifications")?.content).toContain(
+      "**Close the room for everyone**"
+    )
+    expect(getHelpGuide("requesting-help")?.content).toContain(
+      "**Cancel request**"
+    )
+    expect(searchHelpGuides("bracing rental sign out deposit")[0]?.guide.id)
+      .toBe("nutech.orders")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {

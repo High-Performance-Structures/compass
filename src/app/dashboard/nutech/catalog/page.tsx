@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { IconPackages } from "@tabler/icons-react"
 
 import { getNuTechCatalogWorkspace } from "@/app/actions/nutech-catalog"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { NuTechCatalogWorkspacePanel } from "@/components/nutech/nutech-catalog-workspace"
 import { PageHeader } from "@/components/page-header"
 
@@ -15,6 +16,7 @@ export default async function NuTechCatalogPage(): Promise<React.ReactElement> {
         back={{ href: "/dashboard/nutech", label: "Nu-Tech orders" }}
         icon={<IconPackages className="size-5 text-brand-nutech-gold-foreground" />}
         title="Product Catalog"
+        actions={<ContextualHelpBeacon topicId="nutech.orders.intake" />}
       />
       <NuTechCatalogWorkspacePanel workspace={workspace} />
     </div>
