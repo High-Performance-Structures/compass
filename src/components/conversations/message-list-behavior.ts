@@ -18,7 +18,6 @@ type OlderMessagePageInput<Message extends MessageIdentity> = {
   readonly currentMessages: readonly Message[]
   readonly olderMessages: readonly Message[]
   readonly pageSize: number
-  readonly maxMessages: number
 }
 
 type MessageWindow<Message extends MessageIdentity> = {
@@ -97,7 +96,6 @@ export function mergeOlderMessagePage<Message extends MessageIdentity>({
   currentMessages,
   olderMessages,
   pageSize,
-  maxMessages,
 }: OlderMessagePageInput<Message>): MessageWindow<Message> {
   const knownIds = new Set(currentMessages.map((message) => message.id))
   const uniqueOlder: Message[] = []
@@ -110,15 +108,12 @@ export function mergeOlderMessagePage<Message extends MessageIdentity>({
   }
 
   const combined = [...uniqueOlder, ...currentMessages]
-  const trimmedCount = Math.max(0, combined.length - maxMessages)
-  const retainedOlderCount = Math.max(0, uniqueOlder.length - trimmedCount)
-  const messages = combined.slice(-maxMessages)
-
+  // Explicitly loaded history stays available; trimming it would discard the
+  // requested page and make older conversations impossible to navigate.
   return {
-    messages,
+    messages: combined,
     hasMore:
       olderMessages.length >= pageSize &&
-      messages.length < maxMessages &&
-      retainedOlderCount > 0,
+      uniqueOlder.length > 0,
   }
 }

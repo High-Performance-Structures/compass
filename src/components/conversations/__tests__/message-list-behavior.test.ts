@@ -77,8 +77,8 @@ describe("message list behavior", () => {
     expect(isInitialScrollCurrent(12, 12, 4, 5)).toBe(false)
   })
 
-  it("stops at the retained limit using messages appended during a history request", () => {
-    const requestStartMessages = createMessages("current", 149)
+  it("keeps full older pages navigable beyond the live-session window limit", () => {
+    const requestStartMessages = createMessages("current", 200)
     const currentMessages = [
       ...requestStartMessages,
       { id: "realtime-during-request" },
@@ -89,12 +89,12 @@ describe("message list behavior", () => {
       currentMessages,
       olderMessages,
       pageSize: 50,
-      maxMessages: 200,
     })
 
-    expect(result.messages).toHaveLength(200)
+    expect(result.messages).toHaveLength(251)
     expect(result.messages.slice(0, 50)).toEqual(olderMessages)
-    expect(result.hasMore).toBe(false)
+    expect(result.messages.at(-1)?.id).toBe("realtime-during-request")
+    expect(result.hasMore).toBe(true)
   })
 
   it("terminates when a full page yields no retained cursor progress", () => {
@@ -105,7 +105,6 @@ describe("message list behavior", () => {
       currentMessages,
       olderMessages: duplicateOlderPage,
       pageSize: 50,
-      maxMessages: 200,
     })
 
     expect(result.messages).toEqual(currentMessages)

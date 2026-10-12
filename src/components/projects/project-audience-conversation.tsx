@@ -122,7 +122,7 @@ export async function ProjectAudienceConversation({
         <ConversationsProvider>
           <div className="flex h-full w-full min-w-0 overflow-hidden">
             <div
-              className="grid min-w-0 flex-1 overflow-hidden"
+              className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden"
               style={{ gridTemplateRows: "auto 1fr auto" }}
             >
               <ChannelHeader
@@ -147,7 +147,7 @@ export async function ProjectAudienceConversation({
                 initialMention={initialMention}
               />
             </div>
-            <ThreadPanel />
+            <ThreadPanel currentUserId={preview.viewer.id} />
           </div>
         </ConversationsProvider>
       </main>

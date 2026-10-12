@@ -783,10 +783,15 @@ test.describe("usable Compass areas", () => {
         otherLeft: other.left,
         viewportRight: viewportBounds.right,
         ownRight: own.right,
+        pageWidth: window.innerWidth,
+        contentWidth: element.scrollWidth,
+        viewportWidth: element.clientWidth,
       }
     })
     expect(alignment.ownLeft).toBeGreaterThan(alignment.otherLeft)
     expect(alignment.ownRight).toBeLessThanOrEqual(alignment.viewportRight)
+    expect(alignment.viewportRight).toBeLessThanOrEqual(alignment.pageWidth)
+    expect(alignment.contentWidth).toBeLessThanOrEqual(alignment.viewportWidth + 1)
 
     const newestEdge = async () =>
       viewport.evaluate((element) => {

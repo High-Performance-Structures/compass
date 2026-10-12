@@ -62,7 +62,7 @@ export default async function ChannelPage({
   return (
     <div className="flex h-full w-full min-w-0 overflow-hidden">
       <div
-        className="grid min-w-0 flex-1 overflow-hidden"
+        className="grid min-w-0 flex-1 grid-cols-1 overflow-hidden"
         style={{ gridTemplateRows: "auto 1fr auto" }}
       >
         <ChannelHeader
@@ -93,7 +93,7 @@ export default async function ChannelPage({
           />
         )}
       </div>
-      <ThreadPanel />
+      <ThreadPanel currentUserId={currentUser.id} />
     </div>
   )
 }

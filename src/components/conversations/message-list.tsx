@@ -159,15 +159,18 @@ export function MessageList({
     // mark as consumed
     unconsumed.forEach((msg) => consumedNewMessagesRef.current.add(msg.id))
     pendingNewestScrollRef.current = atNewestEdgeRef.current
+    const retainRecentWindow = atNewestEdgeRef.current
 
     // append new messages in chronological order
     setMessageWindow((previous) => {
       const existingIds = new Set(previous.messages.map((message) => message.id))
       const unique = unconsumed.filter((m) => !existingIds.has(m.id))
       // reverse because realtime returns DESC
+      const combined = [...previous.messages, ...unique.reverse()]
       return {
         ...previous,
-        messages: [...previous.messages, ...unique.reverse()].slice(-MAX_MESSAGES),
+        // Bound unattended live sessions, but never evict history being read.
+        messages: retainRecentWindow ? combined.slice(-MAX_MESSAGES) : combined,
       }
     })
     setRealtimeCommitId((previous) => previous + 1)
@@ -360,7 +363,6 @@ export function MessageList({
             currentMessages: previous.messages,
             olderMessages: older,
             pageSize: HISTORY_PAGE_SIZE,
-            maxMessages: MAX_MESSAGES,
           })
         })
         setHistoryCommitId(requestId)
@@ -412,9 +414,9 @@ export function MessageList({
   }, [messages])
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <ScrollArea
-        className="h-full min-h-0 flex-1"
+        className="h-full min-h-0 min-w-0 flex-1"
         viewportRef={scrollViewportRef}
       >
         <div className="flex flex-col gap-4 p-4">
