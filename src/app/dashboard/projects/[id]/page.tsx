@@ -12,7 +12,7 @@ import {
   scheduleTasks,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import { canCreateProjectDriveFolder, canManageProjectRegistry } from "@/lib/permissions"
 import { ProjectDriveFolderButton } from "@/components/projects/project-drive-folder-button"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
@@ -209,6 +209,7 @@ export default async function ProjectSummaryPage({
   let rfiSummary: ProjectRfiSummary | null = null
   let familySummary: ProjectFamilySummary | null = null
   let canEditRegistry = false
+  let canCreateDriveFolder = false
   let developerModeEnabled = false
   let userRole: string | null = null
   let projectRole: string | null = null
@@ -222,6 +223,7 @@ export default async function ProjectSummaryPage({
   try {
     const currentUser = await getCurrentUser()
     canEditRegistry = canManageProjectRegistry(currentUser)
+    canCreateDriveFolder = canCreateProjectDriveFolder(currentUser)
     developerModeEnabled = await isDeveloperModeEnabled(canEditRegistry)
     userRole = currentUser?.role ?? null
 
@@ -477,7 +479,7 @@ export default async function ProjectSummaryPage({
             clientStatus={clientStatus}
           />
           <div className="flex shrink-0 items-center gap-2">
-            {canEditRegistry && project && !project.googleDriveFolderId && (
+            {canCreateDriveFolder && project && !project.googleDriveFolderId && (
               <ProjectDriveFolderButton projectId={id} />
             )}
             <ProjectActionsMenu
