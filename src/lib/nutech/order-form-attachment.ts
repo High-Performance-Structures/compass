@@ -3,19 +3,11 @@ import { eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 import type { AuthUser } from "@/lib/auth"
+import type { CompassEmailAttachment } from "@/lib/email/mime-message"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
 
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-export type EmailAttachment = { readonly filename: string; readonly content: string }
-
-function toBase64(bytes: Uint8Array): string {
-  let binary = ""
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
-  }
-  return btoa(binary)
-}
 
 /**
  * The manufacturer's filled order form for a PO linked to a Nu-Tech order, to
@@ -30,7 +22,7 @@ export async function nuTechOrderFormAttachments(input: {
   readonly user: AuthUser
   readonly purchaseOrderId: string
   readonly purchaseOrderNumber: string | null
-}): Promise<readonly EmailAttachment[] | null> {
+}): Promise<readonly CompassEmailAttachment[] | null> {
   const workflow = await input.db
     .select({ workbookId: nuTechOrderWorkflows.airliteWorkbookId, workbookStatus: nuTechOrderWorkflows.airliteWorkbookStatus })
     .from(nuTechOrderWorkflows)
@@ -54,7 +46,7 @@ export async function nuTechOrderFormAttachments(input: {
   }
   const name = `PO ${input.purchaseOrderNumber ?? "order form"}`
   return [
-    { filename: `${name}.pdf`, content: toBase64(new Uint8Array(await pdf.arrayBuffer())) },
-    { filename: `${name}.xlsx`, content: toBase64(new Uint8Array(await xlsx.arrayBuffer())) },
+    { filename: `${name}.pdf`, contentType: "application/pdf", content: new Uint8Array(await pdf.arrayBuffer()) },
+    { filename: `${name}.xlsx`, contentType: XLSX_MIME, content: new Uint8Array(await xlsx.arrayBuffer()) },
   ]
 }
