@@ -8,6 +8,7 @@ import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
 import { Network } from "@capacitor/network"
 import { Preferences } from "@capacitor/preferences"
 import { PushNotifications } from "@capacitor/push-notifications"
+import { StatusBar, Style } from "@capacitor/status-bar"
 import { NativeBiometric } from "@capgo/capacitor-native-biometric"
 import { z } from "zod/v4"
 
@@ -80,6 +81,7 @@ const AUTH_STATE_KEY = "compass_native_auth_state_v1"
 const AUTH_VERIFIER_KEY = "compass_native_auth_verifier_v1"
 const PROFILE_KEY = "compass_field_profile_v1"
 const COMPANIES_KEY = "compass_field_companies_v1"
+const THEME_KEY = "compass_field_theme_v1"
 const SESSION_EXPIRED_KEY = "compass_field_session_expired_v1"
 const SESSION_EXPIRED_MESSAGE = "Your Compass sign-in has ended. Sign in again to keep syncing. Work saved on this device is kept and will sync after you sign in."
 const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
@@ -143,6 +145,9 @@ let projects: Project[] = []
 let packet: Packet | null = null
 let profile: FieldUserProfile | null = null
 let companies: FieldCompanies = {}
+type FieldTheme = "light" | "dark"
+// Light by default, matching the web app; dark only when chosen in settings.
+let fieldTheme: FieldTheme = "light"
 // Set when the server no longer accepts this device's session. Cached projects
 // stay readable offline, but Field Mode asks for sign-in instead of failing
 // every refresh with a generic download error.
@@ -596,7 +601,25 @@ function settingsView(): string {
   const pushButton = pushStatus === "enabled" || pushStatus === "checking"
     ? ""
     : `<button id="enable-push" class="secondary" type="button">Try notification setup again</button>`
-  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Use Compass in your browser")}<div class="guide-copy"><p>Open the full Compass website in Safari, Chrome, or your default browser. Sign in there once; the app stays signed in separately.</p><button class="secondary" data-open-in-browser type="button" ${online ? "" : "disabled"}>Open in browser</button></div></div><div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Appearance")}<div class="theme-choice" role="group" aria-label="Appearance"><button type="button" data-field-theme="light" aria-pressed="${fieldTheme === "light"}">Light</button><button type="button" data-field-theme="dark" aria-pressed="${fieldTheme === "dark"}">Dark</button></div></div><div class="block">${sectionHead("Use Compass in your browser")}<div class="guide-copy"><p>Open the full Compass website in Safari, Chrome, or your default browser. Sign in there once; the app stays signed in separately.</p><button class="secondary" data-open-in-browser type="button" ${online ? "" : "disabled"}>Open in browser</button></div></div><div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+}
+
+function applyFieldTheme(theme: FieldTheme): void {
+  fieldTheme = theme
+  document.documentElement.dataset.theme = theme
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#131d2e" : "#ffffff")
+  // Keep the clock and battery readable when the phone itself is in the
+  // opposite mode. Style.Light means dark text for a light header.
+  void StatusBar.setStyle({ style: theme === "dark" ? Style.Dark : Style.Light }).catch(() => undefined)
+  if (Capacitor.getPlatform() === "android") {
+    void StatusBar.setBackgroundColor({ color: theme === "dark" ? "#131d2e" : "#ffffff" }).catch(() => undefined)
+  }
+}
+
+async function chooseFieldTheme(theme: FieldTheme): Promise<void> {
+  applyFieldTheme(theme)
+  await Preferences.set({ key: THEME_KEY, value: theme })
+  render()
 }
 
 function view(): string {
@@ -718,6 +741,9 @@ function bindEvents(): void {
     render()
   })
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
+  document.querySelectorAll<HTMLButtonElement>("[data-field-theme]").forEach((button) => button.addEventListener("click", () => {
+    void chooseFieldTheme(button.dataset.fieldTheme === "dark" ? "dark" : "light")
+  }))
   document.querySelectorAll<HTMLButtonElement>("[data-open-in-browser]").forEach((button) => button.addEventListener("click", () => void openInBrowser()))
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#today-cherish")?.addEventListener("click", openCherish)
@@ -2208,6 +2234,7 @@ async function handleAppUrl(appUrl: string): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
+  applyFieldTheme((await Preferences.get({ key: THEME_KEY })).value === "dark" ? "dark" : "light")
   if (isIos) {
     document.body.classList.add("platform-ios")
     await Keyboard.setResizeMode({ mode: KeyboardResize.Native })
