@@ -5,14 +5,17 @@ import {
   getFieldProjectPacket,
 } from "@/app/actions/field-mode"
 import { requireAuth } from "@/lib/auth"
+import { DEPARTMENT_CODES } from "@/lib/department-profiles"
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import type { FieldProjectPacket } from "@/lib/field/types"
 
 export async function GET(request: NextRequest): Promise<Response> {
   try {
     const requestedProjectId = request.nextUrl.searchParams.get("projectId")
-    const [user, projects] = await Promise.all([
+    const [user, projects, departmentProfiles] = await Promise.all([
       requireAuth(),
       getActiveFieldProjects(),
+      currentDepartmentProfiles(),
     ])
     const selectedProject =
       projects.find((project) => project.id === requestedProjectId) ??
@@ -38,6 +41,17 @@ export async function GET(request: NextRequest): Promise<Response> {
       },
       projects,
       initialPacket,
+      // Field Mode shows each project's company name and logo, offline too.
+      companies: Object.fromEntries(
+        DEPARTMENT_CODES.map((code) => [
+          code,
+          {
+            displayName: departmentProfiles[code].displayName,
+            shortName: departmentProfiles[code].shortName,
+            logoDataUrl: departmentProfiles[code].logoDataUrl,
+          },
+        ])
+      ),
     })
   } catch (error) {
     const message =
