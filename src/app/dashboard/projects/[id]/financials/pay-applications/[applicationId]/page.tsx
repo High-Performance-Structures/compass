@@ -7,6 +7,8 @@ import { IconFileDollar } from "@tabler/icons-react"
 import { getProjectOwnerPayApplicationDraft } from "@/app/actions/project-financial-workflows"
 import { ProjectOwnerPayApplicationEditor } from "@/components/projects/project-owner-pay-application-editor"
 import { PageHeader } from "@/components/page-header"
+import { getPayApplicationShopTickets } from "@/app/actions/shop-ticket-billing"
+import { PayApplicationShopTickets } from "@/components/projects/pay-application-shop-tickets"
 
 export default async function ProjectPayApplicationPage({
   params,
@@ -17,6 +19,7 @@ export default async function ProjectPayApplicationPage({
   const id = decodeProjectRouteId(rawProjectId)
   const application = await getProjectOwnerPayApplicationDraft(id, applicationId)
   if (!application) notFound()
+  const shopTickets = await getPayApplicationShopTickets(id, applicationId).catch(() => null)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -26,6 +29,7 @@ export default async function ProjectPayApplicationPage({
         title="G702 / G703 Pay Application"
       />
       <ProjectOwnerPayApplicationEditor projectId={id} application={application} />
+      {shopTickets ? <PayApplicationShopTickets projectId={id} data={shopTickets} /> : null}
     </div>
   )
 }

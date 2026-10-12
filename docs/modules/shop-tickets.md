@@ -42,8 +42,28 @@ The draw folder follows the department template name. An existing draw folder
 named "September 2026", or a "Receipts" folder, is used instead when present.
 Missing draw folders are created; the category folder itself must exist.
 
-## Planned
+## Hours from Sage
 
-- Prefilling hours from Sage labor for the ticket's labor dates (read-only),
-  with hours already billed on another ticket excluded.
-- Linking each ticket's total into its pay application's expense summary.
+On a draft, set the labor dates and choose **Get hours from Sage**. The Sage
+bridge (read-only) checks for requests every minute and returns the job's
+timecard hours in those dates, by cost code, with who worked and when. Pay
+rates are never read.
+
+- **Which job:** the project's Sage job number when Compass has it; otherwise
+  the Sage job whose name starts with the project number ("O-215-660-..."). A
+  phase job such as "O-215-660-1-..." is a different job.
+- **No double billing:** hours already on another ticket (not void) are not
+  offered again. Choosing **Add to ticket as labor** adds a labor line per cost
+  code (or adds to an existing one), and saving the ticket records which
+  timecard hours it bills. Voiding a ticket frees its hours; removing a labor
+  line drops its Sage hours.
+- **Cost codes:** Sage's code is read from its name ("03 31 00 - Structural
+  Concrete") or its number (3310000 is 03 31 00). Hours with no matching code
+  can't be added until the code is fixed in Sage.
+- **Machine hours** are not on Sage timecards; enter them by hand.
+
+## On the pay application
+
+A pay application's page lists the shop tickets billed on it, the issued
+total, and the issued amounts by cost code to carry into the matching lines.
+Draft and void tickets are listed but not counted.

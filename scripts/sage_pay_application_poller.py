@@ -34,6 +34,10 @@ DEFAULT_SAGE_USERNAME = "hps_jarvis_readonly"
 REQUESTS_TARGET = "/api/integrations/sage/pay-applications/requests?limit=10"
 RESULTS_TARGET = "/api/integrations/sage/pay-applications/results"
 TAX_CATALOG_RESULTS_TARGET = "/api/integrations/sage/tax-catalog/results"
+LABOR_REQUESTS_TARGET = "/api/integrations/sage/labor-hours/requests"
+LABOR_RESULTS_TARGET = "/api/integrations/sage/labor-hours/results"
+# Sage payroll record status for a voided check; its timecard hours don't count.
+VOID_PAYROLL_STATUS = 5
 LOCK_PATH = Path("/tmp/compass-sage-pay-application-poller.lock")
 SNAPSHOT_MAPPING_VERSION = "v2"
 
@@ -360,6 +364,165 @@ def parse_poll_requests(payload: Any) -> list[PollRequest]:
     return requests
 
 
+@dataclass(frozen=True)
+class LaborRequest:
+    request_id: str
+    claim_token: str
+    project_number: str | None
+    sage_job_number: str | None
+    date_from: str
+    date_to: str
+
+
+def parse_labor_requests(payload: Any) -> list[LaborRequest]:
+    if not isinstance(payload, Mapping) or not isinstance(payload.get("requests"), list):
+        raise PollerError("Compass returned an invalid labor poll response")
+    requests: list[LaborRequest] = []
+    for raw in payload["requests"]:
+        if not isinstance(raw, Mapping):
+            raise PollerError("Compass returned an invalid labor request")
+        request_id = text(raw.get("id"))
+        claim_token = text(raw.get("claimToken"))
+        date_from = text(raw.get("dateFrom"))
+        date_to = text(raw.get("dateTo"))
+        if not (request_id and claim_token and date_from and date_to):
+            raise PollerError("Compass returned an incomplete labor request")
+        requests.append(
+            LaborRequest(
+                request_id=request_id,
+                claim_token=claim_token,
+                project_number=text(raw.get("projectNumber")),
+                sage_job_number=text(raw.get("sageJobNumber")),
+                date_from=date_from,
+                date_to=date_to,
+            )
+        )
+    return requests
+
+
+def resolve_labor_job(cursor: Any, request: LaborRequest) -> tuple[int, str | None]:
+    """The Sage job by its record number, or by the project number at the
+    start of the job name ("O-215-660-Compass Developer"). A phase such as
+    "O-215-660-1-..." is a different job."""
+    if request.sage_job_number:
+        try:
+            number = int(Decimal(request.sage_job_number))
+        except (ValueError, TypeError, ArithmeticError):
+            number = None
+        if number is not None:
+            cursor.execute(
+                "SELECT recnum, jobnme FROM dbo.actrec WITH (NOLOCK) WHERE recnum=%s",
+                (number,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return int(row["recnum"]), text(row["jobnme"])
+    project_number = (request.project_number or "").strip()
+    if not project_number:
+        raise PollerError("The project has no Sage job or project number")
+    like = project_number.replace("[", "[[]").replace("%", "[%]").replace("_", "[_]") + "%"
+    cursor.execute(
+        "SELECT recnum, jobnme FROM dbo.actrec WITH (NOLOCK) WHERE jobnme LIKE %s",
+        (like,),
+    )
+    pattern = re.compile(rf"^{re.escape(project_number)}(?!\d|-\d)", re.IGNORECASE)
+    matches = [row for row in cursor.fetchall() if pattern.match(text(row["jobnme"]) or "")]
+    if len(matches) == 1:
+        return int(matches[0]["recnum"]), text(matches[0]["jobnme"])
+    if not matches:
+        raise PollerError(f"No Sage job is named {project_number}")
+    raise PollerError(f"Several Sage jobs are named {project_number}")
+
+
+def fetch_labor_lines(cursor: Any, sage_job: int, date_from: str, date_to: str) -> list[dict[str, Any]]:
+    # Read-only: timecard lines with the employee's name only (no pay rates).
+    cursor.execute(
+        """
+        SELECT t.recnum, t.linnum, t.dtewrk, t.hrswrk, t.cstcde,
+          cost_code.cdenme, employee.fstnme, employee.lstnme
+        FROM dbo.tmcdln t WITH (NOLOCK)
+        JOIN dbo.payrec payroll WITH (NOLOCK) ON payroll.recnum=t.recnum
+        LEFT JOIN dbo.employ employee WITH (NOLOCK) ON employee.recnum=payroll.empnum
+        LEFT JOIN dbo.cstcde cost_code WITH (NOLOCK) ON cost_code.recnum=t.cstcde
+        WHERE t.jobnum=%s AND t.dtewrk BETWEEN %s AND %s
+          AND ISNULL(payroll.status, 0) <> %s AND ISNULL(t.hrswrk, 0) <> 0
+        ORDER BY t.dtewrk, t.recnum, t.linnum
+        """,
+        (sage_job, date_from, date_to, VOID_PAYROLL_STATUS),
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def build_labor_result(request: LaborRequest, sage_job: int, job_name: str | None, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    lines = []
+    for row in rows:
+        work_date = iso_date(row.get("dtewrk"))
+        if work_date is None:
+            continue
+        name = " ".join(part for part in (text(row.get("fstnme")), text(row.get("lstnme"))) if part)
+        lines.append(
+            {
+                "payrollRecord": str(row["recnum"]),
+                "lineNumber": str(row["linnum"]),
+                "workDate": work_date,
+                "hours": float(row.get("hrswrk") or 0),
+                "sageCostCode": None if row.get("cstcde") is None else normalized_cost_code(row.get("cstcde")),
+                "sageCostCodeName": text(row.get("cdenme")),
+                "employeeName": name or None,
+            }
+        )
+    return {
+        "ok": True,
+        "requestId": request.request_id,
+        "claimToken": request.claim_token,
+        "sageJobNumber": str(sage_job),
+        "sageJobName": job_name,
+        "lines": lines,
+    }
+
+
+def process_labor_requests(base_url: str, secrets: Sequence[str]) -> int:
+    payload = signed_json_request_with_fallback(
+        base_url, secrets, "GET", f"{LABOR_REQUESTS_TARGET}?limit=10", timeout=30
+    )
+    requests = parse_labor_requests(payload)
+    if not requests:
+        return 0
+    connection = connect_sage()
+    try:
+        cursor = connection.cursor(as_dict=True)
+        for request in requests:
+            try:
+                sage_job, job_name = resolve_labor_job(cursor, request)
+                rows = fetch_labor_lines(cursor, sage_job, request.date_from, request.date_to)
+                body: dict[str, Any] = build_labor_result(request, sage_job, job_name, rows)
+            except PollerError as error:
+                body = {
+                    "ok": False,
+                    "requestId": request.request_id,
+                    "claimToken": request.claim_token,
+                    "error": str(error)[:500],
+                }
+            signed_json_request_with_fallback(
+                base_url, secrets, "POST", LABOR_RESULTS_TARGET, body, timeout=45
+            )
+    finally:
+        connection.close()
+    return len(requests)
+
+
+def process_labor_requests_safely(
+    base_url: str, secrets: Sequence[str]
+) -> tuple[int | None, str | None]:
+    try:
+        return process_labor_requests(base_url, secrets), None
+    except PollerError as error:
+        return None, str(error)
+    except Exception as error:
+        # Like the tax catalog, labor hours must not take down pay applications.
+        return None, f"Labor hours failed: {type(error).__name__}"
+
+
 def resolve_sage_job(request: PollRequest) -> int:
     # Compass stores Sage's stable row identity in sage_job_id and the numeric
     # actrec.recnum used by AIA tables in sage_job_number.
@@ -531,7 +694,7 @@ def sync_tax_catalog_safely(
 
 def poll_once(
     base_url: str, secrets: Sequence[str]
-) -> tuple[int, int, int | None, str | None]:
+) -> tuple[int, int, int | None, str | None, int | None, str | None]:
     # Catalog refresh is ancillary to pay applications. Run it before claiming
     # work and contain expected failures so an invalid catalog cannot strand a
     # claimed pay-application request.
@@ -541,7 +704,8 @@ def poll_once(
     )
     requests = parse_poll_requests(payload)
     processed = process_requests(requests, base_url, secrets) if requests else 0
-    return len(requests), processed, tax_districts, tax_catalog_error
+    labor_requests, labor_error = process_labor_requests_safely(base_url, secrets)
+    return len(requests), processed, tax_districts, tax_catalog_error, labor_requests, labor_error
 
 
 def acquire_lock() -> Any:
@@ -578,9 +742,14 @@ def main() -> int:
     lock = acquire_lock()
     try:
         while True:
-            requested, processed, tax_districts, tax_catalog_error = poll_once(
-                base_url, secrets
-            )
+            (
+                requested,
+                processed,
+                tax_districts,
+                tax_catalog_error,
+                labor_requests,
+                labor_error,
+            ) = poll_once(base_url, secrets)
             output = {
                 "status": "ok",
                 "requested": requested,
@@ -590,6 +759,10 @@ def main() -> int:
             }
             if tax_catalog_error is not None:
                 output["taxCatalogError"] = tax_catalog_error
+            if labor_requests:
+                output["laborRequests"] = labor_requests
+            if labor_error is not None:
+                output["laborError"] = labor_error
             print(
                 json.dumps(output),
                 flush=True,
