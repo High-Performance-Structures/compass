@@ -32,6 +32,7 @@ import { PushNotificationRegistrar } from "@/hooks/use-native-push"
 import { DesktopShell } from "@/components/desktop/desktop-shell"
 import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 import { VoiceProvider } from "@/components/voice/voice-provider"
+import { ListeningRoomDockProvider } from "@/components/voice/listening-room-dock-provider"
 import { PresenceProvider } from "@/contexts/presence-context"
 import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
@@ -123,6 +124,7 @@ export default async function DashboardLayout({
     <ConversationPanelProvider enabled={canUseDirectMessages}>
     <PresenceProvider>
     <VoiceProvider>
+    <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk}>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
     <QuickAddProvider projects={quickAddProjects}>
@@ -192,6 +194,7 @@ export default async function DashboardLayout({
     </QuickAddProvider>
     </ProjectListProvider>
     </SettingsProvider>
+    </ListeningRoomDockProvider>
     </VoiceProvider>
     </PresenceProvider>
     </ConversationPanelProvider>

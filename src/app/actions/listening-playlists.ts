@@ -12,6 +12,7 @@ import {
   listeningPlaylists,
   listeningPlaylistTrackLinks,
   listeningQueueItems,
+  listeningRoomParticipants,
   listeningRooms,
   listeningTrackLinks,
 } from "@/db/schema-conversations"
@@ -548,12 +549,24 @@ export async function addListeningPlaylistToRoom(input: {
       .where(eq(listeningRooms.channelId, context.channel.id))
       .get()
     if (!room) return { success: false, error: "Start a listening room first" }
-    if (
-      startAtItemId !== null &&
-      room.hostUserId !== context.user.id &&
-      !can(context.user, "channels", "moderate")
-    ) {
-      return { success: false, error: "Only the room host can start playback" }
+    if (startAtItemId !== null) {
+      const participant = await context.db
+        .select({ id: listeningRoomParticipants.id })
+        .from(listeningRoomParticipants)
+        .where(
+          and(
+            eq(listeningRoomParticipants.roomId, room.id),
+            eq(listeningRoomParticipants.userId, context.user.id)
+          )
+        )
+        .get()
+      if (
+        !participant &&
+        room.hostUserId !== context.user.id &&
+        !can(context.user, "channels", "moderate")
+      ) {
+        return { success: false, error: "Join the listening room to start playback" }
+      }
     }
 
     const items = await context.db
