@@ -215,12 +215,34 @@ def build_square_order(invoice: SageInvoice, location_id: str, customer_id: str)
     }
 
 
+def company_today() -> str:
+    """Today in the company's time zone (Mountain), as YYYY-MM-DD."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        return dt.datetime.now(ZoneInfo("America/Denver")).date().isoformat()
+    except Exception:
+        return dt.date.today().isoformat()
+
+
+def square_due_date(sage_due_date: str, today: str) -> str:
+    """Square rejects a due date before the day the invoice is sent, so a
+    past-due Sage invoice is due on the day it goes out. Sage is unchanged."""
+    return sage_due_date if sage_due_date >= today else today
+
+
 def build_square_invoice(
     invoice: SageInvoice,
     location_id: str,
     order_id: str,
     customer_id: str,
+    today: str | None = None,
 ) -> dict[str, Any]:
+    sent_on = today or company_today()
+    due_date = square_due_date(invoice.due_date, sent_on)
+    past_due_note = (
+        f" Originally due {invoice.due_date} in Sage." if due_date != invoice.due_date else ""
+    )
     return {
         "idempotency_key": f"sage-ar-invoice-{invoice.sage_invoice_id}",
         "invoice": {
@@ -230,7 +252,7 @@ def build_square_invoice(
             "payment_requests": [
                 {
                     "request_type": "BALANCE",
-                    "due_date": invoice.due_date,
+                    "due_date": due_date,
                     "tipping_enabled": False,
                 }
             ],
@@ -246,7 +268,7 @@ def build_square_invoice(
             "title": invoice.job_short_name[:100],
             "description": (
                 f"Sage invoice {invoice.invoice_number}. "
-                f"Source record {invoice.sage_invoice_id}."
+                f"Source record {invoice.sage_invoice_id}.{past_due_note}"
             )[:65536],
             "sale_or_service_date": invoice.invoice_date,
             "custom_fields": [
