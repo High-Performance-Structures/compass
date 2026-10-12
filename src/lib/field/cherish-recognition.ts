@@ -21,6 +21,7 @@ type CherishRecognitionSource = {
  */
 export function toFieldCherishRecognitions(
   items: readonly CherishRecognitionSource[],
+  newIds: ReadonlySet<string> = new Set(),
 ): readonly FieldCherishRecognition[] {
   return items.flatMap((item) =>
     item.responseType === "concern"
@@ -35,6 +36,7 @@ export function toFieldCherishRecognitions(
             submittedByName: item.isAnonymous ? null : item.submittedByName,
             audienceScope: item.audience.scope,
             createdAt: item.createdAt,
+            isNew: newIds.has(item.id),
           },
         ],
   )

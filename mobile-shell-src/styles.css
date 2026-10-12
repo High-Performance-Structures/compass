@@ -158,6 +158,8 @@ button { cursor: pointer; }
   color: inherit;
   text-align: left;
 }
+.cherish-replay { display: flex; align-items: center; gap: 6px; min-height: 44px; margin-bottom: 8px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+.cherish-replay-icon { width: 15px; height: 15px; }
 .cherish-spotlight span { color: var(--brand); font-size: 11px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 /* Keep the spotlight a short teaser; the full story lives on the Cherish tab. */
 .cherish-spotlight strong { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 14px; line-height: 1.45; }
@@ -294,11 +296,13 @@ button { cursor: pointer; }
 .keyboard-open .chat-compose { padding-bottom: 12px; }
 .platform-ios.keyboard-open .shell { padding-bottom: 120px; }
 
-@media (prefers-color-scheme: dark) {
-  :root { color-scheme: dark; background: #0f1724; color: #e8eef7; --brand: #e8eef7; --brand-light: #1b2a40; --accent: #8cc4ff; --needle: #5cc99a; --surface: #131d2e; --line: #2a3850; --muted: #9eadc2; }
-  body, .chat-compose { background: #0f1724; }
-  .tabbar { background: #131d2e; }
-  .primary, .company-chip[aria-pressed="true"] { color: #0f1724; }
-  .live-button, .company-chip { border-color: #3a4a66; }
-  .field input, .field textarea, .field select, .direct-reply-form textarea, .chat-compose textarea { background: #182338; border-color: #3a4a66; color: #e8eef7; }
-}
+/* Dark mode is a choice in Field settings, like the web theme toggle. */
+:root[data-theme="dark"] { color-scheme: dark; background: #0f1724; color: #e8eef7; --brand: #e8eef7; --brand-light: #1b2a40; --accent: #8cc4ff; --needle: #5cc99a; --surface: #131d2e; --line: #2a3850; --muted: #9eadc2; }
+:root[data-theme="dark"] body, :root[data-theme="dark"] .chat-compose { background: #0f1724; }
+:root[data-theme="dark"] .tabbar { background: #131d2e; }
+:root[data-theme="dark"] .primary, :root[data-theme="dark"] .company-chip[aria-pressed="true"] { color: #0f1724; }
+:root[data-theme="dark"] .live-button, :root[data-theme="dark"] .company-chip { border-color: #3a4a66; }
+:root[data-theme="dark"] .field input, :root[data-theme="dark"] .field textarea, :root[data-theme="dark"] .field select, :root[data-theme="dark"] .direct-reply-form textarea, :root[data-theme="dark"] .chat-compose textarea { background: #182338; border-color: #3a4a66; color: #e8eef7; }
+.theme-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.theme-choice button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--brand); font-size: 14px; font-weight: 750; }
+.theme-choice button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
