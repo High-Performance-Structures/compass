@@ -6,6 +6,7 @@ import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { getOrganizationDriveContext } from "@/lib/google/organization-drive"
+import { exportNuTechOrderFormPdf } from "@/lib/nutech/order-form-attachment"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { getProjectAccessRecord } from "@/lib/project-access"
@@ -44,13 +45,13 @@ export async function GET(
     if (!workflow?.workbookId) {
       return new Response("Fill the order form first; the pickup copy is printed from it.", { status: 404 })
     }
-    const { client, userEmail } = await getOrganizationDriveContext({
+    const drive = await getOrganizationDriveContext({
       db,
       environment: env,
       organizationId,
       user,
     })
-    const exported = await client.exportSpreadsheetPdf(userEmail, workflow.workbookId)
+    const exported = await exportNuTechOrderFormPdf(drive, workflow.workbookId)
     if (!exported.ok) {
       return new Response(`Couldn't export the order form from Drive (${exported.status}).`, { status: 502 })
     }

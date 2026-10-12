@@ -467,24 +467,32 @@ export class DriveClient {
   }
 
   /**
-   * A Google Sheet as a print-ready PDF (every tab, letter, fit to width, no
-   * gridlines). The Drive export endpoint can't set page options, so this
-   * uses the Sheets export URL with the same token.
+   * A Google Sheet as a print-ready PDF (letter, no gridlines): one tab
+   * scaled onto a single page when `sheetId` is given, else every tab fit to
+   * width. The Drive export endpoint can't set page options, so this uses
+   * the Sheets export URL with the same token.
    */
   async exportSpreadsheetPdf(
     userEmail: string,
-    fileId: string
+    fileId: string,
+    sheetId?: number
   ): Promise<Response> {
     const token = await this.getToken(userEmail)
     const params = new URLSearchParams({
       format: "pdf",
       size: "letter",
       portrait: "true",
-      fitw: "true",
       gridlines: "false",
       printtitle: "false",
       sheetnames: "false",
       pagenum: "UNDEFINED",
+      top_margin: "0.25",
+      bottom_margin: "0.25",
+      left_margin: "0.25",
+      right_margin: "0.25",
+      ...(sheetId === undefined
+        ? { fitw: "true" }
+        : { gid: String(sheetId), scale: "4" }),
     })
 
     return fetch(
