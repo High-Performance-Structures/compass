@@ -6,9 +6,9 @@ import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
 import {
+  departmentView,
   DEFAULT_PHASE_BY_JOB_STATUS,
   DEFAULT_PORTFOLIO_MAP_RULES,
-  DEFAULT_UNMAPPED_DEPARTMENTS,
   PORTFOLIO_PHASES,
   type PortfolioMapRules,
   type PortfolioPhaseId,
@@ -64,9 +64,9 @@ export function portfolioPhaseStatuses(phase: PortfolioPhaseId, rules: Portfolio
 }
 
 /**
- * Whether a department's jobs appear by default: HPS and Open Range do,
- * Nu-Tech does not, unless the company changed it. Projects without a
- * recognizable department stay.
+ * Whether a department's jobs appear with the projects: HPS, Open Range and
+ * Design do, Nu-Tech has its own sales view, unless the company changed it.
+ * Projects without a recognizable department stay.
  */
 export function isMappedDepartment(
   project: {
@@ -76,10 +76,7 @@ export function isMappedDepartment(
   },
   rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES,
 ): boolean {
-  const department = resolvedProjectDepartment(project)
-  if (department === null) return true
-  const configured = rules.departments[department]
-  return configured ?? !DEFAULT_UNMAPPED_DEPARTMENTS.includes(department)
+  return departmentView(resolvedProjectDepartment(project), rules) === "projects"
 }
 
 export type PortfolioProjectRule = {

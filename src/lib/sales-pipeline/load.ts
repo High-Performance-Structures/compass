@@ -5,7 +5,11 @@ import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { resolveTown, spreadSharedTowns } from "@/lib/portfolio-map/model"
-import { isProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
+import { type ProjectDepartment } from "@/lib/project-branding"
+import { DEFAULT_DEPARTMENT_PROFILES, DEPARTMENT_CODES } from "@/lib/department-profiles"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
+import { departmentView } from "@/lib/portfolio-map/phases"
 import { projectDisplayName } from "@/lib/project-display-name"
 import {
   isDeliveryMethod,
@@ -53,8 +57,20 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
   try {
     const user = await getCurrentUser()
     if (!user?.organizationId || !isInternalStaffRole(user.role)) return []
-    const departments = Object.keys(SALES_PIPELINE_DEPARTMENTS).filter(isProjectDepartment)
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return []
+    const db = getDb(env.DB)
+    // The company chooses which departments have a sales pipeline view (Settings → Portfolio map).
+    const [rules, profiles] = await Promise.all([
+      readPortfolioMapRules(db, user.organizationId),
+      readFeatureSettings(db, user.organizationId, "department-profiles").catch(() => ({ departments: DEFAULT_DEPARTMENT_PROFILES })),
+    ])
+    const departments = DEPARTMENT_CODES.filter((department) => departmentView(department, rules) === "sales")
     if (departments.length === 0) return []
+    const titleFor = (department: ProjectDepartment): string =>
+      rules.salesTitles[department]?.trim() ||
+      SALES_PIPELINE_DEPARTMENTS[department] ||
+      `${profiles.departments[department].displayName} Sales`
 
     const visible = await getProjects()
     const staged = visible.flatMap((project) => {
@@ -63,9 +79,6 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
     })
     if (staged.length === 0) return []
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
-    const db = getDb(env.DB)
     const details = await db
       .select({
         id: projects.id,
@@ -94,8 +107,7 @@ export async function getSalesPipelines(): Promise<readonly SalesPipeline[]> {
     })
 
     return departments.flatMap((department): SalesPipeline[] => {
-      const title = SALES_PIPELINE_DEPARTMENTS[department]
-      if (!title) return []
+      const title = titleFor(department)
       const jobs = staged.flatMap(({ project, stage }): SalesPipelineJob[] => {
         const detail = detailById.get(project.id)
         if (!detail || detail.department !== department) return []

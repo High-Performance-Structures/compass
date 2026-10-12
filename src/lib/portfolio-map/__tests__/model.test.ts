@@ -201,19 +201,21 @@ describe("company map rules", () => {
   }
 
   it("puts a status in the phase the company chose, or leaves it off", () => {
-    const rules = { statusPhases: { complete: "closeout" as const, under_construction: "off" as const }, departments: {} }
+    const rules = { statusPhases: { complete: "closeout" as const, under_construction: "off" as const }, departmentViews: {}, salesTitles: {} }
     expect(phaseForJobStatus("complete", "Complete", rules)).toBe("closeout")
     expect(portfolioPhaseFor(rule, rules)).toBeNull()
     expect(portfolioPhaseFor({ ...rule, jobStatusId: "custom-1", jobStatusLabel: "Complete" }, rules)).toBe("closeout")
   })
 
-  it("lets a company show Nu-Tech jobs or leave a department off", () => {
-    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null }, { statusPhases: {}, departments: { N: true } })).toBe(true)
-    expect(portfolioPhaseFor(rule, { statusPhases: {}, departments: { H: false } })).toBeNull()
+  it("puts each department on the view the company chose", () => {
+    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null })).toBe(false)
+    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null }, { statusPhases: {}, departmentViews: { N: "projects" }, salesTitles: {} })).toBe(true)
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "internal" }, salesTitles: {} })).toBeNull()
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "off" }, salesTitles: {} })).toBeNull()
   })
 
   it("lists a phase's statuses for moves, in workflow order, with the company's changes", () => {
     expect(portfolioPhaseStatuses("closeout")).toEqual(["punchlist", "under_warranty"])
-    expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departments: {} })).toContain("complete")
+    expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departmentViews: {}, salesTitles: {} })).toContain("complete")
   })
 })

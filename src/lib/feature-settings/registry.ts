@@ -5,7 +5,7 @@ import {
   type ClientFollowUpSettings,
 } from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
-import { PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
+import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -32,8 +32,10 @@ export const messageDeskSettingsSchema = z
  */
 export const portfolioMapSettingsSchema = z.object({
   statusPhases: z.record(z.string().min(1).max(80), z.enum([...PORTFOLIO_PHASE_IDS, "off"])),
-  /** Per-department override of whether its jobs appear; missing uses the default. */
-  departments: z.record(z.string().min(1).max(8), z.boolean()),
+  /** Per-department view (projects, sales pipeline, internal, off); missing uses the default. */
+  departmentViews: z.record(z.string().min(1).max(8), z.enum(PORTFOLIO_DEPARTMENT_VIEWS)),
+  /** Sales pipeline titles by department; blank uses the built-in title. */
+  salesTitles: z.record(z.string().min(1).max(8), z.string().max(60)),
 })
 
 export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
@@ -454,8 +456,8 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   },
   "portfolio-map": {
     label: "Portfolio map",
-    description: "Which job statuses and departments appear on the dashboard map and pipelines, and the phase each status falls in. Any single job can still be shown or hidden from the map.",
-    defaults: { statusPhases: {}, departments: {} },
+    description: "Which view each department's jobs appear on (projects, a sales pipeline, internal, or none), which job statuses appear and in which phase. Any single job can still be shown or hidden from the map.",
+    defaults: { statusPhases: {}, departmentViews: {}, salesTitles: {} },
     schema: portfolioMapSettingsSchema,
   },
   "paper-trail": {
