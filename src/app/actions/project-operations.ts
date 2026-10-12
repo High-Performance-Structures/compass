@@ -44,6 +44,8 @@ import {
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { linkedScheduleTaskId } from "@/lib/schedule/linked-todos"
 import {
+  purchaseOrderCoverEmailHtml,
+  purchaseOrderCoverEmailText,
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
 } from "@/lib/purchase-orders/email"
@@ -64,7 +66,7 @@ import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
 import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
 import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
-import { nuTechOrderFormAttachment, type EmailAttachment } from "@/lib/nutech/order-form-attachment"
+import { nuTechOrderFormAttachments, type EmailAttachment } from "@/lib/nutech/order-form-attachment"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -3207,8 +3209,9 @@ export async function sendPurchaseOrderEmail(
       }),
       order,
     }
-    // The manufacturer's PO goes out with its own filled order form.
-    const orderForm = await nuTechOrderFormAttachment({
+    // The manufacturer's PO goes out on its own filled order form, with a
+    // cover note in place of the Compass PO layout.
+    const orderForm = await nuTechOrderFormAttachments({
       db,
       environment: env,
       organizationId: orgId,
@@ -3220,9 +3223,9 @@ export async function sendPurchaseOrderEmail(
       to,
       cc,
       subject,
-      text: purchaseOrderEmailText(emailInput),
-      html: purchaseOrderEmailHtml(emailInput),
-      attachments: orderForm ? [orderForm] : [],
+      text: orderForm ? purchaseOrderCoverEmailText(emailInput) : purchaseOrderEmailText(emailInput),
+      html: orderForm ? purchaseOrderCoverEmailHtml(emailInput) : purchaseOrderEmailHtml(emailInput),
+      attachments: orderForm ?? [],
     })
 
     if (delivery.status === "failed") {

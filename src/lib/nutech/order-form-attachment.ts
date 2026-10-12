@@ -18,18 +18,19 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /**
- * The manufacturer's filled order form (.xlsx) for a PO linked to a Nu-Tech
- * order, to send with the PO email. Null for other POs; throws when the
- * linked order's form hasn't been filled yet, so it isn't sent without it.
+ * The manufacturer's filled order form for a PO linked to a Nu-Tech order, to
+ * send with the PO email: a PDF to read and print, and the .xlsx the
+ * manufacturer can key from. Null for other POs; throws when the linked
+ * order's form hasn't been filled yet, so the PO isn't sent without it.
  */
-export async function nuTechOrderFormAttachment(input: {
+export async function nuTechOrderFormAttachments(input: {
   readonly db: ReturnType<typeof getDb>
   readonly environment: unknown
   readonly organizationId: string
   readonly user: AuthUser
   readonly purchaseOrderId: string
   readonly purchaseOrderNumber: string | null
-}): Promise<EmailAttachment | null> {
+}): Promise<readonly EmailAttachment[] | null> {
   const workflow = await input.db
     .select({ workbookId: nuTechOrderWorkflows.airliteWorkbookId, workbookStatus: nuTechOrderWorkflows.airliteWorkbookStatus })
     .from(nuTechOrderWorkflows)
@@ -44,10 +45,16 @@ export async function nuTechOrderFormAttachment(input: {
     organizationId: input.organizationId,
     user: input.user,
   })
-  const response = await client.exportFile(userEmail, workflow.workbookId, XLSX_MIME)
-  if (!response.ok) throw new Error(`Couldn't export the order form from Drive (${response.status}).`)
-  return {
-    filename: `PO ${input.purchaseOrderNumber ?? "order form"}.xlsx`,
-    content: toBase64(new Uint8Array(await response.arrayBuffer())),
+  const [pdf, xlsx] = await Promise.all([
+    client.exportSpreadsheetPdf(userEmail, workflow.workbookId),
+    client.exportFile(userEmail, workflow.workbookId, XLSX_MIME),
+  ])
+  for (const response of [pdf, xlsx]) {
+    if (!response.ok) throw new Error(`Couldn't export the order form from Drive (${response.status}).`)
   }
+  const name = `PO ${input.purchaseOrderNumber ?? "order form"}`
+  return [
+    { filename: `${name}.pdf`, content: toBase64(new Uint8Array(await pdf.arrayBuffer())) },
+    { filename: `${name}.xlsx`, content: toBase64(new Uint8Array(await xlsx.arrayBuffer())) },
+  ]
 }
