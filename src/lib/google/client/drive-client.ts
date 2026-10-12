@@ -468,7 +468,7 @@ export class DriveClient {
 
   /**
    * A Google Sheet as a print-ready PDF (letter, no gridlines): one tab
-   * scaled onto a single page when `sheetId` is given, else every tab fit to
+   * scaled onto a single page, centered across it, when `sheetId` is given, else every tab fit to
    * width. The Drive export endpoint can't set page options, so this uses
    * the Sheets export URL with the same token.
    */
@@ -492,7 +492,12 @@ export class DriveClient {
       right_margin: "0.25",
       ...(sheetId === undefined
         ? { fitw: "true" }
-        : { gid: String(sheetId), scale: "4" }),
+        : {
+            gid: String(sheetId),
+            scale: "4",
+            horizontal_alignment: "CENTER",
+            vertical_alignment: "TOP",
+          }),
     })
 
     return fetch(
