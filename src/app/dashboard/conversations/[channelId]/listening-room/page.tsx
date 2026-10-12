@@ -1,8 +1,7 @@
 import type * as React from "react"
 
-import { ListeningRoomButton } from "@/components/voice/listening-room-button"
+import { ListeningRoomWindow } from "@/components/voice/listening-room-window"
 import { getCurrentUser } from "@/lib/auth"
-import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { canUseOfficeTalk } from "@/lib/permissions"
 import { ClientRedirect } from "@/components/client-redirect"
 
@@ -17,20 +16,12 @@ export default async function ConversationListeningRoomPage({
   if (!canUseOfficeTalk(user)) {
     return <ClientRedirect href={"/dashboard/access-restricted?feature=conversations&action=join"} />
   }
+  // Channel access is enforced by every Listening Room server action.
   const { channelId } = await params
-  if (channelId !== OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID) {
-    return <ClientRedirect href={"/dashboard/conversations"} />
-  }
 
   return (
     <div className="fixed inset-0 z-40 bg-background">
-      <ListeningRoomButton
-        channelId={channelId}
-        channelName="Office Talk"
-        showTrigger={false}
-        initialOpen
-        standaloneWindow
-      />
+      <ListeningRoomWindow channelId={channelId} />
     </div>
   )
 }

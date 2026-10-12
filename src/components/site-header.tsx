@@ -36,7 +36,7 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
-import { openListeningRoomWindow } from "@/components/voice/listening-room-button"
+import { useListeningRoomDock } from "@/components/voice/listening-room-dock-provider"
 import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
@@ -100,6 +100,7 @@ export function SiteHeader({
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
   const native = useNative()
+  const { openRoom: openListeningRoom } = useListeningRoomDock()
   const {
     canUseDeveloperMode,
     developerModeEnabled,
@@ -205,7 +206,10 @@ export function SiteHeader({
               {canUseOfficeTalk && (
                 <DropdownMenuItem
                   onSelect={() =>
-                    openListeningRoomWindow(OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID)
+                    openListeningRoom({
+                      channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
+                      channelName: "Office Talk",
+                    })
                   }
                 >
                   <IconMusic />
@@ -355,7 +359,10 @@ export function SiteHeader({
               {canUseOfficeTalk && (
                 <DropdownMenuItem
                   onSelect={() =>
-                    openListeningRoomWindow(OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID)
+                    openListeningRoom({
+                      channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
+                      channelName: "Office Talk",
+                    })
                   }
                 >
                   <IconMusic />
