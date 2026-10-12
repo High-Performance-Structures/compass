@@ -21,7 +21,7 @@ export function MainContent({
         "flex flex-col min-w-0 min-h-0",
         "transition-[flex,opacity] duration-300 ease-in-out",
         needsFixedHeight
-            ? "flex-1 overflow-hidden"
+            ? "flex-1 overflow-hidden pb-14 md:pb-0"
             : isSchedule
               ? "compass-content-scroll flex-1 overflow-x-auto overflow-y-auto pb-14 md:pb-0"
               : "compass-content-scroll flex-1 overflow-x-hidden overflow-y-auto pb-14 md:pb-0",

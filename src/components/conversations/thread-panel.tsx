@@ -139,7 +139,7 @@ export function ThreadPanel({ currentUserId }: { readonly currentUserId: string 
           "flex min-h-0 flex-col border-l bg-background",
           "transition-[width,opacity,transform] duration-300 ease-in-out",
           isMobile
-            ? "fixed inset-0 z-50"
+            ? "fixed inset-0 z-[60]"
             : "relative shrink-0",
           isResizing && "transition-none",
           threadOpen ? "opacity-100" : "w-0 opacity-0 border-transparent"

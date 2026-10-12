@@ -170,6 +170,10 @@ function ConversationPanelContent() {
     document.body.style.userSelect = "none"
   }, [panelWidth])
 
+  const panelStyle: React.CSSProperties & { readonly "--conversation-panel-width": string } = {
+    "--conversation-panel-width": `${panelWidth}px`,
+  }
+
   const showDirectMessagePicker = view === "direct-message-picker"
   const showChannelList = channelId === null && !showDirectMessagePicker
 
@@ -182,13 +186,13 @@ function ConversationPanelContent() {
         className={cn(
           "flex flex-col bg-background",
           "transition-[width,border-color,box-shadow,opacity,transform] duration-300 ease-in-out",
-          "fixed inset-0 z-50 md:relative md:inset-auto md:z-auto md:my-2 md:mr-2 md:shrink-0 md:overflow-hidden md:rounded-lg md:border md:border-border md:shadow-lg",
+          "fixed inset-0 z-[60] w-full md:relative md:inset-auto md:z-auto md:my-2 md:mr-2 md:w-[var(--conversation-panel-width)] md:shrink-0 md:overflow-hidden md:rounded-lg md:border md:border-border md:shadow-lg",
           isResizing && "transition-none",
           isOpen
             ? "translate-x-0 md:opacity-100"
             : "pointer-events-none translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0"
         )}
-        style={isOpen ? { width: panelWidth } : undefined}
+        style={isOpen ? panelStyle : undefined}
         aria-hidden={!isOpen}
         aria-label="Conversations"
       >
