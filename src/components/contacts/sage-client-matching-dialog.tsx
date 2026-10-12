@@ -8,6 +8,7 @@ import type { Customer } from "@/db/schema"
 import { canVerifyClientPair, compassClientRows, searchClientMatchRows } from "@/lib/sage/client-match-workspace"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 
@@ -75,7 +76,10 @@ export function SageClientMatchingDialog({ open, onOpenChange, customers, onVeri
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col overflow-y-auto sm:max-w-6xl md:h-[86vh] md:overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Compare clients with Sage</DialogTitle>
+          <div className="flex items-center gap-1.5">
+            <DialogTitle>Compare clients with Sage</DialogTitle>
+            <ContextualHelpBeacon topicId="contacts.access.compare-clients-with-sage" />
+          </div>
           <DialogDescription>Search Compass and the read-only Sage client list side by side. Selecting records never links or merges them. A proposed match still needs a fresh Sage read-back and approval.</DialogDescription>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">

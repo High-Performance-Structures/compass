@@ -37,6 +37,7 @@ import {
   AddToPlaylistDialog,
   ListeningRoomPlaylists,
 } from "@/components/voice/listening-room-playlists"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { AddSongForm, ListeningQueue } from "@/components/voice/listening-room-queue"
 import {
   AlertDialog,
@@ -505,7 +506,13 @@ export function ListeningRoom({
         {compact ? null : <header className="flex items-center gap-3 border-b bg-sidebar px-4 py-3 text-sidebar-foreground">
           <Music2 className="size-5 shrink-0 text-primary" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold">Listening Room</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-base font-semibold">Listening Room</h2>
+              <ContextualHelpBeacon
+                topicId="conversations.listening-room"
+                className="size-6 text-sidebar-foreground/70"
+              />
+            </div>
             <p className="flex items-center gap-1.5 truncate text-xs text-sidebar-foreground/70">
               {channelName}
               {room ? ` · ${room.participants.length} listening` : ""}
