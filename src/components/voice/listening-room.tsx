@@ -33,7 +33,10 @@ import {
 } from "@/app/actions/listening-room"
 import { openListeningRoomWindow } from "@/components/voice/listening-room-button"
 import { ListeningRoomPlayer } from "@/components/voice/listening-room-player"
-import { ListeningRoomPlaylists } from "@/components/voice/listening-room-playlists"
+import {
+  AddToPlaylistDialog,
+  ListeningRoomPlaylists,
+} from "@/components/voice/listening-room-playlists"
 import { AddSongForm, ListeningQueue } from "@/components/voice/listening-room-queue"
 import {
   AlertDialog,
@@ -142,6 +145,7 @@ export function ListeningRoom({
   const [volume, setVolume] = React.useState(DEFAULT_VOLUME)
   const [durations, setDurations] = React.useState<Readonly<Record<string, number>>>({})
   const [closeConfirmationOpen, setCloseConfirmationOpen] = React.useState(false)
+  const [playlistSong, setPlaylistSong] = React.useState<ListeningQueueItemData | null>(null)
   const loadingRoomRef = React.useRef(false)
   const full = standalone || expanded
 
@@ -491,7 +495,9 @@ export function ListeningRoom({
             ? "flex h-dvh w-full flex-col"
             : compact
               ? "fixed right-3 bottom-20 z-50 w-[calc(100%-1.5rem)] rounded-lg border p-3 shadow-xl sm:w-[24rem] md:bottom-3"
-              : "fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-xl sm:w-[30rem]"
+              : // Same frame as the Ask Jarvis panel: beside the page on desktop,
+                // full screen on phones.
+                "fixed inset-0 z-50 flex flex-col md:relative md:inset-auto md:z-auto md:my-2 md:mr-2 md:w-[26rem] md:shrink-0 md:overflow-hidden md:rounded-lg md:border md:shadow-lg"
         )}
       >
         {/* Children keep fixed slots (null when hidden) so the player inside
@@ -677,6 +683,7 @@ export function ListeningRoom({
                         "Removed from the queue"
                       )
                     }
+                    onAddToPlaylist={setPlaylistSong}
                     onAddLink={async (track, url) =>
                       Boolean(
                         await applySnapshot(
@@ -703,6 +710,12 @@ export function ListeningRoom({
           ) : null}
         </div>
       </aside>
+
+      <AddToPlaylistDialog
+        channelId={channelId}
+        song={playlistSong}
+        onClose={() => setPlaylistSong(null)}
+      />
 
       <AlertDialog open={closeConfirmationOpen} onOpenChange={setCloseConfirmationOpen}>
         <AlertDialogContent>

@@ -1,13 +1,10 @@
 "use server"
 
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
-import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import {
-  channelMembers,
   listeningPlaylistItems,
   listeningPlaylists,
   listeningPlaylistTrackLinks,
@@ -16,22 +13,20 @@ import {
   listeningRooms,
   listeningTrackLinks,
 } from "@/db/schema-conversations"
-import { getCurrentUser, type AuthUser } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
 import {
-  canManageListeningPlaylist,
   findMatchingPlaylistRun,
   isMusicProvider,
   LISTENING_ROOM_START_DELAY_MS,
   type MusicProvider,
 } from "@/lib/listening-room"
 import { can } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
 import {
-  getVoiceChannelAccess,
-  type VoiceChannelAccess,
-} from "@/lib/voice-channel-access"
+  activePlaylist,
+  canEditPlaylist,
+  playlistContext,
+  revalidatePlaylistPaths,
+  type PlaylistContext,
+} from "@/lib/listening-playlist-context"
 
 const channelIdSchema = z.string().trim().min(1).max(200)
 const playlistIdSchema = z.string().trim().min(1).max(200)
@@ -67,13 +62,6 @@ export type ListeningPlaylistData = {
   readonly items: readonly ListeningPlaylistItemData[]
 }
 
-type PlaylistContext = {
-  readonly db: ReturnType<typeof getDb>
-  readonly user: AuthUser
-  readonly channel: VoiceChannelAccess
-  readonly canModerate: boolean
-}
-
 type QueueTemplateItem = {
   readonly id: string
   readonly title: string
@@ -97,66 +85,6 @@ function displayName(input: {
   readonly email: string | null
 }): string {
   return input.displayName ?? input.email?.split("@")[0] ?? "Compass user"
-}
-
-async function playlistContext(
-  channelId: string,
-  write = false
-): Promise<PlaylistContext> {
-  const user = await getCurrentUser()
-  if (!user || !can(user, "channels", "read")) throw new Error("Unauthorized")
-  if (!isInternalStaffRole(user.role)) {
-    throw new Error("Listening-room playlists are available to internal staff only")
-  }
-  if (write && isDemoUser(user.id)) throw new Error("DEMO_READ_ONLY")
-
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const channel = await getVoiceChannelAccess(db, user, channelId)
-  if (!channel) throw new Error("Voice channel not found")
-  const membership = await db
-    .select({ role: channelMembers.role })
-    .from(channelMembers)
-    .where(
-      and(
-        eq(channelMembers.channelId, channel.id),
-        eq(channelMembers.userId, user.id)
-      )
-    )
-    .get()
-  const canModerate =
-    can(user, "channels", "moderate") ||
-    membership?.role === "owner" ||
-    membership?.role === "moderator"
-  return { db, user, channel, canModerate }
-}
-
-async function activePlaylist(
-  context: PlaylistContext,
-  playlistId: string
-) {
-  return context.db
-    .select()
-    .from(listeningPlaylists)
-    .where(
-      and(
-        eq(listeningPlaylists.id, playlistId),
-        eq(listeningPlaylists.organizationId, context.channel.organizationId),
-        isNull(listeningPlaylists.deletedAt)
-      )
-    )
-    .get()
-}
-
-function canEditPlaylist(
-  context: PlaylistContext,
-  createdBy: string
-): boolean {
-  return canManageListeningPlaylist({
-    currentUserId: context.user.id,
-    createdBy,
-    canModerate: context.canModerate,
-  })
 }
 
 async function currentQueueTemplate(context: PlaylistContext): Promise<{
@@ -245,10 +173,6 @@ async function copyTemplateToPlaylist(
   }
 }
 
-function revalidatePlaylistPaths(channelId: string): void {
-  revalidatePath(`/dashboard/conversations/${channelId}`)
-  revalidatePath(`/dashboard/conversations/${channelId}/listening-room`)
-}
 
 export async function getListeningPlaylists(
   channelId: string

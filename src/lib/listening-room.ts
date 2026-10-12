@@ -352,3 +352,8 @@ export function songDetailsFromEmbed(input: {
   }
   return { title: cleaned.slice(0, 160), artist: author?.slice(0, 160) ?? null }
 }
+
+/** The popped-out Listening Room window, which hides Compass navigation. */
+export function isListeningRoomWindowPath(pathname: string): boolean {
+  return /^\/dashboard\/conversations\/[^/]+\/listening-room\/?$/.test(pathname)
+}
