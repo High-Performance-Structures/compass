@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState, useTransition, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import {
   IconChevronDown,
@@ -21,6 +21,8 @@ import {
   type ProjectEstimateTaxOption,
 } from "@/app/actions/project-estimates"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import type { RateBookPickerOption } from "@/app/actions/rate-book"
+import { loadRateBookPicker } from "@/lib/rate-book/picker-cache"
 import { EstimateUnitInput } from "@/components/estimate-unit-input"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -61,6 +63,9 @@ type CostCodeDraft = {
   readonly markupPercent: string
   readonly taxable: boolean
   readonly taxEntityId: string
+  /** Rate book entry and version that filled this draft, if any. */
+  readonly rateBookEntryId: string | null
+  readonly rateBookVersion: number | null
 }
 
 function emptyCostCode(
@@ -78,6 +83,8 @@ function emptyCostCode(
     markupPercent: String(line.markupRateBasisPoints / 100),
     taxable: line.taxable,
     taxEntityId: line.taxEntityId ?? defaultTaxEntityId,
+    rateBookEntryId: null,
+    rateBookVersion: null,
   }
 }
 
@@ -93,6 +100,8 @@ function costCodeDraft(item: ProjectEstimateLineCostItem): CostCodeDraft {
     markupPercent: String(item.markupRateBasisPoints / 100),
     taxable: item.taxable,
     taxEntityId: item.taxEntityId ?? "",
+    rateBookEntryId: item.rateBookEntryId,
+    rateBookVersion: item.rateBookVersion,
   }
 }
 
@@ -134,6 +143,38 @@ export function ProjectEstimateLineBreakdown({
   const availableCostCodes = costCodes.filter(
     (option) => option.divisionCode === draft.divisionCode
   )
+  // Rate book choices load when the breakdown is first opened.
+  const [rateOptions, setRateOptions] = useState<readonly RateBookPickerOption[]>([])
+  useEffect(() => {
+    if (!open || !editable) return
+    let cancelled = false
+    void loadRateBookPicker(projectId).then((options) => {
+      if (!cancelled) setRateOptions(options)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [editable, open, projectId])
+  const latestRateByEntry = useMemo(
+    () => new Map(rateOptions.flatMap((option) => (option.entryId ? [[option.entryId, option] as const] : []))),
+    [rateOptions]
+  )
+  function applyRate(option: RateBookPickerOption, base: CostCodeDraft): CostCodeDraft {
+    const code = option.costCode
+      ? costCodes.find((candidate) => candidate.value === option.costCode)
+      : undefined
+    return {
+      ...base,
+      divisionCode: code?.divisionCode ?? base.divisionCode,
+      costCode: code?.value ?? base.costCode,
+      description: option.description,
+      unit: option.unit,
+      unitCost: String(option.unitCostCents / 100),
+      markupPercent: String(option.markupBasisPoints / 100),
+      rateBookEntryId: option.entryId,
+      rateBookVersion: option.version,
+    }
+  }
   const taxEntityOptions = useMemo(
     () =>
       taxEntities.map((option) => ({
@@ -181,6 +222,8 @@ export function ProjectEstimateLineBreakdown({
           markupPercent: numericValue(draft.markupPercent),
           taxable: draft.taxable,
           taxEntityId: draft.taxEntityId,
+          rateBookEntryId: draft.rateBookEntryId,
+          rateBookVersion: draft.rateBookVersion,
         }
       )
       if (!result.success) {
@@ -312,6 +355,25 @@ export function ProjectEstimateLineBreakdown({
                     {item.divisionCode} · {item.divisionName} · {item.quantity}{" "}
                     {item.unit} × {money(item.unitCostCents)}
                   </p>
+                  {(() => {
+                    const latest = item.rateBookEntryId ? latestRateByEntry.get(item.rateBookEntryId) : undefined
+                    if (!editable || !latest || latest.version === null || item.rateBookVersion === null || latest.version <= item.rateBookVersion) return null
+                    return (
+                      <p className="text-xs text-primary">
+                        Rate book has a newer rate: {money(latest.unitCostCents)}/{latest.unit}.{" "}
+                        <button
+                          type="button"
+                          className="underline underline-offset-4"
+                          onClick={() => {
+                            editCostCode(item)
+                            setDraft(applyRate(latest, costCodeDraft(item)))
+                          }}
+                        >
+                          Review new rate
+                        </button>
+                      </p>
+                    )
+                  })()}
                   <p className="text-xs text-muted-foreground">
                     Direct {money(item.directCostCents)} · Markup{" "}
                     {percent(item.markupRateBasisPoints)} ({money(item.markupCents)}) ·{" "}
@@ -373,6 +435,33 @@ export function ProjectEstimateLineBreakdown({
                 Calculated amount {money(preview.lineTotalCents)}
               </p>
             </div>
+            {rateOptions.length > 0 ? (
+              <div className="mb-3 space-y-1.5">
+                <Label htmlFor={`breakdown-rate-book-${line.id}`}>From rate book</Label>
+                <SearchableCombobox
+                  id={`breakdown-rate-book-${line.id}`}
+                  value={
+                    draft.rateBookEntryId ??
+                    ""
+                  }
+                  onValueChange={(value) => {
+                    // The picker reports "" when it resets; keep the draft as is.
+                    const option = rateOptions.find((candidate) => candidate.id === value)
+                    if (option) setDraft(applyRate(option, draft))
+                  }}
+                  options={rateOptions.map((option) => ({
+                    value: option.id,
+                    label: option.label,
+                    description: `${option.group} · ${money(option.unitCostCents)}/${option.unit}`,
+                    keywords: `${option.group} ${option.costCode ?? ""}`,
+                  }))}
+                  ariaLabel="Fill from the rate book"
+                  placeholder="Choose a rate to fill this cost code"
+                  searchPlaceholder="Search rates..."
+                  emptyMessage="No matching rates."
+                />
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="breakdown-division">CSI division</Label>

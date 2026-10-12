@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/owner-updates", "/dashboard/projects/[id]/owner-updates/[updateId]"],
   "owner": "Project operations",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -37,6 +37,14 @@ Use the deployed Compass address, not a local or preview URL. A Compass link can
 ## Correct a Published Update {#correct-published}
 
 Do not quietly overwrite a material client communication. Notify the project manager or administrator and preserve a clear correction trail.
+
+## Draft or Redraft with Jarvis {#draft-with-jarvis}
+
+Use the update editor's Jarvis drafting action to turn the selected project context into a proposed owner narrative. Compass shows drafting progress and prevents another overlapping draft request. Wait for completion, then review the generated text, reporting period, source logs, schedule claims, captions, and links. Drafting uses the organization's configured AI service; if it is unavailable, retain your manual text and report the error. An AI draft is not publication or owner approval.
+
+## Delete an Unneeded Draft {#delete-draft}
+
+Use **Delete draft** only when the draft should be removed, then review the confirmation. Deletion cannot be undone and returns you to the update list. Published updates require the appropriate correction process; this action is for drafts. Remove a daily log from any draft or published update using it before attempting to delete that log.
 
 ## Quick Check {#quick-check}
 

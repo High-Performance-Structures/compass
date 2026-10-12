@@ -4,6 +4,67 @@ This is the canonical product UI standard for Compass. New UI and UI changes
 must follow this document. Implementation details belong in the component
 conventions; this document defines the user-visible behavior and visual rules.
 
+## Guiding principle: build Compass for any company
+
+Every change is judged by one question: **would another company want to use
+this for their own business?** Compass is built with HPS, but it is meant to
+become a tool other construction companies, and companies in other
+industries, adopt for themselves (see the core and industry layers in the
+repository guidelines).
+
+- **No hard-coded company specifics.** Names, legal text, home base, rates,
+  statuses, phases, departments, cost codes and branding come from
+  organization settings or data, never from literals in the UI. HPS values are
+  defaults or seed data that another company can change.
+- **Configurable over custom.** When HPS needs something different, prefer a
+  setting, list or rule an administrator can edit (zone charges, job statuses,
+  rate book, map visibility) over a special case in code.
+- **Words a newcomer understands.** Labels, empty states and help text should
+  make sense to someone who has never worked at HPS. Avoid internal shorthand
+  unless the organization chose it.
+- **Every audience is a first-class user.** Office staff, field crews, owners
+  and sub/vendors each get a coherent workspace that shows only what they are
+  allowed to see, in their own terms.
+- **Safe to share.** Features must keep one company's data, people and
+  communication out of another's view, and must work for an organization with
+  different roles, departments or locations than HPS.
+- **Polish that sells.** First impressions, empty states, onboarding and
+  consistency matter as much as features. Ship work you would be glad to show a
+  prospective customer.
+
+### Customizable by default
+
+Every feature's rules (thresholds, timings, reminders, labels, and defaults)
+are company settings, not constants. Register them in
+`src/lib/feature-settings/registry.ts` with defaults and validation, read them
+on the server with `readFeatureSettings`, and give them a section in
+**Settings → Workflows** (or the feature's own Settings tab). Admins edit;
+everyone else sees the current values. Offer **Reset to defaults**. Ship
+sensible defaults so a new company works without touching anything.
+
+### Company identity and templates
+
+- **Identity lives in Settings.** Each department's (or company's) display
+  name, legal name and dba, logo, mailing address, phone, email, website,
+  license number, office hours and sending mailbox come from the department
+  profiles in Settings. Documents, print views, emails, portals and the agent
+  read them from there. Only the owner-admin can change identity; everyone else
+  sees it read-only.
+- **No identity literals in code.** Do not write company email addresses,
+  phone numbers, street addresses, domains, legal names or logo paths into
+  components, actions, email bodies or document generators. The only place
+  they may appear is the built-in defaults a new company starts from, kept next
+  to the settings that replace them.
+- **Templates are settings.** Email wording, document boilerplate, workflow
+  steps and checklist items ship with built-in text and are editable per
+  company, with **Use the built-in wording** to undo a change. Templates fill
+  in identity and job details through merge fields such as `{{companyName}}`,
+  never by typing the values into the text.
+- **Outside parties are data.** Vendors, warehouses, carriers and their
+  contacts (for example a manufacturer's orders address) are settings or
+  contact records, so a rep change is made in one place.
+
+
 ## Lists and tables
 
 - Use TanStack Table for interactive tabular data.
@@ -20,6 +81,14 @@ conventions; this document defines the user-visible behavior and visual rules.
 - If a mutation removes the current page, clamp the page to the last remaining
   valid page. Never leave the user on an empty invalid page.
 - Use the shared `DataTablePagination` component for new and migrated tables.
+- Columns with a header are sortable by clicking the header: ascending, then
+  descending, then back to the default order, with an arrow on the sorted
+  column and `aria-sort` on the header. Use `TanstackSortableHeader` for
+  TanStack tables and `useTableSort` with `SortableTh` / `SortableTableHead`
+  (`src/components/ui/sortable-header.tsx`) for hand-built tables. Blank
+  values sort last in both directions. Leave out action, checkbox, and
+  thumbnail columns, and lists whose order is meaningful (document line
+  items, ranked queues, or lists the user arranges by hand).
 - Lists without pagination still need a deliberate empty state and should not
   silently render an unbounded dataset when the collection can grow.
 
@@ -28,6 +97,12 @@ conventions; this document defines the user-visible behavior and visual rules.
 - Use shadcn/ui with the New York style and the shared UI primitives.
 - Use semantic theme tokens from `src/app/globals.css`; do not add literal
   product colors or stock Tailwind palette colors to product UI.
+  `bun run ui:check` rejects hex classes such as `text-[#9d832c]` in
+  components; use the named token (`text-brand-nutech-gold`) or add one to
+  `globals.css` first. Literal colors stay legitimate in HTML email bodies
+  (email clients ignore CSS variables), in saved color choices users pick
+  from, in CSS handed to third-party call SDKs, and on the public landing
+  page.
 - Keep information surfaces predominantly flat. Cards, badges, pills, and
   other bordered bubbles should occupy no more than roughly 20% of an
   informational layout.
@@ -103,10 +178,18 @@ one at a time.
 
 - Each dashboard page starts with one header row built with the shared
   `PageHeader` component (`src/components/page-header.tsx`): optional back
-  link, icon or department logo, title, one-line description, and the page's
-  actions aligned to the right. Do not hand-build page titles. Avoid stacking a
-  second toolbar or launch strip above the content when its controls can join
-  that header row.
+  link, optional small grey label above the title (`eyebrow`, for context such
+  as the project number or desk name), icon or department logo, title, and the
+  page's actions aligned to the right. Do not hand-build page titles. Avoid
+  stacking a second toolbar or launch strip above the content when its
+  controls can join that header row.
+- The title names the page ("Work calendar", "Feedback Desk"), never a
+  sentence. All page titles use the header's one size.
+- No explanation line under the title. If a note helps someone use the page,
+  put it next to the thing it explains. Record facts that belong to the title,
+  such as "Submitted Oct 3 · Owner: Dana", go in the header's `meta` line.
+- Section and summary areas use thin rules (`border-b`, ruled `gap-px`
+  strips) rather than rounded cards, following the 20% bubble rule.
 - Dense workspace toolbars (Schedule) stay on one compact row and let the
   workspace scroll sideways at narrow widths. Fit them by shortening labels on
   smaller screens, keeping the full name as the accessible name and tooltip,
@@ -180,12 +263,15 @@ one at a time.
 ## Controls and forms
 
 - Use React Hook Form with Zod for forms.
-- Use `SearchableCombobox` as the default value selector for searchable or
-  business-data choices. Search must include recognized identifiers and
-  secondary labels.
-- Do not add native `select` or new shadcn `Select` value pickers without a
-  documented accessibility or platform reason. Existing compact fixed selectors
-  may be migrated when their workflow is touched.
+- Choose the picker by list size and source:
+  - more than six options, or options that come from business data
+    (projects, people, statuses, catalogs): `SearchableCombobox`, or
+    `SearchableComboboxField` inside a plain form. Search must include
+    recognized identifiers and secondary labels.
+  - six or fewer fixed options: the compact shadcn `Select`.
+- Do not use native `<select>` in product UI; `bun run ui:check` rejects it.
+- Pickers that save on change must ignore the combobox's empty reset and
+  re-picks of the current value, so nothing saves or clears by accident.
 - Use `DropdownMenu` for commands/actions, not for selecting a value.
 - Keep live selector options sourced from current server results or component
   props and recompute dependent selectors when their parent changes.
@@ -206,6 +292,11 @@ Before a PR that changes visible UI is merged or deployed, reviewers must check
 this document. Any new or changed list/table must explicitly verify page-size
 selection, mobile behavior, edit/delete page preservation, filtering behavior,
 empty/loading/error states, and accessibility labels.
+
+Every PR must confirm it adds no company-specific literals (names, addresses,
+phone numbers, email addresses, domains, logos, rates or wording) outside the
+built-in defaults of a setting; new rules, thresholds and templates are
+registered as settings with an editor in Settings.
 
 For theme or token changes, compare before and after screenshots of the
 dashboard, project hub, estimate, financials, and schedule in light and dark

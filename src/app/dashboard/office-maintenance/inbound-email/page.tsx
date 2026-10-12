@@ -1,12 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import Link from "next/link"
-import {
-  IconArrowLeft,
-  IconInbox,
-  IconMailForward,
-  IconMessage,
-} from "@tabler/icons-react"
+import { IconInbox, IconMailForward, IconMessage } from "@tabler/icons-react"
 
 import {
   getStaffMessageAssignees,
@@ -27,8 +21,10 @@ import { InboundSmsProjectCombobox } from "@/components/goto/inbound-sms-project
 import { InboundSmsRoutingFields } from "@/components/goto/inbound-sms-routing-fields"
 import { InboundSmsRouteSubmitButton } from "@/components/goto/inbound-sms-route-submit-button"
 import { TrashInboundSmsButton } from "@/components/goto/trash-inbound-sms-button"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/page-header"
 
 function receivedLabel(value: string): string {
   const parsed = new Date(value)
@@ -50,24 +46,12 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-5 p-4 lg:p-6">
-      <header className="border-b pb-4">
-        <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2">
-          <Link href="/dashboard/projects">
-            <IconArrowLeft className="size-4" />
-            Project Hub
-          </Link>
-        </Button>
-        <div className="flex items-center gap-2">
-          <IconInbox className="size-6 text-muted-foreground" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Inbound activity review
-          </h1>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Route email and text messages that Compass could not assign
-          confidently. The original intake record remains available for audit.
-        </p>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        back={{ href: "/dashboard/projects", label: "Project Hub" }}
+        icon={<IconInbox className="size-6 text-muted-foreground" />}
+        title="Inbound activity review"
+      />
 
       <section className="space-y-3">
         <div className="flex items-center gap-2 border-b pb-2">
@@ -177,19 +161,20 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                   <input type="hidden" name="eventId" value={item.id} />
                   <label className="flex flex-1 flex-col gap-1 text-sm font-medium sm:max-w-sm">
                     Route to Message Desk
-                    <select
+                    <SearchableComboboxField
                       name="assigneeUserId"
                       required
-                      defaultValue=""
-                      className="h-10 border bg-background px-3 font-normal"
-                    >
-                      <option value="" disabled>Select one staff recipient…</option>
-                      {staffAssignees.data.map((assignee) => (
-                        <option key={assignee.id} value={assignee.id}>
-                          {assignee.name} · {assignee.email}
-                        </option>
-                      ))}
-                    </select>
+                      className="font-normal"
+                      options={staffAssignees.data.map((assignee) => ({
+                        value: assignee.id,
+                        label: assignee.name,
+                        description: assignee.email,
+                      }))}
+                      ariaLabel="Route to Message Desk"
+                      placeholder="Select one staff recipient…"
+                      searchPlaceholder="Search staff..."
+                      emptyMessage="No matching staff."
+                    />
                   </label>
                   <Button type="submit" variant="outline">Route to Message Desk</Button>
                 </form>
@@ -249,20 +234,20 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                     <input type="hidden" name="emailId" value={item.id} />
                     <label className="flex flex-1 flex-col gap-1 text-sm font-medium">
                       Project
-                      <select
+                      <SearchableComboboxField
                         name="projectId"
                         required
                         defaultValue={item.suggestedProjectId ?? ""}
-                        className="h-10 border bg-background px-3 font-normal"
-                      >
-                        <option value="" disabled>Select project…</option>
-                        {queue.projects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.projectNumber ? `${project.projectNumber} — ` : ""}
-                            {project.name}
-                          </option>
-                        ))}
-                      </select>
+                        className="font-normal"
+                        options={queue.projects.map((project) => ({
+                          value: project.id,
+                          label: `${project.projectNumber ? `${project.projectNumber} — ` : ""}${project.name}`,
+                        }))}
+                        ariaLabel="Project"
+                        placeholder="Select project…"
+                        searchPlaceholder="Search projects..."
+                        emptyMessage="No matching projects."
+                      />
                     </label>
                     <Button type="submit">Create RFI</Button>
                   </form>

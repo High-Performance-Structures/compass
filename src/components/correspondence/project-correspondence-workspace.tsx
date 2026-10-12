@@ -1,5 +1,6 @@
 "use client"
 import * as React from "react"
+import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { ArrowLeft, ChevronDown, LoaderCircle } from "lucide-react"
 import {
   discardCorrespondenceDraft,
@@ -209,7 +210,10 @@ export function ProjectCorrespondenceWorkspace({ projectId, initialInbox, initia
       if (!result.success) return
       for (const message of batch) openedMessageIds.current.add(`${message.id}:${message.editedAt ?? ""}`)
     }
-    if (unopened.length > 0) void refreshInbox()
+    if (unopened.length > 0) {
+      void refreshInbox()
+      announceNotificationsChanged()
+    }
   }, [activeId, projectId, refreshInbox])
   const loadDetail = React.useCallback(
     async (

@@ -105,31 +105,6 @@ const deleteDepSchema = z.object({
     .describe("The project UUID (for revalidation)"),
 })
 
-const addExceptionSchema = z.object({
-  projectId: z.string().describe("The project UUID"),
-  date: z
-    .string()
-    .describe("Exception date in YYYY-MM-DD format"),
-  category: z
-    .enum(["holiday", "non_working", "extra_working"])
-    .describe("Exception category"),
-  recurrence: z
-    .enum(["none", "annual", "weekly"])
-    .optional()
-    .describe("Recurrence pattern (default none)"),
-  description: z
-    .string()
-    .optional()
-    .describe("Description of the exception"),
-})
-
-const removeExceptionSchema = z.object({
-  exceptionId: z
-    .string()
-    .describe("The exception UUID to remove"),
-  projectId: z.string().describe("The project UUID"),
-})
-
 export function scheduleTools(
   dataSource: DataSource
 ): ToolDef[] {
@@ -146,8 +121,8 @@ export function scheduleTools(
       run: async (input: unknown): Promise<string> => {
         const args = getScheduleSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/schedule/get",
-          args
+          "/api/compass/schedule",
+          { action: "getSchedule", ...args }
         )
         return JSON.stringify(result)
       },
@@ -162,8 +137,8 @@ export function scheduleTools(
       run: async (input: unknown): Promise<string> => {
         const args = createTaskSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/schedule/create",
-          args
+          "/api/compass/schedule",
+          { action: "createTask", ...args }
         )
         return JSON.stringify(result)
       },
@@ -179,8 +154,8 @@ export function scheduleTools(
       run: async (input: unknown): Promise<string> => {
         const args = updateTaskSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/schedule/update",
-          args
+          "/api/compass/schedule",
+          { action: "updateTask", ...args }
         )
         return JSON.stringify(result)
       },
@@ -196,8 +171,8 @@ export function scheduleTools(
       run: async (input: unknown): Promise<string> => {
         const args = deleteTaskSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/schedule/delete",
-          args
+          "/api/compass/schedule",
+          { action: "deleteTask", ...args }
         )
         return JSON.stringify(result)
       },
@@ -213,8 +188,8 @@ export function scheduleTools(
       run: async (input: unknown): Promise<string> => {
         const args = createDepSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/schedule/create-dependency",
-          args
+          "/api/compass/schedule",
+          { action: "createDependency", ...args }
         )
         return JSON.stringify(result)
       },
@@ -229,39 +204,8 @@ export function scheduleTools(
       run: async (input: unknown): Promise<string> => {
         const args = deleteDepSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/schedule/delete-dependency",
-          args
-        )
-        return JSON.stringify(result)
-      },
-    },
-
-    {
-      name: "addWorkdayException",
-      description:
-        "Add a workday exception to a project (holiday, " +
-        "non-working day, or extra working day).",
-      input_schema: zodToJsonSchema(addExceptionSchema),
-      run: async (input: unknown): Promise<string> => {
-        const args = addExceptionSchema.parse(input)
-        const result = await dataSource.fetch(
-          "/api/compass/schedule/add-exception",
-          args
-        )
-        return JSON.stringify(result)
-      },
-    },
-
-    {
-      name: "removeWorkdayException",
-      description:
-        "Remove a workday exception from a project.",
-      input_schema: zodToJsonSchema(removeExceptionSchema),
-      run: async (input: unknown): Promise<string> => {
-        const args = removeExceptionSchema.parse(input)
-        const result = await dataSource.fetch(
-          "/api/compass/schedule/remove-exception",
-          args
+          "/api/compass/schedule",
+          { action: "deleteDependency", ...args }
         )
         return JSON.stringify(result)
       },

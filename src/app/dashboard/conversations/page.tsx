@@ -1,8 +1,8 @@
-import { redirect } from "next/navigation"
 import { MessageSquare } from "lucide-react"
 import { listChannels } from "@/app/actions/conversations"
 import { CreateChannelButton } from "@/components/conversations/create-channel-button"
 import { withProjectConversationContext } from "@/lib/conversation-navigation"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export default async function ConversationsPage({
   searchParams,
@@ -29,11 +29,9 @@ export default async function ConversationsPage({
       : result.data[0]
     if (channel) {
       const channelHref = `/dashboard/conversations/${channel.id}`
-      redirect(
-        projectId
+      return <ClientRedirect href={projectId
           ? withProjectConversationContext(channelHref, projectId, returnTo)
-          : channelHref,
-      )
+          : channelHref} />
     }
   }
 

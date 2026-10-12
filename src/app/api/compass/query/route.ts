@@ -4,13 +4,10 @@ import { validateAgentAuth } from "@/lib/agent/api-auth"
 import {
   dailyLogs,
   ownerProjectUpdates,
-  organizationMembers,
-  organizations,
   projectOperations,
   projectRfis,
   projects,
   scheduleTasks,
-  users,
 } from "@/db/schema"
 import { invoices, vendorBills } from "@/db/schema-netsuite"
 import { and, desc, eq, like, or } from "drizzle-orm"
@@ -21,7 +18,7 @@ import {
   projectHref,
   rfiHref,
 } from "@/lib/jarvis/search"
-import type { AuthUser } from "@/lib/auth"
+import { resolveAgentUser } from "@/lib/agent/agent-user"
 import { canFeature } from "@/lib/permission-enforcement"
 
 async function canReadDirectory(
@@ -29,25 +26,8 @@ async function canReadDirectory(
   auth: { readonly userId: string; readonly orgId: string; readonly role: string },
   featureId: "customers" | "vendors"
 ): Promise<boolean> {
-  const row = await db.select({ user: users, membershipRole: organizationMembers.role, organization: organizations })
-    .from(users)
-    .innerJoin(organizationMembers, and(
-      eq(organizationMembers.userId, users.id),
-      eq(organizationMembers.organizationId, auth.orgId)
-    ))
-    .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
-    .where(eq(users.id, auth.userId))
-    .get()
-  if (!row || !row.user.isActive || !row.organization.isActive || row.membershipRole !== auth.role) {
-    return false
-  }
-  const user: AuthUser = {
-    ...row.user,
-    role: row.membershipRole,
-    organizationId: row.organization.id,
-    organizationName: row.organization.name,
-    organizationType: row.organization.type,
-  }
+  const user = await resolveAgentUser(db, auth)
+  if (!user) return false
   return canFeature(user, featureId, "read")
 }
 

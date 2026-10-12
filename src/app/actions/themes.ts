@@ -8,7 +8,12 @@ import {
   userThemePreference,
 } from "@/db/schema-theme"
 import { getCurrentUser } from "@/lib/auth"
-import { findPreset } from "@/lib/theme/presets"
+import {
+  getCustomThemeForUser,
+  listCustomThemesForUser,
+  saveCustomThemeForUser,
+  setThemePreferenceForUser,
+} from "@/lib/theme/user-themes"
 import { revalidatePath } from "next/cache"
 import { isDemoUser } from "@/lib/demo"
 
@@ -42,39 +47,15 @@ export async function setUserThemePreference(
   if (!user) return { success: false, error: "not authenticated" }
 
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const isPreset = findPreset(themeId) !== undefined
-  if (!isPreset) {
-    const custom = await db.query.customThemes.findFirst({
-      where: (t, { eq: e, and: a }) =>
-        a(e(t.id, themeId), e(t.userId, user.id)),
-    })
-    if (!custom) {
-      return { success: false, error: "theme not found" }
-    }
+  const result = await setThemePreferenceForUser(
+    getDb(env.DB),
+    user.id,
+    themeId,
+  )
+  if (result.success && !isDemoUser(user.id)) {
+    revalidatePath("/", "layout")
   }
-
-  if (isDemoUser(user.id)) {
-    return { success: true }
-  }
-
-  const now = new Date().toISOString()
-
-  try {
-    await db
-      .insert(userThemePreference)
-      .values({ userId: user.id, activeThemeId: themeId, updatedAt: now })
-      .onConflictDoUpdate({
-        target: userThemePreference.userId,
-        set: { activeThemeId: themeId, updatedAt: now },
-      })
-  } catch {
-    return { success: false, error: "Unable to save theme preference." }
-  }
-
-  revalidatePath("/", "layout")
-  return { success: true }
+  return result
 }
 
 export async function getCustomThemes(): Promise<
@@ -95,13 +76,7 @@ export async function getCustomThemes(): Promise<
   if (!user) return { success: false, error: "not authenticated" }
 
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const themes = await db.query.customThemes.findMany({
-    where: (t, { eq: e }) => e(t.userId, user.id),
-    orderBy: (t, { desc }) => desc(t.updatedAt),
-  })
-
+  const themes = await listCustomThemesForUser(getDb(env.DB), user.id)
   return { success: true, data: themes }
 }
 
@@ -123,26 +98,7 @@ export async function getCustomThemeById(
   if (!user) return { success: false, error: "not authenticated" }
 
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const theme = await db.query.customThemes.findFirst({
-    where: (t, { eq: e, and: a }) =>
-      a(e(t.id, themeId), e(t.userId, user.id)),
-  })
-
-  if (!theme) {
-    return { success: false, error: "theme not found" }
-  }
-
-  return {
-    success: true,
-    data: {
-      id: theme.id,
-      name: theme.name,
-      description: theme.description,
-      themeData: theme.themeData,
-    },
-  }
+  return getCustomThemeForUser(getDb(env.DB), user.id, themeId)
 }
 
 export async function saveCustomTheme(
@@ -157,42 +113,15 @@ export async function saveCustomTheme(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  if (isDemoUser(user.id)) {
-    return { success: false, error: "DEMO_READ_ONLY" }
-  }
-
   const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-
-  const now = new Date().toISOString()
-  const id = existingId ?? crypto.randomUUID()
-
-  if (existingId) {
-    const existing = await db.query.customThemes.findFirst({
-      where: (t, { eq: e, and: a }) =>
-        a(e(t.id, existingId), e(t.userId, user.id)),
-    })
-    if (!existing) {
-      return { success: false, error: "theme not found" }
-    }
-    await db
-      .update(customThemes)
-      .set({ name, description, themeData, updatedAt: now })
-      .where(eq(customThemes.id, existingId))
-  } else {
-    await db.insert(customThemes).values({
-      id,
-      userId: user.id,
-      name,
-      description,
-      themeData,
-      createdAt: now,
-      updatedAt: now,
-    })
-  }
-
-  revalidatePath("/", "layout")
-  return { success: true, id }
+  const result = await saveCustomThemeForUser(getDb(env.DB), user.id, {
+    name,
+    description,
+    themeData,
+    existingId,
+  })
+  if (result.success) revalidatePath("/", "layout")
+  return result
 }
 
 export async function deleteCustomTheme(

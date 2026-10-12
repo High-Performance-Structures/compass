@@ -134,6 +134,45 @@ function localIsoDate(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/**
+ * Scroll sync is pixel-for-pixel, so both panes must be able to scroll the
+ * same distance. The list ends with an Add row the chart has no row for.
+ * Frappe positions its SVG absolutely, so padding cannot extend the chart's
+ * scroll area; an invisible spacer as tall as the list does. Heights are read
+ * from the list table and the SVG, never from scrollHeight, so the spacer
+ * cannot feed back into its own measurement. Returns a cleanup.
+ */
+function matchGanttPaneHeights(
+  taskList: HTMLElement,
+  ganttContainer: HTMLElement
+): () => void {
+  const spacer = document.createElement("div")
+  spacer.setAttribute("aria-hidden", "true")
+  spacer.dataset.ganttScrollSpacer = ""
+  spacer.style.cssText =
+    "position:absolute;top:0;left:0;width:1px;pointer-events:none;visibility:hidden"
+  ganttContainer.appendChild(spacer)
+
+  const listContent = taskList.firstElementChild
+  const apply = (): void => {
+    const svg = ganttContainer.querySelector("svg")
+    const listHeight = listContent?.getBoundingClientRect().height ?? 0
+    const chartHeight = svg?.getBoundingClientRect().height ?? 0
+    spacer.style.height = `${Math.max(listHeight, chartHeight)}px`
+    taskList.style.paddingBottom = `${Math.max(0, chartHeight - listHeight)}px`
+  }
+  apply()
+  const observer = new ResizeObserver(apply)
+  if (listContent) observer.observe(listContent)
+  const svg = ganttContainer.querySelector("svg")
+  if (svg) observer.observe(svg)
+  return () => {
+    observer.disconnect()
+    spacer.remove()
+    taskList.style.paddingBottom = ""
+  }
+}
+
 export function ScheduleGanttView({
   projectId,
   tasks,
@@ -170,6 +209,14 @@ export function ScheduleGanttView({
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
+  const paneHeightCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(
+    () => () => {
+      paneHeightCleanupRef.current?.()
+      paneHeightCleanupRef.current = null
+    },
+    []
+  )
   const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
   const scrollStorageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollToTodayRef = useRef<(() => void) | null>(null)
@@ -392,7 +439,15 @@ export function ScheduleGanttView({
   const handleGanttContainerReady = useCallback(
     (container: HTMLElement | null) => {
       ganttContainerRef.current = container
+      paneHeightCleanupRef.current?.()
+      paneHeightCleanupRef.current = null
       if (!container) return
+      if (taskListRef.current) {
+        paneHeightCleanupRef.current = matchGanttPaneHeights(
+          taskListRef.current,
+          container
+        )
+      }
 
       let position = scrollPositionRef.current
       if (scrollRestoredProjectRef.current !== projectId) {
@@ -448,8 +503,6 @@ export function ScheduleGanttView({
           if (taskListRef.current) {
             taskListRef.current.scrollTop = synchronizedScrollTop(
               position.top,
-              container.scrollHeight,
-              container.clientHeight,
               taskListRef.current.scrollHeight,
               taskListRef.current.clientHeight
             )
@@ -467,8 +520,6 @@ export function ScheduleGanttView({
       if (taskList && ganttContainer) {
         const synchronizedTop = synchronizedScrollTop(
           position.top,
-          ganttContainer.scrollHeight,
-          ganttContainer.clientHeight,
           taskList.scrollHeight,
           taskList.clientHeight
         )
@@ -492,8 +543,6 @@ export function ScheduleGanttView({
       if (ganttContainer) {
         const synchronizedTop = synchronizedScrollTop(
           top,
-          event.currentTarget.scrollHeight,
-          event.currentTarget.clientHeight,
           ganttContainer.scrollHeight,
           ganttContainer.clientHeight
         )
@@ -693,8 +742,6 @@ export function ScheduleGanttView({
     if (taskList) {
       const listTop = synchronizedScrollTop(
         ganttTop,
-        ganttContainer.scrollHeight,
-        ganttContainer.clientHeight,
         taskList.scrollHeight,
         taskList.clientHeight
       )

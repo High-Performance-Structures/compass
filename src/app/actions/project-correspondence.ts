@@ -10,6 +10,7 @@ import { listCorrespondence, readCorrespondence } from "@/lib/correspondence/rea
 import { parseCorrespondenceSend } from "@/lib/correspondence/validation"
 import { correspondenceHash, persistCorrespondence, RejectedCorrespondenceSendError } from "@/lib/correspondence/send"
 import { correspondenceWriteGuard, clearCorrespondenceWriteGuard } from "@/lib/correspondence/write-guard"
+import { markCorrespondenceNotificationsRead } from "@/lib/notifications/clear-on-read"
 import type { CorrespondenceInboxFilter, CorrespondenceCompositionDraft, CorrespondenceDetail, CorrespondenceInbox, CorrespondenceResult, CorrespondenceStateInput, SendCorrespondenceInput, SendCorrespondenceResult } from "@/lib/correspondence/types"
 
 function failure(error: unknown): { readonly success: false; readonly error: string } {
@@ -96,6 +97,9 @@ export async function markCorrespondenceOpened(projectId: string, conversationId
           AND ${observed.editedAt === null ? sql`m.edited_at IS NULL` : sql`m.edited_at=${observed.editedAt}`})`
       ))
     }
+    // Opened here means handled in the bell too (only this viewer's rows).
+    await markCorrespondenceNotificationsRead(ctx.db, ctx.user.id, observedMessages.map((observed) => observed.id))
+      .catch((error: unknown) => console.error("correspondence_notification_clear_failed", error instanceof Error ? error.message : error))
     return { success: true, data: null }
   } catch (error) { return failure(error) }
 }

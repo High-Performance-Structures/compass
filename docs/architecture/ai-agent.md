@@ -164,8 +164,6 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 
 *Catalog section* -- lists the components available for `generateUI` (DataTable, StatCard, BarChart, Form, Input, Checkbox, etc.) with usage examples for interactive patterns (creating records, editing, inline toggles, row actions).
 
-*Interview protocol* -- instructions for conducting UX research interviews. The agent asks one question at a time, covers specific areas, and saves results via `saveInterviewFeedback`.
-
 *GitHub guidance* -- rate limit awareness and instructions to translate developer jargon into business language for construction professionals.
 
 *Theming rules* -- detailed instructions for `generateTheme` (all 32 oklch color keys, contrast requirements, chart color distinctness) and `editTheme` (partial updates, deep merge behavior).

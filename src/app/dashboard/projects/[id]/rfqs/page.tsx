@@ -1,3 +1,4 @@
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
@@ -58,7 +59,8 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import {
   isClosedProjectOperationStatus,
   parseProjectOperationStatusFilter,
@@ -489,6 +491,27 @@ export default async function ProjectRfqsPage({
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
   )
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
+    getProjects(),
+    getProjectRfqs(id),
+    getProjectTaskAssigneeOptions(id),
+    getProjectSelections(id),
+    getProjectSelectionOptions(id),
+    getProjectRfqCostCodeOptions(id),
+    getProjectRfqBidWorkspace(id),
+    showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
+    getProjectRfqEmailDeliveries(id),
+    getProjectRfqManualResponseEvents(id),
+  ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
+      throw error
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
   const [
     projects,
     rfqs,
@@ -500,21 +523,7 @@ export default async function ProjectRfqsPage({
     historicalWorkspace,
     emailDeliveries,
     manualResponseEvents,
-  ] = await Promise.all([
-    getProjects(),
-    getProjectRfqs(id),
-    getProjectTaskAssigneeOptions(id),
-    getProjectSelections(id),
-    getProjectSelectionOptions(id),
-    getProjectRfqCostCodeOptions(id),
-    getProjectRfqBidWorkspace(id),
-    showInternalHistory ? getProjectHistoricalRfqWorkspace(id, historyCursor) : Promise.resolve(null),
-    getProjectRfqEmailDeliveries(id),
-    getProjectRfqManualResponseEvents(id),
-  ]).catch((error: unknown) => {
-    redirectIfFeaturePermissionDenied(error)
-    throw error
-  })
+  ] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
@@ -529,7 +538,7 @@ export default async function ProjectRfqsPage({
     return rfq.dueDate < new Date().toISOString().slice(0, 10)
   }).length
   const projectLabel = projectDisplayLabel(project)
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber,
   })
@@ -540,13 +549,7 @@ export default async function ProjectRfqsPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconShoppingCartQuestion className="size-5 text-primary" />}
         title="Requests for Quote"
-        description={
-          <>
-            {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-            {project?.name ?? "Project"} scopes, quote requests, and vendor
-            response tracking.
-          </>
-        }
+        eyebrow={`${project?.projectNumber ? `${project.projectNumber} - ` : ""}${project?.name ?? "Project"}`}
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

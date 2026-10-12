@@ -3,6 +3,10 @@
 import * as React from "react"
 import {
   IconAdjustments,
+  IconBuildingSkyscraper,
+  IconBook,
+  IconRoute,
+  IconMapPin,
   IconPalette,
   IconPlug,
   IconRobot,
@@ -24,6 +28,10 @@ import { PreferencesTab } from "@/components/settings/preferences-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
 import { PermissionsTab } from "@/components/settings/permissions-tab"
 import { AgentTab } from "@/components/settings/agent-tab"
+import { TravelChargesTab } from "@/components/settings/travel-charges-tab"
+import { RateBookTab } from "@/components/settings/rate-book-tab"
+import { WorkflowsTab } from "@/components/settings/workflows-tab"
+import { DepartmentProfilesSection } from "@/components/settings/department-profiles-section"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
@@ -36,8 +44,12 @@ import {
 
 const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
+  { value: "company", label: "Company", icon: IconBuildingSkyscraper },
   { value: "appearance", label: "Theme", icon: IconPalette },
   { value: "permissions", label: "Permissions", icon: IconShieldLock },
+  { value: "zone-charges", label: "Zone charges", icon: IconMapPin },
+  { value: "rate-book", label: "Rate book", icon: IconBook },
+  { value: "workflows", label: "Workflows", icon: IconRoute },
   { value: "agent", label: "Agent", icon: IconRobot },
   { value: "integrations", label: "Integrations", icon: IconPlug },
 ] as const
@@ -46,7 +58,7 @@ type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "permissions", "agent",
+  "appearance", "permissions", "agent", "rate-book",
 ])
 
 function IntegrationsSection() {
@@ -104,10 +116,18 @@ export default function SettingsPage() {
     switch (activeSection) {
       case "preferences":
         return <PreferencesTab />
+      case "company":
+        return <DepartmentProfilesSection />
       case "appearance":
         return <AppearanceTab />
       case "permissions":
         return <PermissionsTab />
+      case "zone-charges":
+        return <TravelChargesTab />
+      case "rate-book":
+        return <RateBookTab />
+      case "workflows":
+        return <WorkflowsTab />
       case "agent":
         return developerModeEnabled ? <AgentTab /> : null
       case "integrations":

@@ -1,0 +1,200 @@
+import { eq } from "drizzle-orm"
+import type { getDb } from "@/db"
+import { driveFolderShareChecks } from "@/db/schema-paper-trail"
+import type { DriveClient } from "@/lib/google/client/drive-client"
+import type { DrivePermission } from "@/lib/google/client/types"
+import type { PaperTrailSubfolder } from "@/lib/paper-trail/types"
+import {
+  classifyProjectFolderName,
+  PROJECT_FILE_CATEGORIES,
+  type ProjectFileCategoryKey,
+} from "@/lib/project-files"
+
+const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+const SHARE_CHECK_TTL_MS = 60 * 60 * 1000
+
+/** Private folder used when a record's usual subfolder is shared outside the company. */
+export const PRIVATE_RECORDS_FOLDER_NAME = "Compass Records (internal)"
+
+export type PaperTrailDrive = {
+  readonly client: DriveClient
+  readonly googleEmail: string
+  readonly sharedDriveId: string | null
+}
+
+export type RecordFolderResult =
+  | { readonly ok: true; readonly folderId: string; readonly heldPrivate: boolean }
+  | { readonly ok: false; readonly error: string }
+
+function emailDomain(email: string | undefined): string | null {
+  const at = email?.lastIndexOf("@") ?? -1
+  return email && at > 0 ? email.slice(at + 1).trim().toLowerCase() : null
+}
+
+export function internalDomainSet(googleEmail: string, configured: readonly string[]): ReadonlySet<string> {
+  const domains = new Set(configured.map((domain) => domain.trim().toLowerCase()).filter(Boolean))
+  const own = emailDomain(googleEmail)
+  if (own) domains.add(own)
+  return domains
+}
+
+/**
+ * Who outside the company can open the item, as short labels with domains
+ * only (never individual addresses), e.g. "people at gmail.com".
+ */
+export function outsideAccess(permissions: readonly DrivePermission[], internalDomains: ReadonlySet<string>): readonly string[] {
+  const labels = new Set<string>()
+  for (const permission of permissions) {
+    if (permission.type === "anyone") {
+      labels.add("anyone with the link")
+      continue
+    }
+    if (permission.type === "domain") {
+      const domain = permission.domain?.toLowerCase() ?? ""
+      if (!internalDomains.has(domain)) labels.add(domain ? `everyone at ${domain}` : "an unnamed domain")
+      continue
+    }
+    // "user" and "group": inside when the exact address or its domain is
+    // listed. An address we cannot read is treated as outside, which errs
+    // toward the private folder.
+    const address = permission.emailAddress?.trim().toLowerCase() ?? ""
+    if (address && internalDomains.has(address)) continue
+    const domain = emailDomain(permission.emailAddress)
+    if (domain === null) labels.add(permission.type === "group" ? "a group without a visible address" : "an account without a visible address")
+    else if (!internalDomains.has(domain)) labels.add(permission.type === "group" ? `a group at ${domain}` : `people at ${domain}`)
+  }
+  return [...labels].sort()
+}
+
+/** True when anyone outside the company's domains can open the item. */
+export function isSharedOutside(permissions: readonly DrivePermission[], internalDomains: ReadonlySet<string>): boolean {
+  return outsideAccess(permissions, internalDomains).length > 0
+}
+
+/** Names who has outside access, for the record's status message. */
+async function describeOutsideAccess(
+  drive: PaperTrailDrive,
+  folderId: string,
+  internalDomains: ReadonlySet<string>,
+): Promise<string> {
+  try {
+    const labels = outsideAccess(await drive.client.listPermissions(drive.googleEmail, folderId), internalDomains)
+    return labels.length > 0 ? ` (${labels.slice(0, 4).join(", ")}${labels.length > 4 ? ", …" : ""})` : ""
+  } catch {
+    return ""
+  }
+}
+
+async function sharedOutside(
+  db: ReturnType<typeof getDb>,
+  drive: PaperTrailDrive,
+  folderId: string,
+  internalDomains: ReadonlySet<string>,
+  now: Date,
+): Promise<boolean> {
+  const cached = await db
+    .select()
+    .from(driveFolderShareChecks)
+    .where(eq(driveFolderShareChecks.folderId, folderId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (cached && now.getTime() - Date.parse(cached.checkedAt) < SHARE_CHECK_TTL_MS) {
+    return cached.sharedOutside
+  }
+  const permissions = await drive.client.listPermissions(drive.googleEmail, folderId)
+  const result = isSharedOutside(permissions, internalDomains)
+  const checkedAt = now.toISOString()
+  await db
+    .insert(driveFolderShareChecks)
+    .values({ folderId, sharedOutside: result, checkedAt })
+    .onConflictDoUpdate({ target: driveFolderShareChecks.folderId, set: { sharedOutside: result, checkedAt } })
+  return result
+}
+
+async function findChildFolder(
+  drive: PaperTrailDrive,
+  parentId: string,
+  match: (name: string) => boolean,
+): Promise<string | null> {
+  const children = await drive.client.listFiles(drive.googleEmail, {
+    folderId: parentId,
+    query: `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}'`,
+    pageSize: 200,
+    ...(drive.sharedDriveId ? { driveId: drive.sharedDriveId } : {}),
+  })
+  return children.files.find((file) => match(file.name))?.id ?? null
+}
+
+/** The files (not folders) directly inside a folder, by id and name. */
+export async function listFolderFiles(
+  drive: PaperTrailDrive,
+  folderId: string,
+): Promise<readonly { readonly id: string; readonly name: string }[]> {
+  const children = await drive.client.listFiles(drive.googleEmail, {
+    folderId,
+    query: `mimeType != '${GOOGLE_FOLDER_MIME_TYPE}'`,
+    pageSize: 200,
+    ...(drive.sharedDriveId ? { driveId: drive.sharedDriveId } : {}),
+  })
+  return children.files.map((file) => ({ id: file.id, name: file.name }))
+}
+
+/**
+ * The folder a record's copy belongs in: its category subfolder, or the
+ * private records folder when that subfolder is shared outside the company.
+ * Nothing is written when the project folder itself is shared outside,
+ * because every folder inside it would inherit that sharing.
+ */
+export async function resolveRecordFolder(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly drive: PaperTrailDrive
+  readonly projectFolderId: string
+  readonly category: ProjectFileCategoryKey
+  readonly subfolders: readonly PaperTrailSubfolder[]
+  readonly internalDomains: ReadonlySet<string>
+  readonly now: Date
+}): Promise<RecordFolderResult> {
+  const { db, drive, projectFolderId, internalDomains, now } = input
+  if (await sharedOutside(db, drive, projectFolderId, internalDomains, now)) {
+    return {
+      ok: false,
+      error: `The project's Drive folder is shared outside the company${await describeOutsideAccess(drive, projectFolderId, internalDomains)}, so internal records are not saved there. Change the folder's sharing, or add company domains in Settings → Workflows → Project paper trail.`,
+    }
+  }
+  const category = PROJECT_FILE_CATEGORIES.find((item) => item.key === input.category)
+  // Project folders come from the department templates; the paper trail never
+  // adds its own, so a missing subfolder is reported instead of invented.
+  const subfolderId = await findChildFolder(
+    drive,
+    projectFolderId,
+    (name) => classifyProjectFolderName(name)?.key === input.category,
+  )
+  if (!subfolderId) {
+    const expected = category?.currentNames[0] ?? category?.label ?? input.category
+    return {
+      ok: false,
+      error: `This project's Drive folder has no ${expected} folder. Add it from the department template, then save again.`,
+    }
+  }
+  // Per-occurrence folders below the category (a draw's folder and its
+  // receipts folder) are found by name or created.
+  let targetId = subfolderId
+  for (const subfolder of input.subfolders) {
+    const names = new Set([subfolder.name, ...subfolder.alternatives].map((name) => name.toLowerCase()))
+    targetId =
+      (await findChildFolder(drive, targetId, (name) => names.has(name.trim().toLowerCase()))) ??
+      (await drive.client.createFolder(drive.googleEmail, { name: subfolder.name, parentId: targetId })).id
+  }
+  if (!(await sharedOutside(db, drive, targetId, internalDomains, now))) {
+    return { ok: true, folderId: targetId, heldPrivate: false }
+  }
+  // The private records folder is the one folder the paper trail may create:
+  // it exists only to keep internal records out of a shared subfolder.
+  const privateId =
+    (await findChildFolder(drive, projectFolderId, (name) => name === PRIVATE_RECORDS_FOLDER_NAME)) ??
+    (await drive.client.createFolder(drive.googleEmail, { name: PRIVATE_RECORDS_FOLDER_NAME, parentId: projectFolderId })).id
+  if (await sharedOutside(db, drive, privateId, internalDomains, now)) {
+    return { ok: false, error: `“${PRIVATE_RECORDS_FOLDER_NAME}” is shared outside the company${await describeOutsideAccess(drive, privateId, internalDomains)}.` }
+  }
+  return { ok: true, folderId: privateId, heldPrivate: true }
+}

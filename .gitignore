@@ -64,3 +64,6 @@ local.db
 local.db-wal
 local.db-shm
 .e2e/
+
+# Help tutorial video recordings (see docs/development/help-videos.md)
+.help-videos/

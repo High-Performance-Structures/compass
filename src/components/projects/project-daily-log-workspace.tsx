@@ -6,7 +6,13 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
-  IconArrowLeft,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   IconCalendarStats,
   IconChevronLeft,
   IconChevronRight,
@@ -16,6 +22,7 @@ import {
   IconFileText,
   IconMailForward,
   IconPencil,
+  IconTrash,
   IconPhoto,
   IconPlus,
   IconPrinter,
@@ -34,7 +41,19 @@ import {
   type ProjectDailyLogPhoto,
   type ProjectDailyLogWorkspace as ProjectDailyLogWorkspaceData,
 } from "@/app/actions/project-field"
+import { deleteProjectDailyLogs } from "@/app/actions/daily-log-delete"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { CompassLoadingOverlay } from "@/components/compass-loader"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -73,6 +92,7 @@ import {
 } from "@/lib/photos/upload-limits"
 import { waitForPrintLayout } from "@/lib/print/readiness"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/page-header"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
 
@@ -734,8 +754,13 @@ export function ProjectDailyLogWorkspace({
   const [printLogs, setPrintLogs] =
     React.useState<readonly ProjectDailyLogItem[]>([])
   const [message, setMessage] = React.useState<string | null>(null)
+  // Logs waiting on delete confirmation (one from the edit form, or the selection).
+  const [pendingDeleteIds, setPendingDeleteIds] = React.useState<readonly string[]>([])
   const [isPending, startTransition] = React.useTransition()
   const [isWeatherPending, startWeatherTransition] = React.useTransition()
+  // Separate so the loading overlay covers only draft building, through the
+  // navigation to the new draft.
+  const [isBuildingDraft, startDraftTransition] = React.useTransition()
 
   React.useEffect(() => {
     setLogs(workspace.logs)
@@ -768,6 +793,34 @@ export function ProjectDailyLogWorkspace({
     [logs, selectedIds]
   )
   const ownerUpdateSelectedIds = selectedLogs.map((log) => log.id)
+  const deletableIds = React.useMemo(
+    () => new Set(workspace.deletableLogIds),
+    [workspace.deletableLogIds]
+  )
+  const deletableSelectedIds = ownerUpdateSelectedIds.filter((id) => deletableIds.has(id))
+  const pendingDeleteLogs = logs.filter((log) => pendingDeleteIds.includes(log.id))
+
+  function confirmDeleteLogs(): void {
+    const ids = pendingDeleteIds
+    setMessage(null)
+    startTransition(async () => {
+      const result = await deleteProjectDailyLogs(workspace.project.id, ids)
+      setPendingDeleteIds([])
+      if (result.success) {
+        setLogs((current) => current.filter((log) => !ids.includes(log.id)))
+        setSelectedIds((current) => current.filter((id) => !ids.includes(id)))
+        if (editingLogId && ids.includes(editingLogId)) setEditingLogId(null)
+        setMessage(
+          result.deletedCount === 1
+            ? "Daily log deleted. Its files are still in the project's photos."
+            : `${result.deletedCount} daily logs deleted. Their files are still in the project's photos.`
+        )
+        router.refresh()
+      } else {
+        setMessage(result.error)
+      }
+    })
+  }
   const printAuthorOptions = React.useMemo(
     () =>
       [...new Set(logs.map((log) => log.authorName).filter(
@@ -1196,7 +1249,7 @@ export function ProjectDailyLogWorkspace({
   function draftOwnerUpdate(): void {
     const dailyLogIds = ownerUpdateSelectedIds
     setMessage(null)
-    startTransition(async () => {
+    startDraftTransition(async () => {
       const result = await draftOwnerUpdateFromDailyLogs(workspace.project.id, {
         dailyLogIds,
       })
@@ -1213,70 +1266,97 @@ export function ProjectDailyLogWorkspace({
 
   return (
     <>
+    {isBuildingDraft && (
+      <CompassLoadingOverlay label="Building the owner update draft…" />
+    )}
+    <AlertDialog
+      open={pendingDeleteIds.length > 0}
+      onOpenChange={(open) => {
+        if (!open && !isPending) setPendingDeleteIds([])
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {pendingDeleteLogs.length === 1
+              ? `Delete the ${formatDate(pendingDeleteLogs[0]?.logDate ?? "")} daily log?`
+              : `Delete ${pendingDeleteLogs.length} daily logs?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            The log entries are removed from this project. Photos and files
+            attached to them stay in the project&apos;s photos, and a copy of each
+            log is kept in the activity log.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={isPending}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={(event) => {
+              event.preventDefault()
+              confirmDeleteLogs()
+            }}
+          >
+            {pendingDeleteLogs.length === 1 ? "Delete log" : `Delete ${pendingDeleteLogs.length} logs`}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <Button asChild variant="ghost" size="sm" className="-ml-2">
-              <Link href={`/dashboard/projects/${workspace.project.id}`}>
-                <IconArrowLeft className="size-4" />
-                Project
-              </Link>
-            </Button>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-              Daily Logs
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {projectLabel}
-              {workspace.project.clientName
-                ? ` · ${workspace.project.clientName}`
-                : ""}{" "}
-              · Review field notes, attached photos, and owner update readiness.
-            </p>
-          </div>
-          <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            <ProjectContextSwitcher
-              currentProjectId={workspace.project.id}
-              targetSection="daily-logs"
-              placeholder="Switch daily log project..."
-              className="w-full sm:w-[280px]"
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant={showNewLog ? "secondary" : "default"}
-                size="sm"
-                onClick={() => setShowNewLog((current) => !current)}
-              >
-                <IconPlus className="size-4" />
-                New daily log
-              </Button>
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
-                  <IconPhoto className="size-4" />
-                  Photo review
-                </Link>
-              </Button>
-              <Button
-                type="button"
-                variant={showPrintOptions ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setShowPrintOptions((current) => !current)}
-              >
-                <IconPrinter className="size-4" />
-                Print
-              </Button>
-              <Button
-                size="sm"
-                onClick={draftOwnerUpdate}
-                disabled={isPending || ownerUpdateSelectedIds.length === 0}
-              >
-                <IconMailForward className="size-4" />
-                Draft owner update
-              </Button>
-            </div>
-          </div>
-        </div>
+        <PageHeader
+          className="mb-0"
+          back={{ href: `/dashboard/projects/${workspace.project.id}`, label: "Project" }}
+          eyebrow={`${projectLabel}${workspace.project.clientName ? ` · ${workspace.project.clientName}` : ""}`}
+          title="Daily Logs"
+          actions={
+            <>
+              <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                <ProjectContextSwitcher
+                  currentProjectId={workspace.project.id}
+                  targetSection="daily-logs"
+                  placeholder="Switch daily log project..."
+                  className="w-full sm:w-[280px]"
+                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant={showNewLog ? "secondary" : "default"}
+                    size="sm"
+                    onClick={() => setShowNewLog((current) => !current)}
+                  >
+                    <IconPlus className="size-4" />
+                    New daily log
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
+                      <IconPhoto className="size-4" />
+                      Photo review
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={showPrintOptions ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => setShowPrintOptions((current) => !current)}
+                  >
+                    <IconPrinter className="size-4" />
+                    Print
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={draftOwnerUpdate}
+                    disabled={isPending || isBuildingDraft || ownerUpdateSelectedIds.length === 0}
+                  >
+                    <IconMailForward className="size-4" />
+                    Draft owner update
+                  </Button>
+                </div>
+              </div>
+            </>
+          }
+        />
 
         <div className="grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 lg:grid-cols-6">
           <LogMetric
@@ -1457,16 +1537,20 @@ export function ProjectDailyLogWorkspace({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <select
+              <Select
                 value={filter}
-                onChange={(event) => setFilter(filterValue(event.target.value))}
-                className="h-9 rounded-md border bg-background px-3 text-sm"
+                onValueChange={(value) => setFilter(filterValue(value))}
               >
-                <option value="all">All logs</option>
-                <option value="needs_review">Needs review</option>
-                <option value="approved">Approved</option>
-                <option value="owner_visible">Owner visible</option>
-              </select>
+                <SelectTrigger aria-label="Filter daily logs" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All logs</SelectItem>
+                  <SelectItem value="needs_review">Needs review</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="owner_visible">Owner visible</SelectItem>
+                </SelectContent>
+              </Select>
               <Button variant="outline" size="sm" onClick={selectVisibleLogs}>
                 Select shown
               </Button>
@@ -1482,10 +1566,29 @@ export function ProjectDailyLogWorkspace({
                   : ""}{" "}
                 · {filteredLogs.length} shown
               </div>
+              {deletableIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isPending || deletableSelectedIds.length === 0}
+                  onClick={() => setPendingDeleteIds(deletableSelectedIds)}
+                  title={
+                    deletableSelectedIds.length < selectedLogs.length
+                      ? "Some selected logs can't be deleted by you (approved, shared with the owner, written by someone else, or used in an owner update)."
+                      : undefined
+                  }
+                >
+                  <IconTrash className="size-4" />
+                  Delete selected
+                  {deletableSelectedIds.length > 0 && deletableSelectedIds.length < selectedLogs.length
+                    ? ` (${deletableSelectedIds.length})`
+                    : ""}
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={draftOwnerUpdate}
-                disabled={isPending || ownerUpdateSelectedIds.length === 0}
+                disabled={isPending || isBuildingDraft || ownerUpdateSelectedIds.length === 0}
               >
                 <IconMailForward className="size-4" />
                 Build draft from selected
@@ -1658,6 +1761,19 @@ export function ProjectDailyLogWorkspace({
                       </p>
                     </div>
                     <div className="flex gap-2">
+                      {deletableIds.has(log.id) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={isPending}
+                          onClick={() => setPendingDeleteIds([log.id])}
+                        >
+                          <IconTrash className="size-4" />
+                          Delete
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"

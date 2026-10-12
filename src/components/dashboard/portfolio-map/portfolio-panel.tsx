@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
+import { PortfolioJobMessageList, type PortfolioJobMessages } from "@/components/dashboard/portfolio-map/portfolio-job-messages"
 import { useRouter } from "next/navigation"
 import * as React from "react"
-import { EyeOff, X } from "lucide-react"
+import { EyeOff } from "lucide-react"
 import { updateProjectMapVisibility } from "@/app/actions/project-profile"
 import { listProjectsToAddToMap } from "@/app/actions/portfolio-map"
 import { Input } from "@/components/ui/input"
@@ -14,17 +15,43 @@ import {
   healthColor,
   phaseColor,
 } from "@/components/dashboard/portfolio-map/portfolio-style"
+import { CloseButton, JobLinks, StatusMovePicker, type StatusMoveGroup } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
+import { FollowUpChip, FollowUpSection } from "@/components/projects/project-follow-up-aging"
 import {
   PORTFOLIO_PHASES,
+  portfolioMarkerAlert,
+  portfolioPhaseStatuses,
+  type PortfolioMapRules,
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
 import type {
   PortfolioAddableProject,
   PortfolioHiddenJob,
+  PortfolioJobTravel,
+  PortfolioTravelData,
   PortfolioUnplacedJob,
 } from "@/lib/portfolio-map/load"
+import { formatRateCents, rateLabel } from "@/lib/portfolio-map/travel-zones"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+
+/** Moving the selected job to another status from the panel. */
+export type PortfolioStatusMove = {
+  readonly pending: boolean
+  readonly error: string | null
+  readonly onMove: (job: PortfolioMapJob, statusId: string) => void
+  /** The company's status-to-phase rules, which set the MOVE TO choices. */
+  readonly rules: PortfolioMapRules
+}
+
+function phaseMoveGroups(rules: PortfolioMapRules): readonly StatusMoveGroup[] {
+  return PORTFOLIO_PHASES.map((phase) => ({
+    id: phase.id,
+    label: phase.label,
+    color: phaseColor(phase.id),
+    statuses: portfolioPhaseStatuses(phase.id, rules),
+  }))
+}
 
 export type PortfolioSelection =
   | { readonly kind: "none" }
@@ -35,22 +62,27 @@ type PortfolioPanelProps = {
   readonly jobs: readonly PortfolioMapJob[]
   readonly unplaced: readonly PortfolioUnplacedJob[]
   readonly hidden: readonly PortfolioHiddenJob[]
+  /** Office staff only; null hides the zone charge rows. */
+  readonly travel: PortfolioTravelData | null
   readonly selection: PortfolioSelection
   readonly onSelectJob: (jobId: string) => void
   readonly onSelectPhase: (phase: PortfolioPhaseId) => void
   readonly onClear: () => void
+  /** Messages layer on: the selected job's unread items; null otherwise. */
+  readonly jobMessages?: PortfolioJobMessages | null
+  readonly statusMove?: PortfolioStatusMove | null
 }
 
 const LABEL = "font-mono text-xs tracking-[0.12em] text-muted-foreground"
 const ROW = "flex min-h-11 w-full items-center justify-between gap-3 border-b border-border px-1 text-left text-sm transition-colors hover:bg-accent"
 
-function HealthTag({ job }: { readonly job: PortfolioMapJob }): React.ReactElement {
+function HealthTag({ job, prefix = "" }: { readonly job: PortfolioMapJob; readonly prefix?: string }): React.ReactElement {
   return (
     <span
       className="shrink-0 border px-1.5 py-0.5 font-mono text-xs tracking-[0.1em]"
       style={{ borderColor: healthColor(job.health), color: healthColor(job.health) }}
     >
-      {HEALTH_LABEL[job.health].toUpperCase()}
+      {prefix}{HEALTH_LABEL[job.health].toUpperCase()}
     </span>
   )
 }
@@ -79,25 +111,90 @@ function useMapVisibility(): {
   return { pending, message, change }
 }
 
-function CloseButton({ onClear }: { readonly onClear: () => void }): React.ReactElement {
+/** Zone and mountain charge rows for one job. */
+function TravelRows({
+  travel,
+  homeLabel,
+}: {
+  readonly travel: PortfolioJobTravel
+  readonly homeLabel: string
+}): React.ReactElement {
+  const mountain =
+    travel.elevationFt === null
+      ? travel.siteLookup === "no_address"
+        ? "Needs a site address"
+        : travel.siteLookup === "not_found"
+          ? "Address not found by lookup"
+          : "Elevation pending"
+      : `${travel.elevationFt.toLocaleString("en-US")} ft${
+          travel.mountainBand === null
+            ? " · no mountain charge"
+            : ` · band ${travel.mountainBand} · ${
+                travel.mountainRateCents === null
+                  ? "rate not set"
+                  : travel.mountainRateCents === 0
+                    ? "no charge"
+                    : `+${formatRateCents(travel.mountainRateCents)}/man-hr`
+              }`
+        }`
   return (
-    <Button type="button" variant="outline" size="icon" aria-label="Close" onClick={onClear}>
-      <X aria-hidden="true" />
-    </Button>
+    <>
+      <dt className="text-muted-foreground">Zone</dt>
+      <dd className="text-right">
+        <span className="tabular-nums">
+          Zone {travel.zone} ·{" "}
+          <span className="whitespace-nowrap">
+            {travel.zoneRateCents === null || travel.zoneRateCents === 0
+              ? rateLabel(travel.zoneRateCents).toLowerCase()
+              : `+${formatRateCents(travel.zoneRateCents)}/man-hr`}
+          </span>
+        </span>
+        {travel.lodgingAndPerDiem ? <span className="block text-xs text-muted-foreground">+ lodging and per diem</span> : null}
+        {travel.custom.length > 0 ? <span className="block text-xs font-medium text-primary">Custom for this job</span> : null}
+        <span className="block text-xs text-muted-foreground">
+          {travel.approximate ? "≈" : ""}
+          {travel.miles} mi from {homeLabel}
+          {travel.approximate ? " (town center)" : ""}
+        </span>
+      </dd>
+      <dt className="text-muted-foreground">Site elevation</dt>
+      <dd className="text-right">
+        {travel.siteNote && travel.elevationFt !== null && !travel.custom.includes("elevation") ? "≈ " : ""}
+        {mountain}
+        {travel.siteNote ? <span className="block text-xs text-muted-foreground">{travel.siteNote}</span> : null}
+      </dd>
+    </>
   )
 }
 
 function JobDetail({
   job,
+  travel,
+  homeLabel,
   onClear,
+  messages,
+  statusMove,
 }: {
   readonly job: PortfolioMapJob
+  readonly travel: PortfolioJobTravel | null
+  readonly homeLabel: string
   readonly onClear: () => void
+  readonly messages: PortfolioJobMessages | null
+  readonly statusMove: PortfolioStatusMove | null
 }): React.ReactElement {
   const visibility = useMapVisibility()
   const phaseIndex = PORTFOLIO_PHASES.findIndex((phase) => phase.id === job.phase)
   const phaseLabel = PORTFOLIO_PHASES[phaseIndex]?.label ?? job.statusLabel
   const base = `/dashboard/projects/${encodeURIComponent(job.id)}`
+  const links = (
+    <JobLinks
+      jobId={job.id}
+      links={[
+        ["Schedule", "schedule"],
+        ["Daily logs", "daily-logs"],
+      ]}
+    />
+  )
   return (
     <div className="flex h-full flex-col gap-5 p-5">
       <div className="flex items-start justify-between gap-3">
@@ -108,7 +205,11 @@ function JobDetail({
         </div>
         <CloseButton onClear={onClear} />
       </div>
-      <HealthTag job={job} />
+      {/* Schedule health only means something once the job has a schedule. */}
+      {job.progress !== null || job.health !== "ok" ? <HealthTag job={job} prefix="SCHEDULE · " /> : null}
+      {job.followUp ? <FollowUpSection projectId={job.id} signal={job.followUp} compact /> : null}
+      {/* With the Messages layer on, the job's unread items come first. */}
+      {messages ? <PortfolioJobMessageList messages={messages} /> : null}
       <div className="flex flex-col gap-2">
         <span className={LABEL}>PIPELINE</span>
         <ol className="grid grid-cols-6 gap-1" aria-label={`Phase: ${phaseLabel}`}>
@@ -151,18 +252,30 @@ function JobDetail({
         <dd className="text-right" style={job.pastDueCount > 0 ? { color: "var(--destructive)" } : undefined}>
           {job.pastDueCount === 0 ? "None" : `${job.pastDueCount} ${job.pastDueCount === 1 ? "item" : "items"}`}
         </dd>
+        {travel ? <TravelRows travel={travel} homeLabel={homeLabel} /> : null}
       </dl>
-      <div className="mt-auto flex flex-wrap gap-2 pt-2">
-        <Button asChild className="flex-[1_1_9rem]">
-          <Link href={base}>Open job →</Link>
-        </Button>
-        <Button asChild variant="outline" className="flex-[1_1_6rem]">
-          <Link href={`${base}/schedule`}>Schedule</Link>
-        </Button>
-        <Button asChild variant="outline" className="flex-[1_1_6rem]">
-          <Link href={`${base}/daily-logs`}>Daily logs</Link>
-        </Button>
-      </div>
+      {travel ? (
+        <Link
+          href={`${base}/information#zone-charges`}
+          className="-mt-3 self-end text-xs text-primary underline-offset-4 hover:underline"
+        >
+          {travel.elevationFt === null && travel.siteLookup === "not_found"
+            ? "Enter the site elevation for this job"
+            : travel.custom.length > 0
+              ? "Review zone charges for this job"
+              : "Adjust zone charges for this job"}
+        </Link>
+      ) : null}
+      {links}
+      {statusMove ? (
+        <StatusMovePicker
+          groups={phaseMoveGroups(statusMove.rules)}
+          currentStatusId={job.jobStatusId}
+          disabled={statusMove.pending}
+          error={statusMove.error}
+          onMove={(statusId) => statusMove.onMove(job, statusId)}
+        />
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
         <span>{job.visibility === "shown" ? "Always shown on the map" : "Shown by its status"}</span>
         <span className="flex gap-1">
@@ -294,14 +407,28 @@ export function PortfolioPanel({
   jobs,
   unplaced,
   hidden,
+  travel,
   selection,
   onSelectJob,
   onSelectPhase,
   onClear,
+  jobMessages = null,
+  statusMove = null,
 }: PortfolioPanelProps): React.ReactElement {
   if (selection.kind === "job") {
     const job = jobs.find((item) => item.id === selection.jobId)
-    if (job) return <JobDetail job={job} onClear={onClear} />
+    if (job) {
+      return (
+        <JobDetail
+          job={job}
+          travel={travel?.byJobId[job.id] ?? null}
+          homeLabel={travel?.settings.homeBase.label ?? ""}
+          onClear={onClear}
+          messages={jobMessages}
+          statusMove={statusMove}
+        />
+      )
+    }
   }
 
   if (selection.kind === "phase") {
@@ -335,9 +462,15 @@ export function PortfolioPanel({
     )
   }
 
+  // Schedule trouble and overdue client follow-up, worst first.
   const attention = jobs
-    .filter((job) => job.health !== "ok")
-    .sort((a, b) => Number(b.health === "late") - Number(a.health === "late") || b.pastDueCount - a.pastDueCount)
+    .filter((job) => portfolioMarkerAlert(job) !== null)
+    .sort(
+      (a, b) =>
+        Number(portfolioMarkerAlert(b) === "late") - Number(portfolioMarkerAlert(a) === "late") ||
+        b.pastDueCount - a.pastDueCount ||
+        (b.followUp?.businessDaysSinceLastTouch ?? 0) - (a.followUp?.businessDaysSinceLastTouch ?? 0),
+    )
   return (
     <div className="flex flex-col gap-5 p-5">
       <div className="flex flex-col gap-1">
@@ -374,7 +507,7 @@ export function PortfolioPanel({
                       {job.town ? job.town.toUpperCase() : "NO TOWN"}
                     </span>
                   </span>
-                  <HealthTag job={job} />
+                  {job.health !== "ok" ? <HealthTag job={job} /> : <FollowUpChip signal={job.followUp} />}
                 </button>
               </li>
             ))}

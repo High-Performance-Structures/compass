@@ -14,6 +14,7 @@ import {
   executeDashboardQueries,
 } from "@/app/actions/dashboards"
 import type { Spec } from "@json-render/react"
+import { PageHeader } from "@/components/page-header"
 
 interface SavedDashboardViewProps {
   readonly dashboard: {
@@ -68,44 +69,42 @@ export function SavedDashboardView({
 
   return (
     <div className="flex flex-1 flex-col min-h-0 p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-lg font-semibold">
-            {dashboard.name}
-          </h1>
-          {dashboard.description && (
-            <p className="text-sm text-muted-foreground">
-              {dashboard.description}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="gap-1.5"
-          >
-            {refreshing ? (
-              <Loader2Icon className="size-4 animate-spin" />
-            ) : (
-              <RefreshCwIcon className="size-4" />
-            )}
-            Refresh
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleDelete}
-            disabled={deleting}
-            className="gap-1.5 text-destructive hover:text-destructive"
-          >
-            <Trash2Icon className="size-4" />
-            Delete
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-4"
+        title={dashboard.name}
+        // The description is what the user wrote for this dashboard, so it stays.
+        meta={dashboard.description || undefined}
+        actions={
+          <>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="gap-1.5"
+              >
+                {refreshing ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCwIcon className="size-4" />
+                )}
+                Refresh
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="gap-1.5 text-destructive hover:text-destructive"
+              >
+                <Trash2Icon className="size-4" />
+                Delete
+              </Button>
+            </div>
+          </>
+        }
+      />
 
       <div className="flex-1 overflow-auto">
         <CompassRenderer spec={spec} data={data} />

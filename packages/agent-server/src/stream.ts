@@ -77,6 +77,12 @@ function mapProvider(context: StreamContext): ProviderConfig {
         type: "ollama",
         baseUrl: context.provider.baseUrl,
       }
+    case "openai":
+      return {
+        type: "openai",
+        apiKey: context.provider.apiKey,
+        baseUrl: context.provider.baseUrl,
+      }
     default:
       return {
         type: "custom",

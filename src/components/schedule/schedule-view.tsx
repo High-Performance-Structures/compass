@@ -1,5 +1,6 @@
 "use client"
 
+import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 
 import {
@@ -205,8 +206,10 @@ export function ScheduleView({
     ? allProjects.find((project) => project.id === projectId) ??
       scheduleProjects.find((project) => project.id === projectId)
     : undefined
+  const departmentProfiles = useDepartmentProfiles()
   const printBrand = projectId
     ? projectBrandFor({
+        profiles: departmentProfiles,
         projectId,
         projectNumber: activeProject?.projectNumber,
       })

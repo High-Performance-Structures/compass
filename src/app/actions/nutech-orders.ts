@@ -4,8 +4,10 @@ import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectOperations, projects } from "@/db/schema"
-import { projectEstimates } from "@/db/schema-estimates"
+import { projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
+import { projectEstimates, sageTaxEntities } from "@/db/schema-estimates"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { isNuTechFreight } from "@/lib/nutech/freight"
 import {
   nuTechCatalogPrices,
   nuTechCatalogVersions,
@@ -26,12 +28,17 @@ import {
   NUTECH_SCOPE_TYPE_OPTIONS,
   NUTECH_TAKEOFF_STATUS_OPTIONS,
   NUTECH_VENDOR_INVOICE_STATUS_OPTIONS,
+  isNuTechPaymentMethod,
+  jobStatusForNuTechOrderStatus,
   normalizedNuTechTakeoffStatus,
+  nuTechCustomerReadinessIssues,
   nuTechPurchaseOrderReleaseReadiness,
+  projectDeliveryMethodForNuTech,
   nuTechReleaseAuditIssues,
   type NuTechCustomerType,
   type NuTechDeliveryMethod,
   type NuTechOrderStatus,
+  type NuTechPaymentMethod,
   type NuTechPricingMode,
   type NuTechQuantitySource,
   type NuTechScopeType,
@@ -79,6 +86,10 @@ export type NuTechOrderRecord = {
   readonly bracingNotes: string | null
   readonly deliveryMethod: NuTechDeliveryMethod
   readonly requestedDeliveryDate: string | null
+  readonly customerPaidAt: string | null
+  readonly customerPaymentMethod: NuTechPaymentMethod | null
+  readonly trailerDimensions: string | null
+  readonly trailerPhotoReceivedAt: string | null
   readonly airlitePurchaseOrderOperationId: string | null
   readonly orderStatus: NuTechOrderStatus
   readonly vendorConfirmationNumber: string | null
@@ -90,8 +101,18 @@ export type NuTechOrderRecord = {
   readonly vendorInvoiceStatus: NuTechVendorInvoiceStatus
   readonly vendorInvoiceReceivedAt: string | null
   readonly vendorInvoiceReleasedAt: string | null
+  readonly shippingCents: number | null
+  readonly shippingNote: string | null
+  readonly taxEntityId: string | null
   readonly notes: string | null
   readonly updatedAt: string
+}
+
+export type NuTechTaxDistrict = {
+  readonly id: string
+  readonly code: string
+  readonly name: string
+  readonly rateBasisPoints: number
 }
 
 export type NuTechCatalogProductOption = {
@@ -108,6 +129,7 @@ export type NuTechCatalogProductOption = {
   readonly newCashPriceCents: number
   readonly returningStandardPriceCents: number
   readonly returningCashPriceCents: number
+  readonly taxable: boolean
 }
 
 export type NuTechOrderItemRecord = {
@@ -136,6 +158,12 @@ export type ProjectNuTechOrderWorkspace = {
   readonly orderItems: readonly NuTechOrderItemRecord[]
   readonly estimate: NuTechEstimateSummary | null
   readonly purchaseOrders: readonly NuTechPurchaseOrderOption[]
+  /** Active sales tax districts (synced from the accounting system). */
+  readonly taxDistricts: readonly NuTechTaxDistrict[]
+  /** District for customer pickups at the warehouse (Settings → Nu-Tech emails). */
+  readonly warehouseTaxEntityId: string | null
+  /** Whether the shipping charge is taxed (the price list's Freight item; non-taxable unless changed). */
+  readonly shippingTaxable: boolean
 }
 
 export type NuTechOrderDashboardItem = {
@@ -163,12 +191,19 @@ export type SaveNuTechOrderInput = {
   readonly bracingNotes: string | null
   readonly deliveryMethod: string
   readonly requestedDeliveryDate: string | null
+  readonly customerPaidAt: string | null
+  readonly customerPaymentMethod: string | null
+  readonly trailerDimensions: string | null
+  readonly trailerPhotoReceivedAt: string | null
   readonly airlitePurchaseOrderOperationId: string | null
   readonly orderStatus: string
   readonly vendorConfirmationNumber: string | null
   readonly vendorInvoiceNumber: string | null
   readonly vendorInvoiceStatus: string
   readonly vendorInvoiceReceivedAt: string | null
+  readonly shippingCents: number | null
+  readonly shippingNote: string | null
+  readonly taxEntityId: string | null
   readonly notes: string | null
 }
 
@@ -299,6 +334,10 @@ function toOrderRecord(
     bracingNotes: row.bracingNotes,
     deliveryMethod: storedDeliveryMethod(row.deliveryMethod),
     requestedDeliveryDate: row.requestedDeliveryDate,
+    customerPaidAt: row.customerPaidAt,
+    customerPaymentMethod: isNuTechPaymentMethod(row.customerPaymentMethod) ? row.customerPaymentMethod : null,
+    trailerDimensions: row.trailerDimensions,
+    trailerPhotoReceivedAt: row.trailerPhotoReceivedAt,
     airlitePurchaseOrderOperationId: row.airlitePurchaseOrderOperationId,
     orderStatus: orderStatus(row.orderStatus),
     vendorConfirmationNumber: row.vendorConfirmationNumber,
@@ -310,6 +349,9 @@ function toOrderRecord(
     vendorInvoiceStatus: vendorInvoiceStatus(row.vendorInvoiceStatus),
     vendorInvoiceReceivedAt: row.vendorInvoiceReceivedAt,
     vendorInvoiceReleasedAt: row.vendorInvoiceReleasedAt,
+    shippingCents: row.shippingCents,
+    shippingNote: row.shippingNote,
+    taxEntityId: row.taxEntityId,
     notes: row.notes,
     updatedAt: row.updatedAt,
   }
@@ -351,6 +393,58 @@ async function nuTechProjectAccess(
     throw new Error("The Nu-Tech order workflow is available only for N projects.")
   }
   return { db, user, organizationId, project }
+}
+
+/**
+ * Keep the job in step with its order: the job status (and so the Nu-Tech
+ * Sales pipeline stage) and delivery or pickup. Status changes are audited
+ * like any other job status change.
+ */
+async function syncProjectWithOrder(
+  access: NuTechAccess,
+  next: {
+    readonly jobStatusId: string | null
+    readonly deliveryMethod: "delivery" | "pickup" | null
+    readonly now: string
+  },
+): Promise<void> {
+  const current = await access.db
+    .select({ jobStatusId: projects.jobStatusId, deliveryMethod: projects.deliveryMethod })
+    .from(projects)
+    .where(eq(projects.id, access.project.id))
+    .limit(1)
+    .get()
+  if (!current) return
+  const statusChanged = next.jobStatusId !== null && next.jobStatusId !== current.jobStatusId
+  const deliveryChanged = next.deliveryMethod !== null && next.deliveryMethod !== current.deliveryMethod
+  if (!statusChanged && !deliveryChanged) return
+  const update = access.db
+    .update(projects)
+    .set({
+      ...(statusChanged && next.jobStatusId !== null ? { jobStatusId: next.jobStatusId } : {}),
+      ...(deliveryChanged && next.deliveryMethod !== null ? { deliveryMethod: next.deliveryMethod } : {}),
+      updatedAt: next.now,
+    })
+    .where(eq(projects.id, access.project.id))
+  if (!statusChanged) {
+    await update
+    return
+  }
+  await access.db.batch([
+    update,
+    access.db.insert(projectProfileAuditEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: access.organizationId,
+      projectId: access.project.id,
+      actorUserId: access.user.id,
+      eventType: "project_job_status_updated",
+      entityType: "project",
+      entityId: access.project.id,
+      beforeJson: JSON.stringify({ jobStatusId: current.jobStatusId }),
+      afterJson: JSON.stringify({ jobStatusId: next.jobStatusId, source: "nutech_order" }),
+      createdAt: next.now,
+    }),
+  ])
 }
 
 function revalidateNuTechPaths(projectId: string): void {
@@ -429,6 +523,14 @@ export async function getProjectNuTechOrderWorkspace(
         .orderBy(desc(nuTechCatalogVersions.effectiveDate))
         .limit(1)
         .get()
+  const [taxDistricts, nuTechSettings] = await Promise.all([
+    access.db
+      .select({ id: sageTaxEntities.id, code: sageTaxEntities.code, name: sageTaxEntities.name, rateBasisPoints: sageTaxEntities.rateBasisPoints })
+      .from(sageTaxEntities)
+      .where(eq(sageTaxEntities.active, true))
+      .orderBy(asc(sageTaxEntities.name)),
+    readFeatureSettings(access.db, access.organizationId, "nutech-emails"),
+  ])
   const [catalogProducts, orderItems] = await Promise.all([
     catalogVersion
       ? access.db
@@ -447,6 +549,7 @@ export async function getProjectNuTechOrderWorkspace(
             returningStandardPriceCents:
               nuTechCatalogPrices.returningStandardPriceCents,
             returningCashPriceCents: nuTechCatalogPrices.returningCashPriceCents,
+            taxable: nuTechProducts.taxable,
           })
           .from(nuTechCatalogPrices)
           .innerJoin(
@@ -490,10 +593,13 @@ export async function getProjectNuTechOrderWorkspace(
     address: access.project.address,
     order: orderRow ? toOrderRecord(orderRow) : null,
     catalogVersionName: catalogVersion?.name ?? null,
-    catalogProducts,
+    catalogProducts: catalogProducts.filter((product) => !isNuTechFreight(product)),
     orderItems,
     estimate: estimateRow ?? null,
     purchaseOrders: purchaseOrderRows,
+    taxDistricts,
+    warehouseTaxEntityId: nuTechSettings.warehouseTaxEntityId || null,
+    shippingTaxable: catalogProducts.find(isNuTechFreight)?.taxable ?? false,
   }
 }
 
@@ -630,6 +736,31 @@ export async function saveProjectNuTechOrder(
       input.requestedDeliveryDate,
       "Requested delivery date"
     )
+    const customerPaidAt = cleanDate(input.customerPaidAt, "Customer paid date")
+    const paymentMethod = cleanText(input.customerPaymentMethod)
+    if (paymentMethod !== null && !isNuTechPaymentMethod(paymentMethod)) {
+      throw new Error("Choose check, cash, ACH, or card.")
+    }
+    const trailerPhotoReceivedAt = cleanDate(input.trailerPhotoReceivedAt, "Trailer photo received date")
+    const parsedDeliveryMethod = deliveryMethod(input.deliveryMethod)
+    if (input.shippingCents !== null && (!Number.isInteger(input.shippingCents) || input.shippingCents < 0 || input.shippingCents > 100_000_000)) {
+      throw new Error("Enter the shipping charge in dollars and cents.")
+    }
+    // Shipping applies to deliveries only; pickups default to the warehouse's tax district.
+    const shippingCents = parsedDeliveryMethod === "delivery" ? input.shippingCents : null
+    let taxEntityId = cleanText(input.taxEntityId)
+    if (taxEntityId === null && parsedDeliveryMethod !== "delivery") {
+      const settings = await readFeatureSettings(access.db, access.organizationId, "nutech-emails")
+      taxEntityId = settings.warehouseTaxEntityId || null
+    }
+    if (taxEntityId !== null) {
+      const district = await access.db
+        .select({ id: sageTaxEntities.id })
+        .from(sageTaxEntities)
+        .where(and(eq(sageTaxEntities.id, taxEntityId), eq(sageTaxEntities.active, true)))
+        .get()
+      if (!district) throw new Error("Choose an active sales tax district.")
+    }
     const parsedOrderStatus = orderStatus(input.orderStatus)
     const parsedVendorInvoiceStatus = vendorInvoiceStatus(
       input.vendorInvoiceStatus
@@ -691,8 +822,12 @@ export async function saveProjectNuTechOrder(
       bracingRentalStartDate,
       bracingRentalEndDate,
       bracingNotes: bracingIncluded ? cleanText(input.bracingNotes) : null,
-      deliveryMethod: deliveryMethod(input.deliveryMethod),
+      deliveryMethod: parsedDeliveryMethod,
       requestedDeliveryDate,
+      customerPaidAt,
+      customerPaymentMethod: paymentMethod,
+      trailerDimensions: cleanText(input.trailerDimensions),
+      trailerPhotoReceivedAt,
       airlitePurchaseOrderOperationId: purchaseOrderId,
       orderStatus: parsedOrderStatus,
       vendorConfirmationNumber: cleanText(input.vendorConfirmationNumber),
@@ -703,6 +838,9 @@ export async function saveProjectNuTechOrder(
       vendorInvoiceReceivedAt,
       vendorInvoiceReleasedAt: existing?.vendorInvoiceReleasedAt ?? null,
       vendorInvoiceReleasedBy: existing?.vendorInvoiceReleasedBy ?? null,
+      shippingCents,
+      shippingNote: shippingCents === null ? null : cleanText(input.shippingNote),
+      taxEntityId,
       notes: cleanText(input.notes),
       createdBy: existing?.createdBy ?? access.user.id,
       updatedBy: access.user.id,
@@ -737,6 +875,10 @@ export async function saveProjectNuTechOrder(
           bracingNotes: values.bracingNotes,
           deliveryMethod: values.deliveryMethod,
           requestedDeliveryDate: values.requestedDeliveryDate,
+          customerPaidAt: values.customerPaidAt,
+          customerPaymentMethod: values.customerPaymentMethod,
+          trailerDimensions: values.trailerDimensions,
+          trailerPhotoReceivedAt: values.trailerPhotoReceivedAt,
           airlitePurchaseOrderOperationId: values.airlitePurchaseOrderOperationId,
           orderStatus: values.orderStatus,
           vendorConfirmationNumber: values.vendorConfirmationNumber,
@@ -744,6 +886,9 @@ export async function saveProjectNuTechOrder(
           vendorInvoiceStatus: values.vendorInvoiceStatus,
           vendorInvoiceReceivedAt: values.vendorInvoiceReceivedAt,
           airliteWorkbookStatus: nextWorkbookStatus,
+          shippingCents: values.shippingCents,
+          shippingNote: values.shippingNote,
+          taxEntityId: values.taxEntityId,
           notes: values.notes,
           updatedBy: access.user.id,
           updatedAt: now,
@@ -775,6 +920,11 @@ export async function saveProjectNuTechOrder(
     } else {
       await saveWorkflowQuery
     }
+    await syncProjectWithOrder(access, {
+      jobStatusId: jobStatusForNuTechOrderStatus(parsedOrderStatus),
+      deliveryMethod: projectDeliveryMethodForNuTech(deliveryMethod(input.deliveryMethod)),
+      now,
+    })
     revalidateNuTechPaths(projectId)
     return { success: true, id }
   } catch (error) {
@@ -814,6 +964,13 @@ export async function releaseNuTechAirlitePurchaseOrder(
       airlitePurchaseOrderOperationId: order.airlitePurchaseOrderOperationId,
       orderItemCount: orderItemRows.length,
       airliteWorkbookStatus: order.airliteWorkbookStatus,
+      customerReadinessIssues: nuTechCustomerReadinessIssues({
+        deliveryMethod: storedDeliveryMethod(order.deliveryMethod),
+        customerPaidAt: order.customerPaidAt,
+        requestedDeliveryDate: order.requestedDeliveryDate,
+        trailerDimensions: order.trailerDimensions,
+        trailerPhotoReceivedAt: order.trailerPhotoReceivedAt,
+      }),
     })
     if (!readiness.ready) throw new Error(readiness.issues.join(" "))
     const purchaseOrderId = order.airlitePurchaseOrderOperationId
@@ -852,6 +1009,7 @@ export async function releaseNuTechAirlitePurchaseOrder(
         .set({ status: purchaseOrderStatus, updatedAt: now })
         .where(eq(projectOperations.id, purchaseOrderId)),
     ])
+    await syncProjectWithOrder(access, { jobStatusId: jobStatusForNuTechOrderStatus("po_released"), deliveryMethod: null, now })
     revalidateNuTechPaths(projectId)
     return { success: true, id: order.id }
   } catch (error) {
@@ -946,5 +1104,21 @@ export async function deleteProjectNuTechOrder(
       error:
         error instanceof Error ? error.message : "Failed to delete Nu-Tech order.",
     }
+  }
+}
+
+/** Active sales tax districts, for choosing the warehouse's district in Settings. */
+export async function getNuTechTaxDistricts(): Promise<readonly NuTechTaxDistrict[]> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "nutech-orders", "read")
+    const { env } = await getCloudflareContext()
+    return await getDb(env.DB)
+      .select({ id: sageTaxEntities.id, code: sageTaxEntities.code, name: sageTaxEntities.name, rateBasisPoints: sageTaxEntities.rateBasisPoints })
+      .from(sageTaxEntities)
+      .where(eq(sageTaxEntities.active, true))
+      .orderBy(asc(sageTaxEntities.name))
+  } catch {
+    return []
   }
 }

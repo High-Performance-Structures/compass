@@ -1,15 +1,14 @@
 export const dynamic = "force-dynamic"
 
-import Link from "next/link"
-import { redirect } from "next/navigation"
-import { IconArrowLeft, IconDatabase } from "@tabler/icons-react"
+import { IconDatabase } from "@tabler/icons-react"
 
 import { getBuildertrendCutoverCoverage } from "@/app/actions/buildertrend-cutover-coverage"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function generatedLabel(value: string): string {
   const date = new Date(value)
@@ -21,32 +20,18 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(user),
   )
-  if (!developerModeEnabled) redirect("/dashboard")
+  if (!developerModeEnabled) return <ClientRedirect href={"/dashboard"} />
 
   const coverage = await getBuildertrendCutoverCoverage()
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-4 lg:p-6">
-      <header className="border-b pb-4">
-        <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2">
-          <Link href="/dashboard">
-            <IconArrowLeft className="size-4" />
-            Dashboard
-          </Link>
-        </Button>
-        <div className="flex items-center gap-2">
-          <IconDatabase className="size-6 text-muted-foreground" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Buildertrend cutover coverage
-          </h1>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          A module is complete only when its captured count is attested, or a
-          signed capture confirms that Buildertrend contained zero records.
-          Existing records without that final check remain partial. Evidence
-          for live or unclassified projects becomes stale after seven days.
-        </p>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        back={{ href: "/dashboard", label: "Dashboard" }}
+        icon={<IconDatabase className="size-6 text-muted-foreground" />}
+        title="Buildertrend cutover coverage"
+      />
 
       <section className="grid gap-px border bg-border sm:grid-cols-4">
         <div className="bg-background p-4">
@@ -81,6 +66,12 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Project lifecycle inventory</h2>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          A module is complete only when its captured count is attested, or a
+          signed capture confirms that Buildertrend contained zero records.
+          Existing records without that final check remain partial. Evidence
+          for live or unclassified projects becomes stale after seven days.
+        </p>
         <div className="flex flex-wrap gap-2">
           {coverage.statusCounts.map((item) => (
             <Badge key={item.status} variant="outline">

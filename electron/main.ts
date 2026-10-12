@@ -364,6 +364,17 @@ async function ensureUserDataDir(): Promise<void> {
   await mkdir(app.getPath("userData"), { recursive: true })
 }
 
+// Local desktop E2E runs need real OS focus (the runtime spec asserts
+// isFocused), so windows can't stay hidden. Instead, make every window
+// transparent and click-through so test runs don't cover the developer's
+// screen. Playwright drives input over CDP, which bypasses both.
+if (process.env.COMPASS_E2E_INVISIBLE_WINDOWS === "true") {
+  app.on("browser-window-created", (_event, window) => {
+    window.setOpacity(0)
+    window.setIgnoreMouseEvents(true)
+  })
+}
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit()
 })

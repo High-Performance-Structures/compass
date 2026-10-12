@@ -3,6 +3,13 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   IconArchive,
   IconDeviceFloppy,
   IconRestore,
@@ -213,11 +220,9 @@ export function ProjectTodoEditDialog({
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor={`todo-type-${item.id}`}>Type</Label>
-              <select
-                id={`todo-type-${item.id}`}
+              <Select
                 value={taskType}
-                onChange={(event) => {
-                  const value = event.target.value
+                onValueChange={(value) => {
                   if (
                     value === "staff_task" ||
                     value === "subcontractor_task" ||
@@ -228,54 +233,59 @@ export function ProjectTodoEditDialog({
                   }
                 }}
                 disabled={archived}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="staff_task">Internal staff</option>
-                <option value="subcontractor_task">Subcontractor</option>
-                <option value="supplier_task">Supplier</option>
-                <option value="schedule_task">Schedule follow-up</option>
-              </select>
+                <SelectTrigger id={`todo-type-${item.id}`} className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="staff_task">Internal staff</SelectItem>
+                  <SelectItem value="subcontractor_task">Subcontractor</SelectItem>
+                  <SelectItem value="supplier_task">Supplier</SelectItem>
+                  <SelectItem value="schedule_task">Schedule follow-up</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor={`todo-status-${item.id}`}>Status</Label>
-              <select
-                id={`todo-status-${item.id}`}
+              <Select
                 value={status}
-                onChange={(event) => {
-                  const value = event.target.value
+                onValueChange={(value) => {
                   if (isSelectableProjectTodoStatus(value)) {
                     setStatus(value)
                   }
                 }}
                 disabled={archived}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                {status === "blocked" && (
-                  <option value="blocked" disabled hidden>
-                    Blocked (legacy)
-                  </option>
-                )}
-                {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
-                  <option key={selectableStatus} value={selectableStatus}>
-                    {projectTodoStatusLabel(selectableStatus)}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id={`todo-status-${item.id}`} className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {status === "blocked" && (
+                    <SelectItem value="blocked" disabled>
+                      Blocked (legacy)
+                    </SelectItem>
+                  )}
+                  {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
+                    <SelectItem key={selectableStatus} value={selectableStatus}>
+                      {projectTodoStatusLabel(selectableStatus)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor={`todo-priority-${item.id}`}>Priority</Label>
-              <select
-                id={`todo-priority-${item.id}`}
-                value={priority}
-                onChange={(event) => setPriority(event.target.value)}
-                disabled={archived}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="low">Low</option>
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
+              <Select value={priority} onValueChange={setPriority} disabled={archived}>
+                <SelectTrigger id={`todo-priority-${item.id}`} className="h-10 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

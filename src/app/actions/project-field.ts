@@ -17,6 +17,8 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { addressState, geocodeProjectAddress, type CoordinatePair, type GeocodeResult } from "@/lib/geo/site-lookup"
+import { resolveTown } from "@/lib/portfolio-map/model"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { dailyLogAuthorName } from "@/lib/daily-logs/imported-author"
 import { isDemoUser } from "@/lib/demo"
@@ -47,18 +49,19 @@ import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
-import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
+import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
 import { assertProjectAccess } from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
 } from "@/lib/project-todos"
-import {
-  isJarvisAgentBridgeEnabled,
-  relayAgentRequest,
-} from "@/lib/jarvis/agent-relay"
-import { jarvisReadCapabilitiesForUser } from "@/lib/jarvis/read-capabilities"
+import { generateOrganizationText } from "@/lib/agent/one-shot"
+
+// The drafting prompt is built from the selected logs, schedule items and
+// to-dos; long reporting periods can run past the old relay's 3,950 limit.
+const OWNER_UPDATE_PROMPT_MAX_CHARACTERS = 24_000
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
@@ -155,13 +158,6 @@ type PhotoReviewFolder = {
   readonly photoCount: number | null
 }
 
-type CoordinatePair = {
-  readonly latitude: number
-  readonly longitude: number
-  readonly label: string | null
-  readonly query: string
-}
-
 export type ProjectDailyLogPhoto = {
   readonly id: string
   readonly fileName: string
@@ -230,6 +226,8 @@ export type ProjectDailyLogWorkspace = {
     readonly clientName: string | null
   }
   readonly logs: readonly ProjectDailyLogItem[]
+  /** Logs this viewer may delete (see lib/daily-logs/delete-rules). */
+  readonly deletableLogIds: readonly string[]
   readonly unattachedPhotos: readonly ProjectDailyLogPhoto[]
   readonly schedulePhases: readonly string[]
   readonly counts: {
@@ -763,111 +761,6 @@ function normalizedLogDate(value: string): string {
   throw new Error("Enter a valid daily log date.")
 }
 
-function addressLooksStateQualified(value: string): boolean {
-  return /\b[A-Z]{2}\b/.test(value) || /\bColorado\b/i.test(value)
-}
-
-function geocodeQueries(address: string): readonly string[] {
-  const trimmed = address.trim()
-  if (trimmed.length === 0) return []
-  if (addressLooksStateQualified(trimmed)) return [trimmed]
-  return [trimmed, `${trimmed}, Colorado`]
-}
-
-async function geocodeProjectAddress(
-  address: string
-): Promise<CoordinatePair | null> {
-  for (const query of geocodeQueries(address)) {
-    const coordinates = await geocodeWithCensus(query)
-    if (coordinates) return coordinates
-  }
-
-  for (const query of geocodeQueries(address)) {
-    const coordinates = await geocodeWithNominatim(query)
-    if (coordinates) return coordinates
-  }
-
-  return null
-}
-
-async function geocodeWithCensus(
-  address: string
-): Promise<CoordinatePair | null> {
-  const url = new URL(
-    "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
-  )
-  url.searchParams.set("address", address)
-  url.searchParams.set("benchmark", "Public_AR_Current")
-  url.searchParams.set("format", "json")
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Compass project management weather lookup",
-    },
-  })
-  if (!response.ok) return null
-
-  const parsed: unknown = await response.json()
-  if (!isRecord(parsed)) return null
-
-  const result = recordValue(parsed, "result")
-  if (!result) return null
-
-  const matches = arrayValue(result, "addressMatches")
-  const firstMatch = matches.find(isRecord)
-  if (!firstMatch) return null
-
-  const coordinates = recordValue(firstMatch, "coordinates")
-  if (!coordinates) return null
-
-  const longitude = numberValue(coordinates, "x")
-  const latitude = numberValue(coordinates, "y")
-  if (latitude === null || longitude === null) return null
-
-  const label = stringValue(firstMatch, "matchedAddress")
-  return { latitude, longitude, label, query: address }
-}
-
-async function geocodeWithNominatim(
-  address: string
-): Promise<CoordinatePair | null> {
-  const url = new URL("https://nominatim.openstreetmap.org/search")
-  url.searchParams.set("q", address)
-  url.searchParams.set("format", "jsonv2")
-  url.searchParams.set("limit", "1")
-  url.searchParams.set("countrycodes", "us")
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Compass project management weather lookup",
-    },
-  })
-  if (!response.ok) return null
-
-  const parsed: unknown = await response.json()
-  if (!Array.isArray(parsed)) return null
-
-  const firstMatch = parsed.find(isRecord)
-  if (!firstMatch) return null
-
-  const latitudeText = stringValue(firstMatch, "lat")
-  const longitudeText = stringValue(firstMatch, "lon")
-  if (!latitudeText || !longitudeText) return null
-
-  const latitude = Number(latitudeText)
-  const longitude = Number(longitudeText)
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
-
-  return {
-    latitude,
-    longitude,
-    label: stringValue(firstMatch, "display_name"),
-    query: address,
-  }
-}
-
 function fahrenheitFromCelsius(value: number | null): number | null {
   if (value === null) return null
   return Math.round((value * 9) / 5 + 32)
@@ -1384,6 +1277,7 @@ export async function getProjectDailyLogWorkspace(
       reviewStatus: dailyLogs.reviewStatus,
       syncStatus: dailyLogs.syncStatus,
       tags: dailyLogs.tags,
+      authorId: dailyLogs.authorId,
       authorDisplayName: users.displayName,
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
@@ -1577,8 +1471,24 @@ export async function getProjectDailyLogWorkspace(
     ])
   }
 
+  let deletableLogIds: readonly string[] = []
+  if (viewer.isActive && isInternalStaffRole(viewer.role) && logRows.length > 0) {
+    const [canDeleteAny, canUpdate, ownerUpdates] = await Promise.all([
+      canFeature(viewer, "daily-logs", "delete"),
+      canFeature(viewer, "daily-logs", "update"),
+      db
+        .select({ title: ownerProjectUpdates.title, sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds })
+        .from(ownerProjectUpdates)
+        .where(eq(ownerProjectUpdates.projectId, projectId)),
+    ])
+    deletableLogIds = logRows
+      .filter((row) => dailyLogDeleteBlocker(row, { viewerId: viewer.id, canDeleteAny, canUpdate, ownerUpdates }) === null)
+      .map((row) => row.id)
+  }
+
   return {
     project,
+    deletableLogIds,
     logs: logRows.map((row) => ({
       id: row.id,
       sourceSystem: row.sourceSystem,
@@ -1845,6 +1755,10 @@ export async function updateProjectDailyLog(
   }
 }
 
+function located(result: GeocodeResult): CoordinatePair | null {
+  return result.status === "found" ? result.coordinates : null
+}
+
 export async function getProjectWeatherSnapshot(
   projectId: string,
   input?: { readonly logDate?: string }
@@ -1872,7 +1786,18 @@ export async function getProjectWeatherSnapshot(
       }
     }
 
-    const coordinates = await geocodeProjectAddress(address)
+    // Weather is regional, so a town or ZIP center stands in for a rural
+    // address the geocoders don't know.
+    const state = addressState(address)
+    const town =
+      state === null || state === "CO"
+        ? resolveTown({ publicLocationCity: null, address, name: project.name })
+        : null
+    const coordinates =
+      located(await geocodeProjectAddress(address)) ??
+      (town
+        ? { latitude: town.lat, longitude: town.lon, label: `${town.town}, CO (town center)`, query: address, precision: "town" }
+        : null)
     if (!coordinates) {
       return {
         success: false,
@@ -2935,7 +2860,7 @@ export async function draftOwnerProjectUpdateWithJarvis(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const { db, user } = await verifyProjectMutationAccess(
+    const { db } = await verifyProjectMutationAccess(
       projectId,
       "owner-updates"
     )
@@ -3069,50 +2994,27 @@ export async function draftOwnerProjectUpdateWithJarvis(
       lookAheadScheduleItems:
         composerSnapshot.lookAheadScheduleItems,
       todos: composerSnapshot.todos,
-    }).slice(0, 3_950)
+    }).slice(0, OWNER_UPDATE_PROMPT_MAX_CHARACTERS)
 
+    // Drafting runs on the organization's AI provider directly, not the
+    // private Jarvis relay, so owner-update content never reaches Signet.
     const { env } = await getCloudflareContext()
-    const configuredBridgeEnabled = Reflect.get(
-      env,
-      "JARVIS_AGENT_BRIDGE_ENABLED"
-    )
-    const configuredBridgeSecret = Reflect.get(env, "JARVIS_BRIDGE_SECRET")
-    if (
-      !isJarvisAgentBridgeEnabled(
-        typeof configuredBridgeEnabled === "string"
-          ? configuredBridgeEnabled
-          : undefined
-      ) ||
-      typeof configuredBridgeSecret !== "string" ||
-      configuredBridgeSecret.length === 0
-    ) {
-      return {
-        success: false,
-        error: "Jarvis drafting is not configured in this deployment.",
-      }
-    }
-
-    const result = await relayAgentRequest({
+    const result = await generateOrganizationText({
       db,
-      organizationId: user.organizationId,
-      user: {
-        id: user.id,
-        displayName: user.displayName,
-        email: user.email,
-        role: user.role,
-          readCapabilities: await jarvisReadCapabilitiesForUser(user),
-      },
-      sessionId: `owner-update:${updateId}:${Date.now()}`,
-      currentPage:
-        `/dashboard/projects/${projectId}/owner-updates/${updateId}`,
-      timezone: "America/Denver",
-      messages: [{ role: "user", content: prompt }],
+      env: Object.fromEntries(
+        Object.entries(env).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string"
+        )
+      ),
+      systemPrompt:
+        "You write owner-facing construction project updates for Compass.",
+      prompt,
     })
     if (!result.success) {
       return { success: false, error: result.error }
     }
 
-    const summary = cleanOwnerUpdateDraft(result.content)
+    const summary = cleanOwnerUpdateDraft(result.text)
     if (summary.length === 0) {
       return { success: false, error: "Jarvis returned an empty draft." }
     }

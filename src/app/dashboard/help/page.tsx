@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation"
 
 import {
   HelpResourcesLibrary,
@@ -11,6 +10,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { getHelpGuides } from "@/lib/help"
 import { getEffectiveHelpGuideAccess } from "@/lib/help/server-access"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -23,7 +23,7 @@ export default async function HelpResourcesPage({
   const helpAccess = await getEffectiveHelpGuideAccess(user)
 
   if (!helpAccess.canViewHelp) {
-    redirect("/dashboard/access-restricted?feature=help-resources&action=view")
+    return <ClientRedirect href={"/dashboard/access-restricted?feature=help-resources&action=view"} />
   }
 
   const allowedGuideIds = new Set(helpAccess.allowedGuideIds)

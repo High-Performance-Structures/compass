@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  purchaseOrderCoverEmailHtml,
+  purchaseOrderCoverEmailText,
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
   type PurchaseOrderEmailInput,
@@ -87,5 +89,20 @@ describe("purchase order email delivery location", () => {
     expect(purchaseOrderEmailHtml(input)).toContain(
       "Site Contact</td><td>Casey Foreman · 719.555.0134"
     )
+  })
+})
+
+describe("purchase order cover email", () => {
+  it("names the PO without repeating the Compass layout", () => {
+    const text = purchaseOrderCoverEmailText(emailInput("123 Main St"))
+    const html = purchaseOrderCoverEmailHtml(emailInput("123 Main St"))
+
+    expect(text).toContain("P.O. O-202-595-PO-001 is attached on your order form.")
+    expect(html).toContain("<strong>O-202-595-PO-001</strong>")
+    for (const body of [text, html]) {
+      expect(body).toContain("Please confirm receipt.")
+      expect(body).not.toContain("Delivery item")
+      expect(body).not.toContain("Delivery Location")
+    }
   })
 })

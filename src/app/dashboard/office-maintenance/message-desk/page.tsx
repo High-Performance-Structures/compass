@@ -1,16 +1,25 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
-import { IconArrowLeft, IconInbox, IconPhone } from "@tabler/icons-react"
+import { IconInbox, IconPhone } from "@tabler/icons-react"
 
 import {
   getStaffMessageDesk,
   submitCreateStaffMessage,
   submitRouteGotoTextToMessageDesk,
 } from "@/app/actions/staff-message-desk"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableComboboxField } from "@/components/searchable-combobox"
+import { PageHeader } from "@/components/page-header"
+import { MessageDeskBoard } from "@/components/staff-message-desk/message-desk-board"
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -31,30 +40,18 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
       </main>
     )
   }
-  const { records, assignees, inboundTexts } = result.data
+  const { records, assignees, inboundTexts, viewerId, agingThresholds } = result.data
+  const openCount = records.filter((record) => record.status !== "closed").length
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">
-      <header className="border-b pb-5">
-        <Button asChild variant="ghost" size="sm" className="-ml-3 mb-2">
-          <Link href="/dashboard/projects">
-            <IconArrowLeft className="size-4" />
-            Office maintenance
-          </Link>
-        </Button>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <IconPhone className="size-6 text-muted-foreground" />
-              <h1 className="text-2xl font-semibold tracking-tight">Staff Message Desk</h1>
-            </div>
-            <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-              Capture a call for one accountable staff member, or manually route an inbound text after review.
-            </p>
-          </div>
-          <Badge variant="secondary">{records.length} messages</Badge>
-        </div>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        back={{ href: "/dashboard/projects", label: "Office maintenance" }}
+        icon={<IconPhone className="size-6 text-muted-foreground" />}
+        title="Staff Message Desk"
+        actions={<Badge variant="secondary">{openCount} open</Badge>}
+      />
 
       <section className="border-b pb-6" aria-labelledby="new-staff-message">
         <h2 id="new-staff-message" className="text-lg font-semibold">New call or message</h2>
@@ -64,10 +61,15 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
           <form action={submitCreateStaffMessage} className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium">
               Source
-              <select name="sourceType" required defaultValue="call" className={fieldClassName()}>
-                <option value="call">Incoming call</option>
-                <option value="message">Incoming message</option>
-              </select>
+              <Select name="sourceType" required defaultValue="call">
+                <SelectTrigger className="h-10 w-full font-normal">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="call">Incoming call</SelectItem>
+                  <SelectItem value="message">Incoming message</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
               Assign to one staff member
@@ -117,34 +119,13 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
         )}
       </section>
 
-      <section className="space-y-4" aria-labelledby="active-staff-messages">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <IconInbox className="size-5 text-muted-foreground" />
-          <h2 id="active-staff-messages" className="text-lg font-semibold">Message Desk records</h2>
-        </div>
-        {records.length === 0 ? (
-          <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">No message records yet.</div>
-        ) : records.map((record) => (
-          <article id={`message-${record.id}`} key={record.id} className="border bg-background p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-semibold">{record.subject}</h3>
-                  <Badge variant="outline">{record.sourceType === "call" ? "Call" : "Message"}</Badge>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {record.callerName}
-                  {record.callerCompany ? ` · ${record.callerCompany}` : ""}
-                  {record.callerPhone ? ` · ${record.callerPhone}` : ""}
-                  {record.callerEmail ? ` · ${record.callerEmail}` : ""}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">Assigned to {record.assigneeName} · {timestamp(record.createdAt)}</p>
-            </div>
-            <p className="mt-4 whitespace-pre-wrap border-l-2 pl-3 text-sm leading-6">{record.body}</p>
-          </article>
-        ))}
-      </section>
+      <MessageDeskBoard
+        records={records}
+        assignees={assignees}
+        viewerId={viewerId}
+        nowIso={new Date().toISOString()}
+        thresholds={agingThresholds}
+      />
 
       <section className="space-y-4 border-t pt-6" aria-labelledby="inbound-text-routing">
         <div className="flex items-center gap-2 border-b pb-2">

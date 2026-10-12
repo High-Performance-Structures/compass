@@ -1,29 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { CircleAlert, Loader2, Radio } from "lucide-react"
+import { CircleAlert, Headphones, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useMusicDucking } from "@/hooks/use-music-ducking"
 import {
-  findPreferredMusicLink,
-  isSynchronizedMusicProvider,
   listeningPlaybackPositionMs,
-  musicProviderLabel,
   soundCloudTrackUrl,
   youtubeVideoId,
   type ListeningPlaybackState,
-  type MusicProvider,
+  type SynchronizedPlaybackLink,
 } from "@/lib/listening-room"
-
-type PlayerTrack = {
-  readonly id: string
-  readonly title: string
-  readonly artist: string | null
-  readonly links: readonly {
-    readonly provider: MusicProvider
-    readonly url: string
-  }[]
-}
+import { cn } from "@/lib/utils"
 
 type PlaybackClock = {
   readonly playbackState: ListeningPlaybackState
@@ -36,11 +24,15 @@ type PlaybackTiming = Omit<PlaybackClock, "serverTime">
 type PlayerProps = {
   readonly channelId: string
   readonly clock: PlaybackClock
-  readonly track: PlayerTrack
-  readonly provider: MusicProvider
-  readonly joined: boolean
-  readonly onAddProviderLink: () => void
+  readonly trackId: string
+  readonly link: SynchronizedPlaybackLink
+  readonly audioEnabled: boolean
+  readonly onEnableAudio: () => void
+  /** The listener's own volume, 0–100; never shared with the room. */
+  readonly volume: number
+  readonly compact: boolean
   readonly onEnded: () => void
+  readonly onDuration: (milliseconds: number) => void
 }
 
 type YouTubePlayer = {
@@ -48,6 +40,7 @@ type YouTubePlayer = {
   readonly pauseVideo: () => void
   readonly seekTo: (seconds: number, allowSeekAhead: boolean) => void
   readonly getCurrentTime: () => number
+  readonly getDuration: () => number
   readonly getVolume: () => number
   readonly setVolume: (volume: number) => void
   readonly destroy: () => void
@@ -85,6 +78,7 @@ type SoundCloudWidget = {
   readonly pause: () => void
   readonly seekTo: (milliseconds: number) => void
   readonly getPosition: (listener: (milliseconds: number) => void) => void
+  readonly getDuration: (listener: (milliseconds: number) => void) => void
   readonly getVolume: (listener: (volume: number) => void) => void
   readonly setVolume: (volume: number) => void
 }
@@ -188,38 +182,17 @@ function scheduledDelayMs(clock: PlaybackTiming, offsetMs: number): number {
     : 0
 }
 
-function useDuckedVolume(input: {
+function useListenerVolume(input: {
   readonly controller: VolumeController | null
+  readonly volume: number
   readonly ducked: boolean
 }): void {
-  const baselineVolumeRef = React.useRef<number | null>(null)
-
-  React.useEffect(() => {
-    baselineVolumeRef.current = null
-  }, [input.controller])
-
   React.useEffect(() => {
     const controller = input.controller
     if (!controller) return
-    let cancelled = false
-
-    if (input.ducked) {
-      controller.getVolume((volume) => {
-        if (cancelled) return
-        if (baselineVolumeRef.current === null) {
-          baselineVolumeRef.current = volume
-        }
-        controller.setVolume(Math.min(volume, 25))
-      })
-    } else if (baselineVolumeRef.current !== null) {
-      controller.setVolume(baselineVolumeRef.current)
-      baselineVolumeRef.current = null
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [input.controller, input.ducked])
+    // Voice chat ducks music to a quarter so people can still talk over it.
+    controller.setVolume(input.ducked ? Math.min(input.volume, 25) : input.volume)
+  }, [input.controller, input.volume, input.ducked])
 }
 
 function useSynchronizedController(input: {
@@ -290,23 +263,31 @@ function YouTubePlayerView({
   clock,
   videoId,
   ducked,
+  volume,
+  compact,
   onEnded,
+  onDuration,
 }: {
   readonly clock: PlaybackClock
   readonly videoId: string
   readonly ducked: boolean
+  readonly volume: number
+  readonly compact: boolean
   readonly onEnded: () => void
+  readonly onDuration: (milliseconds: number) => void
 }): React.ReactElement {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const endedRef = React.useRef(false)
   const onEndedRef = React.useRef(onEnded)
+  const onDurationRef = React.useRef(onDuration)
   const [player, setPlayer] = React.useState<YouTubePlayer | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [autoplayBlocked, setAutoplayBlocked] = React.useState(false)
 
   React.useEffect(() => {
     onEndedRef.current = onEnded
-  }, [onEnded])
+    onDurationRef.current = onDuration
+  }, [onEnded, onDuration])
 
   React.useEffect(() => {
     const element = containerRef.current
@@ -319,10 +300,13 @@ function YouTubePlayerView({
         createdPlayer = new youtube.Player(element, {
           videoId,
           width: "100%",
-          height: "220",
+          height: "100%",
           playerVars: { autoplay: 0, controls: 1, playsinline: 1, rel: 0 },
           events: {
-            onReady: (event) => setPlayer(event.target),
+            onReady: (event) => {
+              setPlayer(event.target)
+              onDurationRef.current(event.target.getDuration() * 1_000)
+            },
             onStateChange: (event) => {
               if (event.data === 0 && !endedRef.current) {
                 endedRef.current = true
@@ -361,13 +345,17 @@ function YouTubePlayerView({
       setVolume: (volume) => player.setVolume(volume),
     }
   }, [player])
-  useDuckedVolume({ controller: volumeController, ducked })
+  useListenerVolume({ controller: volumeController, volume, ducked })
 
   return (
     <div className="space-y-2">
-      <div ref={containerRef} className="min-h-40 overflow-hidden rounded-lg bg-muted" />
-      {error ? <PlayerNotice icon="error" text={error} /> : null}
-      {autoplayBlocked ? (
+      {/* The YouTube API replaces the inner element with its iframe, so the
+          sized wrapper stays React-owned and the player survives resizing. */}
+      <div className={playerFrameClass(compact)}>
+        <div ref={containerRef} className="size-full" />
+      </div>
+      {error && !compact ? <PlayerNotice icon="error" text={error} /> : null}
+      {autoplayBlocked && !compact ? (
         <PlayerNotice
           icon="error"
           text="Your browser blocked automatic playback. Press play once in the YouTube player; Compass will keep it synchronized after that."
@@ -381,23 +369,31 @@ function SoundCloudPlayerView({
   clock,
   url,
   ducked,
+  volume,
+  compact,
   onEnded,
+  onDuration,
 }: {
   readonly clock: PlaybackClock
   readonly url: string
   readonly ducked: boolean
+  readonly volume: number
+  readonly compact: boolean
   readonly onEnded: () => void
+  readonly onDuration: (milliseconds: number) => void
 }): React.ReactElement {
   const iframeRef = React.useRef<HTMLIFrameElement | null>(null)
   const endedRef = React.useRef(false)
   const onEndedRef = React.useRef(onEnded)
+  const onDurationRef = React.useRef(onDuration)
   const [widget, setWidget] = React.useState<SoundCloudWidget | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const embedUrl = `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}&auto_play=false&show_artwork=true&visual=false`
 
   React.useEffect(() => {
     onEndedRef.current = onEnded
-  }, [onEnded])
+    onDurationRef.current = onDuration
+  }, [onEnded, onDuration])
 
   React.useEffect(() => {
     const iframe = iframeRef.current
@@ -411,7 +407,9 @@ function SoundCloudPlayerView({
         createdWidget = soundCloud.Widget(iframe)
         finishEvent = soundCloud.Widget.Events.FINISH
         createdWidget.bind(soundCloud.Widget.Events.READY, () => {
-          if (!disposed) setWidget(createdWidget)
+          if (disposed || !createdWidget) return
+          setWidget(createdWidget)
+          createdWidget.getDuration((milliseconds) => onDurationRef.current(milliseconds))
         })
         createdWidget.bind(soundCloud.Widget.Events.FINISH, () => {
           if (!endedRef.current) {
@@ -449,19 +447,28 @@ function SoundCloudPlayerView({
       setVolume: (volume) => widget.setVolume(volume),
     }
   }, [widget])
-  useDuckedVolume({ controller: volumeController, ducked })
+  useListenerVolume({ controller: volumeController, volume, ducked })
 
   return (
     <div className="space-y-2">
-      <iframe
-        ref={iframeRef}
-        title="Synchronized SoundCloud player"
-        src={embedUrl}
-        className="h-40 w-full rounded-lg border-0"
-        allow="autoplay"
-      />
-      {error ? <PlayerNotice icon="error" text={error} /> : null}
+      <div className={playerFrameClass(compact)}>
+        <iframe
+          ref={iframeRef}
+          title="Synchronized SoundCloud player"
+          src={embedUrl}
+          className="size-full border-0"
+          allow="autoplay"
+        />
+      </div>
+      {error && !compact ? <PlayerNotice icon="error" text={error} /> : null}
     </div>
+  )
+}
+
+function playerFrameClass(compact: boolean): string {
+  return cn(
+    "overflow-hidden rounded-lg bg-muted",
+    compact ? "h-16 w-28" : "aspect-video w-full"
   )
 }
 
@@ -487,89 +494,58 @@ function PlayerNotice({
 export function ListeningRoomPlayer({
   channelId,
   clock,
-  track,
-  provider,
-  joined,
-  onAddProviderLink,
+  trackId,
+  link,
+  audioEnabled,
+  onEnableAudio,
+  volume,
+  compact,
   onEnded,
+  onDuration,
 }: PlayerProps): React.ReactElement {
-  const [enabled, setEnabled] = React.useState(false)
   const ducked = useMusicDucking(channelId)
-  const link = findPreferredMusicLink(track.links, provider)
-  const synchronized = isSynchronizedMusicProvider(provider)
-  const youtubeId = provider === "youtube" && link
-    ? youtubeVideoId(link.url)
-    : null
-  const soundCloudUrl = provider === "soundcloud" && link
-    ? soundCloudTrackUrl(link.url)
-    : null
+  const youtubeId = link.provider === "youtube" ? youtubeVideoId(link.url) : null
+  const soundCloudUrl =
+    link.provider === "soundcloud" ? soundCloudTrackUrl(link.url) : null
 
-  React.useEffect(() => setEnabled(false), [provider])
-
-  if (!joined) {
+  if (!audioEnabled) {
+    // Browsers only allow sound after a click on this page, so a fresh page
+    // load asks once before the embedded player starts.
     return (
-      <PlayerNotice
-        icon="error"
-        text="Join the room and choose a service to hear synchronized playback."
-      />
-    )
-  }
-  if (!synchronized) {
-    return (
-      <PlayerNotice
-        icon="error"
-        text={`${musicProviderLabel(provider)} is link-only for now. Choose YouTube or SoundCloud for synchronized playback.`}
-      />
-    )
-  }
-  if (!link || (provider === "youtube" && !youtubeId) || (provider === "soundcloud" && !soundCloudUrl)) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-        <PlayerNotice
-          icon="error"
-          text={`This track needs an exact ${musicProviderLabel(provider)} link before it can play here.`}
-        />
-        <Button type="button" size="sm" variant="outline" onClick={onAddProviderLink}>
-          Add {musicProviderLabel(provider)} link
+      <div className={cn(playerFrameClass(compact), "grid place-items-center")}>
+        <Button type="button" size={compact ? "xs" : "sm"} onClick={onEnableAudio}>
+          <Headphones /> {compact ? "Listen" : "Tap to listen"}
         </Button>
       </div>
     )
   }
-  if (!enabled) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-        <p className="max-w-md text-xs text-muted-foreground">
-          Enable once so your browser permits audio. Compass will then start,
-          pause, seek, and advance this embedded player with the room.
-        </p>
-        <Button type="button" size="sm" onClick={() => setEnabled(true)}>
-          <Radio /> Enable synced playback
-        </Button>
-      </div>
-    )
-  }
-
-  if (provider === "youtube" && youtubeId) {
+  if (youtubeId) {
     return (
       <YouTubePlayerView
-        key={`${track.id}:${youtubeId}`}
+        key={`${trackId}:${youtubeId}`}
         clock={clock}
         videoId={youtubeId}
         ducked={ducked}
+        volume={volume}
+        compact={compact}
         onEnded={onEnded}
+        onDuration={onDuration}
       />
     )
   }
-  if (provider === "soundcloud" && soundCloudUrl) {
+  if (soundCloudUrl) {
     return (
       <SoundCloudPlayerView
-        key={`${track.id}:${soundCloudUrl}`}
+        key={`${trackId}:${soundCloudUrl}`}
         clock={clock}
         url={soundCloudUrl}
         ducked={ducked}
+        volume={volume}
+        compact={compact}
         onEnded={onEnded}
+        onDuration={onDuration}
       />
     )
   }
-  return <PlayerNotice icon="loading" text="Preparing synchronized player…" />
+  return <PlayerNotice icon="error" text="This song's link can't be played here." />
 }

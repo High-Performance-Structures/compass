@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import {
   IconEye,
@@ -68,7 +69,7 @@ export default async function ProjectBudgetPage({
       console.warn("Sage sync unavailable", error)
     }
   }
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber ?? null,
   })
@@ -79,11 +80,6 @@ export default async function ProjectBudgetPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconFileDollar className="size-5 text-primary" />}
         title="Budget / G703"
-        description={
-          <>
-            Internal budget detail and owner-safe Schedule of Values.
-          </>
-        }
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

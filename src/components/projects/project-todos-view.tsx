@@ -18,6 +18,13 @@ import {
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectTodoEditDialog } from "@/components/projects/project-todo-edit-dialog"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,6 +43,7 @@ import {
   normalizeWorkCalendarSearch,
   scheduleItemHref,
 } from "@/lib/work-calendar"
+import { PageHeader } from "@/components/page-header"
 
 type TodoFilter = "active" | "completed" | "archived" | "all"
 
@@ -143,29 +151,35 @@ function StatusControl({
       <label className="sr-only" htmlFor={`todo-status-control-${item.id}`}>
         Status for {item.title}
       </label>
-      <select
-        id={`todo-status-control-${item.id}`}
+      <Select
         value={status}
         disabled={pending}
-        onChange={(event) => {
-          const value = event.target.value
+        onValueChange={(value) => {
           if (isSelectableProjectTodoStatus(value)) {
             changeStatus(value)
           }
         }}
-        className="h-8 rounded-md border bg-background px-2 text-xs"
       >
-        {status === "blocked" && (
-          <option value="blocked" disabled hidden>
-            Blocked (legacy)
-          </option>
-        )}
-        {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
-          <option key={selectableStatus} value={selectableStatus}>
-            {projectTodoStatusLabel(selectableStatus)}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger
+          id={`todo-status-control-${item.id}`}
+          size="sm"
+          className="h-8 px-2 text-xs"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {status === "blocked" && (
+            <SelectItem value="blocked" disabled>
+              Blocked (legacy)
+            </SelectItem>
+          )}
+          {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
+            <SelectItem key={selectableStatus} value={selectableStatus}>
+              {projectTodoStatusLabel(selectableStatus)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {error && (
         <p className="mt-1 max-w-56 text-xs text-destructive">{error}</p>
       )}
@@ -226,15 +240,12 @@ export function ProjectTodosView({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 p-4 md:p-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{projectLabel}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">To-dos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Edit, assign, complete, or archive project work in one place.
-          </p>
-        </div>
-        {canManage && (
+      <PageHeader
+        className="mb-0"
+        eyebrow={projectLabel}
+        title="To-dos"
+        actions={
+          canManage ? (
           <ProjectTaskCreateButton
             projectId={projectId}
             sourceLabel="Project"
@@ -251,8 +262,9 @@ export function ProjectTodosView({
             defaultOpen={initialCreateOpen}
             quickAddEnabled
           />
-        )}
-      </header>
+          ) : null
+        }
+      />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="relative w-full lg:max-w-xl">

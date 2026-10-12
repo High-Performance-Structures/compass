@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { IconEdit, IconTrash } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   removeProjectDocument,
   updateProjectDocument,
@@ -33,13 +34,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { PROJECT_DOCUMENT_CATEGORIES } from "@/lib/project-documents"
 
@@ -133,18 +127,18 @@ export function ProjectDocumentManagementActions({
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor={`document-category-${document.id}`}>Type</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger id={`document-category-${document.id}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROJECT_DOCUMENT_CATEGORIES.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  id={`document-category-${document.id}`}
+                  value={category}
+                  onValueChange={(value) => {
+                    if (value !== "") setCategory(value)
+                  }}
+                  options={PROJECT_DOCUMENT_CATEGORIES}
+                  ariaLabel="Document type"
+                  placeholder="Choose type"
+                  searchPlaceholder="Search document types..."
+                  emptyMessage="No matching document types."
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor={`document-title-${document.id}`}>Display title</Label>

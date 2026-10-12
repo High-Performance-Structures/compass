@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   getCherishPulseTeamStream: vi.fn(),
   submitCherishPulseResponse: vi.fn(),
+  getActiveCherishStories: vi.fn(),
+}))
+
+vi.mock("@/app/actions/cherish-stories", () => ({
+  getActiveCherishStories: mocks.getActiveCherishStories,
 }))
 
 vi.mock("@/app/actions/cherish-pulse", () => ({
@@ -15,6 +20,8 @@ import { GET, POST } from "../route"
 describe("GET /api/field/cherish", () => {
   beforeEach(() => {
     mocks.getCherishPulseTeamStream.mockReset()
+    mocks.getActiveCherishStories.mockReset()
+    mocks.getActiveCherishStories.mockResolvedValue({ success: true, data: [] })
   })
 
   it("returns only crew-safe approved recognition without caching", async () => {
@@ -71,9 +78,51 @@ describe("GET /api/field/cherish", () => {
           submittedByName: null,
           audienceScope: "user",
           createdAt: "2026-08-24T12:00:00.000Z",
+          isNew: false,
         },
       ],
     })
+  })
+
+  it("flags stories this person has not viewed in the 24-hour window as new", async () => {
+    const recognition = {
+      cherishValue: "Excellence",
+      responseType: "shoutout",
+      message: "Thanks for staying late to finish the pour.",
+      source: "compass_dashboard",
+      visibility: "team",
+      reviewStatus: "approved",
+      isAnonymous: false,
+      submittedByName: "Team member",
+      submittedByEmail: "team@example.com",
+      weekStart: "2026-10-05",
+      audience: { scope: "company" },
+    }
+    mocks.getCherishPulseTeamStream.mockResolvedValue({
+      success: true,
+      data: [
+        { ...recognition, id: "unseen", createdAt: "2026-10-11T12:00:00.000Z" },
+        { ...recognition, id: "seen", createdAt: "2026-10-11T11:00:00.000Z" },
+        { ...recognition, id: "older", createdAt: "2026-10-01T11:00:00.000Z" },
+      ],
+    })
+    mocks.getActiveCherishStories.mockResolvedValue({
+      success: true,
+      data: [
+        { id: "unseen", viewedAt: null },
+        { id: "seen", viewedAt: "2026-10-11T12:30:00.000Z" },
+      ],
+    })
+
+    const body = await (await GET()).json()
+
+    expect(
+      body.items.map((item: { id: string; isNew: boolean }) => [item.id, item.isNew]),
+    ).toEqual([
+      ["unseen", true],
+      ["seen", false],
+      ["older", false],
+    ])
   })
 
   it("keeps unauthorized users out of the team stream", async () => {

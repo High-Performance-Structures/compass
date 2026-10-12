@@ -49,9 +49,10 @@ import {
 import { projectWorkspaceClients } from "@/lib/google/project-workspace"
 import { requireOrg } from "@/lib/org-scope"
 import {
-  canManageProjectRegistry,
+  canCreateProjectDriveFolder,
   requirePermission,
 } from "@/lib/permissions"
+import { getProjectAccessRecord } from "@/lib/project-access"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
 import { findProspectiveProjectDuplicates } from "@/lib/project-duplicate-store"
@@ -1101,7 +1102,11 @@ export async function createProjectIntake(
       const drive = await provisionGoogleProjectDriveFolder(
         googleClients.drive,
         submittingGoogleEmail,
-        { department, folderName: driveFolderName }
+        {
+          department,
+          folderName: driveFolderName,
+          templateEmail: googleClients.projectIntakeGoogleEmail,
+        }
       )
       projectDriveUrl = drive.folderUrl
       const syncedAt = new Date().toISOString()
@@ -1141,7 +1146,7 @@ export async function createProjectIntake(
         driveStatus = "pending"
         warning = appendWarning(
           warning,
-          "The Drive folder was created, but Compass could not save its link. Use Retry Drive setup in the Project Registry; it will reuse the folder."
+          "The Drive folder was created, but Compass could not save its link. Use Create Drive folder on the project page; it will reuse the folder."
         )
         console.error("Unable to save the project Drive receipt", error)
       }
@@ -1319,16 +1324,22 @@ export async function provisionProjectDriveFolder(
     const user = await requireAuth()
     requirePermission(user, "project", "update")
     requirePermission(user, "document", "create")
-    if (!canManageProjectRegistry(user)) {
-      return {
-        success: false,
-        error: "Permission denied: project registry is admin-only",
-      }
-    }
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "D1 not available" }
     const db = getDb(env.DB)
+    // Office staff on the job can create its folder: it always lands in the
+    // company's standard structure, and an existing folder is relinked, never
+    // duplicated.
+    if (
+      !canCreateProjectDriveFolder(user) ||
+      !(await getProjectAccessRecord(db, user, projectId))
+    ) {
+      return {
+        success: false,
+        error: "Permission denied: you can't create Drive folders for this project",
+      }
+    }
     const [project] = await db
       .select({
         id: projects.id,
@@ -1438,6 +1449,7 @@ export async function provisionProjectDriveFolder(
       {
         department,
         folderName,
+        templateEmail: googleClients.projectIntakeGoogleEmail,
         existingFolderId:
           project.googleDriveFolderId ?? familyPhase?.phaseFolderId ?? undefined,
         parentFolderId:

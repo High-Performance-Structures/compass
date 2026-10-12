@@ -12,7 +12,9 @@ export const NUTECH_RESOURCE_LINKS = {
 export const NUTECH_2026_CATALOG_SOURCES = {
   name: "2026 Fox Blocks pricing",
   effectiveDate: "2026-08-23",
-  airliteTemplateId: "1WDYEMs5RgkoccbPSiFQsmeiNc7MRC_xsj6K0l1cmL6Y",
+  // Fox Blocks order form Rev 1/1/2026 (an .xlsx; copies convert to Sheets).
+  // Settings → Nu-Tech "Manufacturer order form" overrides it.
+  airliteTemplateId: "1Yqhb48MTZN89f0fFrFqTI4T0hr_KU2DC",
   newStandardSheetId: "1_xx7UbkT4qd3UvZBI6RT8AOs-yjbfmnfpJAVkdebl48",
   newCashSheetId: "19O7u_oq-sFZUZuExRDl4cDwQonD8sXcg5i4ZjfGlRJg",
   returningStandardSheetId: "1zHRvncvRNGwWVf7RYWTbNY2H7wnQfvmNbx9Bh9EXD1o",

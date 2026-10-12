@@ -24,11 +24,6 @@ export default async function ProjectContractsPage({
         back={{ href: `/dashboard/projects/${id}/estimate`, label: "Estimate" }}
         icon={<IconFileDescription className="size-5 text-primary" />}
         title="Contract packet"
-        description={
-          <>
-            Assemble versioned contract documents, the exact CA22 estimate, required signers, and later-stage closeout forms.
-          </>
-        }
         actions={
           <>
             <ProjectContextSwitcher currentProjectId={id} targetSection="contracts" placeholder="Switch contract project..." className="w-full sm:w-[280px]" />

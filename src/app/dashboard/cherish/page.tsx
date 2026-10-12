@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation"
 import { IconHeartHandshake } from "@tabler/icons-react"
 
 import { getCherishStoryArchive } from "@/app/actions/cherish-stories"
@@ -7,6 +6,8 @@ import { CherishFeedbackForm } from "@/components/cherish/cherish-feedback-form"
 import { CherishStoryArchive } from "@/components/cherish/cherish-story-archive"
 import { getCurrentUser } from "@/lib/auth"
 import { canUseFieldDesk } from "@/lib/permissions"
+import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -19,7 +20,7 @@ export default async function CherishPage({
 }): Promise<React.ReactElement> {
   const user = await getCurrentUser()
   if (!canUseFieldDesk(user)) {
-    redirect("/dashboard/access-restricted?action=submit%20CHERISH%20feedback")
+    return <ClientRedirect href={"/dashboard/access-restricted?action=submit%20CHERISH%20feedback"} />
   }
   const [params, archiveResult, recipientResult] = await Promise.all([
     searchParams,
@@ -32,18 +33,11 @@ export default async function CherishPage({
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6">
-      <header className="border-b pb-5">
-        <div className="flex items-center gap-2">
-          <IconHeartHandshake className="size-6 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            CHERISH
-          </h1>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Share recognition, celebrate a project win, and revisit the moments
-          your company has cherished.
-        </p>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        icon={<IconHeartHandshake className="size-6 text-primary" />}
+        title="CHERISH"
+      />
 
       <section className="py-5" aria-labelledby="share-cherish-heading">
         <h2 id="share-cherish-heading" className="text-lg font-semibold">

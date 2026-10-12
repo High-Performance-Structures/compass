@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { feedbackStatusLabel } from "@/lib/jarvis/feedback-lifecycle"
+import { PageHeader } from "@/components/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -52,27 +53,29 @@ export default async function RequestDetailPage({
         <RequestRefreshControl />
       </div>
 
-      <div>
-        <div className="mb-3 flex flex-wrap gap-2">
-          <Badge variant="secondary">
-            {feedbackStatusLabel(request.status)}
-          </Badge>
-          <Badge variant="outline">{request.kind}</Badge>
-          {request.priority !== "normal" && (
-            <Badge variant="outline">{request.priority} priority</Badge>
-          )}
-        </div>
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          {request.title}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Submitted {formatDate(request.createdAt)} · Last updated {formatDate(request.updatedAt)}
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Owner: {request.assignedToName ?? "Awaiting assignment"}
-          {request.slaTargetAt ? ` · Response target ${formatDate(request.slaTargetAt)}` : ""}
-        </p>
-      </div>
+      <PageHeader
+        className="mb-0"
+        title={request.title}
+        actions={
+          <>
+            <Badge variant="secondary">
+              {feedbackStatusLabel(request.status)}
+            </Badge>
+            <Badge variant="outline">{request.kind}</Badge>
+            {request.priority !== "normal" && (
+              <Badge variant="outline">{request.priority} priority</Badge>
+            )}
+          </>
+        }
+        // Record facts, not an explanation, so they stay with the title.
+        meta={
+          <>
+            Submitted {formatDate(request.createdAt)} · Last updated {formatDate(request.updatedAt)} · Owner:{" "}
+            {request.assignedToName ?? "Awaiting assignment"}
+            {request.slaTargetAt ? ` · Response target ${formatDate(request.slaTargetAt)}` : ""}
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>

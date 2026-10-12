@@ -1,9 +1,15 @@
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
+import { getNuTechManufacturerName, getNuTechOrderFormLink, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
+import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
+import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
+import { NuTechOrderFormButton } from "@/components/nutech/nutech-order-form-button"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import type * as React from "react"
 import Link from "next/link"
 import {
   IconArrowLeft,
   IconExternalLink,
+  IconPrinter,
   IconShoppingCart,
 } from "@tabler/icons-react"
 
@@ -19,8 +25,6 @@ import {
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
-import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
-import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import {
@@ -35,9 +39,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import { canCreateProjectDriveFolder, canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import {
   isClosedProjectOperationStatus,
   parseProjectOperationStatusFilter,
@@ -56,6 +61,9 @@ import {
   projectBrandFor,
   type ProjectBrand,
 } from "@/lib/project-branding"
+import { getProjectPaperTrail, type PaperTrailRecordView } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
+import { PurchaseOrderDocument } from "@/components/projects/purchase-order-document"
 
 function formatDate(value: string | null): string {
   if (!value) return "No due date"
@@ -126,6 +134,9 @@ function PurchaseOrderCard({
   phaseOptions,
   costCodeOptions,
   developerModeEnabled,
+  paperTrail,
+  catalogItems,
+  orderForm,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -144,6 +155,12 @@ function PurchaseOrderCard({
     typeof ProjectPurchaseOrderEditForm
   >["costCodeOptions"]
   readonly developerModeEnabled: boolean
+  /** Drive copy status; null when the paper trail is off for this project. */
+  readonly paperTrail: PaperTrailRecordView | null | undefined
+  /** The manufacturer's price list, for its POs' line items. */
+  readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
+  /** Set on the PO linked to the Nu-Tech order: its manufacturer order form, beside the pickup copy. */
+  readonly orderForm?: { readonly workbookUrl: string | null; readonly released: boolean; readonly needsDriveFolder: boolean }
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -188,6 +205,7 @@ function PurchaseOrderCard({
               <ProjectPurchaseOrderEditForm
                 projectId={projectId}
                 purchaseOrder={order}
+                catalogItems={catalogItems}
                 contactOptions={taskAssigneeOptions}
                 siteContactOptions={siteContactOptions}
                 jobsiteAddress={jobsiteAddress}
@@ -225,7 +243,20 @@ function PurchaseOrderCard({
               defaultTaskType="supplier_task"
               assigneeOptions={taskAssigneeOptions}
             />
-            <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+            {orderForm && (
+              <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} needsDriveFolder={orderForm.needsDriveFolder} />
+            )}
+            {orderForm?.workbookUrl ? (
+              // The manufacturer's PO prints on the manufacturer's own form.
+              <Button asChild type="button" variant="outline" size="sm" className="print:hidden">
+                <a href={`/api/projects/${projectId}/nutech-order-form`} target="_blank" rel="noreferrer">
+                  <IconPrinter className="size-4" />
+                  Pickup copy
+                </a>
+              </Button>
+            ) : (
+              <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+            )}
           </div>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
@@ -243,6 +274,15 @@ function PurchaseOrderCard({
           </span>
           <span>{formatDate(order.dueDate)}</span>
         </div>
+        {paperTrail !== undefined ? (
+          <PaperTrailRecordStatus
+            className="mt-2"
+            projectId={projectId}
+            recordType="purchase_order"
+            recordId={order.id}
+            record={paperTrail}
+          />
+        ) : null}
         <p className="mt-3 text-sm font-medium">{formatPurchaseOrderMoney(order.amount)}</p>
         {order.vendorAcknowledgement && (
           <div className="mt-3 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
@@ -308,138 +348,12 @@ function PurchaseOrderCard({
       </div>
 
       <div className="hidden text-[11px] leading-tight text-black print:block">
-        <div className="flex items-start justify-between border-b-2 border-black pb-4">
-          <div className="flex items-center gap-3">
-            <ProjectBrandLogo
-              brand={brand}
-              size={64}
-              className="h-16 w-16 shrink-0 object-contain"
-            />
-            <div>
-              <p className="text-sm font-bold uppercase">
-                {brand.companyName}
-              </p>
-              <ProjectBrandContactDetails brand={brand} />
-            </div>
-          </div>
-          <div className="text-right">
-            <h1 className="text-3xl font-bold uppercase tracking-wide">
-              Purchase Order
-            </h1>
-            <p className="mt-2 text-sm font-semibold">
-              {order.sourceRecordNumber ?? "Unnumbered"}
-            </p>
-            <p>P.O. Date: {formatDate(order.sageOrderDate)}</p>
-            <p>Required By: {formatDate(order.dueDate)}</p>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <div className="border border-black">
-            <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
-              Vendor
-            </div>
-            <div className="min-h-20 p-2">
-              <p className="font-semibold">{order.companyName ?? "Vendor TBD"}</p>
-              {order.vendorAddress && (
-                <p className="whitespace-pre-line">{order.vendorAddress}</p>
-              )}
-            </div>
-          </div>
-          <div className="border border-black">
-            <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
-              Project / Delivery
-            </div>
-            <div className="min-h-20 p-2">
-              <p className="font-semibold">{projectLabel}</p>
-              <p className="mt-2 text-[10px] font-bold uppercase">
-                Delivery Location
-              </p>
-              <p className="whitespace-pre-line font-medium">
-                {deliveryLocation ?? "TBD"}
-              </p>
-              <p>Site Contact: {order.assigneeName ?? "TBD"}</p>
-              <p>Phone: {order.siteContactPhone ?? "TBD"}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 border border-black">
-          <table className="purchase-order-items w-full table-fixed border-collapse">
-            <colgroup>
-              <col className="w-10" />
-              <col />
-              <col className="w-[4.5rem]" />
-              <col className="w-20" />
-              <col className="w-16" />
-              <col className="w-16" />
-              <col className="w-[5.5rem]" />
-              <col className="w-24" />
-            </colgroup>
-            <thead data-purchase-order-items-header="true">
-              <tr className="border-b border-black text-xs font-bold uppercase">
-                <th className="px-2 py-1 text-left">Line</th>
-                <th className="px-2 py-1 text-left">Description</th>
-                <th className="px-2 py-1 text-left">Phase</th>
-                <th className="px-2 py-1 text-left">Cost Code</th>
-                <th className="px-2 py-1 text-right">Qty</th>
-                <th className="px-2 py-1 text-left">Unit</th>
-                <th className="px-2 py-1 text-right">Unit Cost</th>
-                <th className="px-2 py-1 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.lines.map((line) => (
-                <tr
-                  key={line.id}
-                  data-purchase-order-line="true"
-                  className="h-9 border-t border-black align-top"
-                >
-                  <td className="px-2 py-1">{line.lineNumber}</td>
-                  <td className="px-2 py-1">{line.description}</td>
-                  <td className="px-2 py-1">{line.phaseCode ?? "-"}</td>
-                  <td className="px-2 py-1">{line.costCode ?? "-"}</td>
-                  <td className="px-2 py-1 text-right">{line.quantity}</td>
-                  <td className="px-2 py-1">{line.unit ?? "-"}</td>
-                  <td className="px-2 py-1 text-right">
-                    {formatPurchaseOrderMoney(line.unitCost)}
-                  </td>
-                  <td className="px-2 py-1 text-right font-semibold">
-                    {formatPurchaseOrderMoney(line.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-black text-sm font-bold">
-                <td colSpan={7} className="px-2 py-2 text-right">
-                  Total
-                </td>
-                <td className="px-2 py-2 text-right">{formatPurchaseOrderMoney(order.amount)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div className="mt-4 border border-black">
-          <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
-            Notes / Instructions
-          </div>
-          <div className="min-h-16 p-2">
-            <p>{order.title}</p>
-            {order.description && <p className="mt-1">{order.description}</p>}
-          </div>
-        </div>
-
-        <div
-          data-purchase-order-signatures="true"
-          className="mt-10 grid grid-cols-4 gap-6 text-xs"
-        >
-          <div className="border-t border-black pt-2">Authorized By</div>
-          <div className="border-t border-black pt-2">Vendor Signature</div>
-          <div className="border-t border-black pt-2">Picked Up By</div>
-          <div className="border-t border-black pt-2">Date</div>
-        </div>
+        <PurchaseOrderDocument
+          brand={brand}
+          order={order}
+          projectLabel={projectLabel}
+          deliveryLocation={deliveryLocation}
+        />
       </div>
     </article>
   )
@@ -470,6 +384,24 @@ export default async function ProjectPurchaseOrdersPage({
   const developerModeEnabled = await isDeveloperModeEnabled(
     canManageProjectRegistry(currentUser)
   )
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
+    getProjects(),
+    getProjectPurchaseOrders(id),
+    getProjectTaskAssigneeOptions(id),
+    getProjectPurchaseOrderSiteContactOptions(id),
+    getProjectContactsSummary(id, "internal"),
+    getProjectPurchaseOrderFormOptions(id),
+    getProjectPaperTrail(id, "purchase_order"),
+  ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
+      throw error
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
   const [
     projects,
     purchaseOrders,
@@ -477,22 +409,31 @@ export default async function ProjectPurchaseOrdersPage({
     siteContactOptions,
     contactsSummary,
     purchaseOrderCodingOptions,
-  ] = await Promise.all([
-    getProjects(),
-    getProjectPurchaseOrders(id),
-    getProjectTaskAssigneeOptions(id),
-    getProjectPurchaseOrderSiteContactOptions(id),
-    getProjectContactsSummary(id, "internal"),
-    getProjectPurchaseOrderFormOptions(id),
-  ]).catch((error: unknown) => {
-    redirectIfFeaturePermissionDenied(error)
-    throw error
-  })
+    paperTrail,
+  ] = loaded.data
   const project = projects.find((item) => item.id === id)
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber,
   })
+  // N jobs order from the block manufacturer, built from the Nu-Tech order.
+  const [manufacturerName, manufacturerCatalog, shippingCostCode, orderFormLink] =
+    brand.department === "N"
+      ? await Promise.all([
+          getNuTechManufacturerName(),
+          getNuTechPurchaseOrderCatalog(id),
+          getNuTechShippingCostCodeOption(),
+          getNuTechOrderFormLink(id),
+        ])
+      : ["", [], null, null]
+  // Staff can create the missing Drive folder right where the form would go.
+  const orderFormNeedsDriveFolder =
+    !project?.googleDriveFolderId && canCreateProjectDriveFolder(currentUser)
+  // The manufacturer's POs can also code freight to the shipping cost code.
+  const manufacturerCostCodes =
+    shippingCostCode && !purchaseOrderCodingOptions.costCodes.some((option) => option.value === shippingCostCode.value)
+      ? [...purchaseOrderCodingOptions.costCodes, shippingCostCode]
+      : purchaseOrderCodingOptions.costCodes
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
@@ -579,7 +520,10 @@ export default async function ProjectPurchaseOrdersPage({
               siteContactOptions={siteContactOptions}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
+              createLabel={brand.department === "N" ? "Other vendor PO" : undefined}
+              createSecondary={brand.department === "N"}
             />
+            {brand.department === "N" ? <NuTechManufacturerPoButton projectId={id} manufacturerName={manufacturerName} /> : null}
           </div>
         </div>
 
@@ -627,8 +571,22 @@ export default async function ProjectPurchaseOrdersPage({
               emailRecipientOptions={emailRecipientOptions}
               jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               phaseOptions={purchaseOrderCodingOptions.phases}
-              costCodeOptions={purchaseOrderCodingOptions.costCodes}
+              costCodeOptions={
+                manufacturerName !== "" && order.companyName?.trim() === manufacturerName
+                  ? manufacturerCostCodes
+                  : purchaseOrderCodingOptions.costCodes
+              }
               developerModeEnabled={developerModeEnabled}
+              paperTrail={paperTrail.enabled ? paperTrail.records[order.id] ?? null : undefined}
+              // Only the manufacturer's own POs pick lines from its price list.
+              catalogItems={
+                manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
+              }
+              orderForm={
+                orderFormLink?.purchaseOrderId === order.id
+                  ? { ...orderFormLink, needsDriveFolder: orderFormNeedsDriveFolder }
+                  : undefined
+              }
             />
           ))
         ) : (

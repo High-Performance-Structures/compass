@@ -139,6 +139,8 @@ export const fieldCherishRecognitionSchema = z.object({
   submittedByName: z.string().nullable(),
   audienceScope: z.enum(["company", "user"]).default("company"),
   createdAt: z.string(),
+  /** Shared in the last 24 hours and not yet viewed by this person. */
+  isNew: z.boolean().default(false),
 })
 
 export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [

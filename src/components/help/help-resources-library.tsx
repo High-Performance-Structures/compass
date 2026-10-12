@@ -11,6 +11,7 @@ import {
 } from "@/components/help/help-ui-model"
 import { CloseHelpButton } from "@/components/help/close-help-button"
 import { Input } from "@/components/ui/input"
+import { PageHeader } from "@/components/page-header"
 
 export type HelpGuideSummary = HelpGuidePreview
 
@@ -68,19 +69,12 @@ export function HelpResourcesLibrary({
           <CloseHelpButton returnTo={returnTo ?? undefined} />
         </div>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase text-primary">
-              <IconBook2 className="size-4" />
-              Compass user guide
-            </div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-normal text-foreground">
-              Help &amp; Resources
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">
-              Find the official explanation for Compass tools and workflows.
-              Search by a task, page, button, or term you see on screen.
-            </p>
-          </div>
+          <PageHeader
+            className="mb-0 max-w-3xl"
+            eyebrow="Compass user guide"
+            icon={<IconBook2 className="size-5 text-primary" />}
+            title="Help & Resources"
+          />
           <div className="relative w-full lg:max-w-sm">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

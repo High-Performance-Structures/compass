@@ -17,7 +17,7 @@ import {
   canManageProjectRegistry,
   requirePermission,
 } from "@/lib/permissions"
-import { projectDepartmentDisplayName } from "@/lib/project-branding"
+import { isProjectDepartment } from "@/lib/project-branding"
 
 type ProjectRegistryProject = {
   readonly id: string
@@ -55,21 +55,6 @@ type LinkInput = {
   readonly metadata: string | null
 }
 
-function projectNumberPrefixName(prefix: string): string | null {
-  switch (prefix) {
-    case "O":
-      return projectDepartmentDisplayName("O")
-    case "N":
-      return projectDepartmentDisplayName("N")
-    case "H":
-      return projectDepartmentDisplayName("H")
-    case "D":
-      return projectDepartmentDisplayName("D")
-    default:
-      return null
-  }
-}
-
 function nullableString(formData: FormData, key: string): string | null {
   const value = formData.get(key)
   if (typeof value !== "string") return null
@@ -85,11 +70,10 @@ function projectNumberValue(formData: FormData): UpdateResult | string | null {
   const leadingCharacter = value.slice(0, 1).toUpperCase()
   const prefix = leadingCharacter === "0" ? "O" : leadingCharacter
   const normalized = `${prefix}${value.slice(1)}`
-  if (!projectNumberPrefixName(prefix)) {
+  if (!isProjectDepartment(prefix)) {
     return {
       success: false,
-      error:
-        `Project number must start with O (${projectDepartmentDisplayName("O")}), N (${projectDepartmentDisplayName("N")}), H (${projectDepartmentDisplayName("H")}), or D (${projectDepartmentDisplayName("D")}).`,
+      error: "Project number must start with a department letter: O, N, H, or D.",
     }
   }
 

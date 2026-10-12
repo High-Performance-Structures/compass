@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/daily-logs"],
   "owner": "Field operations",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-10-09"
 }
 ---
 
@@ -33,6 +33,12 @@ Uploads should remain internal until an authorized reviewer makes a separate aud
 Use the log's edit action to correct the record. Saving a material change may return it to review so previously approved owner-facing information cannot change silently.
 
 Before approval, verify the date, narrative, attachments, and professionalism. Approval establishes the project record; it does not necessarily make the log or its photos owner-visible.
+
+## Delete a Daily Log {#delete-log}
+
+Open a log with **Edit** and choose **Delete**, or tick several logs and choose **Delete selected**. Compass asks you to confirm first. Photos and files attached to a deleted log stay in the project's photos, and a copy of each deleted log is kept in the activity log.
+
+You can delete a log you wrote until it is approved or shared with the owner. Admins can delete any log. A log used in an owner update, draft or published, must be removed from that update first.
 
 ## Draft an Owner Update {#draft-owner-update}
 

@@ -7,6 +7,13 @@ import { IconBrandGithub, IconExternalLink, IconRefresh } from "@tabler/icons-re
 import { toast } from "sonner"
 
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   runFeedbackAdminMaintenance,
   setFeedbackFeaturePriorityApproval,
   setFeedbackGithubIssueCreationApproval,
@@ -16,13 +23,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { SearchableCombobox } from "@/components/searchable-combobox"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import {
   FEEDBACK_DESK_STATUSES,
   FEEDBACK_PRIORITIES,
@@ -40,6 +40,8 @@ import {
   type FeedbackDeskQueueViewId,
 } from "@/lib/jarvis/feedback-desk-queue"
 import { feedbackOperationsSummary } from "@/lib/jarvis/feedback-operations-summary"
+import { PageHeader } from "@/components/page-header"
+import { cn } from "@/lib/utils"
 
 function formatDate(value: string | null): string {
   if (!value) return "Not set"
@@ -137,14 +139,17 @@ function RequestEditor({
   }
 
   return (
-    <Card className={item.overdue ? "border-destructive/60" : undefined}>
-      <CardHeader className="gap-2">
+    <section
+      aria-label="Selected request"
+      className={cn("space-y-4 border-t pt-4", item.overdue && "border-l-2 border-l-destructive pl-4")}
+    >
+      <div className="space-y-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="text-base">{item.title}</CardTitle>
-            <CardDescription>
+            <h3 className="text-base font-semibold">{item.title}</h3>
+            <p className="text-sm text-muted-foreground">
               {item.reporterName ?? "Unknown requester"} · {item.source} · Submitted {formatDate(item.createdAt)}
-            </CardDescription>
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {item.kind === "feature" && item.featurePriorityApprovedAt && (
@@ -166,9 +171,9 @@ function RequestEditor({
             <Badge variant="secondary">{item.kind}</Badge>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-md border bg-muted/20 p-3">
+      </div>
+      <div className="space-y-4">
+        <div className="border-l-2 pl-3">
           <p className="text-xs font-medium text-muted-foreground">Original request</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{item.description}</p>
         </div>
@@ -187,15 +192,27 @@ function RequestEditor({
         <div className="grid gap-3 md:grid-cols-3">
           <label className="space-y-1 text-xs font-medium">
             Status
-            <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={status} onChange={(event) => setStatus(knownFeedbackStatus(event.target.value))}>
-              {FEEDBACK_DESK_STATUSES.map((value) => <option key={value} value={value}>{feedbackStatusLabel(value)}</option>)}
-            </select>
+            <SearchableCombobox
+              className="h-9"
+              value={status}
+              onValueChange={(value) => {
+                if (value !== "") setStatus(knownFeedbackStatus(value))
+              }}
+              options={FEEDBACK_DESK_STATUSES.map((value) => ({ value, label: feedbackStatusLabel(value) }))}
+              ariaLabel="Status"
+              placeholder="Choose status"
+              searchPlaceholder="Search statuses..."
+              emptyMessage="No matching statuses."
+            />
           </label>
           <label className="space-y-1 text-xs font-medium">
             Priority
-            <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={priority} onChange={(event) => setPriority(knownFeedbackPriority(event.target.value))}>
-              {FEEDBACK_PRIORITIES.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
+            <Select value={priority} onValueChange={(value) => setPriority(knownFeedbackPriority(value))}>
+              <SelectTrigger aria-label="Priority" className="w-full font-normal"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {FEEDBACK_PRIORITIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
           <label className="space-y-1 text-xs font-medium">
             Owner
@@ -229,7 +246,7 @@ function RequestEditor({
           </label>
         </div>
         {item.kind === "feature" && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y py-3">
             <p className="max-w-3xl text-xs text-muted-foreground">
               Features need your explicit leadership priority decision before implementation, testing, or a new GitHub issue can proceed.
             </p>
@@ -248,7 +265,7 @@ function RequestEditor({
           </div>
         )}
         {!item.githubIssueUrl && !feedbackIsResolved(item.status) && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y py-3">
             <p className="max-w-3xl text-xs text-muted-foreground">
               If this work already exists, paste its GitHub issue or pull request above and save. Approve a new issue only when the request is genuinely untracked.
             </p>
@@ -270,8 +287,8 @@ function RequestEditor({
             <Button size="sm" disabled={pending} onClick={save}>{pending ? "Saving..." : "Save / Queue update"}</Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -314,57 +331,61 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{ overview: FeedbackAdm
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-4 md:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-primary">Compass operations</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Feedback Desk</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Protected triage, ownership, requester communication, and workflow links.</p>
-        </div>
-        <Button variant="outline" disabled={pending} onClick={reconcile}><IconRefresh className={pending ? "animate-spin" : undefined} />{pending ? "Reconciling..." : "Reconcile now"}</Button>
-      </div>
+      <PageHeader
+        className="mb-0"
+        eyebrow="Compass operations"
+        title="Feedback Desk"
+        actions={<Button variant="outline" disabled={pending} onClick={reconcile}><IconRefresh className={pending ? "animate-spin" : undefined} />{pending ? "Reconciling..." : "Reconcile now"}</Button>}
+      />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card><CardHeader><CardDescription>Open</CardDescription><CardTitle>{openItems.length}</CardTitle></CardHeader></Card>
-        <Card><CardHeader><CardDescription>Unassigned</CardDescription><CardTitle>{unassigned}</CardTitle></CardHeader></Card>
-        <Card><CardHeader><CardDescription>Response target passed</CardDescription><CardTitle>{overdue}</CardTitle></CardHeader></Card>
-        <Card><CardHeader><CardDescription>Failed bridge events</CardDescription><CardTitle>{overview.bridge.failed}</CardTitle></CardHeader></Card>
-      </div>
-
-      <Card className={operations.needsAttention ? "border-destructive/60" : undefined}>
-        <CardHeader className="gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-3"><CardTitle className="text-base">Operations queue</CardTitle><Badge variant={operations.needsAttention ? "destructive" : "secondary"}>{operations.needsAttention ? "Action required" : "Current"}</Badge></div>
-          <CardDescription>{operations.attentionMessage.replaceAll("overdue", "past its response target")}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-md border p-3"><p className="text-sm font-medium">Bug workflow</p><p className="mt-1 text-sm text-muted-foreground">{operations.openBugs} open bug{operations.openBugs === 1 ? "" : "s"}. Routine bugs can continue through protected triage and review.</p></div>
-          <div className="rounded-md border p-3"><p className="text-sm font-medium">Feature decision queue</p><p className="mt-1 text-sm text-muted-foreground">{operations.featureDecisionMessage}</p></div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="gap-3">
-          <div><CardTitle className="text-base">Request queue</CardTitle><CardDescription>Select one request to review and update. Filters keep the active list short; no request is removed by filtering.</CardDescription></div>
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={view} onChange={(event) => setView(knownFeedbackDeskQueueViewId(event.target.value))}>
-              {queueViews.map((queueView) => <option key={queueView.id} value={queueView.id}>{queueView.label} ({queueView.count})</option>)}
-            </select>
-            <input className="h-9 rounded-md border bg-background px-3 text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search request titles" type="search" />
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={kind} onChange={(event) => setKind(event.target.value)}><option value="all">All types</option>{availableKinds.map((value) => <option key={value} value={value}>{value}</option>)}</select>
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{availableStatuses.map((value) => <option key={value} value={value}>{feedbackStatusLabel(value)}</option>)}</select>
-            <select className="h-9 rounded-md border bg-background px-3 text-sm" value={github} onChange={(event) => setGithub(knownFeedbackDeskQueueGithubFilter(event.target.value))}><option value="all">All GitHub states</option><option value="linked">GitHub linked</option><option value="review">GitHub review needed</option><option value="approved">New issue approved</option></select>
+      <dl className="grid gap-px border bg-border sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Open", value: openItems.length, alert: false },
+          { label: "Unassigned", value: unassigned, alert: false },
+          { label: "Response target passed", value: overdue, alert: overdue > 0 },
+          { label: "Failed bridge events", value: overview.bridge.failed, alert: overview.bridge.failed > 0 },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-background px-4 py-3">
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">{stat.label}</dt>
+            <dd className={cn("mt-1 text-2xl font-semibold tabular-nums", stat.alert && "text-destructive")}>{stat.value}</dd>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        ))}
+      </dl>
+
+      <section className="space-y-3" aria-labelledby="feedback-operations-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2"><h2 id="feedback-operations-heading" className="text-base font-semibold">Operations queue</h2><Badge variant={operations.needsAttention ? "destructive" : "secondary"}>{operations.needsAttention ? "Action required" : "Current"}</Badge></div>
+        <p className={cn("text-sm", operations.needsAttention ? "text-destructive" : "text-muted-foreground")}>{operations.attentionMessage.replaceAll("overdue", "past its response target")}</p>
+        <div className="grid gap-px border bg-border md:grid-cols-2">
+          <div className="bg-background p-3"><p className="text-sm font-medium">Bug workflow</p><p className="mt-1 text-sm text-muted-foreground">{operations.openBugs} open bug{operations.openBugs === 1 ? "" : "s"}. Routine bugs can continue through protected triage and review.</p></div>
+          <div className="bg-background p-3"><p className="text-sm font-medium">Feature decision queue</p><p className="mt-1 text-sm text-muted-foreground">{operations.featureDecisionMessage}</p></div>
+        </div>
+      </section>
+
+      <section className="space-y-3" aria-labelledby="feedback-queue-heading">
+        <div className="border-b pb-2"><h2 id="feedback-queue-heading" className="text-base font-semibold">Request queue</h2><p className="mt-1 text-sm text-muted-foreground">Select one request to review and update. Filters keep the active list short; no request is removed by filtering.</p></div>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[minmax(13rem,1.4fr)_repeat(4,minmax(0,1fr))]">
+            <Select value={view} onValueChange={(value) => setView(knownFeedbackDeskQueueViewId(value))}>
+              <SelectTrigger aria-label="Queue view" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {queueViews.map((queueView) => <SelectItem key={queueView.id} value={queueView.id}>{queueView.label} ({queueView.count})</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <input className="h-9 rounded-md border bg-background px-3 text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search request titles" type="search" />
+            <Select value={kind} onValueChange={setKind}><SelectTrigger aria-label="Request type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{availableKinds.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select>
+            <SearchableCombobox className="h-9" value={status} onValueChange={(value) => setStatus(value || "all")} options={[{ value: "all", label: "All statuses" }, ...availableStatuses.map((value) => ({ value, label: feedbackStatusLabel(value) }))]} ariaLabel="Filter by status" placeholder="All statuses" searchPlaceholder="Search statuses..." emptyMessage="No matching statuses." />
+            <Select value={github} onValueChange={(value) => setGithub(knownFeedbackDeskQueueGithubFilter(value))}><SelectTrigger aria-label="GitHub state" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All GitHub states</SelectItem><SelectItem value="linked">GitHub linked</SelectItem><SelectItem value="review">GitHub review needed</SelectItem><SelectItem value="approved">New issue approved</SelectItem></SelectContent></Select>
+          </div>
+        <div className="space-y-3">
           {filteredItems.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">No requests match these filters. Try a broader queue or clear the search.</p> : <label className="block space-y-1 text-xs font-medium">Selected request<SearchableCombobox ariaLabel="Choose feedback request" options={filteredItems.map((item) => ({ value: item.id, label: item.title, description: `${item.kind} · ${feedbackStatusLabel(item.status)}` }))} value={selectedItem?.id ?? ""} onValueChange={setSelectedId} placeholder="Choose request" searchPlaceholder="Search requests..." emptyMessage="No matching requests." groupHeading="Requests" /></label>}
-        </CardContent>
-      </Card>
+        </div>
 
       {selectedItem && <RequestEditor key={selectedItem.id} item={selectedItem} assignees={overview.assignees} />}
+      </section>
 
-      <Card>
-        <CardHeader><CardTitle className="text-base">Lifecycle health</CardTitle><CardDescription>Pending {overview.bridge.pending} · Processing {overview.bridge.processing} · Oldest pending {formatDate(overview.bridge.oldestPendingAt)}</CardDescription>{overview.lastMaintenance && <CardDescription>Last reconciliation {overview.lastMaintenance.status} · {formatDate(overview.lastMaintenance.completedAt ?? overview.lastMaintenance.startedAt)}</CardDescription>}</CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">{overview.health.length === 0 && <p className="text-sm text-muted-foreground">No service heartbeat has been recorded yet.</p>}{overview.health.map((service) => <div key={service.serviceName} className="rounded-md border p-3 text-sm"><div className="flex items-center justify-between gap-2"><span className="font-medium">{service.serviceName}</span><Badge variant={service.status === "healthy" && !service.stale ? "secondary" : "destructive"}>{service.stale ? "stale" : service.status}</Badge></div><p className="mt-2 text-xs text-muted-foreground">Heartbeat {formatDate(service.lastHeartbeatAt)}</p>{service.lastError && <p className="mt-1 text-xs text-destructive">{service.lastError}</p>}</div>)}</CardContent>
-      </Card>
+      <section className="space-y-3" aria-labelledby="feedback-health-heading">
+        <div className="border-b pb-2"><h2 id="feedback-health-heading" className="text-base font-semibold">Lifecycle health</h2><p className="mt-1 text-sm text-muted-foreground">Pending {overview.bridge.pending} · Processing {overview.bridge.processing} · Oldest pending {formatDate(overview.bridge.oldestPendingAt)}</p>{overview.lastMaintenance && <p className="text-sm text-muted-foreground">Last reconciliation {overview.lastMaintenance.status} · {formatDate(overview.lastMaintenance.completedAt ?? overview.lastMaintenance.startedAt)}</p>}</div>
+        {overview.health.length === 0 ? <p className="text-sm text-muted-foreground">No service heartbeat has been recorded yet.</p> : <div className="grid gap-px border bg-border md:grid-cols-3">{overview.health.map((service) => <div key={service.serviceName} className="bg-background p-3 text-sm"><div className="flex items-center justify-between gap-2"><span className="font-medium">{service.serviceName}</span><Badge variant={service.status === "healthy" && !service.stale ? "secondary" : "destructive"}>{service.stale ? "stale" : service.status}</Badge></div><p className="mt-2 text-xs text-muted-foreground">Heartbeat {formatDate(service.lastHeartbeatAt)}</p>{service.lastError && <p className="mt-1 text-xs text-destructive">{service.lastError}</p>}</div>)}</div>}
+      </section>
     </div>
   )
 }

@@ -194,6 +194,25 @@ export async function authorizeListeningRoomSync(
   }
 }
 
+async function canControlPlayback(
+  context: ListeningContext,
+  room: { readonly id: string; readonly hostUserId: string }
+): Promise<boolean> {
+  if (room.hostUserId === context.user.id) return true
+  if (can(context.user, "channels", "moderate")) return true
+  const participant = await context.db
+    .select({ id: listeningRoomParticipants.id })
+    .from(listeningRoomParticipants)
+    .where(
+      and(
+        eq(listeningRoomParticipants.roomId, room.id),
+        eq(listeningRoomParticipants.userId, context.user.id)
+      )
+    )
+    .get()
+  return Boolean(participant)
+}
+
 async function roomSnapshot(
   context: ListeningContext
 ): Promise<ListeningRoomSnapshot | null> {
@@ -316,7 +335,11 @@ async function roomSnapshot(
     currentUserJoined: participants.some(
       (participant) => participant.userId === context.user.id
     ),
-    canControl: room.hostUserId === context.user.id || canModerate,
+    // Anyone who has joined the room shares the playback controls.
+    canControl:
+      participants.some((participant) => participant.userId === context.user.id) ||
+      room.hostUserId === context.user.id ||
+      canModerate,
     canModerate,
   }
 }
@@ -697,31 +720,83 @@ export async function removeListeningTrackLink(input: {
   }
 }
 
-export async function setListeningPlayback(input: {
-  readonly channelId: string
-  readonly command: "play" | "pause" | "skip" | "restart"
-}): Promise<ListeningActionResult<ListeningRoomSnapshot>> {
+const playbackCommandSchema = z.discriminatedUnion("command", [
+  z.object({
+    channelId: channelIdSchema,
+    command: z.enum(["play", "pause", "skip", "restart"]),
+  }),
+  z.object({
+    channelId: channelIdSchema,
+    command: z.enum(["jump", "advance"]),
+    queueItemId: z.string().trim().min(1).max(200),
+  }),
+])
+
+export async function setListeningPlayback(
+  input:
+    | {
+        readonly channelId: string
+        readonly command: "play" | "pause" | "skip" | "restart"
+      }
+    | {
+        readonly channelId: string
+        /** jump plays this song now; advance skips it only if it is still playing. */
+        readonly command: "jump" | "advance"
+        readonly queueItemId: string
+      }
+): Promise<ListeningActionResult<ListeningRoomSnapshot>> {
   try {
-    const parsed = z.object({
-      channelId: channelIdSchema,
-      command: z.enum(["play", "pause", "skip", "restart"]),
-    }).safeParse(input)
+    const parsed = playbackCommandSchema.safeParse(input)
     if (!parsed.success) return { success: false, error: "Invalid playback command" }
     const context = await listeningContext(parsed.data.channelId, { write: true })
     const room = await roomForChannel(context.db, context.channel.id)
     if (!room) return { success: false, error: "Listening room not found" }
+    if (!(await canControlPlayback(context, room))) {
+      return { success: false, error: "Join the listening room to control playback" }
+    }
+    // Every listener's player reports the end of a song; only the first report
+    // for the song that is still current moves the room on.
     if (
-      room.hostUserId !== context.user.id &&
-      !can(context.user, "channels", "moderate")
+      parsed.data.command === "advance" &&
+      room.currentTrackId !== parsed.data.queueItemId
     ) {
-      return { success: false, error: "Only the room host can control playback" }
+      return requiredRoomSnapshot(context)
     }
     const nowMs = Date.now()
     const now = new Date(nowMs).toISOString()
     const scheduledStart = new Date(
       nowMs + LISTENING_ROOM_START_DELAY_MS
     ).toISOString()
-    if (parsed.data.command === "pause") {
+    if (parsed.data.command === "jump") {
+      const target = await context.db
+        .select({ id: listeningQueueItems.id })
+        .from(listeningQueueItems)
+        .where(
+          and(
+            eq(listeningQueueItems.id, parsed.data.queueItemId),
+            eq(listeningQueueItems.roomId, room.id)
+          )
+        )
+        .get()
+      if (!target) return { success: false, error: "Song not found" }
+      if (room.currentTrackId && room.currentTrackId !== target.id) {
+        await context.db
+          .update(listeningQueueItems)
+          .set({ playedAt: now })
+          .where(eq(listeningQueueItems.id, room.currentTrackId))
+      }
+      await context.db
+        .update(listeningQueueItems)
+        .set({ playedAt: null })
+        .where(eq(listeningQueueItems.id, target.id))
+      await context.db.update(listeningRooms).set({
+        currentTrackId: target.id,
+        playbackState: "playing",
+        anchorPositionMs: 0,
+        playbackStartedAt: scheduledStart,
+        updatedAt: now,
+      }).where(eq(listeningRooms.id, room.id))
+    } else if (parsed.data.command === "pause") {
       const positionMs = listeningPlaybackPositionMs({
         state: playbackState(room.playbackState),
         anchorPositionMs: room.anchorPositionMs,
@@ -741,7 +816,7 @@ export async function setListeningPlayback(input: {
           room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
       }).where(eq(listeningRooms.id, room.id))
-    } else if (parsed.data.command === "skip") {
+    } else if (parsed.data.command === "skip" || parsed.data.command === "advance") {
       const current = room.currentTrackId
         ? await context.db
             .select({
@@ -793,6 +868,8 @@ export async function setListeningPlayback(input: {
           asc(listeningQueueItems.id)
         )
         .get()
+      // Conditional on the song we read, so two listeners finishing (or
+      // double-clicking Skip) at the same moment skip only one song.
       await context.db.update(listeningRooms).set({
         currentTrackId: next?.id ?? null,
         playbackState: next ? room.playbackState : "paused",
@@ -800,7 +877,14 @@ export async function setListeningPlayback(input: {
         playbackStartedAt:
           next && room.playbackState === "playing" ? scheduledStart : null,
         updatedAt: now,
-      }).where(eq(listeningRooms.id, room.id))
+      }).where(
+        and(
+          eq(listeningRooms.id, room.id),
+          room.currentTrackId
+            ? eq(listeningRooms.currentTrackId, room.currentTrackId)
+            : isNull(listeningRooms.currentTrackId)
+        )
+      )
     } else {
       let currentTrackId = room.currentTrackId
       let selectedFreshTrack = false

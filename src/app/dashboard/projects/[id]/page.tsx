@@ -12,12 +12,13 @@ import {
   scheduleTasks,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import { canCreateProjectDriveFolder, canManageProjectRegistry } from "@/lib/permissions"
+import { ProjectDriveFolderButton } from "@/components/projects/project-drive-folder-button"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { and, eq } from "drizzle-orm"
-import { notFound, redirect } from "next/navigation"
+import { notFound } from "next/navigation"
 import Link from "next/link"
 import { MobileProjectSwitcher } from "@/components/mobile-project-switcher"
 import {
@@ -53,7 +54,17 @@ import {
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
 import { ProjectCommunicationInstructions } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
+import { getRoleDashboardOrders } from "@/app/actions/view-preferences"
 import { ProjectFamilyPanel } from "@/components/projects/project-family-panel"
+import { getNuTechOrderOverview, type NuTechOrderOverview } from "@/app/actions/nutech-order-overview"
+import { NuTechOrderStepper } from "@/components/nutech/nutech-order-stepper"
+import { getJobWorkflowOverview, type JobWorkflowOverview } from "@/app/actions/job-workflows"
+import { JobWorkflowOverviewPanel } from "@/components/projects/job-workflow-overview"
+import { getInternalWorkspaceSummary, type InternalWorkspaceSummary } from "@/app/actions/internal-duties"
+import { InternalWorkspacePanel } from "@/components/projects/internal-workspace-panel"
+import { InternalWorkQueues } from "@/components/projects/internal-work-queues"
+import { internalQueueBadges } from "@/lib/internal-duties/queue-badges"
+import { internalQueueRoleId } from "@/lib/internal-duties/queues"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -64,6 +75,7 @@ import {
   projectJobStatusLabel,
 } from "@/lib/project-profile"
 import { gotoSenderNumberForProject } from "@/lib/goto/numbers"
+import { ClientRedirect } from "@/components/client-redirect"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -130,6 +142,37 @@ async function loadOptionalSummary<T>(
   }
 }
 
+/** The owner or partner workspace for someone with that project role, if any. */
+async function projectAudienceRedirectHref(projectId: string): Promise<string | null> {
+  try {
+    const currentUser = await getCurrentUser()
+    if (!currentUser) return null
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return null
+    const membership = await getDb(env.DB)
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, currentUser.id),
+        ),
+      )
+      .get()
+    const role = membership?.role ?? null
+    if (role === "client" || role === "owner") {
+      return projectAudiencePreviewHref(projectId, "owner")
+    }
+    if (role === "subcontractor" || role === "supplier") {
+      return projectAudiencePreviewHref(projectId, "sub-vendor")
+    }
+    return null
+  } catch {
+    // The main page load reports lookup failures.
+    return null
+  }
+}
+
 export default async function ProjectSummaryPage({
   params,
 }: {
@@ -154,6 +197,10 @@ export default async function ProjectSummaryPage({
   } | null = null
   let tasks: ScheduleTask[] = []
   let registry: ProjectRegistry | null = null
+  let roleDashboardOrders: Readonly<Record<string, readonly string[]>> = {}
+  let nuTechOrder: NuTechOrderOverview | null = null
+  let jobWorkflow: JobWorkflowOverview | null = null
+  let internalWorkspace: InternalWorkspaceSummary | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -162,14 +209,21 @@ export default async function ProjectSummaryPage({
   let rfiSummary: ProjectRfiSummary | null = null
   let familySummary: ProjectFamilySummary | null = null
   let canEditRegistry = false
+  let canCreateDriveFolder = false
   let developerModeEnabled = false
   let userRole: string | null = null
   let projectRole: string | null = null
   let projectTextPhoneNumber: string | null = null
 
+  // Owners and project partners use their own workspace views. Checked before
+  // the main load so the redirect isn't built inside its try/catch.
+  const audienceRedirectHref = await projectAudienceRedirectHref(id)
+  if (audienceRedirectHref) return <ClientRedirect href={audienceRedirectHref} />
+
   try {
     const currentUser = await getCurrentUser()
     canEditRegistry = canManageProjectRegistry(currentUser)
+    canCreateDriveFolder = canCreateProjectDriveFolder(currentUser)
     developerModeEnabled = await isDeveloperModeEnabled(canEditRegistry)
     userRole = currentUser?.role ?? null
 
@@ -191,15 +245,6 @@ export default async function ProjectSummaryPage({
       )
       .get()
     projectRole = routeMembership?.role ?? null
-    if (projectRole === "client" || projectRole === "owner") {
-      redirect(projectAudiencePreviewHref(id, "owner"))
-    }
-    if (
-      projectRole === "subcontractor" ||
-      projectRole === "supplier"
-    ) {
-      redirect(projectAudiencePreviewHref(id, "sub-vendor"))
-    }
 
     const [foundRow] = await db
       .select({
@@ -323,6 +368,10 @@ export default async function ProjectSummaryPage({
       loadedOperationsSummary,
       loadedRfiSummary,
       loadedFamilySummary,
+      loadedRoleDashboardOrders,
+      loadedNuTechOrder,
+      loadedJobWorkflow,
+      loadedInternalWorkspace,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -344,6 +393,13 @@ export default async function ProjectSummaryPage({
       loadOptionalSummary("project family summary", () =>
         getProjectFamilySummary(id),
       ),
+      getRoleDashboardOrders().catch(() => ({})),
+      // Null unless this is an N job and the viewer has Nu-Tech office access.
+      getNuTechOrderOverview(id).catch(() => null),
+      // Null for Nu-Tech jobs and departments without a workflow yet.
+      getJobWorkflowOverview(id).catch(() => null),
+      // Null unless this project is an internal workspace (H-Office, the yard).
+      getInternalWorkspaceSummary(id).catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -353,6 +409,10 @@ export default async function ProjectSummaryPage({
     operationsSummary = loadedOperationsSummary
     rfiSummary = loadedRfiSummary
     familySummary = loadedFamilySummary
+    roleDashboardOrders = loadedRoleDashboardOrders
+    nuTechOrder = loadedNuTechOrder
+    jobWorkflow = loadedJobWorkflow
+    internalWorkspace = loadedInternalWorkspace
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -418,10 +478,15 @@ export default async function ProjectSummaryPage({
             jobStatus={projectJobStatus}
             clientStatus={clientStatus}
           />
-          <ProjectActionsMenu
-            projectId={id}
-            projectDriveFolderId={project?.googleDriveFolderId ?? null}
-          />
+          <div className="flex shrink-0 items-center gap-2">
+            {canCreateDriveFolder && project && !project.googleDriveFolderId && (
+              <ProjectDriveFolderButton projectId={id} />
+            )}
+            <ProjectActionsMenu
+              projectId={id}
+              projectDriveFolderId={project?.googleDriveFolderId ?? null}
+            />
+          </div>
         </div>
 
         {/* meta line: address + tasks */}
@@ -445,6 +510,19 @@ export default async function ProjectSummaryPage({
           </div>
         )}
 
+        {internalWorkspace ? (
+          <div className="mb-4 sm:mb-5">
+            <InternalWorkspacePanel summary={internalWorkspace} />
+          </div>
+        ) : nuTechOrder ? (
+          <div className="mb-4 sm:mb-5">
+            <NuTechOrderStepper overview={nuTechOrder} />
+          </div>
+        ) : jobWorkflow ? (
+          <div className="mb-4 sm:mb-5">
+            <JobWorkflowOverviewPanel overview={jobWorkflow} />
+          </div>
+        ) : null}
         <div className="mb-4 sm:mb-5">
           <Link
             href={`/dashboard/projects/${id}/information`}
@@ -533,6 +611,16 @@ export default async function ProjectSummaryPage({
           </Link>
         </section>
 
+        {internalWorkspace ? (
+          <div className="mb-4 sm:mb-6">
+            <InternalWorkQueues
+              projectId={id}
+              kind={internalWorkspace.workspaceKind}
+              savedOrder={roleDashboardOrders[internalQueueRoleId(internalWorkspace.workspaceKind)]}
+              badges={internalQueueBadges(internalWorkspace)}
+            />
+          </div>
+        ) : (
         <div className="mb-4 sm:mb-6">
           <ProjectWorkspaceShell
             projectId={id}
@@ -548,8 +636,10 @@ export default async function ProjectSummaryPage({
             canEditRegistry={canEditRegistry}
             initialRoleId={safeInitialWorkflowRoleId}
             allowedRoleIds={allowedRoleIds}
+            roleDashboardOrders={roleDashboardOrders}
           />
         </div>
+        )}
       </div>
 
       {/* right sidebar: week agenda */}

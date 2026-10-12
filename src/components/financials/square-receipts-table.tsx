@@ -4,6 +4,7 @@ import Link from "next/link"
 import * as React from "react"
 
 import type { SquareReceiptListItem } from "@/app/actions/sage-square-receipts"
+import { SortableTableHead, useTableSort } from "@/components/ui/sortable-header"
 import {
   Table,
   TableBody,
@@ -42,10 +43,22 @@ function statusClass(status: string): string {
   return "text-muted-foreground"
 }
 
+type ReceiptSortKey = "project" | "invoice" | "payment" | "received" | "fee" | "status"
+
+const RECEIPT_SORT: Readonly<Record<ReceiptSortKey, (receipt: SquareReceiptListItem) => string | number | null>> = {
+  project: (receipt) => receipt.projectNumber ?? receipt.projectName,
+  invoice: (receipt) => receipt.sageInvoiceNumber,
+  payment: (receipt) => receipt.paymentCompletedAt,
+  received: (receipt) => receipt.amountCents,
+  fee: (receipt) => receipt.feeCents,
+  status: (receipt) => statusLabel(receipt.receiptStatus),
+}
+
 export function SquareReceiptsTable({
   receipts,
   selectedReceiptId,
 }: SquareReceiptsTableProps) {
+  const { rows: sortedReceipts, sort, toggle } = useTableSort(receipts, RECEIPT_SORT)
   React.useEffect(() => {
     if (!selectedReceiptId) return
     window.requestAnimationFrame(() => {
@@ -74,16 +87,16 @@ export function SquareReceiptsTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Project / client</TableHead>
-                <TableHead>Sage invoice</TableHead>
-                <TableHead>Square payment</TableHead>
-                <TableHead className="text-right">Received</TableHead>
-                <TableHead className="text-right">Square fee</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableTableHead sortKey="project" sort={sort} onSort={toggle}>Project / client</SortableTableHead>
+                <SortableTableHead sortKey="invoice" sort={sort} onSort={toggle}>Sage invoice</SortableTableHead>
+                <SortableTableHead sortKey="payment" sort={sort} onSort={toggle}>Square payment</SortableTableHead>
+                <SortableTableHead sortKey="received" sort={sort} onSort={toggle} align="right" className="text-right">Received</SortableTableHead>
+                <SortableTableHead sortKey="fee" sort={sort} onSort={toggle} align="right" className="text-right">Square fee</SortableTableHead>
+                <SortableTableHead sortKey="status" sort={sort} onSort={toggle}>Status</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {receipts.map((receipt) => (
+              {sortedReceipts.map((receipt) => (
                 <TableRow
                   id={`square-receipt-${receipt.id}`}
                   key={receipt.id}

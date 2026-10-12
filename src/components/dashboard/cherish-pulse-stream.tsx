@@ -272,7 +272,7 @@ export function CherishPulseStream({
                 {privateItems.map((item) => (
                   <article
                     key={item.id}
-                    className="border border-[#9d832c] p-3"
+                    className="border border-brand-nutech-gold p-3"
                   >
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <IconLock className="size-3" /> Leadership only ·{" "}
@@ -365,7 +365,7 @@ export function CherishPulseStream({
 
       <section>
         <div className="flex items-center gap-2">
-          <IconHeartHandshake className="size-4 text-[#9d832c]" />
+          <IconHeartHandshake className="size-4 text-brand-nutech-gold" />
           <h4 className="text-sm font-semibold">Team recognition</h4>
         </div>
         <div className="mt-3 space-y-2">

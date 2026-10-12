@@ -39,6 +39,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/page-header"
 
 function platformIcon(platform: string): React.ReactElement {
   if (platform === "instagram") return <IconBrandInstagram className="size-4" />
@@ -181,24 +182,20 @@ export function ProjectSocialWorkspace({
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Social publishing · {workspace.project.department
-              ? `Department ${workspace.project.department}`
-              : "Department not set"}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold">Project social posts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Draft from approved photos, review privacy-safe copy, then publish to this department’s accounts.
-          </p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href={`/dashboard/projects/${workspace.project.id}/information`}>
-            Edit public project identity
-          </Link>
-        </Button>
-      </header>
+      <PageHeader
+        className="mb-0"
+        eyebrow={workspace.project.department ? `Department ${workspace.project.department}` : "Department not set"}
+        title="Social posts"
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/projects/${workspace.project.id}/information`}>
+                {workspace.project.privacyReady ? "Edit public project identity" : "Complete project social setup"}
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       {!workspace.project.privacyReady ? (
         <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
@@ -275,10 +272,17 @@ export function ProjectSocialWorkspace({
         </div>
 
         <div className="mt-5">
-          <Label>Department destinations</Label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label>Department destinations</Label>
+            <Link href="/dashboard/settings?section=integrations" className="text-sm underline">
+              Manage social connections
+            </Link>
+          </div>
           {workspace.accounts.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              No social accounts are connected for this department. An administrator can connect them in Settings → Integrations.
+              {workspace.project.department
+                ? "No social accounts are connected for this department. An administrator can connect them in Settings → Integrations."
+                : "Choose the project department to see its connected social accounts."}
             </p>
           ) : (
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -294,6 +298,9 @@ export function ProjectSocialWorkspace({
                   <span className="min-w-0">
                     <span className="block font-medium">{platformLabel(account.platform)}</span>
                     <span className="block truncate text-xs text-muted-foreground">{account.accountName}</span>
+                    {account.publishingIssue ? (
+                      <span className="mt-1 block text-xs text-warning">{account.publishingIssue}</span>
+                    ) : null}
                   </span>
                 </label>
               ))}
@@ -325,7 +332,7 @@ export function ProjectSocialWorkspace({
           </div>
           {workspace.photos.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">
-              Mark approved photos as public-shareable in Photo review before using them here.
+              Mark approved photos as public-shareable in <Link href={`/dashboard/projects/${workspace.project.id}/photos`} className="underline">Photo review</Link> before using them here.
             </p>
           ) : (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">

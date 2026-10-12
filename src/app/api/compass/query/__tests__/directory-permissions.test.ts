@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   row: vi.fn(),
 }))
 
+vi.mock("server-only", () => ({}))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: async () => ({ env: { DB: {} } }) }))
 vi.mock("@/db", () => ({
   getDb: () => ({

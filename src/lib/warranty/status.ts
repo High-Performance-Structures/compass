@@ -77,3 +77,7 @@ export function canOwnerDeleteWarrantyClaim(input: {
     input.claimantUserId === input.viewerUserId && input.status === "submitted"
   )
 }
+
+/** Statuses a sub/vendor may move their own claim to; the owner confirms the resolution. */
+export const VENDOR_WARRANTY_STATUSES = ["visit_scheduled", "in_progress", "resolved"] as const
+export type VendorWarrantyStatus = (typeof VENDOR_WARRANTY_STATUSES)[number]

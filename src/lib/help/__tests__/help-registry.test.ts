@@ -22,15 +22,19 @@ describe("help registry", () => {
     expect(result.status).toBe(0)
   })
 
-  it("provides the initial canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(15)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(15)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(15)
+  it("provides the canonical guide set with unique stable IDs", () => {
+    expect(HELP_GUIDES).toHaveLength(19)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(19)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(19)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
         "audience.trade",
         "greeting.cards",
+        "jarvis",
+        "nutech.orders",
+        "social.posts",
+        "settings.company",
       ])
     )
 

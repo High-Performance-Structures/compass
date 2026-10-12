@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils"
 import { workCalendarEntryMatches } from "@/lib/work-calendar"
 import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
 import { WorkCalendarTodoDialog } from "./work-calendar-todo-dialog"
+import { PageHeader } from "@/components/page-header"
 
 export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
 export type WorkCalendarView = "today" | "week" | "month" | "list"
@@ -209,7 +210,7 @@ function kindTone(kind: WorkCalendarEntryKind): string {
     case "schedule":
       return "border-brand-compass-blue bg-card text-brand-compass-blue"
     case "event":
-      return "border-[#5f4b8b] bg-card text-[#5f4b8b]"
+      return "border-brand-compass-violet bg-card text-brand-compass-violet"
     case "task":
       return "border-brand-hps-primary bg-card text-brand-hps-primary"
     case "rfi":
@@ -222,15 +223,15 @@ function kindTone(kind: WorkCalendarEntryKind): string {
 function compactKindTone(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
-      return "border-l-[#2f5963]"
+      return "border-l-brand-compass-blue"
     case "event":
-      return "border-l-[#5f4b8b]"
+      return "border-l-brand-compass-violet"
     case "task":
-      return "border-l-[#3f7d4d]"
+      return "border-l-brand-hps-field"
     case "rfi":
-      return "border-l-[#9d832c]"
+      return "border-l-brand-nutech-gold"
     case "purchase_order":
-      return "border-l-[#6f471f]"
+      return "border-l-brand-orc-brown"
   }
 }
 
@@ -460,25 +461,11 @@ export function WorkCalendar({
     <div className="min-h-0 flex-1 overflow-y-auto">
       <section className="border-b bg-background">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_26rem]">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex size-10 items-center justify-center rounded-md border border-brand-hps-primary bg-card text-brand-hps-primary">
-                <IconCalendarEvent className="size-5" />
-              </span>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
-                  Work calendar
-                </p>
-                <h1 className="text-2xl font-semibold tracking-tight">
-                  To-dos, schedule items, and field follow-ups.
-                </h1>
-              </div>
-            </div>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-              A cross-project view of work that needs a person, a date, and a
-              source record.
-            </p>
-          </div>
+          <PageHeader
+            className="mb-0 min-w-0"
+            icon={<IconCalendarEvent className="size-5 text-primary" />}
+            title="Work calendar"
+          />
 
           <div className="grid grid-cols-4 gap-2 rounded-lg border bg-muted/30 p-3">
             <div>

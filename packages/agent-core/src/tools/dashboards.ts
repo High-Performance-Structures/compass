@@ -62,7 +62,8 @@ export function dashboardTools(
       input_schema: zodToJsonSchema(listSchema),
       run: async (): Promise<string> => {
         const result = await dataSource.fetch(
-          "/api/compass/dashboards/list"
+          "/api/compass/dashboards",
+          { action: "list" }
         )
         return JSON.stringify(result)
       },
@@ -79,8 +80,8 @@ export function dashboardTools(
       run: async (input: unknown): Promise<string> => {
         const args = editSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/dashboards/get",
-          { dashboardId: args.dashboardId }
+          "/api/compass/dashboards",
+          { action: "get", dashboardId: args.dashboardId }
         )
         return JSON.stringify({
           action: "load_dashboard",
@@ -100,8 +101,8 @@ export function dashboardTools(
       run: async (input: unknown): Promise<string> => {
         const args = deleteSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/dashboards/delete",
-          args
+          "/api/compass/dashboards",
+          { action: "delete", ...args }
         )
         return JSON.stringify(result)
       },

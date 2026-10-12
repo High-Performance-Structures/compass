@@ -1,6 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
-import { organizations, projects, users } from "./schema"
+import { organizations, projectContacts, projects, users, vendors } from "./schema"
 
 export const projectWarrantyClaims = sqliteTable(
   "project_warranty_claims",
@@ -31,6 +31,13 @@ export const projectWarrantyClaims = sqliteTable(
       onDelete: "set null",
     }),
     assignedName: text("assigned_name"),
+    /** The Compass contact the claim is assigned to (sub/vendor visibility). */
+    assignedProjectContactId: text("assigned_project_contact_id").references(() => projectContacts.id, {
+      onDelete: "set null",
+    }),
+    assignedVendorId: text("assigned_vendor_id").references(() => vendors.id, {
+      onDelete: "set null",
+    }),
     acknowledgedAt: text("acknowledged_at"),
     scheduledFor: text("scheduled_for"),
     workStartedAt: text("work_started_at"),
@@ -65,6 +72,8 @@ export const projectWarrantyClaims = sqliteTable(
       table.assignedUserId,
       table.status
     ),
+    index("project_warranty_claims_assigned_contact_idx").on(table.projectId, table.assignedProjectContactId),
+    index("project_warranty_claims_assigned_vendor_idx").on(table.projectId, table.assignedVendorId),
   ]
 )
 

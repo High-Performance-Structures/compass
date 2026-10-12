@@ -30,8 +30,10 @@ import {
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { OwnerUpdateCreateButton } from "@/components/projects/owner-update-create-button"
 import { getCurrentUser } from "@/lib/auth"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { PageHeader } from "@/components/page-header"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -127,7 +129,8 @@ export default async function ProjectOwnerUpdatesPage({
     }
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     notFound()
   }
 
@@ -143,47 +146,39 @@ export default async function ProjectOwnerUpdatesPage({
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-3 sm:p-4 lg:p-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/dashboard/projects/${project.id}`}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              {projectLabel}
-            </Link>
-            <span className="text-muted-foreground">/</span>
-            <span className="text-sm font-medium">Owner Updates</span>
+      <PageHeader
+        className="mb-0"
+        eyebrow={
+          <Link
+            href={`/dashboard/projects/${project.id}`}
+            className="hover:text-foreground"
+          >
+            {projectLabel}
+          </Link>
+        }
+        title="Owner Updates"
+        actions={
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <ProjectContextSwitcher
+                currentProjectId={project.id}
+                targetSection="owner-updates"
+                placeholder="Switch owner update project..."
+                className="w-full sm:w-[280px]"
+              />
+              {internalViewer && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <OwnerUpdateCreateButton projectId={project.id} />
+                  <Button asChild variant="outline">
+                    <Link href={`/dashboard/projects/${project.id}/photos`}>
+                      <IconPhoto className="size-4" />
+                      Review Photos
+                    </Link>
+                  </Button>
+                </div>
+              )}
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal">
-            Owner Updates
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            {internalViewer
-              ? "Draft, review, and publish owner-facing updates."
-              : "View published project updates and progress history."}
-          </p>
-        </div>
-        <div className="flex flex-col items-stretch gap-2 sm:items-end">
-          <ProjectContextSwitcher
-            currentProjectId={project.id}
-            targetSection="owner-updates"
-            placeholder="Switch owner update project..."
-            className="w-full sm:w-[280px]"
-          />
-          {internalViewer && (
-            <div className="flex flex-wrap justify-end gap-2">
-              <OwnerUpdateCreateButton projectId={project.id} />
-              <Button asChild variant="outline">
-                <Link href={`/dashboard/projects/${project.id}/photos`}>
-                  <IconPhoto className="size-4" />
-                  Review Photos
-                </Link>
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
+        }
+      />
 
       <section className="grid grid-cols-3 gap-x-5 gap-y-2 border-y py-3">
         <div>

@@ -197,23 +197,26 @@ export function transformWithPhaseGroups(
       collapsed,
     })
 
-    if (collapsed) {
-      const phaseDeps = derivePhaseDeps(
-        group.phase, groups, dependencies, collapsedPhases
-      )
-      frappeTasks.push({
-        id: phaseTaskId(group.phase),
-        name: group.label,
-        start: group.startDate,
-        end: group.endDate,
-        progress: group.progress,
-        dependencies: phaseDeps.join(", "),
-        custom_class: phaseClassName(group.phase),
-        displayColor: null,
-        isCriticalPath: false,
-        isMilestone: false,
-      })
-    } else {
+    // Every phase header row in the list gets a summary bar, so the chart has
+    // a row for it and stays level with the list. Expanded phases leave the
+    // dependency arrows to their items.
+    const phaseDeps = collapsed
+      ? derivePhaseDeps(group.phase, groups, dependencies, collapsedPhases)
+      : []
+    frappeTasks.push({
+      id: phaseTaskId(group.phase),
+      name: group.label,
+      start: group.startDate,
+      end: group.endDate,
+      progress: group.progress,
+      dependencies: phaseDeps.join(", "),
+      custom_class: phaseClassName(group.phase),
+      displayColor: null,
+      isCriticalPath: false,
+      isMilestone: false,
+    })
+
+    if (!collapsed) {
       for (const task of group.tasks) {
         displayItems.push({ type: "task", task })
 

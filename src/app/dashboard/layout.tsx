@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic"
 
 import { AppSidebar } from "@/components/app-sidebar"
+import { DepartmentProfilesProvider } from "@/components/branding/department-profiles-provider"
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { SiteHeader } from "@/components/site-header"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { CommandMenuProvider } from "@/components/command-menu-provider"
@@ -30,6 +32,7 @@ import { PushNotificationRegistrar } from "@/hooks/use-native-push"
 import { DesktopShell } from "@/components/desktop/desktop-shell"
 import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 import { VoiceProvider } from "@/components/voice/voice-provider"
+import { ListeningRoomDockProvider } from "@/components/voice/listening-room-dock-provider"
 import { PresenceProvider } from "@/contexts/presence-context"
 import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
@@ -102,7 +105,9 @@ export default async function DashboardLayout({
       ? `${authUser.organizationId}:${authUser.id}`
       : null
 
+  const departmentProfiles = await currentDepartmentProfiles()
   return (
+    <DepartmentProfilesProvider profiles={departmentProfiles}>
     <DeveloperModeProvider
       canUseDeveloperMode={canUseDeveloperMode}
       initialEnabled={developerModeEnabled}
@@ -119,6 +124,7 @@ export default async function DashboardLayout({
     <ConversationPanelProvider enabled={canUseDirectMessages}>
     <PresenceProvider>
     <VoiceProvider>
+    <ListeningRoomDockProvider enabled={canUseCompassOfficeTalk}>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
     <QuickAddProvider projects={quickAddProjects}>
@@ -188,11 +194,13 @@ export default async function DashboardLayout({
     </QuickAddProvider>
     </ProjectListProvider>
     </SettingsProvider>
+    </ListeningRoomDockProvider>
     </VoiceProvider>
     </PresenceProvider>
     </ConversationPanelProvider>
     </ChatProvider>
     </HelpUiProvider>
     </DeveloperModeProvider>
+    </DepartmentProfilesProvider>
   )
 }

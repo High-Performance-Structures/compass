@@ -21,6 +21,7 @@ export function getProjectTargetSection(
     case "contacts":
     case "conversations":
     case "daily-logs":
+    case "duty-log":
     case "estimate":
     case "financials":
     case "owner-updates":
@@ -30,6 +31,7 @@ export function getProjectTargetSection(
     case "rfqs":
     case "schedule":
     case "selections":
+    case "shop-tickets":
     case "todos":
     case "videos":
     case "warranty":

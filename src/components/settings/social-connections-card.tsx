@@ -41,6 +41,8 @@ import {
   type SocialAccountSummary,
 } from "@/lib/social/types"
 
+import { socialPublishingIssue } from "@/lib/social/readiness"
+
 const DEPARTMENTS = [
   { value: "O", label: "Open Range Construction" },
   { value: "H", label: "High Performance Structures" },
@@ -207,7 +209,7 @@ export function SocialConnectionsCard(): React.ReactElement {
                     {platformIcon(account.platform)}
                     <span>{account.accountName}</span>
                     <Badge variant={account.status === "connected" ? "secondary" : "destructive"}>
-                      {account.status}
+                      {account.status === "connected" ? "Account connected" : account.status}
                     </Badge>
                     {account.status === "connected" ? <AlertDialog>
                       <AlertDialogTrigger asChild>
@@ -234,6 +236,14 @@ export function SocialConnectionsCard(): React.ReactElement {
                   <span className="text-xs text-muted-foreground">No accounts connected.</span>
                 ) : null}
               </div>
+              {departmentAccounts.map((account) => {
+                const issue = socialPublishingIssue(account)
+                return issue ? (
+                  <p key={account.id} className="mt-2 text-sm text-warning">
+                    <span className="font-medium">{account.accountName}: </span>{issue}
+                  </p>
+                ) : null
+              })}
             </div>
           )
         })}

@@ -7,7 +7,10 @@ import {
   getProjectChangeOrderFormOptions,
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderDetail } from "@/components/projects/project-change-order-detail"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
+import { getProjectPaperTrail } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 export default async function ProjectChangeOrderDetailPage({
   params,
@@ -19,13 +22,21 @@ export default async function ProjectChangeOrderDetailPage({
 }): Promise<React.ReactElement> {
   const { id: rawProjectId, changeOrderId } = await params
   const id = decodeProjectRouteId(rawProjectId)
-  const [item, formOptions] = await Promise.all([
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
     getProjectChangeOrder(id, changeOrderId),
     getProjectChangeOrderFormOptions(id),
-  ]).catch((error: unknown) => {
-    redirectIfFeaturePermissionDenied(error)
-    throw error
-  })
+    getProjectPaperTrail(id, "change_order"),
+  ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
+      throw error
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
+  const [item, formOptions, paperTrail] = loaded.data
   if (!item) notFound()
 
   const backHref =
@@ -37,6 +48,16 @@ export default async function ProjectChangeOrderDetailPage({
         backHref={backHref}
         internal
         formOptions={formOptions}
+        paperTrailStatus={
+          paperTrail.enabled ? (
+            <PaperTrailRecordStatus
+              projectId={id}
+              recordType="change_order"
+              recordId={changeOrderId}
+              record={paperTrail.records[changeOrderId] ?? null}
+            />
+          ) : null
+        }
       />
     </div>
   )

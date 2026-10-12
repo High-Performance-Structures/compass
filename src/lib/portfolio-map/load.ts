@@ -1,21 +1,37 @@
 import { and, asc, eq, gte, lt, sql } from "drizzle-orm"
 import { getDb } from "@/db"
-import { projects, scheduleTasks } from "@/db/schema"
+import { projects, projectTravelChargeOverrides, scheduleTasks, travelChargeSettings } from "@/db/schema"
+import { applyTravelOverride, type EffectiveTravelCharge } from "@/lib/portfolio-map/travel-overrides"
 import { getProjects } from "@/app/actions/projects"
 import { getCurrentUser } from "@/lib/auth"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { getCloudflareContext } from "@/lib/db"
 import { projectDisplayName } from "@/lib/project-display-name"
 import { dateKeyInTimeZone } from "@/lib/work-calendar"
+import { loadProjectFollowUpSignals } from "@/lib/project-aging-server"
+import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 import {
   defaultPortfolioPhase,
   isPortfolioMapVisibility,
   portfolioHealth,
   portfolioPhaseFor,
+  type PortfolioMapRules,
   resolveTown,
   spreadSharedTowns,
   type PortfolioMapJob,
   type PortfolioProjectRule,
 } from "@/lib/portfolio-map/model"
+import { readPortfolioMapRules } from "@/lib/portfolio-map/rules-server"
+import { DEFAULT_PORTFOLIO_MAP_RULES, departmentView } from "@/lib/portfolio-map/phases"
+import { resolvedProjectDepartment } from "@/lib/project-branding"
+import type { WorkspaceKind } from "@/lib/internal-duties/model"
+import { locateSites, siteLocationWriter, needsSiteLookup, SITE_LOOKUPS_PER_LOAD } from "@/lib/portfolio-map/site-locations"
+import {
+  DEFAULT_TRAVEL_CHARGE_SETTINGS,
+  jobTravelCharge,
+  parseTravelChargeSettings,
+  type TravelChargeSettings,
+} from "@/lib/portfolio-map/travel-zones"
 
 const TIME_ZONE = "America/Denver"
 
@@ -30,15 +46,57 @@ export type PortfolioHiddenJob = PortfolioUnplacedJob & {
   readonly restoreVisibility: "default" | "shown"
 }
 
+/** The job's charge with any per-job adjustments applied (see travel-overrides). */
+/** Where the site lookup stands: found, tried and not matched, not tried yet, or no address to try. */
+export type SiteLookupState = "found" | "not_found" | "pending" | "no_address"
+
+export type PortfolioJobTravel = EffectiveTravelCharge & {
+  readonly siteLookup: SiteLookupState
+  /** How the site was placed when not from its own number, e.g. "Near 1062 CR 8952". */
+  readonly siteNote: string | null
+}
+
+/** Office-only: zone and mountain charges. Never sent to owner or vendor views. */
+export type PortfolioTravelData = {
+  readonly settings: TravelChargeSettings
+  readonly byJobId: Readonly<Record<string, PortfolioJobTravel>>
+}
+
+/**
+ * A job on the Internal map view: an internal workspace (office, owner's
+ * office, yard), or a job of a department the company put on that view
+ * (no workspace kind).
+ */
+export type PortfolioInternalJob = PortfolioMapJob & {
+  readonly workspaceKind: WorkspaceKind | null
+  readonly address: string | null
+}
+
 export type PortfolioMapData = {
   readonly jobs: readonly PortfolioMapJob[]
+  /** Null for people outside the office staff. */
+  readonly travel: PortfolioTravelData | null
   /** Jobs in a mapped phase whose town could not be resolved. */
   readonly unplaced: readonly PortfolioUnplacedJob[]
   /** Jobs someone removed from the map with the per-project override. */
   readonly hidden: readonly PortfolioHiddenJob[]
+  /**
+   * Internal workspaces, shown only on the map's Internal view and never with
+   * the projects, whatever their status or map setting.
+   */
+  readonly internal: readonly PortfolioInternalJob[]
+  /** The company's status and department rules, for status moves on the map. */
+  readonly rules: PortfolioMapRules
 }
 
-const EMPTY: PortfolioMapData = { jobs: [], unplaced: [], hidden: [] }
+const EMPTY: PortfolioMapData = {
+  jobs: [],
+  travel: null,
+  unplaced: [],
+  hidden: [],
+  internal: [],
+  rules: DEFAULT_PORTFOLIO_MAP_RULES,
+}
 
 /**
  * Jobs for the office portfolio map. Visibility follows getProjects(), so the
@@ -51,13 +109,14 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const visible = await getProjects()
     if (visible.length === 0) return EMPTY
 
-    const { env } = await getCloudflareContext()
+    const { env, ctx } = await getCloudflareContext()
     if (!env?.DB) return EMPTY
     const db = getDb(env.DB)
     const orgId = user.organizationId
     const today = dateKeyInTimeZone(new Date(), TIME_ZONE)
 
-    const [locations, taskStats, upcoming] = await Promise.all([
+    const showFollowUp = isInternalStaffRole(user.role)
+    const [locations, taskStats, upcoming, storedSettings, overrideRows, followUps, rules] = await Promise.all([
       db
         .select({
           id: projects.id,
@@ -65,6 +124,14 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           address: projects.address,
           publicLocationCity: projects.publicLocationCity,
           mapVisibility: projects.portfolioMapVisibility,
+          workspaceKind: projects.workspaceKind,
+          siteLatitude: projects.siteLatitude,
+          siteLongitude: projects.siteLongitude,
+          siteElevationFt: projects.siteElevationFt,
+          siteLocationAddress: projects.siteLocationAddress,
+          siteLocationStatus: projects.siteLocationStatus,
+          siteLocatedAt: projects.siteLocatedAt,
+          siteLocationNote: projects.siteLocationNote,
         })
         .from(projects)
         .where(eq(projects.organizationId, orgId)),
@@ -96,12 +163,43 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           ),
         )
         .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder)),
+      db
+        .select({ settingsJson: travelChargeSettings.settingsJson })
+        .from(travelChargeSettings)
+        .where(eq(travelChargeSettings.organizationId, orgId))
+        .limit(1),
+      // Per-job adjustments are optional: if they can't be read, the map
+      // still shows every job with the default charges.
+      db
+        .select()
+        .from(projectTravelChargeOverrides)
+        .where(eq(projectTravelChargeOverrides.organizationId, orgId))
+        .catch((error: unknown) => {
+          console.error("Per-job zone charges unavailable", error instanceof Error ? error.message : error)
+          return []
+        }),
+      // Follow-up aging is office information, and optional like the charges.
+      showFollowUp
+        ? loadProjectFollowUpSignals(db, orgId, visible, new Date()).catch((error: unknown) => {
+            console.error("Project follow-up aging unavailable", error instanceof Error ? error.message : error)
+            return new Map<string, ProjectFollowUpSignal>()
+          })
+        : new Map<string, ProjectFollowUpSignal>(),
+      readPortfolioMapRules(db, orgId),
     ])
+    const settings = parseStoredSettings(storedSettings[0]?.settingsJson)
+    const overrideById = new Map(overrideRows.map((row) => [row.projectId, row]))
 
     const locationById = new Map(locations.map((row) => [row.id, row]))
+    const internalIds = new Set<string>()
     const hidden: PortfolioHiddenJob[] = []
     const phased = visible.flatMap((project) => {
       const location = locationById.get(project.id)
+      // Internal jobs go on the Internal view; the phase only shapes the marker.
+      if (isInternalJob(project, location ?? null, rules)) {
+        internalIds.add(project.id)
+        return [{ project, phase: "estimating" as const, visibility: "default" as const }]
+      }
       const stored = location?.mapVisibility ?? "default"
       const rule: PortfolioProjectRule = {
         projectId: project.id,
@@ -116,11 +214,11 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           id: project.id,
           name: projectDisplayName(project),
           projectNumber: project.projectNumber,
-          restoreVisibility: defaultPortfolioPhase(rule) ? "default" : "shown",
+          restoreVisibility: defaultPortfolioPhase(rule, rules) ? "default" : "shown",
         })
         return []
       }
-      const phase = portfolioPhaseFor(rule)
+      const phase = portfolioPhaseFor(rule, rules)
       return phase ? [{ project, phase, visibility: rule.visibility }] : []
     })
     const statsById = new Map(taskStats.map((row) => [row.projectId, row]))
@@ -137,7 +235,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         address: location?.address ?? null,
         name: project.name,
       })
-      if (!town) {
+      if (!town && !internalIds.has(project.id)) {
         unplaced.push({ id: project.id, name: projectDisplayName(project), projectNumber: project.projectNumber })
       }
       const stats = statsById.get(project.id)
@@ -149,6 +247,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         name: projectDisplayName(project),
         projectNumber: project.projectNumber,
         phase,
+        jobStatusId: project.jobStatusId,
         statusLabel: project.jobStatusLabel,
         town: town?.town ?? null,
         lon: town?.lon ?? null,
@@ -163,12 +262,98 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         nextTaskStart: next?.startDate ?? null,
         health: portfolioHealth(pastDueCount, stalledCount),
         visibility,
+        followUp: followUps.get(project.id) ?? null,
       }
     })
-    return { jobs: spreadSharedTowns(jobs), unplaced, hidden }
+    // Fan out same-town jobs, then put jobs with a located site on the site itself.
+    const now = Date.now()
+    const showTravel = isInternalStaffRole(user.role)
+    const byJobId: Record<string, PortfolioJobTravel> = {}
+    const placedJobs = spreadSharedTowns(jobs).map((job) => {
+      const location = locationById.get(job.id)
+      const site =
+        location?.siteLocationStatus === "found" &&
+        location.siteLocationAddress === (location.address?.trim() ?? "") &&
+        location.siteLatitude !== null &&
+        location.siteLongitude !== null
+          ? { lat: location.siteLatitude, lon: location.siteLongitude, elevationFt: location.siteElevationFt }
+          : null
+      const lat = site?.lat ?? job.lat
+      const lon = site?.lon ?? job.lon
+      const address = location?.address?.trim() ?? ""
+      const siteLookup: SiteLookupState = site
+        ? "found"
+        : address.length === 0
+          ? "no_address"
+          : location?.siteLocationStatus === "not_found" && location.siteLocationAddress === address
+            ? "not_found"
+            : "pending"
+      if (showTravel && lat !== null && lon !== null) {
+        const elevationFt = site?.elevationFt ?? null
+        const row = overrideById.get(job.id)
+        const charge = applyTravelOverride(
+          { ...jobTravelCharge({ lat, lon, elevationFt, approximate: site === null, settings }), elevationFt },
+          row
+            ? {
+                zoneIndex: row.zoneIndex,
+                zoneRateCents: row.zoneRateCents,
+                siteElevationFt: row.siteElevationFt,
+                mountainRateCents: row.mountainRateCents,
+                lodging: row.lodging,
+                lodgingPerNightCents: row.lodgingPerNightCents,
+                perDiemPerDayCents: row.perDiemPerDayCents,
+                note: row.note,
+              }
+            : null,
+          settings,
+        )
+        byJobId[job.id] = { ...charge, siteLookup, siteNote: site ? (location?.siteLocationNote ?? null) : null }
+      }
+      return site ? { ...job, lat: site.lat, lon: site.lon } : job
+    })
+    const toLocate = placedJobs
+      .flatMap((job) => {
+        const location = locationById.get(job.id)
+        return location && needsSiteLookup(location, now) ? [location] : []
+      })
+      .slice(0, SITE_LOOKUPS_PER_LOAD)
+    if (toLocate.length > 0) ctx.waitUntil(locateSites(siteLocationWriter(db, orgId), toLocate))
+    const internal = placedJobs.flatMap((job): PortfolioInternalJob[] => {
+      if (!internalIds.has(job.id)) return []
+      const location = locationById.get(job.id)
+      return [{ ...job, workspaceKind: location?.workspaceKind ?? null, address: location?.address?.trim() || null }]
+    })
+    return {
+      jobs: placedJobs.filter((job) => !internalIds.has(job.id)),
+      travel: showTravel ? { settings, byJobId } : null,
+      unplaced,
+      hidden,
+      internal,
+      rules,
+    }
   } catch (error) {
     console.error("Portfolio map data failed", error)
     return EMPTY
+  }
+}
+
+/** Internal workspaces, and jobs of a department the company put on the Internal view. */
+function isInternalJob(
+  project: { readonly id: string; readonly projectNumber: string | null },
+  row: { readonly department: string | null; readonly workspaceKind: string | null } | null,
+  rules: PortfolioMapRules,
+): boolean {
+  if (row?.workspaceKind) return true
+  const department = resolvedProjectDepartment({ department: row?.department ?? null, projectId: project.id, projectNumber: project.projectNumber })
+  return departmentView(department, rules) === "internal"
+}
+
+function parseStoredSettings(json: string | undefined): TravelChargeSettings {
+  if (!json) return DEFAULT_TRAVEL_CHARGE_SETTINGS
+  try {
+    return parseTravelChargeSettings(JSON.parse(json))
+  } catch {
+    return DEFAULT_TRAVEL_CHARGE_SETTINGS
   }
 }
 
@@ -192,11 +377,14 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
     if (visible.length === 0) return []
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
-    const rows = await getDb(env.DB)
+    const db = getDb(env.DB)
+    const rules = await readPortfolioMapRules(db, user.organizationId)
+    const rows = await db
       .select({
         id: projects.id,
         department: projects.department,
         mapVisibility: projects.portfolioMapVisibility,
+        workspaceKind: projects.workspaceKind,
       })
       .from(projects)
       .where(eq(projects.organizationId, user.organizationId))
@@ -204,6 +392,8 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
     return visible
       .flatMap((project): PortfolioAddableProject[] => {
         const row = rowById.get(project.id)
+        // Internal jobs are on the Internal view, not added to the projects.
+        if (isInternalJob(project, row ?? null, rules)) return []
         const stored = row?.mapVisibility ?? "default"
         const rule: PortfolioProjectRule = {
           projectId: project.id,
@@ -213,7 +403,7 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
           jobStatusLabel: project.jobStatusLabel,
           visibility: isPortfolioMapVisibility(stored) ? stored : "default",
         }
-        if (rule.visibility !== "default" || portfolioPhaseFor(rule) !== null) return []
+        if (rule.visibility !== "default" || portfolioPhaseFor(rule, rules) !== null) return []
         return [{
           id: project.id,
           name: projectDisplayName(project),

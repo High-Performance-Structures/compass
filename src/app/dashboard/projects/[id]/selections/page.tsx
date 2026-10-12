@@ -1,3 +1,4 @@
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { getSelectionWorkspace } from "@/app/actions/selection-decisions-read"
 import { PageHeader } from "@/components/page-header"
 import { SelectionDecisionWorkspace } from "@/components/selections/selection-decision-workspace"
@@ -19,7 +20,8 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
 import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
 import { projectBrandFor } from "@/lib/project-branding"
 import { projectNumberAndName } from "@/lib/project-display-name"
 
@@ -64,7 +66,8 @@ export default async function ProjectSelectionsPage({
     ])
   } catch (error) {
     if (hasDigest(error)) throw error
-    redirectIfFeaturePermissionDenied(error)
+    const deniedHref = permissionDeniedRedirectHref(error)
+    if (deniedHref) return <ClientRedirect href={deniedHref} />
     if (isProjectNotFound(error)) notFound()
     throw error
   }
@@ -72,7 +75,7 @@ export default async function ProjectSelectionsPage({
   const projects = await getProjects()
   const project = projects.find((item) => item.id === id)
   const label = projectLabel(project)
-  const brand = projectBrandFor({
+  const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: id,
     projectNumber: project?.projectNumber,
   })
@@ -83,12 +86,6 @@ export default async function ProjectSelectionsPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<ProjectBrandLogo brand={brand} size={32} className="h-8 w-8 object-contain" />}
         title="Finish Selections"
-        description={
-          <>
-            {label} room selections, supplier links, cost codes, and RFQ-ready
-            items.
-          </>
-        }
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">

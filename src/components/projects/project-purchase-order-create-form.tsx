@@ -33,6 +33,8 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import {
   Popover,
   PopoverContent,
@@ -320,6 +322,15 @@ type SharedPurchaseOrderFormProps = {
   readonly siteContactOptions: readonly ProjectTaskAssigneeOption[]
   readonly phaseOptions: readonly ProjectPurchaseOrderPhaseOption[]
   readonly costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
+  /**
+   * When set, each line's item is chosen from this list (a price list, such
+   * as the manufacturer's catalog) and fills its unit, cost and cost code.
+   */
+  readonly catalogItems?: readonly PurchaseOrderCatalogItem[]
+  /** Button text for a new PO; "New PO" by default. */
+  readonly createLabel?: string
+  /** Secondary styling, for jobs whose main PO comes from another button. */
+  readonly createSecondary?: boolean
 }
 
 type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
@@ -351,6 +362,7 @@ function ProjectPurchaseOrderForm(
     siteContactOptions,
     phaseOptions,
     costCodeOptions,
+    catalogItems,
   } = props
   const purchaseOrder = props.kind === "edit" ? props.purchaseOrder : null
   const router = useRouter()
@@ -401,6 +413,23 @@ function ProjectPurchaseOrderForm(
   function removeLine(id: string): void {
     setLines((current) =>
       current.length === 1 ? current : current.filter((line) => line.id !== id)
+    )
+  }
+
+  function chooseCatalogItem(id: string, item: PurchaseOrderCatalogItem): void {
+    setLines((current) =>
+      current.map((line) =>
+        line.id === id
+          ? {
+              ...line,
+              description: item.description,
+              unit: item.unit,
+              unitCost: item.unitCost.toFixed(2),
+              costCode: item.costCode ?? line.costCode,
+              amount: "",
+            }
+          : line
+      )
     )
   }
 
@@ -529,15 +558,15 @@ function ProjectPurchaseOrderForm(
       <SheetTrigger asChild>
         <Button
           type="button"
-          variant={purchaseOrder === null ? "default" : "outline"}
-          size={purchaseOrder === null ? "default" : "sm"}
+          variant={purchaseOrder === null && !props.createSecondary ? "default" : "outline"}
+          size={purchaseOrder === null && !props.createSecondary ? "default" : "sm"}
         >
           {purchaseOrder === null ? (
             <IconPlus className="size-4" />
           ) : (
             <IconPencil className="size-4" />
           )}
-          {purchaseOrder === null ? "New PO" : "Edit draft"}
+          {purchaseOrder === null ? (props.createLabel ?? "New PO") : "Edit draft"}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-[min(96vw,1180px)] overflow-y-auto sm:max-w-none">
@@ -763,14 +792,35 @@ function ProjectPurchaseOrderForm(
                   <span className="pt-2 text-xs font-medium text-muted-foreground">
                     {index + 1}
                   </span>
-                  <Input
-                    value={line.description}
-                    onChange={(event) =>
-                      updateLine(line.id, "description", event.target.value)
-                    }
-                    placeholder="Scope or item"
-                    className={LINE_INPUT_CLASS}
-                  />
+                  {catalogItems && catalogItems.length > 0 ? (
+                    <SearchableCombobox
+                      className="h-9 w-full text-sm"
+                      ariaLabel={`Choose item for line ${index + 1}`}
+                      placeholder="Choose a price-list item"
+                      searchPlaceholder="Search by SKU or name..."
+                      emptyMessage="Not on the price list."
+                      value={catalogItems.find((item) => item.description === line.description)?.id ?? ""}
+                      options={catalogItems.map((item) => ({
+                        value: item.id,
+                        label: item.description,
+                        description: item.detail,
+                        keywords: item.description,
+                      }))}
+                      onValueChange={(value) => {
+                        const item = catalogItems.find((candidate) => candidate.id === value)
+                        if (item) chooseCatalogItem(line.id, item)
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      value={line.description}
+                      onChange={(event) =>
+                        updateLine(line.id, "description", event.target.value)
+                      }
+                      placeholder="Scope or item"
+                      className={LINE_INPUT_CLASS}
+                    />
+                  )}
                   <PurchaseOrderOptionPicker
                     value={line.phaseCode}
                     options={phaseOptions}

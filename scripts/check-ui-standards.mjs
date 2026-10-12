@@ -104,15 +104,20 @@ if (
 const smallTextExemptFiles = new Set([
   "src/app/dashboard/projects/[id]/purchase-orders/page.tsx",
   "src/components/desktop/sync-indicator.tsx",
+  "src/components/projects/purchase-order-document.tsx",
+  "src/components/projects/shop-ticket-document.tsx",
   "src/components/help/help-compass-icon.tsx",
   "src/components/projects/daily-log-print-document.tsx",
   "src/components/projects/owner-update-document.tsx",
+  "src/components/projects/estimate-client-report.tsx",
   "src/components/ui/badge-indicator.tsx",
   "src/components/ui/file-preview.tsx",
 ])
 
 const stockColorExemptPrefixes = ["src/components/ai/", "src/app/print/"]
 const stockColorExemptFiles = new Set([
+  // Print documents moved out of src/app/print so the paper trail can reuse them.
+  "src/components/projects/estimate-client-report.tsx",
   "src/components/files/file-icon.tsx",
   "src/components/voice/realtimekit-meeting-dialog.tsx",
   "src/components/voice/realtimekit-meeting-window.tsx",
@@ -170,6 +175,29 @@ for (const relativePath of sourceFiles) {
       const stock = line.match(/(?<![\w:-])(?:(?:hover|focus|focus-visible|group-hover|dark):)*(?:bg|text|border|ring|fill|stroke|divide|outline|placeholder)-(?:red|rose|amber|yellow|orange|emerald|green|blue|sky|gray|neutral|zinc|slate|stone)-\d{2,3}\b/)
       if (stock) {
         failures.push(`${relativePath}:${index + 1}: use a theme token instead of ${stock[0]}`)
+      }
+    })
+  }
+  // Value pickers use SearchableCombobox or the compact Select; native selects
+  // render differently on every platform and cannot be searched.
+  if (relativePath.endsWith(".tsx")) {
+    source.split("\n").forEach((line, index) => {
+      if (/<select\b/.test(line)) {
+        failures.push(`${relativePath}:${index + 1}: use SearchableCombobox or Select instead of a native <select>`)
+      }
+    })
+  }
+  // Literal hex colors in class names bypass theming; use a named token from
+  // globals.css. The public landing page keeps its own marketing palette.
+  if (
+    relativePath.endsWith(".tsx") &&
+    relativePath !== "src/app/page.tsx" &&
+    !stockColorExemptPrefixes.some((prefix) => relativePath.startsWith(prefix))
+  ) {
+    source.split("\n").forEach((line, index) => {
+      const hex = line.match(/(?<![\w:-])(?:[a-z-]+:)*[a-z]+(?:-[a-z]+)*-\[#[0-9a-fA-F]{3,8}\]/)
+      if (hex) {
+        failures.push(`${relativePath}:${index + 1}: use a theme token instead of ${hex[0]}`)
       }
     })
   }

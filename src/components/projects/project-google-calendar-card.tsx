@@ -54,7 +54,7 @@ export function ProjectGoogleCalendarCard({
 
   if (!status) {
     return (
-      <section className="rounded-lg border bg-card p-4 text-sm text-muted-foreground">
+      <section className="border-t pt-5 text-sm text-muted-foreground">
         Loading project calendar settings…
       </section>
     )
@@ -63,7 +63,7 @@ export function ProjectGoogleCalendarCard({
   const calendar = status.calendar
   const busy = pendingAction !== null
   return (
-    <section className="rounded-lg border bg-card p-4 sm:p-5">
+    <section className="border-t pt-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <IconBrandGoogle className="mt-0.5 size-5" />
@@ -80,7 +80,7 @@ export function ProjectGoogleCalendarCard({
       </div>
 
       {!status.ownerConfigured ? (
-        <p className="mt-4 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+        <p className="mt-4 border-l-2 border-l-warning pl-3 text-sm text-warning">
           An administrator must connect and designate the organization Google Calendar account in Settings before a project calendar can be enabled.
         </p>
       ) : null}
@@ -95,7 +95,7 @@ export function ProjectGoogleCalendarCard({
           </div>
           {calendar.lastError ? <p className="text-xs text-destructive">{calendar.lastError}</p> : null}
           {status.requiresReconnect ? (
-            <p className="rounded-md border p-3 text-sm">
+            <p className="border-l-2 pl-3 text-sm">
               Reconnect Google Calendar in Settings before adding this calendar to your account.
             </p>
           ) : null}

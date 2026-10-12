@@ -35,13 +35,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import {
   PROJECT_DOCUMENT_CATEGORIES,
@@ -427,14 +420,18 @@ export function ProjectDocumentsWorkspacePanel({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="project-document-category">Category</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger id="project-document-category"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PROJECT_DOCUMENT_CATEGORIES.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                id="project-document-category"
+                value={category}
+                onValueChange={(value) => {
+                  if (value !== "") setCategory(value)
+                }}
+                options={PROJECT_DOCUMENT_CATEGORIES}
+                ariaLabel="Document category"
+                placeholder="Choose category"
+                searchPlaceholder="Search categories..."
+                emptyMessage="No matching categories."
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="project-document-title">Display title (single file)</Label>

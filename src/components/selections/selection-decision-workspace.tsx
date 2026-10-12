@@ -40,6 +40,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { PageHeader } from "@/components/page-header"
 
 const ALL_ROOMS = "__all_rooms__"
 
@@ -542,20 +543,21 @@ export function SelectionDecisionWorkspace({
   )
   return (
     <section aria-label="Selections and decisions" className="min-w-0">
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold">
-          {workspace.audience === "sub_vendor"
+      <PageHeader
+        title={
+          workspace.audience === "sub_vendor"
             ? "Approved selections"
-            : "Selections & Decisions"}
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          {workspace.audience === "staff"
-            ? "Publish owner-ready specifications and pricing, resolve requests, and connect approved choices to procurement."
-            : workspace.audience === "owner"
-              ? "Choose the details that make this home yours. Review choices by room, request pricing, and approve the exact specification and terms."
-              : "Current owner-approved selections for the entire project. Review these before and during construction, and raise conflicts with the project team through an RFI."}
+            : "Selections & Decisions"
+        }
+      />
+      {/* Owners and subs get a short orientation; staff headers carry no explanation line. */}
+      {workspace.audience !== "staff" && (
+        <p className="-mt-3 mb-5 max-w-3xl text-sm text-muted-foreground">
+          {workspace.audience === "owner"
+            ? "Choose the details that make this home yours. Review choices by room, request pricing, and approve the exact specification and terms."
+            : "Current owner-approved selections for the entire project. Review these before and during construction, and raise conflicts with the project team through an RFI."}
         </p>
-      </div>
+      )}
       {reportProject && (
         <div className="mb-4 flex flex-wrap gap-2">
           <ProjectPortalPrintButton

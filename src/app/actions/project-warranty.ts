@@ -21,6 +21,7 @@ import {
 import { assertProjectAccess } from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { resolveWarrantyAssignee } from "@/lib/warranty/assignee"
 import {
   notifyWarrantyClaimCreated,
   notifyWarrantyClaimUpdated,
@@ -65,6 +66,9 @@ export type WarrantyClaimItem = {
   readonly claimantName: string
   readonly assignedUserId: string | null
   readonly assignedName: string | null
+  /** Staff only: the linked Compass contact and vendor (null for owners). */
+  readonly assignedProjectContactId: string | null
+  readonly assignedVendorId: string | null
   readonly acknowledgedAt: string | null
   readonly scheduledFor: string | null
   readonly workStartedAt: string | null
@@ -103,8 +107,8 @@ export type CreateWarrantyClaimInput = {
 export type UpdateWarrantyClaimInput = {
   readonly status: string
   readonly priority: string
-  readonly assignedUserId: string | null
-  readonly assignedName: string | null
+  /** Picker key of an existing Compass contact (see lib/warranty/assignee). */
+  readonly assignee: string | null
   readonly scheduledFor: string | null
   readonly resolutionSummary: string | null
   readonly internalNotes: string | null
@@ -216,6 +220,8 @@ function claimRevalidationPaths(projectId: string): readonly string[] {
     `/dashboard/projects/${projectId}/warranty`,
     `/preview/projects/${projectId}/owner`,
     `/preview/projects/${projectId}/owner/warranty`,
+    `/preview/projects/${projectId}/sub-vendor`,
+    `/preview/projects/${projectId}/sub-vendor/warranty`,
   ]
 }
 
@@ -308,8 +314,10 @@ export async function getProjectWarrantyWorkspace(
       status: claim.status,
       claimantUserId: claim.claimantUserId,
       claimantName: claim.claimantName,
-      assignedUserId: claim.assignedUserId,
+      assignedUserId: context.viewerIsInternal ? claim.assignedUserId : null,
       assignedName: claim.assignedName,
+      assignedProjectContactId: context.viewerIsInternal ? claim.assignedProjectContactId : null,
+      assignedVendorId: context.viewerIsInternal ? claim.assignedVendorId : null,
       acknowledgedAt: claim.acknowledgedAt,
       scheduledFor: claim.scheduledFor,
       workStartedAt: claim.workStartedAt,
@@ -490,6 +498,14 @@ export async function updateProjectWarrantyClaim(
       .limit(1)
       .then((rows) => rows[0] ?? null)
     if (!existing) return { success: false, error: "Warranty claim not found." }
+    // Resolve the choice against this project's contacts and this
+    // organization's vendors; the vendor link drives vendor visibility.
+    const assignee = await resolveWarrantyAssignee(context.db, {
+      organizationId: context.organizationId,
+      projectId,
+      key: input.assignee,
+    })
+    if ("error" in assignee) return { success: false, error: assignee.error }
 
     const now = new Date().toISOString()
     await context.db
@@ -497,8 +513,9 @@ export async function updateProjectWarrantyClaim(
       .set({
         status,
         priority,
-        assignedUserId: cleanText(input.assignedUserId),
-        assignedName: cleanText(input.assignedName),
+        assignedName: assignee.assignedName,
+        assignedProjectContactId: assignee.assignedProjectContactId,
+        assignedVendorId: assignee.assignedVendorId,
         scheduledFor: cleanText(input.scheduledFor),
         resolutionSummary: cleanText(input.resolutionSummary),
         internalNotes: cleanText(input.internalNotes),

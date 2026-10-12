@@ -36,7 +36,10 @@ import { buildProjectEmailRecipientOptions } from "@/lib/email/recipient-options
 import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
 import { viewableRfiAttachmentUrl } from "@/lib/rfis/attachment-url"
 import { cn } from "@/lib/utils"
-import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
+import { ClientRedirect } from "@/components/client-redirect"
+import { getProjectPaperTrail } from "@/app/actions/paper-trail"
+import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
 function formatDate(value: string | null): string {
   if (!value) return "No due date"
@@ -112,17 +115,24 @@ export default async function ProjectRfisPage({
     ? query.item[0] ?? null
     : query.item ?? null
   const statusFilter = parseRfiStatusFilter(query.status)
-  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails] =
-    await Promise.all([
+  // A permission denial sends the browser to the access page instead.
+  const loaded = await Promise.all([
       getProjects(),
       getProjectRfis(id),
       getProjectContactsSummary(id, "internal"),
       getProjectTaskAssigneeOptions(id),
       getProjectRfiInboundEmails(id),
-    ]).catch((error: unknown) => {
-      redirectIfFeaturePermissionDenied(error)
+      getProjectPaperTrail(id, "rfi"),
+    ]).then(
+    (data) => ({ data, deniedHref: null }),
+    (error: unknown) => {
+      const deniedHref = permissionDeniedRedirectHref(error)
+      if (deniedHref) return { data: null, deniedHref }
       throw error
-    })
+    },
+  )
+  if (loaded.data === null) return <ClientRedirect href={loaded.deniedHref} />
+  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails, paperTrail] = loaded.data
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
@@ -160,12 +170,7 @@ export default async function ProjectRfisPage({
         back={{ href: `/dashboard/projects/${id}`, label: "Project" }}
         icon={<IconMessageQuestion className="size-5 text-primary" />}
         title="RFIs"
-        description={
-          <>
-            {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-            {project?.name ?? "Project"} questions, answers, and visibility.
-          </>
-        }
+        eyebrow={`${project?.projectNumber ? `${project.projectNumber} - ` : ""}${project?.name ?? "Project"}`}
         actions={
           <>
             <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -321,6 +326,15 @@ export default async function ProjectRfisPage({
                     </span>
                   )}
                 </div>
+                {paperTrail.enabled ? (
+                  <PaperTrailRecordStatus
+                    className="mt-2"
+                    projectId={id}
+                    recordType="rfi"
+                    recordId={rfi.id}
+                    record={paperTrail.records[rfi.id] ?? null}
+                  />
+                ) : null}
                 {rfi.attachments.length > 0 && (
                   <div className="mt-3 rounded-md border bg-muted/20 p-3">
                     <p className="text-xs font-medium text-muted-foreground">

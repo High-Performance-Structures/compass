@@ -5,6 +5,7 @@ import {
   sqliteTable,
   text,
   integer,
+  primaryKey,
   real,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
@@ -28,6 +29,46 @@ export const users = sqliteTable("users", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
+
+// Account deletion is intentionally request-based: project and financial
+// records may have contractual retention requirements, so an operator must
+// review dependencies before removing the WorkOS identity and personal data.
+export const accountDeletionRequests = sqliteTable(
+  "account_deletion_requests",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // Snapshots support ownership verification while a request is open and
+    // must be cleared when deletion completes.
+    emailSnapshot: text("email_snapshot"),
+    displayNameSnapshot: text("display_name_snapshot"),
+    status: text("status").notNull().default("pending"),
+    requestedAt: text("requested_at").notNull(),
+    processingStartedAt: text("processing_started_at"),
+    processingStartedBy: text("processing_started_by").references(
+      () => users.id,
+      { onDelete: "set null" }
+    ),
+    completedAt: text("completed_at"),
+    completedBy: text("completed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    cancelledAt: text("cancelled_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("account_deletion_requests_user_status_idx").on(
+      table.userId,
+      table.status
+    ),
+    index("account_deletion_requests_status_requested_idx").on(
+      table.status,
+      table.requestedAt
+    ),
+  ]
+)
 
 export const organizations = sqliteTable("organizations", {
   id: text("id").primaryKey(), // workos org id
@@ -702,6 +743,13 @@ export const projects = sqliteTable("projects", {
   clientStatus: text("client_status").notNull().default("customer"),
   jobStatusId: text("job_status_id").notNull().default("current"),
   clientName: text("client_name"),
+  /**
+   * Internal workspaces are not client jobs: "office" for administrative duty
+   * logs (H-Office), "executive" for the owner's office (Woodland Park Home
+   * Office), "field" for crew work at the yard or generic order help.
+   * Null for every client project.
+   */
+  workspaceKind: text("workspace_kind", { enum: ["office", "executive", "field"] }),
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
   netsuiteJobId: text("netsuite_job_id"),
@@ -734,11 +782,64 @@ export const projects = sqliteTable("projects", {
   schedulePublished: integer("schedule_published", { mode: "boolean" })
     .notNull()
     .default(false),
+  /**
+   * Geocoded site and its ground elevation, cached for zone and mountain
+   * charges. `siteLocationAddress` is the address that was looked up, so an
+   * edited address is located again.
+   */
+  siteLatitude: real("site_latitude"),
+  siteLongitude: real("site_longitude"),
+  siteElevationFt: integer("site_elevation_ft"),
+  siteLocationAddress: text("site_location_address"),
+  siteLocationStatus: text("site_location_status", { enum: ["found", "not_found"] }),
+  siteLocatedAt: text("site_located_at"),
+  /** Set when the site was placed from a nearby number or the street, e.g. "Near 1062 CR 8952". */
+  siteLocationNote: text("site_location_note"),
+  /** Material sales: delivered to the project address, or picked up by the customer. */
+  deliveryMethod: text("delivery_method", { enum: ["delivery", "pickup"] }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 }, (table) => [
   uniqueIndex("projects_organization_id_unique").on(table.organizationId, table.id),
 ])
+
+/** Zone and mountain charge rates (JSON validated by travelChargeSettingsSchema). */
+export const travelChargeSettings = sqliteTable("travel_charge_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  settingsJson: text("settings_json").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+})
+
+/**
+ * Per-job zone charge adjustments. Every value is optional; NULL keeps the
+ * organization default. Kept apart from the cached site columns on projects,
+ * which the background site lookup rewrites.
+ */
+export const projectTravelChargeOverrides = sqliteTable(
+  "project_travel_charge_overrides",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    zoneIndex: integer("zone_index"),
+    zoneRateCents: integer("zone_rate_cents"),
+    siteElevationFt: integer("site_elevation_ft"),
+    mountainRateCents: integer("mountain_rate_cents"),
+    lodging: text("lodging", { enum: ["default", "yes", "no"] }).notNull().default("default"),
+    lodgingPerNightCents: integer("lodging_per_night_cents"),
+    perDiemPerDayCents: integer("per_diem_per_day_cents"),
+    note: text("note"),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [index("project_travel_charge_overrides_org_idx").on(table.organizationId)],
+)
 
 export const projectNumberReservations = sqliteTable(
   "project_number_reservations",
@@ -1133,10 +1234,26 @@ export const staffMessageRecords = sqliteTable(
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** See STAFF_MESSAGE_STATUSES (migration 0111 adds the CHECK). */
+    status: text("status").notNull().default("new"),
+    statusChangedAt: text("status_changed_at"),
+    /** Last status change, note or reassignment; null means use updated_at. */
+    lastActivityAt: text("last_activity_at"),
+    /** When the assignee was last reminded that this message went stale. */
+    staleRemindedAt: text("stale_reminded_at"),
+    closedAt: text("closed_at"),
+    closedBy: text("closed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
+    index("staff_message_records_org_status_updated_idx").on(
+      table.organizationId,
+      table.status,
+      table.updatedAt
+    ),
     uniqueIndex("staff_message_records_goto_event_unique")
       .on(table.gotoInboundEventId)
       .where(
@@ -1150,6 +1267,34 @@ export const staffMessageRecords = sqliteTable(
       table.assigneeUserId,
       table.createdAt
     ),
+  ]
+)
+
+/** Status changes, notes and reassignments on a Message Desk record. */
+export const staffMessageEvents = sqliteTable(
+  "staff_message_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => staffMessageRecords.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorName: text("actor_name").notNull(),
+    eventType: text("event_type").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    fromAssigneeUserId: text("from_assignee_user_id"),
+    toAssigneeUserId: text("to_assignee_user_id"),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("staff_message_events_message_idx").on(table.messageId, table.createdAt),
   ]
 )
 
@@ -1339,6 +1484,57 @@ export const userSchedulePreferences = sqliteTable("user_schedule_preferences", 
     .references(() => users.id, { onDelete: "cascade" }),
   ganttScrollMode: text("gantt_scroll_mode").notNull().default("default"),
   updatedAt: text("updated_at").notNull(),
+})
+
+/**
+ * Per-user view settings such as a list's custom order or column sort,
+ * keyed by view (for example "role-dashboard:project_manager"). Value is JSON.
+ */
+export const userViewPreferences = sqliteTable(
+  "user_view_preferences",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewKey: text("view_key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.viewKey] })]
+)
+
+/**
+ * Company-editable settings for a feature (thresholds, timings, defaults),
+ * one JSON value per feature key. Each key is registered with its defaults
+ * and validation in lib/feature-settings.
+ */
+export const organizationFeatureSettings = sqliteTable(
+  "organization_feature_settings",
+  {
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    featureKey: text("feature_key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (table) => [primaryKey({ columns: [table.organizationId, table.featureKey] })]
+)
+
+/**
+ * When a job's follow-up owner was last reminded that it went overdue, so
+ * each overdue stretch sends one reminder (see lib/project-follow-up-reminders).
+ */
+export const projectFollowUpReminders = sqliteTable("project_follow_up_reminders", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
+  remindedAt: text("reminded_at").notNull(),
 })
 
 export const scheduleSavedViews = sqliteTable(
@@ -3167,6 +3363,10 @@ export type NewFeedback = typeof feedback.$inferInsert
 // Auth and user management types
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
+export type AccountDeletionRequest =
+  typeof accountDeletionRequests.$inferSelect
+export type NewAccountDeletionRequest =
+  typeof accountDeletionRequests.$inferInsert
 export type Organization = typeof organizations.$inferSelect
 export type NewOrganization = typeof organizations.$inferInsert
 export type OrganizationMember = typeof organizationMembers.$inferSelect

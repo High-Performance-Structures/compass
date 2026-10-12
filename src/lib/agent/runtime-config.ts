@@ -10,6 +10,8 @@ export interface StoredProviderConfig {
 export interface AgentRuntimeSecrets {
   readonly ANTHROPIC_API_KEY?: string
   readonly OPENROUTER_API_KEY?: string
+  readonly OPENAI_API_KEY?: string
+  readonly OPENAI_REASONING_EFFORT?: string
 }
 
 export type RuntimeProviderResult =
@@ -22,6 +24,13 @@ export type RuntimeProviderResult =
       readonly success: false
       readonly error: string
     }
+
+function openAIReasoningEffort(
+  secrets: AgentRuntimeSecrets
+): { readonly reasoningEffort?: string } {
+  const effort = secrets.OPENAI_REASONING_EFFORT?.trim()
+  return effort ? { reasoningEffort: effort } : {}
+}
 
 function requiresApiKey(type: ProviderConfig["type"]): boolean {
   return type !== "ollama"
@@ -39,6 +48,8 @@ export function mapRuntimeProviderType(
       return "openrouter"
     case "ollama":
       return "ollama"
+    case "openai":
+      return "openai"
     default:
       return "custom"
   }
@@ -54,6 +65,9 @@ function sharedApiKey(
   if (type === "anthropic") {
     return secrets.ANTHROPIC_API_KEY
   }
+  if (type === "openai") {
+    return secrets.OPENAI_API_KEY
+  }
   return undefined
 }
 
@@ -67,6 +81,20 @@ export function resolveRuntimeProvider(
   secrets: AgentRuntimeSecrets
 ): RuntimeProviderResult {
   if (!stored) {
+    // OpenAI is checked first so a configured OpenAI key wins over an older
+    // shared OpenRouter or Anthropic key left in the deployment.
+    if (secrets.OPENAI_API_KEY) {
+      return {
+        success: true,
+        providerType: "openai",
+        provider: {
+          type: "openai",
+          apiKey: secrets.OPENAI_API_KEY,
+          ...openAIReasoningEffort(secrets),
+        },
+      }
+    }
+
     if (secrets.OPENROUTER_API_KEY) {
       return {
         success: true,
@@ -92,7 +120,7 @@ export function resolveRuntimeProvider(
     return {
       success: false,
       error:
-        "No shared AI provider is configured. An administrator must configure OPENROUTER_API_KEY or ANTHROPIC_API_KEY.",
+        "No shared AI provider is configured. An administrator must configure OPENAI_API_KEY, OPENROUTER_API_KEY or ANTHROPIC_API_KEY.",
     }
   }
 
@@ -106,7 +134,9 @@ export function resolveRuntimeProvider(
         ? "OPENROUTER_API_KEY"
         : type === "anthropic"
           ? "ANTHROPIC_API_KEY"
-          : "an API key"
+          : type === "openai"
+            ? "OPENAI_API_KEY"
+            : "an API key"
     return {
       success: false,
       error: `The ${stored.type} provider is selected but ${secretName} is not configured.`,
@@ -122,6 +152,7 @@ export function resolveRuntimeProvider(
       baseUrl: stored.baseUrl ?? undefined,
       modelOverrides:
         stored.modelOverrides ?? undefined,
+      ...(type === "openai" ? openAIReasoningEffort(secrets) : {}),
     },
   }
 }
@@ -132,8 +163,19 @@ export function resolveRuntimeProvider(
  */
 export function resolveRuntimeModelId(
   model: string,
-  providerType: string
+  providerType: string,
+  openaiModel?: string
 ): string {
+  // The admin model setting usually holds an OpenRouter ID, which OpenAI
+  // rejects. OPENAI_MODEL picks the OpenAI model; otherwise an "openai/..."
+  // OpenRouter ID is reduced to its native name.
+  if (providerType === "openai") {
+    if (openaiModel && openaiModel.trim().length > 0) {
+      return openaiModel.trim()
+    }
+    return model.startsWith("openai/") ? model.slice("openai/".length) : model
+  }
+
   if (model.includes("/") || model.startsWith("claude-")) {
     return model
   }

@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest"
 import {
   isMappedDepartment,
   portfolioPhaseFor,
+  portfolioPhaseStatuses,
   phaseForJobStatus,
   portfolioHealth,
   resolveTown,
+  townAt,
   spreadSharedTowns,
+  portfolioMarkerAlert,
   type PortfolioMapJob,
 } from "../model"
 
@@ -13,7 +16,7 @@ function job(overrides: Partial<PortfolioMapJob> & Pick<PortfolioMapJob, "id">):
   return {
     name: "Sample",
     projectNumber: null,
-    phase: "construction",
+    phase: "construction", jobStatusId: null,
     statusLabel: "Under Construction",
     town: "Granby",
     lon: -105.94,
@@ -25,6 +28,7 @@ function job(overrides: Partial<PortfolioMapJob> & Pick<PortfolioMapJob, "id">):
     nextTaskStart: null,
     health: "ok",
     visibility: "default",
+    followUp: null,
     ...overrides,
   }
 }
@@ -34,7 +38,9 @@ describe("phaseForJobStatus", () => {
     expect(phaseForJobStatus("budget_estimating", "Budget Estimating")).toBe("estimating")
     expect(phaseForJobStatus("in_design", "In Design")).toBe("design")
     expect(phaseForJobStatus("permitting", "Permitting")).toBe("permitting")
-    expect(phaseForJobStatus("awaiting_groundbreaking", "Awaiting Groundbreaking")).toBe("precon")
+    expect(phaseForJobStatus("awaiting_groundbreaking", "Awaiting Groundbreaking")).toBe("permitting")
+    expect(phaseForJobStatus("contract_docs_sent", "Contract Docs Sent")).toBe("negotiation")
+    expect(phaseForJobStatus("awaiting_funding", "Awaiting Funding")).toBe("negotiation")
     expect(phaseForJobStatus("under_construction", "Under Construction")).toBe("construction")
     expect(phaseForJobStatus("punchlist", "Punchlist")).toBe("closeout")
     expect(phaseForJobStatus("under_warranty", "Under Warranty")).toBe("closeout")
@@ -77,6 +83,7 @@ describe("portfolioPhaseFor", () => {
     jobStatusId: "under_construction",
     jobStatusLabel: "Under Construction",
     visibility: "default",
+    followUp: null,
   } as const
 
   it("follows status and department by default", () => {
@@ -88,8 +95,16 @@ describe("portfolioPhaseFor", () => {
   it("lets the per-project override hide or show a job", () => {
     expect(portfolioPhaseFor({ ...rule, visibility: "hidden" })).toBeNull()
     expect(portfolioPhaseFor({ ...rule, projectNumber: "N-830-8220", visibility: "shown" })).toBe("construction")
-    expect(portfolioPhaseFor({ ...rule, jobStatusId: "internal", jobStatusLabel: "Internal", visibility: "shown" })).toBe("precon")
+    expect(portfolioPhaseFor({ ...rule, jobStatusId: "internal", jobStatusLabel: "Internal", visibility: "shown" })).toBe("estimating")
     expect(portfolioPhaseFor({ ...rule, jobStatusId: "under_warranty", jobStatusLabel: "Under Warranty", visibility: "shown" })).toBe("closeout")
+  })
+})
+
+describe("townAt", () => {
+  it("names the town a point is in, and nothing in the countryside", () => {
+    expect(townAt(39.2252, -106.002)).toBe("Fairplay")
+    expect(townAt(39.2839, -106.0626)).toBe("Alma")
+    expect(townAt(39.255, -106.03)).toBeNull()
   })
 })
 
@@ -155,5 +170,52 @@ describe("spreadSharedTowns", () => {
     expect(a?.lon).not.toBe(b?.lon)
     expect(Math.abs((a?.lon ?? 0) - -105.94)).toBeLessThan(0.05)
     expect(c?.lon).toBe(-105.99)
+  })
+})
+
+describe("portfolioMarkerAlert", () => {
+  const signal = (level: "due" | "overdue" | "on_track") => ({
+    level,
+    businessDaysSinceLastTouch: 4,
+    lastContactAt: null,
+    nextFollowUpAt: null,
+    thresholds: { dueDays: 3, overdueDays: 5 },
+  })
+  it("flags the worse of schedule health and client follow-up", () => {
+    expect(portfolioMarkerAlert(job({ id: "a" }))).toBeNull()
+    expect(portfolioMarkerAlert(job({ id: "b", followUp: signal("due") }))).toBe("risk")
+    expect(portfolioMarkerAlert(job({ id: "c", followUp: signal("overdue") }))).toBe("late")
+    expect(portfolioMarkerAlert(job({ id: "d", health: "late", followUp: signal("on_track") }))).toBe("late")
+    expect(portfolioMarkerAlert(job({ id: "e", health: "risk", followUp: signal("overdue") }))).toBe("late")
+  })
+})
+
+describe("company map rules", () => {
+  const rule = {
+    projectId: "p1",
+    projectNumber: "H-430-1900",
+    department: "H",
+    jobStatusId: "under_construction",
+    jobStatusLabel: "Under Construction",
+    visibility: "default" as const,
+  }
+
+  it("puts a status in the phase the company chose, or leaves it off", () => {
+    const rules = { statusPhases: { complete: "closeout" as const, under_construction: "off" as const }, departmentViews: {}, salesTitles: {} }
+    expect(phaseForJobStatus("complete", "Complete", rules)).toBe("closeout")
+    expect(portfolioPhaseFor(rule, rules)).toBeNull()
+    expect(portfolioPhaseFor({ ...rule, jobStatusId: "custom-1", jobStatusLabel: "Complete" }, rules)).toBe("closeout")
+  })
+
+  it("puts each department on the view the company chose", () => {
+    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null })).toBe(false)
+    expect(isMappedDepartment({ department: "N", projectId: "p", projectNumber: null }, { statusPhases: {}, departmentViews: { N: "projects" }, salesTitles: {} })).toBe(true)
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "internal" }, salesTitles: {} })).toBeNull()
+    expect(portfolioPhaseFor(rule, { statusPhases: {}, departmentViews: { H: "off" }, salesTitles: {} })).toBeNull()
+  })
+
+  it("lists a phase's statuses for moves, in workflow order, with the company's changes", () => {
+    expect(portfolioPhaseStatuses("closeout")).toEqual(["punchlist", "under_warranty"])
+    expect(portfolioPhaseStatuses("closeout", { statusPhases: { complete: "closeout" }, departmentViews: {}, salesTitles: {} })).toContain("complete")
   })
 })

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   ListMusic,
   Loader2,
@@ -34,13 +35,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 
 export function ListeningRoomPlaylists({
   channelId,
@@ -265,25 +259,24 @@ export function ListeningRoomPlaylists({
         </p>
       ) : (
         <>
-          <Select
-            value={selectedId ?? undefined}
+          <SearchableCombobox
+            value={selectedId ?? ""}
             onValueChange={(value) => {
+              if (value === "" || value === selectedId) return
               setSelectedId(value)
               setEditing(false)
             }}
-          >
-            <SelectTrigger aria-label="Saved playlist">
-              <SelectValue placeholder="Choose a playlist" />
-            </SelectTrigger>
-            <SelectContent>
-              {playlists.map((playlist) => (
-                <SelectItem key={playlist.id} value={playlist.id}>
-                  {playlist.name} · {playlist.items.length} track
-                  {playlist.items.length === 1 ? "" : "s"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={playlists.map((playlist) => ({
+              value: playlist.id,
+              label: playlist.name,
+              selectedLabel: `${playlist.name} · ${playlist.items.length} track${playlist.items.length === 1 ? "" : "s"}`,
+              description: `${playlist.items.length} track${playlist.items.length === 1 ? "" : "s"}`,
+            }))}
+            ariaLabel="Saved playlist"
+            placeholder="Choose a playlist"
+            searchPlaceholder="Search playlists..."
+            emptyMessage="No matching playlists."
+          />
 
           {selected ? (
             <div className="space-y-3">

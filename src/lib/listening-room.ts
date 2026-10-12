@@ -294,3 +294,61 @@ export function canManageListeningTrackLink(input: {
     input.canModerate
   )
 }
+
+export type SynchronizedPlaybackLink = {
+  readonly provider: SynchronizedMusicProvider
+  readonly url: string
+}
+
+/** The link the room plays in Compass: YouTube first, then SoundCloud. */
+export function synchronizedPlaybackLink(
+  links: readonly (MusicProviderLink & { readonly url: string })[]
+): SynchronizedPlaybackLink | null {
+  for (const provider of SYNCHRONIZED_MUSIC_PROVIDERS) {
+    for (const link of links) {
+      if (link.provider !== provider) continue
+      const playable =
+        provider === "youtube"
+          ? youtubeVideoId(link.url) !== null
+          : soundCloudTrackUrl(link.url) !== null
+      if (playable) return { provider, url: link.url }
+    }
+  }
+  return null
+}
+
+export function youtubeThumbnailUrl(url: string): string | null {
+  const videoId = youtubeVideoId(url)
+  return videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : null
+}
+
+const VIDEO_TITLE_NOISE =
+  /\s*[([](?:official|lyric|lyrics|audio|video|hd|hq|4k|remaster(?:ed)?|visualizer|music video)[^)\]]*[)\]]/gi
+
+/**
+ * Turns an oEmbed title and author into a song title and artist. YouTube music
+ * videos are usually titled "Artist - Song (Official Video)" and auto-generated
+ * channels end in " - Topic"; SoundCloud titles are the song itself.
+ */
+export function songDetailsFromEmbed(input: {
+  readonly provider: SynchronizedMusicProvider
+  readonly title: string
+  readonly authorName: string | null
+}): { readonly title: string; readonly artist: string | null } {
+  const author = input.authorName
+    ?.replace(/\s+-\s+Topic$/i, "")
+    .replace(/VEVO$/i, "")
+    .trim() || null
+  const cleaned = input.title.replace(VIDEO_TITLE_NOISE, "").trim() || input.title.trim()
+  if (input.provider === "youtube") {
+    const separator = cleaned.match(/\s+[-–—]\s+/)
+    if (separator?.index !== undefined) {
+      const artist = cleaned.slice(0, separator.index).trim()
+      const title = cleaned.slice(separator.index + separator[0].length).trim()
+      if (artist && title) {
+        return { title: title.slice(0, 160), artist: artist.slice(0, 160) }
+      }
+    }
+  }
+  return { title: cleaned.slice(0, 160), artist: author?.slice(0, 160) ?? null }
+}

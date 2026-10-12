@@ -24,9 +24,11 @@ import {
   IconMessageCircle,
   IconMessageCircleQuestion,
   IconMessageReport,
+  IconPackages,
   IconPalette,
   IconPhone,
   IconPhoto,
+  IconClipboardList,
   IconReceipt,
   IconShieldCheck,
   IconShoppingCart,
@@ -308,6 +310,20 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
           },
           {
             kind: "link",
+            title: "Duty Log",
+            url: "/dashboard/projects",
+            icon: IconClipboardList,
+            projectPath: "/duty-log",
+          },
+          {
+            kind: "link",
+            title: "Shop Tickets",
+            url: "/dashboard/projects",
+            icon: IconReceipt,
+            projectPath: "/shop-tickets",
+          },
+          {
+            kind: "link",
             title: "Purchase Orders",
             url: "/dashboard/purchase-orders",
             icon: IconShoppingCart,
@@ -385,6 +401,15 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "Contacts",
         url: "/dashboard/contacts",
         icon: IconAddressBook,
+      },
+      {
+        // Staff open the Nu-Tech product catalog daily; it was otherwise only
+        // reachable from the Nu-Tech orders page, a job, or Settings.
+        kind: "link",
+        title: "Nu-Tech Price List",
+        url: "/dashboard/nutech/catalog",
+        icon: IconPackages,
+        internalOnly: true,
       },
       {
         kind: "link",
@@ -616,6 +641,40 @@ export function buildCherishNavigation(
     : []
 }
 
+const STALE_MESSAGE_REFRESH_MS = 5 * 60 * 1000
+
+/**
+ * A red-alert count for a sidebar link (stale messages, overdue follow-ups)
+ * from a GET endpoint. Refreshes on page changes and every few minutes so the
+ * red link appears without a reload; a plain GET never blocks navigation.
+ */
+function useAlertCount(endpoint: string, enabled: boolean, pathname: string): number {
+  const [count, setCount] = React.useState(0)
+  React.useEffect(() => {
+    if (!enabled) {
+      setCount(0)
+      return
+    }
+    let cancelled = false
+    const load = (): void => {
+      void fetch(endpoint, { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: unknown) => {
+          const next = typeof body === "object" && body !== null ? Reflect.get(body, "count") : null
+          if (!cancelled && typeof next === "number") setCount(next)
+        })
+        .catch(() => undefined)
+    }
+    load()
+    const timer = window.setInterval(load, STALE_MESSAGE_REFRESH_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [enabled, endpoint, pathname])
+  return count
+}
+
 function SidebarNav({
   canUseFieldDesk,
   canViewActivity,
@@ -661,6 +720,8 @@ function SidebarNav({
     canPrepareGreetingCards,
     canViewProjectArchive,
   })
+  const staleMessageCount = useAlertCount("/api/staff-message-desk/stale-count", canViewActivity, pathname)
+  const overdueFollowUpCount = useAlertCount("/api/client-follow-up/overdue-count", canViewActivity, pathname)
   const staffMessageDeskNav: ReadonlyArray<NavLinkItem> = canViewActivity
     ? [
         {
@@ -668,6 +729,20 @@ function SidebarNav({
           title: "Staff Message Desk",
           url: "/dashboard/office-maintenance/message-desk",
           icon: IconPhone,
+          alert: {
+            count: staleMessageCount,
+            label: `${staleMessageCount} stale ${staleMessageCount === 1 ? "message" : "messages"} assigned to you`,
+          },
+        },
+        {
+          kind: "link",
+          title: "Client follow-up",
+          url: "/dashboard/client-follow-up",
+          icon: IconAddressBook,
+          alert: {
+            count: overdueFollowUpCount,
+            label: `${overdueFollowUpCount} overdue client ${overdueFollowUpCount === 1 ? "follow-up" : "follow-ups"} for you`,
+          },
         },
       ]
     : []

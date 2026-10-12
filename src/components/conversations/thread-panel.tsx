@@ -7,7 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useConversations, type ThreadMessage } from "@/contexts/conversations-context"
-import { getThreadMessages } from "@/app/actions/chat-messages"
+import { getThreadMessages, markThreadRead } from "@/app/actions/chat-messages"
+import { announceNotificationsChanged } from "@/lib/notifications/client-events"
 import { getChannel } from "@/app/actions/conversations"
 import { MessageItem } from "./message-item"
 import { MessageComposer } from "./message-composer"
@@ -53,6 +54,10 @@ export function ThreadPanel() {
       }
       setReplies([...messagesResult.data].reverse())
       setOrganizationId(channelResult.data.organizationId)
+      // Opening the thread counts as reading its replies.
+      void markThreadRead(threadMessageId).then((result) => {
+        if (result.success) announceNotificationsChanged()
+      })
     }).catch((error: unknown) => {
       if (cancelled) return
       const message = error instanceof Error ? error.message : ""

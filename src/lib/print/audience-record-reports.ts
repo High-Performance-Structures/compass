@@ -181,8 +181,27 @@ export function directoryReport(data: ProjectAudiencePreview): PortalReport {
   }
 }
 
+/** The change order fields the report reads, so callers can build it from stored rows. */
+export type ChangeOrderReportItem = Pick<
+  ProjectChangeOrderItem,
+  | "changeOrderNumber"
+  | "title"
+  | "status"
+  | "sourceType"
+  | "requesterName"
+  | "requesterCompany"
+  | "amountCents"
+  | "scheduleImpactDays"
+  | "submittedAt"
+  | "scope"
+  | "reason"
+> & {
+  readonly lines: readonly Pick<ProjectChangeOrderItem["lines"][number], "lineNumber" | "description" | "amountCents">[]
+  readonly documents: readonly Pick<ProjectChangeOrderItem["documents"][number], "label" | "url" | "notes">[]
+}
+
 export function changeOrderReport(
-  items: readonly ProjectChangeOrderItem[],
+  items: readonly ChangeOrderReportItem[],
 ): PortalReport {
   return {
     title: "Change Orders",

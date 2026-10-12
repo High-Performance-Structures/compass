@@ -1,6 +1,13 @@
 "use client"
 
 import * as React from "react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { TalkImageEditor } from "@/components/voice/talk-image-editor"
 import {
@@ -8,6 +15,8 @@ import {
   removeTalkImage,
   type TalkPreferences
 } from "@/lib/realtimekit/talk-preferences"
+
+const SYSTEM_DEFAULT_DEVICE = "__system_default__"
 
 export type TalkDeviceKind = "cameraId" | "microphoneId" | "speakerId"
 
@@ -277,29 +286,35 @@ export function TalkSettingsPanel({
         ).map(([key, kind, label]) => (
           <label key={key} className="grid gap-1 text-sm">
             {label}
-            <select
-              className="h-9 rounded-md border bg-background px-2"
+            <Select
+              // Select items cannot use "", so the system default gets a
+              // sentinel that maps back to "" for the saved preference.
               value={
                 devices.some(
                   (device) =>
                     device.kind === kind && device.deviceId === preferences[key]
                 )
                   ? preferences[key]
-                  : ""
+                  : SYSTEM_DEFAULT_DEVICE
               }
-              onChange={(event) =>
-                onDeviceChange(key, event.currentTarget.value)
+              onValueChange={(value) =>
+                onDeviceChange(key, value === SYSTEM_DEFAULT_DEVICE ? "" : value)
               }
             >
-              <option value="">System default</option>
-              {devices
-                .filter((device) => device.kind === kind && device.deviceId)
-                .map((device, index) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `${label} ${index + 1}`}
-                  </option>
-                ))}
-            </select>
+              <SelectTrigger aria-label={label} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SYSTEM_DEFAULT_DEVICE}>System default</SelectItem>
+                {devices
+                  .filter((device) => device.kind === kind && device.deviceId)
+                  .map((device, index) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label || `${label} ${index + 1}`}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </label>
         ))}
         {!devices.some((device) => device.kind === "audioinput" && device.label) ? (

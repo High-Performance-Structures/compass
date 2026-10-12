@@ -5,6 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -75,6 +76,7 @@ import {
   type ProjectHubStatusFilter,
   type ProjectHubStatusFilterOption,
 } from "@/lib/project-hub-status-filter"
+import { PageHeader } from "@/components/page-header"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
 type ProjectLayout = "cards" | "list"
@@ -114,9 +116,9 @@ function departmentForProject(project: ProjectListItem): DepartmentFilter {
 }
 
 function departmentAccent(department: DepartmentFilter): string {
-  if (department === "O" || department === "D") return "border-l-[#6f471f]"
-  if (department === "H") return "border-l-[#3f7d4d]"
-  if (department === "N") return "border-l-[#9d832c]"
+  if (department === "O" || department === "D") return "border-l-brand-orc-brown"
+  if (department === "H") return "border-l-brand-hps-field"
+  if (department === "N") return "border-l-brand-nutech-gold"
   return "border-l-muted-foreground"
 }
 
@@ -149,7 +151,7 @@ function ProjectHealth({
 
   if (health.openRfiCount > 0) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-[#8a3a2e]">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-brand-compass-red">
         <IconAlertTriangle className="size-3.5" />
         {health.openRfiCount} pending RFI{health.openRfiCount === 1 ? "" : "s"}
       </span>
@@ -158,7 +160,7 @@ function ProjectHealth({
 
   if (health.openPoCount > 0) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-medium text-[#715d1c]">
+      <span className="flex items-center gap-1.5 text-xs font-medium text-brand-nutech-gold-foreground">
         <IconAlertTriangle className="size-3.5" />
         {health.openPoCount} open PO{health.openPoCount === 1 ? "" : "s"}
       </span>
@@ -406,26 +408,29 @@ function ProjectJobStatusSelect({
   }
 
   return (
-    <Select
+    <SearchableCombobox
+      className="h-6 w-auto max-w-full border-0 bg-secondary px-2 text-xs font-medium shadow-none"
       value={selectedStatusId}
-      onValueChange={changeStatus}
+      // Each choice saves immediately; ignore the picker's empty reset.
+      onValueChange={(value) => {
+        if (value !== "") changeStatus(value)
+      }}
       disabled={pending}
-    >
-      <SelectTrigger
-        size="sm"
-        className="h-6 max-w-full border-0 bg-secondary px-2 text-xs font-medium shadow-none"
-        aria-label={`Update status for ${project.name}`}
-      >
-        <SelectValue>{pending ? "Saving…" : selectedStatusLabel}</SelectValue>
-      </SelectTrigger>
-      <SelectContent position="popper" align="start">
-        {PROJECT_JOB_STATUS_DEFINITIONS.map((status) => (
-          <SelectItem key={status.id} value={status.id}>
-            {status.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      options={PROJECT_JOB_STATUS_DEFINITIONS.map((status) => ({
+        value: status.id,
+        label: status.label,
+        selectedLabel:
+          status.id === selectedStatusId
+            ? pending
+              ? "Saving…"
+              : selectedStatusLabel
+            : undefined,
+      }))}
+      ariaLabel={`Update status for ${project.name}`}
+      placeholder={selectedStatusLabel}
+      searchPlaceholder="Search job statuses..."
+      emptyMessage="No matching job statuses."
+    />
   )
 }
 
@@ -588,24 +593,22 @@ export function ProjectHubLaunchpad({
 
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
-      <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">Project Hub</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Active jobs and the issues that need attention
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canManageProjects ? (
-            <OfficeMaintenanceDrawer projects={projects} />
-          ) : null}
-          {canManageProjects ? (
-            <ProjectIntakeDrawer assignees={intakeAssignees} />
-          ) : null}
-        </div>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-4"
+        title="Project Hub"
+        actions={
+          <>
+            <div className="flex flex-wrap gap-2">
+              {canManageProjects ? (
+                <OfficeMaintenanceDrawer projects={projects} />
+              ) : null}
+              {canManageProjects ? (
+                <ProjectIntakeDrawer assignees={intakeAssignees} />
+              ) : null}
+            </div>
+          </>
+        }
+      />
 
       <ProjectDuplicateManager
         candidates={currentDuplicateCandidates}

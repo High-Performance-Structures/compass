@@ -44,6 +44,7 @@ import { CherishStoryInvitation } from "@/components/cherish/cherish-story-invit
 import { PortfolioSection } from "@/components/dashboard/portfolio-map/portfolio-section"
 import { DashboardCountsStrip, type DashboardCount } from "@/components/dashboard/dashboard-counts-strip"
 import type { PortfolioMapData } from "@/lib/portfolio-map/load"
+import type { SalesPipeline } from "@/lib/sales-pipeline/load"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Select,
@@ -714,9 +715,11 @@ function OfficeTaskList({
       overview.socialReminder.needed && overview.socialReminder.projectId
         ? [{
             id: "weekly-social-post",
-            title: "Create this week’s project post",
+            title: overview.socialReminder.setupRequired
+              ? "Complete project social setup"
+              : "Create this week’s project post",
             detail: overview.socialReminder.projectLabel
-              ? `No social draft yet · Suggested: ${overview.socialReminder.projectLabel}`
+              ? `${overview.socialReminder.setupRequired ? "Department and public identity required" : "No social draft yet · Suggested"}: ${overview.socialReminder.projectLabel}`
               : "No social draft has been created this week",
             href: `/dashboard/projects/${overview.socialReminder.projectId}/social`,
             category: "Social",
@@ -1031,7 +1034,7 @@ function ProjectWorkspace({
 
       <section className="min-w-0 border-y border-border/70 bg-background">
         <div className="flex items-center gap-2 px-4 py-3">
-          <IconMessageCircleQuestion className="size-4 text-[#9d832c]" />
+          <IconMessageCircleQuestion className="size-4 text-brand-nutech-gold" />
           <div>
             <h2 className="text-sm font-semibold">Decision queue</h2>
             <p className="text-xs text-muted-foreground">Open RFIs requiring follow-up</p>
@@ -1178,6 +1181,7 @@ export function DashboardLaunchpad({
   canPrepareGreetingCards,
   cherishRecognitions,
   portfolio,
+  salesPipelines,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1189,6 +1193,7 @@ export function DashboardLaunchpad({
   readonly canPrepareGreetingCards: boolean
   readonly cherishRecognitions: readonly CherishStory[]
   readonly portfolio: PortfolioMapData
+  readonly salesPipelines: readonly SalesPipeline[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1251,7 +1256,15 @@ export function DashboardLaunchpad({
 
       <DashboardCountsStrip counts={counts} />
 
-      <PortfolioSection jobs={portfolio.jobs} unplaced={portfolio.unplaced} hidden={portfolio.hidden} />
+      <PortfolioSection
+        jobs={portfolio.jobs}
+        unplaced={portfolio.unplaced}
+        hidden={portfolio.hidden}
+        internal={portfolio.internal}
+        rules={portfolio.rules}
+        travel={portfolio.travel}
+        salesPipelines={salesPipelines}
+      />
 
       {mode === "office" ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,1fr)]">

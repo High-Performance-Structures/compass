@@ -1,5 +1,6 @@
 "use server"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -12,7 +13,8 @@ import { isDemoUser } from "@/lib/demo"
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { isValidRecipientEmail, normalizeRecipientEmail } from "@/lib/email/recipient-options"
 import { getProjectDocumentDriveContext } from "@/lib/google/project-document-drive"
-import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
+import { projectTopLevelFolderOf } from "@/lib/google/project-folder-boundary"
+import { classifyProjectFolderName, type ProjectFileCategoryKey } from "@/lib/project-files"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectBrandFor } from "@/lib/project-branding"
@@ -20,6 +22,9 @@ import { driveFileIdFromRfqLink } from "@/lib/rfqs/drive-links"
 import { rfqEmailHtml, rfqEmailText, type RfqEmailDocument } from "@/lib/rfqs/email"
 import { parsePortalRfqPayload, rfqNeedsTemplateReview, withPortalRfqRecipientEmail } from "@/lib/rfqs/portal-response"
 import { projectNumberAndName } from "@/lib/project-display-name"
+
+/** Project subfolders whose whole contents may be shared with RFQ vendors. */
+const RFQ_SHAREABLE_FOLDER_CATEGORIES: ReadonlySet<ProjectFileCategoryKey> = new Set(["plans", "submittals"])
 
 export type RfqEmailDeliveryItem = {
   readonly id: string
@@ -161,17 +166,29 @@ export async function sendProjectRfqEmail(
       if (!fileId || fileId === access.project.googleDriveFolderId) {
         return { success: false, error: `Use a project Drive file or subfolder link for ${link.label}.` }
       }
-      const withinProject = await isDriveItemWithinProjectFolder({
+      const topLevel = await projectTopLevelFolderOf({
         client: drive.client,
         googleEmail: drive.googleEmail,
         itemId: fileId,
         projectFolderId: access.project.googleDriveFolderId,
       })
-      if (!withinProject) {
+      if (!topLevel) {
         return { success: false, error: `${link.label} is outside this project's Drive folder.` }
       }
       const file = await drive.client.getFile(drive.googleEmail, fileId)
       if (file.trashed) return { success: false, error: `${link.label} is in Drive trash.` }
+      // Sharing a folder gives the vendor everything in it, including records
+      // Compass saves later, so whole folders are limited to plans and
+      // submittals. Individual files can come from anywhere in the project.
+      if (
+        file.mimeType === "application/vnd.google-apps.folder" &&
+        !RFQ_SHAREABLE_FOLDER_CATEGORIES.has(classifyProjectFolderName(topLevel.name)?.key ?? "unknown")
+      ) {
+        return {
+          success: false,
+          error: `${link.label} is a folder outside Plans and Submittals. Link the individual files instead.`,
+        }
+      }
       fileIds.push(fileId)
       documents.push({
         label: link.label,
@@ -210,7 +227,7 @@ export async function sendProjectRfqEmail(
           await drive.client.ensureReaderPermission(drive.googleEmail, fileId, email)
         }
       }
-      const brand = projectBrandFor({ projectId, projectNumber: access.project.projectNumber })
+      const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(), projectId, projectNumber: access.project.projectNumber })
       const emailInput = {
         brand,
         projectLabel: access.project.projectNumber

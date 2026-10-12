@@ -10,8 +10,11 @@ import {
   musicProviderFromUrl,
   musicProviderSearchUrl,
   normalizeMusicUrl,
+  songDetailsFromEmbed,
   soundCloudTrackUrl,
+  synchronizedPlaybackLink,
   synchronizedProviderLabel,
+  youtubeThumbnailUrl,
   youtubeVideoId,
   type MusicProviderLink,
 } from "@/lib/listening-room"
@@ -192,5 +195,61 @@ describe("listening room saved playlist matching", () => {
   it("does not treat one matching song as the whole playlist", () => {
     expect(findMatchingPlaylistRun([songA], [songA, songB])).toBeNull()
     expect(findMatchingPlaylistRun([songA, songB], [songB, songA])).toBeNull()
+  })
+})
+
+describe("listening room playback link", () => {
+  it("plays YouTube first, then SoundCloud, and skips link-only services", () => {
+    const youtube = { provider: "youtube" as const, url: "https://youtu.be/dQw4w9WgXcQ" }
+    const soundcloud = { provider: "soundcloud" as const, url: "https://soundcloud.com/artist/song" }
+    const spotify = { provider: "spotify" as const, url: "https://open.spotify.com/track/1" }
+    expect(synchronizedPlaybackLink([spotify, soundcloud, youtube])).toEqual(youtube)
+    expect(synchronizedPlaybackLink([spotify, soundcloud])).toEqual(soundcloud)
+    expect(synchronizedPlaybackLink([spotify])).toBeNull()
+  })
+
+  it("ignores YouTube links that are not a single video", () => {
+    expect(
+      synchronizedPlaybackLink([{ provider: "youtube", url: "https://www.youtube.com/results?search_query=x" }])
+    ).toBeNull()
+  })
+
+  it("builds a thumbnail for YouTube videos only", () => {
+    expect(youtubeThumbnailUrl("https://youtu.be/dQw4w9WgXcQ")).toBe(
+      "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"
+    )
+    expect(youtubeThumbnailUrl("https://soundcloud.com/artist/song")).toBeNull()
+  })
+})
+
+describe("song details from embeds", () => {
+  it("splits YouTube 'Artist - Song (Official Video)' titles", () => {
+    expect(
+      songDetailsFromEmbed({
+        provider: "youtube",
+        title: "Fleetwood Mac - Dreams (Official Music Video)",
+        authorName: "Fleetwood Mac",
+      })
+    ).toEqual({ title: "Dreams", artist: "Fleetwood Mac" })
+  })
+
+  it("uses auto-generated channel names without the Topic suffix", () => {
+    expect(
+      songDetailsFromEmbed({
+        provider: "youtube",
+        title: "Here Comes the Sun (Remastered 2019)",
+        authorName: "The Beatles - Topic",
+      })
+    ).toEqual({ title: "Here Comes the Sun", artist: "The Beatles" })
+  })
+
+  it("keeps SoundCloud titles whole, even with a dash", () => {
+    expect(
+      songDetailsFromEmbed({
+        provider: "soundcloud",
+        title: "Night Drive - Extended Mix",
+        authorName: "Some Producer",
+      })
+    ).toEqual({ title: "Night Drive - Extended Mix", artist: "Some Producer" })
   })
 })

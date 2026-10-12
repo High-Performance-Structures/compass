@@ -220,6 +220,22 @@ export function ScheduleScopeSwitcher({
             </Button>
           ))}
         </div>
+        {scope.kind === "all" || scope.kind === "department" ? (
+          <label className="flex items-center gap-2 px-3 pb-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              className="size-3.5 accent-primary"
+              checked={searchParams.get("jobs") === "all"}
+              onChange={(event) => {
+                const params = new URLSearchParams(searchParams.toString())
+                if (event.target.checked) params.set("jobs", "all")
+                else params.delete("jobs")
+                navigate(`/dashboard/schedule?${params.toString()}`, false)
+              }}
+            />
+            Include finished, inactive and warranty jobs
+          </label>
+        ) : null}
         <Separator />
         <Command>
           <CommandInput

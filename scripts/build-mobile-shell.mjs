@@ -1,4 +1,4 @@
-import { copyFile, mkdir, rm } from "node:fs/promises"
+import { copyFile, cp, mkdir, rm } from "node:fs/promises"
 import { resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
@@ -10,6 +10,8 @@ await mkdir(output, { recursive: true })
 await Promise.all([
   copyFile(resolve(source, "index.html"), resolve(output, "index.html")),
   copyFile(resolve(source, "styles.css"), resolve(output, "styles.css")),
+  // Built-in company marks, so Field Mode shows them before any download.
+  cp(resolve(root, "public", "department-logos"), resolve(output, "department-logos"), { recursive: true }),
 ])
 
 const result = await Bun.build({

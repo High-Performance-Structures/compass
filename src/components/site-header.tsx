@@ -8,6 +8,7 @@ import {
   IconLogout,
   IconAutomation,
   IconCode,
+  IconExternalLink,
   IconMenu2,
   IconMusic,
   IconMoon,
@@ -35,11 +36,13 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
-import { openListeningRoomWindow } from "@/components/voice/listening-room-button"
+import { useListeningRoomDock } from "@/components/voice/listening-room-dock-provider"
 import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { useNative } from "@/hooks/use-native"
+import { browserHandoffUrl } from "@/lib/native/browser-handoff"
 import { QuickAddMenu } from "@/components/quick-add-menu"
 
 const OFFICE_TALK_MEETING_HREF =
@@ -96,6 +99,8 @@ export function SiteHeader({
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
+  const native = useNative()
+  const { openRoom: openListeningRoom } = useListeningRoomDock()
   const {
     canUseDeveloperMode,
     developerModeEnabled,
@@ -105,6 +110,20 @@ export function SiteHeader({
   if (pathname.startsWith("/dashboard/field")) return null
 
   const initials = user ? getInitials(user.name) : "?"
+
+  // Inside the iOS or Android app, hand the current page to the phone's
+  // browser for staff who prefer the full website.
+  async function openInBrowser(): Promise<void> {
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`
+    const url = browserHandoffUrl(window.location.origin, current)
+    try {
+      const { AppLauncher } = await import("@capacitor/app-launcher")
+      await AppLauncher.openUrl({ url })
+    } catch {
+      // App builds without the launcher plugin hand window.open to the OS.
+      window.open(url, "_blank")
+    }
+  }
 
   function handleLogout(): void {
     startLogoutTransition(async () => {
@@ -187,11 +206,20 @@ export function SiteHeader({
               {canUseOfficeTalk && (
                 <DropdownMenuItem
                   onSelect={() =>
-                    openListeningRoomWindow(OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID)
+                    openListeningRoom({
+                      channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
+                      channelName: "Office Talk",
+                    })
                   }
                 >
                   <IconMusic />
                   Listening Room
+                </DropdownMenuItem>
+              )}
+              {native && (
+                <DropdownMenuItem onSelect={() => void openInBrowser()}>
+                  <IconExternalLink />
+                  Open in browser
                 </DropdownMenuItem>
               )}
               {canUseDeveloperMode && (
@@ -331,7 +359,10 @@ export function SiteHeader({
               {canUseOfficeTalk && (
                 <DropdownMenuItem
                   onSelect={() =>
-                    openListeningRoomWindow(OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID)
+                    openListeningRoom({
+                      channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
+                      channelName: "Office Talk",
+                    })
                   }
                 >
                   <IconMusic />

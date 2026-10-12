@@ -187,6 +187,30 @@ export class DriveClient {
     )
   }
 
+  /** Everyone with access to a file or folder, including access inherited in a shared drive. */
+  async listPermissions(
+    userEmail: string,
+    fileId: string
+  ): Promise<readonly DrivePermission[]> {
+    const permissions: DrivePermission[] = []
+    let pageToken: string | null = null
+    do {
+      const params = new URLSearchParams({
+        supportsAllDrives: "true",
+        fields: "nextPageToken,permissions(id,type,role,emailAddress,domain)",
+        pageSize: "100",
+      })
+      if (pageToken) params.set("pageToken", pageToken)
+      const page = await this.request<{
+        readonly permissions?: readonly DrivePermission[]
+        readonly nextPageToken?: string
+      }>(userEmail, `/files/${encodeURIComponent(fileId)}/permissions?${params.toString()}`)
+      permissions.push(...(page.permissions ?? []))
+      pageToken = page.nextPageToken ?? null
+    } while (pageToken)
+    return permissions
+  }
+
   async ensureReaderPermission(
     userEmail: string,
     fileId: string,
@@ -273,6 +297,8 @@ export class DriveClient {
     options: {
       readonly name: string
       readonly parentId: string
+      /** Convert while copying, e.g. an .xlsx into a Google Sheet. */
+      readonly mimeType?: string
     }
   ): Promise<DriveFile> {
     const params = new URLSearchParams({
@@ -289,6 +315,7 @@ export class DriveClient {
         body: JSON.stringify({
           name: options.name,
           parents: [options.parentId],
+          ...(options.mimeType ? { mimeType: options.mimeType } : {}),
         }),
       }
     )
@@ -433,6 +460,48 @@ export class DriveClient {
 
     return fetch(
       `${GOOGLE_DRIVE_API}/files/${fileId}/export?${params.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    )
+  }
+
+  /**
+   * A Google Sheet as a print-ready PDF (letter, no gridlines): one tab
+   * scaled onto a single page, centered across it, when `sheetId` is given, else every tab fit to
+   * width. The Drive export endpoint can't set page options, so this uses
+   * the Sheets export URL with the same token.
+   */
+  async exportSpreadsheetPdf(
+    userEmail: string,
+    fileId: string,
+    sheetId?: number
+  ): Promise<Response> {
+    const token = await this.getToken(userEmail)
+    const params = new URLSearchParams({
+      format: "pdf",
+      size: "letter",
+      portrait: "true",
+      gridlines: "false",
+      printtitle: "false",
+      sheetnames: "false",
+      pagenum: "UNDEFINED",
+      top_margin: "0.25",
+      bottom_margin: "0.25",
+      left_margin: "0.25",
+      right_margin: "0.25",
+      ...(sheetId === undefined
+        ? { fitw: "true" }
+        : {
+            gid: String(sheetId),
+            scale: "4",
+            horizontal_alignment: "CENTER",
+            vertical_alignment: "TOP",
+          }),
+    })
+
+    return fetch(
+      `https://docs.google.com/spreadsheets/d/${encodeURIComponent(fileId)}/export?${params.toString()}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }

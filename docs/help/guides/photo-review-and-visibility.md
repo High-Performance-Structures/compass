@@ -12,7 +12,7 @@
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/photos"],
   "owner": "Field operations",
-  "lastReviewed": "2026-09-05"
+  "lastReviewed": "2026-10-10"
 }
 ---
 
@@ -45,6 +45,10 @@ Attaching a photo to a daily log does not make it owner-visible. An owner update
 ## Batch Actions {#batch-actions}
 
 Use filtered selection only after reviewing the active filters. Confirm every selected image before applying visibility. Compass clears selection after an action so an earlier batch is not accidentally reused.
+
+## Prepare Photos for Social Publishing {#social-publishing}
+
+Public-shareable approval makes a reviewed photo eligible for the project's **Social posts** workflow; it does not publish it. Confirm the approved public project title and town/city, department destinations, text, and image contents before a public post. See [Social posts](/dashboard/help/social-posts) for setup, drafting, publishing, and failure recovery.
 
 ## Quick Check {#quick-check}
 

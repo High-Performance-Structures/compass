@@ -6,9 +6,11 @@ const isElectron = () => {
 }
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL
-const baseURL = externalBaseUrl ?? "http://127.0.0.1:3000"
+const localBaseURL = `http://127.0.0.1:${process.env.PORT ?? "3000"}`
+const baseURL = externalBaseUrl ?? localBaseURL
+const desktopBaseURL = externalBaseUrl ?? baseURL
 const localServerCommand = process.env.CI && !isElectron()
-  ? "COMPASS_E2E=true node node_modules/next/dist/bin/next start"
+  ? "node node_modules/next/dist/bin/next start"
   : "node node_modules/next/dist/bin/next dev --webpack"
 
 // Web-specific projects
@@ -42,7 +44,7 @@ const desktopProjects = [
     testDir: "./e2e/desktop",
     use: {
       ...devices["Desktop Chrome"],
-      baseURL: "http://127.0.0.1:3000",
+      baseURL: desktopBaseURL,
       ignoreHTTPSErrors: true,
     },
   },
@@ -80,5 +82,11 @@ export default defineConfig({
         url: baseURL,
         timeout: 120000,
         reuseExistingServer: !process.env.CI,
+        env: {
+          COMPASS_E2E: "true",
+          LOCAL_DB_PATH: process.env.LOCAL_DB_PATH ?? ".e2e/compass.db",
+          WORKOS_API_KEY: "placeholder-e2e",
+          WORKOS_CLIENT_ID: "placeholder-e2e",
+        },
       },
 })

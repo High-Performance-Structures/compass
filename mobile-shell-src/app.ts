@@ -1,12 +1,14 @@
 import { App } from "@capacitor/app"
+import { AppLauncher } from "@capacitor/app-launcher"
 import { Browser } from "@capacitor/browser"
-import { Capacitor, CapacitorHttp } from "@capacitor/core"
+import { Capacitor, CapacitorHttp, type HttpOptions, type HttpResponse } from "@capacitor/core"
 import { FileViewer } from "@capacitor/file-viewer"
 import { Directory, Filesystem } from "@capacitor/filesystem"
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
 import { Network } from "@capacitor/network"
 import { Preferences } from "@capacitor/preferences"
 import { PushNotifications } from "@capacitor/push-notifications"
+import { StatusBar, Style } from "@capacitor/status-bar"
 import { NativeBiometric } from "@capgo/capacitor-native-biometric"
 import { z } from "zod/v4"
 
@@ -34,6 +36,22 @@ import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
 import { conversationChannelIdFromNotificationHref } from "../src/lib/conversations/notification-route"
 import { fieldMessageHtml, isLongFieldMessage } from "../src/lib/field/message-format"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
+import { browserHandoffUrl } from "../src/lib/native/browser-handoff"
+import { DEFAULT_DEPARTMENT_PROFILES } from "../src/lib/department-profiles"
+import type { ProjectDepartment } from "../src/lib/project-branding"
+import {
+  companyLogoSrc,
+  compassMarkSvg,
+  fieldCompaniesSchema,
+  fieldIcon,
+  type FieldCompanies,
+  type FieldIcon,
+} from "./brand"
+import {
+  createSerialQueue,
+  nativeResponseRequiresAuthentication,
+  webResponseRequiresAuthentication,
+} from "./native-http"
 import {
   appendOptimisticDirectMessage,
   PROJECT_CONVERSATION_KEY,
@@ -49,7 +67,7 @@ import {
   filterFieldProjects,
   isProjectCompanyFilter,
   PROJECT_COMPANY_OPTIONS,
-  projectCompanyLabel,
+  projectCompany,
   type ProjectCompanyFilter,
 } from "./project-picker"
 
@@ -62,6 +80,10 @@ const DOCUMENTS_KEY = "compass_field_documents_v1"
 const AUTH_STATE_KEY = "compass_native_auth_state_v1"
 const AUTH_VERIFIER_KEY = "compass_native_auth_verifier_v1"
 const PROFILE_KEY = "compass_field_profile_v1"
+const COMPANIES_KEY = "compass_field_companies_v1"
+const THEME_KEY = "compass_field_theme_v1"
+const SESSION_EXPIRED_KEY = "compass_field_session_expired_v1"
+const SESSION_EXPIRED_MESSAGE = "Your Compass sign-in has ended. Sign in again to keep syncing. Work saved on this device is kept and will sync after you sign in."
 const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
 const FIELD_ATTACHMENT_DIRECTORY = "compass-field-attachments"
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
@@ -104,6 +126,7 @@ const nativeFieldBootstrapResponseSchema = z.object({
   profile: fieldUserProfileSchema.optional(),
   projects: projectsSchema.optional(),
   initialPacket: fieldProjectPacketSchema.nullable().optional(),
+  companies: fieldCompaniesSchema.optional(),
 })
 const nativeFieldFolderResponseSchema = z.object({
   success: z.boolean(),
@@ -121,6 +144,14 @@ const app = document.querySelector<HTMLDivElement>("#app")
 let projects: Project[] = []
 let packet: Packet | null = null
 let profile: FieldUserProfile | null = null
+let companies: FieldCompanies = {}
+type FieldTheme = "light" | "dark"
+// Light by default, matching the web app; dark only when chosen in settings.
+let fieldTheme: FieldTheme = "light"
+// Set when the server no longer accepts this device's session. Cached projects
+// stay readable offline, but Field Mode asks for sign-in instead of failing
+// every refresh with a generic download error.
+let sessionExpired = false
 let outbox: QueuedItem[] = []
 let documents: SavedDocument[] = []
 let activeTab: Tab = "today"
@@ -222,6 +253,26 @@ function projectLabel(project: Project): string {
   return project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
 }
 
+// Saved company names win; the shipped defaults cover the first launch.
+function companyShortName(department: ProjectDepartment): string {
+  return companies[department]?.shortName || DEFAULT_DEPARTMENT_PROFILES[department].shortName
+}
+
+function companyDisplayName(department: ProjectDepartment): string {
+  return companies[department]?.displayName || DEFAULT_DEPARTMENT_PROFILES[department].displayName
+}
+
+function companyLogo(department: ProjectDepartment, className: string): string {
+  return `<img class="${className}" src="${escapeHtml(companyLogoSrc(department, companies[department]))}" alt="" />`
+}
+
+// The open project's company, shown under the Compass header.
+function companyBand(): string {
+  if (!packet) return ""
+  const department = projectCompany(packet.project)
+  return `<section class="company-band company-${department}" aria-label="Current project">${companyLogo(department, "company-band-logo")}<div class="company-band-text"><span class="company-band-name">${escapeHtml(companyDisplayName(department))}</span><span class="company-band-project">${escapeHtml(projectLabel(packet.project))}</span>${packet.project.address ? `<span class="company-band-address">${escapeHtml(packet.project.address)}</span>` : ""}</div><button class="company-switch" type="button" data-tab="projects" aria-label="Switch project">${fieldIcon("switch", "header-icon")}</button></section>`
+}
+
 function filteredProjectList(): readonly Project[] {
   return filterFieldProjects(projects, projectCompanyFilter, projectSearch)
 }
@@ -241,18 +292,19 @@ function projectPickerResults(): string {
   }
 
   return `<div class="project-result-summary"><span>${escapeHtml(summary)}</span>${clearButton}</div><div class="rows project-results">${filteredProjects.map((project) => `
-    <button class="row project-row" data-project-id="${escapeHtml(project.id)}" type="button">
-      <div class="row-main"><div class="project-row-heading"><p class="row-title">${escapeHtml(projectLabel(project))}</p><span class="project-company-badge">${escapeHtml(projectCompanyLabel(project))}</span></div><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
-      <strong>${packet?.project.id === project.id ? "Selected" : "Open"}</strong>
+    <button class="row project-row ${packet?.project.id === project.id ? "selected" : ""}" data-project-id="${escapeHtml(project.id)}" type="button">
+      ${companyLogo(projectCompany(project), "project-row-logo")}
+      <div class="row-main"><p class="row-title">${escapeHtml(projectLabel(project))}</p><p class="row-note">${escapeHtml([companyDisplayName(projectCompany(project)), project.address].filter(Boolean).join(" · "))}</p></div>
+      ${packet?.project.id === project.id ? `<strong class="project-row-current">Open now</strong>` : fieldIcon("chevron", "row-chevron")}
     </button>`).join("")}</div>`
 }
 
-function projectCompanyOptions(): string {
-  return PROJECT_COMPANY_OPTIONS.map((option) => {
-    const count = projects.filter((project) => projectCompanyLabel(project) === option.label).length
-    const selected = projectCompanyFilter === option.value ? " selected" : ""
-    return `<option value="${option.value}"${selected}>${escapeHtml(option.label)} (${count})</option>`
-  }).join("")
+function projectCompanyChips(): string {
+  const chips = PROJECT_COMPANY_OPTIONS
+    .filter((option) => projects.some((project) => projectCompany(project) === option.value))
+    .map((option) => `<button class="company-chip" type="button" data-company-filter="${option.value}" aria-pressed="${projectCompanyFilter === option.value}">${companyLogo(option.value, "company-chip-logo")}${escapeHtml(companyShortName(option.value))}</button>`)
+    .join("")
+  return `<div class="company-chips" role="group" aria-label="Filter by company"><button class="company-chip" type="button" data-company-filter="all" aria-pressed="${projectCompanyFilter === "all"}">All</button>${chips}</div>`
 }
 
 function sectionHead(title: string, note = ""): string {
@@ -262,8 +314,8 @@ function sectionHead(title: string, note = ""): string {
 function empty(text: string): string { return `<div class="empty">${escapeHtml(text)}</div>` }
 
 function projectsView(): string {
-  if (projects.length === 0) {
-    if (profile) {
+  if (projects.length === 0 || sessionExpired) {
+    if (profile && !sessionExpired) {
       return sectionHead("Active projects") + `<div class="empty auth-empty"><p>No active projects are assigned to your Compass account yet.</p><div class="auth-actions"><button id="open-live-empty" class="secondary auth-button" type="button" ${online ? "" : "disabled"}>Open Full Compass</button></div></div>`
     }
     if (authMode === "password") {
@@ -281,11 +333,11 @@ function projectsView(): string {
     const googleSignIn = isIos
       ? `<p class="auth-note">Google sign-in is temporarily unavailable in the iPhone app. Use your Compass email and password.</p>`
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
-    return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}</div></div>`
+    return `<div class="auth-hero"><span class="auth-hero-mark">${compassMarkSvg()}</span><h2>Compass</h2><span class="brand-mode">Field</span></div><div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}<button class="text-button" data-open-in-browser type="button" ${online ? "" : "disabled"}>Use Compass in your browser instead</button></div></div>`
   }
-  return sectionHead("Active projects", "Filter by department or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
-    <label class="field">Department<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All departments (${projects.length})</option>${projectCompanyOptions()}</select></label>
+  return sectionHead("Active projects", "Each project shows the company it belongs to.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
     <label class="field">Find a project<input id="project-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" aria-controls="project-picker-results" placeholder="Number, name, or address" value="${escapeHtml(projectSearch)}" /></label>
+    ${projectCompanyChips()}
     <div id="project-picker-results" aria-live="polite">${projectPickerResults()}</div>
   </div>`
 }
@@ -310,10 +362,14 @@ function todayView(): string {
   const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
   const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
-  const latestRecognition = cherishRecognitions[0]
+  // Like the web dashboard: the spotlight is for something new; once viewed it
+  // folds down to a quiet replay link.
+  const latestRecognition = cherishRecognitions.find((recognition) => recognition.isNew)
   const cherishSpotlight = online && latestRecognition
-    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"}${latestRecognition.audienceScope === "user" ? " · Just for you" : ""} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
-    : ""
+    ? `<button id="today-cherish" class="cherish-spotlight" type="button"><span>New CHERISH · ${escapeHtml(latestRecognition.cherishValue)}</span><strong>${escapeHtml(latestRecognition.message)}</strong><small>${latestRecognition.responseType === "win" ? "Project win" : "Shoutout"}${latestRecognition.audienceScope === "user" ? " · Just for you" : ""} · ${escapeHtml(latestRecognition.isAnonymous ? "Anonymous" : latestRecognition.submittedByName ?? "Team member")}</small></button>`
+    : cherishRecognitions.length > 0
+      ? `<button id="today-cherish" class="cherish-replay" type="button">${fieldIcon("cherish", "cherish-replay-icon")}Today’s CHERISH · Replay</button>`
+      : ""
   return cherishSpotlight + sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
 
@@ -545,7 +601,25 @@ function settingsView(): string {
   const pushButton = pushStatus === "enabled" || pushStatus === "checking"
     ? ""
     : `<button id="enable-push" class="secondary" type="button">Try notification setup again</button>`
-  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Appearance")}<div class="theme-choice" role="group" aria-label="Appearance"><button type="button" data-field-theme="light" aria-pressed="${fieldTheme === "light"}">Light</button><button type="button" data-field-theme="dark" aria-pressed="${fieldTheme === "dark"}">Dark</button></div></div><div class="block">${sectionHead("Use Compass in your browser")}<div class="guide-copy"><p>Open the full Compass website in Safari, Chrome, or your default browser. Sign in there once; the app stays signed in separately.</p><button class="secondary" data-open-in-browser type="button" ${online ? "" : "disabled"}>Open in browser</button></div></div><div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+}
+
+function applyFieldTheme(theme: FieldTheme): void {
+  fieldTheme = theme
+  document.documentElement.dataset.theme = theme
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#131d2e" : "#ffffff")
+  // Keep the clock and battery readable when the phone itself is in the
+  // opposite mode. Style.Light means dark text for a light header.
+  void StatusBar.setStyle({ style: theme === "dark" ? Style.Dark : Style.Light }).catch(() => undefined)
+  if (Capacitor.getPlatform() === "android") {
+    void StatusBar.setBackgroundColor({ color: theme === "dark" ? "#131d2e" : "#ffffff" }).catch(() => undefined)
+  }
+}
+
+async function chooseFieldTheme(theme: FieldTheme): Promise<void> {
+  applyFieldTheme(theme)
+  await Preferences.set({ key: THEME_KEY, value: theme })
+  render()
 }
 
 function view(): string {
@@ -562,7 +636,7 @@ function view(): string {
 function render(): void {
   if (!app) return
   if (biometricLocked) {
-    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
+    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">${compassMarkSvg()}</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
     document.querySelector<HTMLButtonElement>("#unlock-compass")?.addEventListener("click", () => void unlockCompass())
     document.querySelector<HTMLButtonElement>("#unlock-with-password")?.addEventListener("click", () => {
       if (online) window.location.assign(`${LIVE_URL}/login`)
@@ -572,16 +646,16 @@ function render(): void {
   const title = packet ? projectLabel(packet.project) : "Compass"
   const queued = outbox.length > 0 ? ` - ${outbox.length} waiting to sync` : ""
   const unreadNotifications = packet?.notifications.filter((notification) => notification.readAt === null).length ?? 0
-  const tabs: { value: Tab; symbol: string; label: string }[] = [
-    { value: "projects", symbol: "P", label: "Projects" },
-    { value: "today", symbol: "T", label: "Today" },
-    { value: "log", symbol: "L", label: "Log" },
-    { value: "documents", symbol: "D", label: "Docs" },
-    { value: "chat", symbol: "M", label: "Messages" },
-    { value: "cherish", symbol: "C", label: "Cherish" },
+  const tabs: { value: Tab & FieldIcon; label: string }[] = [
+    { value: "projects", label: "Projects" },
+    { value: "today", label: "Today" },
+    { value: "log", label: "Log" },
+    { value: "documents", label: "Docs" },
+    { value: "chat", label: "Messages" },
+    { value: "cherish", label: "Cherish" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><h1 class="brand" aria-label="${escapeHtml(`Compass Field Mode, ${title}`)}"><span class="brand-mark">${compassMarkSvg()}</span><span class="brand-text"><span class="brand-name">Compass</span><span class="brand-mode">Field</span></span></h1><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="icon-button" type="button" aria-label="Field settings" ${activeTab === "settings" ? 'aria-current="page"' : ""}>${fieldIcon("settings", "header-icon")}</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${profile ? fieldIcon("external", "live-icon") : ""}${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header>${companyBand()}<main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}" ${activeTab === tab.value ? 'aria-current="page"' : ""}>${fieldIcon(tab.value, "tab-icon")}${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -643,15 +717,17 @@ function bindEvents(): void {
     if (isTab(button.dataset.tab)) activeTab = button.dataset.tab
     render()
     if (activeTab === "chat" && online) void refreshProjectPacket()
+    if (activeTab === "cherish") void markCherishViewed()
     if (activeTab === "cherish" && online) void refreshCherishRecognition()
   }))
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
-  document.querySelector("#project-company-filter")?.addEventListener("change", (event) => {
-    if (!(event.currentTarget instanceof HTMLSelectElement)) return
-    if (!isProjectCompanyFilter(event.currentTarget.value)) return
-    projectCompanyFilter = event.currentTarget.value
+  document.querySelectorAll<HTMLButtonElement>("[data-company-filter]").forEach((button) => button.addEventListener("click", () => {
+    const value = button.dataset.companyFilter ?? "all"
+    if (!isProjectCompanyFilter(value)) return
+    projectCompanyFilter = value
+    syncCompanyChips()
     refreshProjectPickerResults()
-  })
+  }))
   document.querySelector<HTMLInputElement>("#project-search")?.addEventListener("input", (event) => {
     if (!(event.currentTarget instanceof HTMLInputElement)) return
     projectSearch = event.currentTarget.value
@@ -665,6 +741,10 @@ function bindEvents(): void {
     render()
   })
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
+  document.querySelectorAll<HTMLButtonElement>("[data-field-theme]").forEach((button) => button.addEventListener("click", () => {
+    void chooseFieldTheme(button.dataset.fieldTheme === "dark" ? "dark" : "light")
+  }))
+  document.querySelectorAll<HTMLButtonElement>("[data-open-in-browser]").forEach((button) => button.addEventListener("click", () => void openInBrowser()))
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#today-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
@@ -761,13 +841,18 @@ function bindEvents(): void {
   })
 }
 
+function syncCompanyChips(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-company-filter]").forEach((chip) => {
+    chip.setAttribute("aria-pressed", String(chip.dataset.companyFilter === projectCompanyFilter))
+  })
+}
+
 function bindProjectPickerResultEvents(): void {
   document.querySelector<HTMLButtonElement>("#clear-project-filters")?.addEventListener("click", () => {
     projectCompanyFilter = "all"
     projectSearch = ""
-    const companySelect = document.querySelector("#project-company-filter")
     const searchInput = document.querySelector<HTMLInputElement>("#project-search")
-    if (companySelect instanceof HTMLSelectElement) companySelect.value = "all"
+    syncCompanyChips()
     if (searchInput) {
       searchInput.value = ""
       searchInput.focus()
@@ -797,7 +882,7 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
   messageActionError = ""
   if (showProgress) render()
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       // CapacitorHttp uses the native URL cache on iOS. A unique URL plus
       // explicit request headers prevents a previous project packet from
       // hiding a newly delivered message or notification.
@@ -892,7 +977,7 @@ async function openNotification(button: HTMLButtonElement): Promise<void> {
 
 async function markNotificationRead(notificationId: string): Promise<void> {
   try {
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`,
       headers: { "Content-Type": "application/json" },
       data: {},
@@ -994,10 +1079,15 @@ async function uploadQueuedDailyLogAttachment(
   formData.set("capturedDate", item.payload.logDate)
   formData.set("photoKind", "progress")
 
-  const response = await fetch(
+  if (sessionExpired) throw new SessionExpiredError()
+  const response = await fieldRequestQueue(() => fetch(
     `${LIVE_URL}/api/projects/${encodeURIComponent(item.projectId)}/photos/upload`,
     { method: "POST", body: formData, credentials: "include" }
-  )
+  ))
+  if (webResponseRequiresAuthentication(response)) {
+    await markSessionExpired()
+    throw new SessionExpiredError()
+  }
   const responseBody: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const message =
@@ -1027,7 +1117,7 @@ async function syncDailyLogOutbox(): Promise<void> {
   try {
     syncedCount = await drainDailyLogOutbox(outbox, {
       createDailyLog: async (item) => {
-        const response = await CapacitorHttp.post({
+        const response = await fieldHttp.post({
           url: `${LIVE_URL}/api/field/daily-logs`,
           headers: { "Content-Type": "application/json" },
           data: { id: item.id, projectId: item.projectId, payload: item.payload },
@@ -1190,7 +1280,7 @@ async function syncCherishOutbox(): Promise<void> {
   try {
     for (const item of pending) {
       try {
-        const response = await CapacitorHttp.post({
+        const response = await fieldHttp.post({
           url: `${LIVE_URL}/api/field/cherish`,
           headers: { "Content-Type": "application/json" },
           data: {
@@ -1246,7 +1336,7 @@ async function refreshCherishRecognition(force = false): Promise<void> {
   cherishRecognitionError = ""
   if (activeTab === "cherish") render()
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       url: `${LIVE_URL}/api/field/cherish?refresh=${Date.now()}`,
       headers: {
         "Cache-Control": "no-cache",
@@ -1266,6 +1356,7 @@ async function refreshCherishRecognition(force = false): Promise<void> {
     }
     cherishRecognitions = result.data.items
     lastCherishRecognitionRefreshAt = Date.now()
+    if (activeTab === "cherish") void markCherishViewed()
   } catch (error) {
     cherishRecognitionError =
       error instanceof Error
@@ -1322,7 +1413,7 @@ async function syncChatOutbox(): Promise<void> {
   let syncedCount = 0
   try {
     for (const item of pending) {
-      const response = await CapacitorHttp.post({
+      const response = await fieldHttp.post({
         url: `${LIVE_URL}/api/field/conversations/message`,
         headers: { "Content-Type": "application/json" },
         data: item.payload,
@@ -1378,7 +1469,7 @@ async function persistPushToken(token: string): Promise<void> {
     if (platform !== "ios" && platform !== "android") {
       throw new Error("Push notifications require a native platform.")
     }
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/push/register`,
       headers: { "Content-Type": "application/json" },
       data: { token, platform },
@@ -1455,7 +1546,7 @@ async function startProjectChannel(): Promise<void> {
   messageActionError = ""
   render()
   try {
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/field/conversations/project`,
       headers: { "Content-Type": "application/json" },
       data: { projectId: packet.project.id },
@@ -1499,7 +1590,7 @@ async function sendDirectMessage(event: SubmitEvent): Promise<void> {
   messageActionError = ""
   render()
   try {
-    const response = await CapacitorHttp.post({
+    const response = await fieldHttp.post({
       url: `${LIVE_URL}/api/field/conversations/direct`,
       headers: { "Content-Type": "application/json" },
       data: { targetUserId, content },
@@ -1554,7 +1645,7 @@ async function browseDocumentFolder(folder: FieldDocument): Promise<void> {
   render()
 
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folder.id)}`,
       responseType: "json",
     })
@@ -1631,7 +1722,7 @@ async function downloadDocumentForOffline(
   render()
 
   try {
-    const response = await CapacitorHttp.get({
+    const response = await fieldHttp.get({
       url: `${LIVE_URL}/api/google/download/${encodeURIComponent(document.id)}?projectId=${encodeURIComponent(projectId)}`,
       responseType: "arraybuffer",
     })
@@ -1700,10 +1791,89 @@ function openFullCompass(): void {
   window.location.assign(liveAppUrl(path))
 }
 
+async function openInBrowser(): Promise<void> {
+  if (!online) return
+  const path = packet
+    ? `/dashboard/projects/${encodeURIComponent(packet.project.id)}`
+    : "/dashboard"
+  try {
+    await AppLauncher.openUrl({ url: browserHandoffUrl(LIVE_URL, path) })
+  } catch {
+    // Fall back to the in-app browser sheet if no external browser accepts it.
+    await Browser.open({ url: browserHandoffUrl(LIVE_URL, path) })
+  }
+}
+
 function openCherish(): void {
   activeTab = "cherish"
+  void markCherishViewed()
   render()
   if (online) void refreshCherishRecognition()
+}
+
+// Opening CHERISH counts as viewing what is new, as on the web dashboard. If
+// the request fails, the next refresh simply shows the story as new again.
+async function markCherishViewed(): Promise<void> {
+  const ids = cherishRecognitions.filter((recognition) => recognition.isNew).map((recognition) => recognition.id)
+  if (ids.length === 0) return
+  cherishRecognitions = cherishRecognitions.map((recognition) => (
+    recognition.isNew ? { ...recognition, isNew: false } : recognition
+  ))
+  if (!online) return
+  try {
+    await fieldHttp.post({
+      url: `${LIVE_URL}/api/field/cherish/viewed`,
+      headers: { "Content-Type": "application/json" },
+      data: { ids },
+      responseType: "json",
+    })
+  } catch {
+    // Left for the next refresh.
+  }
+}
+
+class SessionExpiredError extends Error {
+  constructor() {
+    super(SESSION_EXPIRED_MESSAGE)
+    this.name = "SessionExpiredError"
+  }
+}
+
+// AuthKit refresh tokens are single use. When several Field Mode requests
+// arrive together with an expired access token, each tries to refresh and the
+// loser clears the session cookie the winner just saved, signing the device
+// out at random. Sending authenticated requests one at a time prevents that.
+const fieldRequestQueue = createSerialQueue()
+
+async function sendFieldRequest(run: () => Promise<HttpResponse>): Promise<HttpResponse> {
+  if (sessionExpired) throw new SessionExpiredError()
+  const response = await fieldRequestQueue(run)
+  if (nativeResponseRequiresAuthentication(response)) {
+    await markSessionExpired()
+    throw new SessionExpiredError()
+  }
+  return response
+}
+
+const fieldHttp = {
+  get: (options: HttpOptions) => sendFieldRequest(() => CapacitorHttp.get(options)),
+  post: (options: HttpOptions) => sendFieldRequest(() => CapacitorHttp.post(options)),
+}
+
+async function markSessionExpired(): Promise<void> {
+  if (sessionExpired) return
+  sessionExpired = true
+  signingIn = false
+  authMode = "choice"
+  authError = SESSION_EXPIRED_MESSAGE
+  activeTab = "projects"
+  await Preferences.set({ key: SESSION_EXPIRED_KEY, value: "true" })
+  render()
+}
+
+async function clearSessionExpired(): Promise<void> {
+  sessionExpired = false
+  await Preferences.remove({ key: SESSION_EXPIRED_KEY })
 }
 
 async function resumePendingSync(): Promise<void> {
@@ -1711,7 +1881,7 @@ async function resumePendingSync(): Promise<void> {
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
+  if (sessionExpired || syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
   await syncDailyLogOutbox()
   await syncCherishOutbox()
   await syncChatOutbox()
@@ -1789,10 +1959,13 @@ function nativeAuthData(value: unknown): z.infer<typeof nativeAuthResponseSchema
 }
 
 async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
+  // Only called right after a sign-in or for an explicit project download, so
+  // let the request through; it marks the session expired again if rejected.
+  sessionExpired = false
   const params = new URLSearchParams()
   if (projectId) params.set("projectId", projectId)
   const query = params.toString()
-  const response = await CapacitorHttp.get({
+  const response = await fieldHttp.get({
     url: `${LIVE_URL}/api/field/native-bootstrap${query ? `?${query}` : ""}`,
     responseType: "json",
   })
@@ -1814,13 +1987,16 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   projects = result.data.projects
   profile = result.data.profile
   packet = result.data.initialPacket ?? null
+  if (result.data.companies) companies = result.data.companies
   const activeProjectId = packet?.project.id ?? projects[0]?.id ?? null
   await Promise.all([
     writeJson(PROFILE_KEY, profile),
+    writeJson(COMPANIES_KEY, companies),
     writeJson(PROJECTS_KEY, projects),
     writeJson(ACTIVE_PROJECT_KEY, activeProjectId),
     packet ? writeJson(packetKey(packet.project.id), packet) : Promise.resolve(),
   ])
+  await clearSessionExpired()
   authMode = "choice"
   authError = ""
   projectError = ""
@@ -2058,10 +2234,14 @@ async function handleAppUrl(appUrl: string): Promise<void> {
 }
 
 async function initialize(): Promise<void> {
+  applyFieldTheme((await Preferences.get({ key: THEME_KEY })).value === "dark" ? "dark" : "light")
   if (isIos) {
     document.body.classList.add("platform-ios")
     await Keyboard.setResizeMode({ mode: KeyboardResize.Native })
     await Keyboard.setScroll({ isDisabled: false })
+    // The keyboard plugin hides iOS's Done bar by default, which left fields
+    // like project search with no way to put the keyboard away.
+    await Keyboard.setAccessoryBarVisible({ isVisible: true })
   }
   const initialStatus = await Network.getStatus()
   online = initialStatus.connected
@@ -2085,6 +2265,21 @@ async function initialize(): Promise<void> {
   await Keyboard.addListener("keyboardWillHide", () => {
     document.body.classList.remove("keyboard-open")
     document.documentElement.style.setProperty("--keyboard-height", "0px")
+  })
+  // Tapping outside a text field puts the keyboard away, as people expect.
+  document.addEventListener("pointerdown", (event) => {
+    const focused = document.activeElement
+    if (!(focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement || focused instanceof HTMLSelectElement)) return
+    if (event.target instanceof Element && event.target.closest("input, textarea, select, label, button, a")) return
+    focused.blur()
+    void Keyboard.hide().catch(() => undefined)
+  })
+  // The Search key on a search field finishes typing instead of submitting.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement) || event.target.type !== "search") return
+    event.preventDefault()
+    event.target.blur()
+    void Keyboard.hide().catch(() => undefined)
   })
   await App.addListener("appUrlOpen", ({ url }) => void handleAppUrl(url))
   await Browser.addListener("browserFinished", resetAbandonedSignIn)
@@ -2120,12 +2315,16 @@ async function initialize(): Promise<void> {
   const outboxResult = fieldOutboxSchema.safeParse(await readJson(OUTBOX_KEY))
   const documentResult = savedDocumentsSchema.safeParse(await readJson(DOCUMENTS_KEY))
   const profileResult = fieldUserProfileSchema.safeParse(await readJson(PROFILE_KEY))
+  const companiesResult = fieldCompaniesSchema.safeParse(await readJson(COMPANIES_KEY))
+  companies = companiesResult.success ? companiesResult.data : {}
   const activeProjectResult = z.string().nullable().safeParse(await readJson(ACTIVE_PROJECT_KEY))
   projects = projectResult.success ? projectResult.data : []
   outbox = outboxResult.success ? outboxResult.data : []
   documents = documentResult.success ? documentResult.data : []
   profile = profileResult.success ? profileResult.data : null
-  if (projects.length === 0) activeTab = "projects"
+  sessionExpired = (await Preferences.get({ key: SESSION_EXPIRED_KEY })).value === "true"
+  if (sessionExpired) authError = SESSION_EXPIRED_MESSAGE
+  if (projects.length === 0 || sessionExpired) activeTab = "projects"
   const activeProjectId = activeProjectResult.success ? activeProjectResult.data : null
   const selectedId = projects.some((project) => project.id === activeProjectId)
     ? activeProjectId
@@ -2139,8 +2338,8 @@ async function initialize(): Promise<void> {
   if (launchUrl?.url && !launchUrlQueued && !biometricLocked) {
     await handleAppUrl(launchUrl.url)
   }
-  if (online && packet) void refreshProjectPacket()
-  if (online && profile) void refreshCherishRecognition(true)
+  if (online && packet && !sessionExpired) void refreshProjectPacket()
+  if (online && profile && !sessionExpired) void refreshCherishRecognition(true)
   void resumePendingSync()
 
   await Network.addListener("networkStatusChange", () => void refreshConnectivityAndSync())

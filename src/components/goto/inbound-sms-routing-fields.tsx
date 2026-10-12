@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 import type { InboundSmsTaskAssignee } from "@/app/actions/inbound-sms-review"
 import { isInboundSmsTodoDestination } from "@/lib/goto/review-routing"
 
@@ -28,12 +29,12 @@ export function InboundSmsRoutingFields({
     <>
       <label className="flex flex-col gap-1 text-sm font-medium">
         Destination
-        <select
+        <SearchableComboboxField
           name="destination"
           required
-          value={destination}
-          onChange={(event) => {
-            const value = event.target.value
+          className="font-normal"
+          defaultValue={destination}
+          onValueChange={(value) => {
             if (
               value === "" ||
               value === "message" ||
@@ -48,37 +49,41 @@ export function InboundSmsRoutingFields({
               setDestination(value)
             }
           }}
-          className="h-10 border bg-background px-3 font-normal"
-        >
-          <option value="" disabled>Select destination…</option>
-          <option value="message">Project Messages</option>
-          <option value="rfi">RFI</option>
-          <option value="rfq">RFQ draft</option>
-          <option value="change_order">Change-order draft</option>
-          <option value="todo">To-do</option>
-          <option value="delivery">Delivery to-do</option>
-          <option value="daily_log">Daily log</option>
-          <option value="video">Video review</option>
-        </select>
+          options={[
+            { value: "message", label: "Project Messages" },
+            { value: "rfi", label: "RFI" },
+            { value: "rfq", label: "RFQ draft" },
+            { value: "change_order", label: "Change-order draft" },
+            { value: "todo", label: "To-do" },
+            { value: "delivery", label: "Delivery to-do" },
+            { value: "daily_log", label: "Daily log" },
+            { value: "video", label: "Video review" },
+          ]}
+          ariaLabel="Destination"
+          placeholder="Select destination…"
+          searchPlaceholder="Search destinations..."
+          emptyMessage="No matching destinations."
+        />
       </label>
 
       {taskDestination ? (
         <>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Assignee
-            <select
+            <SearchableComboboxField
               name="assigneeUserId"
               required
-              defaultValue=""
-              className="h-10 border bg-background px-3 font-normal"
-            >
-              <option value="" disabled>Select staff assignee…</option>
-              {assignees.map((assignee) => (
-                <option key={assignee.id} value={assignee.id}>
-                  {assignee.name} · {assignee.email}
-                </option>
-              ))}
-            </select>
+              className="font-normal"
+              options={assignees.map((assignee) => ({
+                value: assignee.id,
+                label: assignee.name,
+                description: assignee.email,
+              }))}
+              ariaLabel="Assignee"
+              placeholder="Select staff assignee…"
+              searchPlaceholder="Search staff..."
+              emptyMessage="No matching staff."
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Due date

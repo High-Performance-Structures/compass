@@ -7,7 +7,6 @@ import { useState, useTransition, type FormEvent, type ReactElement } from "reac
 import {
   clearProjectFollowUp,
   createCustomProjectJobStatus,
-  createProjectInteraction,
   createProjectNote,
   deleteProjectInteraction,
   deleteProjectNote,
@@ -18,6 +17,14 @@ import {
   type ProjectFollowUpOwner,
   type ProjectInformation,
 } from "@/app/actions/project-profile"
+import { SearchableCombobox } from "@/components/searchable-combobox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
@@ -25,15 +32,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  customProjectInteractionType,
   projectNumberParts,
 } from "@/lib/project-profile"
 import { type ProjectDepartment } from "@/lib/project-branding"
 import { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 import { projectNumberAndName } from "@/lib/project-display-name"
+import { PageHeader } from "@/components/page-header"
+import { FollowUpSection } from "@/components/projects/project-follow-up-aging"
+import { ClientInteractionForm } from "@/components/projects/client-interaction-form"
 
-const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
+/** A new custom status starts followed up on this cadence until changed in Settings. */
+const NEW_STATUS_DEFAULT_CADENCE_DAYS = 7
+const UNASSIGNED_OWNER = "__unassigned__"
 
 function suffixFromProjectNumber(projectNumber: string | null): string {
   if (!projectNumber) return ""
@@ -90,16 +101,8 @@ export function ProjectInformationWorkspace({
   )
   const [propagateMailingAddress, setPropagateMailingAddress] = useState(false)
   const [note, setNote] = useState("")
-  const [interactionType, setInteractionType] = useState("call")
-  const [customInteractionTypeLabel, setCustomInteractionTypeLabel] = useState("")
-  const [interactionContactId, setInteractionContactId] = useState(
-    information.clientContacts[0]?.id ?? "",
-  )
-  const [direction, setDirection] = useState<"inbound" | "outbound">("outbound")
-  const [interactionSummary, setInteractionSummary] = useState("")
-  const [interactionTime, setInteractionTime] = useState(
-    dateTimeLocalValue(new Date().toISOString()),
-  )
+  // Remount the form after each save so it starts empty again.
+  const [interactionFormKey, setInteractionFormKey] = useState(0)
   const [followUpAt, setFollowUpAt] = useState(
     information.followUp ? dateTimeLocalValue(information.followUp.nextFollowUpAt) : "",
   )
@@ -108,7 +111,6 @@ export function ProjectInformationWorkspace({
   )
   const [newJobStatusLabel, setNewJobStatusLabel] = useState("")
   const [newJobStatusSageCode, setNewJobStatusSageCode] = useState("")
-  const [newJobStatusCadence, setNewJobStatusCadence] = useState("7")
   const [message, setMessage] = useState<string | null>(null)
   const [profileMessage, setProfileMessage] = useState<string | null>(null)
 
@@ -164,33 +166,6 @@ export function ProjectInformationWorkspace({
     })
   }
 
-  function saveInteraction(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const selectedInteractionType = interactionType === CUSTOM_INTERACTION_TYPE_OPTION
-      ? customProjectInteractionType(customInteractionTypeLabel)
-      : interactionType
-    if (!selectedInteractionType) {
-      setMessage("Enter a unique custom interaction type using 1–60 standard characters.")
-      return
-    }
-    startTransition(async () => {
-      const result = await createProjectInteraction({
-        projectId: information.project.id,
-        interactionType: selectedInteractionType,
-        direction,
-        summary: interactionSummary,
-        occurredAt: interactionTime,
-        contactId: interactionContactId || null,
-      })
-      if (result.success) {
-        setInteractionSummary("")
-        setCustomInteractionTypeLabel("")
-        setInteractionType(selectedInteractionType)
-      }
-      refreshAfter(result)
-    })
-  }
-
   function saveFollowUp(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     startTransition(async () => {
@@ -230,12 +205,12 @@ export function ProjectInformationWorkspace({
 
   function createJobStatus(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    const cadence = Number(newJobStatusCadence)
     startTransition(async () => {
+      // Follow-up timing is set in Settings → Workflows; this is only the starting default.
       const result = await createCustomProjectJobStatus({
         label: newJobStatusLabel,
         sageCode: newJobStatusSageCode || null,
-        followUpCadenceDays: Number.isInteger(cadence) && cadence > 0 ? cadence : null,
+        followUpCadenceDays: NEW_STATUS_DEFAULT_CADENCE_DAYS,
       })
       if (result.success) {
         setNewJobStatusLabel("")
@@ -258,41 +233,61 @@ export function ProjectInformationWorkspace({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Project Information
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            {information.project.projectNumber
-              ? projectNumberAndName(information.project, " · ")
-              : information.project.name}
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Maintain the project record, meaningful client touches, and the next follow-up in one place.
-          </p>
-          {information.projectNumberAliases.length > 0 && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              Previous project number{information.projectNumberAliases.length === 1 ? "" : "s"}: {information.projectNumberAliases.join(", ")}
-            </p>
-          )}
-        </div>
-        <Button asChild variant="outline">
-          <Link href={`/dashboard/projects/${information.project.id}/contacts`}>
-            Manage contacts and email addresses
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        className="mb-0"
+        eyebrow={
+          information.project.projectNumber
+            ? projectNumberAndName(information.project, " · ")
+            : information.project.name
+        }
+        title="Project Information"
+        meta={
+          information.projectNumberAliases.length > 0
+            ? `Previous project number${information.projectNumberAliases.length === 1 ? "" : "s"}: ${information.projectNumberAliases.join(", ")}`
+            : undefined
+        }
+        actions={
+          <Button asChild variant="outline">
+            <Link href={`/dashboard/projects/${information.project.id}/contacts`}>
+              Manage contacts and email addresses
+            </Link>
+          </Button>
+        }
+      />
 
       {message && (
-        <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm" role="status">
+        <p className="border-l-2 border-l-primary pl-3 text-sm" role="status">
           {message}
         </p>
       )}
 
+      <section id="log-client-interaction" aria-labelledby="log-client-interaction-title" className="scroll-mt-4 rounded-lg border-l-4 border-l-primary bg-muted/30 p-4">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="log-client-interaction-title" className="text-lg font-semibold">Log client interaction</h2>
+          <a href="#interaction-history" className="text-sm text-primary underline-offset-4 hover:underline">
+            {information.interactions.length} logged · view history
+          </a>
+        </div>
+        <ClientInteractionForm
+          key={interactionFormKey}
+          projectId={information.project.id}
+          idPrefix="info-interaction"
+          options={{
+            contacts: information.clientContacts,
+            interactionTypes: information.interactionTypes,
+            rules: information.interactionRules,
+          }}
+          onLogged={() => {
+            setInteractionFormKey((value) => value + 1)
+            setMessage("Client interaction logged. The follow-up clock has been reset.")
+            router.refresh()
+          }}
+        />
+      </section>
+
       <ProjectGoogleCalendarCard projectId={information.project.id} />
 
-      <form className="rounded-lg border bg-card p-4 sm:p-5" onSubmit={saveProfile}>
+      <form className="border-t pt-5" onSubmit={saveProfile}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-semibold">Core project record</h2>
@@ -317,36 +312,43 @@ export function ProjectInformationWorkspace({
           </div>
           <div className="space-y-2">
             <Label htmlFor="client-status">Client status</Label>
-            <select id="client-status" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={clientStatus} onChange={(event) => setClientStatus(event.target.value === "lead" ? "lead" : "customer")}>
-              <option value="lead">Lead</option>
-              <option value="customer">Customer</option>
-            </select>
+            <Select value={clientStatus} onValueChange={(value) => setClientStatus(value === "lead" ? "lead" : "customer")}>
+              <SelectTrigger id="client-status" className="h-9 w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lead">Lead</SelectItem>
+                <SelectItem value="customer">Customer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="project-department">
               Department <span className="text-destructive" aria-hidden="true">*</span>
             </Label>
-            <select
-              id="project-department"
-              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            <Select
               value={department}
-              onChange={(event) => {
-                const value = event.target.value
+              onValueChange={(value) =>
                 setDepartment(
                   value === "O" || value === "H" || value === "N" || value === "D"
                     ? value
                     : "",
                 )
-              }}
+              }
               required
-              aria-describedby="project-department-help"
             >
-              <option value="">Choose department</option>
-              <option value="O">ORC</option>
-              <option value="H">HPS</option>
-              <option value="N">Nu-Tech</option>
-              <option value="D">Design</option>
-            </select>
+              <SelectTrigger
+                id="project-department"
+                className="h-9 w-full"
+                aria-describedby="project-department-help"
+              >
+                <SelectValue placeholder="Choose department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="O">ORC</SelectItem>
+                <SelectItem value="H">HPS</SelectItem>
+                <SelectItem value="N">Nu-Tech</SelectItem>
+                <SelectItem value="D">Design</SelectItem>
+              </SelectContent>
+            </Select>
             <p id="project-department-help" className="text-xs text-muted-foreground">
               Controls department-specific workflows, including which connected social accounts receive posts.
             </p>
@@ -385,23 +387,31 @@ export function ProjectInformationWorkspace({
           </div>
           <div className="space-y-2">
             <Label htmlFor="job-status">Approved job status</Label>
-            <select id="job-status" aria-describedby="job-status-help" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={jobStatusId} onChange={(event) => setJobStatusId(event.target.value)}>
-              {information.jobStatuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
-            </select>
+            <SearchableCombobox
+              id="job-status"
+              className="h-9"
+              ariaDescribedBy="job-status-help"
+              value={jobStatusId}
+              // The picker's empty reset must not clear the project's status.
+              onValueChange={(value) => {
+                if (value !== "") setJobStatusId(value)
+              }}
+              options={information.jobStatuses.map((status) => ({ value: status.id, label: status.label }))}
+              ariaLabel="Approved job status"
+              placeholder="Choose job status"
+              searchPlaceholder="Search job statuses..."
+              emptyMessage="No matching job statuses."
+            />
             <p id="job-status-help" className="text-xs text-muted-foreground">
               Choose the approved operational stage for this project. {canManageJobStatuses ? "If a shared stage is genuinely missing, add it in the administrator-only section below." : "Only registry managers can add a shared status."}
             </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="map-visibility">Portfolio map</Label>
-            <select
-              id="map-visibility"
-              aria-describedby="map-visibility-help"
-              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
+            <Select
               value={mapVisibility}
               disabled={mapPending}
-              onChange={(event) => {
-                const next = event.target.value
+              onValueChange={(next) => {
                 if (!isPortfolioMapVisibility(next)) return
                 const previous = mapVisibility
                 setMapVisibility(next)
@@ -418,10 +428,19 @@ export function ProjectInformationWorkspace({
                 })
               }}
             >
-              <option value="default">Follow job status (default)</option>
-              <option value="shown">Always show on the map</option>
-              <option value="hidden">Hide from the map</option>
-            </select>
+              <SelectTrigger
+                id="map-visibility"
+                className="h-9 w-full"
+                aria-describedby="map-visibility-help"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Follow job status (default)</SelectItem>
+                <SelectItem value="shown">Always show on the map</SelectItem>
+                <SelectItem value="hidden">Hide from the map</SelectItem>
+              </SelectContent>
+            </Select>
             <p id="map-visibility-help" className="text-xs text-muted-foreground" role="status" aria-live="polite">
               {mapMessage ?? "By default, active HPS and Open Range jobs appear on the dashboard map; Internal and Nu-Tech jobs do not."}
             </p>
@@ -452,7 +471,7 @@ export function ProjectInformationWorkspace({
       </form>
 
       {canManageJobStatuses && (
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Add an organization-specific status</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             Add a genuinely missing shared stage only after your organization has
@@ -461,68 +480,69 @@ export function ProjectInformationWorkspace({
           <form className="mt-4 grid gap-3 md:grid-cols-4" onSubmit={createJobStatus}>
             <div className="space-y-2 md:col-span-2"><Label htmlFor="new-job-status">Custom status label</Label><Input id="new-job-status" value={newJobStatusLabel} onChange={(event) => setNewJobStatusLabel(event.target.value)} placeholder="For example: Warranty" aria-describedby="new-job-status-help" required /><p id="new-job-status-help" className="text-xs text-muted-foreground">Use printable basic Latin characters so the organization-wide label is unique.</p></div>
             {developerModeEnabled && <div className="space-y-2"><Label htmlFor="new-job-status-code">Optional Sage reference code</Label><Input id="new-job-status-code" value={newJobStatusSageCode} onChange={(event) => setNewJobStatusSageCode(event.target.value)} /></div>}
-            <div className="space-y-2"><Label htmlFor="new-job-status-cadence">Follow-up cadence (business days)</Label><Input id="new-job-status-cadence" type="number" min="1" value={newJobStatusCadence} onChange={(event) => setNewJobStatusCadence(event.target.value)} required /></div>
+            <p className="text-sm text-muted-foreground md:col-span-2 md:self-end">
+              Follow-up timing for every status, including new ones, is set in{" "}
+              <Link href="/dashboard/settings?section=workflows&workflow=project-aging" className="text-primary underline-offset-4 hover:underline">Settings → Workflows → Project aging</Link>.
+            </p>
             <div className="md:col-span-4"><Button type="submit" disabled={pending}>Add custom status</Button></div>
           </form>
         </section>
       )}
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section id="client-follow-up" className="scroll-mt-4 border-t pt-5">
           <h2 className="font-semibold">Client follow-up</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Set the next explicit follow-up; the queue also calculates status-based staleness from meaningful touches.</p>
+          {information.followUpSignal ? (
+            <div className="mt-3 border-b pb-4">
+              <FollowUpSection projectId={information.project.id} signal={information.followUpSignal} />
+            </div>
+          ) : null}
+          <p className="mt-3 text-sm text-muted-foreground">Set the next explicit follow-up and its owner. Logging a client interaction (top of this page) resets the aging clock.</p>
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={saveFollowUp}>
             <div className="space-y-2"><Label htmlFor="follow-up-at">Next follow-up</Label><Input id="follow-up-at" type="datetime-local" value={followUpAt} onChange={(event) => setFollowUpAt(event.target.value)} required /></div>
-            <div className="space-y-2"><Label htmlFor="follow-up-owner">Owner</Label><select id="follow-up-owner" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={followUpOwnerId} onChange={(event) => setFollowUpOwnerId(event.target.value)}><option value="">Unassigned</option>{followUpOwners.map((owner) => <option key={owner.id} value={owner.id}>{owner.displayName}</option>)}</select></div>
+            <div className="space-y-2"><Label htmlFor="follow-up-owner">Owner</Label><SearchableCombobox
+              id="follow-up-owner"
+              className="h-9"
+              // "" means unassigned; the picker needs a non-empty value for it.
+              value={followUpOwnerId || UNASSIGNED_OWNER}
+              onValueChange={(value) => setFollowUpOwnerId(value === UNASSIGNED_OWNER ? "" : value)}
+              options={[
+                { value: UNASSIGNED_OWNER, label: "Unassigned" },
+                ...followUpOwners.map((owner) => ({ value: owner.id, label: owner.displayName })),
+              ]}
+              ariaLabel="Follow-up owner"
+              placeholder="Unassigned"
+              searchPlaceholder="Search staff..."
+              emptyMessage="No matching staff."
+            /></div>
             <div className="flex flex-wrap gap-2 sm:col-span-2"><Button type="submit" disabled={pending}>Set follow-up</Button>{information.followUp && <Button type="button" variant="outline" disabled={pending} onClick={clearFollowUp}>Clear follow-up</Button>}</div>
           </form>
           {information.followUp && <p className="mt-4 text-sm">Current: <strong>{new Date(information.followUp.nextFollowUpAt).toLocaleString()}</strong>{information.followUp.ownerName ? ` · ${information.followUp.ownerName}` : " · Unassigned"}</p>}
         </section>
 
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
-          <h2 className="font-semibold">Log client interaction</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Calls, emails, texts, meetings, site visits, documents/submittals sent to clients, and custom interaction types count as meaningful contact.</p>
-          <form className="mt-4 grid gap-3" onSubmit={saveInteraction}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-2">
-                <Label htmlFor="interaction-contact">Client contact</Label>
-                <select id="interaction-contact" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={interactionContactId} onChange={(event) => setInteractionContactId(event.target.value)} required>
-                  <option value="">Choose a client contact</option>
-                  {information.clientContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.displayName}</option>)}
-                </select>
-              </div>
-              <div className="space-y-2"><Label htmlFor="interaction-type">Type</Label><select id="interaction-type" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={interactionType} onChange={(event) => setInteractionType(event.target.value)}>{information.interactionTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}<option value={CUSTOM_INTERACTION_TYPE_OPTION}>Add another interaction type…</option></select></div>
-              <div className="space-y-2"><Label htmlFor="interaction-direction">Direction</Label><select id="interaction-direction" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={direction} onChange={(event) => setDirection(event.target.value === "inbound" ? "inbound" : "outbound")}><option value="outbound">Outbound</option><option value="inbound">Inbound</option></select></div>
-              <div className="space-y-2"><Label htmlFor="interaction-time">When</Label><Input id="interaction-time" type="datetime-local" value={interactionTime} onChange={(event) => setInteractionTime(event.target.value)} required /></div>
-            </div>
-            {interactionType === CUSTOM_INTERACTION_TYPE_OPTION && <div className="space-y-2"><Label htmlFor="custom-interaction-type">Custom interaction type</Label><Input id="custom-interaction-type" value={customInteractionTypeLabel} onChange={(event) => setCustomInteractionTypeLabel(event.target.value)} maxLength={60} placeholder="For example: Design review" aria-describedby="custom-interaction-type-help" required /><p id="custom-interaction-type-help" className="text-xs text-muted-foreground">After the first logged interaction, this choice becomes available on every project in your organization.</p></div>}
-            <div className="space-y-2"><Label htmlFor="interaction-summary">Outcome / summary</Label><Textarea id="interaction-summary" value={interactionSummary} onChange={(event) => setInteractionSummary(event.target.value)} rows={3} required /></div>
-            <div><Button type="submit" disabled={pending}>Log interaction</Button></div>
-          </form>
-        </section>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">Project notes</h2>
           <form className="mt-3 space-y-2" onSubmit={saveNote}><Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a project note…" rows={3} required /><Button type="submit" disabled={pending}>Add note</Button></form>
-          <div className="mt-4 space-y-3">{information.notes.length === 0 ? <p className="text-sm text-muted-foreground">No project notes yet.</p> : information.notes.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-wrap text-sm">{item.body}</p><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeNote(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.createdAt).toLocaleString()}</p></article>)}</div>
+          <div className="mt-4">{information.notes.length === 0 ? <p className="text-sm text-muted-foreground">No project notes yet.</p> : information.notes.map((item) => <article className="border-b py-3 first:border-t" key={item.id}><div className="flex items-start justify-between gap-3"><p className="whitespace-pre-wrap text-sm">{item.body}</p><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeNote(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.createdAt).toLocaleString()}</p></article>)}</div>
         </section>
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
-          <h2 className="font-semibold">Meaningful interaction history</h2>
-          <div className="mt-4 space-y-3">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()}{developerModeEnabled ? ` · ${item.source}` : ""}</p></article>)}</div>
+        <section className="border-t pt-5">
+          <h2 id="interaction-history" className="scroll-mt-4 font-semibold">Client interaction history</h2>
+          <div className="mt-4">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="border-b py-3 first:border-t" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()}{developerModeEnabled ? ` · ${item.source}` : ""}</p></article>)}</div>
         </section>
       </div>
 
       {developerModeEnabled && information.syncOperations.length > 0 && (
-        <section className="rounded-lg border bg-card p-4 sm:p-5">
+        <section className="border-t pt-5">
           <h2 className="font-semibold">External synchronization</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Project edits are retained in Compass. Pending or failed Google synchronization is visible here for safe retry.
           </p>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 divide-y border-y">
             {information.syncOperations.map((operation) => (
-              <div key={operation.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+              <div key={operation.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                 <span>{operation.operation.replaceAll("_", " ")}</span>
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge variant={operation.status === "failed" ? "destructive" : operation.status === "completed" ? "default" : "secondary"}>{operation.status}</Badge>

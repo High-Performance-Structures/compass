@@ -1,10 +1,13 @@
 import { validateAgentAuth } from "@/lib/agent/api-auth"
 import { getCloudflareContext } from "@/lib/db"
+import { getDb } from "@/db"
+import { resolveAgentUser } from "@/lib/agent/agent-user"
 import {
-  getCustomDashboards,
-  getCustomDashboardById,
-  deleteCustomDashboard,
-} from "@/app/actions/dashboards"
+  deleteCustomDashboardForUser,
+  getCustomDashboardForUser,
+  listCustomDashboardsForUser,
+} from "@/lib/dashboards/user-dashboards"
+import { revalidatePath } from "next/cache"
 
 type DashboardAction = "list" | "get" | "delete"
 
@@ -14,6 +17,17 @@ export async function POST(req: Request): Promise<Response> {
 
   const auth = await validateAgentAuth(req, envRecord)
   if (!auth.valid) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  // The agent calls this route with a bearer token only, so the user comes
+  // from the verified token rather than the (absent) session cookie.
+  const db = getDb(env.DB)
+  const user = await resolveAgentUser(db, auth)
+  if (!user) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -33,20 +47,11 @@ export async function POST(req: Request): Promise<Response> {
   try {
     switch (body.action) {
       case "list": {
-        const result = await getCustomDashboards()
-        if (!result.success) {
-          return new Response(
-            JSON.stringify({ error: result.error }),
-            {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            }
-          )
-        }
+        const dashboards = await listCustomDashboardsForUser(db, user.id)
         return new Response(
           JSON.stringify({
-            dashboards: result.data,
-            count: result.data.length,
+            dashboards,
+            count: dashboards.length,
           }),
           {
             headers: { "Content-Type": "application/json" },
@@ -66,7 +71,11 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
-        const result = await getCustomDashboardById(dashboardId)
+        const result = await getCustomDashboardForUser(
+          db,
+          user.id,
+          dashboardId,
+        )
         if (!result.success) {
           return new Response(
             JSON.stringify({ error: result.error }),
@@ -102,7 +111,11 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
-        const result = await deleteCustomDashboard(dashboardId)
+        const result = await deleteCustomDashboardForUser(
+          db,
+          user.id,
+          dashboardId,
+        )
         if (!result.success) {
           return new Response(
             JSON.stringify({ error: result.error }),
@@ -112,6 +125,7 @@ export async function POST(req: Request): Promise<Response> {
             }
           )
         }
+        revalidatePath("/", "layout")
 
         return new Response(
           JSON.stringify({

@@ -38,6 +38,7 @@ export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly Portf
       name: projectDisplayName(row),
       projectNumber: row.projectNumber,
       phase,
+      jobStatusId: row.jobStatusId,
       statusLabel: row.statusLabel,
       town: town?.town ?? null,
       lon: town?.lon ?? null,
@@ -49,6 +50,7 @@ export function audienceMapJobs(rows: readonly AudienceJobRow[]): readonly Portf
       nextTaskStart: null,
       health: "ok",
       visibility: "default",
+      followUp: null,
     }]
   })
   return spreadSharedTowns(jobs)
@@ -95,10 +97,11 @@ export function vendorJobScope(
 
 /** Phase names written for homeowners. */
 export const OWNER_PHASE_LABEL: Readonly<Record<PortfolioPhaseId, string>> = {
+  intake: "Getting started",
   estimating: "Pricing",
   design: "Design",
   permitting: "Permits",
-  precon: "Getting ready to build",
+  negotiation: "Contract",
   construction: "Under construction",
   closeout: "Finishing up",
 }

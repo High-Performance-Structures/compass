@@ -1,5 +1,6 @@
 "use server"
 
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, asc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -43,6 +44,8 @@ import {
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { linkedScheduleTaskId } from "@/lib/schedule/linked-todos"
 import {
+  purchaseOrderCoverEmailHtml,
+  purchaseOrderCoverEmailText,
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
 } from "@/lib/purchase-orders/email"
@@ -61,6 +64,10 @@ import {
 import { rfqScopeCodingErrors } from "@/lib/rfqs/cost-codes"
 import { projectRfqEmailDeliveries, projectRfqManualResponseEvents } from "@/db/schema-rfqs"
 import { projectRfqBidApprovals } from "@/db/schema-rfqs"
+import { markPaperTrailDue, markPaperTrailRemoved } from "@/lib/paper-trail/enqueue"
+import { releaseNuTechAirlitePoNumber } from "@/lib/nutech/airlite-po-number"
+import { nuTechOrderFormAttachments } from "@/lib/nutech/order-form-attachment"
+import { sendCompassEmail } from "@/lib/email/compass-email"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -494,14 +501,6 @@ function requireText(value: string, label: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
-}
-
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : process.env[key] ?? null
 }
 
 function parseEmailList(value: string | null): readonly string[] {
@@ -991,70 +990,6 @@ function toPurchaseOrderLineItem(
     amount: row.amount,
     taxGroup: row.taxGroup,
     syncStatus: row.syncStatus,
-  }
-}
-
-async function sendResendPurchaseOrderEmail(
-  env: unknown,
-  input: {
-    readonly to: readonly string[]
-    readonly cc: readonly string[]
-    readonly subject: string
-    readonly text: string
-    readonly html: string
-  }
-): Promise<{
-  readonly status: string
-  readonly providerMessageId: string | null
-  readonly error: string | null
-}> {
-  const apiKey = envString(env, "RESEND_API_KEY")
-  if (!apiKey) {
-    return {
-      status: "pending_provider",
-      providerMessageId: null,
-      error: "RESEND_API_KEY is not configured",
-    }
-  }
-
-  const fromAddress =
-    envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <notifications@compass.build>"
-  const requestBody: Record<string, unknown> = {
-    from: fromAddress,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  }
-  if (input.cc.length > 0) {
-    requestBody.cc = input.cc
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  })
-
-  const responseText = await response.text()
-  let providerMessageId: string | null = null
-  try {
-    const parsed = JSON.parse(responseText)
-    if (isRecord(parsed) && typeof parsed.id === "string") {
-      providerMessageId = parsed.id
-    }
-  } catch {
-    providerMessageId = null
-  }
-
-  return {
-    status: response.ok ? "sent" : "failed",
-    providerMessageId,
-    error: response.ok ? null : responseText.slice(0, 500),
   }
 }
 
@@ -1848,6 +1783,8 @@ export async function updateProjectOperationStatus(
     revalidatePath("/dashboard")
     if (operationKind === "rfq") {
       revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
+    } else {
+      await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: operationId })
     }
 
     return { success: true, id: operationId }
@@ -1986,6 +1923,7 @@ export async function createPurchaseOrderRequest(
       db.insert(projectOperations).values(inserted),
       ...lineInserts,
     ])
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: id })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
@@ -2139,6 +2077,7 @@ export async function updatePurchaseOrderRequest(
       ...lineInserts,
     ])
 
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
@@ -2421,7 +2360,7 @@ export async function deletePurchaseOrderRequest(
       "purchase-orders"
     )
     const [existing] = await db
-      .select({ id: projectOperations.id })
+      .select({ id: projectOperations.id, status: projectOperations.status })
       .from(projectOperations)
       .where(
         and(
@@ -2436,6 +2375,8 @@ export async function deletePurchaseOrderRequest(
       return { success: false, error: "Purchase order not found." }
     }
 
+    // A draft never reached the vendor, so its manufacturer PO number can be reused.
+    if (existing.status === "draft") await releaseNuTechAirlitePoNumber(db, purchaseOrderId)
     await db
       .delete(projectPurchaseOrderLines)
       .where(
@@ -2454,6 +2395,8 @@ export async function deletePurchaseOrderRequest(
         )
       )
 
+    // The last Drive copy stays as the paper trail of the deleted order.
+    await markPaperTrailRemoved(db, { recordType: "purchase_order", recordId: purchaseOrderId })
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath(`/dashboard/projects/${projectId}/financials`)
@@ -3176,11 +3119,13 @@ export async function sendPurchaseOrderEmail(
       ).acknowledgement,
     }
     const senderName = user.displayName ?? user.email
+    const profiles = await currentDepartmentProfiles()
+    const brand = projectBrandFor({ profiles,
+      projectId: project.id,
+      projectNumber: project.projectNumber,
+    })
     const emailInput = {
-      brand: projectBrandFor({
-        projectId: project.id,
-        projectNumber: project.projectNumber,
-      }),
+      brand,
       projectName: project.name,
       projectNumber: project.projectNumber,
       senderName,
@@ -3191,18 +3136,42 @@ export async function sendPurchaseOrderEmail(
       }),
       order,
     }
-    const delivery = await sendResendPurchaseOrderEmail(env, {
+    // The manufacturer's PO goes out on its own filled order form, with a
+    // cover note in place of the Compass PO layout.
+    const orderForm = await nuTechOrderFormAttachments({
+      db,
+      environment: env,
+      organizationId: orgId,
+      user,
+      purchaseOrderId,
+      purchaseOrderNumber: operation.sourceRecordNumber,
+    })
+    // Sent through the company's Google Workspace like every other Compass
+    // email, from the department's shared mailbox when one is set.
+    const departmentProfile = profiles[brand.department]
+    const delivery = await sendCompassEmail({
+      env,
+      db,
+      organizationId: orgId,
       to,
       cc,
       subject,
-      text: purchaseOrderEmailText(emailInput),
-      html: purchaseOrderEmailHtml(emailInput),
+      text: orderForm ? purchaseOrderCoverEmailText(emailInput) : purchaseOrderEmailText(emailInput),
+      html: orderForm ? purchaseOrderCoverEmailHtml(emailInput) : purchaseOrderEmailHtml(emailInput),
+      attachments: orderForm ?? [],
+      sender: departmentProfile.senderAddress
+        ? {
+            address: departmentProfile.senderAddress,
+            name: departmentProfile.senderName || departmentProfile.companyName,
+          }
+        : undefined,
     })
 
-    if (delivery.status === "failed") {
+    // Only a delivered email moves the PO to "sent".
+    if (delivery.status !== "sent") {
       return {
         success: false,
-        error: delivery.error ?? "Unable to send purchase order email.",
+        error: `The purchase order email was not sent: ${delivery.error ?? delivery.status}`,
       }
     }
 
@@ -3218,6 +3187,8 @@ export async function sendPurchaseOrderEmail(
         updatedAt: now,
       })
       .where(eq(projectOperations.id, purchaseOrderId))
+    // Freeze a dated copy of exactly what the vendor received.
+    await markPaperTrailDue(db, { projectId, recordType: "purchase_order", recordId: purchaseOrderId, milestone: "sent" })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)

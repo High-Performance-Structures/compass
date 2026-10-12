@@ -25,6 +25,17 @@ const rememberSchema = z.object({
     .describe("Importance weight 0.3-1.0 (default 0.7)"),
 })
 
+const recallConversationsSchema = z.object({
+  conversationId: z
+    .string()
+    .optional()
+    .describe("Open this earlier conversation; omit to list recent ones"),
+  limit: z
+    .number()
+    .optional()
+    .describe("How many recent conversations to list (default 10, max 20)"),
+})
+
 const recallSchema = z.object({
   query: z
     .string()
@@ -47,8 +58,30 @@ export function memoryTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = rememberSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/memory/save",
-          args
+          "/api/compass/memory",
+          { action: "save", ...args }
+        )
+        return JSON.stringify(result)
+      },
+    },
+
+    {
+      name: "recallConversations",
+      description:
+        "Look up this user's earlier Ask Jarvis conversations. Each chat " +
+        "starts fresh, so use this only when the user asks about a " +
+        "previous conversation or asks to pick up where they left off. " +
+        "Without conversationId it lists recent conversations with their " +
+        "first request; with conversationId it returns that " +
+        "conversation's latest messages.",
+      input_schema: zodToJsonSchema(recallConversationsSchema),
+      run: async (input: unknown): Promise<string> => {
+        const args = recallConversationsSchema.parse(input)
+        const result = await dataSource.fetch(
+          "/api/compass/memory",
+          args.conversationId
+            ? { action: "conversation", conversationId: args.conversationId }
+            : { action: "recentConversations", limit: args.limit ?? 10 }
         )
         return JSON.stringify(result)
       },
@@ -64,8 +97,8 @@ export function memoryTools(dataSource: DataSource): ToolDef[] {
       run: async (input: unknown): Promise<string> => {
         const args = recallSchema.parse(input)
         const result = await dataSource.fetch(
-          "/api/compass/memory/recall",
-          args
+          "/api/compass/memory",
+          { action: "search", ...args }
         )
         return JSON.stringify(result)
       },

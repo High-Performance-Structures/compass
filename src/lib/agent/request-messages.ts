@@ -18,6 +18,35 @@ function getMessageText(message: AgentMessage): string {
     .join("")
 }
 
+// A reply with no text and no tool calls is what a failed request leaves
+// behind (the chat appends an empty assistant message before streaming).
+function isFailedReply(message: AgentMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    getMessageText(message).trim().length === 0 &&
+    !message.parts.some((part) => part.type === "tool-call")
+  )
+}
+
+/**
+ * Drops each failed reply together with the question it failed to answer.
+ * Otherwise retries pile up unanswered questions and the model may answer an
+ * older one instead of the newest.
+ */
+function withoutFailedExchanges(
+  messages: ReadonlyArray<AgentMessage>,
+): ReadonlyArray<AgentMessage> {
+  const kept: AgentMessage[] = []
+  for (const message of messages) {
+    if (isFailedReply(message)) {
+      if (kept.at(-1)?.role === "user") kept.pop()
+      continue
+    }
+    kept.push(message)
+  }
+  return kept
+}
+
 /**
  * Keep resumed conversations within the API contract. Saved conversations can
  * outlive changes to the message format and can grow beyond the request limit,
@@ -26,7 +55,7 @@ function getMessageText(message: AgentMessage): string {
 export function buildAgentRequestMessages(
   messages: ReadonlyArray<AgentMessage>,
 ): ReadonlyArray<AgentRequestMessage> {
-  const newestCompatibleMessages = messages
+  const newestCompatibleMessages = withoutFailedExchanges(messages)
     .filter(
       (message) =>
         message.role === "user" || message.role === "assistant",

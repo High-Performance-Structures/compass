@@ -3,17 +3,18 @@ import zipsData from "./colorado-zips.json"
 import { resolvedProjectDepartment } from "@/lib/project-branding"
 import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/project-profile"
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
+import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
-export const PORTFOLIO_PHASES = [
-  { id: "estimating", label: "Estimating", short: "EST" },
-  { id: "design", label: "Design", short: "DES" },
-  { id: "permitting", label: "Permitting", short: "PER" },
-  { id: "precon", label: "Pre-construction", short: "PRE" },
-  { id: "construction", label: "Under construction", short: "BLD" },
-  { id: "closeout", label: "Closeout", short: "CLO" },
-] as const
+import {
+  departmentView,
+  DEFAULT_PHASE_BY_JOB_STATUS,
+  DEFAULT_PORTFOLIO_MAP_RULES,
+  PORTFOLIO_PHASES,
+  type PortfolioMapRules,
+  type PortfolioPhaseId,
+} from "@/lib/portfolio-map/phases"
 
-export type PortfolioPhaseId = (typeof PORTFOLIO_PHASES)[number]["id"]
+export { PORTFOLIO_PHASES, DEFAULT_PORTFOLIO_MAP_RULES, type PortfolioMapRules, type PortfolioPhaseId }
 export type PortfolioHealth = "ok" | "risk" | "late"
 export { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
@@ -22,6 +23,8 @@ export type PortfolioMapJob = {
   readonly name: string
   readonly projectNumber: string | null
   readonly phase: PortfolioPhaseId
+  /** The job's status id, so a status can be changed from the map. */
+  readonly jobStatusId: string | null
   readonly statusLabel: string
   readonly town: string | null
   readonly lon: number | null
@@ -34,54 +37,46 @@ export type PortfolioMapJob = {
   readonly nextTaskStart: string | null
   readonly health: PortfolioHealth
   readonly visibility: PortfolioMapVisibility
+  /** Client follow-up aging; null when the status isn't followed up or the viewer isn't office staff. */
+  readonly followUp: ProjectFollowUpSignal | null
 }
 
 /**
- * Job statuses grouped into the map's pipeline phases. Closeout covers punch
- * list and warranty work. Statuses not listed are not shown: complete,
- * closed, refused, inactive, internal, and the material
- * order statuses (ordered, partial order, price sheet sent, shipping TBD,
- * awaiting payment).
+ * The flag over a map marker: the worse of schedule health (construction)
+ * and client follow-up aging. Red is past due or overdue; amber is at risk
+ * or follow-up due.
  */
-const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
-  intake: "estimating",
-  new_client_info_sent: "estimating",
-  budget_estimating: "estimating",
-  budget_estimate_sent: "estimating",
-  estimating: "estimating",
-  estimate_sent: "estimating",
-  takeoff: "estimating",
-  design_proposal: "design",
-  design_proposal_sent: "design",
-  design_proposal_signed: "design",
-  in_design: "design",
-  engineering: "design",
-  value_engineering: "design",
-  permitting: "permitting",
-  contract_docs: "precon",
-  contract_docs_sent: "precon",
-  contract_docs_signed: "precon",
-  contract: "precon",
-  awarded: "precon",
-  awaiting_funding: "precon",
-  awaiting_groundbreaking: "precon",
-  bracing_out: "construction",
-  under_construction: "construction",
-  current: "construction",
-  punchlist: "closeout",
-  under_warranty: "closeout",
+export function portfolioMarkerAlert(job: PortfolioMapJob): "late" | "risk" | null {
+  if (job.health === "late" || job.followUp?.level === "overdue") return "late"
+  if (job.health === "risk" || job.followUp?.level === "due") return "risk"
+  return null
 }
 
 /**
- * The map covers HPS and Open Range (construction and design) projects;
- * Nu-Tech jobs are left off. Projects without a recognizable department stay.
+ * The built-in statuses of each phase (with the company's changes), in
+ * workflow order, for moving a job to another status from the map. Custom
+ * statuses are changed on the job page.
  */
-export function isMappedDepartment(project: {
-  readonly department: string | null
-  readonly projectId: string
-  readonly projectNumber: string | null
-}): boolean {
-  return resolvedProjectDepartment(project) !== "N"
+export function portfolioPhaseStatuses(phase: PortfolioPhaseId, rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES): readonly string[] {
+  // Built-in order first, then any other standard status the company mapped.
+  const ids = new Set([...Object.keys(DEFAULT_PHASE_BY_JOB_STATUS), ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id)])
+  return [...ids].filter((id) => statusPhase(id, rules) === phase)
+}
+
+/**
+ * Whether a department's jobs appear with the projects: HPS, Open Range and
+ * Design do, Nu-Tech has its own sales view, unless the company changed it.
+ * Projects without a recognizable department stay.
+ */
+export function isMappedDepartment(
+  project: {
+    readonly department: string | null
+    readonly projectId: string
+    readonly projectNumber: string | null
+  },
+  rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES,
+): boolean {
+  return departmentView(resolvedProjectDepartment(project), rules) === "projects"
 }
 
 export type PortfolioProjectRule = {
@@ -94,9 +89,9 @@ export type PortfolioProjectRule = {
 }
 
 /** Phase the job would have by its status and department alone. */
-export function defaultPortfolioPhase(rule: PortfolioProjectRule): PortfolioPhaseId | null {
-  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel)
-  return phase && isMappedDepartment(rule) ? phase : null
+export function defaultPortfolioPhase(rule: PortfolioProjectRule, rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES): PortfolioPhaseId | null {
+  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel, rules)
+  return phase && isMappedDepartment(rule, rules) ? phase : null
 }
 
 /**
@@ -105,16 +100,16 @@ export function defaultPortfolioPhase(rule: PortfolioProjectRule): PortfolioPhas
  * normally excluded, using closeout for warranty/complete jobs and
  * pre-construction otherwise when the status has no phase.
  */
-export function portfolioPhaseFor(rule: PortfolioProjectRule): PortfolioPhaseId | null {
+export function portfolioPhaseFor(rule: PortfolioProjectRule, rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES): PortfolioPhaseId | null {
   if (rule.visibility === "hidden") return null
-  if (rule.visibility === "default") return defaultPortfolioPhase(rule)
-  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel)
+  if (rule.visibility === "default") return defaultPortfolioPhase(rule, rules)
+  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel, rules)
   if (phase) return phase
   const bucket = projectJobStatusBucket({
     jobStatusId: rule.jobStatusId ?? "",
     jobStatusLabel: rule.jobStatusLabel ?? "",
   })
-  return bucket === "warranty" || bucket === "complete" ? "closeout" : "precon"
+  return bucket === "warranty" || bucket === "complete" ? "closeout" : "estimating"
 }
 
 function normalizeLabel(value: string): string {
@@ -125,18 +120,26 @@ const STANDARD_ID_BY_LABEL: ReadonlyMap<string, string> = new Map(
   PROJECT_JOB_STATUS_DEFINITIONS.map((status) => [normalizeLabel(status.label), status.id]),
 )
 
+/** A status's phase: the company's setting, else the built-in one; undefined when neither names it. */
+function statusPhase(statusId: string, rules: PortfolioMapRules): PortfolioPhaseId | null | undefined {
+  const configured = rules.statusPhases[statusId]
+  if (configured) return configured === "off" ? null : configured
+  return DEFAULT_PHASE_BY_JOB_STATUS[statusId]
+}
+
 /** Phase for a job status; custom statuses match a standard status by label. */
 export function phaseForJobStatus(
   jobStatusId: string | null,
   jobStatusLabel: string | null,
+  rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES,
 ): PortfolioPhaseId | null {
   if (jobStatusId) {
-    const direct = PHASE_BY_JOB_STATUS[jobStatusId]
-    if (direct) return direct
+    const direct = statusPhase(jobStatusId, rules)
+    if (direct !== undefined) return direct
   }
   if (jobStatusLabel) {
     const standardId = STANDARD_ID_BY_LABEL.get(normalizeLabel(jobStatusLabel))
-    if (standardId) return PHASE_BY_JOB_STATUS[standardId] ?? null
+    if (standardId) return statusPhase(standardId, rules) ?? null
   }
   return null
 }
@@ -242,6 +245,26 @@ export function resolveTown(input: {
   return nameTown ? found(placeKey(nameTown)) : null
 }
 
+const TOWN_RADIUS_KM = 2.5
+// Cities, towns and villages; scattered localities don't mark a town.
+const TOWN_MAX_RANK = 2
+
+/**
+ * The town whose center is nearest a point and within about 2.5 km of it,
+ * or null in the countryside. Used to tell when a street match is really in
+ * another town ("Main Street" in Fairplay for an Alma address).
+ */
+export function townAt(latitude: number, longitude: number): string | null {
+  const kmPerLon = 111.32 * Math.cos((latitude * Math.PI) / 180)
+  let best: { readonly name: string; readonly km: number } | null = null
+  for (const [name, [lon, lat, rank]] of PLACES) {
+    if (rank > TOWN_MAX_RANK) continue
+    const km = Math.hypot((lat - latitude) * 110.57, (lon - longitude) * kmPerLon)
+    if (km <= TOWN_RADIUS_KM && (!best || km < best.km)) best = { name, km }
+  }
+  return best ? titleCase(best.name) : null
+}
+
 export function portfolioHealth(pastDueCount: number, stalledCount: number): PortfolioHealth {
   if (pastDueCount > 0) return "late"
   if (stalledCount > 0) return "risk"
@@ -252,10 +275,10 @@ export function portfolioHealth(pastDueCount: number, stalledCount: number): Por
  * Jobs in the same town would stack on one point; fan them out on a small
  * ring (about 3 km) in a stable order.
  */
-export function spreadSharedTowns(
-  jobs: readonly PortfolioMapJob[],
-): readonly PortfolioMapJob[] {
-  const byTown = new Map<string, PortfolioMapJob[]>()
+export function spreadSharedTowns<
+  T extends { readonly id: string; readonly town: string | null; readonly lon: number | null; readonly lat: number | null },
+>(jobs: readonly T[]): readonly T[] {
+  const byTown = new Map<string, T[]>()
   for (const job of jobs) {
     if (job.lon === null || job.lat === null || job.town === null) continue
     const group = byTown.get(job.town) ?? []

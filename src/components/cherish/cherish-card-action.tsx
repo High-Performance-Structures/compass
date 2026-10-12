@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { IconAlertTriangle, IconMail, IconX } from "@tabler/icons-react"
 
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   cancelCherishCard,
   getCherishCardCatalog,
@@ -35,13 +36,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
 type Props = {
@@ -244,31 +238,25 @@ export function CherishCardAction({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor={`cherish-card-${recognition.id}`}>Card design</Label>
-            <Select
-              value={selectedCardId === null ? undefined : String(selectedCardId)}
+            <SearchableCombobox
+              id={`cherish-card-${recognition.id}`}
+              value={selectedCardId === null ? "" : String(selectedCardId)}
               onValueChange={(value) => {
                 const card = catalog.find((item) => String(item.id) === value)
                 setSelectedCardId(card?.id ?? null)
               }}
-              disabled={catalogLoading || catalog.length === 0}
-            >
-              <SelectTrigger
-                id={`cherish-card-${recognition.id}`}
-                className="w-full"
-              >
-                <SelectValue
-                  placeholder={catalogLoading ? "Loading cards…" : "Choose a card"}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {catalog.map((card) => (
-                  <SelectItem key={card.id} value={String(card.id)}>
-                    {card.categoryName} · {card.name}
-                    {card.price === null ? "" : ` · $${card.price.toFixed(2)}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              disabled={catalogLoading}
+              options={catalog.map((card) => ({
+                value: String(card.id),
+                label: `${card.categoryName} · ${card.name}`,
+                selectedLabel: `${card.categoryName} · ${card.name}${card.price === null ? "" : ` · $${card.price.toFixed(2)}`}`,
+                description: card.price === null ? undefined : `$${card.price.toFixed(2)}`,
+              }))}
+              ariaLabel="Card design"
+              placeholder={catalogLoading ? "Loading cards…" : "Choose a card"}
+              searchPlaceholder="Search cards..."
+              emptyMessage="No matching cards."
+            />
             {selectedCard ? (
               <div className="flex gap-3">
                 {selectedCard.coverUrl ? (

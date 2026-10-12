@@ -161,3 +161,39 @@ export function purchaseOrderEmailHtml(
       </p>
     </div>`
 }
+
+/**
+ * For a PO that travels on the supplier's own form (attached): the message,
+ * the PO number and the signature, with no Compass PO layout to contradict it.
+ */
+export function purchaseOrderCoverEmailText(
+  input: PurchaseOrderEmailInput
+): string {
+  return [
+    input.message,
+    "",
+    `P.O. ${input.order.sourceRecordNumber ?? "Unnumbered"} is attached on your order form.`,
+    "",
+    input.brand.companyName,
+    ...input.brand.contactLines,
+    "",
+    `Sent through Compass by ${input.senderName}.`,
+  ].join("\n")
+}
+
+export function purchaseOrderCoverEmailHtml(
+  input: PurchaseOrderEmailInput
+): string {
+  return `
+    <div style="font-family:Arial,sans-serif;color:#111827;line-height:1.45;">
+      <p>${escapeHtml(input.message).replaceAll("\n", "<br>")}</p>
+      <p>P.O. <strong>${escapeHtml(input.order.sourceRecordNumber ?? "Unnumbered")}</strong> is attached on your order form.</p>
+      <div style="margin-top:20px;border-top:1px solid #d1d5db;padding-top:12px;color:#4b5563;font-size:12px;">
+        <strong>${escapeHtml(input.brand.companyName)}</strong><br>
+        ${input.brand.contactLines.map((line) => escapeHtml(line)).join("<br>")}
+      </div>
+      <p style="margin-top:20px;color:#4b5563;font-size:12px;">
+        Sent through Compass by ${escapeHtml(input.senderName)}.
+      </p>
+    </div>`
+}

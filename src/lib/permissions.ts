@@ -203,6 +203,20 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "project",
   },
   {
+    id: "shop-tickets",
+    group: "Operations",
+    label: "Shop Tickets",
+    description: "Create, issue and void shop tickets that bill a project for labor and machine hours at set rates.",
+    resource: "finance",
+  },
+  {
+    id: "internal-duties",
+    group: "Operations",
+    label: "Internal Duty Log",
+    description: "Log office and yard duties with hours in internal workspaces such as H-Office.",
+    resource: "project",
+  },
+  {
     id: "nutech-orders",
     group: "Operations",
     label: "Nu-Tech Orders",
@@ -597,6 +611,28 @@ export function canUseOfficeTalk(user: AuthUser | null): boolean {
 }
 
 /**
+ * Creating a job's missing Drive folder is safe for office staff: it always
+ * builds the company's standard structure in the right place and relinks an
+ * existing folder instead of duplicating it. Callers also check project access.
+ */
+export function canCreateProjectDriveFolder(user: AuthUser | null): boolean {
+  if (
+    !user ||
+    !user.isActive ||
+    user.organizationType !== "internal" ||
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  ) {
+    return false
+  }
+  return (
+    isInternalStaffRole(user.role) &&
+    can(user, "project", "update") &&
+    can(user, "document", "create")
+  )
+}
+
+/**
  * Greeting-card preparation is a team capability. Every active internal role
  * can prepare a request; individual staff grants control approval and release.
  */
@@ -681,6 +717,7 @@ export function getPermissionAccessLevel(
 
 const INTERNAL_STAFF_EDIT_FEATURES: readonly string[] = [
   "project-hub",
+  "internal-duties",
   "social-publishing",
 ]
 

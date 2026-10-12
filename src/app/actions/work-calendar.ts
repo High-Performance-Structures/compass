@@ -258,6 +258,17 @@ function operationSourceLabel(recordType: string, recordNumber: string | null): 
   return recordNumber ? `${label} ${recordNumber}` : label
 }
 
+/** Rows grouped by project, keeping their query order within each project. */
+function groupByProject<T extends { readonly projectId: string }>(rows: readonly T[]): ReadonlyMap<string, readonly T[]> {
+  const grouped = new Map<string, T[]>()
+  for (const row of rows) {
+    const list = grouped.get(row.projectId)
+    if (list) list.push(row)
+    else grouped.set(row.projectId, [row])
+  }
+  return grouped
+}
+
 function intersectsCalendarWindow(
   startDate: string,
   endDate: string,
@@ -473,23 +484,74 @@ export async function getWorkCalendar(
 
   const entries: WorkCalendarEntry[] = []
 
+  // Load each source once for the whole organization and group by project.
+  // (Querying per project made the calendar wait on thousands of sequential
+  // round trips, since every project in the company was visited.)
+  const includeProjects = !options?.eventsOnly && projectRows.length > 0
+  const [allWorkingTasks, allRfis, allOperations] = includeProjects
+    ? await Promise.all([
+        canViewWorkingSchedule
+          ? db
+              .select({
+                projectId: scheduleTasks.projectId,
+                id: scheduleTasks.id,
+                title: scheduleTasks.title,
+                status: scheduleTasks.status,
+                startDate: scheduleTasks.startDate,
+                endDate: scheduleTasks.endDateCalculated,
+                assignedTo: scheduleTasks.assignedTo,
+                isCriticalPath: scheduleTasks.isCriticalPath,
+              })
+              .from(scheduleTasks)
+              .innerJoin(projects, eq(projects.id, scheduleTasks.projectId))
+              .where(eq(projects.organizationId, orgId))
+              .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+          : Promise.resolve([]),
+        db
+          .select({
+            projectId: projectRfis.projectId,
+            id: projectRfis.id,
+            rfiNumber: projectRfis.rfiNumber,
+            subject: projectRfis.subject,
+            status: projectRfis.status,
+            priority: projectRfis.priority,
+            dueDate: projectRfis.dueDate,
+            assignedToName: projectRfis.assignedToName,
+            companyName: projectRfis.companyName,
+          })
+          .from(projectRfis)
+          .innerJoin(projects, eq(projects.id, projectRfis.projectId))
+          .where(eq(projects.organizationId, orgId))
+          .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber)),
+        db
+          .select({
+            projectId: projectOperations.projectId,
+            id: projectOperations.id,
+            sourceRecordType: projectOperations.sourceRecordType,
+            sourceRecordId: projectOperations.sourceRecordId,
+            sourceRecordNumber: projectOperations.sourceRecordNumber,
+            title: projectOperations.title,
+            status: projectOperations.status,
+            priority: projectOperations.priority,
+            assigneeName: projectOperations.assigneeName,
+            companyName: projectOperations.companyName,
+            startDate: projectOperations.startDate,
+            dueDate: projectOperations.dueDate,
+          })
+          .from(projectOperations)
+          .innerJoin(projects, eq(projects.id, projectOperations.projectId))
+          .where(eq(projects.organizationId, orgId))
+          .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title)),
+      ])
+    : [[], [], []]
+  const workingTasksByProject = groupByProject(allWorkingTasks)
+  const rfisByProject = groupByProject(allRfis)
+  const operationsByProject = groupByProject(allOperations)
+
   for (const project of options?.eventsOnly ? [] : projectRows) {
     const label = projectLabel(project)
 
-    const workingTaskRows = canViewWorkingSchedule ? await db
-      .select({
-        id: scheduleTasks.id,
-        title: scheduleTasks.title,
-        status: scheduleTasks.status,
-        startDate: scheduleTasks.startDate,
-        endDate: scheduleTasks.endDateCalculated,
-        assignedTo: scheduleTasks.assignedTo,
-        isCriticalPath: scheduleTasks.isCriticalPath,
-      })
-      .from(scheduleTasks)
-      .where(eq(scheduleTasks.projectId, project.id))
-      .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-      : []
+    const workingTaskRows = canViewWorkingSchedule ? workingTasksByProject.get(project.id) ?? [] : []
     const projectRole = projectRoles.get(project.id)
     const audience = projectRole === "client" || projectRole === "owner"
       ? "owner"
@@ -579,20 +641,7 @@ export async function getWorkCalendar(
       })
     }
 
-    const rfiRows = await db
-      .select({
-        id: projectRfis.id,
-        rfiNumber: projectRfis.rfiNumber,
-        subject: projectRfis.subject,
-        status: projectRfis.status,
-        priority: projectRfis.priority,
-        dueDate: projectRfis.dueDate,
-        assignedToName: projectRfis.assignedToName,
-        companyName: projectRfis.companyName,
-      })
-      .from(projectRfis)
-      .where(eq(projectRfis.projectId, project.id))
-      .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
+    const rfiRows = rfisByProject.get(project.id) ?? []
 
     for (const rfi of rfiRows) {
       if (isClosedStatus(rfi.status) || rfi.status === "complete") continue
@@ -628,23 +677,7 @@ export async function getWorkCalendar(
       })
     }
 
-    const operationRows = await db
-      .select({
-        id: projectOperations.id,
-        sourceRecordType: projectOperations.sourceRecordType,
-        sourceRecordId: projectOperations.sourceRecordId,
-        sourceRecordNumber: projectOperations.sourceRecordNumber,
-        title: projectOperations.title,
-        status: projectOperations.status,
-        priority: projectOperations.priority,
-        assigneeName: projectOperations.assigneeName,
-        companyName: projectOperations.companyName,
-        startDate: projectOperations.startDate,
-        dueDate: projectOperations.dueDate,
-      })
-      .from(projectOperations)
-      .where(eq(projectOperations.projectId, project.id))
-      .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title))
+    const operationRows = operationsByProject.get(project.id) ?? []
 
     for (const operation of operationRows) {
       if (operation.sourceRecordType === "calendar_event") {

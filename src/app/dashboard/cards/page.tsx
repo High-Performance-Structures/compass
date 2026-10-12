@@ -1,5 +1,4 @@
 import type * as React from "react"
-import { redirect } from "next/navigation"
 import { IconMail } from "@tabler/icons-react"
 
 import { getGreetingCardRequests } from "@/app/actions/greeting-cards"
@@ -9,6 +8,8 @@ import {
   canPrepareGreetingCards,
 } from "@/lib/permissions"
 import { canFeature } from "@/lib/permission-enforcement"
+import { PageHeader } from "@/components/page-header"
+import { ClientRedirect } from "@/components/client-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -17,26 +18,17 @@ export default async function GreetingCardsPage(): Promise<React.ReactElement> {
   const canViewApprovals = await canFeature(user, "greeting-card-approval", "read")
   const canApprove = await canFeature(user, "greeting-card-approval", "approve")
   if (!canPrepareGreetingCards(user) && !canViewApprovals) {
-    redirect("/dashboard/access-restricted?action=prepare%20greeting%20cards")
+    return <ClientRedirect href={"/dashboard/access-restricted?action=prepare%20greeting%20cards"} />
   }
   const requests = await getGreetingCardRequests()
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-y-auto px-4 py-6 sm:px-6">
-      <header className="border-b pb-5">
-        <div className="flex items-center gap-2">
-          <IconMail className="size-6 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Greeting Cards
-          </h1>
-        </div>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Prepare mailed handwritten cards or HPS e-cards for clients,
-          subcontractors, vendors, employees, and other business relationships.
-          Every delivery and optional digital gift requires an authorized staff
-          approval and a separate release action.
-        </p>
-      </header>
+      <PageHeader
+        className="mb-0 border-b pb-5"
+        icon={<IconMail className="size-6 text-primary" />}
+        title="Greeting Cards"
+      />
 
       <section className="py-5" aria-label="Greeting-card requests">
         {requests.success ? (
