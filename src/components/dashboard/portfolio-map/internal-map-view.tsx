@@ -11,28 +11,38 @@ import { cn } from "@/lib/utils"
 /** The Internal view: the company's own offices and yards, apart from client projects. */
 export const INTERNAL_SCOPE = "internal"
 
-const KINDS: readonly { readonly id: WorkspaceKind; readonly label: string; readonly colorToken: string }[] = [
+/** Workspace kind, or "other" for a job of a department put on the Internal view. */
+type InternalGroup = WorkspaceKind | "other"
+
+const KINDS: readonly { readonly id: InternalGroup; readonly label: string; readonly colorToken: string }[] = [
   { id: "office", label: "Office", colorToken: "--chart-1" },
   { id: "executive", label: "Owner's office", colorToken: "--chart-5" },
   { id: "field", label: "Yard and field", colorToken: "--chart-4" },
+  { id: "other", label: "Other", colorToken: "--chart-2" },
 ]
 
 const KIND_BY_ID = new Map(KINDS.map((kind) => [kind.id, kind]))
 
+function groupOf(job: PortfolioInternalJob): InternalGroup {
+  return job.workspaceKind ?? "other"
+}
+
 export function internalMarkerKey(jobs: readonly PortfolioInternalJob[]): PortfolioMarkerKey {
   return {
-    entries: KINDS.filter((kind) => jobs.some((job) => job.workspaceKind === kind.id)),
-    colorTokenByJobId: new Map(jobs.map((job) => [job.id, KIND_BY_ID.get(job.workspaceKind)?.colorToken ?? "--muted-foreground"])),
+    entries: KINDS.filter((kind) => jobs.some((job) => groupOf(job) === kind.id)),
+    colorTokenByJobId: new Map(jobs.map((job) => [job.id, KIND_BY_ID.get(groupOf(job))?.colorToken ?? "--muted-foreground"])),
   }
 }
 
 export function internalSummary(jobs: readonly PortfolioInternalJob[]): string {
-  const offices = jobs.filter((job) => job.workspaceKind !== "field").length
-  const field = jobs.length - offices
-  return `${offices} ${offices === 1 ? "OFFICE" : "OFFICES"} · ${field} FIELD`
+  const offices = jobs.filter((job) => job.workspaceKind === "office" || job.workspaceKind === "executive").length
+  const field = jobs.filter((job) => job.workspaceKind === "field").length
+  const other = jobs.length - offices - field
+  const parts = [`${offices} ${offices === 1 ? "OFFICE" : "OFFICES"}`, `${field} FIELD`, ...(other > 0 ? [`${other} OTHER`] : [])]
+  return parts.join(" · ")
 }
 
-function Swatch({ kind }: { readonly kind: WorkspaceKind }): React.ReactElement {
+function Swatch({ kind }: { readonly kind: InternalGroup }): React.ReactElement {
   return <span className="size-2 shrink-0" style={{ background: `var(${KIND_BY_ID.get(kind)?.colorToken ?? "--muted-foreground"})` }} aria-hidden="true" />
 }
 
@@ -48,8 +58,8 @@ export function InternalWorkspaceList({
 }): React.ReactElement {
   return (
     <div className="grid h-full grid-cols-1 overflow-y-auto sm:grid-cols-3">
-      {KINDS.map((kind) => {
-        const kindJobs = jobs.filter((job) => job.workspaceKind === kind.id)
+      {KINDS.filter((kind) => kind.id !== "other" || jobs.some((job) => groupOf(job) === "other")).map((kind) => {
+        const kindJobs = jobs.filter((job) => groupOf(job) === kind.id)
         return (
           <section key={kind.id} aria-label={kind.label} className="flex flex-col border-b border-border sm:border-r sm:border-b-0 sm:last:border-r-0">
             <h3 className="flex items-center justify-between gap-2 border-b border-border px-3 py-2 font-mono text-xs tracking-[0.12em]">
@@ -99,8 +109,8 @@ export function InternalMapPanel({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <span className="flex items-center gap-2 font-mono text-xs tracking-[0.12em] text-muted-foreground">
-              <Swatch kind={selected.workspaceKind} />
-              {(KIND_BY_ID.get(selected.workspaceKind)?.label ?? "Internal").toUpperCase()}
+              <Swatch kind={groupOf(selected)} />
+              {(KIND_BY_ID.get(groupOf(selected))?.label ?? "Internal").toUpperCase()}
             </span>
             <h3 className="text-xl font-semibold">{selected.name}</h3>
           </div>
@@ -115,9 +125,11 @@ export function InternalMapPanel({
           <Button asChild size="sm">
             <Link href={projectHref}>Open overview</Link>
           </Button>
-          <Button asChild size="sm" variant="outline">
-            <Link href={`${projectHref}/duty-log`}>Duty log</Link>
-          </Button>
+          {selected.workspaceKind ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`${projectHref}/duty-log`}>Duty log</Link>
+            </Button>
+          ) : null}
           {selected.address === null ? (
             <Button asChild size="sm" variant="outline">
               <Link href={`${projectHref}/information`}>Add address</Link>
@@ -134,7 +146,7 @@ export function InternalMapPanel({
         {jobs.map((job) => (
           <li key={job.id}>
             <button type="button" onClick={() => onSelect(job.id)} className="flex min-h-9 w-full items-center gap-2 border-b border-border px-1 text-left text-sm hover:bg-accent">
-              <Swatch kind={job.workspaceKind} />
+              <Swatch kind={groupOf(job)} />
               <span className="truncate">{job.name}</span>
             </button>
           </li>

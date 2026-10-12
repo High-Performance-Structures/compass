@@ -95,7 +95,7 @@ Authorized staff can use **MOVE TO** in a job panel to choose a status within th
 
 **INTERNAL** shows the company's own offices and yards (the internal workspaces) on their own map and list, apart from client projects. Select one to open its overview or duty log, or to add its address so it is placed on the map.
 
-Admins choose which job statuses and departments appear by default, and the phase each status falls in, in **Settings → Workflows → Portfolio map**.
+In **Settings → Workflows → Portfolio map**, admins choose where each department's jobs appear (with the projects, on the department's own sales pipeline view, on the Internal view, or not at all), the title of each sales pipeline, and which job statuses appear and in which phase.
 
 Turn on **Messages** to see your unread items stacked on jobs and listed in the selected job panel. Opening and reading the linked item clears the corresponding notification. **Zone charges** and **Mountain charge** show travel-charge information; the key below the map explains the layers. A map marker or suggested location should be checked against the actual job address before using it for travel or pricing.
 

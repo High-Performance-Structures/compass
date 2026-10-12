@@ -65,13 +65,29 @@ export const DEFAULT_PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhase
   under_warranty: "closeout",
 }
 
-/** Departments left off the map by default (Nu-Tech material sales). */
-export const DEFAULT_UNMAPPED_DEPARTMENTS: readonly string[] = ["N"]
+/**
+ * Where a department's jobs appear on the dashboard map: with the projects
+ * (construction pipeline), on its own sales pipeline view, on the Internal
+ * view, or not at all.
+ */
+export const PORTFOLIO_DEPARTMENT_VIEWS = ["projects", "sales", "internal", "off"] as const
+export type PortfolioDepartmentView = (typeof PORTFOLIO_DEPARTMENT_VIEWS)[number]
+
+/** Built-in views: Nu-Tech (material sales) has its own sales pipeline; others are projects. */
+export const DEFAULT_DEPARTMENT_VIEWS: Readonly<Record<string, PortfolioDepartmentView>> = { N: "sales" }
 
 /** A company's changes to the built-in mapping (Settings → Portfolio map). */
 export type PortfolioMapRules = {
   readonly statusPhases: Readonly<Record<string, PortfolioPhaseId | "off">>
-  readonly departments: Readonly<Record<string, boolean>>
+  readonly departmentViews: Readonly<Record<string, PortfolioDepartmentView>>
+  /** Titles for sales pipeline views, by department; blank uses the built-in title. */
+  readonly salesTitles: Readonly<Record<string, string>>
 }
 
-export const DEFAULT_PORTFOLIO_MAP_RULES: PortfolioMapRules = { statusPhases: {}, departments: {} }
+export const DEFAULT_PORTFOLIO_MAP_RULES: PortfolioMapRules = { statusPhases: {}, departmentViews: {}, salesTitles: {} }
+
+/** The view a department's jobs appear on; jobs without a department are projects. */
+export function departmentView(department: string | null, rules: PortfolioMapRules): PortfolioDepartmentView {
+  if (!department) return "projects"
+  return rules.departmentViews[department] ?? DEFAULT_DEPARTMENT_VIEWS[department] ?? "projects"
+}
