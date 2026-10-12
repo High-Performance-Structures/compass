@@ -91,7 +91,11 @@ Stop before saving. Switch to the correct job and confirm its number and client.
 
 On **Dashboard**, the portfolio window brings together the project map and pipelines, including **Nu-Tech Sales**. Select a job to open its detail panel, then use **Open job** or the available shortcuts. The construction pipeline runs through **Intake**, **Design**, **Estimating**, **Negotiation**, **Permitting**, **Under construction**, and **Closeout**. The map is a summary of included jobs; use **All Projects** to find work outside that view.
 
-Authorized staff can use **MOVE TO** in a job panel to choose a status within the available phase or sales stage. This saves a real job-status change. To close a job as complete, inactive, or bid refused, use its job page. An **Internal** job status and a per-project map visibility override let authorized staff manage internal work and whether a job belongs on the portfolio map; map visibility does not grant project access.
+Authorized staff can use **MOVE TO** in a job panel to choose a status within the available phase or sales stage. This saves a real job-status change. To close a job as complete, inactive, or bid refused, use its job page. Any single job can be added with **Add a project to the map** or removed with **Hide from map**; jobs you hid are listed below the map with **Show on map**. Map visibility does not grant project access.
+
+**INTERNAL** shows the company's own offices and yards (the internal workspaces) on their own map and list, apart from client projects. Select one to open its overview or duty log, or to add its address so it is placed on the map.
+
+Admins choose which job statuses and departments appear by default, and the phase each status falls in, in **Settings → Workflows → Portfolio map**.
 
 Turn on **Messages** to see your unread items stacked on jobs and listed in the selected job panel. Opening and reading the linked item clears the corresponding notification. **Zone charges** and **Mountain charge** show travel-charge information; the key below the map explains the layers. A map marker or suggested location should be checked against the actual job address before using it for travel or pricing.
 

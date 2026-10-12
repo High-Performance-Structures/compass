@@ -15,11 +15,15 @@ import {
   isPortfolioMapVisibility,
   portfolioHealth,
   portfolioPhaseFor,
+  type PortfolioMapRules,
   resolveTown,
   spreadSharedTowns,
   type PortfolioMapJob,
   type PortfolioProjectRule,
 } from "@/lib/portfolio-map/model"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { DEFAULT_PORTFOLIO_MAP_RULES } from "@/lib/portfolio-map/phases"
+import type { WorkspaceKind } from "@/lib/internal-duties/model"
 import { locateSites, siteLocationWriter, needsSiteLookup, SITE_LOOKUPS_PER_LOAD } from "@/lib/portfolio-map/site-locations"
 import {
   DEFAULT_TRAVEL_CHARGE_SETTINGS,
@@ -57,6 +61,12 @@ export type PortfolioTravelData = {
   readonly byJobId: Readonly<Record<string, PortfolioJobTravel>>
 }
 
+/** An internal workspace (office, owner's office, yard) on the Internal map view. */
+export type PortfolioInternalJob = PortfolioMapJob & {
+  readonly workspaceKind: WorkspaceKind
+  readonly address: string | null
+}
+
 export type PortfolioMapData = {
   readonly jobs: readonly PortfolioMapJob[]
   /** Null for people outside the office staff. */
@@ -65,6 +75,13 @@ export type PortfolioMapData = {
   readonly unplaced: readonly PortfolioUnplacedJob[]
   /** Jobs someone removed from the map with the per-project override. */
   readonly hidden: readonly PortfolioHiddenJob[]
+  /**
+   * Internal workspaces, shown only on the map's Internal view and never with
+   * the projects, whatever their status or map setting.
+   */
+  readonly internal: readonly PortfolioInternalJob[]
+  /** The company's status and department rules, for status moves on the map. */
+  readonly rules: PortfolioMapRules
 }
 
 const EMPTY: PortfolioMapData = {
@@ -72,6 +89,8 @@ const EMPTY: PortfolioMapData = {
   travel: null,
   unplaced: [],
   hidden: [],
+  internal: [],
+  rules: DEFAULT_PORTFOLIO_MAP_RULES,
 }
 
 /**
@@ -92,7 +111,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const today = dateKeyInTimeZone(new Date(), TIME_ZONE)
 
     const showFollowUp = isInternalStaffRole(user.role)
-    const [locations, taskStats, upcoming, storedSettings, overrideRows, followUps] = await Promise.all([
+    const [locations, taskStats, upcoming, storedSettings, overrideRows, followUps, rules] = await Promise.all([
       db
         .select({
           id: projects.id,
@@ -100,6 +119,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           address: projects.address,
           publicLocationCity: projects.publicLocationCity,
           mapVisibility: projects.portfolioMapVisibility,
+          workspaceKind: projects.workspaceKind,
           siteLatitude: projects.siteLatitude,
           siteLongitude: projects.siteLongitude,
           siteElevationFt: projects.siteElevationFt,
@@ -160,6 +180,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
             return new Map<string, ProjectFollowUpSignal>()
           })
         : new Map<string, ProjectFollowUpSignal>(),
+      readPortfolioMapRules(db, orgId),
     ])
     const settings = parseStoredSettings(storedSettings[0]?.settingsJson)
     const overrideById = new Map(overrideRows.map((row) => [row.projectId, row]))
@@ -168,6 +189,8 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
     const hidden: PortfolioHiddenJob[] = []
     const phased = visible.flatMap((project) => {
       const location = locationById.get(project.id)
+      // Internal workspaces go on the Internal view; the phase only shapes the marker.
+      if (location?.workspaceKind) return [{ project, phase: "estimating" as const, visibility: "default" as const }]
       const stored = location?.mapVisibility ?? "default"
       const rule: PortfolioProjectRule = {
         projectId: project.id,
@@ -182,11 +205,11 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
           id: project.id,
           name: projectDisplayName(project),
           projectNumber: project.projectNumber,
-          restoreVisibility: defaultPortfolioPhase(rule) ? "default" : "shown",
+          restoreVisibility: defaultPortfolioPhase(rule, rules) ? "default" : "shown",
         })
         return []
       }
-      const phase = portfolioPhaseFor(rule)
+      const phase = portfolioPhaseFor(rule, rules)
       return phase ? [{ project, phase, visibility: rule.visibility }] : []
     })
     const statsById = new Map(taskStats.map((row) => [row.projectId, row]))
@@ -203,7 +226,7 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
         address: location?.address ?? null,
         name: project.name,
       })
-      if (!town) {
+      if (!town && !location?.workspaceKind) {
         unplaced.push({ id: project.id, name: projectDisplayName(project), projectNumber: project.projectNumber })
       }
       const stats = statsById.get(project.id)
@@ -286,10 +309,32 @@ export async function getPortfolioMapData(): Promise<PortfolioMapData> {
       })
       .slice(0, SITE_LOOKUPS_PER_LOAD)
     if (toLocate.length > 0) ctx.waitUntil(locateSites(siteLocationWriter(db, orgId), toLocate))
-    return { jobs: placedJobs, travel: showTravel ? { settings, byJobId } : null, unplaced, hidden }
+    const internal = placedJobs.flatMap((job): PortfolioInternalJob[] => {
+      const location = locationById.get(job.id)
+      return location?.workspaceKind ? [{ ...job, workspaceKind: location.workspaceKind, address: location.address?.trim() || null }] : []
+    })
+    const internalIds = new Set(internal.map((job) => job.id))
+    return {
+      jobs: placedJobs.filter((job) => !internalIds.has(job.id)),
+      travel: showTravel ? { settings, byJobId } : null,
+      unplaced,
+      hidden,
+      internal,
+      rules,
+    }
   } catch (error) {
     console.error("Portfolio map data failed", error)
     return EMPTY
+  }
+}
+
+/** The company's map rules; the built-in ones if settings can't be read. */
+async function readPortfolioMapRules(db: ReturnType<typeof getDb>, organizationId: string): Promise<PortfolioMapRules> {
+  try {
+    return await readFeatureSettings(db, organizationId, "portfolio-map")
+  } catch (error) {
+    console.error("Portfolio map settings unavailable", error instanceof Error ? error.message : error)
+    return DEFAULT_PORTFOLIO_MAP_RULES
   }
 }
 
@@ -322,11 +367,14 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
     if (visible.length === 0) return []
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
-    const rows = await getDb(env.DB)
+    const db = getDb(env.DB)
+    const rules = await readPortfolioMapRules(db, user.organizationId)
+    const rows = await db
       .select({
         id: projects.id,
         department: projects.department,
         mapVisibility: projects.portfolioMapVisibility,
+        workspaceKind: projects.workspaceKind,
       })
       .from(projects)
       .where(eq(projects.organizationId, user.organizationId))
@@ -334,6 +382,8 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
     return visible
       .flatMap((project): PortfolioAddableProject[] => {
         const row = rowById.get(project.id)
+        // Internal workspaces are on the Internal view, not added to the projects.
+        if (row?.workspaceKind) return []
         const stored = row?.mapVisibility ?? "default"
         const rule: PortfolioProjectRule = {
           projectId: project.id,
@@ -343,7 +393,7 @@ export async function getPortfolioAddableProjects(): Promise<readonly PortfolioA
           jobStatusLabel: project.jobStatusLabel,
           visibility: isPortfolioMapVisibility(stored) ? stored : "default",
         }
-        if (rule.visibility !== "default" || portfolioPhaseFor(rule) !== null) return []
+        if (rule.visibility !== "default" || portfolioPhaseFor(rule, rules) !== null) return []
         return [{
           id: project.id,
           name: projectDisplayName(project),

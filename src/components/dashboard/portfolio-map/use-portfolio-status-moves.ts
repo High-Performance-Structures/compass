@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { updateProjectJobStatus } from "@/app/actions/project-profile"
 import { jobStatusLabel } from "@/components/dashboard/portfolio-map/portfolio-job-actions"
 import type { PortfolioStatusMove } from "@/components/dashboard/portfolio-map/portfolio-panel"
-import { phaseForJobStatus, type PortfolioMapJob } from "@/lib/portfolio-map/model"
+import { phaseForJobStatus, type PortfolioMapJob, type PortfolioMapRules } from "@/lib/portfolio-map/model"
 
 type StatusOverride = Pick<PortfolioMapJob, "jobStatusId" | "statusLabel" | "phase">
 
@@ -14,7 +14,7 @@ type StatusOverride = Pick<PortfolioMapJob, "jobStatusId" | "statusLabel" | "pha
  * once (the map recolors, the pipeline regroups); the save runs in the
  * background, is audited by the action, and a failure puts the job back.
  */
-export function usePortfolioStatusMoves(jobs: readonly PortfolioMapJob[]): {
+export function usePortfolioStatusMoves(jobs: readonly PortfolioMapJob[], rules: PortfolioMapRules): {
   readonly jobs: readonly PortfolioMapJob[]
   readonly statusMove: PortfolioStatusMove
 } {
@@ -40,7 +40,7 @@ export function usePortfolioStatusMoves(jobs: readonly PortfolioMapJob[]): {
     (job: PortfolioMapJob, statusId: string): void => {
       if (statusId === job.jobStatusId) return
       const statusLabel = jobStatusLabel(statusId)
-      const phase = phaseForJobStatus(statusId, statusLabel) ?? job.phase
+      const phase = phaseForJobStatus(statusId, statusLabel, rules) ?? job.phase
       setOverrides((current) => new Map(current).set(job.id, { jobStatusId: statusId, statusLabel, phase }))
       setError(null)
       startSaving(async () => {
@@ -57,9 +57,9 @@ export function usePortfolioStatusMoves(jobs: readonly PortfolioMapJob[]): {
         router.refresh()
       })
     },
-    [router],
+    [router, rules],
   )
 
-  const statusMove = React.useMemo<PortfolioStatusMove>(() => ({ pending, error, onMove }), [error, onMove, pending])
+  const statusMove = React.useMemo<PortfolioStatusMove>(() => ({ pending, error, onMove, rules }), [error, onMove, pending, rules])
   return { jobs: shownJobs, statusMove }
 }

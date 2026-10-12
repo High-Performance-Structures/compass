@@ -5,17 +5,16 @@ import { PROJECT_JOB_STATUS_DEFINITIONS, projectJobStatusBucket } from "@/lib/pr
 import type { PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 import type { ProjectFollowUpSignal } from "@/lib/project-follow-up"
 
-export const PORTFOLIO_PHASES = [
-  { id: "intake", label: "Intake", short: "INT" },
-  { id: "design", label: "Design", short: "DES" },
-  { id: "estimating", label: "Estimating", short: "EST" },
-  { id: "negotiation", label: "Negotiation", short: "NEG" },
-  { id: "permitting", label: "Permitting", short: "PER" },
-  { id: "construction", label: "Under construction", short: "BLD" },
-  { id: "closeout", label: "Closeout", short: "CLO" },
-] as const
+import {
+  DEFAULT_PHASE_BY_JOB_STATUS,
+  DEFAULT_PORTFOLIO_MAP_RULES,
+  DEFAULT_UNMAPPED_DEPARTMENTS,
+  PORTFOLIO_PHASES,
+  type PortfolioMapRules,
+  type PortfolioPhaseId,
+} from "@/lib/portfolio-map/phases"
 
-export type PortfolioPhaseId = (typeof PORTFOLIO_PHASES)[number]["id"]
+export { PORTFOLIO_PHASES, DEFAULT_PORTFOLIO_MAP_RULES, type PortfolioMapRules, type PortfolioPhaseId }
 export type PortfolioHealth = "ok" | "risk" | "late"
 export { isPortfolioMapVisibility, type PortfolioMapVisibility } from "@/lib/portfolio-map/visibility"
 
@@ -54,65 +53,33 @@ export function portfolioMarkerAlert(job: PortfolioMapJob): "late" | "risk" | nu
 }
 
 /**
- * Job statuses grouped into the map's pipeline phases. Closeout covers punch
- * list and warranty work. Statuses not listed are not shown: complete,
- * closed, refused, inactive, internal, and the material
- * order statuses (ordered, partial order, price sheet sent, shipping TBD,
- * awaiting payment).
+ * The built-in statuses of each phase (with the company's changes), in
+ * workflow order, for moving a job to another status from the map. Custom
+ * statuses are changed on the job page.
  */
-const PHASE_BY_JOB_STATUS: Readonly<Record<string, PortfolioPhaseId>> = {
-  // Intake: first contact and new-client info, before any design or pricing.
-  intake: "intake",
-  new_client_info_sent: "intake",
-  budget_estimating: "estimating",
-  budget_estimate_sent: "estimating",
-  estimating: "estimating",
-  estimate_sent: "estimating",
-  awaiting_response: "estimating",
-  follow_up: "estimating",
-  takeoff: "estimating",
-  design_proposal: "design",
-  design_proposal_sent: "design",
-  design_proposal_signed: "design",
-  in_design: "design",
-  engineering: "design",
-  value_engineering: "design",
-  // Negotiation: reviewing, drafting, sending or revising the contract, until
-  // it is awarded and funded.
-  contract_docs: "negotiation",
-  contract_docs_sent: "negotiation",
-  contract_docs_signed: "negotiation",
-  contract: "negotiation",
-  awarded: "negotiation",
-  awaiting_funding: "negotiation",
-  permitting: "permitting",
-  // Permit in hand, waiting to start.
-  awaiting_groundbreaking: "permitting",
-  bracing_out: "construction",
-  under_construction: "construction",
-  current: "construction",
-  punchlist: "closeout",
-  under_warranty: "closeout",
+export function portfolioPhaseStatuses(phase: PortfolioPhaseId, rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES): readonly string[] {
+  // Built-in order first, then any other standard status the company mapped.
+  const ids = new Set([...Object.keys(DEFAULT_PHASE_BY_JOB_STATUS), ...PROJECT_JOB_STATUS_DEFINITIONS.map((status) => status.id)])
+  return [...ids].filter((id) => statusPhase(id, rules) === phase)
 }
 
 /**
- * The built-in statuses of each phase, in workflow order, for moving a job to
- * another status from the map. Custom statuses are changed on the job page.
+ * Whether a department's jobs appear by default: HPS and Open Range do,
+ * Nu-Tech does not, unless the company changed it. Projects without a
+ * recognizable department stay.
  */
-export function portfolioPhaseStatuses(phase: PortfolioPhaseId): readonly string[] {
-  return Object.entries(PHASE_BY_JOB_STATUS).flatMap(([status, statusPhase]) => (statusPhase === phase ? [status] : []))
-}
-
-/**
- * The map covers HPS and Open Range (construction and design) projects;
- * Nu-Tech jobs are left off. Projects without a recognizable department stay.
- */
-export function isMappedDepartment(project: {
-  readonly department: string | null
-  readonly projectId: string
-  readonly projectNumber: string | null
-}): boolean {
-  return resolvedProjectDepartment(project) !== "N"
+export function isMappedDepartment(
+  project: {
+    readonly department: string | null
+    readonly projectId: string
+    readonly projectNumber: string | null
+  },
+  rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES,
+): boolean {
+  const department = resolvedProjectDepartment(project)
+  if (department === null) return true
+  const configured = rules.departments[department]
+  return configured ?? !DEFAULT_UNMAPPED_DEPARTMENTS.includes(department)
 }
 
 export type PortfolioProjectRule = {
@@ -125,9 +92,9 @@ export type PortfolioProjectRule = {
 }
 
 /** Phase the job would have by its status and department alone. */
-export function defaultPortfolioPhase(rule: PortfolioProjectRule): PortfolioPhaseId | null {
-  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel)
-  return phase && isMappedDepartment(rule) ? phase : null
+export function defaultPortfolioPhase(rule: PortfolioProjectRule, rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES): PortfolioPhaseId | null {
+  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel, rules)
+  return phase && isMappedDepartment(rule, rules) ? phase : null
 }
 
 /**
@@ -136,10 +103,10 @@ export function defaultPortfolioPhase(rule: PortfolioProjectRule): PortfolioPhas
  * normally excluded, using closeout for warranty/complete jobs and
  * pre-construction otherwise when the status has no phase.
  */
-export function portfolioPhaseFor(rule: PortfolioProjectRule): PortfolioPhaseId | null {
+export function portfolioPhaseFor(rule: PortfolioProjectRule, rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES): PortfolioPhaseId | null {
   if (rule.visibility === "hidden") return null
-  if (rule.visibility === "default") return defaultPortfolioPhase(rule)
-  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel)
+  if (rule.visibility === "default") return defaultPortfolioPhase(rule, rules)
+  const phase = phaseForJobStatus(rule.jobStatusId, rule.jobStatusLabel, rules)
   if (phase) return phase
   const bucket = projectJobStatusBucket({
     jobStatusId: rule.jobStatusId ?? "",
@@ -156,18 +123,26 @@ const STANDARD_ID_BY_LABEL: ReadonlyMap<string, string> = new Map(
   PROJECT_JOB_STATUS_DEFINITIONS.map((status) => [normalizeLabel(status.label), status.id]),
 )
 
+/** A status's phase: the company's setting, else the built-in one; undefined when neither names it. */
+function statusPhase(statusId: string, rules: PortfolioMapRules): PortfolioPhaseId | null | undefined {
+  const configured = rules.statusPhases[statusId]
+  if (configured) return configured === "off" ? null : configured
+  return DEFAULT_PHASE_BY_JOB_STATUS[statusId]
+}
+
 /** Phase for a job status; custom statuses match a standard status by label. */
 export function phaseForJobStatus(
   jobStatusId: string | null,
   jobStatusLabel: string | null,
+  rules: PortfolioMapRules = DEFAULT_PORTFOLIO_MAP_RULES,
 ): PortfolioPhaseId | null {
   if (jobStatusId) {
-    const direct = PHASE_BY_JOB_STATUS[jobStatusId]
-    if (direct) return direct
+    const direct = statusPhase(jobStatusId, rules)
+    if (direct !== undefined) return direct
   }
   if (jobStatusLabel) {
     const standardId = STANDARD_ID_BY_LABEL.get(normalizeLabel(jobStatusLabel))
-    if (standardId) return PHASE_BY_JOB_STATUS[standardId] ?? null
+    if (standardId) return statusPhase(standardId, rules) ?? null
   }
   return null
 }

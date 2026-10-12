@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settings/registry"
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
+import { PortfolioMapSettingsSection } from "@/components/settings/portfolio-map-settings-section"
 import { ClientInteractionSettingsSection } from "@/components/settings/client-interaction-settings-section"
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
@@ -194,6 +195,7 @@ const WORKFLOW_AREAS = [
   { value: "job-emails", label: "Job emails", description: "Emails offered on HPS, ORC and Design job overviews." },
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
   { value: "project-aging", label: "Project aging", description: "When client follow-ups turn due and overdue." },
+  { value: "portfolio-map", label: "Portfolio map", description: "Which job statuses and departments appear on the dashboard map, and in which phase." },
   { value: "client-interactions", label: "Client interactions", description: "How client contact is logged." },
   { value: "project-duplicates", label: "Duplicate project check", description: "Departments whose customers place repeat orders." },
   { value: "client-follow-up", label: "Client follow-up", description: "Follow-up cadence for clients." },
@@ -227,6 +229,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <MessageDeskSettingsSection />
     case "project-aging":
       return <ProjectAgingSettingsSection />
+    case "portfolio-map":
+      return <PortfolioMapSettingsSection />
     case "client-interactions":
       return <ClientInteractionSettingsSection />
     case "project-duplicates":

@@ -21,6 +21,7 @@ import {
   PORTFOLIO_PHASES,
   portfolioMarkerAlert,
   portfolioPhaseStatuses,
+  type PortfolioMapRules,
   type PortfolioMapJob,
   type PortfolioPhaseId,
 } from "@/lib/portfolio-map/model"
@@ -39,14 +40,18 @@ export type PortfolioStatusMove = {
   readonly pending: boolean
   readonly error: string | null
   readonly onMove: (job: PortfolioMapJob, statusId: string) => void
+  /** The company's status-to-phase rules, which set the MOVE TO choices. */
+  readonly rules: PortfolioMapRules
 }
 
-const PHASE_MOVE_GROUPS: readonly StatusMoveGroup[] = PORTFOLIO_PHASES.map((phase) => ({
-  id: phase.id,
-  label: phase.label,
-  color: phaseColor(phase.id),
-  statuses: portfolioPhaseStatuses(phase.id),
-}))
+function phaseMoveGroups(rules: PortfolioMapRules): readonly StatusMoveGroup[] {
+  return PORTFOLIO_PHASES.map((phase) => ({
+    id: phase.id,
+    label: phase.label,
+    color: phaseColor(phase.id),
+    statuses: portfolioPhaseStatuses(phase.id, rules),
+  }))
+}
 
 export type PortfolioSelection =
   | { readonly kind: "none" }
@@ -264,7 +269,7 @@ function JobDetail({
       {links}
       {statusMove ? (
         <StatusMovePicker
-          groups={PHASE_MOVE_GROUPS}
+          groups={phaseMoveGroups(statusMove.rules)}
           currentStatusId={job.jobStatusId}
           disabled={statusMove.pending}
           error={statusMove.error}

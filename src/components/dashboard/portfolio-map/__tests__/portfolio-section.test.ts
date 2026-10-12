@@ -155,4 +155,18 @@ describe("PortfolioSection", () => {
     await act(async () => root.render(React.createElement(PortfolioSection, { jobs: [], unplaced: [], hidden: [], travel: null })))
     expect(container.innerHTML).toBe("")
   })
+
+  it("keeps offices and yards on their own Internal view", async () => {
+    const office = { ...jobs[1], id: "proj-h-office", name: "H-Office", workspaceKind: "office" as const, address: "1304 E. Kiowa St." }
+    const yard = { ...jobs[1], id: "proj-wp-yard", name: "Woodland Park Yard", workspaceKind: "field" as const, address: null }
+    await act(async () => root.render(React.createElement(PortfolioSection, { jobs, unplaced: [], hidden: [], travel: null, internal: [office, yard] })))
+    expect(container.textContent).not.toContain("H-Office")
+
+    await click("INTERNAL")
+    expect(container.textContent).toContain("1 OFFICE · 1 FIELD")
+    expect(container.textContent).not.toContain("Granby Residence")
+    await click("Woodland Park Yard")
+    const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"))
+    expect(hrefs).toEqual(expect.arrayContaining(["/dashboard/projects/proj-wp-yard", "/dashboard/projects/proj-wp-yard/duty-log", "/dashboard/projects/proj-wp-yard/information"]))
+  })
 })
