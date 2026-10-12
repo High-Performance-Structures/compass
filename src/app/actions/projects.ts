@@ -49,9 +49,10 @@ import {
 import { projectWorkspaceClients } from "@/lib/google/project-workspace"
 import { requireOrg } from "@/lib/org-scope"
 import {
-  canManageProjectRegistry,
+  canCreateProjectDriveFolder,
   requirePermission,
 } from "@/lib/permissions"
+import { getProjectAccessRecord } from "@/lib/project-access"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import type { ProjectDuplicateCandidate } from "@/lib/project-duplicate-detector"
 import { findProspectiveProjectDuplicates } from "@/lib/project-duplicate-store"
@@ -1323,16 +1324,22 @@ export async function provisionProjectDriveFolder(
     const user = await requireAuth()
     requirePermission(user, "project", "update")
     requirePermission(user, "document", "create")
-    if (!canManageProjectRegistry(user)) {
-      return {
-        success: false,
-        error: "Permission denied: project registry is admin-only",
-      }
-    }
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     if (!env?.DB) return { success: false, error: "D1 not available" }
     const db = getDb(env.DB)
+    // Office staff on the job can create its folder: it always lands in the
+    // company's standard structure, and an existing folder is relinked, never
+    // duplicated.
+    if (
+      !canCreateProjectDriveFolder(user) ||
+      !(await getProjectAccessRecord(db, user, projectId))
+    ) {
+      return {
+        success: false,
+        error: "Permission denied: you can't create Drive folders for this project",
+      }
+    }
     const [project] = await db
       .select({
         id: projects.id,

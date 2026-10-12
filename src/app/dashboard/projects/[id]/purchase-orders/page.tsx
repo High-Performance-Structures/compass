@@ -38,7 +38,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import { canCreateProjectDriveFolder, canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 import { permissionDeniedRedirectHref } from "@/lib/permission-redirect"
 import { ClientRedirect } from "@/components/client-redirect"
@@ -415,9 +415,9 @@ export default async function ProjectPurchaseOrdersPage({
           getNuTechOrderFormLink(id),
         ])
       : ["", [], null, null]
-  // Admins can create the missing Drive folder right where the form would go.
+  // Staff can create the missing Drive folder right where the form would go.
   const orderFormNeedsDriveFolder =
-    !project?.googleDriveFolderId && canManageProjectRegistry(currentUser)
+    !project?.googleDriveFolderId && canCreateProjectDriveFolder(currentUser)
   // The manufacturer's POs can also code freight to the shipping cost code.
   const manufacturerCostCodes =
     shippingCostCode && !purchaseOrderCodingOptions.costCodes.some((option) => option.value === shippingCostCode.value)
