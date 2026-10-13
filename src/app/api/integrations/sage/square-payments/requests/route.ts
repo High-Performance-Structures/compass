@@ -1,4 +1,4 @@
-import { and, asc, eq, lt, or, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, lt, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/lib/sage/bridge-auth"
 import {
   sageSquarePaymentPayloadSchema,
+  sageSquareTestOperationIds,
   sageSquareWritesEnabled,
 } from "@/lib/sage/square-payment"
 
@@ -30,7 +31,10 @@ export async function GET(request: Request): Promise<Response> {
   if (!secret) {
     return Response.json({ error: "Sage bridge is not configured" }, { status: 503 })
   }
-  if (!sageSquareWritesEnabled(env)) {
+  // With writes off, only fees named for a controlled test can be claimed.
+  const writesEnabled = sageSquareWritesEnabled(env)
+  const testOperationIds = writesEnabled ? [] : sageSquareTestOperationIds(env)
+  if (!writesEnabled && testOperationIds.length === 0) {
     return Response.json(
       { error: "Sage Square payment writes are disabled" },
       { status: 503 }
@@ -92,6 +96,7 @@ export async function GET(request: Request): Promise<Response> {
           sageSquarePaymentOperations.operationType,
           "post_square_processing_fee"
         ),
+        ...(writesEnabled ? [] : [inArray(sageSquarePaymentOperations.id, [...testOperationIds])]),
         or(
           eq(sageSquarePaymentOperations.status, "queued"),
           and(

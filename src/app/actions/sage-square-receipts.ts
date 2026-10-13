@@ -44,7 +44,10 @@ function combinedFeeStatus(statuses: readonly string[]): string | null {
   if (statuses.some((status) => status === "failed" || status === "attention")) {
     return "attention"
   }
-  if (statuses.every((status) => status === "succeeded")) return "succeeded"
+  // A fee found already entered in Sage counts as done.
+  if (statuses.every((status) => status === "succeeded" || status === "already_in_sage")) {
+    return statuses.includes("already_in_sage") ? "already_in_sage" : "succeeded"
+  }
   if (statuses.some((status) => status === "running")) return "running"
   return "queued"
 }

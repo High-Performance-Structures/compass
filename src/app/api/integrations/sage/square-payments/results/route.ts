@@ -136,6 +136,21 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ success: true, status: "failed" }, { status: 202 })
   }
+  if (result.outcome === "already_in_sage") {
+    // Nothing was written; the matching Sage entry is recorded for audit.
+    await db
+      .update(sageSquarePaymentOperations)
+      .set({
+        status: "already_in_sage",
+        sageRecordId: result.sageRecordId,
+        sageRecordNumber: result.sageRecordNumber,
+        errorMessage: result.matchReason,
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(sageSquarePaymentOperations.id, operation.id))
+    return Response.json({ success: true, status: "already_in_sage" })
+  }
   await db
     .update(sageSquarePaymentOperations)
     .set({
