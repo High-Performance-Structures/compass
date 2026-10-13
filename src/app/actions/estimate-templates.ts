@@ -1,14 +1,12 @@
 "use server"
 
+import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
 import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
-import {
-  projectEstimates,
-  sageTaxEntities,
-} from "@/db/schema-estimates"
+import { sageTaxEntities } from "@/db/schema-estimates"
 import {
   estimateTemplateDefaults,
   estimateTemplateLines,
@@ -918,7 +916,7 @@ export async function createProjectEstimateFromTemplate(input: {
       )
       .get()
     if (!version) throw new Error("The estimate template is not published.")
-    const [defaults, sourceLines, taxEntities, priorEstimate] =
+    const [defaults, sourceLines, taxEntities] =
       await Promise.all([
         access.db
           .select()
@@ -937,13 +935,6 @@ export async function createProjectEstimateFromTemplate(input: {
           .select()
           .from(sageTaxEntities)
           .where(eq(sageTaxEntities.active, true)),
-        access.db
-          .select({ versionNumber: projectEstimates.versionNumber })
-          .from(projectEstimates)
-          .where(eq(projectEstimates.projectId, input.projectId))
-          .orderBy(desc(projectEstimates.versionNumber))
-          .limit(1)
-          .then((rows) => rows[0] ?? null),
       ])
     if (!defaults) throw new Error("The estimate template defaults are missing.")
     const defaultTax = cleanText(input.defaultTaxEntityId)
@@ -986,12 +977,20 @@ export async function createProjectEstimateFromTemplate(input: {
     const applicationId = crypto.randomUUID()
     const now = new Date().toISOString()
     const estimateDate = now.slice(0, 10)
-    const estimateVersion = (priorEstimate?.versionNumber ?? 0) + 1
+    const department = projectDepartment({
+      projectId: project.id,
+      projectNumber: project.projectNumber,
+    })
+    // A department with several estimates per job starts a new estimate
+    // number; otherwise this is the job's next version.
+    const numbering = await numberNewEstimate(access.db, {
+      projectId: input.projectId,
+      projectNumber: project.projectNumber,
+      mode: await readEstimateMode(access.db, access.organizationId, department),
+    })
+    const estimateVersion = numbering.versionNumber
     const documentTitle = estimateTitleForDepartment({
-      department: projectDepartment({
-        projectId: project.id,
-        projectNumber: project.projectNumber,
-      }),
+      department,
       requestedTitle: defaults.documentTitle,
     })
     const statements: D1PreparedStatement[] = [
@@ -1027,7 +1026,7 @@ export async function createProjectEstimateFromTemplate(input: {
       ).bind(
         estimateId,
         input.projectId,
-        `${project.projectNumber ?? "PROJECT"}-00`,
+        numbering.estimateNumber,
         estimateVersion,
         documentTitle,
         estimateDate,

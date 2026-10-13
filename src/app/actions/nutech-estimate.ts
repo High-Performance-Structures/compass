@@ -1,6 +1,7 @@
 "use server"
 
-import { and, asc, count, desc, eq } from "drizzle-orm"
+import { readEstimateMode } from "@/lib/estimates/numbering"
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
@@ -99,14 +100,22 @@ export async function createNuTechEstimateFromOrder(
       return { success: false, error: "Map Freight to its Sage cost code on the Nu-Tech price list first." }
     }
 
-    // The newest estimate version, if any.
-    const latest = await db
+    // One-estimate jobs fill their newest version. Jobs with several estimates
+    // fill the most recently edited draft, or start a new estimate when every
+    // estimate has already been sent.
+    const mode = await readEstimateMode(db, organizationId, "N")
+    const latestRow = await db
       .select({ id: projectEstimates.id, status: projectEstimates.status, number: projectEstimates.estimateNumber })
       .from(projectEstimates)
-      .where(eq(projectEstimates.projectId, projectId))
-      .orderBy(desc(projectEstimates.versionNumber))
+      .where(
+        mode === "multiple"
+          ? and(eq(projectEstimates.projectId, projectId), inArray(projectEstimates.status, [...EDITABLE]))
+          : eq(projectEstimates.projectId, projectId),
+      )
+      .orderBy(mode === "multiple" ? desc(projectEstimates.updatedAt) : desc(projectEstimates.versionNumber))
       .limit(1)
       .get()
+    const latest = latestRow ?? null
     if (latest && !EDITABLE.has(latest.status)) {
       return { success: false, error: `Estimate ${latest.number} was already sent. Start a new version on the estimate page, then try again.` }
     }

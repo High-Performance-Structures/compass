@@ -21,6 +21,8 @@ import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { rateBookEntries } from "@/db/schema-rate-book"
 import { estimateAccess, estimateSourceForRecordCopy, requireEditableEstimate, revalidateEstimate, type CompassDb, type EstimateAccess, type EstimateWorkspaceSource } from "@/lib/estimates/access"
 import { verifyRecordCopyToken } from "@/lib/paper-trail/print-token"
+import { nextEstimateNumber, type EstimateMode } from "@/lib/estimates/estimate-modes"
+import { numberNewEstimate, readEstimateMode } from "@/lib/estimates/numbering"
 import {
   projectBudgetLines,
   projectContacts,
@@ -316,6 +318,8 @@ export type ProjectEstimateWorkspace = {
   readonly projectAddress: string | null
   readonly projectMailingAddress: string | null
   readonly department: ProjectDepartment
+  /** "multiple": this department allows several estimates per job. */
+  readonly estimateMode: EstimateMode
   readonly reportMode: EstimateClientReportMode
   readonly estimates: readonly ProjectEstimateSummary[]
   readonly activeEstimate: ProjectEstimateSummary | null
@@ -1207,6 +1211,7 @@ async function loadProjectEstimateWorkspace(
     projectAddress: access.projectAddress,
     projectMailingAddress: access.projectMailingAddress,
     department: access.department,
+    estimateMode: await readEstimateMode(access.db, access.organizationId, access.department),
     reportMode:
       selected?.clientReportMode ?? estimateClientReportMode(access.department),
     estimates,
@@ -1287,14 +1292,12 @@ export async function createProjectEstimateDraft(
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
-    const prior = await access.db
-      .select({ versionNumber: projectEstimates.versionNumber })
-      .from(projectEstimates)
-      .where(eq(projectEstimates.projectId, projectId))
-      .orderBy(desc(projectEstimates.versionNumber))
-      .limit(1)
-    const versionNumber = (prior[0]?.versionNumber ?? 0) + 1
-    const estimateNumber = `${access.projectNumber ?? "PROJECT"}-00`
+    const mode = await readEstimateMode(access.db, access.organizationId, access.department)
+    const { estimateNumber, versionNumber } = await numberNewEstimate(access.db, {
+      projectId,
+      projectNumber: access.projectNumber,
+      mode,
+    })
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     const contactRows = await access.db
@@ -1486,6 +1489,14 @@ export async function duplicateProjectEstimate(
   destination?: {
     readonly destinationPhaseId: string | null
     readonly versionNumber: number | null
+    /**
+     * "separate": a new estimate with the next number (departments with
+     * several estimates per job); the original stays usable. Default: the
+     * next version of the same estimate.
+     */
+    readonly kind?: "version" | "separate"
+    /** Name for a separate estimate. */
+    readonly title?: string | null
   }
 ): Promise<ProjectEstimateActionResult> {
   try {
@@ -1534,9 +1545,26 @@ export async function duplicateProjectEstimate(
     const destinationAccess = changingPhase
       ? await estimateAccess(destinationProjectId, true)
       : access
-    const estimateNumber = changingPhase
-      ? `${destinationAccess.projectNumber ?? "PROJECT"}-00`
-      : source.estimateNumber
+    const separate = destination?.kind === "separate"
+    if (separate && changingPhase) {
+      throw new Error("A separate estimate is made on this job; copy to another phase as a new version.")
+    }
+    if (separate && (await readEstimateMode(access.db, access.organizationId, access.department)) !== "multiple") {
+      throw new Error("This department has one estimate per job. Duplicate it as a new version instead.")
+    }
+    const estimateNumber = separate
+      ? nextEstimateNumber(
+          access.projectNumber,
+          (
+            await access.db
+              .select({ estimateNumber: projectEstimates.estimateNumber })
+              .from(projectEstimates)
+              .where(eq(projectEstimates.projectId, projectId))
+          ).map((row) => row.estimateNumber),
+        )
+      : changingPhase
+        ? `${destinationAccess.projectNumber ?? "PROJECT"}-00`
+        : source.estimateNumber
     const priorVersions = await access.db
       .select({ versionNumber: projectEstimates.versionNumber })
       .from(projectEstimates)
@@ -1602,12 +1630,14 @@ export async function duplicateProjectEstimate(
     const sourceAssemblies = await access.db.select().from(projectEstimateAssemblies)
       .where(eq(projectEstimateAssemblies.estimateId, sourceEstimateId))
     const phaseCopies = sourcePhases.map((phase) => ({ phase, id: crypto.randomUUID() }))
+    const separateTitle = separate ? destination?.title?.trim().slice(0, 200) : undefined
     const header = access.db.insert(projectEstimates).values({
       ...source,
       id,
       projectId: destinationProjectId,
       estimateNumber,
       versionNumber,
+      ...(separateTitle ? { title: separateTitle } : {}),
       status: "draft",
       estimateDate: now.slice(0, 10),
       clientName: changingPhase
@@ -4011,8 +4041,10 @@ async function acceptProjectEstimate(input: {
   const now = new Date().toISOString()
   const recordedByName = activityActorName(input.access.user)
 
-  // A project has one accepted contractual baseline. Preserve old versions for
-  // audit while switching the baseline and its proof in one D1 batch.
+  // One-estimate departments have one accepted contractual baseline; with
+  // several estimates per job only an older version of the same estimate is
+  // replaced. Old versions stay for audit; the switch happens in one batch.
+  const mode = await readEstimateMode(input.access.db, input.access.organizationId, input.access.department)
   await input.access.db.batch([
     input.access.db
       .update(projectEstimates)
@@ -4021,7 +4053,8 @@ async function acceptProjectEstimate(input: {
         and(
           eq(projectEstimates.projectId, input.estimate.projectId),
           eq(projectEstimates.status, "accepted"),
-          ne(projectEstimates.id, input.estimate.id)
+          ne(projectEstimates.id, input.estimate.id),
+          ...(mode === "multiple" ? [eq(projectEstimates.estimateNumber, input.estimate.estimateNumber)] : [])
         )
       ),
     input.access.db
@@ -4044,11 +4077,15 @@ async function acceptProjectEstimate(input: {
       .where(eq(projectEstimates.id, input.estimate.id)),
   ])
 
-  const budget = await rebuildProjectContractBudget({
-    db: input.access.db,
-    projectId: input.estimate.projectId,
-    actorUserId: input.access.user.id,
-  })
+  // Several-estimate jobs move on to orders, not a contract budget.
+  const budget =
+    mode === "multiple"
+      ? ({ success: true } as const)
+      : await rebuildProjectContractBudget({
+          db: input.access.db,
+          projectId: input.estimate.projectId,
+          actorUserId: input.access.user.id,
+        })
   if (!budget.success) {
     return {
       success: false,

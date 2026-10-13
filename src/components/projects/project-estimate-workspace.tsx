@@ -884,6 +884,7 @@ export function ProjectEstimateWorkspacePanel({
               canEdit={workspace.canEdit}
               canDelete={workspace.canDelete}
               family={family}
+              estimateMode={workspace.estimateMode}
             />
             </div>
             <Button variant="outline" asChild>
