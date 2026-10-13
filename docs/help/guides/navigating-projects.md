@@ -75,6 +75,12 @@ phase in the same family. Leave the new version number blank to use the next
 available version. Planned phases need a Compass project before they can hold
 an estimate.
 
+## Link Jobs for the Same Customer {#linked-jobs}
+
+When a customer wants work that belongs to another department (pour help or ICF stacking on a Nu-Tech material sale, a full build after an HPS shell, a block order from a design), create it as a **linked job**. On the job's Overview, **Linked jobs** offers shortcuts for common cases and **Other department…** for anything else. Each opens the New Project form already filled in with this job's customer, contact, site address and a note of the work requested; check the department, name, statuses and project manager, then create it. The new job is numbered, tracked and set up like any other project.
+
+Both jobs show the link under **Linked jobs**, with the other job's number, name and status. Removing a link (the unlink button) leaves both jobs as they are. Admins edit the shortcuts in **Settings → Workflows → Linked jobs**.
+
 ## Review Duplicate Projects and Registry Cleanup {#duplicate-projects}
 
 Authorized registry managers can use **Scan for duplicates** in the Project Hub, then **Review and resolve** any possible match. Compare the project number, client, address, and the reasons Compass flagged the pair before deciding. If they are separate projects, mark them **Not duplicates**; when they share a department-sequence number, keep both and assign one a new approved number instead. The old number remains a historical alias.

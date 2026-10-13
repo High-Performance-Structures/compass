@@ -51,6 +51,28 @@ export const estimateSettingsSchema = z.object({
 
 export type EstimateSettings = z.infer<typeof estimateSettingsSchema>
 
+/**
+ * Linked job shortcuts: common work a customer asks for that belongs to
+ * another department (pour help on a Nu-Tech job → an HPS job). Any job can
+ * create a linked job in any department; shortcuts pre-fill the department
+ * and the list of work to choose from.
+ */
+export const linkedJobShortcutSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().trim().min(1).max(80),
+  /** Department of the job it's offered on; "*" for every department. */
+  fromDepartment: z.string().regex(/^([A-Z]|\*)$/),
+  toDepartment: z.string().regex(/^[A-Z]$/),
+  workItems: z.array(z.string().trim().min(1).max(80)).max(12),
+})
+
+export const linkedJobSettingsSchema = z.object({
+  shortcuts: z.array(linkedJobShortcutSchema).max(30),
+})
+
+export type LinkedJobShortcut = z.infer<typeof linkedJobShortcutSchema>
+export type LinkedJobSettings = z.infer<typeof linkedJobSettingsSchema>
+
 export type MessageDeskSettings = z.infer<typeof messageDeskSettingsSchema>
 
 /** One job status's client follow-up thresholds, in business days since the last client contact. */
@@ -356,6 +378,7 @@ type FeatureSettingsTypes = {
   readonly "shop-tickets": ShopTicketSettings
   readonly "bracing-rentals": BracingRentalSettings
   readonly "project-duplicates": ProjectDuplicateSettings
+  readonly "linked-jobs": LinkedJobSettings
   readonly "portfolio-map": PortfolioMapSettings
   readonly estimates: EstimateSettings
 }
@@ -471,6 +494,18 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Per department: one contract estimate per job (it becomes the budget; changes go through change orders), or several estimates at once, each accepted on its own.",
     defaults: { modes: {} },
     schema: estimateSettingsSchema,
+  },
+  "linked-jobs": {
+    label: "Linked jobs",
+    description: "Shortcuts for creating a linked job in another department for the same customer and site, such as pour help or stacking on a material sale.",
+    defaults: {
+      shortcuts: [
+        { id: "pour-help", label: "Pour help or stacking", fromDepartment: "N", toDepartment: "H", workItems: ["Pour help", "Stacking ICF block", "Bracing setup and removal"] },
+        { id: "full-build", label: "Full build", fromDepartment: "H", toDepartment: "O", workItems: [] },
+        { id: "block-order", label: "ICF block order", fromDepartment: "D", toDepartment: "N", workItems: [] },
+      ],
+    },
+    schema: linkedJobSettingsSchema,
   },
   "portfolio-map": {
     label: "Portfolio map",
