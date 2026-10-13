@@ -13,6 +13,7 @@ import {
   hydrateLegacySageSquarePaymentScopes,
   sageSquareOrganizationId,
   sageSquarePaymentResultSchema,
+  sageSquareTestOperationIds,
   sageSquareWritesEnabled,
 } from "@/lib/sage/square-payment"
 import { notifySageSquareException } from "@/lib/sage/square-payment-notifications"
@@ -27,7 +28,10 @@ export async function POST(request: Request): Promise<Response> {
   if (!secret) {
     return Response.json({ error: "Sage bridge is not configured" }, { status: 503 })
   }
-  if (!sageSquareWritesEnabled(env)) {
+  // With writes off, only operations listed for a controlled test may report.
+  const writesEnabled = sageSquareWritesEnabled(env)
+  const testOperationIds = writesEnabled ? [] : sageSquareTestOperationIds(env)
+  if (!writesEnabled && testOperationIds.length === 0) {
     return Response.json(
       { error: "Sage Square payment writes are disabled" },
       { status: 503 }
@@ -58,6 +62,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Invalid Sage payment result" }, { status: 400 })
   }
   const result = validated.data
+  if (!writesEnabled && !testOperationIds.includes(result.operationId)) {
+    return Response.json(
+      { error: "Sage Square payment writes are disabled" },
+      { status: 503 }
+    )
+  }
   const db = getDb(env.DB)
   const operation = await db
     .select()

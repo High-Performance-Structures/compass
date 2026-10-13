@@ -38,6 +38,8 @@ describe("Sage Square payment writer boundary", () => {
 
   it("rejects any result for an operation outside the fee writer", () => {
     expect(resultsRoute).toContain("isSageSquareWriterOperation")
+    // With writes off, only controlled-test operations may report results.
+    expect(resultsRoute).toContain("!writesEnabled && !testOperationIds.includes(result.operationId)")
     expect(resultsRoute).toContain(
       "Only Square processing-fee operations may use this writer"
     )
