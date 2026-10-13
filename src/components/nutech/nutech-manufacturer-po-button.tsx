@@ -14,10 +14,13 @@ import { Button } from "@/components/ui/button"
  */
 export function NuTechManufacturerPoButton({
   projectId,
+  orderId = null,
   manufacturerName,
   size = "default",
 }: {
   readonly projectId: string
+  /** The order the PO is built from; null uses the job's newest order. */
+  readonly orderId?: string | null
   readonly manufacturerName: string
   readonly size?: "default" | "sm"
 }): React.ReactElement {
@@ -27,7 +30,7 @@ export function NuTechManufacturerPoButton({
 
   function create(): void {
     startTransition(async () => {
-      const result = await createNuTechManufacturerPurchaseOrder(projectId)
+      const result = await createNuTechManufacturerPurchaseOrder(projectId, orderId)
       if (!result.success) {
         toast.error(result.error)
         return

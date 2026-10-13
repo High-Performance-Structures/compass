@@ -1,10 +1,11 @@
 "use server"
 
+import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, count, desc, eq } from "drizzle-orm"
 import { getDb } from "@/db"
 import { projectContacts, projects } from "@/db/schema"
 import { projectEstimates } from "@/db/schema-estimates"
-import { nuTechBracingRentals, nuTechOrderItems, nuTechOrderWorkflows } from "@/db/schema-nutech"
+import { nuTechBracingRentals, nuTechOrderItems } from "@/db/schema-nutech"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -64,12 +65,14 @@ export async function getNuTechOrderOverview(projectId: string): Promise<NuTechO
     if (!project) return null
     if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") return null
 
+    // The job overview follows the newest order and that order's estimate.
+    const latestOrder = await findNuTechOrder(db, projectId, null)
     const [order, estimate, contacts, followUps, customization, checks, rentals] = await Promise.all([
-      db.select().from(nuTechOrderWorkflows).where(eq(nuTechOrderWorkflows.projectId, projectId)).limit(1).get(),
+      Promise.resolve(latestOrder),
       db
         .select({ status: projectEstimates.status, taxEntityId: projectEstimates.defaultTaxEntityId })
         .from(projectEstimates)
-        .where(eq(projectEstimates.projectId, projectId))
+        .where(latestOrder?.estimateId ? eq(projectEstimates.id, latestOrder.estimateId) : eq(projectEstimates.projectId, projectId))
         .orderBy(desc(projectEstimates.updatedAt))
         .limit(1)
         .get(),

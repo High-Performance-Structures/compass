@@ -7,6 +7,8 @@ import { IconPlus } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { createProjectEstimateDraft, type ProjectEstimateSummary } from "@/app/actions/project-estimates"
+import { createNuTechOrder, type NuTechOrderForEstimate } from "@/app/actions/nutech-orders"
+import { nuTechOrderStatusLabel } from "@/lib/nutech/workflow"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -36,11 +38,14 @@ export function ProjectEstimateList({
   estimates,
   activeEstimateId,
   canEdit,
+  orders,
 }: {
   readonly projectId: string
   readonly estimates: readonly ProjectEstimateSummary[]
   readonly activeEstimateId: string | null
   readonly canEdit: boolean
+  /** Nu-Tech jobs: the orders filling each estimate, for the Next step column. */
+  readonly orders?: readonly NuTechOrderForEstimate[]
 }): React.ReactElement {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -62,6 +67,47 @@ export function ProjectEstimateList({
     })
   }
 
+  function startOrder(estimate: ProjectEstimateSummary): void {
+    startTransition(async () => {
+      const result = await createNuTechOrder(projectId, { title: estimate.title, estimateId: estimate.id })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Order started from this estimate. Add its products on the order page.")
+      router.push(`/dashboard/projects/${projectId}/nutech?order=${encodeURIComponent(result.id)}`)
+    })
+  }
+
+  /** What happens next for an estimate: the order filling it, or starting one once accepted. */
+  function nextStep(estimate: ProjectEstimateSummary): React.ReactElement {
+    const linked = (orders ?? []).filter((order) => order.estimateNumber === estimate.estimateNumber)
+    if (linked.length > 0) {
+      return (
+        <span className="grid gap-0.5">
+          {linked.map((order) => (
+            <Link key={order.orderId} href={`/dashboard/projects/${projectId}/nutech?order=${encodeURIComponent(order.orderId)}`} className="hover:underline">
+              Order {order.orderNumber} · {nuTechOrderStatusLabel(order.orderStatus)}
+            </Link>
+          ))}
+        </span>
+      )
+    }
+    if (estimate.status !== "accepted") return <span className="text-muted-foreground">When accepted</span>
+    return (
+      <span className="flex flex-wrap gap-2">
+        {canEdit ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => startOrder(estimate)} disabled={pending}>
+            Start order
+          </Button>
+        ) : null}
+        <Button asChild size="sm" variant="ghost">
+          <Link href={`/dashboard/projects/${projectId}/nutech#nutech-bracing`}>Bracing rental</Link>
+        </Button>
+      </span>
+    )
+  }
+
   function row(estimate: ProjectEstimateSummary): React.ReactElement {
     const active = estimate.id === activeEstimateId
     return (
@@ -77,6 +123,7 @@ export function ProjectEstimateList({
           <Badge variant={estimate.status === "accepted" ? "default" : "outline"}>{estimate.status.replaceAll("_", " ")}</Badge>
         </td>
         <td className="px-3 py-2.5 text-right tabular-nums">{money(estimate.estimateTotalCents)}</td>
+        {orders ? <td className="px-3 py-2.5">{nextStep(estimate)}</td> : null}
       </tr>
     )
   }
@@ -107,6 +154,7 @@ export function ProjectEstimateList({
               <th className="px-2 py-2 font-medium">Version</th>
               <th className="px-2 py-2 font-medium">Status</th>
               <th className="px-3 py-2 text-right font-medium">Total</th>
+              {orders ? <th className="px-3 py-2 font-medium">Next step</th> : null}
             </tr>
           </thead>
           <tbody>{open.map(row)}</tbody>

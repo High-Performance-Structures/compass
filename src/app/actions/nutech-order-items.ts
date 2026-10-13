@@ -2,6 +2,7 @@
 
 import { and, asc, eq, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { findNuTechOrder } from "@/lib/nutech/order-select"
 
 import { getDb } from "@/db"
 import { projectOperations, projects } from "@/db/schema"
@@ -111,16 +112,11 @@ function storedPricingMode(value: string): "standard" | "cash_discount" {
 
 export async function saveNuTechOrderItem(
   projectId: string,
-  input: { readonly productId: string; readonly quantity: number }
+  input: { readonly productId: string; readonly quantity: number; readonly orderId?: string | null }
 ): Promise<NuTechOrderItemActionResult> {
   try {
     const access = await nuTechItemAccess(projectId)
-    const workflow = await access.db
-      .select()
-      .from(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.projectId, projectId))
-      .limit(1)
-      .get()
+    const workflow = await findNuTechOrder(access.db, projectId, input.orderId)
     if (!workflow) throw new Error("Save the Nu-Tech intake before adding products.")
     if (workflow.purchaseOrderReleasedAt !== null) {
       throw new Error("Released Airlite PO quantities are locked.")
@@ -300,19 +296,15 @@ function driveFileId(value: string): string | null {
 }
 
 export async function generateNuTechAirliteWorkbook(
-  projectId: string
+  projectId: string,
+  orderId?: string | null
 ): Promise<NuTechOrderItemActionResult> {
   try {
     const access = await nuTechItemAccess(projectId)
     if (!access.project.googleDriveFolderId) {
       throw new Error("This job has no Google Drive folder yet, so the order form has nowhere to go. Use “Create Drive folder” on the project or purchase order page.")
     }
-    const workflow = await access.db
-      .select()
-      .from(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.projectId, projectId))
-      .limit(1)
-      .get()
+    const workflow = await findNuTechOrder(access.db, projectId, orderId)
     if (!workflow?.catalogVersionId) {
       throw new Error("Save the order with an active Nu-Tech catalog first.")
     }

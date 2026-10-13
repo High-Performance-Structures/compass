@@ -1,5 +1,5 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { getNuTechManufacturerName, getNuTechOrderFormLink, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
+import { getNuTechManufacturerName, getNuTechOrderFormLinks, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { NuTechOrderFormButton } from "@/components/nutech/nutech-order-form-button"
@@ -160,7 +160,7 @@ function PurchaseOrderCard({
   /** The manufacturer's price list, for its POs' line items. */
   readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
   /** Set on the PO linked to the Nu-Tech order: its manufacturer order form, beside the pickup copy. */
-  readonly orderForm?: { readonly workbookUrl: string | null; readonly released: boolean; readonly needsDriveFolder: boolean }
+  readonly orderForm?: { readonly orderId: string; readonly workbookUrl: string | null; readonly released: boolean; readonly needsDriveFolder: boolean }
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -244,12 +244,12 @@ function PurchaseOrderCard({
               assigneeOptions={taskAssigneeOptions}
             />
             {orderForm && (
-              <NuTechOrderFormButton projectId={projectId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} needsDriveFolder={orderForm.needsDriveFolder} />
+              <NuTechOrderFormButton projectId={projectId} orderId={orderForm.orderId} workbookUrl={orderForm.workbookUrl} released={orderForm.released} needsDriveFolder={orderForm.needsDriveFolder} />
             )}
             {orderForm?.workbookUrl ? (
               // The manufacturer's PO prints on the manufacturer's own form.
               <Button asChild type="button" variant="outline" size="sm" className="print:hidden">
-                <a href={`/api/projects/${projectId}/nutech-order-form`} target="_blank" rel="noreferrer">
+                <a href={`/api/projects/${projectId}/nutech-order-form?order=${encodeURIComponent(orderForm.orderId)}`} target="_blank" rel="noreferrer">
                   <IconPrinter className="size-4" />
                   Pickup copy
                 </a>
@@ -417,15 +417,15 @@ export default async function ProjectPurchaseOrdersPage({
     projectNumber: project?.projectNumber,
   })
   // N jobs order from the block manufacturer, built from the Nu-Tech order.
-  const [manufacturerName, manufacturerCatalog, shippingCostCode, orderFormLink] =
+  const [manufacturerName, manufacturerCatalog, shippingCostCode, orderFormLinks] =
     brand.department === "N"
       ? await Promise.all([
           getNuTechManufacturerName(),
           getNuTechPurchaseOrderCatalog(id),
           getNuTechShippingCostCodeOption(),
-          getNuTechOrderFormLink(id),
+          getNuTechOrderFormLinks(id),
         ])
-      : ["", [], null, null]
+      : ["", [], null, []]
   // Staff can create the missing Drive folder right where the form would go.
   const orderFormNeedsDriveFolder =
     !project?.googleDriveFolderId && canCreateProjectDriveFolder(currentUser)
@@ -582,11 +582,11 @@ export default async function ProjectPurchaseOrdersPage({
               catalogItems={
                 manufacturerName !== "" && order.companyName?.trim() === manufacturerName ? manufacturerCatalog : undefined
               }
-              orderForm={
-                orderFormLink?.purchaseOrderId === order.id
-                  ? { ...orderFormLink, needsDriveFolder: orderFormNeedsDriveFolder }
-                  : undefined
-              }
+              orderForm={(() => {
+                // Each Nu-Tech order has its own manufacturer PO and order form.
+                const link = orderFormLinks.find((candidate) => candidate.purchaseOrderId === order.id)
+                return link ? { ...link, needsDriveFolder: orderFormNeedsDriveFolder } : undefined
+              })()}
             />
           ))
         ) : (

@@ -16,11 +16,13 @@ import { Button } from "@/components/ui/button"
  */
 export function NuTechOrderFormButton({
   projectId,
+  orderId,
   workbookUrl,
   released,
   needsDriveFolder,
 }: {
   readonly projectId: string
+  readonly orderId: string
   readonly workbookUrl: string | null
   readonly released: boolean
   readonly needsDriveFolder: boolean
@@ -30,7 +32,7 @@ export function NuTechOrderFormButton({
 
   function generate(): void {
     startTransition(async () => {
-      const result = await generateNuTechAirliteWorkbook(projectId)
+      const result = await generateNuTechAirliteWorkbook(projectId, orderId)
       if (!result.success) {
         toast.error(result.error)
         return

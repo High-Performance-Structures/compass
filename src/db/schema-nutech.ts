@@ -7,6 +7,7 @@ import {
   sageCostCodes,
   users,
 } from "./schema"
+import { projectEstimates } from "./schema-estimates"
 
 export const nuTechCatalogVersions = sqliteTable(
   "nutech_catalog_versions",
@@ -152,6 +153,12 @@ export const nuTechOrderWorkflows = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    /** The order's number on its job (1, 2, …); a job can have several orders. */
+    orderNumber: integer("order_number").notNull().default(1),
+    /** Optional name, e.g. "Phase 2 walls". */
+    title: text("title"),
+    /** The estimate this order fills and is sold on. */
+    estimateId: text("estimate_id").references(() => projectEstimates.id, { onDelete: "set null" }),
     catalogVersionId: text("catalog_version_id").references(
       () => nuTechCatalogVersions.id,
       { onDelete: "set null" }
@@ -223,7 +230,8 @@ export const nuTechOrderWorkflows = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("nutech_order_workflows_project_uq").on(table.projectId),
+    uniqueIndex("nutech_order_workflows_project_number_uq").on(table.projectId, table.orderNumber),
+    index("nutech_order_workflows_estimate_idx").on(table.estimateId),
     index("nutech_order_workflows_status_idx").on(
       table.orderStatus,
       table.requestedDeliveryDate

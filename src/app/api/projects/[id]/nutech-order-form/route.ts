@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, desc, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
@@ -17,7 +17,7 @@ import { resolveProjectRouteId } from "@/lib/project-route-id"
  * of the manufacturer's PO, in the manufacturer's own format.
  */
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { readonly params: Promise<{ readonly id: string }> }
 ): Promise<Response> {
   try {
@@ -25,6 +25,7 @@ export async function GET(
     await requireFeaturePermission(user, "nutech-orders", "read")
     const organizationId = requireOrg(user)
     const { id: rawProjectId } = await context.params
+    const orderId = new URL(request.url).searchParams.get("order")
     const projectId = await resolveProjectRouteId(rawProjectId)
     if (!projectId) return new Response("Order form not found.", { status: 404 })
     const { env } = await getCloudflareContext()
@@ -40,7 +41,15 @@ export async function GET(
       })
       .from(nuTechOrderWorkflows)
       .innerJoin(projects, eq(projects.id, nuTechOrderWorkflows.projectId))
-      .where(and(eq(nuTechOrderWorkflows.projectId, projectId), eq(projects.organizationId, organizationId)))
+      .where(
+        and(
+          eq(nuTechOrderWorkflows.projectId, projectId),
+          eq(projects.organizationId, organizationId),
+          // A job can have several orders; the link names which one.
+          ...(orderId ? [eq(nuTechOrderWorkflows.id, orderId)] : []),
+        ),
+      )
+      .orderBy(desc(nuTechOrderWorkflows.orderNumber))
       .get()
     if (!workflow?.workbookId) {
       return new Response("Fill the order form first; the pickup copy is printed from it.", { status: 404 })

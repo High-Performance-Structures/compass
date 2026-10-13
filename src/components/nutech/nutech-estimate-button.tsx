@@ -18,18 +18,27 @@ import {
 import { Button } from "@/components/ui/button"
 
 /**
- * Fills the job's Compass estimate from the Nu-Tech order (products,
+ * Fills the order's Compass estimate from the Nu-Tech order (products,
  * shipping and the sales tax district). Asks before replacing a draft's
  * existing lines. Save the order first so the latest shipping and tax are used.
  */
-export function NuTechEstimateButton({ projectId, disabled }: { readonly projectId: string; readonly disabled: boolean }): React.ReactElement {
+export function NuTechEstimateButton({
+  projectId,
+  orderId,
+  disabled,
+}: {
+  readonly projectId: string
+  /** The order that fills its estimate; null uses the job's newest order. */
+  readonly orderId: string | null
+  readonly disabled: boolean
+}): React.ReactElement {
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
   const [confirm, setConfirm] = React.useState<{ readonly estimateNumber: string; readonly lineCount: number } | null>(null)
 
   function run(replace: boolean): void {
     startTransition(async () => {
-      const result = await createNuTechEstimateFromOrder(projectId, replace)
+      const result = await createNuTechEstimateFromOrder(projectId, replace, orderId)
       if (!result.success) {
         toast.error(result.error)
         return
