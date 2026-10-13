@@ -27,6 +27,7 @@ import {
   joinListeningRoom,
   leaveListeningRoom,
   removeListeningTrack,
+  reorderListeningQueue,
   setListeningPlayback,
   startListeningRoom,
   type ListeningQueueItemData,
@@ -707,6 +708,15 @@ export function ListeningRoom({
                       )
                     }
                     onAddToPlaylist={setPlaylistSong}
+                    onReorder={(next) => {
+                      // Show the new order right away; a failed save reloads the room.
+                      setRoom({ ...room, queue: next })
+                      void applySnapshot(
+                        reorderListeningQueue({ channelId, queueItemIds: next.map((track) => track.id) })
+                      ).then((saved) => {
+                        if (!saved) void loadRoom()
+                      })
+                    }}
                     onAddLink={async (track, url) =>
                       Boolean(
                         await applySnapshot(

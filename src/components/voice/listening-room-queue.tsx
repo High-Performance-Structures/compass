@@ -17,6 +17,7 @@ import type {
   ListeningQueueItemData,
   ListeningRoomSnapshot,
 } from "@/app/actions/listening-room"
+import { SortableList } from "@/components/sortable-list"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -180,6 +181,7 @@ export function ListeningQueue({
   onRemove,
   onAddLink,
   onAddToPlaylist,
+  onReorder,
 }: {
   readonly room: ListeningRoomSnapshot
   readonly busy: boolean
@@ -187,10 +189,37 @@ export function ListeningQueue({
   readonly onRemove: (track: ListeningQueueItemData) => void
   readonly onAddLink: (track: ListeningQueueItemData, url: string) => Promise<boolean>
   readonly onAddToPlaylist: (track: ListeningQueueItemData) => void
+  readonly onReorder: (next: readonly ListeningQueueItemData[]) => void
 }): React.ReactElement {
   const [linkTrackId, setLinkTrackId] = React.useState<string | null>(null)
   const [linkUrl, setLinkUrl] = React.useState("")
   const upcoming = room.queue.filter((track) => track.playedAt === null)
+
+  // Anyone who can control playback can drag songs into a new order.
+  function renderQueue(
+    queue: readonly ListeningQueueItemData[],
+    renderTrack: (track: ListeningQueueItemData, index: number) => React.ReactElement
+  ): React.ReactElement {
+    if (room.canControl) {
+      return (
+        <SortableList
+          items={queue}
+          label={(track) => track.title}
+          disabled={busy}
+          onReorder={onReorder}
+          renderItem={renderTrack}
+          className="divide-y border-y"
+        />
+      )
+    }
+    return (
+      <ol className="divide-y border-y">
+        {queue.map((track, index) => (
+          <li key={track.id}>{renderTrack(track, index)}</li>
+        ))}
+      </ol>
+    )
+  }
   const totalMs = upcoming.reduce((sum, track) => sum + (track.durationMs ?? 0), 0)
 
   return (
@@ -209,8 +238,7 @@ export function ListeningQueue({
           Nothing queued yet. Paste a link above to add the first song.
         </p>
       ) : (
-        <ol className="divide-y border-y">
-          {room.queue.map((track, index) => {
+        renderQueue(room.queue, (track, index) => {
             const current = track.id === room.currentTrackId
             const played = track.playedAt !== null && !current
             const playable = synchronizedPlaybackLink(track.links)
@@ -221,7 +249,7 @@ export function ListeningQueue({
             const addedBy =
               track.addedBy === room.currentUserId ? "you" : track.addedByName
             return (
-              <li key={track.id} className="py-2">
+              <div className="py-2">
                 <div className="flex items-center gap-3">
                   <span
                     className={cn(
@@ -360,10 +388,9 @@ export function ListeningQueue({
                     </Button>
                   </form>
                 ) : null}
-              </li>
+              </div>
             )
-          })}
-        </ol>
+        })
       )}
     </section>
   )
