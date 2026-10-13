@@ -10,6 +10,7 @@ import { getProjectFamilySummary } from "@/app/actions/project-families"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectEstimateWorkspacePanel } from "@/components/projects/project-estimate-workspace"
+import { ProjectEstimateList } from "@/components/projects/project-estimate-list"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
@@ -58,6 +59,14 @@ export default async function ProjectEstimatePage({
           recordType="estimate"
           recordId={activeEstimateId}
           record={paperTrail.records[activeEstimateId] ?? null}
+        />
+      ) : null}
+      {workspace.estimateMode === "multiple" && workspace.estimates.length > 0 ? (
+        <ProjectEstimateList
+          projectId={id}
+          estimates={workspace.estimates}
+          activeEstimateId={activeEstimateId}
+          canEdit={workspace.canEdit}
         />
       ) : null}
       <ProjectEstimateWorkspacePanel

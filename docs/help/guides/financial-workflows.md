@@ -76,6 +76,12 @@ In an estimate's cost breakdown, use **From rate book** to fill a cost-code entr
 
 Use **Work on → Group descriptions & report phases** to customize client report phase names and grouping across departments. Keep report grouping separate from the division and cost-code identities used for accounting.
 
+### Several estimates on one job
+
+Some departments sell several things separately, so a job can have several estimates at once (for example a bracing rental and an ICF block order). Admins choose this per department in **Settings → Workflows → Estimates**: **One contract estimate** (the accepted estimate becomes the contract budget and later changes go through change orders) or **Several at once**.
+
+With several at once, the Estimate page lists **Estimates on this job**. Each estimate has its own number (for example -01 and -02) and its own versions, and is sent and accepted on its own: accepting one never changes the others, and no contract budget is built. **New estimate** starts another one. **Duplicate estimate** asks whether the copy is **a separate estimate** (the next number, with the original left as it is) or **a new version** of the same estimate (it replaces the open version, which is kept for the record). Signatures and acceptance are never copied.
+
 **Duplicate estimate** can copy an estimate into another activated project phase in the same family. Confirm the destination project and version before copying, then review its quantities, rates, tax, descriptions, and terms before sharing. A copied estimate is a new working record, not approval or Sage posting.
 
 ## Quick Check {#quick-check}

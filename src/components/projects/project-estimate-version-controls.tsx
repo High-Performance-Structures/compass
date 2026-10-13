@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import type { EstimateMode } from "@/lib/estimates/estimate-modes"
 import {
   Select,
   SelectContent,
@@ -44,9 +46,12 @@ export function ProjectEstimateVersionControls({
   canEdit,
   canDelete,
   family,
+  estimateMode = "single",
 }: {
   readonly projectId: string
   readonly estimates: readonly ProjectEstimateSummary[]
+  /** "multiple": the department allows several estimates per job. */
+  readonly estimateMode?: EstimateMode
   readonly activeEstimate: ProjectEstimateSummary
   readonly canEdit: boolean
   readonly canDelete: boolean
@@ -59,11 +64,20 @@ export function ProjectEstimateVersionControls({
     family?.currentPhaseId ?? "current"
   )
   const [versionNumber, setVersionNumber] = useState("")
+  const multiple = estimateMode === "multiple"
+  // Several estimates per job: a copy is a separate estimate unless chosen otherwise.
+  const [kind, setKind] = useState<"separate" | "version">(multiple ? "separate" : "version")
+  const [copyTitle, setCopyTitle] = useState(`${activeEstimate.title} (copy)`)
+  const separate = multiple && kind === "separate"
+  // Versions of the estimate that's open; other estimates are listed above.
+  const versions = multiple
+    ? estimates.filter((estimate) => estimate.estimateNumber === activeEstimate.estimateNumber)
+    : estimates
   const destinationPhase = family?.phases.find(
     (phase) => phase.id === destinationPhaseId
   )
   const destinationProjectId = destinationPhase?.projectId ?? projectId
-  const otherVersion = estimates.find(
+  const otherVersion = versions.find(
     (estimate) => estimate.id !== activeEstimate.id
   )
 
@@ -75,13 +89,16 @@ export function ProjectEstimateVersionControls({
 
   function duplicateVersion(): void {
     startTransition(async () => {
-      const result = await duplicateProjectEstimate(projectId, activeEstimate.id, {
-        destinationPhaseId:
-          !family || destinationPhaseId === family.currentPhaseId
-            ? null
-            : destinationPhaseId,
-        versionNumber: versionNumber.trim() ? Number(versionNumber) : null,
-      })
+      const result = await duplicateProjectEstimate(projectId, activeEstimate.id, separate
+        ? { destinationPhaseId: null, versionNumber: null, kind: "separate", title: copyTitle }
+        : {
+            destinationPhaseId:
+              !family || destinationPhaseId === family.currentPhaseId
+                ? null
+                : destinationPhaseId,
+            versionNumber: versionNumber.trim() ? Number(versionNumber) : null,
+            kind: "version",
+          })
       if (!result.success) {
         toast.error(result.error)
         return
@@ -89,7 +106,7 @@ export function ProjectEstimateVersionControls({
       setDuplicateOpen(false)
       toast.success("Editable estimate copy created.")
       router.push(
-        `/dashboard/projects/${destinationProjectId}/estimate?estimateId=${result.id}`
+        `/dashboard/projects/${separate ? projectId : destinationProjectId}/estimate?estimateId=${result.id}`
       )
       router.refresh()
     })
@@ -125,7 +142,7 @@ export function ProjectEstimateVersionControls({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {estimates.map((estimate) => (
+          {versions.map((estimate) => (
             <SelectItem key={estimate.id} value={estimate.id}>
               {versionLabel(estimate)}
             </SelectItem>
@@ -143,7 +160,16 @@ export function ProjectEstimateVersionControls({
         </Button>
       )}
       {canEdit && (
-        <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <Dialog
+          open={duplicateOpen}
+          onOpenChange={(next) => {
+            setDuplicateOpen(next)
+            if (next) {
+              setKind(multiple ? "separate" : "version")
+              setCopyTitle(`${activeEstimate.title} (copy)`)
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button type="button" variant="outline" disabled={isPending}>
               <IconCopy className="size-4" />
@@ -154,10 +180,38 @@ export function ProjectEstimateVersionControls({
             <DialogHeader>
               <DialogTitle>Duplicate estimate</DialogTitle>
               <DialogDescription>
-                Copy version {activeEstimate.versionNumber} into an editable estimate in the chosen project phase.
+                {multiple
+                  ? `${activeEstimate.estimateNumber} · version ${activeEstimate.versionNumber}`
+                  : `Copy version ${activeEstimate.versionNumber} into an editable estimate in the chosen project phase.`}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
+              {multiple ? (
+                <RadioGroup value={kind} onValueChange={(value) => setKind(value === "version" ? "version" : "separate")} className="gap-2">
+                  <Label htmlFor="duplicate-separate" className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal has-[:checked]:border-primary">
+                    <RadioGroupItem id="duplicate-separate" value="separate" className="mt-0.5" />
+                    <span className="grid gap-1">
+                      <span className="font-medium">A separate estimate</span>
+                      <span className="text-sm text-muted-foreground">Gets the next estimate number. The original stays as it is and can still be sent and accepted.</span>
+                    </span>
+                  </Label>
+                  <Label htmlFor="duplicate-version" className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 font-normal has-[:checked]:border-primary">
+                    <RadioGroupItem id="duplicate-version" value="version" className="mt-0.5" />
+                    <span className="grid gap-1">
+                      <span className="font-medium">A new version of this estimate</span>
+                      <span className="text-sm text-muted-foreground">Replaces version {activeEstimate.versionNumber}, which is kept for the record. Use this when the customer asked for changes.</span>
+                    </span>
+                  </Label>
+                </RadioGroup>
+              ) : null}
+              {separate ? (
+                <div className="space-y-2">
+                  <Label htmlFor="estimate-copy-title">Name</Label>
+                  <Input id="estimate-copy-title" value={copyTitle} maxLength={200} onChange={(event) => setCopyTitle(event.target.value)} disabled={isPending} />
+                  <p className="text-xs text-muted-foreground">Lines, customer, tax district and terms are copied. Signatures and acceptance never are.</p>
+                </div>
+              ) : null}
+              <div className="space-y-4" hidden={separate}>
               <div className="space-y-2">
                 <Label htmlFor="estimate-destination-phase">Destination phase</Label>
                 <Select
@@ -209,12 +263,13 @@ export function ProjectEstimateVersionControls({
               <p className="text-sm text-muted-foreground">
                 Any current working estimate in the destination phase will be locked. Review copied terms and relink basis documents after copying to another phase.
               </p>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDuplicateOpen(false)} disabled={isPending}>
                 Cancel
               </Button>
-              <Button type="button" onClick={duplicateVersion} disabled={isPending || !destinationProjectId || (Boolean(family) && !destinationPhase?.projectId)}>
+              <Button type="button" onClick={duplicateVersion} disabled={isPending || (separate ? copyTitle.trim() === "" : !destinationProjectId || (Boolean(family) && !destinationPhase?.projectId))}>
                 {isPending ? "Creating copy…" : "Create copy"}
               </Button>
             </DialogFooter>

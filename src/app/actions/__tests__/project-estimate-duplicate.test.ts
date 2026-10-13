@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
   revalidatePath: vi.fn(),
   assertProjectAccess: vi.fn(),
+  readEstimateMode: vi.fn(async () => "single"),
 }))
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }))
@@ -23,6 +24,10 @@ vi.mock("@/lib/project-access", () => ({
 }))
 vi.mock("@/lib/user-roles", () => ({
   isInternalStaffRole: vi.fn(() => true),
+}))
+vi.mock("@/lib/estimates/numbering", () => ({
+  readEstimateMode: mocks.readEstimateMode,
+  numberNewEstimate: vi.fn(),
 }))
 
 import { duplicateProjectEstimate } from "@/app/actions/project-estimates"
@@ -280,5 +285,74 @@ describe("duplicateProjectEstimate", () => {
       error: "Activate the destination phase before copying an estimate.",
     })
     expect(db.batch).not.toHaveBeenCalled()
+  })
+
+  it("makes a separate estimate with the next number when the department allows several", async () => {
+    mocks.readEstimateMode.mockResolvedValue("multiple")
+    // Queries in order: project access, source, the job's estimate numbers,
+    // versions of the new number, report phases, assemblies.
+    const rows: readonly (readonly unknown[])[] = [
+      [{ name: "Source", organizationId: "org-1", clientName: "Source client", mailingAddress: "Source address" }],
+      [source],
+      [{ estimateNumber: "SOURCE-00" }, { estimateNumber: "SOURCE-01" }],
+      [],
+      [],
+      [],
+    ]
+    let index = 0
+    const select = vi.fn(() => {
+      const selected = rows[index] ?? []
+      index += 1
+      const resolvesAtWhere = index === 3 || index === 5 || index === 6
+      const query = { from: vi.fn(), where: vi.fn(), orderBy: vi.fn(), limit: vi.fn() }
+      query.from.mockReturnValue(query)
+      if (resolvesAtWhere) query.where.mockResolvedValue(selected)
+      else query.where.mockReturnValue(query)
+      query.orderBy.mockReturnValue(query)
+      query.limit.mockResolvedValue(selected)
+      return query
+    })
+    const inserted = vi.fn()
+    const batch = vi.fn(async (statements: readonly unknown[]) => statements.map(() => ({ success: true })))
+    mocks.getCloudflareContext.mockResolvedValue({
+      env: { DB: { prepare: vi.fn((sql: string) => ({ bind: vi.fn((...params: readonly unknown[]) => ({ sql, params })) })), batch } },
+    })
+    mocks.getDb.mockReturnValue({
+      select,
+      insert: vi.fn(() => ({
+        values: vi.fn((value: unknown) => {
+          inserted(value)
+          return { toSQL: () => ({ sql: "INSERT HEADER", params: [] }) }
+        }),
+      })),
+    })
+
+    const result = await duplicateProjectEstimate("source-project", source.id, {
+      destinationPhaseId: null,
+      versionNumber: null,
+      kind: "separate",
+      title: "ICF block (phase 2 walls)",
+    })
+
+    if (!result.success) throw new Error(result.error)
+    expect(inserted).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "source-project",
+      estimateNumber: "SOURCE-02",
+      versionNumber: 1,
+      title: "ICF block (phase 2 walls)",
+      status: "draft",
+    }))
+    mocks.readEstimateMode.mockResolvedValue("single")
+  })
+
+  it("refuses a separate estimate in a one-estimate department", async () => {
+    configureDb(false, 2)
+    const result = await duplicateProjectEstimate("source-project", source.id, {
+      destinationPhaseId: null,
+      versionNumber: null,
+      kind: "separate",
+      title: "Copy",
+    })
+    expect(result).toEqual({ success: false, error: expect.stringContaining("one estimate per job") })
   })
 })

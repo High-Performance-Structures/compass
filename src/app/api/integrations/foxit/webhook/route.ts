@@ -3,6 +3,9 @@ import { and, eq, ne } from "drizzle-orm"
 import { getDb } from "@/db"
 import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
+import { projects } from "@/db/schema"
+import { readEstimateMode } from "@/lib/estimates/numbering"
+import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
@@ -228,6 +231,18 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ success: true, ignored: true })
   }
 
+  // Departments with several estimates per job only replace an older
+  // version of the same estimate and don't build a contract budget.
+  const project = await db
+    .select({ organizationId: projects.organizationId, projectNumber: projects.projectNumber })
+    .from(projects)
+    .where(eq(projects.id, estimate.projectId))
+    .get()
+  const mode = await readEstimateMode(
+    db,
+    project?.organizationId ?? null,
+    projectDepartment({ projectId: estimate.projectId, projectNumber: project?.projectNumber ?? null }),
+  )
   if (estimate.status === "signature_pending") {
     await db.batch([
       db
@@ -237,7 +252,8 @@ export async function POST(request: Request): Promise<Response> {
           and(
             eq(projectEstimates.projectId, estimate.projectId),
             eq(projectEstimates.status, "accepted"),
-            ne(projectEstimates.id, estimate.id)
+            ne(projectEstimates.id, estimate.id),
+            ...(mode === "multiple" ? [eq(projectEstimates.estimateNumber, estimate.estimateNumber)] : [])
           )
         ),
       db
@@ -258,6 +274,7 @@ export async function POST(request: Request): Promise<Response> {
         .where(eq(projectEstimates.id, estimate.id)),
     ])
   }
+  if (mode === "multiple") return Response.json({ success: true })
   const budget = await rebuildProjectContractBudget({
     db,
     projectId: estimate.projectId,

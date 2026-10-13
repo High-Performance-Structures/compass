@@ -203,8 +203,10 @@ export const projectEstimates = sqliteTable(
       table.status,
       table.versionNumber
     ),
-    uniqueIndex("project_estimates_one_accepted_per_project_uq")
-      .on(table.projectId)
+    // One accepted version per estimate number. One-estimate departments
+    // supersede earlier accepted estimates when a new one is accepted.
+    uniqueIndex("project_estimates_one_accepted_per_number_uq")
+      .on(table.projectId, table.estimateNumber)
       .where(sql`${table.status} = 'accepted'`),
   ]
 )

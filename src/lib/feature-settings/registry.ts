@@ -6,6 +6,7 @@ import {
 } from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
+import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -39,6 +40,16 @@ export const portfolioMapSettingsSchema = z.object({
 })
 
 export type PortfolioMapSettings = z.infer<typeof portfolioMapSettingsSchema>
+
+/**
+ * Estimates: per department, one contract estimate per job or several at
+ * once. Only departments that differ from the built-in mode are stored.
+ */
+export const estimateSettingsSchema = z.object({
+  modes: z.record(z.string().regex(/^[A-Z]$/), z.enum(ESTIMATE_MODES)),
+})
+
+export type EstimateSettings = z.infer<typeof estimateSettingsSchema>
 
 export type MessageDeskSettings = z.infer<typeof messageDeskSettingsSchema>
 
@@ -346,6 +357,7 @@ type FeatureSettingsTypes = {
   readonly "bracing-rentals": BracingRentalSettings
   readonly "project-duplicates": ProjectDuplicateSettings
   readonly "portfolio-map": PortfolioMapSettings
+  readonly estimates: EstimateSettings
 }
 
 type FeatureSettingsGroup<T> = {
@@ -453,6 +465,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       templates: {},
     },
     schema: nuTechEmailSettingsSchema,
+  },
+  estimates: {
+    label: "Estimates",
+    description: "Per department: one contract estimate per job (it becomes the budget; changes go through change orders), or several estimates at once, each accepted on its own.",
+    defaults: { modes: {} },
+    schema: estimateSettingsSchema,
   },
   "portfolio-map": {
     label: "Portfolio map",
