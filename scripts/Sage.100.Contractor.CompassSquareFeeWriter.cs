@@ -2,46 +2,27 @@ using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Globalization;
-using System.IO;
-using System.Net;
-using System.Reflection;
-using System.Security;
-using System.Security.Cryptography;
 using System.Text;
-using System.Web.Script.Serialization;
-using System.Xml;
-using System.Xml.Schema;
 
-// Posts Square processing fees from Compass into Sage 100 Contractor as a
+// Square processing fees → Sage, as part of the approved Compass Sage writer
+// (Sage's API approval belongs to that one installed program). Each fee is a
 // general-ledger entry: debit Merchant Service Fees, credit the Square deposit
-// account. Before writing, it scans Sage for the same fee (entered by hand or
-// by an earlier run) and reports "already in Sage" instead of posting twice.
-// Customer receipts are never posted here; Sage has no supported receipt API.
-namespace CompassSageSquareFeeWriter
+// account, linked to the Square vendor when one is configured. Before writing
+// it scans Sage for the same fee, entered by hand or by an earlier run, and
+// reports "already in Sage" instead of posting twice. Customer receipts are
+// never posted here.
+namespace CompassSageClientProjectWriter
 {
-    internal static class Program
+    internal static partial class Program
     {
-        private const string ApiDllPath = @"C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\Sage.100.Contractor.Api.dll";
-        private const string XsdPath = @"C:\Program Files (x86)\Sage\Sage 100 Contractor SQL\mbxml.xsd";
-        private const string TargetCompany = "High Performance Structures Inc";
-        private const string AppName = "Compass.Sage.SquareFeeWriter";
-        private const string RequestsTarget = "/api/integrations/sage/square-payments/requests?limit=5";
-        private const string ResultsTarget = "/api/integrations/sage/square-payments/results";
-        private const string LogPath = @"C:\ProgramData\HPS\CompassSageWriter\logs\square-fee-writer.log";
-        private const string PreviousLogPath = @"C:\ProgramData\HPS\CompassSageWriter\logs\square-fee-writer.previous.log";
-        private const long MaxLogBytes = 5L * 1024L * 1024L;
+        private const string FeeRequestsTarget = "/api/integrations/sage/square-payments/requests?limit=5";
+        private const string FeeResultsTarget = "/api/integrations/sage/square-payments/results";
         // Duplicate-scan window around the Square payment date. Fees entered by
         // hand are usually dated with the receipt, up to a few weeks later.
         private const int DuplicateDaysBefore = 10;
         private const int DuplicateDaysAfter = 45;
-        private static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
-        private static readonly object LogLock = new object();
-        private static Type ImbxmlType;
-        private static Type GlobalType;
-        private static object ApiInstance;
-        private static bool ApiInitialized;
 
-        public sealed class Envelope { public FeeRequest[] requests { get; set; } }
+        public sealed class FeeEnvelope { public FeeRequest[] requests { get; set; } }
         public sealed class FeeRequest
         {
             public string id { get; set; }
@@ -72,6 +53,12 @@ namespace CompassSageSquareFeeWriter
             public string ClientName;
         }
 
+        private sealed class FeeVendor
+        {
+            public int Number;
+            public string Name;
+        }
+
         private sealed class Outcome
         {
             public FeeRequest Request;
@@ -81,106 +68,84 @@ namespace CompassSageSquareFeeWriter
             public string Note;
         }
 
-        private sealed class ApiSession : IDisposable
+        private static bool SquareFeeWritesEnabled()
         {
-            public ApiSession(string user, string password)
-            {
-                try
-                {
-                    Directory.SetCurrentDirectory(Path.GetDirectoryName(ApiDllPath));
-                    Assembly assembly = Assembly.LoadFrom(ApiDllPath);
-                    ImbxmlType = assembly.GetType("Sage.SMB.API.IMBXML", true);
-                    GlobalType = assembly.GetType("Sage.SMB.API.mbAPIGlobal", true);
-                    ApiInstance = Activator.CreateInstance(ImbxmlType);
-                    InvokeStatic("SetRqDataSource", new object[] { DataSource() });
-                    Invoke("SetDataSource", new object[] { DataSource() });
-                    Invoke("IntializeAPI", new object[0]);
-                    ApiInitialized = true;
-                    InvokeStatic("SetRqDataSource", new object[] { DataSource() });
-                    InvokeStatic("ResetRqAcceptState", new object[0]);
-                    InvokeStatic("EnableAcceptRq", new object[] { true });
-                    Invoke("SetDataSource", new object[] { DataSource() });
-                    Invoke("EnableRequests", new object[0]);
-                    object allowed = Invoke("IsApplicationAllowed", new object[] { user, password });
-                    if (!(allowed is int) || (int)allowed != 0) throw new InvalidOperationException("The Sage API application is not allowed (code " + Convert.ToString(allowed) + ").");
-                    object valid = Invoke("IsValidUser", new object[] { TargetCompany, user, password });
-                    if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("The API user is not valid for the selected Sage company.");
-                }
-                catch
-                {
-                    ResetApi(true);
-                    throw;
-                }
-            }
-            public void Dispose() { ResetApi(false); }
+            return String.Equals(Environment.GetEnvironmentVariable("SAGE_SQUARE_FEE_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static void ResetApi(bool suppressErrors)
+        /// <summary>
+        /// Runs after the client/project writes in the same scheduled run. A fee
+        /// problem is logged and never fails the client/project writer.
+        /// </summary>
+        private static void RunSquareFeesAfterWriterRun()
         {
-            try { if (ApiInitialized && ApiInstance != null) Invoke("DeIntializeAPI", new object[0]); }
-            catch { if (!suppressErrors) throw; }
-            finally { ApiInitialized = false; ApiInstance = null; }
+            if (!SquareFeeWritesEnabled()) return;
+            try { PollSquareFees(); }
+            catch (Exception error) { WriteLog("ERROR", "Square fee run failed: " + error.Message); }
         }
 
-        public static int Main(string[] args)
+        /// <summary>
+        /// --square-fee-diagnose: no writes. Checks both accounts and the
+        /// vendor, validates a sample entry against the installed schema, and
+        /// signs in to the Sage API.
+        /// </summary>
+        private static int RunSquareFeeDiagnostics()
         {
-            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
-                RequireConfiguration(!diagnose);
-                if (diagnose)
-                {
-                    RunDiagnostics();
-                    return 0;
-                }
-                WriteLog("INFO", "Square fee writer run started.");
-                PollOnce();
-                WriteLog("INFO", "Square fee writer run completed.");
+                Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET"); Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
+                RequireAccount(10000, "Square deposit account");
+                RequireAccount(62020, "Merchant Service Fees");
+                FeeVendor vendor = LoadFeeVendor();
+                string xml = BuildFeeXml(Required("SAGE_API_USER"), "SQDIAG-0", DateTime.Today, "Compass diagnostic fee entry",
+                    "Schema validation only", "Diagnostic line", 62020, 10000, 1.23m, vendor);
+                using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
+                WriteLog("INFO", "SQUARE_FEE_DIAGNOSTIC_OK xmlBytes=" + xml.Length + " accounts=10000,62020 vendor=" +
+                    (vendor == null ? "none" : vendor.Number + " " + vendor.Name));
+                Console.WriteLine("SQUARE_FEE_DIAGNOSTIC_OK");
                 return 0;
             }
             catch (Exception error)
             {
-                WriteLog("FATAL", error.Message);
+                WriteLog("FATAL", "Square fee diagnostic failed: " + error.Message);
+                Console.WriteLine("SQUARE_FEE_DIAGNOSTIC_FAILED " + error.Message);
                 return 1;
             }
         }
 
-        private static void RequireConfiguration(bool requireWriteSwitch)
+        /// <summary>The Sage vendor fees are filed under (SAGE_SQUARE_FEE_VENDOR_NUMBER), if set.</summary>
+        private static FeeVendor LoadFeeVendor()
         {
-            string baseUrl = Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET");
-            Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
-            Uri parsed;
-            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out parsed) ||
-                !String.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                !String.IsNullOrEmpty(parsed.Query) || !String.IsNullOrEmpty(parsed.Fragment))
-                throw new InvalidOperationException("COMPASS_BASE_URL must be an absolute HTTPS URL without a query or fragment.");
-            if (requireWriteSwitch && !String.Equals(Environment.GetEnvironmentVariable("SAGE_SQUARE_FEE_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Local Square fee write switch (SAGE_SQUARE_FEE_WRITES_ENABLED) is off.");
-            if (!File.Exists(ApiDllPath) || !File.Exists(XsdPath))
-                throw new FileNotFoundException("The Sage API DLL or mbxml.xsd is missing.");
+            string configured = Environment.GetEnvironmentVariable("SAGE_SQUARE_FEE_VENDOR_NUMBER");
+            if (String.IsNullOrWhiteSpace(configured)) return null;
+            int number;
+            if (!Int32.TryParse(configured.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out number))
+                throw new InvalidOperationException("SAGE_SQUARE_FEE_VENDOR_NUMBER is not a number.");
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT vndnme FROM dbo.actpay WHERE recnum = @n", connection))
+            {
+                command.Parameters.AddWithValue("@n", number);
+                object name = command.ExecuteScalar();
+                if (name == null || name == DBNull.Value) throw new InvalidOperationException("Sage vendor " + number + " was not found.");
+                return new FeeVendor { Number = number, Name = Convert.ToString(name).Trim() };
+            }
         }
 
-        /// <summary>
-        /// No writes: checks both accounts exist, builds and validates a sample
-        /// entry against the installed schema, and signs in to the Sage API.
-        /// </summary>
-        private static void RunDiagnostics()
+        private static void PollSquareFees()
         {
-            RequireAccount(10000, "Square deposit account");
-            RequireAccount(62020, "Merchant Service Fees");
-            string xml = BuildFeeXml(Required("SAGE_API_USER"), "SQDIAG-0", DateTime.Today, "Compass diagnostic fee entry", "Schema validation only", "Diagnostic line", 62020, 10000, 1.23m);
-            using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
-            WriteLog("INFO", "DIAGNOSTIC_OK company=" + TargetCompany + " xmlBytes=" + xml.Length + " accounts=10000,62020");
-        }
-
-        private static void PollOnce()
-        {
-            string json = Send("GET", RequestsTarget, "");
-            Envelope envelope = Json.Deserialize<Envelope>(json);
+            string json;
+            try { json = Send("GET", FeeRequestsTarget, ""); }
+            catch (BridgeRequestException error)
+            {
+                // Compass answers 503 while Square fee writes are switched off there.
+                if (error.Message.Contains("(503")) return;
+                throw;
+            }
+            FeeEnvelope envelope = Json.Deserialize<FeeEnvelope>(json);
             FeeRequest[] requests = envelope == null || envelope.requests == null ? new FeeRequest[0] : envelope.requests;
             if (requests.Length == 0) return;
 
+            FeeVendor vendor = LoadFeeVendor();
             List<Outcome> outcomes = new List<Outcome>();
             List<FeeRequest> toWrite = new List<FeeRequest>();
             Dictionary<string, string> transactionNumbers = new Dictionary<string, string>();
@@ -212,7 +177,7 @@ namespace CompassSageSquareFeeWriter
                         ". Posted by Compass.";
                     string lineDesc = Truncate("Square fee " + invoice.InvoiceNumber + " " + client, 50);
                     xmlByRequest[request.id] = BuildFeeXml(Required("SAGE_API_USER"), transactionNumber, paid, desc, memo, lineDesc,
-                        fee.merchantFeeAccountNumber, fee.depositAccountNumber, amount);
+                        fee.merchantFeeAccountNumber, fee.depositAccountNumber, amount, vendor);
                     transactionNumbers[request.id] = transactionNumber;
                     toWrite.Add(request);
                 }
@@ -265,8 +230,8 @@ namespace CompassSageSquareFeeWriter
                     result["sageRecordNumber"] = outcome.RecordNumber;
                     if (outcome.Kind == "already_in_sage") result["matchReason"] = Truncate(outcome.Note, 500);
                 }
-                Send("POST", ResultsTarget, Json.Serialize(result));
-                WriteLog(outcome.Kind == "failed" ? "ERROR" : "INFO", outcome.Request.id + " " + outcome.Kind.ToUpperInvariant() +
+                Send("POST", FeeResultsTarget, Json.Serialize(result));
+                WriteLog(outcome.Kind == "failed" ? "ERROR" : "INFO", "Square fee " + outcome.Request.id + " " + outcome.Kind.ToUpperInvariant() +
                     (outcome.RecordNumber == null ? "" : " record=" + outcome.RecordNumber) + (outcome.Note == null ? "" : " " + outcome.Note));
             }
         }
@@ -398,14 +363,16 @@ namespace CompassSageSquareFeeWriter
             }
         }
 
-        private static string BuildFeeXml(string user, string transactionNumber, DateTime date, string desc, string memo, string lineDesc, int feeAccount, int depositAccount, decimal amount)
+        private static string BuildFeeXml(string user, string transactionNumber, DateTime date, string desc, string memo, string lineDesc, int feeAccount, int depositAccount, decimal amount, FeeVendor vendor)
         {
             string money = amount.ToString("0.00", CultureInfo.InvariantCulture);
             StringBuilder body = new StringBuilder();
             body.Append("<TransactionNumber>").Append(XmlEscape(transactionNumber)).Append("</TransactionNumber>");
             body.Append("<TransactionDate>").Append(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append("</TransactionDate>");
             body.Append("<Desc>").Append(XmlEscape(Truncate(desc, 50))).Append("</Desc>");
-            body.Append("<Payee>Square</Payee>");
+            body.Append("<Payee>").Append(XmlEscape(Truncate(vendor == null ? "Square" : vendor.Name, 50))).Append("</Payee>");
+            // Same vendor link staff use when entering these fees by hand.
+            if (vendor != null) body.Append("<VendorRef><ObjectID>").Append(vendor.Number).Append("</ObjectID></VendorRef>");
             body.Append("<Memo>").Append(XmlEscape(memo)).Append("</Memo>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(feeAccount)
                 .Append("</ObjectID></AccountRef><DebitAmount>").Append(money).Append("</DebitAmount></GeneralLedgerLineAdd>");
@@ -451,139 +418,5 @@ namespace CompassSageSquareFeeWriter
             return TimeZoneInfo.ConvertTime(paid, mountain).Date;
         }
 
-        private static SqlConnection OpenSql()
-        {
-            string configured = Environment.GetEnvironmentVariable("SAGE_SQL_CONNECTION_STRING");
-            string connectionString = String.IsNullOrWhiteSpace(configured)
-                ? "Data Source=" + DataSource() + ";Initial Catalog=" + TargetCompany + ";Integrated Security=True;Application Name=" + AppName + ";TrustServerCertificate=True"
-                : configured;
-            SqlConnection connection = new SqlConnection(connectionString);
-            connection.Open();
-            using (SqlCommand command = new SqlCommand("SELECT DB_NAME()", connection))
-            {
-                string actual = Convert.ToString(command.ExecuteScalar());
-                if (!String.Equals(actual, TargetCompany, StringComparison.Ordinal))
-                {
-                    connection.Dispose();
-                    throw new InvalidOperationException("SQL connection resolved to '" + actual + "', not the approved Sage company.");
-                }
-            }
-            return connection;
-        }
-
-        private static void ValidateXml(string xml)
-        {
-            StringBuilder errors = new StringBuilder();
-            XmlSchemaSet schemas = new XmlSchemaSet();
-            schemas.Add(null, XsdPath);
-            XmlReaderSettings settings = new XmlReaderSettings { Schemas = schemas, ValidationType = ValidationType.Schema };
-            settings.ValidationEventHandler += delegate(object sender, ValidationEventArgs args) { errors.AppendLine(args.Message); };
-            using (StringReader input = new StringReader(xml))
-            using (XmlReader reader = XmlReader.Create(input, settings)) while (reader.Read()) { }
-            if (errors.Length > 0) throw new InvalidOperationException("Sage XML validation failed before write: " + errors.ToString().Trim());
-        }
-
-        private static string Submit(string xml, string password)
-        {
-            object response = Invoke("submitXML", new object[] { xml, password });
-            string text = Convert.ToString(response);
-            XmlDocument document = new XmlDocument();
-            try { document.LoadXml(text); }
-            catch (Exception error) { throw new InvalidOperationException("Sage API returned an invalid XML response: " + Truncate(text.Replace("\r", " ").Replace("\n", " "), 1000), error); }
-            XmlNodeList statuses = document.SelectNodes("//*[@statusCode]");
-            if (statuses == null || statuses.Count == 0) throw new InvalidOperationException("Sage API response did not include a status code.");
-            foreach (XmlNode node in statuses)
-            {
-                XmlElement element = node as XmlElement;
-                if (element == null) continue;
-                string code = element.GetAttribute("statusCode");
-                if (!String.Equals(code, "0", StringComparison.Ordinal))
-                    throw new InvalidOperationException("Sage API rejected the entry (code " + code + "): " + element.GetAttribute("statusMessage"));
-            }
-            return text;
-        }
-
-        private static string Send(string method, string target, string body)
-        {
-            string baseUrl = Required("COMPASS_BASE_URL").TrimEnd('/');
-            string timestamp = Convert.ToInt64((DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds).ToString(CultureInfo.InvariantCulture);
-            string requestId = Guid.NewGuid().ToString();
-            string signature = Sign(Required("SAGE_BRIDGE_SECRET"), timestamp + "." + requestId + "." + method + "." + target + "." + body);
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(baseUrl + target);
-            request.Method = method; request.Timeout = 60000; request.ReadWriteTimeout = 60000;
-            request.Headers["x-compass-timestamp"] = timestamp;
-            request.Headers["x-compass-request-id"] = requestId;
-            request.Headers["x-compass-signature"] = "sha256=" + signature;
-            if (method == "POST")
-            {
-                byte[] bytes = Encoding.UTF8.GetBytes(body); request.ContentType = "application/json"; request.ContentLength = bytes.Length;
-                using (Stream stream = request.GetRequestStream()) stream.Write(bytes, 0, bytes.Length);
-            }
-            try { using (HttpWebResponse response = (HttpWebResponse)request.GetResponse()) using (StreamReader reader = new StreamReader(response.GetResponseStream())) return reader.ReadToEnd(); }
-            catch (WebException error)
-            {
-                HttpWebResponse response = error.Response as HttpWebResponse;
-                string details = "";
-                if (response != null) using (StreamReader reader = new StreamReader(response.GetResponseStream())) details = reader.ReadToEnd();
-                // Compass answers 503 while fee writes are switched off; that's not an error.
-                if (response != null && (int)response.StatusCode == 503 && method == "GET") return "{\"requests\":[]}";
-                throw new InvalidOperationException("Compass bridge request failed (" + (response == null ? error.Status.ToString() : ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture)) + "): " + details, error);
-            }
-        }
-
-        private static void WriteLog(string level, string message)
-        {
-            lock (LogLock)
-            {
-                try
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(LogPath));
-                    if (File.Exists(LogPath) && new FileInfo(LogPath).Length > MaxLogBytes)
-                    {
-                        if (File.Exists(PreviousLogPath)) File.Delete(PreviousLogPath);
-                        File.Move(LogPath, PreviousLogPath);
-                    }
-                    File.AppendAllText(LogPath, DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture) + " " + level + " " + message + Environment.NewLine);
-                }
-                catch { }
-            }
-        }
-
-        private static string Sign(string secret, string payload)
-        {
-            using (HMACSHA256 hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))
-            {
-                byte[] hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
-                StringBuilder result = new StringBuilder(); foreach (byte value in hash) result.Append(value.ToString("x2")); return result.ToString();
-            }
-        }
-
-        private static object Invoke(string name, object[] args) { return InvokeMethod(FindMethod(ImbxmlType, name, args.Length, false), ApiInstance, args); }
-        private static object InvokeStatic(string name, object[] args) { return InvokeMethod(FindMethod(GlobalType, name, args.Length, true), null, args); }
-        private static object InvokeMethod(MethodInfo method, object target, object[] args)
-        {
-            try { return method.Invoke(target, args); }
-            catch (TargetInvocationException error)
-            {
-                Exception inner = error.InnerException;
-                if (inner == null) throw;
-                throw new InvalidOperationException(String.IsNullOrWhiteSpace(inner.Message) ? inner.GetType().FullName : inner.Message, inner);
-            }
-        }
-        private static MethodInfo FindMethod(Type type, string name, int count, bool isStatic)
-        {
-            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | (isStatic ? BindingFlags.Static : BindingFlags.Instance);
-            foreach (MethodInfo method in type.GetMethods(flags)) if (String.Equals(method.Name, name, StringComparison.OrdinalIgnoreCase) && method.GetParameters().Length == count) return method;
-            throw new MissingMethodException(type.FullName, name);
-        }
-        private static string Required(string name)
-        {
-            string value = Environment.GetEnvironmentVariable(name);
-            if (String.IsNullOrWhiteSpace(value)) throw new InvalidOperationException(name + " is required.");
-            return value.Trim();
-        }
-        private static string DataSource() { return Environment.GetEnvironmentVariable("SAGE_SQL_SERVER") ?? @"NUC-PC\SQLEXPRESS"; }
-        private static string Truncate(string value, int length) { if (String.IsNullOrEmpty(value)) return value; return value.Length <= length ? value : value.Substring(0, length); }
-        private static string XmlEscape(string value) { return SecurityElement.Escape(value ?? "") ?? ""; }
     }
 }

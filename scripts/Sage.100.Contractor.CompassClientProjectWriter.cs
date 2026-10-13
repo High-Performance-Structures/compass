@@ -162,6 +162,8 @@ namespace CompassSageClientProjectWriter
                 return RunContactChildAddTest();
             if (args.Length > 0 && String.Equals(args[0], "--contact-schema-test", StringComparison.OrdinalIgnoreCase))
                 return RunContactSchemaTest();
+            if (args.Length > 0 && String.Equals(args[0], "--square-fee-diagnose", StringComparison.OrdinalIgnoreCase))
+                return RunSquareFeeDiagnostics();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
@@ -178,6 +180,9 @@ namespace CompassSageClientProjectWriter
                 if (String.Equals(Environment.GetEnvironmentVariable("SAGE_CONTACT_BRIDGE_ENABLED"),
                     "true", StringComparison.OrdinalIgnoreCase) && RunContactBridge() != 0)
                     throw new InvalidOperationException("Sage contact bridge run failed.");
+                // Square fees run last, only with SAGE_SQUARE_FEE_WRITES_ENABLED,
+                // and never fail the client/project run.
+                RunSquareFeesAfterWriterRun();
                 WriteLog("INFO", "Writer run completed.");
                 return 0;
             }
