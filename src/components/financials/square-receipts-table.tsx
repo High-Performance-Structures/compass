@@ -31,6 +31,7 @@ function statusLabel(status: string): string {
   if (status === "queued") return "Queued"
   if (status === "running") return "Processing"
   if (status === "succeeded") return "Posted in Sage"
+  if (status === "already_in_sage") return "Already in Sage"
   if (status === "attention" || status === "failed") return "Needs review"
   return status.replaceAll("_", " ")
 }
@@ -39,7 +40,7 @@ function statusClass(status: string): string {
   if (status === "attention" || status === "failed") {
     return "text-destructive"
   }
-  if (status === "succeeded") return "text-primary"
+  if (status === "succeeded" || status === "already_in_sage") return "text-primary"
   return "text-muted-foreground"
 }
 

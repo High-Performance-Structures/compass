@@ -152,6 +152,16 @@ export const sageSquarePaymentResultSchema = z.discriminatedUnion("outcome", [
     sageRecordId: z.string().min(1),
     sageRecordNumber: z.string().min(1),
   }),
+  // The writer's duplicate scan found the entry already in Sage (for
+  // example entered by hand); nothing was written.
+  z.object({
+    operationId: z.string().uuid(),
+    claimToken: z.string().uuid(),
+    outcome: z.literal("already_in_sage"),
+    sageRecordId: z.string().min(1),
+    sageRecordNumber: z.string().min(1),
+    matchReason: z.string().min(1).max(500),
+  }),
   z.object({
     operationId: z.string().uuid(),
     claimToken: z.string().uuid(),
@@ -230,6 +240,18 @@ function envString(env: object, name: string): string | null {
 
 export function sageSquareOrganizationId(env: object): string | null {
   return envString(env, "SAGE_SQUARE_ORGANIZATION_ID")
+}
+
+/**
+ * Fee operations that may be claimed while writes are switched off, for a
+ * controlled test with someone watching (comma-separated operation ids in
+ * SAGE_SQUARE_PAYMENT_TEST_OPERATION_IDS). Receipts are never claimable.
+ */
+export function sageSquareTestOperationIds(env: object): readonly string[] {
+  return (envString(env, "SAGE_SQUARE_PAYMENT_TEST_OPERATION_IDS") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
 }
 
 export function sageSquareWritesEnabled(env: object): boolean {

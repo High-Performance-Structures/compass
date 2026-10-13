@@ -8,6 +8,8 @@ import {
   reconcileSageSquareAttentionEvents,
   reconcileSageSquareManualReceipts,
 } from "@/lib/sage/square-payment"
+import { reconcileSquareInvoiceCreatorAlerts, squareCreatorAlertConfiguration } from "@/lib/sage/square-creator-alerts"
+import { sendSquareReceiptReminders } from "@/lib/sage/square-receipt-reminders"
 
 export async function POST(request: Request): Promise<Response> {
   const body = await readBoundedBody(request)
@@ -34,7 +36,21 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const attentionEvents = await reconcileSageSquareAttentionEvents(env)
     const receipts = await reconcileSageSquareManualReceipts(env)
-    return Response.json({ success: true, attentionEvents, receipts })
+    let creatorAlerts: number | null = null
+    try {
+      creatorAlerts = await reconcileSquareInvoiceCreatorAlerts(env)
+    } catch {
+      // Notification retries must never block the existing accounting workflow.
+      console.error("Square invoice creator alert reconciliation failed")
+    }
+    let receiptReminders: number | null = null
+    try {
+      const config = await squareCreatorAlertConfiguration(env)
+      receiptReminders = config ? await sendSquareReceiptReminders(env, config) : 0
+    } catch {
+      console.error("Square receipt reminders failed")
+    }
+    return Response.json({ success: true, attentionEvents, receipts, creatorAlerts, receiptReminders })
   } catch (error) {
     return Response.json(
       {

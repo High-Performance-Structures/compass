@@ -1,0 +1,5 @@
+ALTER TABLE sage_square_payment_operations ADD COLUMN sage_invoice_creator_username TEXT;
+ALTER TABLE sage_square_payment_operations ADD COLUMN invoice_creator_lookup_at TEXT;
+ALTER TABLE sage_square_payment_operations ADD COLUMN invoice_creator_notified_at TEXT;
+CREATE INDEX sage_square_creator_alert_pending_idx ON sage_square_payment_operations
+  (organization_id, operation_type, invoice_creator_notified_at, payment_completed_at);
