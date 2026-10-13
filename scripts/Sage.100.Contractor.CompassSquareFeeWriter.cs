@@ -81,7 +81,8 @@ namespace CompassSageClientProjectWriter
         {
             if (!SquareFeeWritesEnabled()) return;
             try { PollSquareFees(); }
-            catch (Exception error) { WriteLog("ERROR", "Square fee run failed: " + error.Message); }
+            // Full detail (type and stack) so a failure can be traced to its line.
+            catch (Exception error) { WriteLog("ERROR", "Square fee run failed: " + error.ToString().Replace("\r", " ").Replace("\n", " | ")); }
         }
 
         /// <summary>
