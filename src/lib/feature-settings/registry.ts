@@ -81,6 +81,16 @@ export type LinkedJobSettings = z.infer<typeof linkedJobSettingsSchema>
 export const squarePaymentSettingsSchema = z.object({
   connectionAlertUserIds: z.array(z.string().min(1).max(200)).max(20),
   paymentAlertUserIds: z.array(z.string().min(1).max(200)).max(20),
+  /** Sage login of whoever creates invoices → their Compass person. */
+  sageUserMappings: z
+    .array(z.object({ sageUsername: z.string().trim().min(1).max(100), userId: z.string().min(1).max(200) }))
+    .max(50),
+  /** Also reminded about every unentered receipt; empty = the payment alert people. */
+  receiptReminderUserIds: z.array(z.string().min(1).max(200)).max(20),
+  /** Hours between reminders while a receipt isn't in Sage; 0 turns reminders off. */
+  receiptReminderHours: z.number().int().min(0).max(168),
+  receiptReminderBusinessHoursOnly: z.boolean(),
+  timeZone: z.string().min(1).max(64),
 })
 
 export type SquarePaymentSettings = z.infer<typeof squarePaymentSettingsSchema>
@@ -511,7 +521,15 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
   "square-payments": {
     label: "Square and Sage payments",
     description: "Who is alerted about the Square connection and about Square payments that need attention in Sage.",
-    defaults: { connectionAlertUserIds: [], paymentAlertUserIds: [] },
+    defaults: {
+      connectionAlertUserIds: [],
+      paymentAlertUserIds: [],
+      sageUserMappings: [],
+      receiptReminderUserIds: [],
+      receiptReminderHours: 24,
+      receiptReminderBusinessHoursOnly: true,
+      timeZone: "America/Denver",
+    },
     schema: squarePaymentSettingsSchema,
   },
   "linked-jobs": {

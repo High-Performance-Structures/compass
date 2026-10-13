@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Read original Sage AR invoice creators and report signed notification metadata."""
+"""Read-only Sage checks for Square payments, reported to Compass.
+
+1. Who originally created each Sage AR invoice (for payment alerts and reminders).
+2. Whether each Square receipt has been entered in Sage yet (stops reminders).
+"""
 
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from decimal import Decimal
 
 from sage_square_invoice_bridge import connect_sage
 from square_auth_monitor import NoRedirects
@@ -78,6 +83,77 @@ def read_creators(connection, requests: list[dict]) -> list[dict]:
     return results
 
 
+RECEIPT_KEYS = {"operationId", "sageInvoiceId", "invoiceNumber", "amountCents", "paymentCompletedAt"}
+# A receipt entered by hand is usually dated on or after the Square payment,
+# occasionally a few days before (deposit date vs. payment date).
+RECEIPT_EARLIEST_DAYS = 10
+
+
+def parse_payment_date(value: str) -> dt.date:
+    return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(dt.timezone(dt.timedelta(hours=-7))).date()
+
+
+def read_receipts(connection, checks: list[dict]) -> list[dict]:
+    """Looks for each Square payment among the invoice's Sage receipts (acrpmt).
+
+    Entered when a receipt for exactly the Square amount is on that invoice, or
+    the invoice is paid in full. Read-only; never writes to Sage.
+    """
+    if len(checks) > 20:
+        raise ValueError("Invalid receipt batch")
+    for item in checks:
+        if (not isinstance(item, dict) or set(item) != RECEIPT_KEYS
+                or not isinstance(item["sageInvoiceId"], str) or re.fullmatch(r"[1-9]\d{0,14}", item["sageInvoiceId"]) is None
+                or not isinstance(item["invoiceNumber"], str) or not 0 < len(item["invoiceNumber"]) <= 100
+                or not isinstance(item["amountCents"], int) or isinstance(item["amountCents"], bool) or item["amountCents"] <= 0
+                or not isinstance(item["operationId"], str) or not isinstance(item["paymentCompletedAt"], str)):
+            raise ValueError("Invalid receipt identity")
+        parse_payment_date(item["paymentCompletedAt"])
+    if not checks:
+        return []
+    ids = tuple(sorted({int(item["sageInvoiceId"]) for item in checks}))
+    placeholders = ",".join("%s" for _ in ids)
+    cursor = connection.cursor(as_dict=True)
+    try:
+        cursor.execute(f"SELECT recnum, invnum, invbal, amtpad FROM dbo.acrinv WHERE recnum IN ({placeholders})", ids)
+        invoices = {str(row["recnum"]): row for row in cursor.fetchall()}
+        cursor.execute(f"""SELECT recnum, _idnum, chknum, chkdte, amount
+            FROM dbo.acrpmt WHERE recnum IN ({placeholders})""", ids)
+        payments = cursor.fetchall()
+    finally:
+        cursor.close()
+    results = []
+    for item in checks:
+        invoice = invoices.get(item["sageInvoiceId"])
+        base = {"kind": "receipt", "operationId": item["operationId"], "sageInvoiceId": item["sageInvoiceId"]}
+        if invoice is None or str(invoice["invnum"]).strip() != item["invoiceNumber"]:
+            # Wrong or missing invoice: say nothing rather than guess.
+            continue
+        amount = (Decimal(item["amountCents"]) / 100).quantize(Decimal("0.01"))
+        earliest = parse_payment_date(item["paymentCompletedAt"]) - dt.timedelta(days=RECEIPT_EARLIEST_DAYS)
+        match = next((row for row in payments if str(row["recnum"]) == item["sageInvoiceId"]
+            and row["amount"] is not None and Decimal(row["amount"]).quantize(Decimal("0.01")) == amount
+            and row["chkdte"] is not None and as_date(row["chkdte"]) >= earliest), None)
+        if match is not None:
+            number = str(match["chknum"] or "").strip() or f"Receipt {as_date(match['chkdte']).isoformat()}"
+            results.append({**base, "entered": True, "sageRecordId": str(match["_idnum"]), "sageRecordNumber": number[:100],
+                "matchReason": f"Sage receipt of ${amount} dated {as_date(match['chkdte']).isoformat()}"})
+        elif invoice["invbal"] is not None and Decimal(invoice["invbal"]) == 0 and Decimal(invoice["amtpad"] or 0) >= amount:
+            results.append({**base, "entered": True, "sageRecordId": item["sageInvoiceId"], "sageRecordNumber": item["invoiceNumber"][:100],
+                "matchReason": "Sage invoice is paid in full"})
+        else:
+            results.append({**base, "entered": False, "sageRecordId": None, "sageRecordNumber": None, "matchReason": None})
+    return results
+
+
+def as_date(value) -> dt.date:
+    return value.date() if isinstance(value, dt.datetime) else value
+
+
+def stamp() -> str:
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     # Signet secret exec does not inherit systemd's environment. Pass the public
@@ -87,19 +163,21 @@ def main(argv: list[str] | None = None) -> int:
     count = 0
     try:
         secret = os.environ.get("JARVIS_BRIDGE_SECONDARY_SECRET", "")
-        pending = request_compass(args.compass_base_url, secret, "GET").get("requests")
-        if not isinstance(pending, list):
+        work = request_compass(args.compass_base_url, secret, "GET")
+        pending = work.get("requests")
+        checks = work.get("receiptChecks", [])
+        if not isinstance(pending, list) or not isinstance(checks, list):
             raise ValueError("Invalid pending lookup response")
-        if pending:
+        if pending or checks:
             connection = connect_sage()
             try:
-                observations = read_creators(connection, pending)
+                observations = read_creators(connection, pending) + read_receipts(connection, checks)
             finally:
                 connection.close()
             for observation in observations:
                 # Stamp each report immediately before signing, not before the SQL
                 # read, so a slow Sage query does not make every result stale.
-                observation["checkedAt"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+                observation["checkedAt"] = stamp()
                 result = request_compass(args.compass_base_url, secret, "POST", observation)
                 if result.get("success") is not True:
                     raise ValueError("Compass did not acknowledge lookup")

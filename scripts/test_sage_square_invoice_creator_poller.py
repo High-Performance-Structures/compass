@@ -1,4 +1,6 @@
 import contextlib
+import datetime as dt
+from decimal import Decimal
 import io
 import json
 import unittest
@@ -74,6 +76,48 @@ class InvoiceCreatorTests(unittest.TestCase):
         with contextlib.redirect_stdout(output):
             self.assertEqual(poller.main(["--compass-base-url", "https://compass.example.test"]), 1)
         self.assertNotIn("secret-and-private-employee", output.getvalue())
+
+
+class ReceiptCheckTests(unittest.TestCase):
+    def setUp(self):
+        self.check = {"operationId": "operation-100", "sageInvoiceId": "100", "invoiceNumber": "INV-100",
+            "amountCents": 12345, "paymentCompletedAt": "2026-09-18T16:00:00.000Z"}
+        self.connection = MagicMock()
+        self.cursor = self.connection.cursor.return_value
+        self.invoice = {"recnum": 100, "invnum": "INV-100", "invbal": Decimal("500.00"), "amtpad": Decimal("0")}
+
+    def run_with(self, payments, invoice=None):
+        self.cursor.fetchall.side_effect = [[invoice or self.invoice], payments]
+        return poller.read_receipts(self.connection, [self.check])
+
+    def test_exact_receipt_on_the_invoice_is_found_read_only(self):
+        result = self.run_with([{"recnum": 100, "_idnum": "abc", "chknum": "DD-1", "chkdte": dt.date(2026, 9, 19), "amount": Decimal("123.45")}])
+        self.assertEqual(result[0]["entered"], True)
+        self.assertEqual(result[0]["sageRecordNumber"], "DD-1")
+        for call in self.cursor.execute.call_args_list:
+            self.assertTrue(call.args[0].lstrip().startswith("SELECT"))
+        self.connection.commit.assert_not_called()
+
+    def test_other_amounts_or_old_receipts_are_not_a_match(self):
+        result = self.run_with([
+            {"recnum": 100, "_idnum": "a", "chknum": "", "chkdte": dt.date(2026, 9, 19), "amount": Decimal("100.00")},
+            {"recnum": 100, "_idnum": "b", "chknum": "", "chkdte": dt.date(2026, 8, 1), "amount": Decimal("123.45")},
+        ])
+        self.assertEqual(result[0]["entered"], False)
+
+    def test_invoice_paid_in_full_counts_as_entered(self):
+        result = self.run_with([], {**self.invoice, "invbal": Decimal("0.00"), "amtpad": Decimal("123.45")})
+        self.assertEqual(result[0]["matchReason"], "Sage invoice is paid in full")
+
+    def test_mismatched_invoice_reports_nothing(self):
+        self.assertEqual(self.run_with([], {**self.invoice, "invnum": "OTHER"}), [])
+
+    def test_bad_identity_never_reaches_sql(self):
+        with self.assertRaises(ValueError):
+            poller.read_receipts(self.connection, [{**self.check, "sageInvoiceId": "1;DROP"}])
+        with self.assertRaises(ValueError):
+            poller.read_receipts(self.connection, [{**self.check, "amountCents": True}])
+        self.cursor.execute.assert_not_called()
 
 
 if __name__ == "__main__":

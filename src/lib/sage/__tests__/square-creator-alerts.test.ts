@@ -7,11 +7,15 @@ import { createJarvisSignature } from "@/lib/jarvis/auth"
 import { isPublicPath } from "@/lib/public-paths"
 import {
   pendingSquareInvoiceCreators, recordSquareInvoiceCreator,
-  reconcileSquareInvoiceCreatorAlerts, squareCreatorAlertConfiguration,
+  reconcileSquareInvoiceCreatorAlerts, squareCreatorAlertConfiguration, type SquareCreatorConfiguration,
 } from "../square-creator-alerts"
 
-const mocks = vi.hoisted(() => ({ context: vi.fn(), attention: vi.fn(), receipts: vi.fn() }))
+const mocks = vi.hoisted(() => ({ context: vi.fn(), attention: vi.fn(), receipts: vi.fn(), settings: vi.fn(), paymentAlertIds: vi.fn() }))
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.context }))
+// Settings and payment-alert recipients are covered elsewhere; these fixtures
+// use the SAGE_INVOICE_CREATOR_USER_MAP fallback and administrators.
+vi.mock("@/lib/feature-settings/server", () => ({ readFeatureSettings: mocks.settings }))
+vi.mock("@/lib/sage/square-alert-recipients", () => ({ squareAlertRecipientIds: mocks.paymentAlertIds }))
 vi.mock("@/lib/sage/square-payment", () => ({
   reconcileSageSquareAttentionEvents: mocks.attention,
   reconcileSageSquareManualReceipts: mocks.receipts,
@@ -93,6 +97,9 @@ describe("Sage invoice creator payment alerts", () => {
     mocks.context.mockResolvedValue({ env })
     mocks.attention.mockResolvedValue({ processed: 0 })
     mocks.receipts.mockResolvedValue({ processed: 0 })
+    mocks.settings.mockResolvedValue({ sageUserMappings: [], receiptReminderUserIds: [], receiptReminderHours: 0,
+      receiptReminderBusinessHoursOnly: true, timeZone: "America/Denver", connectionAlertUserIds: [], paymentAlertUserIds: [] })
+    mocks.paymentAlertIds.mockResolvedValue(["admin"])
   })
   afterEach(() => { sqlite.close(); vi.useRealTimers(); vi.clearAllMocks() })
   async function report(value: unknown = observation, secret = env.JARVIS_BRIDGE_SECRET): Promise<Response> {
@@ -103,21 +110,33 @@ describe("Sage invoice creator payment alerts", () => {
       headers: { "x-compass-timestamp": timestamp,
         "x-compass-signature": await createJarvisSignature(secret, timestamp, "POST", target, body) } }))
   }
+  async function cfg(): Promise<SquareCreatorConfiguration> {
+    const config = await squareCreatorAlertConfiguration(configuredEnv())
+    if (!config) throw new Error("expected configuration")
+    return config
+  }
   function recipients(): unknown {
     return sqlite.prepare(`SELECT e.event_type, r.user_id, r.in_app, r.email, r.sms, r.push, e.href
       FROM notification_events e JOIN notification_recipients r ON r.event_id = e.id ORDER BY e.event_type`).all()
   }
-  it("requires an explicit mapping and cutoff; rejects duplicate normalized usernames", async () => {
-    env.SAGE_SQUARE_CREATOR_ALERTS_FROM = ""
-    expect(squareCreatorAlertConfiguration(configuredEnv())).toBeNull()
-    expect(await reconcileSquareInvoiceCreatorAlerts(configuredEnv())).toBe(0)
+  it("needs the organization; sends no creator alerts until a Sage login is matched", async () => {
+    env.SAGE_SQUARE_ORGANIZATION_ID = ""
+    expect(await squareCreatorAlertConfiguration(configuredEnv())).toBeNull()
     expect((await report()).status).toBe(503)
-    env.SAGE_SQUARE_CREATOR_ALERTS_FROM = "2026-09-18T00:00:00Z"
-    env.SAGE_INVOICE_CREATOR_USER_MAP = '[{"sageUsername":"X","userId":"employee"},{"sageUsername":"x","userId":"other"}]'
-    expect(squareCreatorAlertConfiguration(configuredEnv())).toBeNull()
+    env.SAGE_SQUARE_ORGANIZATION_ID = "org-1"
+    env.SAGE_INVOICE_CREATOR_USER_MAP = "[]"
+    expect((await report()).status).toBe(200)
+    expect(await reconcileSquareInvoiceCreatorAlerts(configuredEnv())).toBe(0)
+    expect(recipients()).toEqual([])
+  })
+  it("prefers Settings mappings over the secret, first match wins", async () => {
+    mocks.settings.mockResolvedValue({ sageUserMappings: [{ sageUsername: "X", userId: "employee" }, { sageUsername: "x", userId: "other" }] })
+    const config = await squareCreatorAlertConfiguration(configuredEnv())
+    expect(config?.mappings.get("x")).toBe("employee")
+    expect(config?.mappings.has("invoice.operator")).toBe(false)
   })
   it("routes exactly once to the original employee and links project Financials without changing posting", async () => {
-    expect(await pendingSquareInvoiceCreators(configuredEnv())).toEqual([{ operationId, sageInvoiceId: "100", invoiceNumber: "INV-100", sageJobShortName: "H-100" }])
+    expect(await pendingSquareInvoiceCreators(configuredEnv(), await cfg())).toEqual([{ operationId, sageInvoiceId: "100", invoiceNumber: "INV-100", sageJobShortName: "H-100" }])
     expect((await report()).status).toBe(200)
     expect((await report()).status).toBe(200)
     await reconcileSquareInvoiceCreatorAlerts(configuredEnv())
@@ -125,7 +144,7 @@ describe("Sage invoice creator payment alerts", () => {
       in_app: 1, email: 0, sms: 0, push: 0, href: `/dashboard/projects/project-1/financials?squareReceipt=${operationId}` }])
     expect(sqlite.prepare("SELECT status, amount_cents, invoice_creator_notified_at FROM sage_square_payment_operations").get())
       .toEqual({ status: "manual_action_required", amount_cents: 12345, invoice_creator_notified_at: observation.checkedAt })
-    expect(sqlite.prepare("SELECT body FROM notification_events").get()).toEqual({ body: expect.stringContaining("separate accounting step") })
+    expect(sqlite.prepare("SELECT body FROM notification_events").get()).toEqual({ body: expect.stringContaining("still needs entering in Sage") })
   })
   it.each(["other", "external", "inactive", "no-finance", "unknown"])("never routes financial data to an unauthorized mapped account: %s", async userId => {
     env.SAGE_INVOICE_CREATOR_USER_MAP = JSON.stringify([{ sageUsername: "invoice.operator", userId }])
@@ -144,9 +163,10 @@ describe("Sage invoice creator payment alerts", () => {
     expect(sqlite.prepare("SELECT dismissed_at FROM notification_recipients WHERE user_id='admin'").get())
       .toEqual({ dismissed_at: observation.checkedAt })
   })
-  it("keeps unmapped usernames retryable after a protected mapping change", async () => {
-    env.SAGE_INVOICE_CREATOR_USER_MAP = "[]"
+  it("keeps unmatched usernames retryable after a mapping change", async () => {
+    env.SAGE_INVOICE_CREATOR_USER_MAP = JSON.stringify([{ sageUsername: "someone.else", userId: "employee" }])
     await report()
+    expect(recipients()).toEqual([expect.objectContaining({ user_id: "admin", event_type: "sage.square_payment.creator_routing" })])
     env.SAGE_INVOICE_CREATOR_USER_MAP = JSON.stringify([{ sageUsername: "invoice.operator", userId: "employee" }])
     expect(await reconcileSquareInvoiceCreatorAlerts(configuredEnv())).toBe(1)
     expect(recipients()).toHaveLength(2)
@@ -160,7 +180,7 @@ describe("Sage invoice creator payment alerts", () => {
     expect(recipients()).toEqual(expect.arrayContaining([expect.objectContaining({ user_id: "employee" })]))
   })
   it("does not treat a global admin as an administrator in a client membership", async () => {
-    env.SAGE_INVOICE_CREATOR_USER_MAP = "[]"
+    env.SAGE_INVOICE_CREATOR_USER_MAP = JSON.stringify([{ sageUsername: "someone.else", userId: "employee" }])
     sqlite.exec("UPDATE organization_members SET role='client' WHERE user_id='admin'")
     await report()
     expect(recipients()).toEqual([])
@@ -170,9 +190,9 @@ describe("Sage invoice creator payment alerts", () => {
   })
   it("rechecks a missing Sage creator hourly, without repeated admin alerts", async () => {
     await report({ ...observation, creatorUsername: null })
-    expect(await pendingSquareInvoiceCreators(configuredEnv())).toEqual([])
+    expect(await pendingSquareInvoiceCreators(configuredEnv(), await cfg())).toEqual([])
     vi.advanceTimersByTime(3_601_000)
-    expect(await pendingSquareInvoiceCreators(configuredEnv())).toHaveLength(1)
+    expect(await pendingSquareInvoiceCreators(configuredEnv(), await cfg())).toHaveLength(1)
     await report({ ...observation, creatorUsername: null, checkedAt: new Date().toISOString() })
     expect(recipients()).toHaveLength(1)
   })
@@ -181,8 +201,8 @@ describe("Sage invoice creator payment alerts", () => {
     "UPDATE sage_square_payment_operations SET status='attention'",
     "UPDATE sage_square_payment_operations SET payment_completed_at='2020-01-01T00:00:00Z'"])("does not alert on incomplete, conflicted, refunded, or historic data: %s", async query => {
     sqlite.exec(query)
-    expect(await pendingSquareInvoiceCreators(configuredEnv())).toEqual([])
-    expect((await report()).status).toBe(409)
+    await report()
+    expect(await reconcileSquareInvoiceCreatorAlerts(configuredEnv())).toBe(0)
     expect(recipients()).toEqual([])
   })
   it("rejects unsigned/wrong-key, stale, arbitrary scope, and altered original creator reports", async () => {
@@ -191,7 +211,7 @@ describe("Sage invoice creator payment alerts", () => {
     expect((await report({ ...observation, checkedAt: "2026-09-17T00:00:00Z" })).status).toBe(400)
     expect((await report({ ...observation, organizationId: "org-2" })).status).toBe(400)
     expect((await report({ ...observation, invoiceNumber: "OTHER" })).status).toBe(409)
-    await recordSquareInvoiceCreator(configuredEnv(), observation)
+    await recordSquareInvoiceCreator(configuredEnv(), await cfg(), observation)
     expect((await report({ ...observation, creatorUsername: "Updater" })).status).toBe(409)
     expect(isPublicPath("/api/integrations/sage/square-invoice-creators")).toBe(true)
     expect(isPublicPath("/api/integrations/sage/square-invoice-creators/private")).toBe(false)
@@ -208,13 +228,13 @@ describe("Sage invoice creator payment alerts", () => {
   })
   it.each(["Square payment changed or was refunded; review is required", "Square reported invoice.refunded; review is required"])("does not alert an already-posted receipt flagged for review: %s", async error => {
     sqlite.prepare("UPDATE sage_square_payment_operations SET status='succeeded', error_message=?").run(error)
-    expect(await pendingSquareInvoiceCreators(configuredEnv())).toEqual([])
-    expect((await report()).status).toBe(409)
+    expect(await pendingSquareInvoiceCreators(configuredEnv(), await cfg())).toEqual([])
+    await report()
     expect(await reconcileSquareInvoiceCreatorAlerts(configuredEnv())).toBe(0)
     expect(recipients()).toEqual([])
   })
   it("rechecks refund warnings at the atomic delivery boundary", async () => {
-    await recordSquareInvoiceCreator(configuredEnv(), observation)
+    await recordSquareInvoiceCreator(configuredEnv(), await cfg(), observation)
     env.DB = sqliteD1(sqlite, () => {
       sqlite.exec("UPDATE sage_square_payment_operations SET status='succeeded', error_message='Square reported invoice.refunded; review is required'")
     })
@@ -223,7 +243,7 @@ describe("Sage invoice creator payment alerts", () => {
     expect(sqlite.prepare("SELECT invoice_creator_notified_at FROM sage_square_payment_operations").get()).toEqual({ invoice_creator_notified_at: null })
   })
   it("notification failure does not fail existing receipt maintenance", async () => {
-    await recordSquareInvoiceCreator(configuredEnv(), observation)
+    await recordSquareInvoiceCreator(configuredEnv(), await cfg(), observation)
     sqlite.exec("CREATE TRIGGER fail_recipient BEFORE INSERT ON notification_recipients BEGIN SELECT RAISE(ABORT,'test failure'); END")
     const target = "/api/operations/sage/square-receipts"
     const timestamp = String(Math.floor(Date.now() / 1000))
@@ -246,7 +266,11 @@ it("executes migration and atomic employee delivery in the actual D1 Worker runt
     const env = { DB: db, SAGE_SQUARE_ORGANIZATION_ID: "org-1", SAGE_INVOICE_CREATOR_USER_MAP: '[{"sageUsername":"invoice.operator","userId":"employee"}]', SAGE_SQUARE_CREATOR_ALERTS_FROM: "2026-09-18T00:00:00Z" }
     // @ts-expect-error Fixture omits unrelated production bindings.
     const configured: CloudflareEnv = env
-    await recordSquareInvoiceCreator(configured, observation)
+    mocks.settings.mockResolvedValue({ sageUserMappings: [] })
+    mocks.paymentAlertIds.mockResolvedValue(["admin"])
+    const config = await squareCreatorAlertConfiguration(configured)
+    if (!config) throw new Error("expected configuration")
+    await recordSquareInvoiceCreator(configured, config, observation)
     expect(await reconcileSquareInvoiceCreatorAlerts(configured)).toBe(1)
     expect(await reconcileSquareInvoiceCreatorAlerts(configured)).toBe(0)
     expect(await db.prepare("SELECT user_id FROM notification_recipients").all()).toEqual(expect.objectContaining({ results: [{ user_id: "employee" }] }))

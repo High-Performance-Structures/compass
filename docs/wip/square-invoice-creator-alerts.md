@@ -1,5 +1,14 @@
 # Square payment alerts for the Sage invoice creator
 
+> **Update:** Sage logins are now matched to Compass people in Settings →
+> Workflows → Square and Sage payments (the `SAGE_INVOICE_CREATOR_USER_MAP`
+> secret is only a fallback), and no cutoff is required: payment alerts look
+> back three days unless `SAGE_SQUARE_CREATOR_ALERTS_FROM` is set. The same
+> read-only poller now also looks for each Square receipt in Sage's AR receipts.
+> Until a receipt is found, the invoice creator and the people chosen in Settings
+> are reminded every few hours (default 24, weekdays 7 AM to 5 PM). Once found,
+> the receipt is marked "Already in Sage" and its alerts are cleared.
+
 This adds an in-app payment-received alert to the employee who originally
 created the Sage AR invoice. Existing administrator posting/error notifications
 remain unchanged. No Sage writes, Square billing, approval, or receipt status
