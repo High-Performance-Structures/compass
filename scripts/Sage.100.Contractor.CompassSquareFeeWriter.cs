@@ -371,8 +371,8 @@ namespace CompassSageClientProjectWriter
             body.Append("<TransactionDate>").Append(date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).Append("</TransactionDate>");
             body.Append("<Desc>").Append(XmlEscape(Truncate(desc, 50))).Append("</Desc>");
             // Same vendor link staff use when entering these fees by hand. The
-            // schema wants VendorRef (a plain record number) after Desc, before Payee.
-            if (vendor != null) body.Append("<VendorRef>").Append(vendor.Number).Append("</VendorRef>");
+            // schema wants VendorRef/ObjectID after Desc, before Payee.
+            if (vendor != null) body.Append("<VendorRef><ObjectID>").Append(vendor.Number).Append("</ObjectID></VendorRef>");
             body.Append("<Payee>").Append(XmlEscape(Truncate(vendor == null ? "Square" : vendor.Name, 50))).Append("</Payee>");
             body.Append("<Memo>").Append(XmlEscape(memo)).Append("</Memo>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(feeAccount)
