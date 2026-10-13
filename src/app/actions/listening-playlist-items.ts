@@ -268,3 +268,43 @@ export async function removeListeningPlaylistSong(input: {
     return { success: false, error: errorMessage(error, "Failed to remove the song") }
   }
 }
+
+/** Saves a new song order for a playlist (its creator or a moderator). */
+export async function reorderListeningPlaylist(input: {
+  readonly channelId: string
+  readonly playlistId: string
+  readonly playlistItemIds: readonly string[]
+}): Promise<PlaylistItemResult<{ readonly reordered: true }>> {
+  try {
+    const channelId = idSchema.safeParse(input.channelId)
+    const playlistId = idSchema.safeParse(input.playlistId)
+    const itemIds = z.array(idSchema).min(1).max(1_000).safeParse(input.playlistItemIds)
+    if (!channelId.success || !playlistId.success || !itemIds.success) {
+      return { success: false, error: "Invalid playlist order" }
+    }
+    const context = await playlistContext(channelId.data, true)
+    const playlist = await editablePlaylist(context, playlistId.data)
+    const rows = await context.db
+      .select({ id: listeningPlaylistItems.id })
+      .from(listeningPlaylistItems)
+      .where(eq(listeningPlaylistItems.playlistId, playlist.id))
+    const ids = itemIds.data
+    const known = new Set(rows.map((row) => row.id))
+    // Someone else changed this playlist since it was loaded.
+    if (ids.length !== rows.length || new Set(ids).size !== ids.length || !ids.every((id) => known.has(id))) {
+      return { success: false, error: "The playlist just changed. Try that move again." }
+    }
+    const [first, ...rest] = ids.map((id, index) =>
+      context.db
+        .update(listeningPlaylistItems)
+        .set({ sortOrder: index })
+        .where(and(eq(listeningPlaylistItems.id, id), eq(listeningPlaylistItems.playlistId, playlist.id)))
+    )
+    if (first) await context.db.batch([first, ...rest])
+    await touchPlaylist(context, playlist.id, new Date().toISOString())
+    revalidatePlaylistPaths(context.channel.id)
+    return { success: true, data: { reordered: true } }
+  } catch (error) {
+    return { success: false, error: errorMessage(error, "Failed to reorder the playlist") }
+  }
+}

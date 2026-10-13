@@ -22,6 +22,7 @@ import {
   addSongToListeningPlaylist,
   createEmptyListeningPlaylist,
   moveListeningPlaylistSong,
+  reorderListeningPlaylist,
   removeListeningPlaylistSong,
 } from "@/app/actions/listening-playlist-items"
 import {
@@ -63,6 +64,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { SortableList } from "@/components/sortable-list"
 
 type Playlist = ListeningPlaylistData
 type PlaylistSong = Playlist["items"][number]
@@ -73,6 +75,7 @@ function songCount(count: number): string {
 
 function usePlaylists(channelId: string): {
   readonly playlists: readonly Playlist[]
+  readonly setPlaylists: React.Dispatch<React.SetStateAction<readonly Playlist[]>>
   readonly loading: boolean
   readonly reload: () => Promise<void>
 } {
@@ -87,7 +90,7 @@ function usePlaylists(channelId: string): {
   React.useEffect(() => {
     void reload()
   }, [reload])
-  return { playlists, loading, reload }
+  return { playlists, setPlaylists, loading, reload }
 }
 
 /** Name a playlist: either empty or saved from the room's current queue. */
@@ -156,7 +159,7 @@ export function ListeningRoomPlaylists({
   readonly canControl: boolean
   readonly onQueueChanged: () => void
 }): React.ReactElement {
-  const { playlists, loading, reload } = usePlaylists(channelId)
+  const { playlists, setPlaylists, loading, reload } = usePlaylists(channelId)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
   const [renaming, setRenaming] = React.useState(false)
@@ -213,6 +216,101 @@ export function ListeningRoomPlaylists({
     onQueueChanged()
     toast.success(
       startAt ? `Playing ${startAt.title}` : `${songCount(result.addedCount)} added to the queue`
+    )
+  }
+
+  async function handleReorder(playlist: Playlist, next: readonly PlaylistSong[]): Promise<void> {
+    // Show the new order right away; reloading puts it back if saving fails.
+    setPlaylists((current) =>
+      current.map((item) => (item.id === playlist.id ? { ...item, items: next } : item))
+    )
+    const saved = await run(
+      reorderListeningPlaylist({
+        channelId,
+        playlistId: playlist.id,
+        playlistItemIds: next.map((song) => song.id),
+      })
+    )
+    if (!saved) await reload()
+  }
+
+  function renderSong(selected: Playlist, song: PlaylistSong, index: number): React.ReactElement {
+    return (
+      <div className="flex items-center gap-3 py-2">
+              <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                {index + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{song.title}</p>
+                {song.artist ? (
+                  <p className="truncate text-xs text-muted-foreground">{song.artist}</p>
+                ) : null}
+              </div>
+              {canControl ? (
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void handlePlay(selected, song)}
+                  aria-label={`Play the playlist from ${song.title}`}
+                >
+                  <Play />
+                </Button>
+              ) : null}
+              {selected.canEdit ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`More options for ${song.title}`}
+                    >
+                      <MoreHorizontal />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger disabled={moveTargets.length === 0}>
+                        <FolderInput /> Move to playlist
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent className="w-52">
+                        {moveTargets.map((target) => (
+                          <DropdownMenuItem
+                            key={target.id}
+                            onSelect={() =>
+                              void run(
+                                moveListeningPlaylistSong({
+                                  channelId,
+                                  playlistItemId: song.id,
+                                  toPlaylistId: target.id,
+                                }),
+                                `Moved to ${target.name}`
+                              ).then(() => reload())
+                            }
+                          >
+                            {target.name}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() =>
+                        void run(
+                          removeListeningPlaylistSong({ channelId, playlistItemId: song.id }),
+                          "Removed from the playlist"
+                        ).then(() => reload())
+                      }
+                    >
+                      <Trash2 /> Remove from playlist
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+      </div>
     )
   }
 
@@ -409,85 +507,22 @@ export function ListeningRoomPlaylists({
           add it here.
         </p>
       ) : (
-        <ol className="divide-y border-y">
-          {selected.items.map((song, index) => (
-            <li key={song.id} className="flex items-center gap-3 py-2">
-              <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                {index + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{song.title}</p>
-                {song.artist ? (
-                  <p className="truncate text-xs text-muted-foreground">{song.artist}</p>
-                ) : null}
-              </div>
-              {canControl ? (
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void handlePlay(selected, song)}
-                  aria-label={`Play the playlist from ${song.title}`}
-                >
-                  <Play />
-                </Button>
-              ) : null}
-              {selected.canEdit ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={`More options for ${song.title}`}
-                    >
-                      <MoreHorizontal />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger disabled={moveTargets.length === 0}>
-                        <FolderInput /> Move to playlist
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="w-52">
-                        {moveTargets.map((target) => (
-                          <DropdownMenuItem
-                            key={target.id}
-                            onSelect={() =>
-                              void run(
-                                moveListeningPlaylistSong({
-                                  channelId,
-                                  playlistItemId: song.id,
-                                  toPlaylistId: target.id,
-                                }),
-                                `Moved to ${target.name}`
-                              ).then(() => reload())
-                            }
-                          >
-                            {target.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() =>
-                        void run(
-                          removeListeningPlaylistSong({ channelId, playlistItemId: song.id }),
-                          "Removed from the playlist"
-                        ).then(() => reload())
-                      }
-                    >
-                      <Trash2 /> Remove from playlist
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : null}
-            </li>
-          ))}
-        </ol>
+        selected.canEdit ? (
+          <SortableList
+            items={selected.items}
+            label={(song) => song.title}
+            disabled={busy}
+            onReorder={(next) => void handleReorder(selected, next)}
+            renderItem={(song, index) => renderSong(selected, song, index)}
+            className="divide-y border-y"
+          />
+        ) : (
+          <ol className="divide-y border-y">
+            {selected.items.map((song, index) => (
+              <li key={song.id}>{renderSong(selected, song, index)}</li>
+            ))}
+          </ol>
+        )
       )}
 
       <AlertDialog open={replaceConfirmationOpen} onOpenChange={setReplaceConfirmationOpen}>

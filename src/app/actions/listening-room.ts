@@ -1045,6 +1045,59 @@ export async function removeListeningTrack(input: {
   }
 }
 
+const reorderSchema = z.object({
+  channelId: channelIdSchema,
+  queueItemIds: z.array(z.string().trim().min(1).max(200)).min(1).max(500),
+})
+
+/**
+ * Saves a new order for the whole room queue (anyone who can control playback).
+ * Songs placed after the one playing now will play in that order, including a
+ * played song dragged back down, which is how someone queues it again.
+ */
+export async function reorderListeningQueue(input: {
+  readonly channelId: string
+  readonly queueItemIds: readonly string[]
+}): Promise<ListeningActionResult<ListeningRoomSnapshot>> {
+  try {
+    const parsed = reorderSchema.safeParse(input)
+    if (!parsed.success) return { success: false, error: "Invalid queue order" }
+    const context = await listeningContext(parsed.data.channelId, { write: true })
+    const room = await roomForChannel(context.db, context.channel.id)
+    if (!room) return { success: false, error: "Listening room not found" }
+    if (!(await canControlPlayback(context, room))) {
+      return { success: false, error: "Join the room to change the queue" }
+    }
+    const rows = await context.db
+      .select({ id: listeningQueueItems.id, playedAt: listeningQueueItems.playedAt })
+      .from(listeningQueueItems)
+      .where(eq(listeningQueueItems.roomId, room.id))
+    const ids = parsed.data.queueItemIds
+    const known = new Set(rows.map((row) => row.id))
+    // Someone else added or removed a song since this list was loaded.
+    if (ids.length !== rows.length || new Set(ids).size !== ids.length || !ids.every((id) => known.has(id))) {
+      return { success: false, error: "The queue just changed. Try that move again." }
+    }
+    const playedIds = new Set(rows.filter((row) => row.playedAt !== null).map((row) => row.id))
+    const currentIndex = room.currentTrackId ? ids.indexOf(room.currentTrackId) : -1
+    const [first, ...rest] = ids.map((id, index) =>
+      context.db
+        .update(listeningQueueItems)
+        .set(
+          currentIndex >= 0 && index > currentIndex && playedIds.has(id)
+            ? { sortOrder: index, playedAt: null }
+            : { sortOrder: index }
+        )
+        .where(and(eq(listeningQueueItems.id, id), eq(listeningQueueItems.roomId, room.id)))
+    )
+    if (first) await context.db.batch([first, ...rest])
+    revalidateListeningRoom(context.channel.id)
+    return requiredRoomSnapshot(context)
+  } catch (error) {
+    return { success: false, error: actionError(error, "Failed to reorder the queue") }
+  }
+}
+
 export async function endListeningRoom(
   channelId: string
 ): Promise<ListeningActionResult<{ readonly ended: true }>> {
