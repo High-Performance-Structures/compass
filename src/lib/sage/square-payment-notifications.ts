@@ -3,12 +3,11 @@ import { and, eq, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   notificationEvents,
-  organizationMembers,
   users,
 } from "@/db/schema"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
+import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
 
-const ADMIN_ROLES = ["admin", "secondary_admin"]
 const EXCEPTION_EVENT_TYPE = "sage.square_payment.exception"
 const MANUAL_RECEIPT_EVENT_TYPE = "sage.square_payment.manual_receipt"
 const EXCEPTION_SOURCE_TYPE = "sage_square_payment"
@@ -70,20 +69,15 @@ async function notifySageSquareAdmins(
       )
     )
   if (existing.length > 0) return
+  // Chosen in Settings → Workflows → Square and Sage payments; administrators otherwise.
+  const recipientIds = await squareAlertRecipientIds(db, env, input.organizationId, "payments")
   const admins = await db
     .select({
       userId: users.id,
       email: users.email,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(
-      and(
-        eq(organizationMembers.organizationId, input.organizationId),
-        eq(users.isActive, true),
-        inArray(users.role, ADMIN_ROLES)
-      )
-    )
+    .from(users)
+    .where(inArray(users.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
   await createSystemNotificationEvent({
     organizationId: input.organizationId,
     projectId: input.projectId,

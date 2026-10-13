@@ -17,6 +17,7 @@ import { FEATURE_SETTINGS, type MessageDeskSettings } from "@/lib/feature-settin
 import { ProjectAgingSettingsSection } from "@/components/settings/project-aging-settings-section"
 import { PortfolioMapSettingsSection } from "@/components/settings/portfolio-map-settings-section"
 import { LinkedJobSettingsSection } from "@/components/settings/linked-job-settings-section"
+import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
 import { ClientInteractionSettingsSection } from "@/components/settings/client-interaction-settings-section"
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
@@ -195,6 +196,7 @@ function NuTechCatalogLink(): React.ReactElement {
 const WORKFLOW_AREAS = [
   { value: "job-workflows", label: "Job workflows", description: "Steps and checklists on each department's job overview." },
   { value: "estimates", label: "Estimates", description: "One contract estimate per job, or several at once, by department." },
+  { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
   { value: "job-emails", label: "Job emails", description: "Emails offered on HPS, ORC and Design job overviews." },
   { value: "message-desk", label: "Message Desk", description: "Response times, aging and stale reminders." },
@@ -237,6 +239,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <PortfolioMapSettingsSection />
     case "linked-jobs":
       return <LinkedJobSettingsSection />
+    case "square-payments":
+      return <SquareAlertSettingsSection />
     case "estimates":
       return <EstimateSettingsSection />
     case "client-interactions":
