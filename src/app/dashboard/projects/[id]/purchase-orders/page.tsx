@@ -1,5 +1,5 @@
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { getNuTechManufacturerName, getNuTechOrderFormLinks, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
+import { getNuTechManufacturerName, getNuTechManufacturerRecipients, getNuTechOrderFormLinks, getNuTechPurchaseOrderCatalog, getNuTechShippingCostCodeOption } from "@/app/actions/nutech-airlite-po"
 import type { PurchaseOrderCatalogItem } from "@/lib/purchase-orders/catalog-item"
 import { NuTechManufacturerPoButton } from "@/components/nutech/nutech-manufacturer-po-button"
 import { NuTechOrderFormButton } from "@/components/nutech/nutech-order-form-button"
@@ -137,6 +137,7 @@ function PurchaseOrderCard({
   paperTrail,
   catalogItems,
   orderForm,
+  supplierRecipients,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -161,6 +162,8 @@ function PurchaseOrderCard({
   readonly catalogItems: readonly PurchaseOrderCatalogItem[] | undefined
   /** Set on the PO linked to the Nu-Tech order: its manufacturer order form, beside the pickup copy. */
   readonly orderForm?: { readonly orderId: string; readonly workbookUrl: string | null; readonly released: boolean; readonly needsDriveFolder: boolean }
+  /** Set on the manufacturer's POs: the order desk and rep from Settings, in place of the supplier's own email. */
+  readonly supplierRecipients?: { readonly to: string; readonly cc: string }
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -219,7 +222,8 @@ function PurchaseOrderCard({
               poNumber={order.sourceRecordNumber}
               projectLabel={projectLabel}
               supplierName={order.companyName}
-              supplierEmail={order.vendorEmail}
+              supplierEmail={supplierRecipients?.to ?? order.vendorEmail}
+              ccEmail={supplierRecipients?.cc ?? null}
               recipientOptions={emailRecipientOptions}
             />
             <ProjectPurchaseOrderDeleteButton
@@ -417,15 +421,16 @@ export default async function ProjectPurchaseOrdersPage({
     projectNumber: project?.projectNumber,
   })
   // N jobs order from the block manufacturer, built from the Nu-Tech order.
-  const [manufacturerName, manufacturerCatalog, shippingCostCode, orderFormLinks] =
+  const [manufacturerName, manufacturerCatalog, shippingCostCode, orderFormLinks, manufacturerRecipients] =
     brand.department === "N"
       ? await Promise.all([
           getNuTechManufacturerName(),
           getNuTechPurchaseOrderCatalog(id),
           getNuTechShippingCostCodeOption(),
           getNuTechOrderFormLinks(id),
+          getNuTechManufacturerRecipients(),
         ])
-      : ["", [], null, []]
+      : ["", [], null, [], { to: "", cc: "" }]
   // Staff can create the missing Drive folder right where the form would go.
   const orderFormNeedsDriveFolder =
     !project?.googleDriveFolderId && canCreateProjectDriveFolder(currentUser)
@@ -587,6 +592,14 @@ export default async function ProjectPurchaseOrdersPage({
                 const link = orderFormLinks.find((candidate) => candidate.purchaseOrderId === order.id)
                 return link ? { ...link, needsDriveFolder: orderFormNeedsDriveFolder } : undefined
               })()}
+              // The manufacturer's POs go to the order desk set in Settings.
+              supplierRecipients={
+                manufacturerRecipients.to !== "" &&
+                ((manufacturerName !== "" && order.companyName?.trim() === manufacturerName) ||
+                  orderFormLinks.some((candidate) => candidate.purchaseOrderId === order.id))
+                  ? manufacturerRecipients
+                  : undefined
+              }
             />
           ))
         ) : (

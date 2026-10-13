@@ -212,6 +212,22 @@ export async function getNuTechManufacturerName(): Promise<string> {
 }
 
 /**
+ * Where the manufacturer's POs are emailed, from Settings → Workflows →
+ * Nu-Tech emails; blank when not set.
+ */
+export async function getNuTechManufacturerRecipients(): Promise<{ readonly to: string; readonly cc: string }> {
+  try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const settings = await readFeatureSettings(getDb(env.DB), organizationId, "nutech-emails")
+    return { to: settings.manufacturerOrdersEmail.trim(), cc: settings.manufacturerCcEmail.trim() }
+  } catch {
+    return { to: "", cc: "" }
+  }
+}
+
+/**
  * The active Fox Blocks price list as PO line choices for an N job: each
  * product with its manufacturer cost and cost code. Empty for other jobs
  * or when no catalog is active.
