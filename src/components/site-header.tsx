@@ -10,7 +10,6 @@ import {
   IconCode,
   IconExternalLink,
   IconMenu2,
-  IconMusic,
   IconMoon,
   IconSearch,
   IconSparkles,
@@ -36,7 +35,6 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
-import { useListeningRoomDock } from "@/components/voice/listening-room-dock-provider"
 import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
@@ -82,12 +80,10 @@ export function openOfficeTalkWindow(): void {
 export function SiteHeader({
   user,
   canUseAskCompass,
-  canUseOfficeTalk,
   showQuickAddInDevelopment,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
-  readonly canUseOfficeTalk: boolean
   readonly showQuickAddInDevelopment: boolean
 }) {
   const { theme, setTheme } = useTheme()
@@ -100,7 +96,6 @@ export function SiteHeader({
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
   const native = useNative()
-  const { openRoom: openListeningRoom } = useListeningRoomDock()
   const {
     canUseDeveloperMode,
     developerModeEnabled,
@@ -203,19 +198,6 @@ export function SiteHeader({
                 <IconMoon className="size-4 block dark:hidden" />
                 <span>Toggle theme</span>
               </DropdownMenuItem>
-              {canUseOfficeTalk && (
-                <DropdownMenuItem
-                  onSelect={() =>
-                    openListeningRoom({
-                      channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
-                      channelName: "Office Talk",
-                    })
-                  }
-                >
-                  <IconMusic />
-                  Listening Room
-                </DropdownMenuItem>
-              )}
               {native && (
                 <DropdownMenuItem onSelect={() => void openInBrowser()}>
                   <IconExternalLink />
@@ -356,19 +338,6 @@ export function SiteHeader({
                 <IconMoon className="size-4 block dark:hidden" />
                 <span>Toggle theme</span>
               </DropdownMenuItem>
-              {canUseOfficeTalk && (
-                <DropdownMenuItem
-                  onSelect={() =>
-                    openListeningRoom({
-                      channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
-                      channelName: "Office Talk",
-                    })
-                  }
-                >
-                  <IconMusic />
-                  Listening Room
-                </DropdownMenuItem>
-              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
                 <IconLogout />

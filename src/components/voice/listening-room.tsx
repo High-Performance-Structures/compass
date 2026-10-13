@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   ExternalLink,
+  GripVertical,
   Headphones,
   Loader2,
   LogOut,
@@ -38,6 +39,7 @@ import {
   ListeningRoomPlaylists,
 } from "@/components/voice/listening-room-playlists"
 import { AddSongForm, ListeningQueue } from "@/components/voice/listening-room-queue"
+import { useFloatingPosition } from "@/components/voice/use-floating-position"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,6 +70,7 @@ import { cn } from "@/lib/utils"
 
 const VOLUME_STORAGE_KEY = "compass-listening-volume"
 const DEFAULT_VOLUME = 70
+const MINI_PLAYER_POSITION_KEY = "compass-listening-mini-position"
 
 type SnapshotResult =
   | { readonly success: true; readonly data: ListeningRoomSnapshot }
@@ -148,6 +151,7 @@ export function ListeningRoom({
   const [playlistSong, setPlaylistSong] = React.useState<ListeningQueueItemData | null>(null)
   const loadingRoomRef = React.useRef(false)
   const full = standalone || expanded
+  const floating = useFloatingPosition<HTMLElement>(MINI_PLAYER_POSITION_KEY, !full)
 
   React.useEffect(() => setVolume(readVolume()), [])
 
@@ -488,13 +492,18 @@ export function ListeningRoom({
   return (
     <>
       <aside
+        ref={floating.elementRef}
         aria-label={compact ? "Listening Room mini player" : "Listening Room"}
+        style={compact ? floating.style : undefined}
         className={cn(
           "bg-background",
           standalone
             ? "flex h-dvh w-full flex-col"
             : compact
-              ? "fixed right-3 bottom-20 z-50 w-[calc(100%-1.5rem)] rounded-lg border p-3 shadow-xl sm:w-[24rem] md:bottom-3"
+              ? cn(
+                  "fixed right-3 bottom-20 z-50 w-[calc(100%-1.5rem)] rounded-lg border py-3 pr-3 pl-9 shadow-xl sm:w-[24rem] md:bottom-3",
+                  floating.dragging && "shadow-2xl select-none"
+                )
               : // Same frame as the Ask Jarvis panel: beside the page on desktop,
                 // full screen on phones.
                 "fixed inset-0 z-50 flex flex-col md:relative md:inset-auto md:z-auto md:my-2 md:mr-2 md:w-[26rem] md:shrink-0 md:overflow-hidden md:rounded-lg md:border md:shadow-lg"
@@ -502,6 +511,20 @@ export function ListeningRoom({
       >
         {/* Children keep fixed slots (null when hidden) so the player inside
             Now Playing is never remounted when the room is minimized. */}
+        {compact ? (
+          <button
+            type="button"
+            {...floating.handleProps}
+            aria-label="Move the mini player (drag, or use the arrow keys; double-click to put it back)"
+            title="Drag to move · double-click to put it back"
+            className={cn(
+              "absolute inset-y-0 left-0 flex w-7 touch-none items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              floating.dragging ? "cursor-grabbing bg-muted" : "cursor-grab"
+            )}
+          >
+            <GripVertical className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
         {compact ? null : <header className="flex items-center gap-3 border-b bg-sidebar px-4 py-3 text-sidebar-foreground">
           <Music2 className="size-5 shrink-0 text-primary" aria-hidden="true" />
           <div className="min-w-0 flex-1">
