@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Reflection;
 using System.Globalization;
 using System.Text;
 
@@ -74,15 +76,81 @@ namespace CompassSageClientProjectWriter
         }
 
         /// <summary>
-        /// Runs after the client/project writes in the same scheduled run. A fee
-        /// problem is logged and never fails the client/project writer.
+        /// Runs after the client/project writes, as a fresh child process
+        /// (--square-fee-run): Sage's API can fail when one process opens a
+        /// second session after closing the first. A fee problem is logged and
+        /// never fails the client/project writer.
         /// </summary>
         private static void RunSquareFeesAfterWriterRun()
         {
             if (!SquareFeeWritesEnabled()) return;
-            try { PollSquareFees(); }
-            // Full detail (type and stack) so a failure can be traced to its line.
-            catch (Exception error) { WriteLog("ERROR", "Square fee run failed: " + error.ToString().Replace("\r", " ").Replace("\n", " | ")); }
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, "--square-fee-run")
+                {
+                    UseShellExecute = false, // inherits this process's environment, including the fee switch
+                    CreateNoWindow = true,
+                };
+                using (System.Diagnostics.Process child = System.Diagnostics.Process.Start(start))
+                {
+                    if (child == null) throw new InvalidOperationException("Could not start the Square fee run.");
+                    if (!child.WaitForExit(5 * 60 * 1000))
+                    {
+                        WriteLog("ERROR", "Square fee run is still going after 5 minutes; leaving it to finish.");
+                        return;
+                    }
+                    if (child.ExitCode != 0) WriteLog("ERROR", "Square fee run exited with code " + child.ExitCode + ".");
+                }
+            }
+            catch (Exception error) { WriteLog("ERROR", "Square fee run failed to start: " + Detail(error)); }
+        }
+
+        /// <summary>--square-fee-run: posts Square fees only, in its own process with one Sage session.</summary>
+        private static int RunSquareFeesOnly()
+        {
+            try
+            {
+                if (!SquareFeeWritesEnabled()) throw new InvalidOperationException("SAGE_SQUARE_FEE_WRITES_ENABLED is off.");
+                Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET"); Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
+                WriteLog("INFO", "Square fee run started.");
+                PollSquareFees();
+                WriteLog("INFO", "Square fee run completed.");
+                return 0;
+            }
+            catch (Exception error)
+            {
+                WriteLog("ERROR", "Square fee run failed: " + Detail(error));
+                return 1;
+            }
+        }
+
+        /// <summary>
+        /// --sage-reinit-test: no writes. Opens and closes a Sage API session
+        /// twice in one process, to show whether reopening fails.
+        /// </summary>
+        private static int RunSageReinitTest()
+        {
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
+                    WriteLog("INFO", "SAGE_REINIT_TEST session " + attempt + " OK");
+                    Console.WriteLine("SAGE_REINIT_TEST session " + attempt + " OK");
+                }
+                catch (Exception error)
+                {
+                    WriteLog("ERROR", "SAGE_REINIT_TEST session " + attempt + " FAILED: " + Detail(error));
+                    Console.WriteLine("SAGE_REINIT_TEST session " + attempt + " FAILED: " + error.GetType().Name + " " + error.Message);
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
+        private static string Detail(Exception error)
+        {
+            return error.ToString().Replace("\r", " ").Replace("\n", " | ");
         }
 
         /// <summary>
@@ -108,7 +176,7 @@ namespace CompassSageClientProjectWriter
             }
             catch (Exception error)
             {
-                WriteLog("FATAL", "Square fee diagnostic failed: " + error.Message);
+                WriteLog("FATAL", "Square fee diagnostic failed: " + Detail(error));
                 Console.WriteLine("SQUARE_FEE_DIAGNOSTIC_FAILED " + error.Message);
                 return 1;
             }
