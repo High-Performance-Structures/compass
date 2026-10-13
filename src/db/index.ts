@@ -33,11 +33,13 @@ import * as correspondenceSourceSchema from "./schema-correspondence-source"
 import * as selectionDecisionSchema from "./schema-selection-decisions"
 import * as internalDutySchema from "./schema-internal-duties"
 import * as shopTicketSchema from "./schema-shop-tickets"
+import * as projectLinkSchema from "./schema-project-links"
 
 const allSchemas = {
   ...rateBookSchema,
   ...internalDutySchema,
   ...shopTicketSchema,
+  ...projectLinkSchema,
   ...paperTrailSchema,
   ...selectionDecisionSchema,
   ...correspondenceSchema,

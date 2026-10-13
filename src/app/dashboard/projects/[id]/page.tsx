@@ -61,6 +61,10 @@ import { NuTechOrderStepper } from "@/components/nutech/nutech-order-stepper"
 import { getJobWorkflowOverview, type JobWorkflowOverview } from "@/app/actions/job-workflows"
 import { JobWorkflowOverviewPanel } from "@/components/projects/job-workflow-overview"
 import { getInternalWorkspaceSummary, type InternalWorkspaceSummary } from "@/app/actions/internal-duties"
+import { getProjectLinks, type ProjectLinksView } from "@/app/actions/project-links"
+import { getProjectIntakeAssignees } from "@/app/actions/projects"
+import { LinkedJobsCard } from "@/components/projects/linked-jobs-card"
+import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { InternalWorkspacePanel } from "@/components/projects/internal-workspace-panel"
 import { InternalWorkQueues } from "@/components/projects/internal-work-queues"
 import { internalQueueBadges } from "@/lib/internal-duties/queue-badges"
@@ -201,6 +205,7 @@ export default async function ProjectSummaryPage({
   let nuTechOrder: NuTechOrderOverview | null = null
   let jobWorkflow: JobWorkflowOverview | null = null
   let internalWorkspace: InternalWorkspaceSummary | null = null
+  let linkedJobs: ProjectLinksView | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -372,6 +377,7 @@ export default async function ProjectSummaryPage({
       loadedNuTechOrder,
       loadedJobWorkflow,
       loadedInternalWorkspace,
+      loadedLinkedJobs,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -400,6 +406,8 @@ export default async function ProjectSummaryPage({
       getJobWorkflowOverview(id).catch(() => null),
       // Null unless this project is an internal workspace (H-Office, the yard).
       getInternalWorkspaceSummary(id).catch(() => null),
+      // Jobs linked to this one for the same customer and site.
+      getProjectLinks(id).catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -413,6 +421,7 @@ export default async function ProjectSummaryPage({
     nuTechOrder = loadedNuTechOrder
     jobWorkflow = loadedJobWorkflow
     internalWorkspace = loadedInternalWorkspace
+    linkedJobs = loadedLinkedJobs
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -521,6 +530,19 @@ export default async function ProjectSummaryPage({
         ) : jobWorkflow ? (
           <div className="mb-4 sm:mb-5">
             <JobWorkflowOverviewPanel overview={jobWorkflow} />
+          </div>
+        ) : null}
+
+        {!internalWorkspace && linkedJobs ? (
+          <div className="mb-4 sm:mb-5">
+            <LinkedJobsCard
+              projectId={id}
+              view={linkedJobs}
+              assignees={linkedJobs.canCreate ? await getProjectIntakeAssignees() : []}
+              departmentNames={Object.fromEntries(
+                Object.entries(await currentDepartmentProfiles()).map(([code, profile]) => [code, profile.displayName]),
+              )}
+            />
           </div>
         ) : null}
         <div className="mb-4 sm:mb-5">

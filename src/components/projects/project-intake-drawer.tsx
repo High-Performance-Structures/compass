@@ -20,6 +20,7 @@ import {
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { createLinkedProject } from "@/app/actions/project-links"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -103,22 +104,50 @@ function Field({
   )
 }
 
+/**
+ * Starts the form as a linked job: another department's job for the same
+ * customer and site, linked to the job it's created from.
+ */
+export type LinkedProjectIntake = {
+  readonly sourceProjectId: string
+  readonly sourceProjectNumber: string | null
+  /** What the link is for, e.g. "Pour help or stacking". */
+  readonly label: string | null
+  readonly triggerLabel: string
+  readonly defaults: {
+    readonly department: ProjectIntakeDepartment
+    readonly projectName: string
+    readonly existingCustomerId: string | null
+    readonly clientName: string | null
+    readonly contactPhone: string | null
+    readonly contactEmail: string | null
+    readonly streetNumber: string | null
+    readonly streetName: string | null
+    readonly cityStateZip: string | null
+    readonly billingAddress: string | null
+    readonly notes: string | null
+  }
+}
+
 export function ProjectIntakeDrawer({
   assignees,
+  linked,
 }: {
   readonly assignees: readonly ProjectIntakeAssignee[]
+  readonly linked?: LinkedProjectIntake
 }): React.ReactElement {
+  const defaults = linked?.defaults
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const [open, setOpen] = useState(false)
   const [customerOptions, setCustomerOptions] = useState<readonly ProjectIntakeCustomerOption[]>([])
-  const [customerSelection, setCustomerSelection] = useState("new")
+  const [customerSelection, setCustomerSelection] = useState(defaults?.existingCustomerId ?? "new")
   const usingExistingCustomer = customerSelection !== "new"
   const selectedCustomer = customerOptions.find((customer) => customer.id === customerSelection)
-  const [clientDisplayName, setClientDisplayName] = useState("")
+  const [clientDisplayName, setClientDisplayName] = useState(defaults?.clientName ?? "")
   const [customerOptionsError, setCustomerOptionsError] = useState(false)
-  const [department, setDepartment] = useState<ProjectIntakeDepartment>("O")
+  const [department, setDepartment] = useState<ProjectIntakeDepartment>(defaults?.department ?? "O")
   const [sageClientStatusId, setSageClientStatusId] =
     useState<SageClientStatusId | null>(null)
   const [sageJobStatusId, setSageJobStatusId] = useState("")
@@ -145,7 +174,9 @@ export function ProjectIntakeDrawer({
 
   async function createProject(input: CreateProjectIntakeInput): Promise<void> {
     try {
-      const result = await createProjectIntake(input)
+      const result = linked
+        ? await createLinkedProject(linked.sourceProjectId, linked.label, input)
+        : await createProjectIntake(input)
       if (!result.success) {
         if ("duplicateWarning" in result) {
           setDuplicateReview({ input, candidates: result.candidates })
@@ -219,16 +250,18 @@ export function ProjectIntakeDrawer({
     <>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button type="button" size="sm">
+        <Button type="button" size="sm" variant={linked ? "outline" : "default"}>
           <IconPlus className="size-4" />
-          New project
+          {linked ? linked.triggerLabel : "New project"}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-[min(96vw,840px)] overflow-y-auto sm:max-w-none">
         <SheetHeader className="border-b px-5 py-4 text-left">
-          <SheetTitle>New Project</SheetTitle>
+          <SheetTitle>{linked ? "Create linked job" : "New Project"}</SheetTitle>
           <SheetDescription>
-            {developerModeEnabled
+            {linked
+              ? `A new job for the same customer and site, linked to ${linked.sourceProjectNumber ?? "this job"}. Both jobs show the link.`
+              : developerModeEnabled
               ? "Create the Compass project and update the Developer Project Registry and department tracker in one step."
               : "Create a project and its shared workspace in one step."}
           </SheetDescription>
@@ -276,6 +309,7 @@ export function ProjectIntakeDrawer({
                 <Input
                   id="project-intake-name"
                   name="projectName"
+                  defaultValue={defaults?.projectName}
                   placeholder="Mitchell Residence"
                   required
                 />
@@ -397,10 +431,10 @@ export function ProjectIntakeDrawer({
                 <Input id="project-intake-last-name" name="clientLastName" />
               </Field>
               <Field label="Phone" htmlFor="project-intake-phone">
-                <Input id="project-intake-phone" name="contactPhone" type="tel" />
+                <Input id="project-intake-phone" name="contactPhone" type="tel" defaultValue={defaults?.contactPhone ?? undefined} />
               </Field>
               <Field label="Email" htmlFor="project-intake-email">
-                <Input id="project-intake-email" name="contactEmail" type="email" />
+                <Input id="project-intake-email" name="contactEmail" type="email" defaultValue={defaults?.contactEmail ?? undefined} />
               </Field>
             </div>}
           </section>
@@ -409,18 +443,18 @@ export function ProjectIntakeDrawer({
             <h3 className="border-b pb-2 text-sm font-semibold">Project location</h3>
             <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
               <Field label="Street number" htmlFor="project-intake-street-number">
-                <Input id="project-intake-street-number" name="streetNumber" placeholder="33" />
+                <Input id="project-intake-street-number" name="streetNumber" placeholder="33" defaultValue={defaults?.streetNumber ?? undefined} />
               </Field>
               <Field label="Street name" htmlFor="project-intake-street-name">
-                <Input id="project-intake-street-name" name="streetName" placeholder="Mitchell Lane" />
+                <Input id="project-intake-street-name" name="streetName" placeholder="Mitchell Lane" defaultValue={defaults?.streetName ?? undefined} />
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="City, state, ZIP" htmlFor="project-intake-city">
-                <Input id="project-intake-city" name="cityStateZip" placeholder="Durango, CO 81301" />
+                <Input id="project-intake-city" name="cityStateZip" placeholder="Durango, CO 81301" defaultValue={defaults?.cityStateZip ?? undefined} />
               </Field>
               <Field label="Billing address" htmlFor="project-intake-billing">
-                <Input id="project-intake-billing" name="billingAddress" />
+                <Input id="project-intake-billing" name="billingAddress" defaultValue={defaults?.billingAddress ?? undefined} />
               </Field>
             </div>
           </section>
@@ -447,7 +481,7 @@ export function ProjectIntakeDrawer({
               </Field>
             </div>
             <Field label="Notes" htmlFor="project-intake-notes">
-              <Textarea id="project-intake-notes" name="notes" rows={4} />
+              <Textarea id="project-intake-notes" name="notes" rows={4} defaultValue={defaults?.notes ?? undefined} />
             </Field>
           </section>
 
