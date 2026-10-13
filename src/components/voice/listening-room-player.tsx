@@ -35,6 +35,10 @@ type PlayerProps = {
   readonly onDuration: (milliseconds: number) => void
 }
 
+// 100: removed or private; 101 and 150: the owner blocks playback on other sites.
+const YOUTUBE_BLOCKED_ERROR_CODES: ReadonlySet<number> = new Set([100, 101, 150])
+const BLOCKED_VIDEO_SKIP_DELAY_MS = 6_000
+
 type YouTubePlayer = {
   readonly playVideo: () => void
   readonly pauseVideo: () => void
@@ -62,6 +66,7 @@ type YouTubePlayerOptions = {
     readonly onReady: (event: YouTubePlayerEvent) => void
     readonly onStateChange: (event: YouTubeStateEvent) => void
     readonly onAutoplayBlocked: () => void
+    readonly onError: (event: YouTubeStateEvent) => void
   }
 }
 type YouTubeNamespace = {
@@ -293,6 +298,7 @@ function YouTubePlayerView({
     const element = containerRef.current
     if (!element) return
     let disposed = false
+    let skipTimer: number | undefined
     let createdPlayer: YouTubePlayer | null = null
     void loadYouTubeApi()
       .then((youtube) => {
@@ -314,6 +320,22 @@ function YouTubePlayerView({
               }
             },
             onAutoplayBlocked: () => setAutoplayBlocked(true),
+            onError: (event) => {
+              if (!YOUTUBE_BLOCKED_ERROR_CODES.has(event.data)) {
+                setError("YouTube couldn't play this song in your browser. Try reloading the page.")
+                return
+              }
+              // The video's owner doesn't allow it on other sites, so it can never
+              // play here for anyone; move the room on instead of sitting silent.
+              setError(
+                "YouTube doesn't allow this video to play outside YouTube, so the room is skipping to the next song. A different upload (for example an official audio or lyric video) usually works."
+              )
+              skipTimer = window.setTimeout(() => {
+                if (disposed || endedRef.current) return
+                endedRef.current = true
+                onEndedRef.current()
+              }, BLOCKED_VIDEO_SKIP_DELAY_MS)
+            },
           },
         })
       })
@@ -322,6 +344,7 @@ function YouTubePlayerView({
       })
     return () => {
       disposed = true
+      window.clearTimeout(skipTimer)
       createdPlayer?.destroy()
     }
   }, [videoId])
