@@ -1,11 +1,11 @@
 "use server"
 
+import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { and, asc, eq } from "drizzle-orm"
 import { clearOverdueFollowUpReminders } from "@/lib/notifications/clear-on-read"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectContacts, projectInteractions, projectOperations, projectProfileAuditEvents, projects } from "@/db/schema"
-import { nuTechOrderWorkflows } from "@/db/schema-nutech"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -60,7 +60,7 @@ function templateById(id: string): NuTechEmailTemplate | null {
   return NUTECH_EMAIL_TEMPLATES.find((template) => template.id === id) ?? null
 }
 
-async function nuTechEmailContext(projectId: string, action: "read" | "update") {
+async function nuTechEmailContext(projectId: string, action: "read" | "update", orderId?: string | null) {
   const user = await requireAuth()
   if (!isInternalStaffRole(user.role)) throw new Error("Nu-Tech emails are available to office staff.")
   await requireFeaturePermission(user, "nutech-orders", action)
@@ -91,7 +91,7 @@ async function nuTechEmailContext(projectId: string, action: "read" | "update") 
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.contactType, "owner"), eq(projectContacts.active, true)))
       .orderBy(asc(projectContacts.displayName)),
-    db.select().from(nuTechOrderWorkflows).where(eq(nuTechOrderWorkflows.projectId, projectId)).limit(1).get(),
+    findNuTechOrder(db, projectId, orderId),
   ])
   const purchaseOrder = order?.airlitePurchaseOrderOperationId
     ? await db
@@ -160,11 +160,11 @@ function defaultRecipients(
 }
 
 /** A template filled in for this job, ready to review in the composer. */
-export async function getNuTechEmailDraft(projectId: string, templateId: string): Promise<Result<NuTechEmailDraft>> {
+export async function getNuTechEmailDraft(projectId: string, templateId: string, orderId?: string | null): Promise<Result<NuTechEmailDraft>> {
   try {
     const template = templateById(templateId)
     if (!template) return { success: false, error: "Unknown email template." }
-    const ctx = await nuTechEmailContext(projectId, "read")
+    const ctx = await nuTechEmailContext(projectId, "read", orderId)
     const rendered = renderNuTechEmail(nuTechTemplateText(template, ctx.settings), ctx.context, ctx.fulfillment)
     const recipients = defaultRecipients(template.audience, ctx.customer?.email ?? null, ctx.settings)
     return {
@@ -218,7 +218,8 @@ export async function sendNuTechEmail(formData: FormData): Promise<Result<{ read
     const invalid = [...to, ...cc].find((address) => !EMAIL_PATTERN.test(address))
     if (invalid) return { success: false, error: `"${invalid}" is not an email address.` }
 
-    const ctx = await nuTechEmailContext(projectId, "update")
+    const orderId = formData.get("orderId")
+    const ctx = await nuTechEmailContext(projectId, "update", typeof orderId === "string" && orderId ? orderId : null)
     if (isDemoUser(ctx.user.id)) return { success: false, error: "Demo data cannot be changed." }
     if (!ctx.sender.address) {
       return { success: false, error: "Set the Nu-Tech sending mailbox in Settings → Company → Departments first." }

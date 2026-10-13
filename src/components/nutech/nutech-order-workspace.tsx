@@ -237,6 +237,8 @@ export function NuTechOrderWorkspace({
 
   function orderInput(formData: FormData): Parameters<typeof saveProjectNuTechOrder>[1] {
     return {
+      orderId: order?.id ?? null,
+      title: optionalFormText(formData, "orderTitle"),
       customerType: formText(formData, "customerType"),
       pricingMode: formText(formData, "pricingMode"),
       quantitySource: formText(formData, "quantitySource"),
@@ -303,7 +305,7 @@ export function NuTechOrderWorkspace({
 
   function releasePurchaseOrder(): void {
     startTransition(async () => {
-      const result = await releaseNuTechAirlitePurchaseOrder(workspace.projectId)
+      const result = await releaseNuTechAirlitePurchaseOrder(workspace.projectId, order?.id ?? null)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -332,6 +334,7 @@ export function NuTechOrderWorkspace({
         }
       }
       const result = await saveNuTechOrderItem(workspace.projectId, {
+        orderId: order?.id ?? null,
         productId: selectedProductId,
         quantity,
       })
@@ -359,7 +362,7 @@ export function NuTechOrderWorkspace({
 
   function generateAirliteWorkbook(): void {
     startTransition(async () => {
-      const result = await generateNuTechAirliteWorkbook(workspace.projectId)
+      const result = await generateNuTechAirliteWorkbook(workspace.projectId, order?.id ?? null)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -371,7 +374,7 @@ export function NuTechOrderWorkspace({
 
   function releaseVendorInvoice(): void {
     startTransition(async () => {
-      const result = await releaseNuTechVendorInvoice(workspace.projectId)
+      const result = await releaseNuTechVendorInvoice(workspace.projectId, order?.id ?? null)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -390,7 +393,7 @@ export function NuTechOrderWorkspace({
       return
     }
     startTransition(async () => {
-      const result = await deleteProjectNuTechOrder(workspace.projectId)
+      const result = await deleteProjectNuTechOrder(workspace.projectId, order?.id ?? null)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -467,6 +470,18 @@ export function NuTechOrderWorkspace({
       </section>
 
       <form ref={formRef} onSubmit={submitOrder} className="space-y-8">
+        <div className="grid max-w-md gap-1.5">
+          <Label htmlFor="nutech-order-title">Order name (optional)</Label>
+          <Input
+            id="nutech-order-title"
+            name="orderTitle"
+            defaultValue={order?.title ?? ""}
+            maxLength={120}
+            placeholder="Phase 2 walls"
+            disabled={!workspace.canEdit}
+          />
+          <p className="text-xs text-muted-foreground">Tells this order apart when the job has several.</p>
+        </div>
         <fieldset disabled={!workspace.canEdit || isPending} className="space-y-6">
           <section id="nutech-intake" className="scroll-mt-4 space-y-5 border-b pb-8">
             <div>
@@ -863,7 +878,7 @@ export function NuTechOrderWorkspace({
                 </div>
               </dl>
               <div className="flex flex-wrap items-center gap-3">
-                <NuTechEstimateButton projectId={workspace.projectId} disabled={!order || workspace.orderItems.length === 0 || isPending} />
+                <NuTechEstimateButton projectId={workspace.projectId} orderId={order?.id ?? null} disabled={!order || workspace.orderItems.length === 0 || isPending} />
                 <span className="text-xs text-muted-foreground">
                   Save the order first; the estimate uses the saved products, shipping and district.
                 </span>
@@ -968,7 +983,7 @@ export function NuTechOrderWorkspace({
               </div>
               <div className="flex flex-wrap gap-2">
                 {order?.airlitePurchaseOrderOperationId ? null : (
-                  <NuTechManufacturerPoButton projectId={workspace.projectId} manufacturerName={manufacturerName} size="sm" />
+                  <NuTechManufacturerPoButton projectId={workspace.projectId} orderId={order?.id ?? null} manufacturerName={manufacturerName} size="sm" />
                 )}
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/dashboard/projects/${workspace.projectId}/purchase-orders`}>

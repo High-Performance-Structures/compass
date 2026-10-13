@@ -1,7 +1,8 @@
 "use server"
 
 import { readEstimateMode } from "@/lib/estimates/numbering"
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm"
+import { findNuTechOrder } from "@/lib/nutech/order-select"
+import { and, asc, count, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
@@ -33,15 +34,17 @@ export type NuTechEstimateFromOrderResult =
 const EDITABLE = new Set(["draft", "internal_review"])
 
 /**
- * Fill the job's Compass estimate from its Nu-Tech order: one line per
- * product at the customer's price (taxed in the order's district) and a
- * non-taxed shipping line for deliveries. Creates a draft when there is
- * none; replaces a draft's lines only after the caller confirms. Sent or
- * accepted estimates are left alone.
+ * Fill an order's Compass estimate from the order: one line per product at
+ * the customer's price (taxed in the order's district) and a non-taxed
+ * shipping line for deliveries. Each order fills its own estimate (the newest
+ * version of it); an order without one gets a new estimate. Replaces a
+ * draft's lines only after the caller confirms. Sent or accepted estimates
+ * are left alone.
  */
 export async function createNuTechEstimateFromOrder(
   projectId: string,
   replaceExistingLines: boolean,
+  orderId?: string | null,
 ): Promise<Result<NuTechEstimateFromOrderResult>> {
   try {
     const user = await requireAuth()
@@ -59,7 +62,7 @@ export async function createNuTechEstimateFromOrder(
     if (!project || projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") {
       return { success: false, error: "Estimates from an order are made on N jobs." }
     }
-    const order = await db.select().from(nuTechOrderWorkflows).where(eq(nuTechOrderWorkflows.projectId, projectId)).get()
+    const order = await findNuTechOrder(db, projectId, orderId)
     if (!order) return { success: false, error: "Add products to the order first." }
     const items = await db
       .select({
@@ -100,24 +103,33 @@ export async function createNuTechEstimateFromOrder(
       return { success: false, error: "Map Freight to its Sage cost code on the Nu-Tech price list first." }
     }
 
-    // One-estimate jobs fill their newest version. Jobs with several estimates
-    // fill the most recently edited draft, or start a new estimate when every
-    // estimate has already been sent.
+    // The order's own estimate, at its newest version. A job with one
+    // estimate per job and an unlinked (older) order uses the job's newest.
     const mode = await readEstimateMode(db, organizationId, "N")
-    const latestRow = await db
-      .select({ id: projectEstimates.id, status: projectEstimates.status, number: projectEstimates.estimateNumber })
-      .from(projectEstimates)
-      .where(
-        mode === "multiple"
-          ? and(eq(projectEstimates.projectId, projectId), inArray(projectEstimates.status, [...EDITABLE]))
-          : eq(projectEstimates.projectId, projectId),
-      )
-      .orderBy(mode === "multiple" ? desc(projectEstimates.updatedAt) : desc(projectEstimates.versionNumber))
-      .limit(1)
-      .get()
+    const linked = order.estimateId
+      ? await db
+          .select({ number: projectEstimates.estimateNumber })
+          .from(projectEstimates)
+          .where(eq(projectEstimates.id, order.estimateId))
+          .get()
+      : undefined
+    const latestRow =
+      linked || mode === "single"
+        ? await db
+            .select({ id: projectEstimates.id, status: projectEstimates.status, number: projectEstimates.estimateNumber })
+            .from(projectEstimates)
+            .where(
+              linked
+                ? and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.estimateNumber, linked.number))
+                : eq(projectEstimates.projectId, projectId),
+            )
+            .orderBy(desc(projectEstimates.versionNumber))
+            .limit(1)
+            .get()
+        : undefined
     const latest = latestRow ?? null
     if (latest && !EDITABLE.has(latest.status)) {
-      return { success: false, error: `Estimate ${latest.number} was already sent. Start a new version on the estimate page, then try again.` }
+      return { success: false, error: `Estimate ${latest.number} was already sent. Duplicate it as a new version on the estimate page, then try again.` }
     }
     let estimateId = latest?.id ?? null
     let created = false
@@ -138,8 +150,18 @@ export async function createNuTechEstimateFromOrder(
       if (!draft.success) return { success: false, error: draft.error }
       estimateId = draft.id
       created = true
+      if (order.title) {
+        await db.update(projectEstimates).set({ title: order.title }).where(eq(projectEstimates.id, estimateId))
+      }
     }
 
+    // The order now fills this estimate (a new version or a new estimate).
+    if (order.estimateId !== estimateId) {
+      await db
+        .update(nuTechOrderWorkflows)
+        .set({ estimateId, updatedAt: new Date().toISOString() })
+        .where(eq(nuTechOrderWorkflows.id, order.id))
+    }
     // The order's district becomes the estimate's default, so new lines and the checklist follow it.
     await db
       .update(projectEstimates)

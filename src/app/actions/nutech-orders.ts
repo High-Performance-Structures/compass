@@ -1,6 +1,7 @@
 "use server"
 
 import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
+import { findNuTechOrder, nextNuTechOrderNumber } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -73,6 +74,11 @@ export type NuTechEstimateSummary = {
 
 export type NuTechOrderRecord = {
   readonly id: string
+  /** The order's number on its job (1, 2, …). */
+  readonly orderNumber: number
+  readonly title: string | null
+  /** The estimate this order fills and is sold on. */
+  readonly estimateId: string | null
   readonly catalogVersionId: string | null
   readonly customerType: NuTechCustomerType
   readonly pricingMode: NuTechPricingMode
@@ -144,7 +150,18 @@ export type NuTechOrderItemRecord = {
   readonly sortOrder: number
 }
 
+/** One of a job's orders, for the order switcher. */
+export type NuTechOrderSummary = {
+  readonly id: string
+  readonly orderNumber: number
+  readonly title: string | null
+  readonly orderStatus: string
+  readonly estimateId: string | null
+}
+
 export type ProjectNuTechOrderWorkspace = {
+  /** Every order on the job, oldest first; `order` is the one open. */
+  readonly orders: readonly NuTechOrderSummary[]
   readonly canEdit: boolean
   readonly canDelete: boolean
   readonly projectId: string
@@ -179,6 +196,9 @@ export type NuTechOrderDashboardItem = {
 }
 
 export type SaveNuTechOrderInput = {
+  /** The order being saved; left out, the job's newest order (or its first). */
+  readonly orderId?: string | null
+  readonly title?: string | null
   readonly customerType: string
   readonly pricingMode: string
   readonly quantitySource: string
@@ -319,6 +339,9 @@ function toOrderRecord(
 ): NuTechOrderRecord {
   return {
     id: row.id,
+    orderNumber: row.orderNumber,
+    title: row.title,
+    estimateId: row.estimateId,
     catalogVersionId: row.catalogVersionId,
     customerType: storedCustomerType(row.customerType),
     pricingMode: storedPricingMode(row.pricingMode),
@@ -455,30 +478,24 @@ function revalidateNuTechPaths(projectId: string): void {
 }
 
 export async function getProjectNuTechOrderWorkspace(
-  projectId: string
+  projectId: string,
+  orderId?: string | null
 ): Promise<ProjectNuTechOrderWorkspace> {
   const access = await nuTechProjectAccess(projectId, "read")
-  const [orderRow, estimateRow, purchaseOrderRows, canEdit, canDelete] =
+  const [orderRow, orderRows, purchaseOrderRows, canEdit, canDelete] =
     await Promise.all([
-      access.db
-        .select()
-        .from(nuTechOrderWorkflows)
-        .where(eq(nuTechOrderWorkflows.projectId, projectId))
-        .limit(1)
-        .get(),
+      findNuTechOrder(access.db, projectId, orderId),
       access.db
         .select({
-          id: projectEstimates.id,
-          number: projectEstimates.estimateNumber,
-          status: projectEstimates.status,
-          totalCents: projectEstimates.estimateTotalCents,
-          updatedAt: projectEstimates.updatedAt,
+          id: nuTechOrderWorkflows.id,
+          orderNumber: nuTechOrderWorkflows.orderNumber,
+          title: nuTechOrderWorkflows.title,
+          orderStatus: nuTechOrderWorkflows.orderStatus,
+          estimateId: nuTechOrderWorkflows.estimateId,
         })
-        .from(projectEstimates)
-        .where(eq(projectEstimates.projectId, projectId))
-        .orderBy(desc(projectEstimates.updatedAt))
-        .limit(1)
-        .get(),
+        .from(nuTechOrderWorkflows)
+        .where(eq(nuTechOrderWorkflows.projectId, projectId))
+        .orderBy(asc(nuTechOrderWorkflows.orderNumber)),
       access.db
         .select({
           id: projectOperations.id,
@@ -499,6 +516,26 @@ export async function getProjectNuTechOrderWorkspace(
       canFeature(access.user, "nutech-orders", "update"),
       canFeature(access.user, "nutech-orders", "delete"),
     ])
+  // The order's own estimate; a job with no orders yet shows its newest estimate.
+  const estimateRow = await access.db
+    .select({
+      id: projectEstimates.id,
+      number: projectEstimates.estimateNumber,
+      status: projectEstimates.status,
+      totalCents: projectEstimates.estimateTotalCents,
+      updatedAt: projectEstimates.updatedAt,
+    })
+    .from(projectEstimates)
+    .where(
+      orderRow
+        ? orderRow.estimateId
+          ? eq(projectEstimates.id, orderRow.estimateId)
+          : sql`0`
+        : eq(projectEstimates.projectId, projectId),
+    )
+    .orderBy(desc(projectEstimates.updatedAt))
+    .limit(1)
+    .get()
   const catalogVersion = orderRow?.catalogVersionId
     ? await access.db
         .select({ id: nuTechCatalogVersions.id, name: nuTechCatalogVersions.name })
@@ -584,6 +621,7 @@ export async function getProjectNuTechOrderWorkspace(
       : Promise.resolve([]),
   ])
   return {
+    orders: orderRows,
     canEdit: canEdit && !isDemoUser(access.user.id),
     canDelete: canDelete && !isDemoUser(access.user.id),
     projectId,
@@ -656,7 +694,10 @@ export async function getNuTechOrderDashboard(): Promise<
       ),
   ])
   return projectRows.map((project) => {
-    const workflow = workflowRows.find((row) => row.projectId === project.id)
+    // A job can have several orders; the dashboard follows the newest.
+    const workflow = workflowRows
+      .filter((row) => row.projectId === project.id)
+      .sort((a, b) => b.orderNumber - a.orderNumber)[0]
     const estimate = estimateRows.find((row) => row.projectId === project.id)
     const openPurchaseOrderCount = purchaseOrderRows.filter(
       (row) =>
@@ -765,12 +806,8 @@ export async function saveProjectNuTechOrder(
     const parsedVendorInvoiceStatus = vendorInvoiceStatus(
       input.vendorInvoiceStatus
     )
-    const existing = await access.db
-      .select()
-      .from(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.projectId, projectId))
-      .limit(1)
-      .get()
+    const existing = await findNuTechOrder(access.db, projectId, input.orderId)
+    if (input.orderId && !existing) throw new Error("That order is no longer on this job.")
     const releaseAuditIssues = nuTechReleaseAuditIssues({
       orderStatus: parsedOrderStatus,
       vendorInvoiceStatus: parsedVendorInvoiceStatus,
@@ -811,6 +848,9 @@ export async function saveProjectNuTechOrder(
     const values: NewNuTechOrderWorkflow = {
       id,
       projectId,
+      orderNumber: existing?.orderNumber ?? 1,
+      title: input.title === undefined ? (existing?.title ?? null) : cleanText(input.title),
+      estimateId: existing?.estimateId ?? null,
       catalogVersionId: existing?.catalogVersionId ?? activeCatalog?.id ?? null,
       customerType: parsedCustomerType,
       pricingMode: parsedPricingMode,
@@ -860,8 +900,9 @@ export async function saveProjectNuTechOrder(
       .insert(nuTechOrderWorkflows)
       .values(values)
       .onConflictDoUpdate({
-        target: nuTechOrderWorkflows.projectId,
+        target: nuTechOrderWorkflows.id,
         set: {
+          title: values.title,
           catalogVersionId: values.catalogVersionId,
           customerType: values.customerType,
           pricingMode: values.pricingMode,
@@ -936,16 +977,12 @@ export async function saveProjectNuTechOrder(
 }
 
 export async function releaseNuTechAirlitePurchaseOrder(
-  projectId: string
+  projectId: string,
+  orderId?: string | null
 ): Promise<NuTechOrderActionResult> {
   try {
     const access = await nuTechProjectAccess(projectId, "update")
-    const order = await access.db
-      .select()
-      .from(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.projectId, projectId))
-      .limit(1)
-      .get()
+    const order = await findNuTechOrder(access.db, projectId, orderId)
     if (!order) throw new Error("Start and save the Nu-Tech order first.")
     if (order.purchaseOrderReleasedAt !== null) {
       return { success: true, id: order.id }
@@ -1022,16 +1059,12 @@ export async function releaseNuTechAirlitePurchaseOrder(
 }
 
 export async function releaseNuTechVendorInvoice(
-  projectId: string
+  projectId: string,
+  orderId?: string | null
 ): Promise<NuTechOrderActionResult> {
   try {
     const access = await nuTechProjectAccess(projectId, "update")
-    const order = await access.db
-      .select()
-      .from(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.projectId, projectId))
-      .limit(1)
-      .get()
+    const order = await findNuTechOrder(access.db, projectId, orderId)
     if (!order) throw new Error("Start and save the Nu-Tech order first.")
     if (order.vendorInvoiceReleasedAt !== null) {
       return { success: true, id: order.id }
@@ -1070,20 +1103,12 @@ export async function releaseNuTechVendorInvoice(
 }
 
 export async function deleteProjectNuTechOrder(
-  projectId: string
+  projectId: string,
+  orderId?: string | null
 ): Promise<NuTechOrderActionResult> {
   try {
     const access = await nuTechProjectAccess(projectId, "delete")
-    const existing = await access.db
-      .select({
-        id: nuTechOrderWorkflows.id,
-        purchaseOrderReleasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
-        vendorInvoiceReleasedAt: nuTechOrderWorkflows.vendorInvoiceReleasedAt,
-      })
-      .from(nuTechOrderWorkflows)
-      .where(eq(nuTechOrderWorkflows.projectId, projectId))
-      .limit(1)
-      .get()
+    const existing = await findNuTechOrder(access.db, projectId, orderId)
     if (!existing) throw new Error("Nu-Tech order workflow not found.")
     if (
       existing.purchaseOrderReleasedAt !== null ||
@@ -1104,6 +1129,102 @@ export async function deleteProjectNuTechOrder(
       error:
         error instanceof Error ? error.message : "Failed to delete Nu-Tech order.",
     }
+  }
+}
+
+/**
+ * Starts another order on a job (a second block order, a phase, …). It takes
+ * the customer, pricing, delivery and tax district of the order it copies,
+ * or the job's newest order, and starts with no products.
+ */
+export async function createNuTechOrder(
+  projectId: string,
+  input: { readonly title: string | null; readonly copyFromOrderId?: string | null; readonly estimateId?: string | null }
+): Promise<NuTechOrderActionResult> {
+  try {
+    const access = await nuTechProjectAccess(projectId, "update")
+    const source = await findNuTechOrder(access.db, projectId, input.copyFromOrderId)
+    if (input.estimateId) {
+      const estimate = await access.db
+        .select({ id: projectEstimates.id })
+        .from(projectEstimates)
+        .where(and(eq(projectEstimates.id, input.estimateId), eq(projectEstimates.projectId, projectId)))
+        .get()
+      if (!estimate) throw new Error("That estimate is not on this job.")
+    }
+    const activeCatalog = await access.db
+      .select({ id: nuTechCatalogVersions.id })
+      .from(nuTechCatalogVersions)
+      .where(and(eq(nuTechCatalogVersions.organizationId, access.organizationId), eq(nuTechCatalogVersions.status, "active")))
+      .orderBy(desc(nuTechCatalogVersions.effectiveDate))
+      .limit(1)
+      .get()
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    // Two people adding an order at once can pick the same number; retry with the next.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await access.db.insert(nuTechOrderWorkflows).values({
+          id,
+          projectId,
+          orderNumber: await nextNuTechOrderNumber(access.db, projectId),
+          title: cleanText(input.title),
+          estimateId: input.estimateId ?? null,
+          catalogVersionId: activeCatalog?.id ?? source?.catalogVersionId ?? null,
+          customerType: source?.customerType ?? "new",
+          pricingMode: source?.pricingMode ?? "standard",
+          quantitySource: source?.quantitySource ?? "customer_provided",
+          deliveryMethod: source?.deliveryMethod ?? "delivery",
+          taxEntityId: source?.taxEntityId ?? null,
+          trailerDimensions: source?.trailerDimensions ?? null,
+          orderStatus: "intake",
+          createdBy: access.user.id,
+          updatedBy: access.user.id,
+          createdAt: now,
+          updatedAt: now,
+        })
+        revalidateNuTechPaths(projectId)
+        return { success: true, id }
+      } catch (error) {
+        if (!(error instanceof Error) || !/UNIQUE/i.test(error.message) || attempt === 2) throw error
+      }
+    }
+    throw new Error("Couldn't number the new order. Try again.")
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to start the order." }
+  }
+}
+
+export type NuTechOrderForEstimate = {
+  readonly orderId: string
+  readonly orderNumber: number
+  readonly title: string | null
+  readonly orderStatus: string
+  /** The estimate number the order fills (it follows new versions). */
+  readonly estimateNumber: string
+}
+
+/**
+ * A job's orders by the estimate they fill, for the Estimate page's next
+ * step. Empty for jobs outside Nu-Tech or people without order access.
+ */
+export async function getNuTechOrdersForEstimates(projectId: string): Promise<readonly NuTechOrderForEstimate[]> {
+  try {
+    const access = await nuTechProjectAccess(projectId, "read")
+    return await access.db
+      .select({
+        orderId: nuTechOrderWorkflows.id,
+        orderNumber: nuTechOrderWorkflows.orderNumber,
+        title: nuTechOrderWorkflows.title,
+        orderStatus: nuTechOrderWorkflows.orderStatus,
+        estimateNumber: projectEstimates.estimateNumber,
+      })
+      .from(nuTechOrderWorkflows)
+      .innerJoin(projectEstimates, eq(projectEstimates.id, nuTechOrderWorkflows.estimateId))
+      .where(eq(nuTechOrderWorkflows.projectId, projectId))
+      .orderBy(asc(nuTechOrderWorkflows.orderNumber))
+  } catch {
+    return []
   }
 }
 

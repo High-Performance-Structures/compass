@@ -24,6 +24,14 @@ Use **Nu-Tech Sales** in the dashboard portfolio window to review the sales pipe
 
 The job overview shows **Intake**, **Quantities**, **Estimate**, **Approval & payment**, **Ready to order**, **Order placed**, **Confirmed**, **Vendor invoice**, and **Complete**. Open the current step and follow its checklist links to the missing record or field. A completed checklist entry reflects recorded evidence; verify the supporting document or actual payment rather than advancing the status alone.
 
+## Several Orders and Estimates on One Job {#several-orders}
+
+A Nu-Tech job can have several orders, for example block for each phase of a build, and several estimates (bracing rental, ICF block, and so on). The order page lists the job's orders at the top; choose one to open it, or choose **New order** to start another. A new order copies the open order's customer, pricing, delivery and tax district, and starts with no products. Give an order a name, such as "Phase 2 walls", to tell orders apart.
+
+Each order fills its own estimate: **Create estimate from order** fills that order's estimate (its newest version) or starts a new estimate for an order that has none. Each order has its own manufacturer PO and order form.
+
+On the Estimate page, **Next step** shows the order filling each estimate. An accepted estimate with no order yet offers **Start order** and a link to bracing rentals. Whether a department allows several estimates per job is set in **Settings → Workflows → Estimates**.
+
 ## Record Intake and Catalog Quantities {#intake}
 
 Add the customer as a client contact, choose delivery or customer pickup, supply a delivery address when required, and save intake with the quantity source. A staff takeoff requires the signed takeoff acknowledgement; customer-supplied quantities follow their own recorded responsibility.

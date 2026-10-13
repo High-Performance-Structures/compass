@@ -1,6 +1,7 @@
 "use server"
 
 import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { findNuTechOrder } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projectOperations, projects, sageCostCodes } from "@/db/schema"
@@ -49,7 +50,7 @@ async function fillOrderForm(
  * has a linked PO, that one is returned instead of creating a second. Either
  * way the manufacturer's own order form is filled for it.
  */
-export async function createNuTechManufacturerPurchaseOrder(projectId: string): Promise<Result<NuTechManufacturerPoResult>> {
+export async function createNuTechManufacturerPurchaseOrder(projectId: string, orderId?: string | null): Promise<Result<NuTechManufacturerPoResult>> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "Demo data cannot be changed." }
@@ -67,7 +68,7 @@ export async function createNuTechManufacturerPurchaseOrder(projectId: string): 
     if (projectDepartment({ projectId: project.id, projectNumber: project.projectNumber }) !== "N") {
       return { success: false, error: "Manufacturer purchase orders are built from Nu-Tech orders on N jobs." }
     }
-    const order = await db.select().from(nuTechOrderWorkflows).where(eq(nuTechOrderWorkflows.projectId, projectId)).get()
+    const order = await findNuTechOrder(db, projectId, orderId)
     if (!order) return { success: false, error: "Start the Nu-Tech order first, then add its catalog items." }
 
     if (order.airlitePurchaseOrderOperationId) {
@@ -335,16 +336,23 @@ export async function getNuTechShippingCostCodeOption(): Promise<ProjectPurchase
 }
 
 /** The PO linked to a job's Nu-Tech order and its filled order form, for the Purchase Orders page; null when none is linked. */
-export async function getNuTechOrderFormLink(
-  projectId: string
-): Promise<{ readonly purchaseOrderId: string; readonly workbookUrl: string | null; readonly released: boolean } | null> {
+export type NuTechOrderFormLink = {
+  readonly orderId: string
+  readonly purchaseOrderId: string
+  readonly workbookUrl: string | null
+  readonly released: boolean
+}
+
+/** Each of the job's orders that has a manufacturer PO, with its order form. */
+export async function getNuTechOrderFormLinks(projectId: string): Promise<readonly NuTechOrderFormLink[]> {
   try {
     const user = await requireAuth()
     await requireFeaturePermission(user, "nutech-orders", "read")
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
-    const row = await getDb(env.DB)
+    const rows = await getDb(env.DB)
       .select({
+        orderId: nuTechOrderWorkflows.id,
         purchaseOrderId: nuTechOrderWorkflows.airlitePurchaseOrderOperationId,
         workbookUrl: nuTechOrderWorkflows.airliteWorkbookUrl,
         releasedAt: nuTechOrderWorkflows.purchaseOrderReleasedAt,
@@ -352,10 +360,12 @@ export async function getNuTechOrderFormLink(
       .from(nuTechOrderWorkflows)
       .innerJoin(projects, eq(projects.id, nuTechOrderWorkflows.projectId))
       .where(and(eq(nuTechOrderWorkflows.projectId, projectId), eq(projects.organizationId, organizationId)))
-      .get()
-    if (!row?.purchaseOrderId) return null
-    return { purchaseOrderId: row.purchaseOrderId, workbookUrl: row.workbookUrl, released: row.releasedAt !== null }
+    return rows.flatMap((row) =>
+      row.purchaseOrderId
+        ? [{ orderId: row.orderId, purchaseOrderId: row.purchaseOrderId, workbookUrl: row.workbookUrl, released: row.releasedAt !== null }]
+        : [],
+    )
   } catch {
-    return null
+    return []
   }
 }

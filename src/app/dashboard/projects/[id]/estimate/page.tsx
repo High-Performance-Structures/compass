@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectEstimateWorkspacePanel } from "@/components/projects/project-estimate-workspace"
 import { ProjectEstimateList } from "@/components/projects/project-estimate-list"
+import { getNuTechOrdersForEstimates } from "@/app/actions/nutech-orders"
 import { getProjectPaperTrail } from "@/app/actions/paper-trail"
 import { PaperTrailRecordStatus } from "@/components/paper-trail/paper-trail-record-status"
 
@@ -30,6 +31,9 @@ export default async function ProjectEstimatePage({
     getProjectPaperTrail(id, "estimate"),
   ])
   const activeEstimateId = workspace.activeEstimate?.id ?? null
+  // Nu-Tech jobs show which order fills each estimate.
+  const nuTechOrders =
+    workspace.department === "N" && workspace.estimateMode === "multiple" ? await getNuTechOrdersForEstimates(id) : undefined
 
   return (
     <div className="compass-content-scroll min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -67,6 +71,7 @@ export default async function ProjectEstimatePage({
           estimates={workspace.estimates}
           activeEstimateId={activeEstimateId}
           canEdit={workspace.canEdit}
+          orders={nuTechOrders}
         />
       ) : null}
       <ProjectEstimateWorkspacePanel

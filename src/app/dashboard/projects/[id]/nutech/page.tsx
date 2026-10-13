@@ -9,17 +9,20 @@ import { NuTechBracingRentals } from "@/components/nutech/nutech-bracing-rentals
 import { getNuTechManufacturerName } from "@/app/actions/nutech-airlite-po"
 import { PageHeader } from "@/components/page-header"
 import { NuTechOrderWorkspace } from "@/components/nutech/nutech-order-workspace"
+import { NuTechOrderSwitcher } from "@/components/nutech/nutech-order-switcher"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 
 export default async function ProjectNuTechOrderPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{ readonly order?: string }>
 }): Promise<React.ReactElement> {
-  const { id: rawProjectId } = await params
+  const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
   const [workspace, bracing, manufacturerName] = await Promise.all([
-    getProjectNuTechOrderWorkspace(id),
+    getProjectNuTechOrderWorkspace(id, query.order ?? null),
     getProjectBracingRentals(id),
     getNuTechManufacturerName(),
   ])
@@ -42,7 +45,14 @@ export default async function ProjectNuTechOrderPage({
           />
         }
       />
-      <NuTechOrderWorkspace workspace={workspace} manufacturerName={manufacturerName} />
+      <NuTechOrderSwitcher
+        projectId={id}
+        orders={workspace.orders}
+        activeOrderId={workspace.order?.id ?? null}
+        canEdit={workspace.canEdit}
+      />
+      {/* Keyed by order so switching orders resets the form. */}
+      <NuTechOrderWorkspace key={workspace.order?.id ?? "new"} workspace={workspace} manufacturerName={manufacturerName} />
       {bracing.success ? (
         <div className="mt-8">
           <NuTechBracingRentals data={bracing.data} />
