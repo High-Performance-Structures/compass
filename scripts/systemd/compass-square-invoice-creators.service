@@ -1,0 +1,13 @@
+[Unit]
+Description=Read-only Sage invoice creator lookup for Compass payment alerts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=240
+ExecStart=/usr/bin/python3 %h/.local/lib/compass/wait_for_signet_secret_exec.py --signet %h/.bun/install/global/node_modules/signetai-linux-x64/bin/signet --secret HPS_SAGE_SQL_PASSWORD --secret JARVIS_BRIDGE_SECONDARY_SECRET --timeout 60 /usr/bin/python3 %h/.local/lib/compass/sage_square_invoice_creator_poller.py --compass-base-url https://compass.openrangeconstruction.ltd
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only

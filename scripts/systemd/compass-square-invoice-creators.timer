@@ -1,0 +1,11 @@
+[Unit]
+Description=Check original Sage invoice creators every minute
+
+[Timer]
+OnBootSec=45
+OnUnitActiveSec=60
+RandomizedDelaySec=5
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -439,6 +439,9 @@ export const sageSquarePaymentOperations = sqliteTable(
     depositAccountNumber: integer("deposit_account_number").notNull(),
     merchantFeeAccountNumber: integer("merchant_fee_account_number").notNull(),
     payloadJson: text("payload_json").notNull(),
+    sageInvoiceCreatorUsername: text("sage_invoice_creator_username"),
+    invoiceCreatorLookupAt: text("invoice_creator_lookup_at"),
+    invoiceCreatorNotifiedAt: text("invoice_creator_notified_at"),
     status: text("status").notNull().default("queued"),
     claimToken: text("claim_token"),
     claimedAt: text("claimed_at"),
@@ -454,6 +457,10 @@ export const sageSquarePaymentOperations = sqliteTable(
   (table) => [
     uniqueIndex("sage_square_payment_operations_idempotency_idx").on(
       table.idempotencyKey
+    ),
+    index("sage_square_creator_alert_pending_idx").on(
+      table.organizationId, table.operationType, table.invoiceCreatorNotifiedAt,
+      table.paymentCompletedAt
     ),
     index("sage_square_payment_operations_claim_idx").on(
       table.status,
