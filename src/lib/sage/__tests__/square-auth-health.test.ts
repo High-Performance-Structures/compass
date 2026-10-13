@@ -66,12 +66,14 @@ describe("Square authentication health", () => {
     SAGE_SQUARE_ORGANIZATION_ID: "org-1",
     JARVIS_BRIDGE_SECRET: "test-bridge-secret-long-enough",
     SQUARE_PRODUCTION_ACCESS_TOKEN: "test-square-token",
+    SQUARE_AUTH_NOTIFICATION_USER_ID: "admin1",
   }
   // The real SQLite-backed D1 adapter implements precisely the ORM methods used here.
   // @ts-expect-error Test fixture intentionally omits unrelated Cloudflare bindings.
   const cloudflareEnv: CloudflareEnv = env
   const start = new Date("2026-09-18T05:00:00.000Z")
   beforeEach(() => {
+    env.SQUARE_AUTH_NOTIFICATION_USER_ID = "admin1"
     vi.useFakeTimers()
     vi.setSystemTime(start)
     sqlite = new Database(":memory:")
@@ -82,8 +84,8 @@ describe("Square authentication health", () => {
       CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT, role TEXT, is_active INTEGER);
       CREATE TABLE organization_members (organization_id TEXT, user_id TEXT);
       CREATE TABLE notification_preferences (user_id TEXT, in_app_enabled INTEGER);
-      INSERT INTO users VALUES ('admin1','admin@example.test','admin',1), ('staff1','staff@example.test','office_manager',1), ('external-admin','other@example.test','admin',1), ('inactive','inactive@example.test','admin',0);
-      INSERT INTO organization_members VALUES ('org-1','admin1'), ('org-1','staff1'), ('org-2','external-admin'), ('org-1','inactive');
+      INSERT INTO users VALUES ('admin1','admin@example.test','admin',1), ('staff1','staff@example.test','office_manager',1), ('admin2','admin2@example.test','admin',1), ('secondary1','secondary@example.test','secondary_admin',1), ('developer1','developer@example.test','developer',1), ('external-admin','other@example.test','admin',1), ('inactive','inactive@example.test','admin',0);
+      INSERT INTO organization_members VALUES ('org-1','admin1'), ('org-1','staff1'), ('org-1','admin2'), ('org-1','secondary1'), ('org-1','developer1'), ('org-2','external-admin'), ('org-1','inactive');
     `)
     // @ts-expect-error SQLite test adapter implements the D1 query contract.
     mocks.getDb.mockReturnValue(drizzle(d1(sqlite)))
@@ -118,7 +120,7 @@ describe("Square authentication health", () => {
       .all()
   }
 
-  it("deduplicates failures and recovery; only notifies active same-org admins", async () => {
+  it("deduplicates failures and recovery; only notifies the designated developer", async () => {
     await record("healthy", 0)
     await record("credentials_rejected", 60)
     await record("credentials_rejected", 120)
@@ -135,6 +137,9 @@ describe("Square authentication health", () => {
       { event_type: "square_auth.failed", count: 1 },
       { event_type: "square_auth.recovered", count: 1 },
     ])
+    expect(
+      sqlite.prepare("SELECT DISTINCT user_id FROM notification_recipients").all()
+    ).toEqual([{ user_id: "admin1" }])
     expect(
       sqlite
         .prepare(
@@ -205,6 +210,35 @@ describe("Square authentication health", () => {
     expect(
       sqlite.prepare("SELECT * FROM notification_recipients").all()
     ).toEqual([])
+  })
+
+  it.each(["", "unknown", "inactive", "external-admin"])(
+    "never falls back to staff when the designated recipient is %s",
+    async (userId) => {
+      await recordSquareAuthObservation(cloudflareEnv, "org-1", "square-invoice-auth", {
+        state: "credentials_rejected",
+        checkedAt: start.toISOString(),
+      })
+      env.SQUARE_AUTH_NOTIFICATION_USER_ID = userId
+      await notifySquareAuthHealth(cloudflareEnv, "org-1")
+      expect(counts()).toEqual([{ event_type: "square_auth.failed", count: 1 }])
+      expect(sqlite.prepare("SELECT * FROM notification_recipients").all()).toEqual([])
+    }
+  )
+
+  it("routes both authentication monitors to the designated account without requiring an admin role", async () => {
+    for (const service of ["square-invoice-auth", "square-compass-auth"] as const) {
+      await recordSquareAuthObservation(cloudflareEnv, "org-1", service, {
+        state: "credentials_rejected",
+        checkedAt: start.toISOString(),
+      })
+    }
+    env.SQUARE_AUTH_NOTIFICATION_USER_ID = "developer1"
+    await notifySquareAuthHealth(cloudflareEnv, "org-1")
+    expect(sqlite.prepare("SELECT user_id FROM notification_recipients").all()).toEqual([
+      { user_id: "developer1" },
+      { user_id: "developer1" },
+    ])
   })
 
   it("classifies provider failures safely and checks active locations", async () => {

@@ -22,8 +22,12 @@ location does not establish health in the other.
 
 ## Notifications and recovery
 
-Active administrators in the configured Square organization receive in-app
-notifications under the Compass bell, respecting their in-app preference.
+Only the developer account designated by `SQUARE_AUTH_NOTIFICATION_USER_ID`
+receives authentication failure, offline, and recovery notifications under the
+Compass bell, respecting its in-app preference. The account must be active and
+belong to the configured Square organization; its business role does not affect
+routing. A missing or invalid recipient setting never falls back to staff or
+administrators. Health observations and incident events are still retained.
 The notices link to Automations and distinguish credential rejection (401/403),
 missing credentials, location/account mismatch, and API availability problems.
 The notification identifies which credential store needs attention.
