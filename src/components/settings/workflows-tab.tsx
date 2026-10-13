@@ -22,6 +22,7 @@ import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-s
 import { BracingRentalSettingsSection } from "@/components/settings/bracing-rental-settings-section"
 import { PaperTrailSettingsSection } from "@/components/settings/paper-trail-settings-section"
 import { ShopTicketSettingsSection } from "@/components/settings/shop-ticket-settings-section"
+import { NuTechPriceSourcesSection } from "@/components/settings/nutech-price-sources-section"
 import { JobWorkflowSettingsSection } from "@/components/settings/job-workflow-settings-section"
 import { JobEmailSettingsSection } from "@/components/settings/job-email-settings-section"
 import { ProjectDuplicateSettingsSection } from "@/components/settings/project-duplicate-settings-section"
@@ -238,7 +239,12 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
     case "client-follow-up":
       return <ClientFollowUpSettingsSection />
     case "nutech-catalog":
-      return <NuTechCatalogLink />
+      return (
+        <>
+          <NuTechCatalogLink />
+          <NuTechPriceSourcesSection />
+        </>
+      )
     case "nutech-emails":
       return <NuTechEmailSettingsSection />
     case "bracing-rentals":

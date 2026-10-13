@@ -6,6 +6,10 @@ import {
 } from "@/lib/client-follow-up/leaderboard"
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
+import {
+  NUTECH_2026_CATALOG_SOURCES,
+  spreadsheetIdFromValue,
+} from "@/lib/nutech/resources"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -83,6 +87,29 @@ const optionalEmail = z.union([z.literal(""), z.email()])
  * parties' details the templates fill in, and per-template text that replaces
  * the built-in wording. Blank values leave the matching merge field empty.
  */
+const priceSheetLink = z
+  .string()
+  .trim()
+  .max(300)
+  .refine((value) => spreadsheetIdFromValue(value) !== null, {
+    message: "Paste a Google Sheets link (or its id).",
+  })
+
+/** The Google Sheets the Nu-Tech catalog import reads; editable for each new price year. */
+export const nuTechPriceSourcesSettingsSchema = z.object({
+  catalogName: z.string().trim().min(1, "Name the price list.").max(120),
+  effectiveDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2027-01-01."),
+  newStandardSheet: priceSheetLink,
+  newCashSheet: priceSheetLink,
+  returningStandardSheet: priceSheetLink,
+  returningCashSheet: priceSheetLink,
+  sourceTab: z.string().trim().min(1, "Name the tab to read.").max(100),
+})
+
+export type NuTechPriceSourcesSettings = z.infer<typeof nuTechPriceSourcesSettingsSchema>
+
 export const nuTechEmailSettingsSchema = z.object({
   /** The block manufacturer's name, used as the vendor on its purchase orders. */
   manufacturerName: z.string().max(80),
@@ -339,6 +366,7 @@ type FeatureSettingsTypes = {
   readonly "message-desk": MessageDeskSettings
   readonly "project-aging": ProjectAgingSettings
   readonly "nutech-emails": NuTechEmailSettings
+  readonly "nutech-price-sources": NuTechPriceSourcesSettings
   readonly "paper-trail": PaperTrailSettings
   readonly "job-workflows": JobWorkflowsSettings
   readonly "job-emails": JobEmailSettings
@@ -459,6 +487,20 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Which view each department's jobs appear on (projects, a sales pipeline, internal, or none), which job statuses appear and in which phase. Any single job can still be shown or hidden from the map.",
     defaults: { statusPhases: {}, departmentViews: {}, salesTitles: {} },
     schema: portfolioMapSettingsSchema,
+  },
+  "nutech-price-sources": {
+    label: "Nu-Tech price list sources",
+    description: "The four Google Sheets the Nu-Tech catalog import reads and the tab it reads from. Point them at the new files when a new price year starts, then import and activate the catalog.",
+    defaults: {
+      catalogName: NUTECH_2026_CATALOG_SOURCES.name,
+      effectiveDate: NUTECH_2026_CATALOG_SOURCES.effectiveDate,
+      newStandardSheet: NUTECH_2026_CATALOG_SOURCES.newStandardSheetId,
+      newCashSheet: NUTECH_2026_CATALOG_SOURCES.newCashSheetId,
+      returningStandardSheet: NUTECH_2026_CATALOG_SOURCES.returningStandardSheetId,
+      returningCashSheet: NUTECH_2026_CATALOG_SOURCES.returningCashSheetId,
+      sourceTab: "2026 Cost & Margin",
+    },
+    schema: nuTechPriceSourcesSettingsSchema,
   },
   "paper-trail": {
     label: "Project paper trail",
