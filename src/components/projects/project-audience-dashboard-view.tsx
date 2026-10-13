@@ -64,6 +64,17 @@ function PriorityRow({
   )
 }
 
+/** A photo's date for the photo viewer, e.g. "Oct 9, 2026"; blank if unknown. */
+function photoDateLabel(photoDate: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(photoDate)) return photoDate
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${photoDate}T12:00:00Z`))
+}
+
 export function ProjectAudienceDashboardView({
   data,
   financials,
@@ -93,15 +104,21 @@ export function ProjectAudienceDashboardView({
   const recentAnswer = owner
     ? null
     : model.recent.find((item) => item.id.startsWith("rfi-"))
+  // Newest first. The greeting photo cycles the latest few; its larger
+  // viewer steps through all of them.
   const photos = data.photos
     .toSorted((a, b) => b.photoDate.localeCompare(a.photoDate))
     .flatMap((photo) => {
       const source = resolvePhotoImageSource(photo).src
       return source
-        ? [{ id: photo.id, src: source, alt: photo.caption ?? photo.fileName }]
+        ? [{
+            id: photo.id,
+            src: source,
+            alt: photo.caption ?? photo.fileName,
+            dateLabel: photoDateLabel(photo.photoDate),
+          }]
         : []
     })
-    .slice(0, 6)
   // Up to four workspace alerts, shown like the office dashboard's counts.
   const counts: readonly DashboardCount[] = model.alerts.slice(0, 4).map((alert) => ({
     label: alert.title,
@@ -129,7 +146,15 @@ export function ProjectAudienceDashboardView({
       <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
         {/* Same anatomy as the office dashboard: greeting, counts, map, then work. */}
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0">
+          <div className="flex w-full min-w-0 flex-col gap-4 sm:w-auto sm:flex-row sm:items-center sm:gap-5">
+            {/* Smaller than before so the map below has room; full width on
+                phones, where the map isn't shown. */}
+            <ProjectAudienceDashboardPhoto
+              key={`${data.project.id}:${route}:${photos.map((photo) => `${photo.id}:${photo.src}`).join("|")}`}
+              photos={photos}
+              className="aspect-[3/2] w-full shrink-0 sm:aspect-auto sm:h-40 sm:w-60"
+            />
+            <div className="min-w-0">
             <p className="font-mono text-xs uppercase tracking-[0.14em] text-primary">
               {new Intl.DateTimeFormat("en-US", {
                 weekday: "long",
@@ -145,6 +170,7 @@ export function ProjectAudienceDashboardView({
               {data.project.projectNumber ? `${data.project.projectNumber} · ` : ""}
               {data.project.name}
             </p>
+            </div>
           </div>
           {!owner && (
             <ProjectAudienceRfiCreateDialog
@@ -451,16 +477,7 @@ export function ProjectAudienceDashboardView({
             </section>
           </aside>
         </div>
-        <section aria-label="From the site" className="grid gap-5 border-t py-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
-          <section
-            className="min-h-56"
-            aria-label="Project photos"
-          >
-            <ProjectAudienceDashboardPhoto
-              key={`${data.project.id}:${route}:${photos.map((photo) => `${photo.id}:${photo.src}`).join("|")}`}
-              photos={photos}
-            />
-          </section>
+        <section aria-label="From the site" className="border-t py-5">
           <div className="flex min-w-0 flex-col">
         <section
           className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b pb-4 text-xs"
