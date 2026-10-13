@@ -73,6 +73,18 @@ export const linkedJobSettingsSchema = z.object({
 export type LinkedJobShortcut = z.infer<typeof linkedJobShortcutSchema>
 export type LinkedJobSettings = z.infer<typeof linkedJobSettingsSchema>
 
+/**
+ * Square and Sage payments: who gets Square alerts. Empty lists keep the
+ * defaults (connection alerts to the configured developer, payment problems
+ * to administrators).
+ */
+export const squarePaymentSettingsSchema = z.object({
+  connectionAlertUserIds: z.array(z.string().min(1).max(200)).max(20),
+  paymentAlertUserIds: z.array(z.string().min(1).max(200)).max(20),
+})
+
+export type SquarePaymentSettings = z.infer<typeof squarePaymentSettingsSchema>
+
 export type MessageDeskSettings = z.infer<typeof messageDeskSettingsSchema>
 
 /** One job status's client follow-up thresholds, in business days since the last client contact. */
@@ -379,6 +391,7 @@ type FeatureSettingsTypes = {
   readonly "bracing-rentals": BracingRentalSettings
   readonly "project-duplicates": ProjectDuplicateSettings
   readonly "linked-jobs": LinkedJobSettings
+  readonly "square-payments": SquarePaymentSettings
   readonly "portfolio-map": PortfolioMapSettings
   readonly estimates: EstimateSettings
 }
@@ -494,6 +507,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Per department: one contract estimate per job (it becomes the budget; changes go through change orders), or several estimates at once, each accepted on its own.",
     defaults: { modes: {} },
     schema: estimateSettingsSchema,
+  },
+  "square-payments": {
+    label: "Square and Sage payments",
+    description: "Who is alerted about the Square connection and about Square payments that need attention in Sage.",
+    defaults: { connectionAlertUserIds: [], paymentAlertUserIds: [] },
+    schema: squarePaymentSettingsSchema,
   },
   "linked-jobs": {
     label: "Linked jobs",

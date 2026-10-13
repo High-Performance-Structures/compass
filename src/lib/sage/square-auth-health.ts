@@ -7,11 +7,11 @@ import {
   notificationEvents,
   notificationPreferences,
   notificationRecipients,
-  organizationMembers,
   users,
 } from "@/db/schema"
 import { feedbackServiceHealth } from "@/db/schema-jarvis"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
+import { squareAlertRecipientIds } from "@/lib/sage/square-alert-recipients"
 
 export const squareAuthObservationSchema = z
   .object({
@@ -187,22 +187,17 @@ export async function notifySquareAuthHealth(
     .onConflictDoNothing()
   // Authentication incidents belong to the designated developer, regardless
   // of their business role. Missing configuration must never alert all staff.
-  const recipientUserId = getJarvisEnvValue(env, "SQUARE_AUTH_NOTIFICATION_USER_ID")
+  // Chosen in Settings → Workflows → Square and Sage payments; falls back
+  // to SQUARE_AUTH_NOTIFICATION_USER_ID.
+  const recipientIds = await squareAlertRecipientIds(db, env, organizationId, "connection")
   const developer = await db
     .select({ userId: users.id, inApp: notificationPreferences.inAppEnabled })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(users)
     .leftJoin(
       notificationPreferences,
       eq(notificationPreferences.userId, users.id)
     )
-    .where(
-      and(
-        eq(organizationMembers.organizationId, organizationId),
-        eq(users.isActive, true),
-        eq(users.id, recipientUserId ?? "")
-      )
-    )
+    .where(inArray(users.id, recipientIds.length > 0 ? [...recipientIds] : [""]))
   const recipients = developer.filter((recipient) => recipient.inApp !== false)
   const heartbeats = await db
     .select()

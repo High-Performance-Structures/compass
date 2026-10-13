@@ -113,8 +113,9 @@ describe("Sage Square payment writer boundary", () => {
   })
 
   it("scopes receipt notifications to the matched organization and project", () => {
+    // Recipients are resolved per organization (Settings, then administrators).
     expect(notificationSource).toContain(
-      "eq(organizationMembers.organizationId, input.organizationId)"
+      'squareAlertRecipientIds(db, env, input.organizationId, "payments")'
     )
     expect(notificationSource).toContain("projectId: input.projectId")
     expect(notificationSource).toContain(
