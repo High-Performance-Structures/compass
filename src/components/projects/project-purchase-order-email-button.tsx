@@ -69,6 +69,7 @@ export function ProjectPurchaseOrderEmailButton({
   projectLabel,
   supplierName,
   supplierEmail,
+  ccEmail = null,
   recipientOptions,
 }: {
   readonly projectId: string
@@ -77,13 +78,16 @@ export function ProjectPurchaseOrderEmailButton({
   readonly projectLabel: string
   readonly supplierName: string | null
   readonly supplierEmail: string | null
+  readonly ccEmail?: string | null
   readonly recipientOptions: readonly EmailRecipientOption[]
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [to, setTo] = React.useState<readonly string[]>(
     defaultSupplierRecipients(supplierEmail)
   )
-  const [cc, setCc] = React.useState<readonly string[]>([])
+  const [cc, setCc] = React.useState<readonly string[]>(
+    defaultSupplierRecipients(ccEmail)
+  )
   const [subject, setSubject] = React.useState(
     defaultSubject({ poNumber, projectLabel })
   )
@@ -97,7 +101,7 @@ export function ProjectPurchaseOrderEmailButton({
     if (!nextOpen) return
 
     setTo(defaultSupplierRecipients(supplierEmail))
-    setCc([])
+    setCc(defaultSupplierRecipients(ccEmail))
     setSubject(defaultSubject({ poNumber, projectLabel }))
     setMessage(defaultMessage({ supplierName, projectLabel, poNumber }))
     setStatus({ kind: "idle" })
