@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconGasStation, IconPencil, IconPlus, IconSettings, IconTrash } from "@tabler/icons-react"
+import { IconPencil, IconPlus, IconSettings, IconTrash } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -78,7 +78,8 @@ function soonestService(machine: MachineView): MachineView["services"][number] |
 /** Office view of the machine log: machines, approvals, hours by job, recent entries. */
 export function EquipmentWorkspaceView({ workspace }: { readonly workspace: EquipmentWorkspace }): React.ReactElement {
   const router = useRouter()
-  const [entryDialog, setEntryDialog] = React.useState<{ readonly kind: MachineLogKind; readonly entry: MachineLogEntryView | null } | null>(null)
+  const [entryDialog, setEntryDialog] = React.useState<{ readonly key: number; readonly kind: MachineLogKind; readonly entry: MachineLogEntryView | null } | null>(null)
+  const openEntryDialog = (kind: MachineLogKind, entry: MachineLogEntryView | null): void => setEntryDialog({ key: Date.now(), kind, entry })
   const [machineDialog, setMachineDialog] = React.useState<{ readonly machine: MachineView | null } | null>(null)
   const [selected, setSelected] = React.useState<ReadonlySet<string>>(new Set())
   const [removing, setRemoving] = React.useState<MachineLogEntryView | null>(null)
@@ -121,13 +122,9 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
           Machine hours are priced from the rate book. Entries wait here for approval; approved entries are what go to Sage.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setEntryDialog({ kind: "hours", entry: null })}>
+          <Button type="button" variant="outline" size="sm" onClick={() => openEntryDialog("hours", null)}>
             <IconPlus className="size-4" />
-            Log hours
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => setEntryDialog({ kind: "fuel", entry: null })}>
-            <IconGasStation className="size-4" />
-            Add fuel or service
+            Log machine entry
           </Button>
           {workspace.canManage ? (
             <Button type="button" size="sm" onClick={() => setMachineDialog({ machine: null })}>
@@ -260,7 +257,7 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
                   </div>
                   {entry.canChange ? (
                     <div className="flex shrink-0">
-                      <Button type="button" variant="ghost" size="icon" aria-label="Change entry" onClick={() => setEntryDialog({ kind: entry.kind, entry })}>
+                      <Button type="button" variant="ghost" size="icon" aria-label="Change entry" onClick={() => openEntryDialog(entry.kind, entry)}>
                         <IconPencil className="size-4" />
                       </Button>
                       <Button type="button" variant="ghost" size="icon" aria-label="Remove entry" disabled={pending} onClick={() => setRemoving(entry)}>
@@ -328,7 +325,7 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
                     <td className="py-2">
                       {entry.canChange ? (
                         <div className="flex">
-                          <Button type="button" variant="ghost" size="icon" aria-label="Change entry" onClick={() => setEntryDialog({ kind: entry.kind, entry })}>
+                          <Button type="button" variant="ghost" size="icon" aria-label="Change entry" onClick={() => openEntryDialog(entry.kind, entry)}>
                             <IconPencil className="size-4" />
                           </Button>
                           <Button type="button" variant="ghost" size="icon" aria-label="Remove entry" disabled={pending} onClick={() => setRemoving(entry)}>
@@ -345,15 +342,16 @@ export function EquipmentWorkspaceView({ workspace }: { readonly workspace: Equi
         )}
       </section>
 
-      <MachineLogEntryDialog
-        workspace={workspace}
-        open={entryDialog !== null}
-        onOpenChange={(open) => {
-          if (!open) setEntryDialog(null)
-        }}
-        initialKind={entryDialog?.kind ?? "hours"}
-        entry={entryDialog?.entry ?? null}
-      />
+      {entryDialog ? (
+        // Keyed per open so each window starts fresh on the kind its button asked for.
+        <MachineLogEntryDialog
+          key={entryDialog.key}
+          workspace={workspace}
+          onClose={() => setEntryDialog(null)}
+          initialKind={entryDialog.kind}
+          entry={entryDialog.entry}
+        />
+      ) : null}
       <AlertDialog open={removing !== null} onOpenChange={(open) => (open ? null : setRemoving(null))}>
         <AlertDialogContent>
           <AlertDialogHeader>
