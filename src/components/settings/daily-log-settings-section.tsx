@@ -29,6 +29,8 @@ type CodeRow = {
   readonly active: boolean
   /** Sage payroll ID for labor codes; "office" or "field" for duties. */
   readonly extra: string
+  /** Offered in Field Mode; null when the list has no such choice. */
+  readonly onPhones: boolean | null
 }
 
 /**
@@ -43,6 +45,7 @@ function CodeListEditor({
   extraLabel,
   example,
   extraChoices,
+  phoneColumn = false,
   disabled,
   onChange,
 }: {
@@ -55,11 +58,17 @@ function CodeListEditor({
   readonly example: { readonly code: string; readonly name: string; readonly extra: string }
   /** Fixed choices for the extra column (duties' workspace); free text when absent. */
   readonly extraChoices?: readonly { readonly value: string; readonly label: string }[]
+  /** Shows an "On phones" switch per code (internal duties). */
+  readonly phoneColumn?: boolean
   readonly disabled: boolean
   readonly onChange: (rows: readonly CodeRow[]) => void
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
-  const [draft, setDraft] = React.useState<CodeRow>({ code: "", name: "", active: true, extra: extraChoices?.[0]?.value ?? "" })
+  const blankRow = (): CodeRow => {
+    const extra = extraChoices?.[0]?.value ?? ""
+    return { code: "", name: "", active: true, extra, onPhones: phoneColumn ? extra === "field" : null }
+  }
+  const [draft, setDraft] = React.useState<CodeRow>(blankRow)
   const needle = query.trim().toLowerCase()
   const visible = rows
     .map((row, index) => ({ row, index }))
@@ -81,8 +90,8 @@ function CodeListEditor({
       toast.error(`${code} is already on the list.`)
       return
     }
-    onChange([...rows, { ...draft, code, name }])
-    setDraft({ code: "", name: "", active: true, extra: extraChoices?.[0]?.value ?? "" })
+    onChange([...rows, { ...draft, code, name, onPhones: phoneColumn ? draft.extra === "field" : null }])
+    setDraft(blankRow())
   }
 
   return (
@@ -107,10 +116,11 @@ function CodeListEditor({
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-background text-left text-xs text-muted-foreground">
             <tr className="border-b">
-              <th className="w-16 py-2 font-medium">Offered</th>
+              <th className="w-20 py-2 pr-3 font-medium whitespace-nowrap">Offered</th>
               <th className="py-2 font-medium">Code</th>
               <th className="py-2 font-medium">Name</th>
-              <th className="py-2 font-medium">{extraLabel}</th>
+              <th className="py-2 pr-3 font-medium whitespace-nowrap">{extraLabel}</th>
+              {phoneColumn ? <th className="w-24 py-2 pr-3 font-medium whitespace-nowrap">On phones</th> : null}
               <th className="w-10 py-2"><span className="sr-only">Remove</span></th>
             </tr>
           </thead>
@@ -130,6 +140,16 @@ function CodeListEditor({
                 <td className="py-1.5 pr-3 text-xs text-muted-foreground">
                   {extraChoices ? (extraChoices.find((choice) => choice.value === row.extra)?.label ?? row.extra) : row.extra || "—"}
                 </td>
+                {phoneColumn ? (
+                  <td className="py-1.5">
+                    <Switch
+                      checked={row.onPhones === true}
+                      disabled={disabled || !row.active}
+                      aria-label={`Offer ${row.code} ${row.name} in Field Mode`}
+                      onCheckedChange={(onPhones) => update(index, { onPhones })}
+                    />
+                  </td>
+                ) : null}
                 <td className="py-1.5">
                   <Button
                     type="button"
@@ -146,7 +166,7 @@ function CodeListEditor({
             ))}
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-4 text-center text-muted-foreground">No codes match.</td>
+                <td colSpan={phoneColumn ? 6 : 5} className="py-4 text-center text-muted-foreground">No codes match.</td>
               </tr>
             ) : null}
           </tbody>
@@ -190,11 +210,17 @@ function CodeListEditor({
 }
 
 function laborRows(settings: DailyLogSettings): readonly CodeRow[] {
-  return settings.laborCostCodes.map((code) => ({ code: code.code, name: code.name, active: code.active, extra: code.payrollId }))
+  return settings.laborCostCodes.map((code) => ({ code: code.code, name: code.name, active: code.active, extra: code.payrollId, onPhones: null }))
 }
 
 function dutyRows(settings: InternalDutySettings): readonly CodeRow[] {
-  return settings.duties.map((duty) => ({ code: duty.code, name: duty.label, active: duty.active, extra: duty.workspace }))
+  return settings.duties.map((duty) => ({
+    code: duty.code,
+    name: duty.label,
+    active: duty.active,
+    extra: duty.workspace,
+    onPhones: duty.onPhones ?? duty.workspace === "field",
+  }))
 }
 
 /**
@@ -236,7 +262,13 @@ export function DailyLogSettingsSection(): React.ReactElement {
   function save(): void {
     const parsed = dailyLogSettingsSchema.safeParse(settings)
     const parsedDuties = internalDutySettingsSchema.safeParse({
-      duties: duties.map((row) => ({ code: row.code, label: row.name, active: row.active, workspace: row.extra === "field" ? "field" : "office" })),
+      duties: duties.map((row) => ({
+        code: row.code,
+        label: row.name,
+        active: row.active,
+        workspace: row.extra === "field" ? "field" : "office",
+        onPhones: row.onPhones === true,
+      })),
     })
     if (!parsed.success || !parsedDuties.success) {
       toast.error((parsed.error ?? parsedDuties.error)?.issues[0]?.message ?? "Check the daily log settings.")
@@ -346,7 +378,7 @@ export function DailyLogSettingsSection(): React.ReactElement {
       <CodeListEditor
         id="daily-log-duty-codes"
         title="Internal duties"
-        help="Offered on daily logs and the duty log in internal workspaces, such as H-Office or the yard."
+        help="Offered on daily logs and the duty log in internal workspaces, such as H-Office or the yard. Switch on “On phones” for a code field staff should see in Field Mode, such as an administrative code for office meetings."
         rows={duties}
         extraLabel="Workspace"
         example={{ code: "515", name: "Insurance", extra: "" }}
@@ -354,6 +386,7 @@ export function DailyLogSettingsSection(): React.ReactElement {
           { value: "office", label: "Office" },
           { value: "field", label: "Field / yard" },
         ]}
+        phoneColumn
         disabled={pending || !canEditDuties}
         onChange={setDuties}
       />

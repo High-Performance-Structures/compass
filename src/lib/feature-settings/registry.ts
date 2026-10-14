@@ -381,6 +381,8 @@ export const internalDutySettingsSchema = z.object({
         label: z.string().trim().min(1).max(80),
         workspace: z.enum(["office", "field"]),
         active: z.boolean(),
+        /** Offered in Field Mode; unset means field duties yes, office duties no. */
+        onPhones: z.boolean().optional(),
       }),
     )
     .max(80),
