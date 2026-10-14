@@ -70,6 +70,8 @@ Continue preparing permitted operational records in Compass, leave them in a non
 
 Open **Settings → Rate book** to review accepted labor, equipment, material, and other rates. Authorized staff can add and edit entries, set their status, and inspect the history of prior values. Review the unit, cost, markup, default cost code, fuel assumptions when present, and change note. The default cost code is optional: leave it blank for a rate used on different work, such as a machine used for both excavation and backfill, and choose the cost code each time you use the rate. Retire a rate that should no longer be selected. Deletion requires confirmation; a rate already used is retained through retirement rather than losing its history.
 
+**From rate book** appears on estimate lines, their cost breakdowns, and estimate template lines. Every filled value stays editable, so you can override a rate for one job. On a shop ticket, choose each line's rate by name and type a different amount in its Rate box to override it.
+
 In an estimate's cost breakdown, choose the cost code and use **From rate book** to fill the description, unit, cost, and markup. A rate's default cost code fills the entry only when no cost code is chosen yet. Then check quantity, unit, markup, tax, and coding before saving. The estimate keeps the selected rate version. A later rate-book edit does not silently reprice it: **Review new rate** lets you inspect and apply a newer value to editable work. Locked estimates still require the normal revision workflow.
 
 ## Customize Report Phases and Duplicate Estimates {#estimate-phases}

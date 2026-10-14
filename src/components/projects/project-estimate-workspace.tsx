@@ -72,6 +72,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { RateBookFillPicker } from "@/components/rate-book/rate-book-fill-picker"
 import {
   Select,
   SelectContent,
@@ -1769,6 +1770,30 @@ export function ProjectEstimateWorkspacePanel({
                   }
                 />
               </div>
+              {!lineUsesCostBreakdown ? (
+                <RateBookFillPicker
+                  key={line.id ?? "new"}
+                  id="estimate-line-rate-book"
+                  projectId={projectId}
+                  className="mb-3 max-w-sm space-y-1.5"
+                  onPick={(option) => {
+                    // The cost code depends on the work: a rate's default code
+                    // only fills a line that has none yet.
+                    const code = option.costCode && !line.costCode
+                      ? workspace.costCodes.find((candidate) => candidate.value === option.costCode)
+                      : undefined
+                    setLine({
+                      ...line,
+                      divisionCode: code?.divisionCode ?? line.divisionCode,
+                      costCode: code?.value ?? line.costCode,
+                      description: line.description || option.description,
+                      unit: option.unit,
+                      unitCost: String(option.unitCostCents / 100),
+                      markupPercent: String(option.markupBasisPoints / 100),
+                    })
+                  }}
+                />
+              ) : null}
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="estimate-line-division">CSI division</Label>

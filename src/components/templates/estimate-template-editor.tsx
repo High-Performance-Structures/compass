@@ -23,6 +23,7 @@ import {
 } from "@/app/actions/estimate-templates"
 import { Badge } from "@/components/ui/badge"
 import { SearchableCombobox } from "@/components/searchable-combobox"
+import { RateBookFillPicker } from "@/components/rate-book/rate-book-fill-picker"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -435,6 +436,27 @@ export function EstimateTemplateEditorPanel({
                   </Button>
                 )}
               </div>
+              <RateBookFillPicker
+                key={line.id ?? "new"}
+                id="template-line-rate-book"
+                projectId={null}
+                className="mt-4 max-w-sm space-y-1.5"
+                onPick={(option) => {
+                  // A rate's default cost code only fills a line that has none yet.
+                  const code = option.costCode && !line.costCode
+                    ? editor.costCodes.find((candidate) => candidate.value === option.costCode)
+                    : undefined
+                  setLine({
+                    ...line,
+                    divisionCode: code?.divisionCode ?? line.divisionCode,
+                    costCode: code?.value ?? line.costCode,
+                    description: line.description || option.description,
+                    unit: option.unit,
+                    unitCost: String(option.unitCostCents / 100),
+                    markupPercent: String(option.markupBasisPoints / 100),
+                  })
+                }}
+              />
               <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="template-line-division">CSI division</Label>

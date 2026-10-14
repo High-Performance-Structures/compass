@@ -340,7 +340,7 @@ export type RateBookPickerOption = {
  * job's zone, mountain, lodging and per diem charges (with any per-job
  * adjustments), so travel isn't typed in twice.
  */
-export async function getRateBookPicker(projectId: string): Promise<ActionResult<readonly RateBookPickerOption[]>> {
+export async function getRateBookPicker(projectId: string | null): Promise<ActionResult<readonly RateBookPickerOption[]>> {
   try {
     const context = await access()
     if (!context.ok) return { success: false, error: context.error }
@@ -361,7 +361,8 @@ export async function getRateBookPicker(projectId: string): Promise<ActionResult
       markupBasisPoints: row.markupBasisPoints,
       costCode: row.costCode,
     }))
-    const travel = await getProjectTravelCharge(projectId).catch(() => null)
+    // Templates have no job, so no zone charges.
+    const travel = projectId ? await getProjectTravelCharge(projectId).catch(() => null) : null
     const charge = travel?.effective
     if (charge) {
       const job = (id: string, label: string, unit: string, cents: number | null): void => {

@@ -40,6 +40,14 @@ type EditableLine = {
   readonly hours: string
   /** The chosen rate book entry; null until one is chosen. */
   readonly rateBookEntryId: string | null
+  /** A rate typed in for this line, in dollars; blank uses the rate book's. */
+  readonly rateOverride: string
+}
+
+/** The typed-in rate in cents, or null when blank or not a number. */
+function overrideCents(value: string): number | null {
+  const dollars = Number.parseFloat(value)
+  return value.trim() !== "" && Number.isFinite(dollars) && dollars >= 0 ? Math.round(dollars * 100) : null
 }
 
 function today(): string {
@@ -48,7 +56,7 @@ function today(): string {
 }
 
 function blankLine(): EditableLine {
-  return { key: crypto.randomUUID(), costCode: "", description: "", rateKind: "labor", hours: "", rateBookEntryId: null }
+  return { key: crypto.randomUUID(), costCode: "", description: "", rateKind: "labor", hours: "", rateBookEntryId: null, rateOverride: "" }
 }
 
 export function ShopTicketEditor({
@@ -81,6 +89,11 @@ export function ShopTicketEditor({
           rateKind: line.rateKind,
           hours: String(line.hours),
           rateBookEntryId: line.rateBookEntryId,
+          // A saved rate that differs from the rate book's was typed in.
+          rateOverride: (() => {
+            const bookRate = resolveShopTicketRate(workspace.rates, line.rateKind, line.rateBookEntryId)
+            return bookRate && bookRate.rateCents !== line.rateCents ? String(line.rateCents / 100) : ""
+          })(),
         }))
       : [blankLine()],
   )
@@ -112,7 +125,8 @@ export function ShopTicketEditor({
   const priced = lines.map((line) => {
     const hours = Number.parseFloat(line.hours)
     const rate = resolveShopTicketRate(workspace.rates, line.rateKind, line.rateBookEntryId)
-    const amountCents = rate && Number.isFinite(hours) && hours > 0 ? lineAmountCents(hours, rate.rateCents) : 0
+    const rateCents = overrideCents(line.rateOverride) ?? rate?.rateCents ?? null
+    const amountCents = rate && rateCents !== null && Number.isFinite(hours) && hours > 0 ? lineAmountCents(hours, rateCents) : 0
     return { ...line, rate, amountCents, outside: line.costCode !== "" && isOutsideBudget(line.costCode, budget) }
   })
   const rateOptions = React.useMemo(
@@ -152,6 +166,7 @@ export function ShopTicketEditor({
               rateKind: "labor",
               hours: String(selection.hours),
               rateBookEntryId: null,
+              rateOverride: "",
             },
           ]
         }
@@ -188,6 +203,7 @@ export function ShopTicketEditor({
           rateKind: line.rateKind,
           hours: Number.parseFloat(line.hours),
           rateBookEntryId: line.rateBookEntryId,
+          rateOverrideCents: overrideCents(line.rateOverride),
         })),
       laborClaims: effectiveClaims ? [...effectiveClaims].map(([laborLineId, hours]) => ({ laborLineId, hours })) : undefined,
     }
@@ -290,7 +306,7 @@ export function ShopTicketEditor({
               <th className="py-2 pr-2 font-medium">Cost code</th>
               <th className="w-56 py-2 pr-2 font-medium">Rate book rate</th>
               <th className="w-28 py-2 pr-2 text-right font-medium">Hours</th>
-              <th className="w-24 py-2 pr-2 text-right font-medium">Rate</th>
+              <th className="w-28 py-2 pr-2 text-right font-medium">Rate ($/hr)</th>
               <th className="w-28 py-2 pr-2 text-right font-medium">Amount</th>
               <th className="w-10 py-2" />
             </tr>
@@ -350,8 +366,30 @@ export function ShopTicketEditor({
                     placeholder="0.00"
                   />
                 </td>
-                <td className="py-2 pr-2 text-right tabular-nums">
-                  {line.rate ? formatCents(line.rate.rateCents) : <span className="text-destructive">Choose a rate</span>}
+                <td className="py-2 pr-2">
+                  {line.rate ? (
+                    <>
+                      <Input
+                        aria-label={`Rate for line ${index + 1}, blank uses the rate book`}
+                        inputMode="decimal"
+                        className="text-right tabular-nums"
+                        value={line.rateOverride}
+                        onChange={(event) => updateLine(line.key, { rateOverride: event.target.value.replace(/[^0-9.]/g, "") })}
+                        placeholder={(line.rate.rateCents / 100).toFixed(2)}
+                      />
+                      {overrideCents(line.rateOverride) !== null && overrideCents(line.rateOverride) !== line.rate.rateCents ? (
+                        <button
+                          type="button"
+                          className="mt-1 block w-full text-right text-xs text-muted-foreground underline underline-offset-2"
+                          onClick={() => updateLine(line.key, { rateOverride: "" })}
+                        >
+                          Rate book {formatCents(line.rate.rateCents)}
+                        </button>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="block text-right text-destructive">Choose a rate</span>
+                  )}
                 </td>
                 <td className="py-2 pr-2 text-right tabular-nums">{formatCents(line.amountCents)}</td>
                 <td className="py-2">
