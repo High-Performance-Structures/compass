@@ -263,7 +263,7 @@ namespace CompassSageClientProjectWriter
                 {
                     foreach (FeeRequest request in toWrite)
                     {
-                        try { Submit(xmlByRequest[request.id], Required("SAGE_API_PASSWORD")); }
+                        try { SubmitAcceptingPeriodWarning(xmlByRequest[request.id], Required("SAGE_API_PASSWORD")); }
                         catch (Exception error) { writeErrors[request.id] = error; }
                     }
                 }
@@ -434,6 +434,45 @@ namespace CompassSageClientProjectWriter
 
         private const string PeriodMismatchWarning = "Posting period/year does not match the current posting period/year.";
 
+        // Staff click through Sage's posting-period warning when they post a fee
+        // into an earlier month (approved by Martine 2026-10-13). Sage only takes
+        // the acknowledgement if APIWarningMessage repeats its warning verbatim,
+        // so submit without one, and if Sage answers 14203 with exactly that one
+        // warning, resubmit echoing Sage's own text. Any other warning or error
+        // still stops the write; a mismatched echo (14204) writes nothing.
+        private static void SubmitAcceptingPeriodWarning(string xml, string password)
+        {
+            string warning;
+            try { Submit(xml, password); return; }
+            catch (InvalidOperationException error)
+            {
+                const string prefix = "Sage API rejected the request (code 14203): ";
+                if (!error.Message.StartsWith(prefix, StringComparison.Ordinal)) throw;
+                warning = error.Message.Substring(prefix.Length);
+                int open = warning.IndexOf("(#", StringComparison.Ordinal);
+                if (open < 0 || warning.IndexOf("(#", open + 2, StringComparison.Ordinal) >= 0 || warning.IndexOf(PeriodMismatchWarning, StringComparison.Ordinal) < 0) throw;
+            }
+            int start = warning.IndexOf("(#", StringComparison.Ordinal);
+            int end = warning.IndexOf("#)", start, StringComparison.Ordinal);
+            string marked = end < 0 ? warning.Substring(start) : warning.Substring(start, end + 2 - start);
+            string[] candidates = { marked, marked.Substring(2, marked.Length - (end < 0 ? 2 : 4)).Trim(), warning };
+            int at = xml.IndexOf("<GeneralLedgerLineAdd>", StringComparison.Ordinal);
+            if (at < 0) throw new InvalidOperationException("Fee XML has no ledger lines.");
+            InvalidOperationException last = null;
+            foreach (string candidate in candidates)
+            {
+                string retry = xml.Insert(at, "<APIWarningMessage>" + XmlEscape(candidate) + "</APIWarningMessage>");
+                ValidateXml(retry);
+                try { Submit(retry, password); WriteLog("INFO", "Accepted Sage posting-period warning as: " + candidate); return; }
+                catch (InvalidOperationException error)
+                {
+                    if (error.Message.IndexOf("(code 14204)", StringComparison.Ordinal) < 0) throw;
+                    last = error;
+                }
+            }
+            throw new InvalidOperationException(last.Message + " Sage warning was: " + warning);
+        }
+
         private static string BuildFeeXml(string user, string transactionNumber, DateTime date, string desc, string memo, string lineDesc, int feeAccount, int depositAccount, decimal amount, FeeVendor vendor)
         {
             string money = amount.ToString("0.00", CultureInfo.InvariantCulture);
@@ -451,10 +490,6 @@ namespace CompassSageClientProjectWriter
             body.Append("<AccountingPeriod>").Append(date.Month).Append("</AccountingPeriod>");
             body.Append("<PostingYear>").Append(date.Year).Append("</PostingYear>");
             body.Append("<Memo>").Append(XmlEscape(memo)).Append("</Memo>");
-            // Staff click through this one warning when posting a fee into an
-            // earlier month. Accept only it; any other warning still stops the
-            // write. Approved by Martine 2026-10-13.
-            body.Append("<APIWarningMessage>").Append(XmlEscape(PeriodMismatchWarning)).Append("</APIWarningMessage>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(feeAccount)
                 .Append("</ObjectID></AccountRef><DebitAmount>").Append(money).Append("</DebitAmount></GeneralLedgerLineAdd>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(depositAccount)
