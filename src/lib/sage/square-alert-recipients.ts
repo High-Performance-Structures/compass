@@ -4,6 +4,7 @@ import type { getDb } from "@/db"
 import { organizationMembers, users } from "@/db/schema"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 type Db = ReturnType<typeof getDb>
 const ADMIN_ROLES = ["admin", "secondary_admin"]
@@ -14,7 +15,8 @@ export type SquareAlertKind = "connection" | "payments"
  * Who gets Square alerts, from Settings → Workflows → Square and Sage
  * payments. Nobody chosen falls back to the old behaviour: connection alerts
  * to the configured developer only (never all staff), payment problems to
- * administrators.
+ * administrators. Only internal staff (and the developer) ever receive them;
+ * subcontractors, suppliers, clients and guests are dropped.
  */
 export async function squareAlertRecipientIds(
   db: Db,
@@ -31,7 +33,7 @@ export async function squareAlertRecipientIds(
   }
   const activeMembers = (ids: readonly string[] | null) =>
     db
-      .select({ userId: users.id })
+      .select({ userId: users.id, role: organizationMembers.role })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
       .where(
@@ -41,10 +43,12 @@ export async function squareAlertRecipientIds(
           ids === null ? inArray(users.role, ADMIN_ROLES) : inArray(users.id, [...ids]),
         ),
       )
-  if (chosen.length > 0) return (await activeMembers(chosen)).map((row) => row.userId)
+  const staffIds = (rows: readonly { userId: string; role: string }[]): readonly string[] =>
+    rows.filter((row) => isInternalStaffRole(row.role) || row.role === "developer").map((row) => row.userId)
+  if (chosen.length > 0) return staffIds(await activeMembers(chosen))
   if (kind === "connection") {
     const developer = getJarvisEnvValue(env, "SQUARE_AUTH_NOTIFICATION_USER_ID")
-    return developer ? (await activeMembers([developer])).map((row) => row.userId) : []
+    return developer ? staffIds(await activeMembers([developer])) : []
   }
-  return (await activeMembers(null)).map((row) => row.userId)
+  return staffIds(await activeMembers(null))
 }

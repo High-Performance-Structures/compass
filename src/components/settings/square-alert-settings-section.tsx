@@ -5,6 +5,7 @@ import { toast } from "sonner"
 
 import { getFeatureSettingsForEditor, resetFeatureSettings, saveFeatureSettings } from "@/app/actions/feature-settings"
 import { getUsers } from "@/app/actions/users"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { Button } from "@/components/ui/button"
 import { IconPlus, IconTrash } from "@tabler/icons-react"
 
@@ -65,6 +66,8 @@ export function SquareAlertSettingsSection(): React.ReactElement {
     }
     setPeople(
       users
+        // Internal process work: staff only, never subs, suppliers or clients.
+        .filter((user) => isInternalStaffRole(user.role) || user.role === "developer")
         .map((user) => ({ id: user.id, name: user.displayName || user.email, role: user.role }))
         .sort((a, b) => a.name.localeCompare(b.name)),
     )
