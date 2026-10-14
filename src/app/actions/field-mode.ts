@@ -24,6 +24,8 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { phoneDailyLogForm } from "@/lib/daily-logs/cost-code-lines"
+import { loadFieldMachines } from "@/lib/equipment/field"
+import { companyToday } from "@/lib/internal-duties/recurring-data"
 import { getCloudflareContext } from "@/lib/db"
 import type {
   FieldDailyLogDraft,
@@ -128,6 +130,10 @@ export async function getFieldProjectPacket(
   }
 
   const filePromise = listProjectDriveFilesForField(projectId)
+  // Machines are company-wide; only staff log them.
+  const machinesPromise = user.organizationId && isInternalStaffRole(user.role)
+    ? loadFieldMachines(db, user.organizationId, companyToday())
+    : Promise.resolve([])
 
   const contactPromise = user.organizationId
     ? db
@@ -329,6 +335,7 @@ export async function getFieldProjectPacket(
       })),
     // Only short lists (H/O labor codes, internal duties) go to phones.
     dailyLogForm: phoneDailyLogForm(dailyLogWorkspace.form),
+    machines: await machinesPromise,
     notifications: notificationResult.success
       ? notificationResult.data.items.map((item) => ({
           id: item.id,

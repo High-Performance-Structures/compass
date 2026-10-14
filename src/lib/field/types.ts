@@ -1,6 +1,7 @@
 import { z } from "zod/v4"
 
 import { DAILY_LOG_OPTIONAL_FIELDS } from "../daily-logs/daily-log-form"
+import { MACHINE_LOG_KINDS } from "../equipment/model"
 
 export const fieldProjectSchema = z.object({
   id: z.string(),
@@ -102,6 +103,38 @@ export const fieldDailyLogFormSchema = z.object({
   }),
 })
 
+/** A company machine as Field Mode keeps it for offline logging. */
+export const fieldMachineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  rateLabel: z.string().nullable(),
+  runningRateCents: z.number().nullable(),
+  standbyRateCents: z.number().nullable(),
+  idleRateCents: z.number().nullable(),
+  hourMeter: z.number().nullable(),
+  services: z.array(z.object({ id: z.string(), name: z.string(), dueLabel: z.string(), state: z.enum(["ok", "soon", "due"]) })),
+})
+
+export const fieldMachineLogDraftSchema = z.object({
+  kind: z.enum(MACHINE_LOG_KINDS),
+  machineId: z.string().max(80),
+  entryDate: z.string().max(10),
+  projectId: z.string().max(80),
+  operatorName: z.string().max(120),
+  costCode: z.string().max(20),
+  runningHours: z.string().max(12),
+  standbyHours: z.string().max(12),
+  idleHours: z.string().max(12),
+  hourMeter: z.string().max(12),
+  gallons: z.string().max(12),
+  amount: z.string().max(16),
+  vendor: z.string().max(120),
+  paidWith: z.string().max(40),
+  serviceItemId: z.string().max(80),
+  shopHours: z.string().max(12),
+  notes: z.string().max(4000),
+})
+
 export const fieldProjectPacketSchema = z.object({
   project: fieldProjectSchema,
   tasks: z.array(fieldTaskSchema),
@@ -114,6 +147,8 @@ export const fieldProjectPacketSchema = z.object({
   notifications: z.array(fieldNotificationSchema).default([]),
   /** Null in packets saved before cost code lines. */
   dailyLogForm: fieldDailyLogFormSchema.nullable().default(null),
+  /** Company machines for the machine log; empty in older packets. */
+  machines: z.array(fieldMachineSchema).default([]),
   syncedAt: z.string(),
 })
 
@@ -196,6 +231,12 @@ export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     id: z.string(),
+    kind: z.literal("machine_log"),
+    createdAt: z.string(),
+    payload: fieldMachineLogDraftSchema,
+  }),
+  z.object({
+    id: z.string(),
     kind: z.literal("cherish_pulse"),
     cherishValue: cherishValueSchema,
     responseType: cherishResponseTypeSchema,
@@ -215,6 +256,7 @@ export type FieldProjectPacket = z.infer<typeof fieldProjectPacketSchema>
 export type FieldNotification = z.infer<typeof fieldNotificationSchema>
 export type FieldDailyLogDraft = z.infer<typeof fieldDailyLogDraftSchema>
 export type FieldDailyLogForm = z.infer<typeof fieldDailyLogFormSchema>
+export type FieldMachine = z.infer<typeof fieldMachineSchema>
 export type FieldQueuedAttachment = z.infer<typeof fieldQueuedAttachmentSchema>
 export type FieldOutboxItem = z.infer<typeof fieldOutboxItemSchema>
 export type FieldCherishValue = z.infer<typeof cherishValueSchema>

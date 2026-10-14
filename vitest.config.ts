@@ -17,7 +17,7 @@ export default defineConfig({
     },
     globals: true,
     environment: "node",
-    include: ["src/**/__tests__/**/*.test.ts", "__tests__/**/*.test.ts"],
+    include: ["src/**/__tests__/**/*.test.ts", "__tests__/**/*.test.ts", "mobile-shell-src/**/*.test.ts"],
     exclude: ["node_modules", "references", "packages"],
   },
 })

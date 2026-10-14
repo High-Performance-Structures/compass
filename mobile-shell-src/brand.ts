@@ -38,6 +38,7 @@ const ICON_PATHS = {
   projects: `<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>`,
   today: `<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path><path d="m9 15 2 2 4-4"></path>`,
   log: `<rect x="6" y="4" width="12" height="17" rx="2"></rect><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3"></path>`,
+  machines: `<path d="M2 18h12M4 18v-5h6l2.5 5"></path><circle cx="5.5" cy="19.5" r="1.5"></circle><circle cx="11" cy="19.5" r="1.5"></circle><path d="M12 13l4-7 5 3-2.5 3.5"></path><path d="M18.5 12.5 21 15h-3"></path>`,
   documents: `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5M9 13h6M9 17h6"></path>`,
   chat: `<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"></path>`,
   cherish: `<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path>`,
