@@ -34,12 +34,14 @@ import * as selectionDecisionSchema from "./schema-selection-decisions"
 import * as internalDutySchema from "./schema-internal-duties"
 import * as shopTicketSchema from "./schema-shop-tickets"
 import * as projectLinkSchema from "./schema-project-links"
+import * as equipmentSchema from "./schema-equipment"
 
 const allSchemas = {
   ...rateBookSchema,
   ...internalDutySchema,
   ...shopTicketSchema,
   ...projectLinkSchema,
+  ...equipmentSchema,
   ...paperTrailSchema,
   ...selectionDecisionSchema,
   ...correspondenceSchema,
