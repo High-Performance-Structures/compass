@@ -443,6 +443,11 @@ namespace CompassSageClientProjectWriter
             // schema wants VendorRef/ObjectID after Desc, before Payee.
             if (vendor != null) body.Append("<VendorRef><ObjectID>").Append(vendor.Number).Append("</ObjectID></VendorRef>");
             body.Append("<Payee>").Append(XmlEscape(Truncate(vendor == null ? "Square" : vendor.Name, 50))).Append("</Payee>");
+            // Post into the period of the transaction date, as staff do. Left
+            // blank, Sage uses the current period and refuses the mismatch
+            // (14203). HPS's fiscal year is the calendar year (Sept = period 9).
+            body.Append("<AccountingPeriod>").Append(date.Month).Append("</AccountingPeriod>");
+            body.Append("<PostingYear>").Append(date.Year).Append("</PostingYear>");
             body.Append("<Memo>").Append(XmlEscape(memo)).Append("</Memo>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(feeAccount)
                 .Append("</ObjectID></AccountRef><DebitAmount>").Append(money).Append("</DebitAmount></GeneralLedgerLineAdd>");
