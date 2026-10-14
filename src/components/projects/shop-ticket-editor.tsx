@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ShopTicketSageHours, type SageHoursClaim, type SageHoursSelection } from "@/components/projects/shop-ticket-sage-hours"
 import type { ShopTicketRateKind } from "@/db/schema-shop-tickets"
@@ -30,6 +29,7 @@ import {
   isOutsideBudget,
   lineAmountCents,
   rateKindLabel,
+  resolveShopTicketRate,
 } from "@/lib/shop-tickets/model"
 
 type EditableLine = {
@@ -38,6 +38,8 @@ type EditableLine = {
   readonly description: string
   readonly rateKind: ShopTicketRateKind
   readonly hours: string
+  /** The chosen rate book entry; null until one is chosen. */
+  readonly rateBookEntryId: string | null
 }
 
 function today(): string {
@@ -46,7 +48,7 @@ function today(): string {
 }
 
 function blankLine(): EditableLine {
-  return { key: crypto.randomUUID(), costCode: "", description: "", rateKind: "labor", hours: "" }
+  return { key: crypto.randomUUID(), costCode: "", description: "", rateKind: "labor", hours: "", rateBookEntryId: null }
 }
 
 export function ShopTicketEditor({
@@ -78,6 +80,7 @@ export function ShopTicketEditor({
           description: line.description,
           rateKind: line.rateKind,
           hours: String(line.hours),
+          rateBookEntryId: line.rateBookEntryId,
         }))
       : [blankLine()],
   )
@@ -108,10 +111,22 @@ export function ShopTicketEditor({
 
   const priced = lines.map((line) => {
     const hours = Number.parseFloat(line.hours)
-    const rate = workspace.rates[line.rateKind]
+    const rate = resolveShopTicketRate(workspace.rates, line.rateKind, line.rateBookEntryId)
     const amountCents = rate && Number.isFinite(hours) && hours > 0 ? lineAmountCents(hours, rate.rateCents) : 0
     return { ...line, rate, amountCents, outside: line.costCode !== "" && isOutsideBudget(line.costCode, budget) }
   })
+  const rateOptions = React.useMemo(
+    () =>
+      workspace.rates.map((rate) => ({
+        value: rate.rateBookEntryId,
+        label: rate.name,
+        description: `${rateKindLabel(rate.kind)} · ${formatCents(rate.rateCents)}/hr`,
+        keywords: rateKindLabel(rate.kind),
+      })),
+    [workspace.rates],
+  )
+  const hasLaborRate = workspace.rates.some((rate) => rate.kind === "labor")
+  const hasMachineRate = workspace.rates.some((rate) => rate.kind === "machine")
   const totalCents = priced.reduce((sum, line) => sum + line.amountCents, 0)
   const outsideCount = priced.filter((line) => line.outside).length
 
@@ -136,6 +151,7 @@ export function ShopTicketEditor({
               description: descriptionFor.get(selection.costCode) ?? selection.sageCostCodeName ?? "",
               rateKind: "labor",
               hours: String(selection.hours),
+              rateBookEntryId: null,
             },
           ]
         }
@@ -171,6 +187,7 @@ export function ShopTicketEditor({
           description: line.description,
           rateKind: line.rateKind,
           hours: Number.parseFloat(line.hours),
+          rateBookEntryId: line.rateBookEntryId,
         })),
       laborClaims: effectiveClaims ? [...effectiveClaims].map(([laborLineId, hours]) => ({ laborLineId, hours })) : undefined,
     }
@@ -271,7 +288,7 @@ export function ShopTicketEditor({
           <thead>
             <tr className="border-b text-left text-muted-foreground">
               <th className="py-2 pr-2 font-medium">Cost code</th>
-              <th className="w-32 py-2 pr-2 font-medium">Type</th>
+              <th className="w-56 py-2 pr-2 font-medium">Rate book rate</th>
               <th className="w-28 py-2 pr-2 text-right font-medium">Hours</th>
               <th className="w-24 py-2 pr-2 text-right font-medium">Rate</th>
               <th className="w-28 py-2 pr-2 text-right font-medium">Amount</th>
@@ -307,15 +324,21 @@ export function ShopTicketEditor({
                   ) : null}
                 </td>
                 <td className="py-2 pr-2">
-                  <Select value={line.rateKind} onValueChange={(value) => updateLine(line.key, { rateKind: value === "machine" ? "machine" : "labor" })}>
-                    <SelectTrigger aria-label={`Type for line ${index + 1}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="labor">Labor</SelectItem>
-                      <SelectItem value="machine">Machine</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableCombobox
+                    id={`shop-ticket-rate-${index}`}
+                    ariaLabel={`Rate for line ${index + 1}`}
+                    placeholder="Choose a rate"
+                    searchPlaceholder="Search rates..."
+                    emptyMessage="No matching rates."
+                    options={rateOptions}
+                    value={line.rate?.rateBookEntryId ?? ""}
+                    onValueChange={(value) => {
+                      // The picker reports "" when it resets; keep the current choice.
+                      const rate = workspace.rates.find((candidate) => candidate.rateBookEntryId === value)
+                      if (rate) updateLine(line.key, { rateKind: rate.kind, rateBookEntryId: rate.rateBookEntryId })
+                    }}
+                    className="w-full"
+                  />
                 </td>
                 <td className="py-2 pr-2">
                   <Input
@@ -328,7 +351,7 @@ export function ShopTicketEditor({
                   />
                 </td>
                 <td className="py-2 pr-2 text-right tabular-nums">
-                  {line.rate ? formatCents(line.rate.rateCents) : <span className="text-destructive">No {rateKindLabel(line.rateKind).toLowerCase()} rate</span>}
+                  {line.rate ? formatCents(line.rate.rateCents) : <span className="text-destructive">Choose a rate</span>}
                 </td>
                 <td className="py-2 pr-2 text-right tabular-nums">{formatCents(line.amountCents)}</td>
                 <td className="py-2">
@@ -374,14 +397,14 @@ export function ShopTicketEditor({
         onAdd={addSageHours}
       />
 
-      {!workspace.rates.labor || !workspace.rates.machine ? (
+      {!hasLaborRate || !hasMachineRate ? (
         <p className="text-sm text-muted-foreground">
           Rates come from{" "}
           <Link href="/dashboard/settings?section=rate-book" className="underline underline-offset-2">
             Settings → Rate book
           </Link>
-          .{!workspace.rates.labor ? " Add a Labor rate." : ""}
-          {!workspace.rates.machine ? " Add a Machine rate." : ""}
+          .{!hasLaborRate ? " Add a Labor rate." : ""}
+          {!hasMachineRate ? " Add a Machine rate." : ""}
         </p>
       ) : null}
 

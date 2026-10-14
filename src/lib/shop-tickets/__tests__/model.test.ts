@@ -11,10 +11,10 @@ import {
   type ShopTicketRates,
 } from "@/lib/shop-tickets/model"
 
-const RATES: ShopTicketRates = {
-  labor: { rateBookEntryId: "rb-labor", name: "Labor", rateCents: 5500 },
-  machine: { rateBookEntryId: "rb-machine", name: "Machine", rateCents: 12000 },
-}
+const RATES: ShopTicketRates = [
+  { rateBookEntryId: "rb-labor", kind: "labor", name: "Labor", rateCents: 5500 },
+  { rateBookEntryId: "rb-machine", kind: "machine", name: "Machine", rateCents: 12000 },
+]
 
 describe("shop ticket pricing", () => {
   it("bills hours at the set rate", () => {
@@ -25,8 +25,8 @@ describe("shop ticket pricing", () => {
   it("prices lines and totals them", () => {
     const result = priceShopTicketLines(
       [
-        { costCode: "09 91 23", description: "Interior Painting", rateKind: "labor", hours: 114.98 },
-        { costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 2 },
+        { costCode: "09 91 23", description: "Interior Painting", rateKind: "labor", hours: 114.98, rateBookEntryId: null },
+        { costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 2, rateBookEntryId: null },
       ],
       RATES,
       budgetCostCodeSet(["09 91 23", "01 71 13"]),
@@ -40,16 +40,34 @@ describe("shop ticket pricing", () => {
 
   it("asks for a rate when the rate book has none", () => {
     const result = priceShopTicketLines(
-      [{ costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 1 }],
-      { ...RATES, machine: null },
+      [{ costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 1, rateBookEntryId: null }],
+      RATES.filter((rate) => rate.kind !== "machine"),
       null,
     )
     expect(result).toEqual({ ok: false, error: "There is no machine rate yet. Add one in Settings → Rate book." })
   })
 
+  it("bills each line at the machine it names", () => {
+    const rates: ShopTicketRates = [
+      ...RATES,
+      { rateBookEntryId: "rb-kubota", kind: "machine", name: "Kubota", rateCents: 13500 },
+    ]
+    const line = { costCode: "31 23 23.13", description: "Backfill", rateKind: "machine" as const, hours: 2 }
+    const result = priceShopTicketLines([{ ...line, rateBookEntryId: "rb-kubota" }], rates, null)
+    expect(result.ok && result.lines[0]?.rateCents).toBe(13500)
+    expect(result.ok && result.lines[0]?.rateBookEntryId).toBe("rb-kubota")
+    // With two machine rates, a line that names none must choose.
+    expect(priceShopTicketLines([{ ...line, rateBookEntryId: null }], rates, null)).toEqual({
+      ok: false,
+      error: "Line 1 needs a machine rate. Choose one from the rate book.",
+    })
+    // A retired rate is not billed silently at another one.
+    expect(priceShopTicketLines([{ ...line, rateBookEntryId: "rb-gone" }], rates, null).ok).toBe(false)
+  })
+
   it("rejects missing cost codes and zero hours", () => {
-    expect(priceShopTicketLines([{ costCode: " ", description: "", rateKind: "labor", hours: 1 }], RATES, null).ok).toBe(false)
-    expect(priceShopTicketLines([{ costCode: "01 71 13", description: "", rateKind: "labor", hours: 0 }], RATES, null).ok).toBe(false)
+    expect(priceShopTicketLines([{ costCode: " ", description: "", rateKind: "labor", hours: 1, rateBookEntryId: null }], RATES, null).ok).toBe(false)
+    expect(priceShopTicketLines([{ costCode: "01 71 13", description: "", rateKind: "labor", hours: 0, rateBookEntryId: null }], RATES, null).ok).toBe(false)
   })
 })
 

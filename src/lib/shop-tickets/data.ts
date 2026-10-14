@@ -40,10 +40,7 @@ export async function loadShopTicketProject(db: Db, organizationId: string, proj
   return project ?? null
 }
 
-/**
- * The company's set rates. When a category has more than one active entry,
- * the most recently updated one is used, so editing a rate takes effect.
- */
+/** The company's active labor and machine rates, by name; each line picks one. */
 export async function loadShopTicketRates(db: Db, organizationId: string): Promise<ShopTicketRates> {
   const rows = await db
     .select({
@@ -60,12 +57,12 @@ export async function loadShopTicketRates(db: Db, organizationId: string): Promi
         inArray(rateBookEntries.category, ["labor", "machine"]),
       ),
     )
-    .orderBy(desc(rateBookEntries.updatedAt))
-  const pick = (category: "labor" | "machine") => {
-    const row = rows.find((entry) => entry.category === category)
-    return row ? { rateBookEntryId: row.id, name: row.name, rateCents: row.unitCostCents } : null
-  }
-  return { labor: pick("labor"), machine: pick("machine") }
+    .orderBy(asc(rateBookEntries.name))
+  return rows.flatMap((row) =>
+    row.category === "labor" || row.category === "machine"
+      ? [{ rateBookEntryId: row.id, kind: row.category, name: row.name, rateCents: row.unitCostCents }]
+      : [],
+  )
 }
 
 export async function loadCostCodeOptions(db: Db): Promise<readonly ShopTicketCostCodeOption[]> {

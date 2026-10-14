@@ -6,15 +6,19 @@ export type ShopTicketLineInput = {
   readonly description: string
   readonly rateKind: ShopTicketRateKind
   readonly hours: number
+  /** The rate book entry the line bills at; null picks the only rate of its kind. */
+  readonly rateBookEntryId: string | null
 }
 
 export type ShopTicketRate = {
   readonly rateBookEntryId: string
+  readonly kind: ShopTicketRateKind
   readonly name: string
   readonly rateCents: number
 }
 
-export type ShopTicketRates = { readonly [K in ShopTicketRateKind]: ShopTicketRate | null }
+/** The rate book's active labor and machine rates, by name. */
+export type ShopTicketRates = readonly ShopTicketRate[]
 
 export type PricedShopTicketLine = ShopTicketLineInput & {
   readonly rateCents: number
@@ -33,6 +37,20 @@ export function rateKindLabel(kind: ShopTicketRateKind): string {
   return RATE_KIND_LABEL[kind]
 }
 
+/**
+ * The rate a line bills at: the rate book entry it names, or the only active
+ * rate of its kind. Null when the entry is gone or there is a choice to make.
+ */
+export function resolveShopTicketRate(
+  rates: ShopTicketRates,
+  kind: ShopTicketRateKind,
+  rateBookEntryId: string | null,
+): ShopTicketRate | null {
+  const ofKind = rates.filter((rate) => rate.kind === kind)
+  if (rateBookEntryId) return ofKind.find((rate) => rate.rateBookEntryId === rateBookEntryId) ?? null
+  return ofKind.length === 1 ? (ofKind[0] ?? null) : null
+}
+
 /** Hours are kept to two decimals, the same precision Sage reports. */
 export function roundHours(hours: number): number {
   return Math.round(hours * 100) / 100
@@ -44,7 +62,7 @@ export function lineAmountCents(hours: number, rateCents: number): number {
 }
 
 /**
- * Prices every line at the company's set rate for its kind. The rate is
+ * Prices every line at the rate book rate it names. The rate is
  * copied onto the line so a later rate change never alters an issued ticket.
  */
 export function priceShopTicketLines(
@@ -60,11 +78,14 @@ export function priceShopTicketLines(
       return { ok: false, error: `Line ${index + 1} needs hours greater than zero.` }
     }
     if (line.hours > 2000) return { ok: false, error: `Line ${index + 1} has more hours than one ticket can bill.` }
-    const rate = rates[line.rateKind]
+    const rate = resolveShopTicketRate(rates, line.rateKind, line.rateBookEntryId)
     if (!rate) {
+      const kind = rateKindLabel(line.rateKind).toLowerCase()
       return {
         ok: false,
-        error: `There is no ${rateKindLabel(line.rateKind).toLowerCase()} rate yet. Add one in Settings → Rate book.`,
+        error: rates.some((candidate) => candidate.kind === line.rateKind)
+          ? `Line ${index + 1} needs a ${kind} rate. Choose one from the rate book.`
+          : `There is no ${kind} rate yet. Add one in Settings → Rate book.`,
       }
     }
     const hours = roundHours(line.hours)
@@ -73,9 +94,9 @@ export function priceShopTicketLines(
       description: line.description.trim(),
       rateKind: line.rateKind,
       hours,
+      rateBookEntryId: rate.rateBookEntryId,
       rateCents: rate.rateCents,
       amountCents: lineAmountCents(hours, rate.rateCents),
-      rateBookEntryId: rate.rateBookEntryId,
       outsideBudget: isOutsideBudget(costCode, budgetCostCodes),
     })
   }

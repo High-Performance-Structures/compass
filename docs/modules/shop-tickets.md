@@ -8,11 +8,13 @@ saved as a PDF into the draw's receipts folder.
 
 - **Where:** each project's Shop Tickets page (sidebar → Financial →
   Shop Tickets, or `/dashboard/projects/{id}/shop-tickets`).
-- **Lines:** each line is a cost code from the Sage cost code list, a type
-  (Labor or Machine) and hours. Staff can add, edit and remove lines on a
-  draft.
-- **Rates:** every line bills hours × the set rate from Settings → Rate book
-  (the most recently updated active entry in the Labor or Machine category).
+- **Lines:** each line is a cost code from the Sage cost code list, a rate
+  chosen by name from Settings → Rate book (its active Labor and Machine
+  entries, such as one per machine) and hours. Staff can add, edit and remove
+  lines on a draft.
+- **Rates:** every line bills hours × the rate it names. When the rate book
+  has only one active rate of a kind, lines use it without asking; otherwise
+  each line must choose, and a line whose rate was retired must choose again.
   The rate is copied onto the line, so changing a rate never alters an issued
   ticket.
 - **Budget check:** when the project has budget lines, a cost code that is not
