@@ -1,4 +1,6 @@
 import { z } from "zod/v4"
+import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
+import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
 import {
   DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
   clientFollowUpSettingsSchema,
@@ -386,7 +388,34 @@ export const internalDutySettingsSchema = z.object({
 
 export type InternalDutySettings = z.infer<typeof internalDutySettingsSchema>
 
+/**
+ * Daily logs: what every log must include before it can be saved, beyond the
+ * date and the work completed. The same rules apply in the browser and in
+ * Field Mode on phones.
+ */
+export const dailyLogSettingsSchema = z.object({
+  /** At least one cost code with its time. */
+  requireCostCodeTime: z.boolean(),
+  requiredFields: z.array(z.enum(DAILY_LOG_OPTIONAL_FIELDS)).max(DAILY_LOG_OPTIONAL_FIELDS.length),
+  /** The labor cost codes job daily logs choose from (Sage Time & Attendance). */
+  laborCostCodes: z
+    .array(
+      z.object({
+        code: z.string().trim().min(1).max(20),
+        payrollId: z.string().trim().max(20),
+        name: z.string().trim().min(1).max(80),
+        active: z.boolean(),
+      }),
+    )
+    .max(300),
+  /** Departments whose jobs use the labor list; other jobs list every company cost code. */
+  laborCodeDepartments: z.array(z.enum(["O", "H", "N", "D"])).max(4),
+})
+
+export type DailyLogSettings = z.infer<typeof dailyLogSettingsSchema>
+
 type FeatureSettingsTypes = {
+  readonly "daily-logs": DailyLogSettings
   readonly "internal-duties": InternalDutySettings
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
@@ -419,6 +448,17 @@ export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "daily-logs": {
+    label: "Daily logs",
+    description: "What every daily log must include before it saves, in the browser and in Field Mode.",
+    defaults: {
+      requireCostCodeTime: true,
+      requiredFields: [],
+      laborCostCodes: [...DEFAULT_LABOR_COST_CODES],
+      laborCodeDepartments: [...DEFAULT_LABOR_CODE_DEPARTMENTS],
+    },
+    schema: dailyLogSettingsSchema,
+  },
   "internal-duties": {
     label: "Internal duties",
     description: "The duties staff log in internal workspaces (H-Office, the yard). Each duty is a cost code so hours match how payroll is coded.",

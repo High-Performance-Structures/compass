@@ -19,7 +19,7 @@ function packet(): FieldProjectPacket {
       },
       { id: "channel-2", name: "Office", unreadCount: 0, messages: [] },
     ],
-    contacts: [], notifications: [], syncedAt: "2026-08-20T12:00:00.000Z",
+    contacts: [], notifications: [], dailyLogForm: null, syncedAt: "2026-08-20T12:00:00.000Z",
   }
 }
 

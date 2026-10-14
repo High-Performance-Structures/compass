@@ -15,6 +15,9 @@ function dailyLogItem(): FieldOutboxItem {
       issues: "",
       crewPresent: "Dan",
       notes: "",
+      materialsUsed: "",
+      safetyIncidents: "",
+      visitorLog: "",
     },
     remoteDailyLogId: null,
     attachments: [
