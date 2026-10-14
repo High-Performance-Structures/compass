@@ -7,8 +7,9 @@ equipment rental, material, subcontract and other.
 ## Entries
 
 Each entry has a name, category, unit (hr, man-hr, gal, day, trip, …), cost
-per unit, default markup, an optional CSI/Sage cost code (from the same
-catalog estimates use), notes, and, for fuel-bearing rates, a fuel type and
+per unit, default markup, an optional default CSI/Sage cost code (from the
+same catalog estimates use; leave it blank for rates used on different work,
+such as a machine that excavates one day and backfills the next), notes, and, for fuel-bearing rates, a fuel type and
 gallons per unit. The fuel fields support a later fuel-cost review.
 
 - **Editors:** the zone-charge editors (administrators, company owners,
@@ -24,7 +25,8 @@ gallons per unit. The fuel fields support a later fuel-cost review.
 ## In estimates
 
 In a line's cost breakdown, **From rate book** fills description, unit, cost,
-markup and, when set, the cost code. The picker also lists this job's zone,
+markup and, when the line has no cost code yet, the rate's default cost
+code. A cost code already chosen on the line is never replaced. The picker also lists this job's zone,
 mountain, lodging and per diem charges, including per-job adjustments
 (`getProjectTravelCharge`).
 

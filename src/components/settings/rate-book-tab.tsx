@@ -407,7 +407,7 @@ function RateEditor({
               onChange={(event) => update({ markup: event.target.value })} />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="rate-cost-code">Cost code</Label>
+            <Label htmlFor="rate-cost-code">Default cost code (optional)</Label>
             <SearchableCombobox
               id="rate-cost-code"
               className="h-9"
@@ -417,12 +417,15 @@ function RateEditor({
                 if (value) update({ costCode: value })
               }}
               options={codeSelectOptions}
-              ariaLabel="Cost code"
+              ariaLabel="Default cost code"
               placeholder="No cost code"
               searchPlaceholder="Search cost codes..."
               emptyMessage="No matching cost codes."
               disabled={readOnly}
             />
+            <p className="text-xs text-muted-foreground">
+              Leave blank for rates used on different work, like a machine that digs one day and backfills the next. You pick the cost code each time you use the rate; a default never replaces one already chosen.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="rate-fuel">Fuel</Label>
