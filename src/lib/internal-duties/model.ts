@@ -11,6 +11,11 @@ export function dutiesFor(settings: InternalDutySettings, kind: WorkspaceKind): 
   return settings.duties.filter((duty) => duty.active && duty.workspace === workspace).map(({ code, label }) => ({ code, label }))
 }
 
+/** Whether Field Mode offers a duty: field duties unless switched off, office duties only when switched on. */
+export function dutyOnPhones(duty: { readonly workspace: "office" | "field"; readonly active: boolean; readonly onPhones?: boolean }): boolean {
+  return duty.active && (duty.onPhones ?? duty.workspace === "field")
+}
+
 export function dutyDisplay(code: string, label: string): string {
   return `${code} ${label}`
 }

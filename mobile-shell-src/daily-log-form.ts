@@ -159,8 +159,11 @@ function costCodeOptions(form: FieldDailyLogForm, selected: string, escape: Esca
 }
 
 function workLinesHtml(draft: LogDraft, form: FieldDailyLogForm | null, required: boolean, errors: ReadonlyMap<string, string>, escape: Escape): string {
-  if (!form || form.costCodes.length === 0) {
+  if (!form) {
     return `<div class="work-lines"><p class="field-label">Cost codes and time</p><p class="field-hint">Cost codes download with the project. Refresh the project while you have service to add them.</p></div>`
+  }
+  if (form.costCodes.length === 0) {
+    return `<div class="work-lines"><p class="field-label">Cost codes and time</p><p class="field-hint">This job's cost codes are added in Compass in the browser.</p></div>`
   }
   const rows = draft.workLines
     .map((line, index) => {

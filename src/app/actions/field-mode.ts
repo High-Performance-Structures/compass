@@ -23,6 +23,7 @@ import {
   users,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
+import { phoneDailyLogForm } from "@/lib/daily-logs/cost-code-lines"
 import { getCloudflareContext } from "@/lib/db"
 import type {
   FieldDailyLogDraft,
@@ -326,13 +327,8 @@ export async function getFieldProjectPacket(
         email: contact.email,
         role: userRoleLabel(contact.role),
       })),
-    dailyLogForm: {
-      costCodes: [...dailyLogWorkspace.form.costCodes],
-      requirements: {
-        requireCostCodeTime: dailyLogWorkspace.form.requirements.requireCostCodeTime,
-        requiredFields: [...dailyLogWorkspace.form.requirements.requiredFields],
-      },
-    },
+    // Only short lists (H/O labor codes, internal duties) go to phones.
+    dailyLogForm: phoneDailyLogForm(dailyLogWorkspace.form),
     notifications: notificationResult.success
       ? notificationResult.data.items.map((item) => ({
           id: item.id,
