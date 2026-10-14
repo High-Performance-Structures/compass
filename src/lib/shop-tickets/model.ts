@@ -17,6 +17,9 @@ export type ShopTicketRate = {
   readonly kind: ShopTicketRateKind
   readonly name: string
   readonly rateCents: number
+  /** The rate's default cost code, used when a line has none. */
+  readonly costCode: string | null
+  readonly costCodeName: string | null
 }
 
 /** The rate book's active labor and machine rates, by name. */
@@ -75,8 +78,6 @@ export function priceShopTicketLines(
 ): PricingResult {
   const priced: PricedShopTicketLine[] = []
   for (const [index, line] of lines.entries()) {
-    const costCode = line.costCode.trim()
-    if (!costCode) return { ok: false, error: `Line ${index + 1} needs a cost code.` }
     if (!Number.isFinite(line.hours) || line.hours <= 0) {
       return { ok: false, error: `Line ${index + 1} needs hours greater than zero.` }
     }
@@ -91,11 +92,15 @@ export function priceShopTicketLines(
           : `There is no ${kind} rate yet. Add one in Settings → Rate book.`,
       }
     }
+    // A line left without a cost code takes its rate's default.
+    const typedCode = line.costCode.trim()
+    const costCode = typedCode || rate.costCode?.trim() || ""
+    if (!costCode) return { ok: false, error: `Line ${index + 1} needs a cost code.` }
     const hours = roundHours(line.hours)
     const rateCents = line.rateOverrideCents ?? rate.rateCents
     priced.push({
       costCode,
-      description: line.description.trim(),
+      description: typedCode ? line.description.trim() : line.description.trim() || (rate.costCodeName ?? ""),
       rateKind: line.rateKind,
       hours,
       rateBookEntryId: rate.rateBookEntryId,
