@@ -35,11 +35,29 @@ export const ALL_CODES_GROUP = "All cost codes"
  * - any other job lists the codes on its budget first, then every active
  *   company cost code.
  */
+/**
+ * Where a project's list comes from. Phones download only the labor codes and
+ * the yards' duties (field workspaces in a labor-list department); office
+ * duties and the full company list stay in the browser.
+ */
+export type DailyLogCostCodeSource = "labor" | "yard-duties" | "duties" | "company"
+
+/** Lists Field Mode downloads. */
+export const PHONE_COST_CODE_SOURCES: ReadonlySet<DailyLogCostCodeSource> = new Set(["labor", "yard-duties"])
+
 export async function dailyLogCostCodeOptions(
   db: Db,
   organizationId: string,
   projectId: string,
 ): Promise<readonly DailyLogCostCodeOption[]> {
+  return (await dailyLogCostCodeList(db, organizationId, projectId)).options
+}
+
+export async function dailyLogCostCodeList(
+  db: Db,
+  organizationId: string,
+  projectId: string,
+): Promise<{ readonly source: DailyLogCostCodeSource; readonly options: readonly DailyLogCostCodeOption[] }> {
   const [project] = await db
     .select({
       workspaceKind: projects.workspaceKind,
@@ -49,21 +67,28 @@ export async function dailyLogCostCodeOptions(
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1)
+  const dailyLogSettings = await readFeatureSettings(db, organizationId, "daily-logs")
+  const department = resolvedProjectDepartment({ department: project?.department, projectId, projectNumber: project?.projectNumber })
+  const inLaborDepartment = department !== null && dailyLogSettings.laborCodeDepartments.includes(department)
   if (project?.workspaceKind) {
     const settings = await readFeatureSettings(db, organizationId, "internal-duties")
-    return dutiesFor(settings, project.workspaceKind).map((duty) => ({
-      code: duty.code,
-      name: duty.label,
-      label: dutyDisplay(duty.code, duty.label),
-      group: "",
-    }))
+    return {
+      source: project.workspaceKind === "field" && inLaborDepartment ? "yard-duties" : "duties",
+      options: dutiesFor(settings, project.workspaceKind).map((duty) => ({
+        code: duty.code,
+        name: duty.label,
+        label: dutyDisplay(duty.code, duty.label),
+        group: "",
+      })),
+    }
   }
 
-  const settings = await readFeatureSettings(db, organizationId, "daily-logs")
-  const department = resolvedProjectDepartment({ department: project?.department, projectId, projectNumber: project?.projectNumber })
-  const laborCodes = settings.laborCostCodes.filter((code) => code.active)
-  if (department && settings.laborCodeDepartments.includes(department) && laborCodes.length > 0) {
-    return laborCodes.map((code) => ({ code: code.code, name: code.name, label: `${code.code} ${code.name}`, group: "" }))
+  const laborCodes = dailyLogSettings.laborCostCodes.filter((code) => code.active)
+  if (inLaborDepartment && laborCodes.length > 0) {
+    return {
+      source: "labor",
+      options: laborCodes.map((code) => ({ code: code.code, name: code.name, label: `${code.code} ${code.name}`, group: "" })),
+    }
   }
 
   const [companyCodes, budgetRows] = await Promise.all([
@@ -83,14 +108,17 @@ export async function dailyLogCostCodeOptions(
     const code = row.code.trim()
     if (code && !budget.has(code)) budget.set(code, companyLabels.get(code) ?? row.description)
   }
-  return [
+  return {
+    source: "company",
+    options: [
     ...[...budget.entries()]
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([code, description]) => ({ code, name: description, label: `${code} ${description}`.trim(), group: ON_BUDGET_GROUP })),
     ...companyCodes
       .filter((row) => !budget.has(row.code))
       .map((row) => ({ code: row.code, name: row.description, label: `${row.code} ${row.description}`.trim(), group: ALL_CODES_GROUP })),
-  ]
+    ],
+  }
 }
 
 export async function dailyLogRequirements(db: Db, organizationId: string): Promise<DailyLogRequirements> {
@@ -100,21 +128,42 @@ export async function dailyLogRequirements(db: Db, organizationId: string): Prom
 
 /** What a daily log form needs: the project's cost codes and the company's required fields. */
 export type DailyLogFormSetup = {
+  readonly source: DailyLogCostCodeSource
   readonly costCodes: readonly DailyLogCostCodeOption[]
   readonly requirements: DailyLogRequirements
 }
 
 export const EMPTY_DAILY_LOG_FORM_SETUP: DailyLogFormSetup = {
+  source: "company",
   costCodes: [],
   requirements: DEFAULT_DAILY_LOG_REQUIREMENTS,
 }
 
+/**
+ * What Field Mode downloads for a project. Projects on a browser-only list
+ * (N and D jobs, office workspaces) get no codes on the phone, and their
+ * phone logs don't require one; the office adds codes in the browser.
+ */
+export function phoneDailyLogForm(setup: DailyLogFormSetup): {
+  readonly costCodes: DailyLogCostCodeOption[]
+  readonly requirements: { readonly requireCostCodeTime: boolean; readonly requiredFields: DailyLogRequirements["requiredFields"][number][] }
+} {
+  const onPhone = PHONE_COST_CODE_SOURCES.has(setup.source)
+  return {
+    costCodes: onPhone ? [...setup.costCodes] : [],
+    requirements: {
+      requireCostCodeTime: onPhone && setup.requirements.requireCostCodeTime,
+      requiredFields: [...setup.requirements.requiredFields],
+    },
+  }
+}
+
 export async function dailyLogFormSetup(db: Db, organizationId: string, projectId: string): Promise<DailyLogFormSetup> {
-  const [costCodes, requirements] = await Promise.all([
-    dailyLogCostCodeOptions(db, organizationId, projectId),
+  const [list, requirements] = await Promise.all([
+    dailyLogCostCodeList(db, organizationId, projectId),
     dailyLogRequirements(db, organizationId),
   ])
-  return { costCodes, requirements }
+  return { source: list.source, costCodes: list.options, requirements }
 }
 
 /** Each log's cost code lines, in the order they were entered. */
@@ -228,8 +277,8 @@ export async function checkDailyLogForm(
   existingDailyLogId: string | null,
   allowUnlistedCodes: boolean,
 ): Promise<CheckedDailyLogForm> {
-  const [options, requirements, existing] = await Promise.all([
-    dailyLogCostCodeOptions(db, organizationId, projectId),
+  const [list, companyRequirements, existing] = await Promise.all([
+    dailyLogCostCodeList(db, organizationId, projectId),
     dailyLogRequirements(db, organizationId),
     existingDailyLogId
       ? db
@@ -238,6 +287,13 @@ export async function checkDailyLogForm(
           .where(eq(internalDutyEntries.dailyLogId, existingDailyLogId))
       : Promise.resolve([]),
   ])
+  const options = list.options
+  // Phones don't get browser-only lists, so their logs for those projects
+  // can't be held to the cost code rule.
+  const requirements =
+    allowUnlistedCodes && !PHONE_COST_CODE_SOURCES.has(list.source)
+      ? { ...companyRequirements, requireCostCodeTime: false }
+      : companyRequirements
   const allowed = allowUnlistedCodes
     ? [...options, ...values.workLines.map((line) => ({ code: line.costCode.trim() }))]
     : [...options, ...existing.map((row) => ({ code: row.code }))]

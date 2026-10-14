@@ -305,7 +305,7 @@ export function DailyLogSettingsSection(): React.ReactElement {
 
       <section aria-labelledby="daily-log-departments" className="grid gap-2">
         <h3 id="daily-log-departments" className="text-sm font-semibold">Jobs that use the labor list</h3>
-        <p className="text-sm text-muted-foreground">Other departments&apos; jobs offer every company cost code, with the job&apos;s budget codes first.</p>
+        <p className="text-sm text-muted-foreground">Other departments&apos; jobs offer every company cost code, with the job&apos;s budget codes first, in the browser only. Phones download just the labor list and, for yards in these departments, the field duties.</p>
         <div className="flex flex-wrap gap-4">
           {DEPARTMENT_CODES.map((code) => (
             <label key={code} className="flex items-center gap-2 text-sm">
