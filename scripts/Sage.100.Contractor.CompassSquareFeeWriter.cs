@@ -432,6 +432,8 @@ namespace CompassSageClientProjectWriter
             }
         }
 
+        private const string PeriodMismatchWarning = "Posting period/year does not match the current posting period/year.";
+
         private static string BuildFeeXml(string user, string transactionNumber, DateTime date, string desc, string memo, string lineDesc, int feeAccount, int depositAccount, decimal amount, FeeVendor vendor)
         {
             string money = amount.ToString("0.00", CultureInfo.InvariantCulture);
@@ -449,13 +451,17 @@ namespace CompassSageClientProjectWriter
             body.Append("<AccountingPeriod>").Append(date.Month).Append("</AccountingPeriod>");
             body.Append("<PostingYear>").Append(date.Year).Append("</PostingYear>");
             body.Append("<Memo>").Append(XmlEscape(memo)).Append("</Memo>");
+            // Staff click through this one warning when posting a fee into an
+            // earlier month. Accept only it; any other warning still stops the
+            // write. Approved by Martine 2026-10-13.
+            body.Append("<APIWarningMessage>").Append(XmlEscape(PeriodMismatchWarning)).Append("</APIWarningMessage>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(feeAccount)
                 .Append("</ObjectID></AccountRef><DebitAmount>").Append(money).Append("</DebitAmount></GeneralLedgerLineAdd>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(depositAccount)
                 .Append("</ObjectID></AccountRef><CreditAmount>").Append(money).Append("</CreditAmount></GeneralLedgerLineAdd>");
             string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" + XmlEscape(TargetCompany) + "</Company><User>" + XmlEscape(user) +
-                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-square-fee\" onError=\"stopOnError\"><GeneralLedgerAddRq requestID=\"" + Guid.NewGuid().ToString() + "\">" +
-                body + "</GeneralLedgerAddRq></MBXMLMsgsRq></api:MBXML>";
+                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-square-fee\" onError=\"stopOnError\"><GeneralLedgerAddWithWarningRq requestID=\"" + Guid.NewGuid().ToString() + "\">" +
+                body + "</GeneralLedgerAddWithWarningRq></MBXMLMsgsRq></api:MBXML>";
             ValidateXml(xml);
             return xml;
         }
