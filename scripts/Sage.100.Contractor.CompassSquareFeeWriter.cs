@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Reflection;
 using System.Globalization;
 using System.Text;
 
@@ -74,14 +76,81 @@ namespace CompassSageClientProjectWriter
         }
 
         /// <summary>
-        /// Runs after the client/project writes in the same scheduled run. A fee
-        /// problem is logged and never fails the client/project writer.
+        /// Runs after the client/project writes, as a fresh child process
+        /// (--square-fee-run): Sage's API can fail when one process opens a
+        /// second session after closing the first. A fee problem is logged and
+        /// never fails the client/project writer.
         /// </summary>
         private static void RunSquareFeesAfterWriterRun()
         {
             if (!SquareFeeWritesEnabled()) return;
-            try { PollSquareFees(); }
-            catch (Exception error) { WriteLog("ERROR", "Square fee run failed: " + error.Message); }
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, "--square-fee-run")
+                {
+                    UseShellExecute = false, // inherits this process's environment, including the fee switch
+                    CreateNoWindow = true,
+                };
+                using (System.Diagnostics.Process child = System.Diagnostics.Process.Start(start))
+                {
+                    if (child == null) throw new InvalidOperationException("Could not start the Square fee run.");
+                    if (!child.WaitForExit(5 * 60 * 1000))
+                    {
+                        WriteLog("ERROR", "Square fee run is still going after 5 minutes; leaving it to finish.");
+                        return;
+                    }
+                    if (child.ExitCode != 0) WriteLog("ERROR", "Square fee run exited with code " + child.ExitCode + ".");
+                }
+            }
+            catch (Exception error) { WriteLog("ERROR", "Square fee run failed to start: " + Detail(error)); }
+        }
+
+        /// <summary>--square-fee-run: posts Square fees only, in its own process with one Sage session.</summary>
+        private static int RunSquareFeesOnly()
+        {
+            try
+            {
+                if (!SquareFeeWritesEnabled()) throw new InvalidOperationException("SAGE_SQUARE_FEE_WRITES_ENABLED is off.");
+                Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET"); Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
+                WriteLog("INFO", "Square fee run started.");
+                PollSquareFees();
+                WriteLog("INFO", "Square fee run completed.");
+                return 0;
+            }
+            catch (Exception error)
+            {
+                WriteLog("ERROR", "Square fee run failed: " + Detail(error));
+                return 1;
+            }
+        }
+
+        /// <summary>
+        /// --sage-reinit-test: no writes. Opens and closes a Sage API session
+        /// twice in one process, to show whether reopening fails.
+        /// </summary>
+        private static int RunSageReinitTest()
+        {
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
+                    WriteLog("INFO", "SAGE_REINIT_TEST session " + attempt + " OK");
+                    Console.WriteLine("SAGE_REINIT_TEST session " + attempt + " OK");
+                }
+                catch (Exception error)
+                {
+                    WriteLog("ERROR", "SAGE_REINIT_TEST session " + attempt + " FAILED: " + Detail(error));
+                    Console.WriteLine("SAGE_REINIT_TEST session " + attempt + " FAILED: " + error.GetType().Name + " " + error.Message);
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
+        private static string Detail(Exception error)
+        {
+            return error.ToString().Replace("\r", " ").Replace("\n", " | ");
         }
 
         /// <summary>
@@ -107,7 +176,7 @@ namespace CompassSageClientProjectWriter
             }
             catch (Exception error)
             {
-                WriteLog("FATAL", "Square fee diagnostic failed: " + error.Message);
+                WriteLog("FATAL", "Square fee diagnostic failed: " + Detail(error));
                 Console.WriteLine("SQUARE_FEE_DIAGNOSTIC_FAILED " + error.Message);
                 return 1;
             }
@@ -194,7 +263,7 @@ namespace CompassSageClientProjectWriter
                 {
                     foreach (FeeRequest request in toWrite)
                     {
-                        try { Submit(xmlByRequest[request.id], Required("SAGE_API_PASSWORD")); }
+                        try { SubmitAcceptingPeriodWarning(xmlByRequest[request.id], Required("SAGE_API_PASSWORD")); }
                         catch (Exception error) { writeErrors[request.id] = error; }
                     }
                 }
@@ -363,6 +432,49 @@ namespace CompassSageClientProjectWriter
             }
         }
 
+        private const string PeriodMismatchWarning = "Posting period/year does not match the current posting period/year.";
+
+        // Staff click through Sage's posting-period warning when they post a fee
+        // into an earlier month (approved by Martine 2026-10-13). Sage only takes
+        // the acknowledgement if APIWarningMessage repeats its warning verbatim,
+        // so submit a plain add first (the with-warning form answers 14204 without
+        // naming the warning), and if Sage answers 14203 with exactly that one
+        // warning, resubmit the with-warning form echoing Sage's own text. Any other warning or error
+        // still stops the write; a mismatched echo (14204) writes nothing.
+        private static void SubmitAcceptingPeriodWarning(string xml, string password)
+        {
+            string warning;
+            try { Submit(xml, password); return; }
+            catch (InvalidOperationException error)
+            {
+                const string prefix = "Sage API rejected the request (code 14203): ";
+                if (!error.Message.StartsWith(prefix, StringComparison.Ordinal)) throw;
+                warning = error.Message.Substring(prefix.Length);
+                int open = warning.IndexOf("(#", StringComparison.Ordinal);
+                if (open < 0 || warning.IndexOf("(#", open + 2, StringComparison.Ordinal) >= 0 || warning.IndexOf(PeriodMismatchWarning, StringComparison.Ordinal) < 0) throw;
+            }
+            int start = warning.IndexOf("(#", StringComparison.Ordinal);
+            int end = warning.IndexOf("#)", start, StringComparison.Ordinal);
+            string marked = end < 0 ? warning.Substring(start) : warning.Substring(start, end + 2 - start);
+            string[] candidates = { marked, marked.Substring(2, marked.Length - (end < 0 ? 2 : 4)).Trim(), warning };
+            int at = xml.IndexOf("<GeneralLedgerLineAdd>", StringComparison.Ordinal);
+            if (at < 0) throw new InvalidOperationException("Fee XML has no ledger lines.");
+            InvalidOperationException last = null;
+            foreach (string candidate in candidates)
+            {
+                string retry = xml.Insert(at, "<APIWarningMessage>" + XmlEscape(candidate) + "</APIWarningMessage>")
+                    .Replace("<GeneralLedgerAddRq ", "<GeneralLedgerAddWithWarningRq ").Replace("</GeneralLedgerAddRq>", "</GeneralLedgerAddWithWarningRq>");
+                ValidateXml(retry);
+                try { Submit(retry, password); WriteLog("INFO", "Accepted Sage posting-period warning as: " + candidate); return; }
+                catch (InvalidOperationException error)
+                {
+                    if (error.Message.IndexOf("(code 14204)", StringComparison.Ordinal) < 0) throw;
+                    last = error;
+                }
+            }
+            throw new InvalidOperationException(last.Message + " Sage warning was: [" + warning + "]");
+        }
+
         private static string BuildFeeXml(string user, string transactionNumber, DateTime date, string desc, string memo, string lineDesc, int feeAccount, int depositAccount, decimal amount, FeeVendor vendor)
         {
             string money = amount.ToString("0.00", CultureInfo.InvariantCulture);
@@ -374,6 +486,11 @@ namespace CompassSageClientProjectWriter
             // schema wants VendorRef/ObjectID after Desc, before Payee.
             if (vendor != null) body.Append("<VendorRef><ObjectID>").Append(vendor.Number).Append("</ObjectID></VendorRef>");
             body.Append("<Payee>").Append(XmlEscape(Truncate(vendor == null ? "Square" : vendor.Name, 50))).Append("</Payee>");
+            // Post into the period of the transaction date, as staff do. Left
+            // blank, Sage uses the current period and refuses the mismatch
+            // (14203). HPS's fiscal year is the calendar year (Sept = period 9).
+            body.Append("<AccountingPeriod>").Append(date.Month).Append("</AccountingPeriod>");
+            body.Append("<PostingYear>").Append(date.Year).Append("</PostingYear>");
             body.Append("<Memo>").Append(XmlEscape(memo)).Append("</Memo>");
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(feeAccount)
                 .Append("</ObjectID></AccountRef><DebitAmount>").Append(money).Append("</DebitAmount></GeneralLedgerLineAdd>");

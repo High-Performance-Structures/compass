@@ -164,6 +164,10 @@ namespace CompassSageClientProjectWriter
                 return RunContactSchemaTest();
             if (args.Length > 0 && String.Equals(args[0], "--square-fee-diagnose", StringComparison.OrdinalIgnoreCase))
                 return RunSquareFeeDiagnostics();
+            if (args.Length > 0 && String.Equals(args[0], "--square-fee-run", StringComparison.OrdinalIgnoreCase))
+                return RunSquareFeesOnly();
+            if (args.Length > 0 && String.Equals(args[0], "--sage-reinit-test", StringComparison.OrdinalIgnoreCase))
+                return RunSageReinitTest();
             bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
