@@ -15,6 +15,9 @@ saved as a PDF into the draw's receipts folder.
 - **Rates:** every line bills hours × the rate it names. When the rate book
   has only one active rate of a kind, lines use it without asking; otherwise
   each line must choose, and a line whose rate was retired must choose again.
+  A line without a cost code takes its rate's default cost code (picking the
+  rate fills it in, and saving fills any still blank); a chosen cost code is
+  never replaced.
   Type a different rate in the line's Rate box to override the rate book for
   that line; clear it (or use the "Rate book $…" link) to go back.
   The rate is copied onto the line, so changing a rate never alters an issued

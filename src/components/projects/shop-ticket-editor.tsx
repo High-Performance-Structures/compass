@@ -351,7 +351,16 @@ export function ShopTicketEditor({
                     onValueChange={(value) => {
                       // The picker reports "" when it resets; keep the current choice.
                       const rate = workspace.rates.find((candidate) => candidate.rateBookEntryId === value)
-                      if (rate) updateLine(line.key, { rateKind: rate.kind, rateBookEntryId: rate.rateBookEntryId })
+                      if (!rate) return
+                      // A rate's default cost code fills a line that has none yet.
+                      const defaultCode = !line.costCode && rate.costCode ? rate.costCode : null
+                      updateLine(line.key, {
+                        rateKind: rate.kind,
+                        rateBookEntryId: rate.rateBookEntryId,
+                        ...(defaultCode
+                          ? { costCode: defaultCode, description: descriptionFor.get(defaultCode) ?? rate.costCodeName ?? "" }
+                          : {}),
+                      })
                     }}
                     className="w-full"
                   />

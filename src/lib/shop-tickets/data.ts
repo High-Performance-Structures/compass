@@ -48,6 +48,8 @@ export async function loadShopTicketRates(db: Db, organizationId: string): Promi
       name: rateBookEntries.name,
       category: rateBookEntries.category,
       unitCostCents: rateBookEntries.unitCostCents,
+      costCode: rateBookEntries.costCode,
+      costCodeName: rateBookEntries.costCodeName,
     })
     .from(rateBookEntries)
     .where(
@@ -60,7 +62,7 @@ export async function loadShopTicketRates(db: Db, organizationId: string): Promi
     .orderBy(asc(rateBookEntries.name))
   return rows.flatMap((row) =>
     row.category === "labor" || row.category === "machine"
-      ? [{ rateBookEntryId: row.id, kind: row.category, name: row.name, rateCents: row.unitCostCents }]
+      ? [{ rateBookEntryId: row.id, kind: row.category, name: row.name, rateCents: row.unitCostCents, costCode: row.costCode, costCodeName: row.costCodeName }]
       : [],
   )
 }

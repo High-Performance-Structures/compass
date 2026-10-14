@@ -12,8 +12,8 @@ import {
 } from "@/lib/shop-tickets/model"
 
 const RATES: ShopTicketRates = [
-  { rateBookEntryId: "rb-labor", kind: "labor", name: "Labor", rateCents: 5500 },
-  { rateBookEntryId: "rb-machine", kind: "machine", name: "Machine", rateCents: 12000 },
+  { rateBookEntryId: "rb-labor", kind: "labor", name: "Labor", rateCents: 5500, costCode: null, costCodeName: null },
+  { rateBookEntryId: "rb-machine", kind: "machine", name: "Machine", rateCents: 12000, costCode: null, costCodeName: null },
 ]
 
 describe("shop ticket pricing", () => {
@@ -50,7 +50,7 @@ describe("shop ticket pricing", () => {
   it("bills each line at the machine it names", () => {
     const rates: ShopTicketRates = [
       ...RATES,
-      { rateBookEntryId: "rb-kubota", kind: "machine", name: "Kubota", rateCents: 13500 },
+      { rateBookEntryId: "rb-kubota", kind: "machine", name: "Kubota", rateCents: 13500, costCode: "31 23 23.13", costCodeName: "Backfill" },
     ]
     const line = { costCode: "31 23 23.13", description: "Backfill", rateKind: "machine" as const, hours: 2, rateOverrideCents: null }
     const result = priceShopTicketLines([{ ...line, rateBookEntryId: "rb-kubota" }], rates, null)
@@ -74,6 +74,19 @@ describe("shop ticket pricing", () => {
     expect(result.ok && result.lines[0]?.rateCents).toBe(10000)
     expect(result.ok && result.totalCents).toBe(20000)
     expect(result.ok && result.lines[0]?.rateBookEntryId).toBe("rb-machine")
+  })
+
+  it("uses the rate's default cost code when a line has none", () => {
+    const rates: ShopTicketRates = [
+      { rateBookEntryId: "rb-kubota", kind: "machine", name: "Kubota", rateCents: 13500, costCode: "31 23 23.13", costCodeName: "Backfill" },
+    ]
+    const line = { description: "", rateKind: "machine" as const, hours: 1, rateBookEntryId: "rb-kubota", rateOverrideCents: null }
+    const blank = priceShopTicketLines([{ ...line, costCode: " " }], rates, null)
+    expect(blank.ok && blank.lines[0]?.costCode).toBe("31 23 23.13")
+    expect(blank.ok && blank.lines[0]?.description).toBe("Backfill")
+    // A cost code someone chose is never replaced.
+    const chosen = priceShopTicketLines([{ ...line, costCode: "31 23 16", description: "Excavation" }], rates, null)
+    expect(chosen.ok && chosen.lines[0]?.costCode).toBe("31 23 16")
   })
 
   it("rejects missing cost codes and zero hours", () => {
