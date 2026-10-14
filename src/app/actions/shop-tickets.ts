@@ -78,6 +78,7 @@ const ticketInputSchema = z.object({
         rateKind: z.enum(["labor", "machine"]),
         hours: z.number(),
         rateBookEntryId: z.string().max(80).nullable().default(null),
+        rateOverrideCents: z.number().int().min(0).max(10_000_000).nullable().default(null),
       }),
     )
     .max(80, "A ticket can hold up to 80 lines."),

@@ -22,7 +22,11 @@ gallons per unit. The fuel fields support a later fuel-cost review.
   record. Delete is offered only for rates no estimate has used, with
   confirmation.
 
-## In estimates
+## In estimates and templates
+
+An estimate line and an estimate template line also have **From rate book**:
+it fills unit, cost and markup (and the description when blank). The filled
+fields stay editable, so a rate can be overridden for one job.
 
 In a line's cost breakdown, **From rate book** fills description, unit, cost,
 markup and, when the line has no cost code yet, the rate's default cost

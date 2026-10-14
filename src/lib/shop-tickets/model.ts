@@ -8,6 +8,8 @@ export type ShopTicketLineInput = {
   readonly hours: number
   /** The rate book entry the line bills at; null picks the only rate of its kind. */
   readonly rateBookEntryId: string | null
+  /** A rate typed in for this line in place of the rate book's; null uses the rate book. */
+  readonly rateOverrideCents: number | null
 }
 
 export type ShopTicketRate = {
@@ -62,7 +64,8 @@ export function lineAmountCents(hours: number, rateCents: number): number {
 }
 
 /**
- * Prices every line at the rate book rate it names. The rate is
+ * Prices every line at the rate book rate it names, or the rate typed in to
+ * override it. The rate is
  * copied onto the line so a later rate change never alters an issued ticket.
  */
 export function priceShopTicketLines(
@@ -89,14 +92,16 @@ export function priceShopTicketLines(
       }
     }
     const hours = roundHours(line.hours)
+    const rateCents = line.rateOverrideCents ?? rate.rateCents
     priced.push({
       costCode,
       description: line.description.trim(),
       rateKind: line.rateKind,
       hours,
       rateBookEntryId: rate.rateBookEntryId,
-      rateCents: rate.rateCents,
-      amountCents: lineAmountCents(hours, rate.rateCents),
+      rateOverrideCents: line.rateOverrideCents,
+      rateCents,
+      amountCents: lineAmountCents(hours, rateCents),
       outsideBudget: isOutsideBudget(costCode, budgetCostCodes),
     })
   }

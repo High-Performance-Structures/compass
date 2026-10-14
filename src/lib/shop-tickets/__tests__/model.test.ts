@@ -25,8 +25,8 @@ describe("shop ticket pricing", () => {
   it("prices lines and totals them", () => {
     const result = priceShopTicketLines(
       [
-        { costCode: "09 91 23", description: "Interior Painting", rateKind: "labor", hours: 114.98, rateBookEntryId: null },
-        { costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 2, rateBookEntryId: null },
+        { costCode: "09 91 23", description: "Interior Painting", rateKind: "labor", hours: 114.98, rateBookEntryId: null, rateOverrideCents: null },
+        { costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 2, rateBookEntryId: null, rateOverrideCents: null },
       ],
       RATES,
       budgetCostCodeSet(["09 91 23", "01 71 13"]),
@@ -40,7 +40,7 @@ describe("shop ticket pricing", () => {
 
   it("asks for a rate when the rate book has none", () => {
     const result = priceShopTicketLines(
-      [{ costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 1, rateBookEntryId: null }],
+      [{ costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 1, rateBookEntryId: null, rateOverrideCents: null }],
       RATES.filter((rate) => rate.kind !== "machine"),
       null,
     )
@@ -52,12 +52,12 @@ describe("shop ticket pricing", () => {
       ...RATES,
       { rateBookEntryId: "rb-kubota", kind: "machine", name: "Kubota", rateCents: 13500 },
     ]
-    const line = { costCode: "31 23 23.13", description: "Backfill", rateKind: "machine" as const, hours: 2 }
+    const line = { costCode: "31 23 23.13", description: "Backfill", rateKind: "machine" as const, hours: 2, rateOverrideCents: null }
     const result = priceShopTicketLines([{ ...line, rateBookEntryId: "rb-kubota" }], rates, null)
     expect(result.ok && result.lines[0]?.rateCents).toBe(13500)
     expect(result.ok && result.lines[0]?.rateBookEntryId).toBe("rb-kubota")
     // With two machine rates, a line that names none must choose.
-    expect(priceShopTicketLines([{ ...line, rateBookEntryId: null }], rates, null)).toEqual({
+    expect(priceShopTicketLines([{ ...line, rateBookEntryId: null, rateOverrideCents: null }], rates, null)).toEqual({
       ok: false,
       error: "Line 1 needs a machine rate. Choose one from the rate book.",
     })
@@ -65,9 +65,20 @@ describe("shop ticket pricing", () => {
     expect(priceShopTicketLines([{ ...line, rateBookEntryId: "rb-gone" }], rates, null).ok).toBe(false)
   })
 
+  it("bills an overridden rate in place of the rate book's", () => {
+    const result = priceShopTicketLines(
+      [{ costCode: "31 22 13", description: "Rough Grading", rateKind: "machine", hours: 2, rateBookEntryId: null, rateOverrideCents: 10000 }],
+      RATES,
+      null,
+    )
+    expect(result.ok && result.lines[0]?.rateCents).toBe(10000)
+    expect(result.ok && result.totalCents).toBe(20000)
+    expect(result.ok && result.lines[0]?.rateBookEntryId).toBe("rb-machine")
+  })
+
   it("rejects missing cost codes and zero hours", () => {
-    expect(priceShopTicketLines([{ costCode: " ", description: "", rateKind: "labor", hours: 1, rateBookEntryId: null }], RATES, null).ok).toBe(false)
-    expect(priceShopTicketLines([{ costCode: "01 71 13", description: "", rateKind: "labor", hours: 0, rateBookEntryId: null }], RATES, null).ok).toBe(false)
+    expect(priceShopTicketLines([{ costCode: " ", description: "", rateKind: "labor", hours: 1, rateBookEntryId: null, rateOverrideCents: null }], RATES, null).ok).toBe(false)
+    expect(priceShopTicketLines([{ costCode: "01 71 13", description: "", rateKind: "labor", hours: 0, rateBookEntryId: null, rateOverrideCents: null }], RATES, null).ok).toBe(false)
   })
 })
 
