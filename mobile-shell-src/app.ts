@@ -33,7 +33,20 @@ import {
 } from "../src/lib/field/types"
 import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
-import { validateDailyLogForm } from "../src/lib/daily-logs/daily-log-form"
+import { localDateInputValue, validateDailyLogForm } from "../src/lib/daily-logs/daily-log-form"
+import { validateMachineLog } from "../src/lib/equipment/model"
+import {
+  hoursChargeLabel,
+  machineDraftSchema,
+  machineErrorControlId,
+  machineFieldsHtml,
+  machineSaveLabel,
+  MACHINE_DRAFT_KEY,
+  nextMachineDraft,
+  updateMachineDraft,
+  type MachineDraft,
+  type MachineSaveState,
+} from "./machine-log-form"
 import {
   addWorkLine,
   emptyLogDraft,
@@ -119,7 +132,7 @@ type SavedDocument = {
   readonly path: string
   readonly savedAt: string
 }
-type Tab = "projects" | "today" | "log" | "documents" | "chat" | "notifications" | "cherish" | "settings"
+type Tab = "projects" | "today" | "log" | "machines" | "documents" | "chat" | "notifications" | "cherish" | "settings"
 type AuthMode = "choice" | "password" | "email" | "code"
 type PushStatus = "checking" | "enabled" | "permission_required" | "denied" | "error"
 
@@ -185,6 +198,13 @@ let logDraftTimer: number | null = null
 let logErrors: ReadonlyMap<string, string> = new Map()
 let logSaveState: LogSaveState = "idle"
 let logSavedTimer: number | null = null
+let machineDraft: MachineDraft | null = null
+let machineDraftTimer: number | null = null
+let machineErrors: ReadonlyMap<string, string> = new Map()
+let machineSaveState: MachineSaveState = "idle"
+let machineSavedTimer: number | null = null
+let syncingMachines = false
+let machineSyncError = ""
 let attachmentError = ""
 let syncingDailyLogs = false
 let projectError = ""
@@ -565,6 +585,151 @@ function notificationsView(): string {
   return sectionHead("Notifications", "Messages and project activity needing your attention.") + (rows ? `<div class="rows">${rows}</div>` : empty("No notifications."))
 }
 
+function machinesView(): string {
+  if (!packet) return empty("Select a project to log machine time.")
+  if (machineDraft === null) {
+    void loadMachineDraft()
+    return empty("Loading the machine log...")
+  }
+  if (packet.machines.length === 0) {
+    return sectionHead("Machine log") + empty("No machines yet. The office adds them in Compass under Office Tools > Equipment, then refresh this project.")
+  }
+  const jobs = projects.map((project) => ({ value: project.id, label: projectLabel(project) }))
+  const costCodes = (packet.dailyLogForm?.costCodes ?? []).map((code) => ({ value: code.code, label: code.label }))
+  const waiting = outbox.filter((item) => item.kind === "machine_log").length
+  return sectionHead("Machine log", "Hours, fuel, service and repairs. Saved on this phone until Compass can sync; the office approves each entry.") + `
+    <form id="machine-log-form" class="form" novalidate>
+      ${machineFieldsHtml({ draft: machineDraft, machines: packet.machines, jobs, costCodes, errors: machineErrors, escape: escapeHtml })}
+      ${machineSyncError ? `<p class="attachment-error" role="alert">${escapeHtml(machineSyncError)}</p>` : ""}
+      <button id="machine-log-save" class="primary${machineSaveState === "idle" ? "" : " saved"}" type="submit" aria-live="polite">${escapeHtml(machineSaveLabel(machineSaveState, online))}</button>
+      ${waiting > 0 ? `<p class="field-hint">${waiting} machine ${waiting === 1 ? "entry" : "entries"} waiting to sync.</p>` : ""}
+    </form>`
+}
+
+async function loadMachineDraft(): Promise<void> {
+  const saved = machineDraftSchema.safeParse(await readJson(MACHINE_DRAFT_KEY))
+  machineDraft = saved.success ? saved.data : nextMachineDraft("hours", localDateInputValue(), null, packet?.project.id ?? "")
+  if (activeTab === "machines") render()
+}
+
+function persistMachineDraft(): void {
+  if (machineDraftTimer !== null) window.clearTimeout(machineDraftTimer)
+  machineDraftTimer = window.setTimeout(() => {
+    machineDraftTimer = null
+    if (machineDraft) void writeJson(MACHINE_DRAFT_KEY, machineDraft)
+  }, 300)
+}
+
+function showMachineSaveState(state: MachineSaveState): void {
+  machineSaveState = state
+  if (machineSavedTimer !== null) window.clearTimeout(machineSavedTimer)
+  machineSavedTimer = state === "idle" ? null : window.setTimeout(() => showMachineSaveState("idle"), 6000)
+  const button = document.querySelector<HTMLButtonElement>("#machine-log-save")
+  if (!button) return
+  button.textContent = machineSaveLabel(state, online)
+  button.classList.toggle("saved", state !== "idle")
+}
+
+function bindMachineLogForm(): void {
+  const formElement = document.querySelector<HTMLFormElement>("#machine-log-form")
+  if (!formElement || !machineDraft) return
+  formElement.addEventListener("submit", (event) => void queueMachineLog(event))
+  const handleEdit = (event: Event): void => {
+    const target = event.target
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return
+    if (!target.name || !machineDraft) return
+    machineDraft = updateMachineDraft(machineDraft, target.name, target.value)
+    persistMachineDraft()
+    if (machineSaveState !== "idle") showMachineSaveState("idle")
+    if (machineErrors.has(target.name) || (target.name.endsWith("Hours") && machineErrors.has("hours"))) {
+      machineErrors = new Map([...machineErrors].filter(([key]) => key !== target.name && !(target.name.endsWith("Hours") && key === "hours")))
+      target.removeAttribute("aria-invalid")
+      document.getElementById(`machine-${target.name}-error`)?.remove()
+      if (target.name.endsWith("Hours")) document.getElementById("machine-hours-error")?.remove()
+      if (machineErrors.size === 0) formElement.querySelector(".form-alert")?.remove()
+    }
+    // The machine decides the rate, hour meter and services shown.
+    if (event.type === "change" && target.name === "machineId") {
+      render()
+      return
+    }
+    const charge = formElement.querySelector<HTMLElement>("[data-machine-charge]")
+    const machine = packet?.machines.find((item) => item.id === machineDraft?.machineId)
+    if (charge && machineDraft) {
+      const label = hoursChargeLabel(machineDraft, machine)
+      charge.textContent = label ? `Charges the job ${label} at the machine's rates.` : ""
+    }
+  }
+  formElement.addEventListener("input", handleEdit)
+  formElement.addEventListener("change", handleEdit)
+  formElement.querySelectorAll<HTMLButtonElement>("[data-machine-kind]").forEach((button) => button.addEventListener("click", () => {
+    if (!machineDraft) return
+    machineDraft = updateMachineDraft(machineDraft, "kind", button.dataset.machineKind ?? "")
+    if (machineDraft.kind === "hours" && !machineDraft.projectId && packet) machineDraft = { ...machineDraft, projectId: packet.project.id }
+    machineErrors = new Map()
+    persistMachineDraft()
+    render()
+  }))
+}
+
+async function queueMachineLog(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!machineDraft || !packet) return
+  const { errors } = validateMachineLog(machineDraft)
+  machineErrors = new Map(errors.map((error) => [error.key, error.message]))
+  const [first] = errors
+  if (first) {
+    // Nothing is cleared: the draft keeps every field.
+    render()
+    const control = document.getElementById(machineErrorControlId(first.key))
+    control?.focus()
+    control?.scrollIntoView({ block: "center" })
+    return
+  }
+  outbox.push({ id: crypto.randomUUID(), kind: "machine_log", createdAt: new Date().toISOString(), payload: machineDraft })
+  await writeJson(OUTBOX_KEY, outbox)
+  // Ready for the next entry on the same machine and job.
+  machineDraft = nextMachineDraft(machineDraft.kind, machineDraft.entryDate, machineDraft, packet.project.id)
+  await writeJson(MACHINE_DRAFT_KEY, machineDraft)
+  machineSyncError = ""
+  render()
+  showMachineSaveState("saved")
+  if (online) void syncMachineLogOutbox()
+}
+
+async function syncMachineLogOutbox(): Promise<void> {
+  if (!online || syncingMachines) return
+  const pending = outbox.filter((item) => item.kind === "machine_log")
+  if (pending.length === 0) return
+  syncingMachines = true
+  machineSyncError = ""
+  let syncedCount = 0
+  try {
+    for (const item of pending) {
+      if (item.kind !== "machine_log") continue
+      const response = await fieldHttp.post({
+        url: `${LIVE_URL}/api/field/machine-log`,
+        headers: { "Content-Type": "application/json" },
+        data: { id: item.id, payload: item.payload },
+        responseType: "json",
+      })
+      const result = z.object({ success: z.boolean(), error: z.string().optional() }).safeParse(responseData(response.data))
+      if (!result.success || !result.data.success) {
+        throw new Error(result.success ? result.data.error ?? "The entry is saved and will retry." : "The entry is saved and will retry.")
+      }
+      outbox = outbox.filter((queued) => queued.id !== item.id)
+      syncedCount += 1
+    }
+  } catch (error) {
+    machineSyncError = error instanceof Error ? error.message : "The entry is saved and will retry."
+  } finally {
+    if (syncedCount > 0) await writeJson(OUTBOX_KEY, outbox)
+    syncingMachines = false
+    render()
+  }
+  if (syncedCount > 0 && machineSaveState === "saved") showMachineSaveState("synced")
+}
+
 function cherishView(): string {
   const valueOptions = cherishValueSchema.options
     .map(
@@ -647,6 +812,7 @@ function view(): string {
   if (activeTab === "projects") return projectsView()
   if (activeTab === "today") return todayView()
   if (activeTab === "log") return logView()
+  if (activeTab === "machines") return machinesView()
   if (activeTab === "documents") return documentsView()
   if (activeTab === "notifications") return notificationsView()
   if (activeTab === "cherish") return cherishView()
@@ -671,12 +837,13 @@ function render(): void {
     { value: "projects", label: "Projects" },
     { value: "today", label: "Today" },
     { value: "log", label: "Log" },
+    { value: "machines", label: "Machines" },
     { value: "documents", label: "Docs" },
     { value: "chat", label: "Messages" },
     { value: "cherish", label: "Cherish" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><h1 class="brand" aria-label="${escapeHtml(`Compass Field Mode, ${title}`)}"><span class="brand-mark">${compassMarkSvg()}</span><span class="brand-text"><span class="brand-name">Compass</span><span class="brand-mode">Field</span></span></h1><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="icon-button" type="button" aria-label="Field settings" ${activeTab === "settings" ? 'aria-current="page"' : ""}>${fieldIcon("settings", "header-icon")}</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${profile ? fieldIcon("external", "live-icon") : ""}${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header>${companyBand()}<main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}" ${activeTab === tab.value ? 'aria-current="page"' : ""}>${fieldIcon(tab.value, "tab-icon")}${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><h1 class="brand" aria-label="${escapeHtml(`Compass Field Mode, ${title}`)}"><span class="brand-mark">${compassMarkSvg()}</span><span class="brand-text"><span class="brand-name">Compass</span><span class="brand-mode">Field</span></span></h1><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="icon-button" type="button" aria-label="Field settings" ${activeTab === "settings" ? 'aria-current="page"' : ""}>${fieldIcon("settings", "header-icon")}</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${profile ? fieldIcon("external", "live-icon") : ""}${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs || syncingMachines ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header>${companyBand()}<main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}" ${activeTab === tab.value ? 'aria-current="page"' : ""}>${fieldIcon(tab.value, "tab-icon")}${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -720,7 +887,7 @@ async function lockCompassIfEnabled(): Promise<void> {
 }
 
 function isTab(value: string | undefined): value is Tab {
-  return value === "projects" || value === "today" || value === "log" || value === "documents" || value === "chat" || value === "notifications" || value === "cherish" || value === "settings"
+  return value === "projects" || value === "today" || value === "log" || value === "machines" || value === "documents" || value === "chat" || value === "notifications" || value === "cherish" || value === "settings"
 }
 
 function bindEvents(): void {
@@ -809,6 +976,7 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-auth-email]")?.addEventListener("click", beginEmailCodeSignIn)
   document.querySelectorAll<HTMLButtonElement>("[data-notification-id]").forEach((button) => button.addEventListener("click", () => void openNotification(button)))
   bindDailyLogForm()
+  bindMachineLogForm()
   const messageInputs = document.querySelectorAll<HTMLTextAreaElement>("#chat-form textarea, #direct-message-form textarea, .direct-reply-form textarea")
   messageInputs.forEach((input) => input.addEventListener("focus", () => {
     document.body.classList.add("keyboard-open")
@@ -2002,10 +2170,11 @@ async function resumePendingSync(): Promise<void> {
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (sessionExpired || syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
+  if (sessionExpired || syncing || syncingDailyLogs || syncingMachines || composing || !online || outbox.length === 0) return
   await syncDailyLogOutbox()
   await syncCherishOutbox()
   await syncChatOutbox()
+  await syncMachineLogOutbox()
 }
 
 function base64Url(bytes: Uint8Array): string {
