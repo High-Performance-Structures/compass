@@ -160,7 +160,9 @@ export function ProjectEstimateLineBreakdown({
     [rateOptions]
   )
   function applyRate(option: RateBookPickerOption, base: CostCodeDraft): CostCodeDraft {
-    const code = option.costCode
+    // A rate is priced by name; the cost code depends on the work, so a
+    // rate's default code only fills a line that has none yet.
+    const code = option.costCode && !base.costCode
       ? costCodes.find((candidate) => candidate.value === option.costCode)
       : undefined
     return {
