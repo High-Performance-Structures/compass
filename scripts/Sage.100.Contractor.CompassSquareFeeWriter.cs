@@ -437,8 +437,9 @@ namespace CompassSageClientProjectWriter
         // Staff click through Sage's posting-period warning when they post a fee
         // into an earlier month (approved by Martine 2026-10-13). Sage only takes
         // the acknowledgement if APIWarningMessage repeats its warning verbatim,
-        // so submit without one, and if Sage answers 14203 with exactly that one
-        // warning, resubmit echoing Sage's own text. Any other warning or error
+        // so submit a plain add first (the with-warning form answers 14204 without
+        // naming the warning), and if Sage answers 14203 with exactly that one
+        // warning, resubmit the with-warning form echoing Sage's own text. Any other warning or error
         // still stops the write; a mismatched echo (14204) writes nothing.
         private static void SubmitAcceptingPeriodWarning(string xml, string password)
         {
@@ -461,7 +462,8 @@ namespace CompassSageClientProjectWriter
             InvalidOperationException last = null;
             foreach (string candidate in candidates)
             {
-                string retry = xml.Insert(at, "<APIWarningMessage>" + XmlEscape(candidate) + "</APIWarningMessage>");
+                string retry = xml.Insert(at, "<APIWarningMessage>" + XmlEscape(candidate) + "</APIWarningMessage>")
+                    .Replace("<GeneralLedgerAddRq ", "<GeneralLedgerAddWithWarningRq ").Replace("</GeneralLedgerAddRq>", "</GeneralLedgerAddWithWarningRq>");
                 ValidateXml(retry);
                 try { Submit(retry, password); WriteLog("INFO", "Accepted Sage posting-period warning as: " + candidate); return; }
                 catch (InvalidOperationException error)
@@ -470,7 +472,7 @@ namespace CompassSageClientProjectWriter
                     last = error;
                 }
             }
-            throw new InvalidOperationException(last.Message + " Sage warning was: " + warning);
+            throw new InvalidOperationException(last.Message + " Sage warning was: [" + warning + "]");
         }
 
         private static string BuildFeeXml(string user, string transactionNumber, DateTime date, string desc, string memo, string lineDesc, int feeAccount, int depositAccount, decimal amount, FeeVendor vendor)
@@ -495,8 +497,8 @@ namespace CompassSageClientProjectWriter
             body.Append("<GeneralLedgerLineAdd><Desc>").Append(XmlEscape(Truncate(lineDesc, 50))).Append("</Desc><AccountRef><ObjectID>").Append(depositAccount)
                 .Append("</ObjectID></AccountRef><CreditAmount>").Append(money).Append("</CreditAmount></GeneralLedgerLineAdd>");
             string xml = "<api:MBXML xmlns:api=\"http://sage100contractor.com/api\"><MBXMLSessionRq><Company>" + XmlEscape(TargetCompany) + "</Company><User>" + XmlEscape(user) +
-                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-square-fee\" onError=\"stopOnError\"><GeneralLedgerAddWithWarningRq requestID=\"" + Guid.NewGuid().ToString() + "\">" +
-                body + "</GeneralLedgerAddWithWarningRq></MBXMLMsgsRq></api:MBXML>";
+                "</User></MBXMLSessionRq><MBXMLMsgsRq messageSetID=\"compass-square-fee\" onError=\"stopOnError\"><GeneralLedgerAddRq requestID=\"" + Guid.NewGuid().ToString() + "\">" +
+                body + "</GeneralLedgerAddRq></MBXMLMsgsRq></api:MBXML>";
             ValidateXml(xml);
             return xml;
         }
