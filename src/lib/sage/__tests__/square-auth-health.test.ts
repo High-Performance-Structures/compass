@@ -82,10 +82,10 @@ describe("Square authentication health", () => {
       CREATE TABLE notification_events (id TEXT PRIMARY KEY, organization_id TEXT, project_id TEXT, event_type TEXT, source_type TEXT, source_id TEXT, title TEXT, body TEXT, href TEXT, priority TEXT, audience TEXT, created_by TEXT, created_at TEXT);
       CREATE TABLE notification_recipients (id TEXT PRIMARY KEY, event_id TEXT, user_id TEXT, in_app INTEGER DEFAULT 1, email INTEGER DEFAULT 0, sms INTEGER DEFAULT 0, push INTEGER DEFAULT 0, read_at TEXT, dismissed_at TEXT, created_at TEXT);
       CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT, role TEXT, is_active INTEGER);
-      CREATE TABLE organization_members (organization_id TEXT, user_id TEXT);
+      CREATE TABLE organization_members (organization_id TEXT, user_id TEXT, role TEXT);
       CREATE TABLE notification_preferences (user_id TEXT, in_app_enabled INTEGER);
       INSERT INTO users VALUES ('admin1','admin@example.test','admin',1), ('staff1','staff@example.test','office_manager',1), ('admin2','admin2@example.test','admin',1), ('secondary1','secondary@example.test','secondary_admin',1), ('developer1','developer@example.test','developer',1), ('external-admin','other@example.test','admin',1), ('inactive','inactive@example.test','admin',0);
-      INSERT INTO organization_members VALUES ('org-1','admin1'), ('org-1','staff1'), ('org-1','admin2'), ('org-1','secondary1'), ('org-1','developer1'), ('org-2','external-admin'), ('org-1','inactive');
+      INSERT INTO organization_members VALUES ('org-1','admin1','admin'), ('org-1','staff1','office_manager'), ('org-1','admin2','admin'), ('org-1','secondary1','secondary_admin'), ('org-1','developer1','developer'), ('org-2','external-admin','admin'), ('org-1','inactive','admin');
     `)
     // @ts-expect-error SQLite test adapter implements the D1 query contract.
     mocks.getDb.mockReturnValue(drizzle(d1(sqlite)))
