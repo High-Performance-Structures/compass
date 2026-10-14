@@ -1,5 +1,7 @@
 import { z } from "zod/v4"
 
+import { DAILY_LOG_OPTIONAL_FIELDS } from "../daily-logs/daily-log-form"
+
 export const fieldProjectSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -84,6 +86,22 @@ export const fieldNotificationSchema = z.object({
   createdAt: z.string(),
 })
 
+/** Cost codes and required fields, saved with the project for offline logs. */
+export const fieldDailyLogFormSchema = z.object({
+  costCodes: z.array(
+    z.object({
+      code: z.string(),
+      name: z.string(),
+      label: z.string(),
+      group: z.string(),
+    }),
+  ),
+  requirements: z.object({
+    requireCostCodeTime: z.boolean(),
+    requiredFields: z.array(z.enum(DAILY_LOG_OPTIONAL_FIELDS)),
+  }),
+})
+
 export const fieldProjectPacketSchema = z.object({
   project: fieldProjectSchema,
   tasks: z.array(fieldTaskSchema),
@@ -94,7 +112,15 @@ export const fieldProjectPacketSchema = z.object({
   directConversations: z.array(fieldDirectConversationSchema).default([]),
   contacts: z.array(fieldContactSchema).default([]),
   notifications: z.array(fieldNotificationSchema).default([]),
+  /** Null in packets saved before cost code lines. */
+  dailyLogForm: fieldDailyLogFormSchema.nullable().default(null),
   syncedAt: z.string(),
+})
+
+export const fieldWorkLineSchema = z.object({
+  costCode: z.string().max(20),
+  hours: z.string().max(10),
+  description: z.string().max(500),
 })
 
 export const fieldDailyLogDraftSchema = z.object({
@@ -103,6 +129,11 @@ export const fieldDailyLogDraftSchema = z.object({
   issues: z.string(),
   crewPresent: z.string(),
   notes: z.string(),
+  // Added with cost code lines; logs queued by older builds lack them.
+  materialsUsed: z.string().default(""),
+  safetyIncidents: z.string().default(""),
+  visitorLog: z.string().default(""),
+  workLines: z.array(fieldWorkLineSchema).max(40).optional(),
 })
 
 export const fieldQueuedAttachmentSchema = z.object({
@@ -183,6 +214,7 @@ export type FieldUserProfile = z.infer<typeof fieldUserProfileSchema>
 export type FieldProjectPacket = z.infer<typeof fieldProjectPacketSchema>
 export type FieldNotification = z.infer<typeof fieldNotificationSchema>
 export type FieldDailyLogDraft = z.infer<typeof fieldDailyLogDraftSchema>
+export type FieldDailyLogForm = z.infer<typeof fieldDailyLogFormSchema>
 export type FieldQueuedAttachment = z.infer<typeof fieldQueuedAttachmentSchema>
 export type FieldOutboxItem = z.infer<typeof fieldOutboxItemSchema>
 export type FieldCherishValue = z.infer<typeof cherishValueSchema>

@@ -214,6 +214,20 @@ button { cursor: pointer; }
 .attachment-row span { color: var(--muted); font-size: 11px; }
 .attachment-row button { border: 0; background: transparent; color: #9b2c2c; font-size: 12px; font-weight: 750; }
 .attachment-error { margin: 0; color: #9b2c2c; font-size: 13px; }
+/* Daily log: required marks, field errors, cost code lines, save confirmation. */
+.required-tag { margin-left: 6px; color: #9b2c2c; font-size: 12px; font-weight: 700; }
+.field-error { color: #9b2c2c; font-size: 13px; font-weight: 600; }
+.field input[aria-invalid="true"], .field textarea[aria-invalid="true"], .field select[aria-invalid="true"] { border-color: #9b2c2c; border-width: 2px; }
+.form-alert { margin: 0; padding: 12px; border: 1px solid #9b2c2c; border-radius: 4px; color: #9b2c2c; font-size: 14px; font-weight: 700; }
+.field-label { padding: 0; font-size: 14px; font-weight: 700; }
+.field-hint { margin: 0; color: var(--muted); font-size: 13px; font-weight: 500; }
+.work-lines { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.work-line { display: grid; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.work-line-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 10px; }
+.text-button.remove-line { justify-self: start; min-height: 36px; padding: 0; color: #9b2c2c; font-size: 13px; }
+.work-lines-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.work-lines-footer .secondary { padding: 0 16px; }
+.primary.saved { background: var(--needle); color: #fff; }
 .primary {
   min-height: 52px;
   border: 0;
@@ -301,6 +315,8 @@ button { cursor: pointer; }
 :root[data-theme="dark"] body, :root[data-theme="dark"] .chat-compose { background: #0f1724; }
 :root[data-theme="dark"] .tabbar { background: #131d2e; }
 :root[data-theme="dark"] .primary, :root[data-theme="dark"] .company-chip[aria-pressed="true"] { color: #0f1724; }
+:root[data-theme="dark"] .required-tag, :root[data-theme="dark"] .field-error, :root[data-theme="dark"] .remove-line, :root[data-theme="dark"] .form-alert { color: #ff9b9b; border-color: #ff9b9b; }
+:root[data-theme="dark"] .field input[aria-invalid="true"], :root[data-theme="dark"] .field textarea[aria-invalid="true"], :root[data-theme="dark"] .field select[aria-invalid="true"] { border-color: #ff9b9b; }
 :root[data-theme="dark"] .live-button, :root[data-theme="dark"] .company-chip { border-color: #3a4a66; }
 :root[data-theme="dark"] .field input, :root[data-theme="dark"] .field textarea, :root[data-theme="dark"] .field select, :root[data-theme="dark"] .direct-reply-form textarea, :root[data-theme="dark"] .chat-compose textarea { background: #182338; border-color: #3a4a66; color: #e8eef7; }
 .theme-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

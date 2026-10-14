@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import {
   IconCalendarStats,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconClipboardText,
@@ -69,6 +70,21 @@ import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Textarea } from "@/components/ui/textarea"
 import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
+import {
+  DailyLogWorkLines,
+  FieldError,
+  RequiredMark,
+} from "@/components/projects/daily-log-work-lines"
+import {
+  emptyWorkLine,
+  isRequired,
+  localDateInputValue,
+  missingFieldsSummary,
+  validateDailyLogForm,
+  type DailyLogOptionalField,
+  type DailyLogWorkLineDraft,
+} from "@/lib/daily-logs/daily-log-form"
+import type { DailyLogFormSetup } from "@/lib/daily-logs/cost-code-lines"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { useProjectList } from "@/components/project-list-provider"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
@@ -109,16 +125,18 @@ type DailyLogDraft = {
   readonly weatherPrecipitation: string
   readonly workCompleted: string
   readonly crewPresent: string
-  readonly hoursWorked: string
   readonly materialsUsed: string
   readonly issues: string
   readonly safetyIncidents: string
   readonly visitorLog: string
   readonly notes: string
+  readonly workLines: readonly DailyLogWorkLineDraft[]
 }
 
+type DailyLogTextField = Exclude<keyof DailyLogDraft, "workLines">
+
 function todayInputValue(): string {
-  return new Date().toISOString().slice(0, 10)
+  return localDateInputValue()
 }
 
 function emptyDailyLogDraft(): DailyLogDraft {
@@ -129,12 +147,12 @@ function emptyDailyLogDraft(): DailyLogDraft {
     weatherPrecipitation: "",
     workCompleted: "",
     crewPresent: "",
-    hoursWorked: "",
     materialsUsed: "",
     issues: "",
     safetyIncidents: "",
     visitorLog: "",
     notes: "",
+    workLines: [emptyWorkLine()],
   }
 }
 
@@ -146,13 +164,44 @@ function draftFromLog(log: ProjectDailyLogItem): DailyLogDraft {
     weatherPrecipitation: log.weatherPrecipitation ?? "",
     workCompleted: log.workCompleted,
     crewPresent: log.crewPresent ?? "",
-    hoursWorked: log.hoursWorked === null ? "" : String(log.hoursWorked),
     materialsUsed: log.materialsUsed ?? "",
     issues: log.issues ?? "",
     safetyIncidents: log.safetyIncidents ?? "",
     visitorLog: log.visitorLog ?? "",
     notes: log.notes ?? "",
+    workLines:
+      log.workLines.length > 0
+        ? log.workLines.map((line) => ({
+            costCode: line.costCode,
+            hours: line.hours === null ? "" : String(line.hours),
+            description: line.description,
+          }))
+        : [emptyWorkLine()],
   }
+}
+
+/** Drops a field's errors once it is edited ("workLines" drops every line's). */
+function withoutErrors(errors: ReadonlyMap<string, string>, key: string): ReadonlyMap<string, string> {
+  if (![...errors.keys()].some((errorKey) => errorKey === key || errorKey.startsWith(`${key}.`))) return errors
+  return new Map([...errors].filter(([errorKey]) => errorKey !== key && !errorKey.startsWith(`${key}.`)))
+}
+
+/** The input to focus for a form error. */
+function fieldElementId(idPrefix: string, key: string): string {
+  const line = /^workLines\.(\d+)\.(costCode|hours)$/.exec(key)
+  if (line) return `${idPrefix}-line-${line[1]}-${line[2] === "costCode" ? "code" : "hours"}`
+  if (key === "workLines") return `${idPrefix}-line-0-code`
+  const ids: Readonly<Record<string, string>> = {
+    logDate: "date",
+    workCompleted: "work",
+    crewPresent: "crew",
+    materialsUsed: "materials",
+    issues: "issues",
+    safetyIncidents: "safety",
+    visitorLog: "visitors",
+    notes: "notes",
+  }
+  return `${idPrefix}-${ids[key] ?? key}`
 }
 
 function optionalNumber(value: string): number | null {
@@ -302,16 +351,29 @@ function DailyLogFields({
   draft,
   idPrefix,
   updateDraft,
+  updateWorkLines,
+  form,
+  errors,
 }: {
   readonly draft: DailyLogDraft
   readonly idPrefix: string
-  readonly updateDraft: (field: keyof DailyLogDraft, value: string) => void
+  readonly updateDraft: (field: DailyLogTextField, value: string) => void
+  readonly updateWorkLines: (lines: readonly DailyLogWorkLineDraft[]) => void
+  readonly form: DailyLogFormSetup
+  readonly errors: ReadonlyMap<string, string>
 }): React.ReactElement {
+  const required = (field: DailyLogOptionalField): boolean => isRequired(form.requirements, field)
+  /** Props marking a field invalid and pointing at its error. */
+  const invalid = (key: string): { readonly "aria-invalid"?: true; readonly "aria-describedby"?: string } =>
+    errors.has(key) ? { "aria-invalid": true, "aria-describedby": `${idPrefix}-${key}-error` } : {}
   return (
     <>
       <div className="grid gap-3 md:grid-cols-[160px_110px_1fr_1fr]">
         <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-date`}>Date</Label>
+          <Label htmlFor={`${idPrefix}-date`}>
+            Date
+            <RequiredMark />
+          </Label>
           <Input
             id={`${idPrefix}-date`}
             type="date"
@@ -319,8 +381,9 @@ function DailyLogFields({
             onChange={(event) =>
               updateDraft("logDate", event.currentTarget.value)
             }
-            required
+            {...invalid("logDate")}
           />
+          <FieldError id={`${idPrefix}-logDate-error`} message={errors.get("logDate")} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor={`${idPrefix}-temp`}>Temp</Label>
@@ -358,8 +421,20 @@ function DailyLogFields({
         </div>
       </div>
 
+      <DailyLogWorkLines
+        idPrefix={idPrefix}
+        lines={draft.workLines}
+        costCodes={form.costCodes}
+        required={form.requirements.requireCostCodeTime}
+        errors={errors}
+        onChange={updateWorkLines}
+      />
+
       <div className="grid gap-1.5">
-        <Label htmlFor={`${idPrefix}-work`}>Work completed</Label>
+        <Label htmlFor={`${idPrefix}-work`}>
+          Work completed
+          <RequiredMark />
+        </Label>
         <Textarea
           id={`${idPrefix}-work`}
           value={draft.workCompleted}
@@ -368,13 +443,14 @@ function DailyLogFields({
           }
           placeholder="Summarize progress, crews, inspections, and important field activity."
           className="min-h-28"
-          required
+          {...invalid("workCompleted")}
         />
+        <FieldError id={`${idPrefix}-workCompleted-error`} message={errors.get("workCompleted")} />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-2">
         <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-crew`}>Crew present</Label>
+          <Label htmlFor={`${idPrefix}-crew`}>Who was on site{required("crewPresent") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-crew`}
             value={draft.crewPresent}
@@ -382,22 +458,12 @@ function DailyLogFields({
               updateDraft("crewPresent", event.currentTarget.value)
             }
             placeholder="Companies, names, counts..."
+            {...invalid("crewPresent")}
           />
+          <FieldError id={`${idPrefix}-crewPresent-error`} message={errors.get("crewPresent")} />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-hours`}>Hours worked</Label>
-          <Input
-            id={`${idPrefix}-hours`}
-            inputMode="decimal"
-            value={draft.hoursWorked}
-            onChange={(event) =>
-              updateDraft("hoursWorked", event.currentTarget.value)
-            }
-            placeholder="Total hours"
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor={`${idPrefix}-materials`}>Materials</Label>
+          <Label htmlFor={`${idPrefix}-materials`}>Deliveries and materials{required("materialsUsed") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-materials`}
             value={draft.materialsUsed}
@@ -405,13 +471,15 @@ function DailyLogFields({
               updateDraft("materialsUsed", event.currentTarget.value)
             }
             placeholder="Deliveries, materials used, shortages..."
+            {...invalid("materialsUsed")}
           />
+          <FieldError id={`${idPrefix}-materialsUsed-error`} message={errors.get("materialsUsed")} />
         </div>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-12">
         <div className="grid gap-1.5 lg:col-span-4">
-          <Label htmlFor={`${idPrefix}-issues`}>Issues</Label>
+          <Label htmlFor={`${idPrefix}-issues`}>Issues{required("issues") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-issues`}
             value={draft.issues}
@@ -419,10 +487,12 @@ function DailyLogFields({
               updateDraft("issues", event.currentTarget.value)
             }
             placeholder="Delays, conflicts, blockers..."
+            {...invalid("issues")}
           />
+          <FieldError id={`${idPrefix}-issues-error`} message={errors.get("issues")} />
         </div>
         <div className="grid gap-1.5 lg:col-span-4">
-          <Label htmlFor={`${idPrefix}-safety`}>Safety</Label>
+          <Label htmlFor={`${idPrefix}-safety`}>Safety{required("safetyIncidents") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-safety`}
             value={draft.safetyIncidents}
@@ -430,10 +500,12 @@ function DailyLogFields({
               updateDraft("safetyIncidents", event.currentTarget.value)
             }
             placeholder="Incidents or no incidents."
+            {...invalid("safetyIncidents")}
           />
+          <FieldError id={`${idPrefix}-safetyIncidents-error`} message={errors.get("safetyIncidents")} />
         </div>
         <div className="grid gap-1.5 lg:col-span-4">
-          <Label htmlFor={`${idPrefix}-visitors`}>Visitors</Label>
+          <Label htmlFor={`${idPrefix}-visitors`}>Visitors{required("visitorLog") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-visitors`}
             value={draft.visitorLog}
@@ -441,10 +513,12 @@ function DailyLogFields({
               updateDraft("visitorLog", event.currentTarget.value)
             }
             placeholder="Owners, inspectors, suppliers..."
+            {...invalid("visitorLog")}
           />
+          <FieldError id={`${idPrefix}-visitorLog-error`} message={errors.get("visitorLog")} />
         </div>
         <div className="grid gap-1.5 lg:col-span-12">
-          <Label htmlFor={`${idPrefix}-notes`}>Notes / Next</Label>
+          <Label htmlFor={`${idPrefix}-notes`}>Notes / Next{required("notes") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-notes`}
             value={draft.notes}
@@ -452,7 +526,9 @@ function DailyLogFields({
               updateDraft("notes", event.currentTarget.value)
             }
             placeholder="Follow-ups and next steps."
+            {...invalid("notes")}
           />
+          <FieldError id={`${idPrefix}-notes-error`} message={errors.get("notes")} />
         </div>
       </div>
     </>
@@ -758,6 +834,15 @@ export function ProjectDailyLogWorkspace({
   const [pendingDeleteIds, setPendingDeleteIds] = React.useState<readonly string[]>([])
   const [isPending, startTransition] = React.useTransition()
   const [isWeatherPending, startWeatherTransition] = React.useTransition()
+  const [newLogErrors, setNewLogErrors] = React.useState<ReadonlyMap<string, string>>(new Map())
+  const [editErrors, setEditErrors] = React.useState<ReadonlyMap<string, string>>(new Map())
+  // Shows "Saved" on the button that saved, then returns to normal.
+  const [savedButton, setSavedButton] = React.useState<"new" | "edit" | null>(null)
+  React.useEffect(() => {
+    if (savedButton === null) return
+    const timer = window.setTimeout(() => setSavedButton(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [savedButton])
   // Separate so the loading overlay covers only draft building, through the
   // navigation to the new draft.
   const [isBuildingDraft, startDraftTransition] = React.useTransition()
@@ -859,14 +944,34 @@ export function ProjectDailyLogWorkspace({
     setSelectedIds([])
   }
 
-  function updateDraft(field: keyof DailyLogDraft, value: string): void {
+  function updateDraft(field: DailyLogTextField, value: string): void {
+    setNewLogErrors((current) => withoutErrors(current, field))
     setDraft((current) => ({
       ...current,
       [field]: value,
     }))
   }
 
-  function updateEditDraft(field: keyof DailyLogDraft, value: string): void {
+  /**
+   * Checks the form against the company's rules. On a problem, shows each
+   * field's message, says how many need attention and moves to the first.
+   */
+  function checkForm(
+    values: DailyLogDraft,
+    idPrefix: string,
+    setErrors: (errors: ReadonlyMap<string, string>) => void,
+  ): readonly DailyLogWorkLineDraft[] | null {
+    const { errors } = validateDailyLogForm(values, workspace.form.requirements, workspace.form.costCodes)
+    setErrors(new Map(errors.map((error) => [error.key, error.message])))
+    const [first] = errors
+    if (!first) return values.workLines.filter((line) => line.costCode || line.hours || line.description)
+    setMessage(missingFieldsSummary(errors))
+    document.getElementById(fieldElementId(idPrefix, first.key))?.focus()
+    return null
+  }
+
+  function updateEditDraft(field: DailyLogTextField, value: string): void {
+    setEditErrors((current) => withoutErrors(current, field))
     setEditDraft((current) => ({
       ...current,
       [field]: value,
@@ -1103,20 +1208,19 @@ export function ProjectDailyLogWorkspace({
     event.preventDefault()
     setMessage(null)
 
-    if (draft.workCompleted.trim().length === 0) {
-      setMessage("Work completed is required before saving a daily log.")
-      return
-    }
+    const workLines = checkForm(draft, "daily-log", setNewLogErrors)
+    if (!workLines) return
 
     startTransition(async () => {
       const result = await createProjectDailyLog(workspace.project.id, {
+        workLines,
         logDate: draft.logDate,
         weatherTempF: optionalNumber(draft.weatherTempF),
         weatherConditions: draft.weatherConditions,
         weatherPrecipitation: draft.weatherPrecipitation,
         workCompleted: draft.workCompleted,
         crewPresent: draft.crewPresent,
-        hoursWorked: optionalNumber(draft.hoursWorked),
+        hoursWorked: null,
         materialsUsed: draft.materialsUsed,
         issues: draft.issues,
         safetyIncidents: draft.safetyIncidents,
@@ -1126,7 +1230,9 @@ export function ProjectDailyLogWorkspace({
 
       if (result.success) {
         setDraft(emptyDailyLogDraft())
+        setNewLogErrors(new Map())
         setShowNewLog(false)
+        setSavedButton("new")
         setMessage("Daily log saved. Review it before making it owner visible.")
         router.refresh()
       } else {
@@ -1142,13 +1248,12 @@ export function ProjectDailyLogWorkspace({
     event.preventDefault()
     setMessage(null)
 
-    if (editDraft.workCompleted.trim().length === 0) {
-      setMessage("Work completed is required before saving a daily log.")
-      return
-    }
+    const workLines = checkForm(editDraft, `daily-log-edit-${log.id}`, setEditErrors)
+    if (!workLines) return
 
     startTransition(async () => {
       const result = await updateProjectDailyLog(workspace.project.id, {
+        workLines,
         dailyLogId: log.id,
         targetProjectId: editProjectId,
         logDate: editDraft.logDate,
@@ -1157,7 +1262,8 @@ export function ProjectDailyLogWorkspace({
         weatherPrecipitation: editDraft.weatherPrecipitation,
         workCompleted: editDraft.workCompleted,
         crewPresent: editDraft.crewPresent,
-        hoursWorked: optionalNumber(editDraft.hoursWorked),
+        // Old logs without cost code lines keep their recorded total.
+        hoursWorked: log.workLines.length === 0 ? log.hoursWorked : null,
         materialsUsed: editDraft.materialsUsed,
         issues: editDraft.issues,
         safetyIncidents: editDraft.safetyIncidents,
@@ -1167,6 +1273,8 @@ export function ProjectDailyLogWorkspace({
 
       if (result.success) {
         cancelEditingLog()
+        setEditErrors(new Map())
+        setSavedButton("edit")
         if (result.projectId === workspace.project.id) {
           setMessage("Daily log updated and returned to review.")
           router.refresh()
@@ -1326,8 +1434,17 @@ export function ProjectDailyLogWorkspace({
                     size="sm"
                     onClick={() => setShowNewLog((current) => !current)}
                   >
-                    <IconPlus className="size-4" />
-                    New daily log
+                    {savedButton === null ? (
+                      <>
+                        <IconPlus className="size-4" />
+                        New daily log
+                      </>
+                    ) : (
+                      <>
+                        <IconCheck className="size-4" />
+                        Saved
+                      </>
+                    )}
                   </Button>
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
@@ -1414,7 +1531,7 @@ export function ProjectDailyLogWorkspace({
                     Cancel
                   </Button>
                   <Button type="submit" size="sm" disabled={isPending}>
-                    Save daily log
+                    {isPending ? "Saving..." : "Save daily log"}
                   </Button>
                 </div>
               </div>
@@ -1438,10 +1555,21 @@ export function ProjectDailyLogWorkspace({
                 </Button>
               </div>
 
+              {newLogErrors.size > 0 && (
+                <p role="alert" className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">
+                  {missingFieldsSummary([...newLogErrors.keys()])}
+                </p>
+              )}
               <DailyLogFields
                 draft={draft}
                 idPrefix="daily-log"
                 updateDraft={updateDraft}
+                updateWorkLines={(workLines) => {
+                  setNewLogErrors((current) => withoutErrors(current, "workLines"))
+                  setDraft((current) => ({ ...current, workLines }))
+                }}
+                form={workspace.form}
+                errors={newLogErrors}
               />
             </form>
           </section>
@@ -1783,7 +1911,7 @@ export function ProjectDailyLogWorkspace({
                         Cancel
                       </Button>
                       <Button type="submit" size="sm" disabled={isPending}>
-                        Save edits
+                        {isPending ? "Saving..." : "Save edits"}
                       </Button>
                     </div>
                   </div>
@@ -1803,10 +1931,21 @@ export function ProjectDailyLogWorkspace({
                       Project-specific schedule links are cleared.
                     </p>
                   </div>
+                  {editErrors.size > 0 && (
+                    <p role="alert" className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">
+                      {missingFieldsSummary([...editErrors.keys()])}
+                    </p>
+                  )}
                   <DailyLogFields
                     draft={editDraft}
                     idPrefix={`daily-log-edit-${log.id}`}
                     updateDraft={updateEditDraft}
+                    updateWorkLines={(workLines) => {
+                      setEditErrors((current) => withoutErrors(current, "workLines"))
+                      setEditDraft((current) => ({ ...current, workLines }))
+                    }}
+                    form={workspace.form}
+                    errors={editErrors}
                   />
                 </form>
               ) : (
@@ -1814,6 +1953,24 @@ export function ProjectDailyLogWorkspace({
                   <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6">
                     {log.workCompleted}
                   </p>
+                  {log.workLines.length > 0 && (
+                    <ul className="mt-3 grid gap-1 border-y py-2 text-sm" aria-label="Cost codes and time">
+                      {log.workLines.map((line) => (
+                        <li key={line.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3">
+                          <span className="min-w-0">
+                            <span className="font-medium">{line.costCode}</span>{" "}
+                            {line.costCodeLabel}
+                            {line.description && (
+                              <span className="text-muted-foreground"> — {line.description}</span>
+                            )}
+                          </span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {line.hours === null ? "—" : `${line.hours} h`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {(log.issues ||
                     materialsUsed ||

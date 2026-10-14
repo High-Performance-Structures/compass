@@ -326,6 +326,13 @@ export async function getFieldProjectPacket(
         email: contact.email,
         role: userRoleLabel(contact.role),
       })),
+    dailyLogForm: {
+      costCodes: [...dailyLogWorkspace.form.costCodes],
+      requirements: {
+        requireCostCodeTime: dailyLogWorkspace.form.requirements.requireCostCodeTime,
+        requiredFields: [...dailyLogWorkspace.form.requirements.requiredFields],
+      },
+    },
     notifications: notificationResult.success
       ? notificationResult.data.items.map((item) => ({
           id: item.id,
@@ -354,12 +361,15 @@ export async function submitFieldDailyLog(
     weatherPrecipitation: "",
     workCompleted: draft.workCompleted,
     issues: draft.issues,
-    materialsUsed: "",
+    materialsUsed: draft.materialsUsed,
     crewPresent: draft.crewPresent,
     hoursWorked: null,
-    safetyIncidents: "",
-    visitorLog: "",
+    safetyIncidents: draft.safetyIncidents,
+    visitorLog: draft.visitorLog,
     notes: draft.notes,
+    workLines: draft.workLines,
+    // Saved on a phone, maybe before a code was taken off the list.
+    queuedOnDevice: true,
   })
 
   return result.success

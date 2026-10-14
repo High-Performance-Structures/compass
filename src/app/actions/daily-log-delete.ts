@@ -4,6 +4,7 @@ import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { dailyLogPhotos, dailyLogs, ownerProjectUpdates, projects } from "@/db/schema"
+import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { dailyLogDeleteBlocker } from "@/lib/daily-logs/delete-rules"
@@ -76,6 +77,7 @@ export async function deleteProjectDailyLogs(
       .select({ dailyLogId: dailyLogPhotos.dailyLogId })
       .from(dailyLogPhotos)
       .where(inArray(dailyLogPhotos.dailyLogId, ids))
+    const workLines = await db.select().from(internalDutyEntries).where(inArray(internalDutyEntries.dailyLogId, ids))
 
     // Record first so a failed audit write never leaves an unrecorded delete.
     for (const log of logs) {
@@ -93,12 +95,15 @@ export async function deleteProjectDailyLogs(
           // Full copy of the record for recovery.
           dailyLog: JSON.stringify(log),
           filesKept: photoCounts.filter((photo) => photo.dailyLogId === log.id).length,
+          workLines: JSON.stringify(workLines.filter((line) => line.dailyLogId === log.id)),
         },
       })
     }
     // Files are kept: daily_log_photos.daily_log_id is set to null by the
-    // foreign key, and task links are removed with the log.
+    // foreign key, and task links are removed with the log. The log's cost
+    // code lines go with it (copied into the activity record above).
     await db.update(dailyLogPhotos).set({ dailyLogId: null }).where(inArray(dailyLogPhotos.dailyLogId, ids))
+    await db.delete(internalDutyEntries).where(inArray(internalDutyEntries.dailyLogId, ids))
     await db.delete(dailyLogs).where(and(eq(dailyLogs.projectId, projectId), inArray(dailyLogs.id, ids)))
 
     revalidatePath(`/dashboard/projects/${projectId}`)

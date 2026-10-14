@@ -33,6 +33,24 @@ import {
 } from "../src/lib/field/types"
 import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
+import { validateDailyLogForm } from "../src/lib/daily-logs/daily-log-form"
+import {
+  addWorkLine,
+  emptyLogDraft,
+  errorControlId,
+  errorMap,
+  filledWorkLines,
+  logDraftKey,
+  logDraftSchema,
+  logFieldsHtml,
+  logRequirements,
+  removeWorkLine,
+  saveButtonLabel,
+  totalHoursLabel,
+  updateLogDraft,
+  type LogDraft,
+  type LogSaveState,
+} from "./daily-log-form"
 import { conversationChannelIdFromNotificationHref } from "../src/lib/conversations/notification-route"
 import { fieldMessageHtml, isLongFieldMessage } from "../src/lib/field/message-format"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
@@ -161,6 +179,12 @@ let signingIn = false
 let authMode: AuthMode = "choice"
 let authEmail = ""
 let draftAttachments: FieldQueuedAttachment[] = []
+let logDraft: LogDraft = emptyLogDraft()
+let logDraftProjectId: string | null = null
+let logDraftTimer: number | null = null
+let logErrors: ReadonlyMap<string, string> = new Map()
+let logSaveState: LogSaveState = "idle"
+let logSavedTimer: number | null = null
 let attachmentError = ""
 let syncingDailyLogs = false
 let projectError = ""
@@ -375,21 +399,18 @@ function todayView(): string {
 
 function logView(): string {
   if (!packet) return empty("Select a project to add a daily log.")
-  const today = new Date().toISOString().slice(0, 10)
+  if (logDraftProjectId !== packet.project.id) void loadLogDraft(packet.project.id)
   const recent = packet.logs.slice(0, 6).map((log) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(log.logDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(log.workCompleted)}</p><p class="row-note">${escapeHtml(log.authorName ?? "Compass")}</p></div></div>`).join("")
   const attachmentRows = draftAttachments.map((attachment) => `<div class="attachment-row"><div><strong>${escapeHtml(attachment.fileName)}</strong><span>${escapeHtml(formatBytes(attachment.fileSize))}</span></div><button type="button" data-remove-attachment="${escapeHtml(attachment.id)}" aria-label="Remove ${escapeHtml(attachment.fileName)}">Remove</button></div>`).join("")
+  const savedClass = logSaveState === "idle" ? "" : " saved"
   return sectionHead("Add daily log", "Saved securely on this device until Compass can sync.") + `
-    <form id="daily-log-form" class="form">
-      <label class="field">Date<input name="logDate" type="date" value="${today}" required /></label>
-      <label class="field">What did we complete?<textarea name="workCompleted" required placeholder="Describe today's work"></textarea></label>
-      <label class="field">Who was on site?<input name="crewPresent" placeholder="Crew, subs, suppliers" /></label>
-      <label class="field">Issues or delays<textarea name="issues" placeholder="Leave blank if none"></textarea></label>
-      <label class="field">Notes<textarea name="notes"></textarea></label>
+    <form id="daily-log-form" class="form" novalidate>
+      ${logFieldsHtml({ draft: logDraft, form: packet.dailyLogForm, errors: logErrors, escape: escapeHtml })}
       <label class="file-picker" for="daily-log-attachments"><strong>Add photos, videos, or files</strong><span>Choose from the camera, photo library, or Files app</span></label>
       <input id="daily-log-attachments" class="native-file-input" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" />
       ${attachmentError ? `<p class="attachment-error" role="alert">${escapeHtml(attachmentError)}</p>` : ""}
       ${attachmentRows ? `<div class="attachment-list">${attachmentRows}</div>` : ""}
-      <button class="primary" type="submit">Save for sync</button>
+      <button id="daily-log-save" class="primary${savedClass}" type="submit" aria-live="polite">${escapeHtml(saveButtonLabel(logSaveState, online))}</button>
     </form>
     <div class="block">${sectionHead("Recent logs")}${recent ? `<div class="rows">${recent}</div>` : empty("No cached daily logs.")}</div>`
 }
@@ -787,7 +808,7 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-auth-choice]")?.addEventListener("click", showAuthChoices)
   document.querySelector<HTMLButtonElement>("[data-auth-email]")?.addEventListener("click", beginEmailCodeSignIn)
   document.querySelectorAll<HTMLButtonElement>("[data-notification-id]").forEach((button) => button.addEventListener("click", () => void openNotification(button)))
-  document.querySelector<HTMLFormElement>("#daily-log-form")?.addEventListener("submit", (event) => void queueDailyLog(event))
+  bindDailyLogForm()
   const messageInputs = document.querySelectorAll<HTMLTextAreaElement>("#chat-form textarea, #direct-message-form textarea, .direct-reply-form textarea")
   messageInputs.forEach((input) => input.addEventListener("focus", () => {
     document.body.classList.add("keyboard-open")
@@ -1036,19 +1057,118 @@ async function selectProject(projectId: string): Promise<void> {
   if (online) void refreshProjectPacket()
 }
 
+async function loadLogDraft(projectId: string): Promise<void> {
+  logDraftProjectId = projectId
+  logErrors = new Map()
+  logSaveState = "idle"
+  const saved = logDraftSchema.safeParse(await readJson(logDraftKey(projectId)))
+  // A different project may have been opened while the draft loaded.
+  if (logDraftProjectId !== projectId) return
+  logDraft = saved.success ? saved.data : emptyLogDraft()
+  if (activeTab === "log") render()
+}
+
+/** Saves the draft on the phone shortly after typing stops. */
+function persistLogDraft(): void {
+  const projectId = logDraftProjectId
+  if (!projectId) return
+  if (logDraftTimer !== null) window.clearTimeout(logDraftTimer)
+  logDraftTimer = window.setTimeout(() => {
+    logDraftTimer = null
+    void writeJson(logDraftKey(projectId), logDraft)
+  }, 300)
+}
+
+function showSaveState(state: LogSaveState): void {
+  logSaveState = state
+  if (logSavedTimer !== null) window.clearTimeout(logSavedTimer)
+  logSavedTimer = state === "idle" ? null : window.setTimeout(() => showSaveState("idle"), 6000)
+  const button = document.querySelector<HTMLButtonElement>("#daily-log-save")
+  if (!button) return
+  button.textContent = saveButtonLabel(state, online)
+  button.classList.toggle("saved", state !== "idle")
+}
+
+function bindDailyLogForm(): void {
+  const formElement = document.querySelector<HTMLFormElement>("#daily-log-form")
+  if (!formElement) return
+  formElement.addEventListener("submit", (event) => void queueDailyLog(event))
+  const handleEdit = (event: Event): void => {
+    const target = event.target
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return
+    if (!target.name || target.type === "file") return
+    logDraft = updateLogDraft(logDraft, target.name, target.value)
+    persistLogDraft()
+    // Fixing a field clears its message without redrawing the form.
+    const cleared = [target.name, ...(target.name.startsWith("workLines.") ? ["workLines"] : [])].filter((key) => logErrors.has(key))
+    if (cleared.length > 0) {
+      logErrors = new Map([...logErrors].filter(([key]) => !cleared.includes(key)))
+      target.removeAttribute("aria-invalid")
+      for (const key of cleared) document.getElementById(`log-${key}-error`)?.remove()
+      if (logErrors.size === 0) formElement.querySelector(".form-alert")?.remove()
+    }
+    if (logSaveState !== "idle") showSaveState("idle")
+    const total = formElement.querySelector<HTMLElement>("[data-total-hours]")
+    if (total) total.textContent = `Total ${totalHoursLabel(logDraft.workLines)}`
+  }
+  formElement.addEventListener("input", handleEdit)
+  formElement.addEventListener("change", handleEdit)
+  formElement.querySelector<HTMLButtonElement>("[data-add-work-line]")?.addEventListener("click", () => {
+    logDraft = addWorkLine(logDraft)
+    persistLogDraft()
+    render()
+    document.getElementById(`log-line-${logDraft.workLines.length - 1}-costCode`)?.focus()
+  })
+  formElement.querySelectorAll<HTMLButtonElement>("[data-remove-work-line]").forEach((button) => button.addEventListener("click", () => {
+    logDraft = removeWorkLine(logDraft, Number(button.dataset.removeWorkLine))
+    logErrors = new Map()
+    persistLogDraft()
+    render()
+  }))
+}
+
 async function queueDailyLog(event: SubmitEvent): Promise<void> {
   event.preventDefault()
-  if (!packet || !(event.currentTarget instanceof HTMLFormElement)) return
-  const formElement = event.currentTarget
-  const form = new FormData(formElement)
-  const workCompleted = String(form.get("workCompleted") ?? "").trim()
-  if (!workCompleted) return
-  outbox.push({ id: crypto.randomUUID(), kind: "daily_log", projectId: packet.project.id, createdAt: new Date().toISOString(), payload: { logDate: String(form.get("logDate") ?? ""), workCompleted, issues: String(form.get("issues") ?? ""), crewPresent: String(form.get("crewPresent") ?? ""), notes: String(form.get("notes") ?? "") }, remoteDailyLogId: null, attachments: draftAttachments })
+  if (!packet) return
+  const form = packet.dailyLogForm
+  const { errors } = validateDailyLogForm(logDraft, logRequirements(form), form?.costCodes ?? [])
+  logErrors = errorMap(errors)
+  const [first] = errors
+  if (first) {
+    // Nothing is cleared: the draft keeps every field and attachment.
+    render()
+    const control = document.getElementById(errorControlId(first.key))
+    control?.focus()
+    control?.scrollIntoView({ block: "center" })
+    return
+  }
+  const workLines = filledWorkLines(logDraft.workLines)
+  outbox.push({
+    id: crypto.randomUUID(),
+    kind: "daily_log",
+    projectId: packet.project.id,
+    createdAt: new Date().toISOString(),
+    payload: {
+      logDate: logDraft.logDate,
+      workCompleted: logDraft.workCompleted.trim(),
+      issues: logDraft.issues,
+      crewPresent: logDraft.crewPresent,
+      notes: logDraft.notes,
+      materialsUsed: logDraft.materialsUsed,
+      safetyIncidents: logDraft.safetyIncidents,
+      visitorLog: logDraft.visitorLog,
+      workLines,
+    },
+    remoteDailyLogId: null,
+    attachments: draftAttachments,
+  })
   await writeJson(OUTBOX_KEY, outbox)
   draftAttachments = []
   attachmentError = ""
-  formElement.reset()
+  logDraft = emptyLogDraft()
+  await writeJson(logDraftKey(packet.project.id), logDraft)
   render()
+  showSaveState("saved")
   if (online) void syncDailyLogOutbox()
 }
 
@@ -1152,6 +1272,7 @@ async function syncDailyLogOutbox(): Promise<void> {
     render()
   }
 
+  if (syncedCount > 0 && logSaveState === "saved") showSaveState("synced")
   if (syncedCount > 0 && packet) void refreshProjectPacket()
 }
 

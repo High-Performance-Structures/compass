@@ -42,9 +42,10 @@ describe("POST /api/field/daily-logs", () => {
     )
 
     expect(response.status).toBe(200)
+    // Fields added with cost code lines default to blank for older builds.
     expect(mocks.submitFieldDailyLog).toHaveBeenCalledWith(
       "kiowa",
-      validBody.payload,
+      { ...validBody.payload, materialsUsed: "", safetyIncidents: "", visitorLog: "" },
       validBody.id
     )
     await expect(response.json()).resolves.toEqual({

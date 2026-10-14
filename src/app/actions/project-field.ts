@@ -1,5 +1,20 @@
 "use server"
 
+import {
+  totalWorkLineHours,
+  type DailyLogFormValues,
+  type DailyLogWorkLineDraft,
+} from "@/lib/daily-logs/daily-log-form"
+import {
+  checkDailyLogForm,
+  dailyLogFormSetup,
+  EMPTY_DAILY_LOG_FORM_SETUP,
+  loadDailyLogWorkLines,
+  replaceDailyLogWorkLines,
+  type DailyLogFormSetup,
+  type DailyLogWorkLineView,
+} from "@/lib/daily-logs/cost-code-lines"
+import { internalDutyEntries } from "@/db/schema-internal-duties"
 import { and, asc, desc, eq, gte, inArray, not, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
@@ -216,6 +231,8 @@ export type ProjectDailyLogItem = {
   readonly photos: readonly ProjectDailyLogPhoto[]
   readonly scheduleItems: readonly ProjectDailyLogScheduleItem[]
   readonly todos: readonly ProjectDailyLogTodo[]
+  /** Cost codes worked on, with time, in the order entered. */
+  readonly workLines: readonly DailyLogWorkLineView[]
 }
 
 export type ProjectDailyLogWorkspace = {
@@ -226,6 +243,8 @@ export type ProjectDailyLogWorkspace = {
     readonly clientName: string | null
   }
   readonly logs: readonly ProjectDailyLogItem[]
+  /** The cost codes and required fields for new and edited logs. */
+  readonly form: DailyLogFormSetup
   /** Logs this viewer may delete (see lib/daily-logs/delete-rules). */
   readonly deletableLogIds: readonly string[]
   readonly unattachedPhotos: readonly ProjectDailyLogPhoto[]
@@ -260,6 +279,16 @@ type CreateDailyLogInput = {
   readonly safetyIncidents: string
   readonly visitorLog: string
   readonly notes: string
+  /**
+   * Cost codes worked on, with time. Absent only from Field Mode builds made
+   * before cost code lines; those logs skip the company's required-field rules.
+   */
+  readonly workLines?: readonly DailyLogWorkLineDraft[]
+  /**
+   * Saved on a phone and synced later: a cost code taken off the list in the
+   * meantime is still accepted, so the log can't get stuck on the device.
+   */
+  readonly queuedOnDevice?: boolean
 }
 
 export type ProjectWeatherSnapshot = {
@@ -683,11 +712,27 @@ async function verifyProjectMutationAccess(
   return { db, userId: user.id, user }
 }
 
+/** The form values the shared daily log rules check. */
+function dailyLogFormValues(input: CreateDailyLogInput, workLines: readonly DailyLogWorkLineDraft[]): DailyLogFormValues {
+  return {
+    logDate: input.logDate,
+    workCompleted: input.workCompleted,
+    workLines,
+    crewPresent: input.crewPresent,
+    materialsUsed: input.materialsUsed,
+    issues: input.issues,
+    safetyIncidents: input.safetyIncidents,
+    visitorLog: input.visitorLog,
+    notes: input.notes,
+  }
+}
+
 async function verifyDailyLogStaffMutationAccess(
   projectId: string
 ): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly userId: string
+  readonly orgId: string
 }> {
   const user = await requireAuth()
   if (isDemoUser(user.id)) {
@@ -712,7 +757,7 @@ async function verifyDailyLogStaffMutationAccess(
     throw new Error("Project not found")
   }
 
-  return { db, userId: user.id }
+  return { db, userId: user.id, orgId }
 }
 
 function displayName(row: {
@@ -1241,20 +1286,22 @@ export async function getProjectDailyLogWorkspace(
   const canViewWorkingSchedule = isInternalStaffRole(viewer.role) || viewer.role === "developer"
   const db = await verifyProjectAccess(projectId)
 
-  const [project] = await db
+  const [projectRow] = await db
     .select({
       id: projects.id,
       name: projects.name,
       projectNumber: projects.projectNumber,
       clientName: projects.clientName,
+      organizationId: projects.organizationId,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1)
 
-  if (!project) {
+  if (!projectRow) {
     throw new Error("Project not found")
   }
+  const { organizationId, ...project } = projectRow
 
   const logRows = await db
     .select({
@@ -1486,8 +1533,14 @@ export async function getProjectDailyLogWorkspace(
       .map((row) => row.id)
   }
 
+  const [workLinesByLogId, form] = await Promise.all([
+    loadDailyLogWorkLines(db, logRows.map((row) => row.id)),
+    organizationId ? dailyLogFormSetup(db, organizationId, projectId) : Promise.resolve(EMPTY_DAILY_LOG_FORM_SETUP),
+  ])
+
   return {
     project,
+    form,
     deletableLogIds,
     logs: logRows.map((row) => ({
       id: row.id,
@@ -1525,6 +1578,7 @@ export async function getProjectDailyLogWorkspace(
       photos: photosByLogId.get(row.id) ?? [],
       scheduleItems: scheduleItemsByLogId.get(row.id) ?? [],
       todos: todosByLogId.get(row.id) ?? [],
+      workLines: workLinesByLogId.get(row.id) ?? [],
     })),
     unattachedPhotos,
     schedulePhases,
@@ -1547,7 +1601,7 @@ export async function createProjectDailyLog(
   input: CreateDailyLogInput
 ): Promise<CreateDailyLogResult> {
   try {
-    const { db, userId } = await verifyDailyLogStaffMutationAccess(projectId)
+    const { db, userId, orgId } = await verifyDailyLogStaffMutationAccess(projectId)
     const clientSubmissionId = input.clientSubmissionId?.trim()
     const dailyLogId = clientSubmissionId || crypto.randomUUID()
 
@@ -1569,6 +1623,10 @@ export async function createProjectDailyLog(
     const now = new Date().toISOString()
     const logDate = normalizedLogDate(input.logDate)
     const workCompleted = requiredText(input.workCompleted, "Work completed")
+    const checked = input.workLines
+      ? await checkDailyLogForm(db, orgId, projectId, dailyLogFormValues(input, input.workLines), null, input.queuedOnDevice === true)
+      : null
+    if (checked && !checked.ok) return { success: false, error: checked.error }
 
     await db.insert(dailyLogs).values({
       id: dailyLogId,
@@ -1585,7 +1643,7 @@ export async function createProjectDailyLog(
       issues: optionalText(input.issues),
       materialsUsed: optionalText(input.materialsUsed),
       crewPresent: optionalText(input.crewPresent),
-      hoursWorked: input.hoursWorked,
+      hoursWorked: checked?.ok ? (totalWorkLineHours(checked.lines) ?? input.hoursWorked) : input.hoursWorked,
       safetyIncidents: optionalText(input.safetyIncidents),
       visitorLog: optionalText(input.visitorLog),
       notes: normalizeDailyLogNotes(workCompleted, input.notes),
@@ -1596,6 +1654,18 @@ export async function createProjectDailyLog(
       createdAt: now,
       updatedAt: now,
     })
+    if (checked?.ok) {
+      await replaceDailyLogWorkLines(db, {
+        organizationId: orgId,
+        projectId,
+        dailyLogId,
+        logDate,
+        userId,
+        createdBy: userId,
+        lines: checked.lines,
+        options: checked.options,
+      })
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
@@ -1616,7 +1686,7 @@ export async function updateProjectDailyLog(
   input: UpdateDailyLogInput
 ): Promise<UpdateDailyLogResult> {
   try {
-    const { db } = await verifyDailyLogStaffMutationAccess(projectId)
+    const { db, userId, orgId } = await verifyDailyLogStaffMutationAccess(projectId)
     const dailyLogId = input.dailyLogId.trim()
     const targetProjectId = input.targetProjectId.trim()
 
@@ -1628,7 +1698,7 @@ export async function updateProjectDailyLog(
     }
 
     const [existing] = await db
-      .select({ id: dailyLogs.id })
+      .select({ id: dailyLogs.id, authorId: dailyLogs.authorId })
       .from(dailyLogs)
       .where(and(eq(dailyLogs.id, dailyLogId), eq(dailyLogs.projectId, projectId)))
       .limit(1)
@@ -1640,6 +1710,11 @@ export async function updateProjectDailyLog(
     const logDate = normalizedLogDate(input.logDate)
     const workCompleted = requiredText(input.workCompleted, "Work completed")
     const now = new Date().toISOString()
+    // Lines are checked against the project the log will belong to.
+    const checked = input.workLines
+      ? await checkDailyLogForm(db, orgId, targetProjectId, dailyLogFormValues(input, input.workLines), dailyLogId, false)
+      : null
+    if (checked && !checked.ok) return { success: false, error: checked.error }
 
     if (targetProjectId !== projectId) {
       await verifyDailyLogStaffMutationAccess(targetProjectId)
@@ -1723,7 +1798,7 @@ export async function updateProjectDailyLog(
         issues: optionalText(input.issues),
         materialsUsed: optionalText(input.materialsUsed),
         crewPresent: optionalText(input.crewPresent),
-        hoursWorked: input.hoursWorked,
+        hoursWorked: checked?.ok ? (totalWorkLineHours(checked.lines) ?? input.hoursWorked) : input.hoursWorked,
         safetyIncidents: optionalText(input.safetyIncidents),
         visitorLog: optionalText(input.visitorLog),
         notes: normalizeDailyLogNotes(workCompleted, input.notes),
@@ -1733,6 +1808,24 @@ export async function updateProjectDailyLog(
         updatedAt: now,
       })
       .where(and(eq(dailyLogs.id, dailyLogId), eq(dailyLogs.projectId, projectId)))
+
+    if (checked?.ok) {
+      await replaceDailyLogWorkLines(db, {
+        organizationId: orgId,
+        projectId: targetProjectId,
+        dailyLogId,
+        logDate,
+        userId: existing.authorId ?? userId,
+        createdBy: userId,
+        lines: checked.lines,
+        options: checked.options,
+      })
+    } else if (targetProjectId !== projectId) {
+      await db
+        .update(internalDutyEntries)
+        .set({ projectId: targetProjectId, updatedAt: now })
+        .where(eq(internalDutyEntries.dailyLogId, dailyLogId))
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)

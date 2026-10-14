@@ -2,9 +2,9 @@ import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-or
 import { dailyLogs, organizations, projects, users } from "./schema"
 
 /**
- * One block of internal work: who, when, which duty (a cost code from the
- * company's duty list), how long. An entry may categorize an existing daily
- * log; the log itself is left as it was.
+ * One block of work: who, when, which duty or cost code, how long. Internal
+ * workspaces log these on the duty log; any project's daily log records its
+ * cost code lines here too (several per log, in `sortOrder`).
  */
 export const internalDutyEntries = sqliteTable(
   "internal_duty_entries",
@@ -26,13 +26,15 @@ export const internalDutyEntries = sqliteTable(
     relatedProjectId: text("related_project_id").references(() => projects.id, { onDelete: "set null" }),
     /** The daily log this entry categorizes, for logs written before the duty log existed. */
     dailyLogId: text("daily_log_id").references(() => dailyLogs.id, { onDelete: "set null" }),
+    /** Order among one daily log's cost code lines. */
+    sortOrder: integer("sort_order").notNull().default(0),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
   (table) => ({
     projectDateIdx: index("internal_duty_entries_project_date_idx").on(table.projectId, table.entryDate),
-    dailyLogIdx: uniqueIndex("internal_duty_entries_daily_log_idx").on(table.dailyLogId),
+    dailyLogIdx: index("internal_duty_entries_daily_log_idx").on(table.dailyLogId),
   }),
 )
 
