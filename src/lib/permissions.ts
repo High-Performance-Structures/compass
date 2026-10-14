@@ -210,6 +210,13 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "finance",
   },
   {
+    id: "equipment",
+    group: "Operations",
+    label: "Equipment",
+    description: "Approve machine log entries and set up machines, their rates and service schedules. All staff can log machine hours, fuel and service.",
+    resource: "finance",
+  },
+  {
     id: "internal-duties",
     group: "Operations",
     label: "Internal Duty Log",

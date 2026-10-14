@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  IconBulldozer,
   IconAddressBook,
   IconArchive,
   IconActivity,
@@ -409,6 +410,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "Nu-Tech Price List",
         url: "/dashboard/nutech/catalog",
         icon: IconPackages,
+        internalOnly: true,
+      },
+      {
+        kind: "link",
+        title: "Equipment",
+        url: "/dashboard/equipment",
+        icon: IconBulldozer,
         internalOnly: true,
       },
       {
