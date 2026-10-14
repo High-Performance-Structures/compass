@@ -56,32 +56,27 @@ function FieldError({ id, message }: { readonly id: string; readonly message: st
 /**
  * Logs machine hours, a fill-up, a service, a repair or another cost, or
  * changes an entry. Shows what is required for the chosen kind and, for
- * hours, what the time charges the job at the machine's rates.
+ * hours, what the time charges the job. Mounted fresh for every open (the
+ * caller keys it), so it never carries over the last entry's kind.
  */
 export function MachineLogEntryDialog({
   workspace,
-  open,
-  onOpenChange,
+  onClose,
   initialKind,
   entry,
 }: {
   readonly workspace: EquipmentWorkspace
-  readonly open: boolean
-  readonly onOpenChange: (open: boolean) => void
+  readonly onClose: () => void
   readonly initialKind: MachineLogKind
   /** The entry being changed; null for a new one. */
   readonly entry: MachineLogEntryView | null
 }): React.ReactElement {
   const router = useRouter()
-  const [draft, setDraft] = React.useState<MachineLogDraft>(() => emptyMachineLogDraft(initialKind, workspace.today))
+  const [draft, setDraft] = React.useState<MachineLogDraft>(() =>
+    entry ? draftFromEntry(entry) : emptyMachineLogDraft(initialKind, workspace.today),
+  )
   const [errors, setErrors] = React.useState<ReadonlyMap<string, string>>(new Map())
   const [pending, startTransition] = React.useTransition()
-
-  React.useEffect(() => {
-    if (!open) return
-    setDraft(entry ? draftFromEntry(entry) : emptyMachineLogDraft(initialKind, workspace.today))
-    setErrors(new Map())
-  }, [open, entry, initialKind, workspace.today])
 
   const machines = workspace.machines.filter((machine) => machine.active || machine.id === draft.machineId)
   const machine = workspace.machines.find((item) => item.id === draft.machineId)
@@ -127,7 +122,7 @@ export function MachineLogEntryDialog({
         return
       }
       toast.success(entry ? "Entry updated; it's back waiting for approval." : "Logged. It's waiting for approval.")
-      onOpenChange(false)
+      onClose()
       router.refresh()
     })
   }
@@ -137,10 +132,12 @@ export function MachineLogEntryDialog({
   const required = <span className="ml-1 text-xs font-normal text-destructive">Required</span>
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={(next) => (next ? null : onClose())}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{entry ? "Change machine log entry" : "Log machine time or cost"}</DialogTitle>
+          <DialogTitle>
+            {entry ? "Change machine log entry" : "Log machine time or cost"}
+          </DialogTitle>
           <DialogDescription>Entries wait for approval before they go to Sage.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4" noValidate>
@@ -346,7 +343,7 @@ export function MachineLogEntryDialog({
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
