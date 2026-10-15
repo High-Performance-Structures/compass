@@ -1,5 +1,6 @@
 "use server"
 
+import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@/lib/change-orders/estimate-execution"
 import {
   and,
   asc,
@@ -4045,18 +4046,24 @@ async function acceptProjectEstimate(input: {
   // several estimates per job only an older version of the same estimate is
   // replaced. Old versions stay for audit; the switch happens in one batch.
   const mode = await readEstimateMode(input.access.db, input.access.organizationId, input.access.department)
+  // A change-order estimate executes its change order (lines, amount and
+  // signed document) in the same batch, and leaves the contract estimate alone.
+  const changeOrderExecution = input.estimate.changeOrderId
+    ? await changeOrderExecutionFromEstimate({
+        db: input.access.db,
+        estimate: input.estimate,
+        signedAt: input.signedAt,
+        evidenceUrl: input.evidenceUrl,
+        evidenceLabel: input.evidenceLabel,
+        actor: { id: input.access.user.id, name: recordedByName, role: input.access.user.role },
+        now,
+      })
+    : []
   await input.access.db.batch([
     input.access.db
       .update(projectEstimates)
       .set({ status: "superseded", updatedAt: now })
-      .where(
-        and(
-          eq(projectEstimates.projectId, input.estimate.projectId),
-          eq(projectEstimates.status, "accepted"),
-          ne(projectEstimates.id, input.estimate.id),
-          ...(mode === "multiple" ? [eq(projectEstimates.estimateNumber, input.estimate.estimateNumber)] : [])
-        )
-      ),
+      .where(and(...estimateSupersedeConditions(input.estimate, mode))),
     input.access.db
       .update(projectEstimates)
       .set({
@@ -4075,6 +4082,7 @@ async function acceptProjectEstimate(input: {
         updatedAt: now,
       })
       .where(eq(projectEstimates.id, input.estimate.id)),
+    ...changeOrderExecution,
   ])
 
   // Several-estimate jobs move on to orders, not a contract budget.

@@ -1,10 +1,11 @@
-import { and, eq, ne } from "drizzle-orm"
+import { and, eq, isNull, ne } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
 import { projects } from "@/db/schema"
 import { readEstimateMode } from "@/lib/estimates/numbering"
+import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@/lib/change-orders/estimate-execution"
 import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
@@ -141,7 +142,8 @@ export async function POST(request: Request): Promise<Response> {
             and(
               eq(projectEstimates.projectId, linkedEstimate.projectId),
               eq(projectEstimates.status, "accepted"),
-              ne(projectEstimates.id, linkedEstimate.id)
+              ne(projectEstimates.id, linkedEstimate.id),
+              isNull(projectEstimates.changeOrderId)
             )
           ),
         db
@@ -244,18 +246,24 @@ export async function POST(request: Request): Promise<Response> {
     projectDepartment({ projectId: estimate.projectId, projectNumber: project?.projectNumber ?? null }),
   )
   if (estimate.status === "signature_pending") {
+    const signedDocumentUrl = `/api/integrations/foxit/envelopes/${encodeURIComponent(envelopeId)}/document`
+    // A signed change-order estimate executes its change order in the same batch.
+    const changeOrderExecution = estimate.changeOrderId
+      ? await changeOrderExecutionFromEstimate({
+          db,
+          estimate,
+          signedAt: now,
+          evidenceUrl: signedDocumentUrl,
+          evidenceLabel: "Completed Foxit estimate",
+          actor: { id: estimate.createdBy, name: "Foxit eSign", role: "system" },
+          now,
+        })
+      : []
     await db.batch([
       db
         .update(projectEstimates)
         .set({ status: "superseded", updatedAt: now })
-        .where(
-          and(
-            eq(projectEstimates.projectId, estimate.projectId),
-            eq(projectEstimates.status, "accepted"),
-            ne(projectEstimates.id, estimate.id),
-            ...(mode === "multiple" ? [eq(projectEstimates.estimateNumber, estimate.estimateNumber)] : [])
-          )
-        ),
+        .where(and(...estimateSupersedeConditions(estimate, mode))),
       db
         .update(projectEstimates)
         .set({
@@ -272,6 +280,7 @@ export async function POST(request: Request): Promise<Response> {
           updatedAt: now,
         })
         .where(eq(projectEstimates.id, estimate.id)),
+      ...changeOrderExecution,
     ])
   }
   if (mode === "multiple") return Response.json({ success: true })

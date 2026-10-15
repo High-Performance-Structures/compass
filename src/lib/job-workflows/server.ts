@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, ne } from "drizzle-orm"
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, ne } from "drizzle-orm"
 import type { getDb } from "@/db"
 import {
   dailyLogs,
@@ -93,7 +93,7 @@ export async function jobWorkflowFacts(
     db
       .select({ status: projectEstimates.status })
       .from(projectEstimates)
-      .where(and(eq(projectEstimates.projectId, projectId), ne(projectEstimates.status, "void"), ne(projectEstimates.status, "superseded")))
+      .where(and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId), ne(projectEstimates.status, "void"), ne(projectEstimates.status, "superseded")))
       .orderBy(desc(projectEstimates.updatedAt))
       .limit(1)
       .get(),

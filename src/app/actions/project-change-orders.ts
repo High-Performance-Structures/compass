@@ -333,7 +333,8 @@ async function requireRebaselineSelection(input: {
       .where(
         and(
           eq(projectEstimates.projectId, input.projectId),
-          eq(projectEstimates.status, "accepted")
+          eq(projectEstimates.status, "accepted"),
+          isNull(projectEstimates.changeOrderId)
         )
       )
       .orderBy(desc(projectEstimates.versionNumber))
@@ -553,7 +554,8 @@ async function rebaselineViewData(
       .where(
         and(
           eq(projectEstimates.projectId, row.projectId),
-          eq(projectEstimates.status, "accepted")
+          eq(projectEstimates.status, "accepted"),
+          isNull(projectEstimates.changeOrderId)
         )
       )
       .orderBy(desc(projectEstimates.versionNumber))
@@ -921,7 +923,8 @@ export async function getProjectChangeOrderFormOptions(
     context.db
       .select()
       .from(projectEstimates)
-      .where(eq(projectEstimates.projectId, projectId))
+      // Only contract estimates can replace the contract baseline.
+      .where(and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)))
       .orderBy(desc(projectEstimates.versionNumber)),
   ])
   const phaseMap = new Map<string, ProjectChangeOrderPhaseOption>()
