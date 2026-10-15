@@ -44,6 +44,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { saveFeatureSettings } from "@/app/actions/feature-settings"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -324,6 +325,11 @@ export function ProjectContractPacketWorkspacePanel({
   const [replacementLabel, setReplacementLabel] = useState("")
   const [replacementReason, setReplacementReason] = useState("")
   const [replacementAttested, setReplacementAttested] = useState(false)
+  // New packets start from the company's default document selection.
+  const [chosenTemplateIds, setChosenTemplateIds] = useState<ReadonlySet<string>>(
+    () => new Set(workspace.templateOptions.filter((template) => !workspace.excludedByDefault.includes(template.code)).map((template) => template.id))
+  )
+  const [saveSelectionAsDefault, setSaveSelectionAsDefault] = useState(false)
   const parsedDepositPercent = Number(depositPercent)
   const depositRateBasisPoints = Number.isFinite(parsedDepositPercent)
     ? Math.round(parsedDepositPercent * 100)
@@ -335,10 +341,17 @@ export function ProjectContractPacketWorkspacePanel({
   function create(): void {
     if (!estimateId) return
     startTransition(async () => {
-      const result = await createProjectContractPacket(projectId, estimateId)
+      const result = await createProjectContractPacket(projectId, estimateId, { templateIds: [...chosenTemplateIds] })
       if (!result.success) {
         toast.error(result.error)
         return
+      }
+      if (saveSelectionAsDefault) {
+        const excludedByDefault = workspace.templateOptions
+          .filter((template) => !chosenTemplateIds.has(template.id) && !workspace.requiredTemplateCodes.includes(template.code))
+          .map((template) => template.code)
+        const saved = await saveFeatureSettings("contract-packets", { excludedByDefault })
+        if (!saved.success) toast.error(`Packet created, but the default wasn't saved: ${saved.error}`)
       }
       toast.success(result.message)
       router.push(`/dashboard/projects/${projectId}/contracts?packetId=${result.id}`)
@@ -597,6 +610,46 @@ export function ProjectContractPacketWorkspacePanel({
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Choose the exact estimate that will become CA22. Compass will copy the current published contract documents into an independent, editable project packet.
         </p>
+        {workspace.templateOptions.length > 0 && (
+          <fieldset className="mt-4 max-w-3xl space-y-2">
+            <legend className="text-sm font-medium">Documents to include</legend>
+            <p className="text-xs text-muted-foreground">
+              The agreement and the estimate are always included. You can still add or remove documents after the packet is created.
+            </p>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {workspace.templateOptions.map((template) => {
+                const required = workspace.requiredTemplateCodes.includes(template.code)
+                return (
+                  <label key={template.id} className="flex items-start gap-2 text-sm">
+                    <Checkbox
+                      checked={required || chosenTemplateIds.has(template.id)}
+                      disabled={required || pending}
+                      onCheckedChange={(value) =>
+                        setChosenTemplateIds((current) => {
+                          const next = new Set(current)
+                          if (value === true) next.add(template.id)
+                          else next.delete(template.id)
+                          return next
+                        })
+                      }
+                      aria-label={`Include ${template.code} ${template.name}`}
+                    />
+                    <span className="leading-5">
+                      {template.code} · {template.name}
+                      {required ? <span className="ml-1 text-xs text-muted-foreground">(required)</span> : null}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+            {workspace.canEditDefaults && (
+              <label className="flex items-center gap-2 pt-1 text-xs text-muted-foreground">
+                <Checkbox checked={saveSelectionAsDefault} disabled={pending} onCheckedChange={(value) => setSaveSelectionAsDefault(value === true)} />
+                Use this selection as the default for new contract packets
+              </label>
+            )}
+          </fieldset>
+        )}
         <div className="mt-4 flex max-w-3xl flex-col gap-3 sm:flex-row">
           <SearchableCombobox
             ariaLabel="Choose estimate for contract"
