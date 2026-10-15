@@ -43,6 +43,8 @@ import { notFound } from "next/navigation"
 import { can } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { ClientRedirect } from "@/components/client-redirect"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { NO_CONFLICT_SETTINGS } from "@/lib/schedule/conflicts"
 
 function kindFilter(
   value: string | readonly string[] | undefined
@@ -242,6 +244,10 @@ export default async function SchedulePage({
       scope.kind === "project" && primaryProject
         ? await getSchedulePublicationStatus(primaryProject.id)
         : null
+    // Names never flagged and other spellings, for the cross-job conflict markers.
+    const conflictSettings = currentUser?.organizationId
+      ? await readFeatureSettings(getDb((await getCloudflareContext()).env.DB), currentUser.organizationId, "schedule-conflicts")
+      : NO_CONFLICT_SETTINGS
 
     return (
       <div className="flex min-h-full flex-col px-3 py-2 sm:px-4 lg:px-6">
@@ -266,6 +272,7 @@ export default async function SchedulePage({
           currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
           publicationStatus={publicationStatus}
           canManagePublication={can(currentUser, "schedule", "update") && !isDemoUser(currentUser?.id ?? "")}
+          conflictSettings={conflictSettings}
         />
       </div>
     )

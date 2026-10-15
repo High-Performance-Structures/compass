@@ -17,6 +17,8 @@ export interface FrappeTask {
   custom_class: string
   displayColor: string | null
   projectColor?: string
+  /** The item's crew is booked on another job over the same days. */
+  hasConflict?: boolean
   isCriticalPath: boolean
   isMilestone: boolean
 }
@@ -94,24 +96,40 @@ export type DisplayItem =
   | { type: "phase-header"; phase: string; group: PhaseGroup; collapsed: boolean }
   | { type: "task"; task: ScheduleTaskData }
 
+/**
+ * Another way to group the Gantt than by phase (e.g. by crew): each task's
+ * group key and label. Groups are listed alphabetically, with an empty key
+ * ("Unassigned") last.
+ */
+export type GanttGrouping = (task: ScheduleTaskData) => { readonly key: string; readonly label: string }
+
 export function groupTasksByPhase(
-  tasks: ScheduleTaskData[]
+  tasks: ScheduleTaskData[],
+  grouping?: GanttGrouping
 ): PhaseGroup[] {
   const byPhase = new Map<string, ScheduleTaskData[]>()
+  const labels = new Map<string, string>()
 
   for (const task of tasks) {
-    const phase = task.phase || "uncategorized"
+    const custom = grouping?.(task)
+    // Custom keys are prefixed so they can't collide with a phase name.
+    const phase = custom ? `group:${custom.key}` : task.phase || "uncategorized"
+    if (custom) labels.set(phase, custom.label)
     if (!byPhase.has(phase)) byPhase.set(phase, [])
     byPhase.get(phase)!.push(task)
   }
 
   const groups: PhaseGroup[] = []
-  const orderedPhases: string[] = [
-    ...PHASE_ORDER.filter((p) => byPhase.has(p)),
-    ...Array.from(byPhase.keys()).filter(
-      (p) => !PHASE_ORDER.includes(p as ConstructionPhase)
-    ),
-  ]
+  const orderedPhases: string[] = grouping
+    ? Array.from(byPhase.keys()).sort((a, b) =>
+        a === "group:" ? 1 : b === "group:" ? -1 : (labels.get(a) ?? a).localeCompare(labels.get(b) ?? b)
+      )
+    : [
+        ...PHASE_ORDER.filter((p) => byPhase.has(p)),
+        ...Array.from(byPhase.keys()).filter(
+          (p) => !PHASE_ORDER.includes(p as ConstructionPhase)
+        ),
+      ]
 
   for (const phase of orderedPhases) {
     const phaseTasks = byPhase.get(phase)!
@@ -129,7 +147,7 @@ export function groupTasksByPhase(
 
     groups.push({
       phase,
-      label: PHASE_LABELS[phase as ConstructionPhase] ?? phase,
+      label: labels.get(phase) ?? PHASE_LABELS[phase as ConstructionPhase] ?? phase,
       tasks: phaseTasks,
       startDate: starts[0],
       endDate: ends[ends.length - 1],
@@ -176,9 +194,10 @@ export interface PhaseTransformResult {
 export function transformWithPhaseGroups(
   tasks: ScheduleTaskData[],
   dependencies: TaskDependencyData[],
-  collapsedPhases: Set<string>
+  collapsedPhases: Set<string>,
+  grouping?: GanttGrouping
 ): PhaseTransformResult {
-  const groups = groupTasksByPhase(tasks)
+  const groups = groupTasksByPhase(tasks, grouping)
   const frappeTasks: FrappeTask[] = []
   const displayItems: DisplayItem[] = []
 

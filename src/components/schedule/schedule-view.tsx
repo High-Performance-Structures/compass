@@ -1,5 +1,12 @@
 "use client"
 
+import { ScheduleWorkloadStrip } from "@/components/schedule/schedule-workload-strip"
+import {
+  findScheduleConflicts,
+  NO_CONFLICT_SETTINGS,
+  primaryParty,
+  type ScheduleConflictSettings,
+} from "@/lib/schedule/conflicts"
 import { useDepartmentProfiles } from "@/components/branding/department-profiles-provider"
 import { useQuickAddEntry } from "@/hooks/use-quick-add-entry"
 
@@ -172,6 +179,8 @@ interface ScheduleViewProps {
   readonly publicationStatus?: SchedulePublicationStatus | null
   readonly initialTaskFormOpen?: boolean
   readonly canManagePublication?: boolean
+  /** Names never flagged and other spellings, for cross-job conflict markers. */
+  readonly conflictSettings?: ScheduleConflictSettings
 }
 
 // Stable default: a fresh [] per render invalidated the Gantt task memo and
@@ -197,6 +206,7 @@ export function ScheduleView({
   publicationStatus: initialPublicationStatus = null,
   initialTaskFormOpen = false,
   canManagePublication = false,
+  conflictSettings = NO_CONFLICT_SETTINGS,
 }: ScheduleViewProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -218,10 +228,10 @@ export function ScheduleView({
   const initialPreset =
     SCHEDULE_VIEW_PRESETS.find((value) => value === requestedPreset) ?? "all"
   const requestedGroup = searchParams.get("group")
-  // The all-projects schedule groups by project unless the link says otherwise.
-  // Keyed on globalMode, which stays fixed while projects are selected, so the
-  // default never flips mid-navigation and rewrites the URL.
-  const defaultGroup: ScheduleGroupMode = globalMode ? "project" : "none"
+  // Every schedule starts ungrouped, so several jobs' items mix on one
+  // timeline in date order and overlaps sit side by side. "By project" is
+  // still a grouping choice.
+  const defaultGroup: ScheduleGroupMode = "none"
   const initialGroup =
     SCHEDULE_GROUP_MODES.find((value) => value === requestedGroup) ?? defaultGroup
   const requestedColumns = (searchParams.get("columns") ?? "")
@@ -256,6 +266,7 @@ export function ScheduleView({
     search: searchParams.get("q") ?? "",
   }))
   const [preset, setPreset] = useState<ScheduleViewPreset>(initialPreset)
+  const [conflictsOnly, setConflictsOnly] = useState(searchParams.get("conflicts") === "1")
   const [groupMode, setGroupMode] =
     useState<ScheduleGroupMode>(initialGroup)
   const [visibleColumns, setVisibleColumns] =
@@ -358,6 +369,7 @@ export function ScheduleView({
     setOrDelete("q", filters.search)
     setOrDelete("preset", preset === "all" ? "" : preset)
     setOrDelete("group", groupMode === defaultGroup ? "" : groupMode)
+    setOrDelete("conflicts", conflictsOnly ? "1" : "")
     setOrDelete(
       "columns",
       visibleColumns.length === SCHEDULE_LIST_COLUMNS.length
@@ -373,6 +385,7 @@ export function ScheduleView({
       })
     }
   }, [
+    conflictsOnly,
     defaultGroup,
     filters,
     groupMode,
@@ -406,8 +419,16 @@ export function ScheduleView({
       .map((phase) => ({ value: phase, label: phase }))
   }, [initialData.tasks])
 
+  // Conflicts look at the whole schedule, not just what the filters show.
+  const conflicts = useMemo(
+    () => findScheduleConflicts(initialData.tasks, conflictSettings),
+    [conflictSettings, initialData.tasks]
+  )
+  const multipleJobs = scheduleProjects.length > 1
+
   const filteredTasks = useMemo(() => {
     let tasks = initialData.tasks
+    if (conflictsOnly) tasks = tasks.filter((task) => conflicts.has(task.id))
 
     if (filters.status.length > 0) {
       tasks = tasks.filter((t) => filters.status.includes(t.status))
@@ -473,6 +494,11 @@ export function ScheduleView({
     const groupKey = (task: (typeof ordered)[number]): string => {
       if (groupMode === "phase") return task.phase
       if (groupMode === "status") return task.status
+      if (groupMode === "crew") {
+        // Unassigned items sort after every named crew.
+        const party = primaryParty(task.assignedTo, conflictSettings)
+        return party.key ? party.label : "\uffff"
+      }
       const project = projectById.get(task.projectId)
       return project?.projectNumber ?? project?.name ?? task.projectId
     }
@@ -480,6 +506,9 @@ export function ScheduleView({
       groupKey(left).localeCompare(groupKey(right))
     )
   }, [
+    conflictSettings,
+    conflicts,
+    conflictsOnly,
     currentUserAssigneeTerms,
     filters,
     groupMode,
@@ -1093,6 +1122,7 @@ export function ScheduleView({
             <SelectItem value="none">No grouping</SelectItem>
             <SelectItem value="phase">By phase</SelectItem>
             <SelectItem value="project">By project</SelectItem>
+            <SelectItem value="crew">By crew</SelectItem>
             <SelectItem value="status">By status</SelectItem>
           </SelectContent>
         </Select>
@@ -1316,6 +1346,14 @@ export function ScheduleView({
             />
           )
         )}
+        {multipleJobs && view !== "calendar" ? (
+          <ScheduleWorkloadStrip
+            tasks={initialData.tasks}
+            conflicts={conflicts}
+            conflictsOnly={conflictsOnly}
+            onConflictsOnlyChange={setConflictsOnly}
+          />
+        ) : null}
         {view === "list" && (
           <ScheduleListView
             projectId={projectId}
@@ -1326,6 +1364,7 @@ export function ScheduleView({
             focusTaskId={focusTaskId}
             projects={scheduleProjects}
             visibleColumns={visibleColumns}
+            conflicts={conflicts}
           />
         )}
         {view === "gantt" && (
@@ -1338,6 +1377,9 @@ export function ScheduleView({
             projects={scheduleProjects}
             ganttScrollMode={ganttScrollMode}
             groupByPhase={groupMode === "phase"}
+            groupByCrew={groupMode === "crew"}
+            conflictSettings={conflictSettings}
+            conflicts={conflicts}
             onGroupByPhaseChange={(grouped) =>
               setGroupMode(grouped ? "phase" : "none")
             }

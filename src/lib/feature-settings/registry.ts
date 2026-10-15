@@ -472,7 +472,22 @@ export const dailyLogReminderSettingsSchema = z.object({
 
 export type DailyLogReminderSettings = z.infer<typeof dailyLogReminderSettingsSchema>
 
+/**
+ * Schedule conflicts: when the same crew or company is booked on two jobs over
+ * the same days. Names here are never flagged (a company with several crews),
+ * and aliases treat another spelling as the same name.
+ */
+export const scheduleConflictSettingsSchema = z.object({
+  ignoredParties: z.array(z.string().trim().min(1).max(120)).max(100),
+  aliases: z
+    .array(z.object({ from: z.string().trim().min(1).max(120), to: z.string().trim().min(1).max(120) }))
+    .max(200),
+})
+
+export type ScheduleConflictSettingsValue = z.infer<typeof scheduleConflictSettingsSchema>
+
 type FeatureSettingsTypes = {
+  readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
   readonly "project-timeline": ProjectTimelineSettings
@@ -509,6 +524,12 @@ export type FeatureSettingsKey = keyof FeatureSettingsTypes
 export type FeatureSettingsValue<K extends FeatureSettingsKey> = FeatureSettingsTypes[K]
 
 export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSettingsGroup<FeatureSettingsTypes[K]> } = {
+  "schedule-conflicts": {
+    label: "Schedule conflicts",
+    description: "Flags a crew or company booked on two jobs over the same days. List names to never flag, and other spellings of the same name.",
+    defaults: { ignoredParties: [], aliases: [] },
+    schema: scheduleConflictSettingsSchema,
+  },
   "daily-logs": {
     label: "Daily logs",
     description: "What every daily log must include before it saves, in the browser and in Field Mode.",

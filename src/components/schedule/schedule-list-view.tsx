@@ -1,5 +1,6 @@
 "use client"
 
+import { conflictSummary, type ScheduleConflict } from "@/lib/schedule/conflicts"
 import { useState, useCallback, useEffect, useMemo } from "react"
 import {
   useReactTable,
@@ -19,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
+  IconAlertTriangle,
   IconPencil,
   IconTrash,
   IconLink,
@@ -82,7 +84,11 @@ interface ScheduleListViewProps {
   readonly focusTaskId?: string | null
   readonly projects?: readonly ScheduleProjectData[]
   readonly visibleColumns?: readonly ScheduleListColumn[]
+  /** Items whose crew is booked on another job over the same days. */
+  readonly conflicts?: ReadonlyMap<string, readonly ScheduleConflict[]>
 }
+
+const NO_CONFLICTS: ReadonlyMap<string, readonly ScheduleConflict[]> = new Map()
 
 function StatusDot({
   task,
@@ -150,6 +156,7 @@ export function ScheduleListView({
   focusTaskId = null,
   projects = [],
   visibleColumns = SCHEDULE_LIST_COLUMNS,
+  conflicts = NO_CONFLICTS,
 }: ScheduleListViewProps) {
   const router = useRouter()
   const displayColorPalette = useScheduleDisplayPalette(projectId ?? "unified")
@@ -231,6 +238,22 @@ export function ScheduleListView({
             >
               {row.original.title}
             </button>
+            {conflicts.has(row.original.id) ? (
+              <span
+                className="shrink-0 text-destructive"
+                title={(conflicts.get(row.original.id) ?? [])
+                  .map((conflict) =>
+                    conflictSummary(conflict, (id) => {
+                      const other = projectById.get(id)
+                      return other ? projectScheduleLabel(other) : "another job"
+                    })
+                  )
+                  .join("\n")}
+              >
+                <IconAlertTriangle className="size-4" aria-hidden="true" />
+                <span className="sr-only">Crew double-booked</span>
+              </span>
+            ) : null}
           </div>
         ),
       },
@@ -373,6 +396,7 @@ export function ScheduleListView({
     ],
     [
       assigneeOptions,
+      conflicts,
       displayColorPalette,
       handleEdit,
       multipleProjects,
