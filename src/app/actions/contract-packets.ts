@@ -1,5 +1,7 @@
 "use server"
 
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -153,6 +155,12 @@ export type ProjectContractPacketWorkspace = {
   readonly activePacket: ProjectContractPacketSummary | null
   readonly documents: readonly ProjectContractPacketDocumentItem[]
   readonly templateOptions: readonly ProjectContractTemplateOption[]
+  /** Template codes a new packet leaves unchecked (company setting). */
+  readonly excludedByDefault: readonly string[]
+  /** Template codes every packet must include (agreement and estimate). */
+  readonly requiredTemplateCodes: readonly string[]
+  /** Whether this viewer may change the company's default selection. */
+  readonly canEditDefaults: boolean
   readonly estimateOptions: readonly ProjectContractPacketEstimateOption[]
   readonly signerContacts: readonly ProjectContractSignerOption[]
 }
@@ -478,6 +486,9 @@ export async function getProjectContractPacketWorkspace(
     activePacket: active ? packetSummary(active, canEdit) : null,
     documents,
     templateOptions: templates,
+    excludedByDefault: (await readFeatureSettings(access.db, access.organizationId, "contract-packets")).excludedByDefault,
+    requiredTemplateCodes: REQUIRED_PACKET_TEMPLATE_CODES,
+    canEditDefaults: canEditFeatureSettings(access.user.role),
     estimateOptions: estimateRows.map((estimate) => ({
       id: estimate.id,
       estimateNumber: estimate.estimateNumber,
@@ -498,9 +509,16 @@ export async function getProjectContractPacketWorkspace(
   }
 }
 
+/** A packet can't be signed without the agreement and the estimate. */
+const REQUIRED_PACKET_TEMPLATE_CODES: readonly string[] = ["CA00", "CA22"]
+
 export async function createProjectContractPacket(
   projectId: string,
-  estimateId: string
+  estimateId: string,
+  options?: {
+    /** Templates to include; the agreement and estimate are always added. Omit for all. */
+    readonly templateIds?: readonly string[]
+  }
 ): Promise<ContractPacketActionResult> {
   try {
     const access = await packetAccess(projectId, true)
@@ -512,10 +530,14 @@ export async function createProjectContractPacket(
       )
       .get()
     if (!estimate) throw new Error("Choose an estimate for the contract packet.")
-    const templates = await publishedTemplateOptions(access)
-    if (templates.length === 0) {
+    const publishedTemplates = await publishedTemplateOptions(access)
+    if (publishedTemplates.length === 0) {
       throw new Error("Import and publish the Contract Library before creating a packet.")
     }
+    const chosen = options?.templateIds ? new Set(options.templateIds) : null
+    const templates = chosen
+      ? publishedTemplates.filter((template) => chosen.has(template.id) || REQUIRED_PACKET_TEMPLATE_CODES.includes(template.code))
+      : publishedTemplates
     const existing = await access.db
       .select({ versionNumber: contractPackets.versionNumber })
       .from(contractPackets)

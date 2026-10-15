@@ -486,7 +486,16 @@ export const scheduleConflictSettingsSchema = z.object({
 
 export type ScheduleConflictSettingsValue = z.infer<typeof scheduleConflictSettingsSchema>
 
+/** Contract packets: which optional documents new packets leave out by default. */
+export const contractPacketSettingsSchema = z.object({
+  /** Template codes left unchecked when a new packet is created. */
+  excludedByDefault: z.array(z.string().min(1).max(40)).max(200),
+})
+
+export type ContractPacketSettings = z.infer<typeof contractPacketSettingsSchema>
+
 type FeatureSettingsTypes = {
+  readonly "contract-packets": ContractPacketSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
@@ -611,6 +620,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       ],
     },
     schema: internalDutySettingsSchema,
+  },
+  "contract-packets": {
+    label: "Contract packets",
+    description: "Which optional contract documents a new contract packet includes by default. The agreement and the estimate are always included.",
+    defaults: { excludedByDefault: [] },
+    schema: contractPacketSettingsSchema,
   },
   "client-follow-up": {
     label: "Client follow-up page",
