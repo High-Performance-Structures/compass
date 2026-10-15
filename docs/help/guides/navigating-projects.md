@@ -7,12 +7,12 @@
   "summary": "Find jobs on the dashboard map and pipelines, track follow-up, change statuses, and preserve project context.",
   "contextSummary": "The active project controls where new records, messages, uploads, and edits are saved. Confirm it before every consequential action.",
   "category": "Start Here",
-  "tags": ["projects", "navigation", "dashboard", "portfolio map", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar"],
+  "tags": ["projects", "navigation", "dashboard", "portfolio map", "pipeline", "Nu-Tech Sales", "project aging", "follow-up", "status", "project switcher", "duplicate review", "project family", "phase", "sorting", "sidebar", "timeline", "what's happening"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard", "/dashboard/projects", "/dashboard/client-follow-up", "/dashboard/executive-admin/project-archive"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-15"
 }
 ---
 
@@ -31,6 +31,12 @@ Expand **Projects** in the left menu, then expand **Project Financials** to reac
 ## Arrange Your Role Dashboard {#role-dashboard-order}
 
 On a project's Overview, the **Role dashboard** lists the work queues for your role. To change their order, drag an item by the handle on its left or use its small up and down arrows. Your order is saved for you, separately for each role, and applies to every project. Choose **Reset order** to go back to the role's default order.
+
+## What's Happening on a Job {#project-timeline}
+
+A project's Overview shows **What's happening**: daily logs, to-dos opened or worked on, client contact, office time logged against the job, machine hours and schedule changes, by day with the newest first. Use the buttons above it to show one kind at a time, and **Show the … days before** to look further back. Each row links to its log, to-do or schedule. **Hours by cost code** beside it adds up the cost code lines on the same days' daily logs, split into hours on to-dos and the rest.
+
+Only staff see the timeline. A daily log marked **Shared with the owner** is one owner updates can use. Admins choose what the timeline shows in **Settings → Workflows → Project timeline**.
 
 ## Keep Project Context {#keep-context}
 
