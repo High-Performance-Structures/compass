@@ -295,3 +295,11 @@
 .gantt .bar-wrapper.phase-drywall .bar { fill: oklch(0.75 0.03 0); }
 .gantt .bar-wrapper.phase-landscaping .bar { fill: oklch(0.7 0.15 160); }
 .gantt .bar-wrapper.phase-closeout .bar { fill: oklch(0.65 0.12 270); }
+
+/* A crew double-booked on another job over the same days: a heavy destructive
+   outline that reads over any bar color. */
+.gantt .bar-wrapper.has-conflict .bar {
+  stroke: var(--destructive);
+  stroke-width: 3;
+  stroke-dasharray: 6 3;
+}

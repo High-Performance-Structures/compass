@@ -13,6 +13,7 @@ export const SCHEDULE_GROUP_MODES = [
   "none",
   "phase",
   "project",
+  "crew",
   "status",
 ] as const
 
