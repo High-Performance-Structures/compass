@@ -13,6 +13,7 @@ import {
   EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT,
   emptyClientContactRow,
   lineTodoKey,
+  madeTodoTitles,
   type DailyLogOpenTodo,
 } from "@/lib/daily-logs/log-followups"
 
@@ -85,4 +86,23 @@ describe("daily log to-do and client contact fields", () => {
     expect(editing).toContain("We reached them")
     expect(editing).toContain("Make a follow-up to-do from this")
   })
+
+  it("marks lines already made into to-dos on a saved log instead of offering Make to-do again", () => {
+    const html = renderToStaticMarkup(
+      createElement(DailyLogLineTodos, {
+        idPrefix: "edit",
+        source: "notes",
+        text: "Order more Simpson ties\nCall the inspector",
+        rules: { ...rules, todoMode: "ask" },
+        draft: EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT,
+        assignees: [],
+        costCodes,
+        onChange: noop,
+        madeTitles: madeTodoTitles([{ title: "Order more Simpson ties" }]),
+      }),
+    )
+    expect(html.match(/To-do made/g)).toHaveLength(1)
+    expect(html.match(/Make to-do/g)).toHaveLength(1)
+  })
 })
+

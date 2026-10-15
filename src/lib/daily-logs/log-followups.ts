@@ -149,6 +149,25 @@ export function followUpLines(text: string): readonly string[] {
   return lines
 }
 
+/** How a line and a to-do title are compared, so a line isn't made into a to-do twice. */
+export function todoTitleKey(title: string): string {
+  return title.trim().replace(/\s+/g, " ").toLowerCase()
+}
+
+/** Title keys of the to-dos already made from a log. */
+export function madeTodoTitles(todos: readonly { readonly title: string }[]): ReadonlySet<string> {
+  return new Set(todos.map((todo) => todoTitleKey(todo.title)))
+}
+
+/**
+ * Rules for adding to-dos to a log that's already saved: lines become to-dos
+ * only when someone presses Make to-do, even where new logs make them
+ * automatically, so editing an old log never creates to-dos on its own.
+ */
+export function savedLogTodoRules(rules: DailyLogFollowUpRules): DailyLogFollowUpRules {
+  return rules.todoMode === "auto" ? { ...rules, todoMode: "ask" } : rules
+}
+
 function words(text: string): readonly string[] {
   return text.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter(Boolean)
 }

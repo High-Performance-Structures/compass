@@ -88,7 +88,12 @@ import type { DailyLogFormSetup } from "@/lib/daily-logs/cost-code-lines"
 import type { DailyLogFollowUpSetup } from "@/lib/daily-logs/log-followups-server"
 import {
   EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT,
+  EMPTY_DAILY_LOG_FOLLOW_UPS,
+  followUpLines,
   followUpsFromDraft,
+  madeTodoTitles,
+  savedLogTodoRules,
+  todoTitleKey,
   toggleWorkedTodo,
   validateDailyLogFollowUps,
   workLinesAfterTick,
@@ -307,6 +312,71 @@ function readableField(value: string | null): string | null {
   }
 }
 
+/**
+ * Issues or Notes / next steps on a saved log, with Make to-do beside each
+ * line for staff. Lines that are already to-dos on this log say so instead.
+ */
+function SavedLogLines({
+  log,
+  source,
+  text,
+  projectId,
+  rules,
+  assigneeOptions,
+}: {
+  readonly log: ProjectDailyLogItem
+  readonly source: "issues" | "notes"
+  readonly text: string
+  readonly projectId: string
+  readonly rules: DailyLogFollowUpSetup["rules"] | null
+  readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
+}): React.ReactElement {
+  const [firstType] = rules?.todoMode === "off" ? [] : rules?.todoTypes ?? []
+  if (!firstType) {
+    return <dd className="mt-1 whitespace-pre-wrap break-words leading-6">{text}</dd>
+  }
+  const made = madeTodoTitles(log.todos)
+  const sourceName = source === "issues" ? "issues" : "next steps"
+  return (
+    <dd className="mt-1 grid leading-6">
+      {text.split(/\r?\n/).map((raw, index) => {
+        const key = `${source}-${index}`
+        if (!raw.trim()) return <span key={key} className="h-3" aria-hidden="true" />
+        const [title] = followUpLines(raw)
+        return (
+          <div key={key} className="flex items-start justify-between gap-2">
+            <span className="min-w-0 whitespace-pre-wrap break-words">{raw}</span>
+            {!title ? null : made.has(todoTitleKey(title)) ? (
+              <span className="inline-flex h-7 shrink-0 items-center gap-1 px-2 text-xs text-muted-foreground">
+                <IconCheck className="size-3.5 text-success" aria-hidden="true" />
+                To-do made
+              </span>
+            ) : (
+              <ProjectTaskCreateButton
+                projectId={projectId}
+                sourceLabel="Daily log"
+                sourceRecordId={log.id}
+                sourceRecordNumber={log.sourceExternalId ?? formatDate(log.logDate)}
+                sourceHref={`/dashboard/projects/${projectId}/daily-logs#daily-log-${log.id}`}
+                defaultTitle={title}
+                defaultDescription={`From the ${formatDate(log.logDate)} daily log (${sourceName}): ${title}`}
+                defaultAssigneeName={null}
+                defaultCompanyName={null}
+                defaultDueDate={null}
+                defaultPriority={source === "issues" ? "high" : "normal"}
+                defaultTaskType={firstType}
+                assigneeOptions={assigneeOptions}
+                triggerLabel="Make to-do"
+                triggerAriaLabel={`Make a to-do from "${title}"`}
+              />
+            )}
+          </div>
+        )
+      })}
+    </dd>
+  )
+}
+
 function dailyLogTodoDescription(log: ProjectDailyLogItem): string {
   return (
     [log.issues, log.safetyIncidents, log.notes]
@@ -369,12 +439,18 @@ function LogMetric({
   )
 }
 
-/** The to-do and client contact parts, shown on new logs only. */
+/**
+ * The to-do and client contact parts. A new log shows them all; editing a
+ * saved log shows only Make to-do on its Issues and Notes lines.
+ */
 type DailyLogFollowUpFields = {
   readonly setup: DailyLogFollowUpSetup
   readonly draft: DailyLogFollowUpDraft
   readonly onChange: (draft: DailyLogFollowUpDraft) => void
   readonly onToggleTodo: (todo: DailyLogOpenTodo) => void
+  readonly linesOnly?: boolean
+  /** Lines already made into to-dos on this log, by todoTitleKey. */
+  readonly madeTitles?: ReadonlySet<string>
 }
 
 function DailyLogFields({
@@ -395,6 +471,7 @@ function DailyLogFields({
   readonly followUps?: DailyLogFollowUpFields
 }): React.ReactElement {
   const rules = followUps?.setup.rules
+  const allFollowUps = followUps && !followUps.linesOnly ? followUps : undefined
   const blockedTodos = followUps && rules?.carryBlocked
     ? followUps.setup.openTodos.filter((todo) => todo.status === "blocked")
     : []
@@ -464,18 +541,18 @@ function DailyLogFields({
         </div>
       </div>
 
-      {followUps && (
-        <DailyLogBlockedTodos todos={blockedTodos} draft={followUps.draft} onChange={followUps.onChange} />
+      {allFollowUps && (
+        <DailyLogBlockedTodos todos={blockedTodos} draft={allFollowUps.draft} onChange={allFollowUps.onChange} />
       )}
 
-      {followUps && rules && (
+      {allFollowUps && rules && (
         <DailyLogTodoChecklist
           idPrefix={idPrefix}
           todos={checklistTodos}
           costCodes={form.costCodes}
           rules={rules}
-          worked={followUps.draft.worked}
-          onToggle={followUps.onToggleTodo}
+          worked={allFollowUps.draft.worked}
+          onToggle={allFollowUps.onToggleTodo}
         />
       )}
 
@@ -559,6 +636,7 @@ function DailyLogFields({
               assignees={followUps.setup.assignees}
               costCodes={form.costCodes}
               onChange={followUps.onChange}
+              madeTitles={followUps.madeTitles}
             />
           )}
         </div>
@@ -590,15 +668,15 @@ function DailyLogFields({
         </div>
       </div>
 
-      {followUps && rules && (
+      {allFollowUps && rules && (
         <DailyLogClientContacts
           idPrefix={idPrefix}
           rules={rules}
-          contacts={followUps.setup.clientContacts}
+          contacts={allFollowUps.setup.clientContacts}
           visitorLog={draft.visitorLog}
-          draft={followUps.draft}
+          draft={allFollowUps.draft}
           errors={errors}
-          onChange={followUps.onChange}
+          onChange={allFollowUps.onChange}
         />
       )}
 
@@ -625,6 +703,7 @@ function DailyLogFields({
               assignees={followUps.setup.assignees}
               costCodes={form.costCodes}
               onChange={followUps.onChange}
+              madeTitles={followUps.madeTitles}
             />
           )}
         </div>
@@ -913,6 +992,12 @@ export function ProjectDailyLogWorkspace({
   )
   const [editDraft, setEditDraft] =
     React.useState<DailyLogDraft>(emptyDailyLogDraft)
+  const [editFollowUpDraft, setEditFollowUpDraft] = React.useState<DailyLogFollowUpDraft>(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT)
+  // Saved logs: lines become to-dos only when someone presses Make to-do.
+  const savedLogSetup = React.useMemo(
+    () => (workspace.followUps ? { ...workspace.followUps, rules: savedLogTodoRules(workspace.followUps.rules) } : null),
+    [workspace.followUps],
+  )
   const [uploadingLogId, setUploadingLogId] = React.useState<string | null>(null)
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
@@ -1061,9 +1146,9 @@ export function ProjectDailyLogWorkspace({
     setErrors: (errors: ReadonlyMap<string, string>) => void,
   ): readonly DailyLogWorkLineDraft[] | null {
     const { errors: formErrors } = validateDailyLogForm(values, workspace.form.requirements, workspace.form.costCodes)
-    const setup = workspace.followUps
-    const followUpErrors = idPrefix === "daily-log" && setup
-      ? validateDailyLogFollowUps(followUpsFromDraft(followUpDraft, values, setup.rules), setup.rules)
+    const setup = idPrefix === "daily-log" ? workspace.followUps : savedLogSetup
+    const followUpErrors = setup
+      ? validateDailyLogFollowUps(followUpsFromDraft(idPrefix === "daily-log" ? followUpDraft : editFollowUpDraft, values, setup.rules), setup.rules)
       : []
     const errors = [...formErrors, ...followUpErrors]
     setErrors(new Map(errors.map((error) => [error.key, error.message])))
@@ -1088,12 +1173,14 @@ export function ProjectDailyLogWorkspace({
     setEditingLogId(log.id)
     setEditProjectId(workspace.project.id)
     setEditDraft(draftFromLog(log))
+    setEditFollowUpDraft(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT)
   }
 
   function cancelEditingLog(): void {
     setEditingLogId(null)
     setEditProjectId(workspace.project.id)
     setEditDraft(emptyDailyLogDraft())
+    setEditFollowUpDraft(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT)
   }
 
   function startUploadingFiles(log: ProjectDailyLogItem): void {
@@ -1377,6 +1464,16 @@ export function ProjectDailyLogWorkspace({
         safetyIncidents: editDraft.safetyIncidents,
         visitorLog: editDraft.visitorLog,
         notes: editDraft.notes,
+        ...(savedLogSetup
+          ? {
+              followUps: {
+                ...EMPTY_DAILY_LOG_FOLLOW_UPS,
+                newTodos: followUpsFromDraft(editFollowUpDraft, editDraft, savedLogSetup.rules).newTodos.filter(
+                  (todo) => !madeTodoTitles(log.todos).has(todoTitleKey(todo.title)),
+                ),
+              },
+            }
+          : {}),
       })
 
       if (result.success) {
@@ -2069,6 +2166,14 @@ export function ProjectDailyLogWorkspace({
                     }}
                     form={workspace.form}
                     errors={editErrors}
+                    followUps={savedLogSetup ? {
+                      setup: savedLogSetup,
+                      draft: editFollowUpDraft,
+                      onChange: setEditFollowUpDraft,
+                      onToggleTodo: () => undefined,
+                      linesOnly: true,
+                      madeTitles: madeTodoTitles(log.todos),
+                    } : undefined}
                   />
                 </form>
               ) : (
@@ -2106,9 +2211,14 @@ export function ProjectDailyLogWorkspace({
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Issues
                           </dt>
-                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
-                            {log.issues}
-                          </dd>
+                          <SavedLogLines
+                            log={log}
+                            source="issues"
+                            text={log.issues}
+                            projectId={workspace.project.id}
+                            rules={savedLogSetup?.rules ?? null}
+                            assigneeOptions={assigneeOptions}
+                          />
                         </div>
                       )}
                       {materialsUsed && (
@@ -2151,9 +2261,14 @@ export function ProjectDailyLogWorkspace({
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Notes / Next
                           </dt>
-                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
-                            {log.notes}
-                          </dd>
+                          <SavedLogLines
+                            log={log}
+                            source="notes"
+                            text={log.notes}
+                            projectId={workspace.project.id}
+                            rules={savedLogSetup?.rules ?? null}
+                            assigneeOptions={assigneeOptions}
+                          />
                         </div>
                       )}
                     </dl>

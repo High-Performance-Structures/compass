@@ -4,6 +4,9 @@ import {
   clientContactFollowUpTitle,
   clientContactsNamedIn,
   DEFAULT_DAILY_LOG_FOLLOW_UP_RULES,
+  madeTodoTitles,
+  savedLogTodoRules,
+  todoTitleKey,
   EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT,
   emptyClientContactRow,
   followUpLines,
@@ -107,5 +110,18 @@ describe("daily log follow-ups", () => {
     expect(clientContactFollowUpTitle("J. Bishop", "Asked to move the bath window.\nDan will price it.")).toBe(
       "Follow up with J. Bishop: Asked to move the bath window.",
     )
+  })
+})
+
+describe("to-dos from saved logs", () => {
+  it("matches a line to a to-do title regardless of case and spacing", () => {
+    expect(todoTitleKey("  Order  more SIMPSON ties ")).toBe("order more simpson ties")
+    expect(madeTodoTitles([{ title: "Order more Simpson ties" }]).has(todoTitleKey("order more simpson  ties"))).toBe(true)
+  })
+
+  it("never makes to-dos automatically when a saved log is edited", () => {
+    expect(savedLogTodoRules({ ...rules, todoMode: "auto" }).todoMode).toBe("ask")
+    expect(savedLogTodoRules({ ...rules, todoMode: "off" }).todoMode).toBe("off")
+    expect(savedLogTodoRules({ ...rules, todoMode: "ask" })).toEqual({ ...rules, todoMode: "ask" })
   })
 })
