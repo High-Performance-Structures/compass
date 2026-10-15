@@ -11,8 +11,9 @@ describe("report phase validation", () => {
   it("permits empty phases for later assignment", () => {
     expect(validateEstimateReportPhase({ ...input, lineIds: [] }, lines).success).toBe(true)
   })
-  it("rejects membership outside the source division or estimate", () => {
-    for (const lineIds of [["steel"], ["foreign-estimate-line"]]) expect(validateEstimateReportPhase({ ...input, lineIds }, lines).success).toBe(false)
+  it("accepts lines from other divisions (scope packages) but not from other estimates", () => {
+    expect(validateEstimateReportPhase({ ...input, lineIds: ["steel"] }, lines).success).toBe(true)
+    expect(validateEstimateReportPhase({ ...input, lineIds: ["foreign-estimate-line"] }, lines).success).toBe(false)
   })
   it("rejects invalid copy, source divisions and report order", () => {
     for (const change of [{ name: " " }, { name: "x".repeat(161) }, { description: "x".repeat(6001) }, { divisionCode: "Concrete" }, { sortOrder: 0 }, { sortOrder: 1.5 }]) expect(validateEstimateReportPhase({ ...input, ...change }, lines).success).toBe(false)

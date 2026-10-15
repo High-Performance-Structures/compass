@@ -118,16 +118,16 @@ export function ProjectEstimateReportPhaseEditor({ projectId, estimateId, worksp
         <h4 className="text-sm font-medium">{draft.id ? "Edit report phase" : "New report phase"}</h4>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1.5">
-            <Label htmlFor="report-phase-source">Source CSI division</Label>
+            <Label htmlFor="report-phase-source">Sorts with CSI division</Label>
             <SearchableCombobox
               id="report-phase-source"
               value={draft.divisionCode}
               disabled={pending}
-              onValueChange={(divisionCode) => setDraft({ ...draft, divisionCode, lineIds: [] })}
+              onValueChange={(divisionCode) => setDraft({ ...draft, divisionCode })}
               options={[...divisions.entries()]
                 .sort(([left], [right]) => left.localeCompare(right))
                 .map(([code, name]) => ({ value: code, label: `${code} · ${name}`, keywords: name }))}
-              ariaLabel="Source CSI division"
+              ariaLabel="CSI division this phase sorts with"
               placeholder="Choose division"
               searchPlaceholder="Search divisions..."
               emptyMessage="No matching divisions."
@@ -152,9 +152,9 @@ export function ProjectEstimateReportPhaseEditor({ projectId, estimateId, worksp
         </div>
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Estimate lines included in this phase</legend>
-          <p className="text-xs text-muted-foreground">Each line belongs to one report phase. Selecting a line from another phase moves it here. Assembly breakdowns stay with their parent line; internal-only lines stay hidden.</p>
+          <p className="text-xs text-muted-foreground">A phase can gather lines from any division, like a scope package (&quot;Footings&quot;). Each line belongs to one report phase; selecting a line from another phase moves it here. Assembly breakdowns stay with their parent line; internal-only lines stay hidden.</p>
           <div className="max-h-80 space-y-2 overflow-y-auto">
-            {workspace.lines.filter((line) => line.divisionCode === draft.divisionCode).map((line) => (
+            {[...workspace.lines].sort((left, right) => left.divisionCode.localeCompare(right.divisionCode)).map((line) => (
               <div key={line.id} className="flex items-start gap-2 border-b py-2">
                 <Checkbox id={`report-phase-line-${line.id}`} checked={draft.lineIds.includes(line.id)} disabled={pending} onCheckedChange={(value) => setDraft({ ...draft, lineIds: value === true ? [...draft.lineIds, line.id] : draft.lineIds.filter((id) => id !== line.id) })} />
                 <Label htmlFor={`report-phase-line-${line.id}`} className="flex-1 text-sm leading-5">
@@ -164,7 +164,7 @@ export function ProjectEstimateReportPhaseEditor({ projectId, estimateId, worksp
               </div>
             ))}
           </div>
-          {draft.divisionCode && !workspace.lines.some((line) => line.divisionCode === draft.divisionCode) && <p className="text-xs text-muted-foreground">No lines in this division yet. You can save an empty phase and assign lines later.</p>}
+          {workspace.lines.length === 0 && <p className="text-xs text-muted-foreground">No estimate lines yet. You can save an empty phase and assign lines later.</p>}
           <p className="text-sm">Client-visible phase subtotal: {money(visibleSubtotal)}</p>
         </fieldset>
         <div className="flex gap-2">

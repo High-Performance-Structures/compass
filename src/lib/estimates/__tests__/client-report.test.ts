@@ -68,14 +68,28 @@ describe("estimate client report profiles", () => {
     expect(phases.every((phase) => phase.divisionCode === "03")).toBe(true)
   })
 
-  it("returns missing or mismatched phase assignments to CSI without dropping costs", () => {
+  it("returns missing phase assignments to CSI without dropping costs", () => {
     const phases = clientEstimatePhases({
       phaseDescriptions: {},
-      reportPhases: [{ id: "wrong", divisionCode: "04", name: "Masonry", description: "", itemize: true, sortOrder: 1 }],
-      lines: [line({ reportPhaseId: "missing" }), line({ id: "line-2", reportPhaseId: "wrong" })],
+      reportPhases: [],
+      lines: [line({ reportPhaseId: "missing" }), line({ id: "line-2" })],
     })
     expect(phases).toHaveLength(1)
     expect(phases[0]).toMatchObject({ id: "division:03", custom: false, itemize: false, subtotalCents: 20_000 })
+  })
+
+  it("lets a phase group lines from several divisions and sorts it by its own division", () => {
+    const phases = clientEstimatePhases({
+      phaseDescriptions: {},
+      reportPhases: [{ id: "footings", divisionCode: "01", name: "Footer Labor & Materials", description: "503 LF of footings", itemize: false, sortOrder: 1 }],
+      lines: [
+        line({ id: "mobilize", divisionCode: "01", divisionName: "General Requirements", reportPhaseId: "footings" }),
+        line({ id: "concrete", reportPhaseId: "footings" }),
+        line({ id: "masonry", divisionCode: "04", divisionName: "Masonry" }),
+      ],
+    })
+    expect(phases.map((phase) => phase.id)).toEqual(["footings", "division:04"])
+    expect(phases[0]).toMatchObject({ name: "Footer Labor & Materials", subtotalCents: 20_000, divisionCode: "01" })
   })
 
   it("preserves CSI division order with custom phases before each division's unassigned lines", () => {

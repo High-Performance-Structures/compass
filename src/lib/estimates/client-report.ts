@@ -312,10 +312,9 @@ export function clientEstimatePhases(input: {
   for (const line of input.lines) {
     if (!line.ownerVisible) continue
     const assignedPhase = line.reportPhaseId ? definitions.get(line.reportPhaseId) : null
-    // Missing/stale assignments fall back to CSI rather than losing costs.
-    const key = assignedPhase?.divisionCode === line.divisionCode
-      ? assignedPhase.id
-      : `division:${line.divisionCode}`
+    // Phases may group lines from several divisions; a missing phase falls
+    // back to the line's CSI division rather than losing costs.
+    const key = assignedPhase ? assignedPhase.id : `division:${line.divisionCode}`
     const current = groups.get(key) ?? []
     current.push(line)
     groups.set(key, current)
@@ -323,10 +322,13 @@ export function clientEstimatePhases(input: {
 
   return [...groups.entries()]
     .sort((left, right) => {
-      const divisionOrder = (left[1][0]?.divisionCode ?? "").localeCompare(right[1][0]?.divisionCode ?? "")
-      if (divisionOrder !== 0) return divisionOrder
       const leftPhase = definitions.get(left[0])
       const rightPhase = definitions.get(right[0])
+      // A phase sorts with the division it was set to; a CSI group with its own.
+      const leftDivision = leftPhase?.divisionCode ?? left[1][0]?.divisionCode ?? ""
+      const rightDivision = rightPhase?.divisionCode ?? right[1][0]?.divisionCode ?? ""
+      const divisionOrder = leftDivision.localeCompare(rightDivision)
+      if (divisionOrder !== 0) return divisionOrder
       if (leftPhase && rightPhase) return leftPhase.sortOrder - rightPhase.sortOrder || leftPhase.id.localeCompare(rightPhase.id)
       if (leftPhase) return -1
       if (rightPhase) return 1
@@ -334,10 +336,10 @@ export function clientEstimatePhases(input: {
     })
     .map(([key, sourceLines]) => {
       const lines = [...sourceLines].sort(compareEstimateLineOrder)
-      const divisionCode = lines[0]?.divisionCode ?? ""
-      const divisionName = lines[0]?.divisionName ?? `Phase ${divisionCode}`
-      const customDescription = input.phaseDescriptions[divisionCode]?.trim()
       const definition = definitions.get(key)
+      const divisionCode = definition?.divisionCode ?? lines[0]?.divisionCode ?? ""
+      const divisionName = lines.find((line) => line.divisionCode === divisionCode)?.divisionName ?? lines[0]?.divisionName ?? `Phase ${divisionCode}`
+      const customDescription = input.phaseDescriptions[divisionCode]?.trim()
       return {
         id: key,
         name: definition?.name ?? divisionName,

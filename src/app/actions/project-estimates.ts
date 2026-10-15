@@ -1,6 +1,7 @@
 "use server"
 
 import { changeOrderExecutionFromEstimate, estimateSupersedeConditions } from "@/lib/change-orders/estimate-execution"
+import type { BuildertrendEstimateLine, BuildertrendEstimatePhase } from "@/lib/estimates/buildertrend-estimate-import"
 import {
   and,
   asc,
@@ -11,7 +12,6 @@ import {
   isNotNull,
   isNull,
   like,
-  ne,
   sql,
 } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -486,6 +486,14 @@ export type ProjectEstimatePlanSwiftImportResult =
       readonly totalCents: number
     }
   | { readonly success: false; readonly error: string }
+
+export type ProjectEstimateBuildertrendImportInput = {
+  readonly sourceFileName: string
+  /** Replace the estimate's existing lines and report phases. */
+  readonly replaceExisting: boolean
+  readonly lines: readonly BuildertrendEstimateLine[]
+  readonly phases: readonly BuildertrendEstimatePhase[]
+}
 
 const PROJECT_TOTALS_RANGE = "Project Totals!A1:AA506"
 
@@ -2669,6 +2677,146 @@ export async function importPlanSwiftEstimateLines(
         error instanceof Error
           ? error.message
           : "Unable to import the PlanSwift workbook.",
+    }
+  }
+}
+
+/**
+ * Imports a Buildertrend estimate export into a draft estimate: one line per
+ * Buildertrend row, report phases from its scope packages (shown as package
+ * totals with their descriptions, like the Buildertrend proposal), and the
+ * exported amounts kept exactly so a signed estimate matches to the cent.
+ */
+export async function importBuildertrendEstimateExport(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimateBuildertrendImportInput
+): Promise<ProjectEstimatePlanSwiftImportResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await requireEditableEstimate(access.db, projectId, estimateId)
+    if (input.lines.length === 0) throw new Error("The Buildertrend export has no rows to import.")
+    if (input.lines.length > 2_000) throw new Error("Buildertrend imports are limited to 2,000 rows.")
+    const sourceFileName = requiredText(input.sourceFileName.slice(0, 200), "Source file name")
+    const phaseNames = new Set(input.phases.map((phase) => phase.name))
+    for (const line of input.lines) {
+      const integers = [line.unitCostCents, line.directCostCents, line.lineTotalCents, line.markupRateBasisPoints]
+      if (integers.some((value) => !Number.isSafeInteger(value) || value < 0) || !Number.isFinite(line.quantity) || line.quantity < 0) {
+        throw new Error(`Buildertrend row ${line.rowNumber} has invalid amounts.`)
+      }
+      if (line.lineTotalCents < line.directCostCents || line.lineTotalCents > 10_000_000_000) {
+        throw new Error(`Buildertrend row ${line.rowNumber} has an invalid total.`)
+      }
+      if (!phaseNames.has(line.phaseName)) throw new Error(`Buildertrend row ${line.rowNumber} has an unknown scope package.`)
+    }
+
+    const costRows = await loadProjectEstimateCostCodes(access.db)
+    const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
+    const unknown = [...new Set(input.lines.map((line) => line.costCode))].filter((code) => !costCodeMap.has(code))
+    if (unknown.length > 0) {
+      throw new Error(`These Buildertrend cost codes aren't in the Compass cost code catalog: ${unknown.slice(0, 5).join(", ")}.`)
+    }
+
+    const existingLines = await access.db
+      .select({ id: projectEstimateLines.id })
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId))
+    if (existingLines.length > 0 && !input.replaceExisting) {
+      throw new Error("This estimate already has lines. Choose to replace them, or import into a new revision.")
+    }
+
+    const now = new Date().toISOString()
+    // A phase sorts with the lowest division among its lines.
+    const phaseRows = input.phases.map((phase) => {
+      const divisions = input.lines
+        .filter((line) => line.phaseName === phase.name)
+        .map((line) => costCodeMap.get(line.costCode)?.divisionCode ?? "99")
+        .sort()
+      return {
+        id: crypto.randomUUID(),
+        projectId,
+        estimateId,
+        divisionCode: divisions[0] ?? "01",
+        name: requiredText(phase.name.slice(0, 160), "Scope package name"),
+        description: phase.description.slice(0, 6_000),
+        itemize: false,
+        sortOrder: Math.max(1, Math.round(phase.sortOrder)),
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    const phaseIdByName = new Map(phaseRows.map((phase) => [phase.name, phase.id]))
+    const lineValues = input.lines.map((line, index) => {
+      const cost = costCodeMap.get(line.costCode)
+      if (!cost) throw new Error(`Cost code ${line.costCode} is unavailable.`)
+      const sourceNote = `Buildertrend source: ${sourceFileName} · row ${line.rowNumber}${line.costType ? ` · ${line.costType}` : ""}`
+      return {
+        id: crypto.randomUUID(),
+        projectId,
+        estimateId,
+        templateLineId: null,
+        assemblyId: null,
+        reportPhaseId: phaseIdByName.get(line.phaseName) ?? null,
+        divisionCode: cost.divisionCode,
+        divisionName: cost.divisionDescription,
+        costCode: cost.code,
+        costCodeName: cost.description,
+        description: requiredText(line.description.slice(0, 500), `Title on row ${line.rowNumber}`),
+        specifications: [cleanText(line.notes?.slice(0, 5_000) ?? null), sourceNote].filter(Boolean).join("\n"),
+        quantity: line.quantity,
+        unit: cleanText(line.unit.slice(0, 40)) ?? "LS",
+        unitCostCents: line.unitCostCents,
+        // Exported amounts are kept as-is so the total matches the signed estimate.
+        directCostCents: line.directCostCents,
+        markupRateBasisPoints: line.markupRateBasisPoints,
+        markupCents: line.lineTotalCents - line.directCostCents,
+        taxable: false,
+        taxEntityId: null,
+        taxCode: null,
+        taxName: null,
+        taxRateBasisPoints: 0,
+        taxCents: 0,
+        lineTotalCents: line.lineTotalCents,
+        ownerVisible: true,
+        includeInBuilderFee: true,
+        sortOrder: index + 1,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    const totals = calculateEstimateTotals(lineValues.map(ledgerLine), {
+      overheadRateBasisPoints: estimate.overheadRateBasisPoints,
+      marginRateBasisPoints: estimate.marginRateBasisPoints,
+      contingencyRateBasisPoints: estimate.contingencyRateBasisPoints,
+    })
+    // D1 allows 100 bound parameters per statement; lines bind 27 columns.
+    const lineInserts = []
+    for (let index = 0; index < lineValues.length; index += 3) {
+      lineInserts.push(access.db.insert(projectEstimateLines).values(lineValues.slice(index, index + 3)))
+    }
+    const phaseInserts = []
+    for (let index = 0; index < phaseRows.length; index += 8) {
+      phaseInserts.push(access.db.insert(projectEstimateReportPhases).values(phaseRows.slice(index, index + 8)))
+    }
+    await access.db.batch([
+      access.db.delete(projectEstimateLines).where(eq(projectEstimateLines.estimateId, estimateId)),
+      access.db.delete(projectEstimateReportPhases).where(eq(projectEstimateReportPhases.estimateId, estimateId)),
+      ...phaseInserts,
+      ...lineInserts,
+      access.db.update(projectEstimates).set({ ...totals, updatedAt: now }).where(eq(projectEstimates.id, estimateId)),
+    ])
+
+    revalidateEstimate(projectId)
+    return {
+      success: true,
+      id: estimateId,
+      lineCount: lineValues.length,
+      totalCents: lineValues.reduce((total, line) => total + line.lineTotalCents, 0),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to import the Buildertrend estimate.",
     }
   }
 }
