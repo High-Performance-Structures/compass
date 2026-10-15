@@ -80,6 +80,13 @@ export const projectEstimates = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
+    /**
+     * Set for a change-order estimate: built and signed like any estimate,
+     * but accepting it executes this change order instead of replacing the
+     * contract estimate. Null for contract estimates. (Added by migration
+     * 0138, without a foreign key; change orders are voided, never deleted.)
+     */
+    changeOrderId: text("change_order_id"),
     estimateNumber: text("estimate_number").notNull(),
     versionNumber: integer("version_number").notNull().default(1),
     title: text("title").notNull().default("CA22 Construction Estimate"),
@@ -198,6 +205,7 @@ export const projectEstimates = sqliteTable(
       table.estimateNumber,
       table.versionNumber
     ),
+    index("project_estimates_change_order_idx").on(table.projectId, table.changeOrderId),
     index("project_estimates_project_status_idx").on(
       table.projectId,
       table.status,

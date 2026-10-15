@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -97,6 +97,45 @@ function builderFeeLedgerLines(
   })
 }
 
+/**
+ * An estimate's lines as budget ledger lines, plus its builder-fee lines
+ * (overhead, margin, contingency) mapped to their Sage cost codes. Used for
+ * the contract budget and for change orders executed from an estimate.
+ */
+export async function estimateBudgetLedgerLines(
+  db: CompassDb,
+  estimate: typeof projectEstimates.$inferSelect
+): Promise<{ readonly lines: readonly EstimateLedgerLine[]; readonly estimateLineCount: number }> {
+  const [builderFeeSageRows, estimateRows] = await Promise.all([
+    db
+      .select({
+        code: sageCostCodes.code,
+        description: sageCostCodes.description,
+        divisionCode: sageCostCodes.divisionCode,
+        divisionDescription: sageCostCodes.divisionDescription,
+      })
+      .from(sageCostCodes)
+      .where(
+        and(
+          eq(sageCostCodes.active, true),
+          inArray(
+            sageCostCodes.description,
+            CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.description)
+          )
+        )
+      ),
+    db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimate.id))
+      .orderBy(projectEstimateLines.divisionCode, projectEstimateLines.sortOrder),
+  ])
+  return {
+    lines: [...estimateRows.map(estimateLedgerLine), ...builderFeeLedgerLines(estimate, builderFeeSageRows)],
+    estimateLineCount: estimateRows.length,
+  }
+}
+
 export async function rebuildProjectContractBudget(input: {
   readonly db: CompassDb
   readonly projectId: string
@@ -111,7 +150,9 @@ export async function rebuildProjectContractBudget(input: {
       )
     : and(
         eq(projectEstimates.projectId, input.projectId),
-        eq(projectEstimates.status, "accepted")
+        eq(projectEstimates.status, "accepted"),
+        // Change-order estimates feed the budget through their change order.
+        isNull(projectEstimates.changeOrderId)
       )
   const acceptedRows = await input.db
     .select()
@@ -127,33 +168,8 @@ export async function rebuildProjectContractBudget(input: {
     }
   }
 
-  const builderFeeSageRows = await input.db
-    .select({
-      code: sageCostCodes.code,
-      description: sageCostCodes.description,
-      divisionCode: sageCostCodes.divisionCode,
-      divisionDescription: sageCostCodes.divisionDescription,
-    })
-    .from(sageCostCodes)
-    .where(
-      and(
-        eq(sageCostCodes.active, true),
-        inArray(
-          sageCostCodes.description,
-          CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.description)
-        )
-      )
-    )
-
-  const estimateRows = await input.db
-    .select()
-    .from(projectEstimateLines)
-    .where(eq(projectEstimateLines.estimateId, accepted.id))
-    .orderBy(
-      projectEstimateLines.divisionCode,
-      projectEstimateLines.sortOrder
-    )
-  if (estimateRows.length === 0) {
+  const ledgerLines = await estimateBudgetLedgerLines(input.db, accepted)
+  if (ledgerLines.estimateLineCount === 0) {
     return { success: false, error: "The accepted estimate has no lines." }
   }
 
@@ -266,8 +282,7 @@ export async function rebuildProjectContractBudget(input: {
   const now = new Date().toISOString()
   const budget = buildContractBudget({
     estimateLines: [
-      ...estimateRows.map(estimateLedgerLine),
-      ...builderFeeLedgerLines(accepted, builderFeeSageRows),
+      ...ledgerLines.lines,
     ],
     adjustments,
   })

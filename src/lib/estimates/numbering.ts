@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, isNull } from "drizzle-orm"
 
 import { projectEstimates } from "@/db/schema-estimates"
 import type { CompassDb } from "@/lib/estimates/access"
@@ -28,7 +28,8 @@ export async function numberNewEstimate(
   const rows = await db
     .select({ estimateNumber: projectEstimates.estimateNumber, versionNumber: projectEstimates.versionNumber })
     .from(projectEstimates)
-    .where(eq(projectEstimates.projectId, input.projectId))
+    // Change-order estimates are numbered after their change order.
+    .where(and(eq(projectEstimates.projectId, input.projectId), isNull(projectEstimates.changeOrderId)))
     .orderBy(desc(projectEstimates.versionNumber))
   if (input.mode === "multiple") {
     return { estimateNumber: nextEstimateNumber(input.projectNumber, rows.map((row) => row.estimateNumber)), versionNumber: 1 }

@@ -3,7 +3,7 @@
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
 
@@ -449,7 +449,8 @@ export async function getProjectContractPacketWorkspace(
         estimateTotalCents: projectEstimates.estimateTotalCents,
       })
       .from(projectEstimates)
-      .where(eq(projectEstimates.projectId, projectId))
+      // Contract packets are for the contract estimate, not change orders.
+      .where(and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)))
       .orderBy(desc(projectEstimates.versionNumber)),
     access.db
       .select({

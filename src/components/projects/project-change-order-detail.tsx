@@ -1,5 +1,6 @@
 import type * as React from "react"
 import Link from "next/link"
+import { ProjectChangeOrderEstimatePanel } from "@/components/projects/project-change-order-estimate-panel"
 import { IconExternalLink } from "@tabler/icons-react"
 
 import type {
@@ -111,6 +112,14 @@ export function ProjectChangeOrderDetail({
       )}
 
       <section className="grid gap-4 lg:grid-cols-2">
+        {internal && item.budgetTreatment !== "baseline_replacement" && (
+          <ProjectChangeOrderEstimatePanel
+            projectId={item.projectId}
+            changeOrderId={item.id}
+            estimate={item.changeOrderEstimate}
+            canStart={item.canEdit && !isExecutedChangeOrderStatus(item.status)}
+          />
+        )}
         {item.budgetTreatment === "baseline_replacement" && (
           <div className="border-y bg-background p-4">
             <h2 className="text-sm font-semibold">Linked estimate package</h2>

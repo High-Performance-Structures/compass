@@ -2,7 +2,7 @@
 
 import { readEstimateMode } from "@/lib/estimates/numbering"
 import { findNuTechOrder } from "@/lib/nutech/order-select"
-import { and, asc, count, desc, eq } from "drizzle-orm"
+import { and, asc, count, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
@@ -121,7 +121,7 @@ export async function createNuTechEstimateFromOrder(
             .where(
               linked
                 ? and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.estimateNumber, linked.number))
-                : eq(projectEstimates.projectId, projectId),
+                : and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)),
             )
             .orderBy(desc(projectEstimates.versionNumber))
             .limit(1)

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, isNull, like, sql } from "drizzle-orm"
 import { findNuTechOrder, nextNuTechOrderNumber } from "@/lib/nutech/order-select"
 import { revalidatePath } from "next/cache"
 
@@ -531,7 +531,7 @@ export async function getProjectNuTechOrderWorkspace(
         ? orderRow.estimateId
           ? eq(projectEstimates.id, orderRow.estimateId)
           : sql`0`
-        : eq(projectEstimates.projectId, projectId),
+        : and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)),
     )
     .orderBy(desc(projectEstimates.updatedAt))
     .limit(1)
