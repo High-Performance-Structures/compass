@@ -1457,3 +1457,13 @@ em-emoji-picker {
     transform: translateX(410%);
   }
 }
+/* Sidebar Listening Room equalizer while music is playing. */
+@keyframes compass-equalizer {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}

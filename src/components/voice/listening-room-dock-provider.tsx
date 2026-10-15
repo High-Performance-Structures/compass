@@ -14,6 +14,9 @@ type DockedRoom = {
 
 type ListeningRoomDockContextValue = {
   readonly openRoom: (room: DockedRoom) => void
+  /** The room this person has open here, and whether they joined it. */
+  readonly openChannelId: string | null
+  readonly joined: boolean
 }
 
 type ListeningRoomSlotValue = {
@@ -73,6 +76,7 @@ export function ListeningRoomDockProvider({
 }): React.ReactElement {
   const [room, setRoom] = React.useState<DockedRoom | null>(null)
   const [expanded, setExpanded] = React.useState(false)
+  const [joined, setJoined] = React.useState(false)
   // The pop-out window renders its own room; a dock there would play twice.
   const pathname = usePathname()
   const active = enabled && !isListeningRoomWindowPath(pathname)
@@ -82,10 +86,14 @@ export function ListeningRoomDockProvider({
   }, [active])
 
   const handleJoinedChange = React.useCallback(
-    (joined: boolean) => writeDockedRoom(joined ? room : null),
+    (nowJoined: boolean) => {
+      setJoined(nowJoined)
+      writeDockedRoom(nowJoined ? room : null)
+    },
     [room]
   )
   const handleDismiss = React.useCallback(() => {
+    setJoined(false)
     writeDockedRoom(null)
     setExpanded(false)
     setRoom(null)
@@ -96,7 +104,11 @@ export function ListeningRoomDockProvider({
     setExpanded(true)
   }, [])
 
-  const value = React.useMemo(() => ({ openRoom }), [openRoom])
+  const openChannelId = active ? (room?.channelId ?? null) : null
+  const value = React.useMemo(
+    () => ({ openRoom, openChannelId, joined: openChannelId !== null && joined }),
+    [openRoom, openChannelId, joined]
+  )
   const slot = React.useMemo<ListeningRoomSlotValue>(
     () => ({
       room: active ? room : null,

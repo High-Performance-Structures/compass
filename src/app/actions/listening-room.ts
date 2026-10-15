@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, gt, isNull, lt, ne, or, sql } from "drizzle-orm"
+import { and, asc, eq, gt, gte, isNull, lt, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
@@ -401,6 +401,60 @@ export async function getListeningRoom(
     return { success: true, data: { room: await roomSnapshot(context) } }
   } catch (error) {
     return { success: false, error: actionError(error, "Failed to load listening room") }
+  }
+}
+
+export type ListeningRoomStatus = {
+  readonly playing: boolean
+  readonly listeners: number
+  readonly title: string | null
+}
+
+/**
+ * A light check for the sidebar's Listening Room button: is music playing and
+ * how many people are listening. Unlike getListeningRoom it never marks the
+ * caller as present, so glancing at the sidebar doesn't count as listening.
+ */
+export async function getListeningRoomStatus(
+  channelId: string
+): Promise<ListeningActionResult<ListeningRoomStatus>> {
+  try {
+    const parsed = channelIdSchema.safeParse(channelId)
+    if (!parsed.success) return { success: false, error: "Invalid channel" }
+    const context = await listeningContext(parsed.data)
+    const room = await roomForChannel(context.db, context.channel.id)
+    if (!room) return { success: true, data: { playing: false, listeners: 0, title: null } }
+    const activeSince = new Date(Date.now() - LISTENING_PRESENCE_WINDOW_MS).toISOString()
+    const [listeners, current] = await Promise.all([
+      context.db
+        .select({ count: sql<number>`count(*)` })
+        .from(listeningRoomParticipants)
+        .where(
+          and(
+            eq(listeningRoomParticipants.roomId, room.id),
+            gte(listeningRoomParticipants.updatedAt, activeSince)
+          )
+        )
+        .get(),
+      room.currentTrackId
+        ? context.db
+            .select({ title: listeningQueueItems.title })
+            .from(listeningQueueItems)
+            .where(eq(listeningQueueItems.id, room.currentTrackId))
+            .get()
+        : null,
+    ])
+    const listenerCount = listeners?.count ?? 0
+    return {
+      success: true,
+      data: {
+        playing: room.playbackState === "playing" && Boolean(current) && listenerCount > 0,
+        listeners: listenerCount,
+        title: current?.title ?? null,
+      },
+    }
+  } catch (error) {
+    return { success: false, error: actionError(error, "Failed to check the listening room") }
   }
 }
 
