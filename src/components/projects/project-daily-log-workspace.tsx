@@ -85,6 +85,22 @@ import {
   type DailyLogWorkLineDraft,
 } from "@/lib/daily-logs/daily-log-form"
 import type { DailyLogFormSetup } from "@/lib/daily-logs/cost-code-lines"
+import type { DailyLogFollowUpSetup } from "@/lib/daily-logs/log-followups-server"
+import {
+  EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT,
+  followUpsFromDraft,
+  toggleWorkedTodo,
+  validateDailyLogFollowUps,
+  workLinesAfterTick,
+  type DailyLogFollowUpDraft,
+  type DailyLogOpenTodo,
+} from "@/lib/daily-logs/log-followups"
+import {
+  DailyLogBlockedTodos,
+  DailyLogClientContacts,
+  DailyLogLineTodos,
+  DailyLogTodoChecklist,
+} from "@/components/projects/daily-log-followups"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { useProjectList } from "@/components/project-list-provider"
 import { ProjectCombobox } from "@/components/projects/project-combobox"
@@ -175,6 +191,7 @@ function draftFromLog(log: ProjectDailyLogItem): DailyLogDraft {
             costCode: line.costCode,
             hours: line.hours === null ? "" : String(line.hours),
             description: line.description,
+            ...(line.todoId ? { todoId: line.todoId } : {}),
           }))
         : [emptyWorkLine()],
   }
@@ -191,6 +208,11 @@ function fieldElementId(idPrefix: string, key: string): string {
   const line = /^workLines\.(\d+)\.(costCode|hours)$/.exec(key)
   if (line) return `${idPrefix}-line-${line[1]}-${line[2] === "costCode" ? "code" : "hours"}`
   if (key === "workLines") return `${idPrefix}-line-0-code`
+  const contact = /^clientContacts\.(\d+)\.(contactId|time|summary|interactionType)$/.exec(key)
+  if (contact) {
+    const part = contact[2] === "contactId" ? "who" : contact[2] === "interactionType" ? "type" : contact[2]
+    return `${idPrefix}-contact-${contact[1]}-${part}`
+  }
   const ids: Readonly<Record<string, string>> = {
     logDate: "date",
     workCompleted: "work",
@@ -347,6 +369,14 @@ function LogMetric({
   )
 }
 
+/** The to-do and client contact parts, shown on new logs only. */
+type DailyLogFollowUpFields = {
+  readonly setup: DailyLogFollowUpSetup
+  readonly draft: DailyLogFollowUpDraft
+  readonly onChange: (draft: DailyLogFollowUpDraft) => void
+  readonly onToggleTodo: (todo: DailyLogOpenTodo) => void
+}
+
 function DailyLogFields({
   draft,
   idPrefix,
@@ -354,6 +384,7 @@ function DailyLogFields({
   updateWorkLines,
   form,
   errors,
+  followUps,
 }: {
   readonly draft: DailyLogDraft
   readonly idPrefix: string
@@ -361,7 +392,19 @@ function DailyLogFields({
   readonly updateWorkLines: (lines: readonly DailyLogWorkLineDraft[]) => void
   readonly form: DailyLogFormSetup
   readonly errors: ReadonlyMap<string, string>
+  readonly followUps?: DailyLogFollowUpFields
 }): React.ReactElement {
+  const rules = followUps?.setup.rules
+  const blockedTodos = followUps && rules?.carryBlocked
+    ? followUps.setup.openTodos.filter((todo) => todo.status === "blocked")
+    : []
+  const checklistTodos = followUps
+    ? followUps.setup.openTodos.filter((todo) => todo.status !== "blocked" || !rules?.carryBlocked)
+    : []
+  const todoTitles = React.useMemo(
+    () => new Map((followUps?.setup.openTodos ?? []).map((todo) => [todo.id, todo.title])),
+    [followUps?.setup.openTodos],
+  )
   const required = (field: DailyLogOptionalField): boolean => isRequired(form.requirements, field)
   /** Props marking a field invalid and pointing at its error. */
   const invalid = (key: string): { readonly "aria-invalid"?: true; readonly "aria-describedby"?: string } =>
@@ -421,6 +464,21 @@ function DailyLogFields({
         </div>
       </div>
 
+      {followUps && (
+        <DailyLogBlockedTodos todos={blockedTodos} draft={followUps.draft} onChange={followUps.onChange} />
+      )}
+
+      {followUps && rules && (
+        <DailyLogTodoChecklist
+          idPrefix={idPrefix}
+          todos={checklistTodos}
+          costCodes={form.costCodes}
+          rules={rules}
+          worked={followUps.draft.worked}
+          onToggle={followUps.onToggleTodo}
+        />
+      )}
+
       <DailyLogWorkLines
         idPrefix={idPrefix}
         lines={draft.workLines}
@@ -428,6 +486,7 @@ function DailyLogFields({
         required={form.requirements.requireCostCodeTime}
         errors={errors}
         onChange={updateWorkLines}
+        todoTitles={todoTitles}
       />
 
       <div className="grid gap-1.5">
@@ -490,6 +549,18 @@ function DailyLogFields({
             {...invalid("issues")}
           />
           <FieldError id={`${idPrefix}-issues-error`} message={errors.get("issues")} />
+          {followUps && rules && (
+            <DailyLogLineTodos
+              idPrefix={idPrefix}
+              source="issues"
+              text={draft.issues}
+              rules={rules}
+              draft={followUps.draft}
+              assignees={followUps.setup.assignees}
+              costCodes={form.costCodes}
+              onChange={followUps.onChange}
+            />
+          )}
         </div>
         <div className="grid gap-1.5 lg:col-span-4">
           <Label htmlFor={`${idPrefix}-safety`}>Safety{required("safetyIncidents") && <RequiredMark />}</Label>
@@ -517,8 +588,23 @@ function DailyLogFields({
           />
           <FieldError id={`${idPrefix}-visitorLog-error`} message={errors.get("visitorLog")} />
         </div>
-        <div className="grid gap-1.5 lg:col-span-12">
-          <Label htmlFor={`${idPrefix}-notes`}>Notes / Next{required("notes") && <RequiredMark />}</Label>
+      </div>
+
+      {followUps && rules && (
+        <DailyLogClientContacts
+          idPrefix={idPrefix}
+          rules={rules}
+          contacts={followUps.setup.clientContacts}
+          visitorLog={draft.visitorLog}
+          draft={followUps.draft}
+          errors={errors}
+          onChange={followUps.onChange}
+        />
+      )}
+
+      <div className="grid gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-notes`}>Notes / next steps{required("notes") && <RequiredMark />}</Label>
           <Textarea
             id={`${idPrefix}-notes`}
             value={draft.notes}
@@ -529,6 +615,18 @@ function DailyLogFields({
             {...invalid("notes")}
           />
           <FieldError id={`${idPrefix}-notes-error`} message={errors.get("notes")} />
+          {followUps && rules && (
+            <DailyLogLineTodos
+              idPrefix={idPrefix}
+              source="notes"
+              text={draft.notes}
+              rules={rules}
+              draft={followUps.draft}
+              assignees={followUps.setup.assignees}
+              costCodes={form.costCodes}
+              onChange={followUps.onChange}
+            />
+          )}
         </div>
       </div>
     </>
@@ -808,6 +906,7 @@ export function ProjectDailyLogWorkspace({
   const [showNewLog, setShowNewLog] = React.useState(initialShowNewLog)
   useQuickAddEntry("daily-log", () => setShowNewLog(true))
   const [draft, setDraft] = React.useState<DailyLogDraft>(emptyDailyLogDraft)
+  const [followUpDraft, setFollowUpDraft] = React.useState<DailyLogFollowUpDraft>(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT)
   const [editingLogId, setEditingLogId] = React.useState<string | null>(null)
   const [editProjectId, setEditProjectId] = React.useState(
     workspace.project.id
@@ -961,7 +1060,12 @@ export function ProjectDailyLogWorkspace({
     idPrefix: string,
     setErrors: (errors: ReadonlyMap<string, string>) => void,
   ): readonly DailyLogWorkLineDraft[] | null {
-    const { errors } = validateDailyLogForm(values, workspace.form.requirements, workspace.form.costCodes)
+    const { errors: formErrors } = validateDailyLogForm(values, workspace.form.requirements, workspace.form.costCodes)
+    const setup = workspace.followUps
+    const followUpErrors = idPrefix === "daily-log" && setup
+      ? validateDailyLogFollowUps(followUpsFromDraft(followUpDraft, values, setup.rules), setup.rules)
+      : []
+    const errors = [...formErrors, ...followUpErrors]
     setErrors(new Map(errors.map((error) => [error.key, error.message])))
     const [first] = errors
     if (!first) return values.workLines.filter((line) => line.costCode || line.hours || line.description)
@@ -1226,10 +1330,14 @@ export function ProjectDailyLogWorkspace({
         safetyIncidents: draft.safetyIncidents,
         visitorLog: draft.visitorLog,
         notes: draft.notes,
+        ...(workspace.followUps
+          ? { followUps: followUpsFromDraft(followUpDraft, draft, workspace.followUps.rules) }
+          : {}),
       })
 
       if (result.success) {
         setDraft(emptyDailyLogDraft())
+        setFollowUpDraft(EMPTY_DAILY_LOG_FOLLOW_UP_DRAFT)
         setNewLogErrors(new Map())
         setShowNewLog(false)
         setSavedButton("new")
@@ -1570,6 +1678,21 @@ export function ProjectDailyLogWorkspace({
                 }}
                 form={workspace.form}
                 errors={newLogErrors}
+                followUps={workspace.followUps ? {
+                  setup: workspace.followUps,
+                  draft: followUpDraft,
+                  onChange: (next) => {
+                    setNewLogErrors((current) => withoutErrors(current, "clientContacts"))
+                    setFollowUpDraft(next)
+                  },
+                  onToggleTodo: (todo) => {
+                    const ticked = !followUpDraft.worked.includes(todo.id)
+                    setFollowUpDraft((current) => toggleWorkedTodo(current, todo.id))
+                    if (workspace.followUps?.rules.tickAddsLine) {
+                      setDraft((current) => ({ ...current, workLines: workLinesAfterTick(current.workLines, todo, ticked) }))
+                    }
+                  },
+                } : undefined}
               />
             </form>
           </section>

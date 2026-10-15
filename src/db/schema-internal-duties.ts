@@ -1,5 +1,5 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
-import { dailyLogs, organizations, projects, users } from "./schema"
+import { dailyLogs, organizations, projectOperations, projects, users } from "./schema"
 
 /**
  * One block of work: who, when, which duty or cost code, how long. Internal
@@ -28,6 +28,8 @@ export const internalDutyEntries = sqliteTable(
     dailyLogId: text("daily_log_id").references(() => dailyLogs.id, { onDelete: "set null" }),
     /** Order among one daily log's cost code lines. */
     sortOrder: integer("sort_order").notNull().default(0),
+    /** The to-do these hours were spent on, when the crew ticked one on the log. */
+    todoId: text("todo_id").references(() => projectOperations.id, { onDelete: "set null" }),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
@@ -35,6 +37,7 @@ export const internalDutyEntries = sqliteTable(
   (table) => ({
     projectDateIdx: index("internal_duty_entries_project_date_idx").on(table.projectId, table.entryDate),
     dailyLogIdx: index("internal_duty_entries_daily_log_idx").on(table.dailyLogId),
+    todoIdx: index("internal_duty_entries_todo_idx").on(table.todoId),
   }),
 )
 

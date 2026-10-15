@@ -168,11 +168,6 @@ function StatusControl({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {status === "blocked" && (
-            <SelectItem value="blocked" disabled>
-              Blocked (legacy)
-            </SelectItem>
-          )}
           {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
             <SelectItem key={selectableStatus} value={selectableStatus}>
               {projectTodoStatusLabel(selectableStatus)}

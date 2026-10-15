@@ -1,6 +1,7 @@
 import { z } from "zod/v4"
 
 import { DAILY_LOG_OPTIONAL_FIELDS } from "../daily-logs/daily-log-form"
+import { DAILY_LOG_TODO_MODES, DAILY_LOG_TODO_TYPES } from "../daily-logs/log-followups"
 import { MACHINE_LOG_KINDS } from "../equipment/model"
 
 export const fieldProjectSchema = z.object({
@@ -87,6 +88,36 @@ export const fieldNotificationSchema = z.object({
   createdAt: z.string(),
 })
 
+/** Open to-dos, client contacts and the company's rules, saved for offline logs. */
+export const fieldDailyLogFollowUpSetupSchema = z.object({
+  rules: z.object({
+    todoMode: z.enum(DAILY_LOG_TODO_MODES),
+    todoTypes: z.array(z.enum(DAILY_LOG_TODO_TYPES)),
+    workedMovesToInProgress: z.boolean(),
+    carryBlocked: z.boolean(),
+    todoCostCodes: z.boolean(),
+    tickAddsLine: z.boolean(),
+    crewPicksCostCode: z.boolean(),
+    clientContact: z.boolean(),
+    clientContactSuggest: z.boolean(),
+    minimumSummaryCharacters: z.number(),
+  }),
+  openTodos: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      status: z.enum(["open", "in_progress", "blocked"]),
+      recordType: z.string(),
+      assigneeName: z.string().nullable(),
+      companyName: z.string().nullable(),
+      costCode: z.string().nullable(),
+      changedOn: z.string(),
+    }),
+  ),
+  clientContacts: z.array(z.object({ id: z.string(), name: z.string(), role: z.string().nullable() })),
+  assignees: z.array(z.object({ name: z.string(), kind: z.enum(DAILY_LOG_TODO_TYPES) })),
+})
+
 /** Cost codes and required fields, saved with the project for offline logs. */
 export const fieldDailyLogFormSchema = z.object({
   costCodes: z.array(
@@ -101,6 +132,8 @@ export const fieldDailyLogFormSchema = z.object({
     requireCostCodeTime: z.boolean(),
     requiredFields: z.array(z.enum(DAILY_LOG_OPTIONAL_FIELDS)),
   }),
+  /** Null in packets saved before logs tied into to-dos. */
+  followUps: fieldDailyLogFollowUpSetupSchema.nullable().default(null),
 })
 
 /** A company machine as Field Mode keeps it for offline logging. */
@@ -156,6 +189,31 @@ export const fieldWorkLineSchema = z.object({
   costCode: z.string().max(20),
   hours: z.string().max(10),
   description: z.string().max(500),
+  todoId: z.string().max(80).optional(),
+})
+
+/** To-dos ticked or created and client contact recorded with a log. */
+export const fieldDailyLogFollowUpsSchema = z.object({
+  todoUpdates: z.array(z.object({
+    todoId: z.string().max(80),
+    worked: z.boolean(),
+    blocked: z.enum(["still", "cleared"]).nullable(),
+  })).max(100),
+  newTodos: z.array(z.object({
+    source: z.enum(["issues", "notes"]),
+    title: z.string().max(200),
+    recordType: z.enum(DAILY_LOG_TODO_TYPES),
+    assigneeName: z.string().max(200),
+    costCode: z.string().max(20),
+  })).max(40),
+  clientContacts: z.array(z.object({
+    contactId: z.string().max(80),
+    interactionType: z.string().max(80),
+    direction: z.enum(["inbound", "outbound"]),
+    time: z.string().max(5),
+    summary: z.string().max(4000),
+    followUpTodo: z.boolean(),
+  })).max(10),
 })
 
 export const fieldDailyLogDraftSchema = z.object({
@@ -169,6 +227,8 @@ export const fieldDailyLogDraftSchema = z.object({
   safetyIncidents: z.string().default(""),
   visitorLog: z.string().default(""),
   workLines: z.array(fieldWorkLineSchema).max(40).optional(),
+  // Added when logs tied into to-dos; logs queued by older builds lack it.
+  followUps: fieldDailyLogFollowUpsSchema.optional(),
 })
 
 export const fieldQueuedAttachmentSchema = z.object({
@@ -256,6 +316,7 @@ export type FieldProjectPacket = z.infer<typeof fieldProjectPacketSchema>
 export type FieldNotification = z.infer<typeof fieldNotificationSchema>
 export type FieldDailyLogDraft = z.infer<typeof fieldDailyLogDraftSchema>
 export type FieldDailyLogForm = z.infer<typeof fieldDailyLogFormSchema>
+export type FieldDailyLogFollowUpSetup = z.infer<typeof fieldDailyLogFollowUpSetupSchema>
 export type FieldMachine = z.infer<typeof fieldMachineSchema>
 export type FieldQueuedAttachment = z.infer<typeof fieldQueuedAttachmentSchema>
 export type FieldOutboxItem = z.infer<typeof fieldOutboxItemSchema>

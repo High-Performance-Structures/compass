@@ -334,3 +334,17 @@ button { cursor: pointer; }
 .theme-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .theme-choice button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--brand); font-size: 14px; font-weight: 750; }
 .theme-choice button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+/* Daily log to-dos and client contact. */
+.followup-list { display: grid; gap: 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.followup-blocked { display: grid; gap: 10px; padding: 12px; border: 1px solid #dbc89d; border-radius: 4px; background: #fbf6ea; }
+.followup-row { display: grid; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.followup-row.flagged { border-bottom-color: var(--brand); }
+.followup-title { margin: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+.followup-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.followup-line span { min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
+.followup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.followup-details { display: grid; gap: 8px; }
+.followup-check { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.followup-check input { width: 22px; height: 22px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--brand); }
+.followup-check > span { display: grid; gap: 3px; min-width: 0; }
+.followup-suggest { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--brand); border-radius: 4px; background: var(--brand-light); font-size: 14px; }

@@ -20,6 +20,7 @@ import { LinkedJobSettingsSection } from "@/components/settings/linked-job-setti
 import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
+import { DailyLogFollowUpSettingsSection } from "@/components/settings/daily-log-followup-settings-section"
 import { ClientInteractionSettingsSection } from "@/components/settings/client-interaction-settings-section"
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
@@ -196,7 +197,7 @@ function NuTechCatalogLink(): React.ReactElement {
 
 const WORKFLOW_AREAS = [
   { value: "job-workflows", label: "Job workflows", description: "Steps and checklists on each department's job overview." },
-  { value: "daily-logs", label: "Daily logs", description: "Required fields, and the cost codes logs offer on jobs and internal workspaces." },
+  { value: "daily-logs", label: "Daily logs", description: "Required fields, cost codes, and how logs create to-dos and record client contact." },
   { value: "estimates", label: "Estimates", description: "One contract estimate per job, or several at once, by department." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
@@ -246,7 +247,12 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
     case "estimates":
       return <EstimateSettingsSection />
     case "daily-logs":
-      return <DailyLogSettingsSection />
+      return (
+        <>
+          <DailyLogSettingsSection />
+          <DailyLogFollowUpSettingsSection />
+        </>
+      )
     case "client-interactions":
       return <ClientInteractionSettingsSection />
     case "project-duplicates":

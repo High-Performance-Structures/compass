@@ -40,11 +40,12 @@ describe("project to-do normalization", () => {
     expect(PROJECT_TODO_SELECTABLE_STATUSES).toEqual([
       "open",
       "in_progress",
+      "blocked",
       "complete",
       "archived",
     ])
     expect(isSelectableProjectTodoStatus("archived")).toBe(true)
-    expect(isSelectableProjectTodoStatus("blocked")).toBe(false)
+    expect(isSelectableProjectTodoStatus("blocked")).toBe(true)
   })
 
   it("uses concise staff-facing type labels", () => {

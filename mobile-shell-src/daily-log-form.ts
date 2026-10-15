@@ -15,12 +15,19 @@ import {
   isRequired,
   localDateInputValue,
   parseWorkLineHours,
-  type DailyLogFormError,
   type DailyLogOptionalField,
   type DailyLogRequirements,
   type DailyLogWorkLineDraft,
 } from "../src/lib/daily-logs/daily-log-form"
 import type { FieldDailyLogForm } from "../src/lib/field/types"
+import {
+  blockedTodosHtml,
+  clientContactsHtml,
+  emptyFollowUpDraft,
+  followUpDraftSchema,
+  lineTodosHtml,
+  todoChecklistHtml,
+} from "./daily-log-followups"
 
 export { localDateInputValue }
 
@@ -29,13 +36,15 @@ export const LOG_DRAFT_KEY_PREFIX = "compass_field_log_draft_v1"
 export const logDraftSchema = z.object({
   logDate: z.string(),
   workCompleted: z.string(),
-  workLines: z.array(z.object({ costCode: z.string(), hours: z.string(), description: z.string() })).min(1),
+  workLines: z.array(z.object({ costCode: z.string(), hours: z.string(), description: z.string(), todoId: z.string().optional() })).min(1),
   crewPresent: z.string(),
   materialsUsed: z.string(),
   issues: z.string(),
   safetyIncidents: z.string(),
   visitorLog: z.string(),
   notes: z.string(),
+  // Drafts saved before logs tied into to-dos start with nothing ticked.
+  followUps: followUpDraftSchema.default(emptyFollowUpDraft),
 })
 
 export type LogDraft = z.infer<typeof logDraftSchema>
@@ -58,6 +67,7 @@ export function emptyLogDraft(today: string = localDateInputValue()): LogDraft {
     safetyIncidents: "",
     visitorLog: "",
     notes: "",
+    followUps: emptyFollowUpDraft(),
   }
 }
 
@@ -114,6 +124,8 @@ export function totalHoursLabel(lines: readonly DailyLogWorkLineDraft[]): string
 export function errorControlId(key: string): string {
   const line = /^workLines\.(\d+)\.(costCode|hours)$/.exec(key)
   if (line) return `log-line-${line[1]}-${line[2]}`
+  const contact = /^clientContacts\.(\d+)\.(contactId|time|summary)$/.exec(key)
+  if (contact) return `log-contact-${contact[1]}-${contact[2]}`
   if (key === "workLines") return "log-line-0-costCode"
   return `log-${key}`
 }
@@ -169,7 +181,9 @@ function workLinesHtml(draft: LogDraft, form: FieldDailyLogForm | null, required
     .map((line, index) => {
       const codeKey = `workLines.${index}.costCode`
       const hoursKey = `workLines.${index}.hours`
+      const todoTitle = line.todoId ? form.followUps?.openTodos.find((todo) => todo.id === line.todoId)?.title : undefined
       return `<div class="work-line">
+        ${todoTitle ? `<p class="field-hint">For the to-do: ${escape(todoTitle)}</p>` : ""}
         <label class="field">Cost code ${index + 1}<select id="log-line-${index}-costCode" name="${codeKey}"${invalidAttrs(errors, codeKey, escape)}>${costCodeOptions(form, line.costCode, escape)}</select>${errorText(errors, codeKey, escape)}</label>
         <div class="work-line-row">
           <label class="field hours-field">Hours<input id="log-line-${index}-hours" name="${hoursKey}" inputmode="decimal" placeholder="e.g. 2.5" value="${escape(line.hours)}"${invalidAttrs(errors, hoursKey, escape)} />${errorText(errors, hoursKey, escape)}</label>
@@ -210,16 +224,27 @@ export function logFieldsHtml(input: {
 }): string {
   const { draft, form, errors, escape } = input
   const requirements = logRequirements(form)
+  const setup = form?.followUps ?? null
   const summary = errors.size > 0
     ? `<p class="form-alert" role="alert">${escape(errors.size === 1 ? "1 required item needs attention. Everything you entered is still here." : `${errors.size} required items need attention. Everything you entered is still here.`)}</p>`
     : ""
   return `${summary}
     <label class="field"><span>Date${requiredTag(true)}</span><input id="log-logDate" name="logDate" type="date" value="${escape(draft.logDate)}"${invalidAttrs(errors, "logDate", escape)} />${errorText(errors, "logDate", escape)}</label>
+    ${setup ? blockedTodosHtml(setup, draft.followUps, escape) : ""}
+    ${setup ? todoChecklistHtml(setup, draft.followUps, form?.costCodes ?? [], escape) : ""}
     ${workLinesHtml(draft, form, requirements.requireCostCodeTime, errors, escape)}
     <label class="field"><span>What did we complete?${requiredTag(true)}</span><textarea id="log-workCompleted" name="workCompleted" placeholder="Describe today's work"${invalidAttrs(errors, "workCompleted", escape)}>${escape(draft.workCompleted)}</textarea>${errorText(errors, "workCompleted", escape)}</label>
-    ${DAILY_LOG_OPTIONAL_FIELDS.map((field) => optionalFieldHtml(field, draft, requirements, errors, escape)).join("")}`
+    ${DAILY_LOG_OPTIONAL_FIELDS.map((field) => {
+      const html = optionalFieldHtml(field, draft, requirements, errors, escape)
+      if (!setup) return html
+      if (field === "issues" || field === "notes") {
+        return html + lineTodosHtml(field, draft[field], setup, draft.followUps, form?.costCodes ?? [], escape)
+      }
+      if (field === "visitorLog") return html + clientContactsHtml(setup, draft.followUps, draft.visitorLog, errors, escape)
+      return html
+    }).join("")}`
 }
 
-export function errorMap(errors: readonly DailyLogFormError[]): ReadonlyMap<string, string> {
+export function errorMap(errors: readonly { readonly key: string; readonly message: string }[]): ReadonlyMap<string, string> {
   return new Map(errors.map((error) => [error.key, error.message]))
 }

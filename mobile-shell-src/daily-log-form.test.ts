@@ -6,17 +6,20 @@ import {
   errorControlId,
   filledWorkLines,
   localDateInputValue,
+  logDraftSchema,
   logFieldsHtml,
   logRequirements,
   removeWorkLine,
   saveButtonLabel,
   updateLogDraft,
 } from "./daily-log-form"
+import { emptyFollowUpDraft, followUpAction } from "./daily-log-followups"
 
 const escape = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;")
 const form = {
   costCodes: [{ code: "01 71 13", name: "Mobilization", label: "01 71 13 Mobilization", group: "" }],
   requirements: { requireCostCodeTime: true, requiredFields: ["crewPresent" as const] },
+  followUps: null,
 }
 
 describe("Field Mode daily log draft", () => {
@@ -61,5 +64,67 @@ describe("Field Mode daily log draft", () => {
     expect(saveButtonLabel("idle", false)).toBe("Save for sync")
     expect(saveButtonLabel("saved", false)).toBe("✓ Saved on this phone")
     expect(saveButtonLabel("synced", true)).toBe("✓ Saved and synced")
+  })
+})
+
+describe("Field Mode daily log to-dos and client contact", () => {
+  const setup = {
+    rules: {
+      todoMode: "ask" as const,
+      todoTypes: ["staff_task" as const, "supplier_task" as const],
+      workedMovesToInProgress: true,
+      carryBlocked: true,
+      todoCostCodes: true,
+      tickAddsLine: true,
+      crewPicksCostCode: true,
+      clientContact: true,
+      clientContactSuggest: true,
+      minimumSummaryCharacters: 15,
+    },
+    openTodos: [
+      { id: "t1", title: "Joists <east>", status: "open" as const, recordType: "staff_task", assigneeName: "Dan", companyName: null, costCode: "01 71 13", changedOn: "2026-10-12" },
+      { id: "t2", title: "Framing inspection", status: "blocked" as const, recordType: "staff_task", assigneeName: null, companyName: null, costCode: null, changedOn: "2026-10-12" },
+    ],
+    clientContacts: [{ id: "c1", name: "Jordan Bishop", role: "Owner" }],
+    assignees: [{ name: "Nu-Tech", kind: "supplier_task" as const }],
+  }
+  const withSetup = { ...form, followUps: setup }
+
+  it("shows blocked to-dos, the checklist, line to-dos and a contact suggestion", () => {
+    const draft = { ...emptyLogDraft("2026-10-14"), issues: "Short on subfloor", visitorLog: "Bishop stopped by" }
+    const html = logFieldsHtml({ draft, form: withSetup, errors: new Map(), escape })
+    expect(html).toContain("Blocked to-dos")
+    expect(html).toContain('data-fu="blocked" data-fu-key="t2"')
+    expect(html).toContain("Joists &lt;east>")
+    expect(html).toContain('data-fu="line-toggle" data-fu-key="issues:Short on subfloor"')
+    expect(html).toContain("Visitors mentions Jordan Bishop")
+  })
+
+  it("applies control changes to the draft", () => {
+    const rules = setup.rules
+    const key = () => "row-1"
+    let draft = followUpAction(emptyFollowUpDraft(), rules, { control: "suggest-accept", key: "", value: "c1" }, key)
+    expect(draft.contacts).toEqual([expect.objectContaining({ key: "row-1", contactId: "c1", interactionType: "site_visit" })])
+    draft = followUpAction(draft, rules, { control: "contact-direction", key: "row-1", value: "inbound" }, key)
+    draft = followUpAction(draft, rules, { control: "contact-todo", key: "row-1", value: "true" }, key)
+    expect(draft.contacts[0]).toEqual(expect.objectContaining({ direction: "inbound", followUpTodo: true }))
+    draft = followUpAction(draft, rules, { control: "line-toggle", key: "issues:Short", value: "" }, key)
+    draft = followUpAction(draft, rules, { control: "line-type", key: "issues:Short", value: "supplier_task" }, key)
+    draft = followUpAction(draft, rules, { control: "line-assignee", key: "issues:Short", value: "Nu-Tech" }, key)
+    expect(draft.lineTodos["issues:Short"]).toEqual({ recordType: "supplier_task", assigneeName: "Nu-Tech", costCode: "" })
+    // Changing the type clears an assignee of the old kind.
+    draft = followUpAction(draft, rules, { control: "line-type", key: "issues:Short", value: "staff_task" }, key)
+    expect(draft.lineTodos["issues:Short"]?.assigneeName).toBe("")
+    draft = followUpAction(draft, rules, { control: "blocked", key: "t2", value: "still" }, key)
+    expect(draft.blocked).toEqual({ t2: "still" })
+    draft = followUpAction(draft, rules, { control: "blocked", key: "t2", value: "still" }, key)
+    expect(draft.blocked).toEqual({})
+  })
+
+  it("keeps drafts saved before to-dos", () => {
+    const old: Record<string, unknown> = { ...emptyLogDraft("2026-10-14") }
+    delete old.followUps
+    const parsed = logDraftSchema.parse(old)
+    expect(parsed.followUps.worked).toEqual([])
   })
 })

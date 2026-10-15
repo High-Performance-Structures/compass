@@ -30,7 +30,15 @@ import {
   projects,
   users,
 } from "@/db/schema"
-import { requireAuth } from "@/lib/auth"
+import { requireAuth, type AuthUser } from "@/lib/auth"
+import type { DailyLogFollowUps } from "@/lib/daily-logs/log-followups"
+import {
+  applyDailyLogFollowUps,
+  checkDailyLogFollowUps,
+  dailyLogFollowUpSetup,
+  linkedWorkLines,
+  type DailyLogFollowUpSetup,
+} from "@/lib/daily-logs/log-followups-server"
 import { getCloudflareContext } from "@/lib/db"
 import { addressState, geocodeProjectAddress, type CoordinatePair, type GeocodeResult } from "@/lib/geo/site-lookup"
 import { resolveTown } from "@/lib/portfolio-map/model"
@@ -245,6 +253,8 @@ export type ProjectDailyLogWorkspace = {
   readonly logs: readonly ProjectDailyLogItem[]
   /** The cost codes and required fields for new and edited logs. */
   readonly form: DailyLogFormSetup
+  /** Open to-dos, client contacts and the company's rules for new logs; null for viewers who can't write logs. */
+  readonly followUps: DailyLogFollowUpSetup | null
   /** Logs this viewer may delete (see lib/daily-logs/delete-rules). */
   readonly deletableLogIds: readonly string[]
   readonly unattachedPhotos: readonly ProjectDailyLogPhoto[]
@@ -289,6 +299,8 @@ type CreateDailyLogInput = {
    * meantime is still accepted, so the log can't get stuck on the device.
    */
   readonly queuedOnDevice?: boolean
+  /** To-dos ticked or created and client contact recorded with a new log. */
+  readonly followUps?: DailyLogFollowUps
 }
 
 export type ProjectWeatherSnapshot = {
@@ -733,6 +745,7 @@ async function verifyDailyLogStaffMutationAccess(
   readonly db: ReturnType<typeof getDb>
   readonly userId: string
   readonly orgId: string
+  readonly user: AuthUser
 }> {
   const user = await requireAuth()
   if (isDemoUser(user.id)) {
@@ -757,7 +770,7 @@ async function verifyDailyLogStaffMutationAccess(
     throw new Error("Project not found")
   }
 
-  return { db, userId: user.id, orgId }
+  return { db, userId: user.id, orgId, user }
 }
 
 function displayName(row: {
@@ -1533,14 +1546,17 @@ export async function getProjectDailyLogWorkspace(
       .map((row) => row.id)
   }
 
-  const [workLinesByLogId, form] = await Promise.all([
+  const canWriteLogs = organizationId !== null && viewer.isActive && isInternalStaffRole(viewer.role)
+  const [workLinesByLogId, form, followUps] = await Promise.all([
     loadDailyLogWorkLines(db, logRows.map((row) => row.id)),
     organizationId ? dailyLogFormSetup(db, organizationId, projectId) : Promise.resolve(EMPTY_DAILY_LOG_FORM_SETUP),
+    canWriteLogs && organizationId ? dailyLogFollowUpSetup(db, organizationId, projectId) : Promise.resolve(null),
   ])
 
   return {
     project,
     form,
+    followUps,
     deletableLogIds,
     logs: logRows.map((row) => ({
       id: row.id,
@@ -1601,7 +1617,7 @@ export async function createProjectDailyLog(
   input: CreateDailyLogInput
 ): Promise<CreateDailyLogResult> {
   try {
-    const { db, userId, orgId } = await verifyDailyLogStaffMutationAccess(projectId)
+    const { db, userId, orgId, user } = await verifyDailyLogStaffMutationAccess(projectId)
     const clientSubmissionId = input.clientSubmissionId?.trim()
     const dailyLogId = clientSubmissionId || crypto.randomUUID()
 
@@ -1627,6 +1643,13 @@ export async function createProjectDailyLog(
       ? await checkDailyLogForm(db, orgId, projectId, dailyLogFormValues(input, input.workLines), null, input.queuedOnDevice === true)
       : null
     if (checked && !checked.ok) return { success: false, error: checked.error }
+    const followUps = input.followUps
+      ? await checkDailyLogFollowUps(db, orgId, projectId, logDate, input.followUps, input.queuedOnDevice === true)
+      : null
+    if (followUps && !followUps.ok) return { success: false, error: followUps.error }
+    const lines = checked?.ok
+      ? linkedWorkLines(checked.lines, new Set(followUps?.ok ? followUps.todos.keys() : []))
+      : []
 
     await db.insert(dailyLogs).values({
       id: dailyLogId,
@@ -1662,9 +1685,23 @@ export async function createProjectDailyLog(
         logDate,
         userId,
         createdBy: userId,
-        lines: checked.lines,
+        lines,
         options: checked.options,
       })
+    }
+    if (followUps?.ok) {
+      await applyDailyLogFollowUps(db, {
+        organizationId: orgId,
+        projectId,
+        dailyLogId,
+        logDate,
+        creator: user,
+        workCompleted,
+        lines,
+        checked: followUps,
+      })
+      revalidatePath(`/dashboard/projects/${projectId}/todos`)
+      revalidatePath(`/dashboard/projects/${projectId}/information`)
     }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
@@ -1810,6 +1847,14 @@ export async function updateProjectDailyLog(
       .where(and(eq(dailyLogs.id, dailyLogId), eq(dailyLogs.projectId, projectId)))
 
     if (checked?.ok) {
+      // A line keeps its to-do only while that to-do is on the log's project.
+      const lineTodoIds = [...new Set(checked.lines.flatMap((line) => (line.todoId ? [line.todoId] : [])))]
+      const projectTodoIds = lineTodoIds.length > 0
+        ? await db
+            .select({ id: projectOperations.id })
+            .from(projectOperations)
+            .where(and(eq(projectOperations.projectId, targetProjectId), inArray(projectOperations.id, lineTodoIds)))
+        : []
       await replaceDailyLogWorkLines(db, {
         organizationId: orgId,
         projectId: targetProjectId,
@@ -1817,7 +1862,7 @@ export async function updateProjectDailyLog(
         logDate,
         userId: existing.authorId ?? userId,
         createdBy: userId,
-        lines: checked.lines,
+        lines: linkedWorkLines(checked.lines, new Set(projectTodoIds.map((row) => row.id))),
         options: checked.options,
       })
     } else if (targetProjectId !== projectId) {

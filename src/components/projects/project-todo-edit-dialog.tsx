@@ -20,11 +20,16 @@ import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import {
   archiveProjectTodo,
   deleteProjectTodo,
+  getProjectTodoDetail,
   restoreProjectTodo,
+  setProjectTodoStatus,
   updateProjectTodo,
   type ProjectOperationItem,
   type ProjectTaskRecordType,
+  type ProjectTodoDetail,
 } from "@/app/actions/project-operations"
+import { ProjectTodoHistory } from "@/components/projects/project-todo-history"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -108,7 +113,39 @@ export function ProjectTodoEditDialog({
   const [startDate, setStartDate] = React.useState(item.startDate ?? "")
   const [dueDate, setDueDate] = React.useState(item.dueDate ?? "")
   const [saveState, setSaveState] = React.useState<SaveState>({ kind: "idle" })
+  const [costCode, setCostCode] = React.useState(item.costCode ?? "")
+  const [detail, setDetail] = React.useState<ProjectTodoDetail | null>(null)
   const archived = isArchivedProjectTodoStatus(item.status)
+
+  React.useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    getProjectTodoDetail(projectId, item.id)
+      .then((result) => {
+        if (!cancelled) setDetail(result)
+      })
+      .catch(() => {
+        if (!cancelled) setDetail({ history: [], hours: 0, workedLogCount: 0, finishNudgeAfterLogs: 0, costCodes: [] })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId, item.id])
+  const costCodeOptions = React.useMemo(
+    () => (detail?.costCodes ?? []).map((option) => ({ value: option.code, label: option.label, keywords: `${option.code} ${option.name}` })),
+    [detail?.costCodes],
+  )
+
+  async function markFinished(): Promise<void> {
+    setSaveState({ kind: "saving" })
+    const result = await setProjectTodoStatus(projectId, item.id, "complete", item.updatedAt)
+    if (!result.success) {
+      setSaveState({ kind: "error", message: result.error })
+      return
+    }
+    onOpenChange(false)
+    router.refresh()
+  }
 
   async function save(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -123,6 +160,7 @@ export function ProjectTodoEditDialog({
       companyName: cleanValue(companyName),
       startDate: cleanValue(startDate),
       dueDate: cleanValue(dueDate),
+      ...(costCodeOptions.length > 0 ? { costCode: cleanValue(costCode) } : {}),
       expectedUpdatedAt: item.updatedAt,
     })
 
@@ -260,11 +298,6 @@ export function ProjectTodoEditDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {status === "blocked" && (
-                    <SelectItem value="blocked" disabled>
-                      Blocked (legacy)
-                    </SelectItem>
-                  )}
                   {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
                     <SelectItem key={selectableStatus} value={selectableStatus}>
                       {projectTodoStatusLabel(selectableStatus)}
@@ -348,6 +381,35 @@ export function ProjectTodoEditDialog({
               className="min-h-32"
             />
           </div>
+
+          {costCodeOptions.length > 0 && (
+            <div className="space-y-2 sm:max-w-sm">
+              <Label htmlFor={`todo-cost-code-${item.id}`}>Cost code</Label>
+              <SearchableCombobox
+                id={`todo-cost-code-${item.id}`}
+                ariaLabel="Cost code"
+                options={costCodeOptions}
+                value={costCode}
+                onValueChange={(value) => {
+                  if (value && value !== costCode) setCostCode(value)
+                }}
+                placeholder="No cost code"
+                searchPlaceholder="Search cost codes..."
+                emptyMessage="No matching cost codes."
+                disabled={archived}
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground">Ticking this to-do on a daily log adds a line with this code for its hours.</p>
+            </div>
+          )}
+
+          <ProjectTodoHistory
+            projectId={projectId}
+            detail={detail}
+            finished={archived || normalizeProjectTodoStatus(item.status) === "complete"}
+            onMarkFinished={() => void markFinished()}
+            busy={saveState.kind === "saving"}
+          />
 
           {archived && (
             <p className="border-l-2 border-muted-foreground/40 px-3 py-2 text-sm text-muted-foreground">
