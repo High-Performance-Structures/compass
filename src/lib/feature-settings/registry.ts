@@ -2,6 +2,7 @@ import { z } from "zod/v4"
 import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
 import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
 import { DAILY_LOG_TODO_MODES, DAILY_LOG_TODO_TYPES } from "@/lib/daily-logs/log-followups"
+import { PROJECT_TIMELINE_KINDS } from "@/lib/project-timeline/model"
 import {
   DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
   clientFollowUpSettingsSchema,
@@ -443,9 +444,19 @@ export const dailyLogFollowUpSettingsSchema = z.object({
 
 export type DailyLogFollowUpSettings = z.infer<typeof dailyLogFollowUpSettingsSchema>
 
+/** What a job's Overview timeline shows. */
+export const projectTimelineSettingsSchema = z.object({
+  kinds: z.array(z.enum(PROJECT_TIMELINE_KINDS)).max(PROJECT_TIMELINE_KINDS.length),
+  /** Days shown at first; "Show earlier" adds this many more. */
+  days: z.number().int().min(3).max(60),
+})
+
+export type ProjectTimelineSettings = z.infer<typeof projectTimelineSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
+  readonly "project-timeline": ProjectTimelineSettings
   readonly "internal-duties": InternalDutySettings
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
@@ -505,6 +516,15 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       clientContactSuggest: true,
     },
     schema: dailyLogFollowUpSettingsSchema,
+  },
+  "project-timeline": {
+    label: "Project timeline",
+    description: "What each job's Overview shows under What's happening: daily logs, to-dos, client contact, office time, machine hours and schedule changes.",
+    defaults: {
+      kinds: [...PROJECT_TIMELINE_KINDS],
+      days: 14,
+    },
+    schema: projectTimelineSettingsSchema,
   },
   "internal-duties": {
     label: "Internal duties",

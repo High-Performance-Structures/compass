@@ -1,5 +1,8 @@
 export const dynamic = "force-dynamic"
 
+import { getProjectTimeline } from "@/app/actions/project-timeline"
+import { ProjectTimelinePanel } from "@/components/projects/project-timeline"
+import type { ProjectTimeline } from "@/lib/project-timeline/model"
 import { decodeProjectRouteId } from "@/lib/project-route-id"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
@@ -206,6 +209,7 @@ export default async function ProjectSummaryPage({
   let jobWorkflow: JobWorkflowOverview | null = null
   let internalWorkspace: InternalWorkspaceSummary | null = null
   let linkedJobs: ProjectLinksView | null = null
+  let timeline: ProjectTimeline | null = null
   let fieldSummary: ProjectFieldSummary | null = null
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
@@ -378,6 +382,7 @@ export default async function ProjectSummaryPage({
       loadedJobWorkflow,
       loadedInternalWorkspace,
       loadedLinkedJobs,
+      loadedTimeline,
     ] = await Promise.all([
       developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
@@ -408,6 +413,10 @@ export default async function ProjectSummaryPage({
       getInternalWorkspaceSummary(id).catch(() => null),
       // Jobs linked to this one for the same customer and site.
       getProjectLinks(id).catch(() => null),
+      // Staff only; null for anyone else.
+      getProjectTimeline(id)
+        .then((result) => (result.success ? result.data : null))
+        .catch(() => null),
     ])
     registry = loadedRegistry
     sageSyncQueue = loadedSageSyncQueue
@@ -422,6 +431,7 @@ export default async function ProjectSummaryPage({
     jobWorkflow = loadedJobWorkflow
     internalWorkspace = loadedInternalWorkspace
     linkedJobs = loadedLinkedJobs
+    timeline = loadedTimeline
   } catch (error) {
     if (
       hasDigest(error) &&
@@ -662,6 +672,12 @@ export default async function ProjectSummaryPage({
           />
         </div>
         )}
+
+        {timeline ? (
+          <div className="mb-4 sm:mb-6">
+            <ProjectTimelinePanel projectId={id} initial={timeline} />
+          </div>
+        ) : null}
       </div>
 
       {/* right sidebar: week agenda */}

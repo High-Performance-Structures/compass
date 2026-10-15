@@ -1,6 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs"
-import { createRequire } from "node:module"
-import { join } from "node:path"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/notifications/events", () => ({ notifyProjectAssignment: vi.fn(async () => undefined) }))
@@ -16,62 +13,7 @@ import {
   loadTodoHours,
   loadTodoWorkedLogCounts,
 } from "@/lib/daily-logs/log-followups-server"
-
-type Statement = {
-  readonly run: (...values: readonly unknown[]) => { readonly changes: number | bigint }
-  readonly all: (...values: readonly unknown[]) => readonly Record<string, unknown>[]
-  readonly get: (...values: readonly unknown[]) => unknown
-}
-type Sqlite = { readonly exec: (sql: string) => void; readonly prepare: (sql: string) => Statement }
-
-const nodeRequire = createRequire(import.meta.url)
-
-function newSqlite(): Sqlite {
-  const imported: unknown = nodeRequire("node:sqlite")
-  const Database = imported !== null && typeof imported === "object" ? Reflect.get(imported, "DatabaseSync") : undefined
-  if (typeof Database !== "function") throw new Error("node:sqlite is unavailable")
-  const instance: unknown = Reflect.construct(Database, [":memory:"])
-  if (instance === null || typeof instance !== "object") throw new Error("Unable to open SQLite")
-  return {
-    exec: (sql) => Reflect.apply(Reflect.get(instance, "exec"), instance, [sql]),
-    prepare: (sql) => Reflect.apply(Reflect.get(instance, "prepare"), instance, [sql]),
-  }
-}
-
-/** Just enough of D1 for drizzle: prepare/bind and run, all, first, raw. */
-type D1 = Parameters<typeof getDb>[0]
-
-// Tests hand drizzle a small stand-in that has D1's prepare and batch.
-function isD1(value: unknown): value is D1 {
-  return typeof value === "object" && value !== null && "prepare" in value && "batch" in value
-}
-
-function d1(sqlite: Sqlite): D1 {
-  function prepared(query: string, values: readonly unknown[] = []): Record<string, unknown> {
-    const statement = sqlite.prepare(query)
-    const bound = values.map((value) => (typeof value === "boolean" ? Number(value) : value))
-    return {
-      bind: (...next: readonly unknown[]) => prepared(query, next),
-      run: async () => ({ success: true, meta: { changes: Number(statement.run(...bound).changes) } }),
-      all: async () => ({ success: true, results: statement.all(...bound) }),
-      first: async () => statement.get(...bound) ?? null,
-      raw: async () => statement.all(...bound).map((row) => Object.values(row)),
-    }
-  }
-  const database = {
-    prepare: (query: string) => prepared(query),
-    batch: async (statements: readonly { readonly run: () => Promise<unknown> }[]) => Promise.all(statements.map((statement) => statement.run())),
-  }
-  if (!isD1(database)) throw new Error("Not a D1 stand-in")
-  return database
-}
-
-function migrate(sqlite: Sqlite): void {
-  const dir = join(process.cwd(), "drizzle")
-  for (const file of readdirSync(dir).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
-    sqlite.exec(readFileSync(join(dir, file), "utf8").replaceAll("--> statement-breakpoint", ""))
-  }
-}
+import { d1, migratedSqlite, type Sqlite } from "./sqlite-d1"
 
 const NOW = "2026-10-14T20:00:00.000Z"
 const creator: AuthUser = {
@@ -114,8 +56,7 @@ describe("daily log follow-ups on the server", () => {
   let db: ReturnType<typeof getDb>
 
   beforeEach(() => {
-    sqlite = newSqlite()
-    migrate(sqlite)
+    sqlite = migratedSqlite()
     seed(sqlite)
     db = getDb(d1(sqlite))
   })
