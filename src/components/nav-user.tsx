@@ -12,7 +12,6 @@ import {
   IconMicrophoneOff,
   IconHeadphones,
   IconHeadphonesOff,
-  IconMusic,
   IconVideo,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
@@ -28,8 +27,7 @@ import { useConversationPanelOptional } from "@/components/conversations/convers
 import { DevicePicker } from "@/components/voice/device-picker"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import { openOfficeTalkWindow } from "@/components/site-header"
-import { useListeningRoomDock } from "@/components/voice/listening-room-dock-provider"
-import { OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID } from "@/lib/listening-room"
+import { ListeningRoomSidebarButton } from "@/components/voice/listening-room-sidebar-button"
 import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
@@ -316,7 +314,6 @@ export function SidebarCommunicationDock({
     setInputDevice,
     setOutputDevice,
   } = useVoiceState()
-  const { openRoom: openListeningRoom } = useListeningRoomDock()
   // Office Talk access brings two controls: the Listening Room and the meeting.
   const controlCount =
     2 + 2 * Number(canUseOfficeTalk) + Number(canUseDirectMessages)
@@ -361,24 +358,7 @@ export function SidebarCommunicationDock({
           deviceLabel="Output Device"
           className="h-7 w-full px-1"
         />
-        {canUseOfficeTalk && (
-          <button
-            type="button"
-            onClick={(event) => {
-              stopEvent(event)
-              openListeningRoom({
-                channelId: OFFICE_TALK_LISTENING_ROOM_CHANNEL_ID,
-                channelName: "Office Talk",
-              })
-            }}
-            onPointerDown={stopEvent}
-            aria-label="Open the Listening Room"
-            title="Listening Room"
-            className="flex h-7 w-full min-w-0 items-center justify-center rounded-md bg-transparent text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          >
-            <IconMusic className="size-4" />
-          </button>
-        )}
+        {canUseOfficeTalk && <ListeningRoomSidebarButton />}
         {canUseOfficeTalk && (
           <button
             type="button"
