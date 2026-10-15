@@ -141,6 +141,8 @@ export type ProjectChangeOrderItem = {
   readonly budgetTreatment: ChangeOrderBudgetTreatment
   readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
   readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
+  /** This change order's own estimate (built like the contract estimate). */
+  readonly changeOrderEstimate: ProjectChangeOrderEstimateOption | null
   readonly replacementEstimateUrl: string | null
   readonly estimateComparisonUrl: string | null
   readonly rebaselineCompletedAt: string | null
@@ -486,6 +488,8 @@ type RebaselineViewData = {
   readonly baselineEstimate: ProjectChangeOrderEstimateOption | null
   readonly replacementEstimate: ProjectChangeOrderEstimateOption | null
   readonly blockers: readonly string[]
+  /** Latest version of this change order's own estimate (staff only). */
+  readonly changeOrderEstimate?: ProjectChangeOrderEstimateOption | null
 }
 
 async function rebaselineViewData(
@@ -740,6 +744,7 @@ function viewModel(
     baselineEstimate: canSeeRebaselineEstimates
       ? rebaseline.baselineEstimate
       : null,
+    changeOrderEstimate: rebaseline.changeOrderEstimate ?? null,
     replacementEstimate: canSeeRebaselineEstimates
       ? rebaseline.replacementEstimate
       : null,
@@ -1067,13 +1072,22 @@ export async function getProjectChangeOrder(
         }))
 
   const rebaseline = await rebaselineViewData(authorizedContext, row)
+  const changeOrderEstimateRow = context.internal
+    ? await context.db
+        .select()
+        .from(projectEstimates)
+        .where(and(eq(projectEstimates.projectId, row.projectId), eq(projectEstimates.changeOrderId, row.id)))
+        .orderBy(desc(projectEstimates.versionNumber))
+        .limit(1)
+        .get()
+    : undefined
   return viewModel(
     row,
     context,
     lineRows,
     documentRows,
     visibleHistory,
-    rebaseline
+    { ...rebaseline, changeOrderEstimate: changeOrderEstimateRow ? estimateOption(changeOrderEstimateRow) : null }
   )
 }
 

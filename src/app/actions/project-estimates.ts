@@ -29,6 +29,7 @@ import {
   projectContacts,
   projects,
   sageCostCodes,
+  projectChangeOrders,
 } from "@/db/schema"
 import {
   estimateTermsTemplates,
@@ -116,6 +117,8 @@ import {
 
 export type ProjectEstimateSummary = {
   readonly id: string
+  /** Set for a change-order estimate (see project_estimates.change_order_id). */
+  readonly changeOrderId: string | null
   readonly estimateNumber: string
   readonly versionNumber: number
   readonly title: string
@@ -322,8 +325,14 @@ export type ProjectEstimateWorkspace = {
   /** "multiple": this department allows several estimates per job. */
   readonly estimateMode: EstimateMode
   readonly reportMode: EstimateClientReportMode
+  /**
+   * The versions shown: the contract estimate's, or, when a change-order
+   * estimate is open, that change order's estimate versions.
+   */
   readonly estimates: readonly ProjectEstimateSummary[]
   readonly activeEstimate: ProjectEstimateSummary | null
+  /** The change order when the open estimate is a change-order estimate. */
+  readonly changeOrder: { readonly id: string; readonly number: string; readonly title: string; readonly status: string } | null
   readonly assemblies: readonly EstimateAssembly[]
   readonly lines: readonly ProjectEstimateLineItem[]
   readonly basisDocuments: readonly ProjectEstimateBasisItem[]
@@ -676,6 +685,7 @@ function estimateSummary(
 ): ProjectEstimateSummary {
   return {
     id: row.id,
+    changeOrderId: row.changeOrderId,
     estimateNumber: row.estimateNumber,
     versionNumber: row.versionNumber,
     title: estimateTitleForDepartment({
@@ -1021,10 +1031,27 @@ async function loadProjectEstimateWorkspace(
       desc(projectEstimates.versionNumber),
       desc(projectEstimates.updatedAt)
     )
-  const estimates = estimateRows.map((row) =>
+  const allEstimates = estimateRows.map((row) =>
     estimateSummary(row, access.department, canEdit)
   )
+  // Contract estimates and each change order's estimates are separate
+  // families; only the open family's versions are listed.
+  const requested = estimateId ? allEstimates.find((estimate) => estimate.id === estimateId) ?? null : null
+  const familyChangeOrderId = requested?.changeOrderId ?? null
+  const estimates = allEstimates.filter((estimate) => estimate.changeOrderId === familyChangeOrderId)
   const selected = activeEstimate(estimates, estimateId)
+  const changeOrder = familyChangeOrderId
+    ? await access.db
+        .select({
+          id: projectChangeOrders.id,
+          number: projectChangeOrders.changeOrderNumber,
+          title: projectChangeOrders.title,
+          status: projectChangeOrders.status,
+        })
+        .from(projectChangeOrders)
+        .where(and(eq(projectChangeOrders.id, familyChangeOrderId), eq(projectChangeOrders.projectId, projectId)))
+        .get() ?? null
+    : null
   const [
     lineRows,
     costItemRows,
@@ -1225,6 +1252,7 @@ async function loadProjectEstimateWorkspace(
       selected?.clientReportMode ?? estimateClientReportMode(access.department),
     estimates,
     activeEstimate: selected,
+    changeOrder,
     assemblies: assemblyRows.map(({ id, name, description, sortOrder }) => ({ id, name, description, sortOrder })),
     lines: lineRows.map((row) =>
       estimateLineItem(row, costItemsByLine.get(row.id) ?? [])
@@ -1369,6 +1397,120 @@ export async function createProjectEstimateDraft(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to create estimate.",
+    }
+  }
+}
+
+/**
+ * Starts the estimate for a change order: built, previewed, printed and
+ * signed like the contract estimate, numbered after the change order.
+ * Accepting it executes the change order and adds it to the budget. Header
+ * details (client, signers, terms, report style, builder-fee rates) come from
+ * the accepted contract estimate when there is one.
+ */
+export async function createChangeOrderEstimateDraft(
+  projectId: string,
+  changeOrderId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const changeOrder = await access.db
+      .select({
+        id: projectChangeOrders.id,
+        number: projectChangeOrders.changeOrderNumber,
+        title: projectChangeOrders.title,
+        status: projectChangeOrders.status,
+        budgetTreatment: projectChangeOrders.budgetTreatment,
+      })
+      .from(projectChangeOrders)
+      .where(and(eq(projectChangeOrders.id, changeOrderId), eq(projectChangeOrders.projectId, projectId)))
+      .get()
+    if (!changeOrder) throw new Error("Change order not found.")
+    if (["executed", "sage_pending", "synced", "closed", "declined", "void"].includes(changeOrder.status)) {
+      throw new Error(`Change order ${changeOrder.number} is already ${changeOrder.status.replace("_", " ")}.`)
+    }
+    if (changeOrder.budgetTreatment === "baseline_replacement") {
+      throw new Error("This change order replaces the contract estimate; revise the contract estimate instead.")
+    }
+    const existing = await access.db
+      .select({ id: projectEstimates.id })
+      .from(projectEstimates)
+      .where(and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.changeOrderId, changeOrderId)))
+      .limit(1)
+      .get()
+    if (existing) return { success: true, id: existing.id }
+
+    const contract = await access.db
+      .select()
+      .from(projectEstimates)
+      .where(and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.status, "accepted"), isNull(projectEstimates.changeOrderId)))
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1)
+      .get()
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const contactRows = contract
+      ? []
+      : await access.db
+          .select()
+          .from(projectContacts)
+          .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
+          .orderBy(desc(projectContacts.primaryContact), asc(projectContacts.sortOrder))
+    const clientSigners = contactRows
+      .filter((contact) => contact.contactType === "owner")
+      .map((contact) => ({
+        contactId: contact.id,
+        name: contact.displayName,
+        title: contact.role ?? "",
+        email: contact.email ?? "",
+        initials: signerInitials(contact.displayName),
+      }))
+    const clientSigner = clientSigners[0]
+    const companySigner = contactRows.find((contact) => contact.contactType === "internal")
+    await access.db.insert(projectEstimates).values({
+      id,
+      projectId,
+      changeOrderId,
+      estimateNumber: changeOrder.number,
+      versionNumber: 1,
+      title: `Change Order ${changeOrder.number}: ${changeOrder.title}`.slice(0, 200),
+      status: "draft",
+      estimateDate: now.slice(0, 10),
+      clientName: contract?.clientName ?? access.projectClientName,
+      clientMailingAddress: contract?.clientMailingAddress ?? access.projectMailingAddress,
+      clientSignerContactId: contract ? contract.clientSignerContactId : clientSigner?.contactId ?? null,
+      clientSignerName: contract ? contract.clientSignerName : clientSigner?.name ?? null,
+      clientSignerTitle: contract ? contract.clientSignerTitle : clientSigner?.title ?? null,
+      clientSignerEmail: contract ? contract.clientSignerEmail : clientSigner?.email ?? null,
+      clientSignersJson: contract ? contract.clientSignersJson : JSON.stringify(clientSigners),
+      companySignerContactId: contract ? contract.companySignerContactId : companySigner?.id ?? null,
+      companySignerName: contract ? contract.companySignerName : companySigner?.displayName ?? null,
+      companySignerTitle: contract ? contract.companySignerTitle : companySigner?.role ?? null,
+      companySignerEmail: contract ? contract.companySignerEmail : companySigner?.email ?? null,
+      companySignerInitials: contract
+        ? contract.companySignerInitials
+        : companySigner
+          ? signerInitials(companySigner.displayName)
+          : null,
+      termsTemplateId: contract?.termsTemplateId ?? null,
+      contractTerms: contract?.contractTerms ?? null,
+      clientReportMode: contract?.clientReportMode ?? null,
+      showCostBreakdowns: contract?.showCostBreakdowns ?? false,
+      overheadRateBasisPoints: contract?.overheadRateBasisPoints ?? 0,
+      marginRateBasisPoints: contract?.marginRateBasisPoints ?? 0,
+      contingencyRateBasisPoints: contract?.contingencyRateBasisPoints ?? 0,
+      sourceSystem: "compass",
+      createdBy: access.user.id,
+      createdAt: now,
+      updatedAt: now,
+    })
+    revalidateEstimate(projectId)
+    revalidatePath(`/dashboard/projects/${projectId}/change-orders/${changeOrderId}`)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to start the change-order estimate.",
     }
   }
 }
@@ -1555,6 +1697,9 @@ export async function duplicateProjectEstimate(
       ? await estimateAccess(destinationProjectId, true)
       : access
     const separate = destination?.kind === "separate"
+    if (source.changeOrderId && (separate || changingPhase)) {
+      throw new Error("A change-order estimate can only get a new version on its own change order.")
+    }
     if (separate && changingPhase) {
       throw new Error("A separate estimate is made on this job; copy to another phase as a new version.")
     }
@@ -1871,9 +2016,14 @@ export async function getProjectEstimateVersionComparison(
       desc(projectEstimates.updatedAt)
     )
   const canEdit = isInternalStaffRole(access.user.role)
-  const estimates = estimateRows.map((row) =>
+  const allEstimates = estimateRows.map((row) =>
     estimateSummary(row, access.department, canEdit)
   )
+  // Compare within one family: the contract estimate's versions, or one
+  // change order's estimate versions.
+  const requestedRevised = allEstimates.find((estimate) => estimate.id === revisedEstimateId) ?? null
+  const familyChangeOrderId = requestedRevised?.changeOrderId ?? null
+  const estimates = allEstimates.filter((estimate) => estimate.changeOrderId === familyChangeOrderId)
   const revisedEstimate =
     estimates.find((estimate) => estimate.id === revisedEstimateId) ??
     estimates[0] ??

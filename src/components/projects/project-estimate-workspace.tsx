@@ -862,6 +862,20 @@ export function ProjectEstimateWorkspacePanel({
         </div>
       )}
 
+      {workspace.changeOrder && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border-l-4 border-l-primary bg-muted/30 px-4 py-3 text-sm">
+          <p>
+            <span className="font-medium">Change-order estimate</span> for {workspace.changeOrder.number}: {workspace.changeOrder.title}.
+            {" "}Accepting it executes the change order and adds it to the budget; the contract estimate is unchanged.
+          </p>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/dashboard/projects/${encodeURIComponent(projectId)}/change-orders/${encodeURIComponent(workspace.changeOrder.id)}`}>
+              Back to {workspace.changeOrder.number}
+            </Link>
+          </Button>
+        </div>
+      )}
+
       <section className="clarity-panel-strong overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
           <div>

@@ -48,6 +48,18 @@ Division and assembly reports use grey group headings and subtotal bands, with c
 
 **Show cost breakdowns in customer report** defaults to off. Enable it and select **Save report view** to include underlying labor, material, and other cost rows beneath itemized cost codes. Totals-only and lump-sum groups stay summarized. This presentation setting carries forward into copies and revisions; it does not change working estimate details or amounts.
 
+## Price a Change Order with an Estimate {#change-order-estimates}
+
+On a change order, choose **Build change-order estimate**. It opens a full estimate for just that change, numbered after the change order (for example H-430-1900-CO-001). It has the same lines, assemblies, report phases, client report preview, printing and signature options as the contract estimate. The client, signers, terms and report style start from the accepted contract estimate.
+
+Send it for signature with Foxit, or mark it signed outside Compass and record the acceptance with the signed document, exactly as for the contract estimate. Accepting it executes the change order:
+
+- Its lines become the change order's cost-code lines, at the client price.
+- Its total becomes the change-order amount.
+- The signed document is attached to the change order.
+
+The contract budget then rebuilds with the change added. The contract estimate itself is not changed. A new version of a change-order estimate stays on the same change order.
+
 ## Budget and G703 {#budget-g703}
 
 Review original and adjusted estimates, approved changes, scheduled value, prior and current applications, stored materials, completed work, balance to finish, and retainage where applicable. Detail and owner visibility depend on the project, contract, department, and role.
