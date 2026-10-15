@@ -48,6 +48,12 @@ Division and assembly reports use grey group headings and subtotal bands, with c
 
 **Show cost breakdowns in customer report** defaults to off. Enable it and select **Save report view** to include underlying labor, material, and other cost rows beneath itemized cost codes. Totals-only and lump-sum groups stay summarized. This presentation setting carries forward into copies and revisions; it does not change working estimate details or amounts.
 
+## Choose the Documents in a Contract Packet {#contract-packet-documents}
+
+When you create a contract packet on the **Contracts** page, choose the estimate, then tick the documents to include. The agreement (CA00) and the construction estimate (CA22) are always included, because the packet can't be signed without them. Every other document is optional. After the packet is created you can still **Add document** or **Remove** one while it's being prepared.
+
+Admins can tick **Use this selection as the default for new contract packets** to make the current choice the company default. New packets then start with the same documents ticked.
+
 ## Budget and G703 {#budget-g703}
 
 Review original and adjusted estimates, approved changes, scheduled value, prior and current applications, stored materials, completed work, balance to finish, and retainage where applicable. Detail and owner visibility depend on the project, contract, department, and role.
