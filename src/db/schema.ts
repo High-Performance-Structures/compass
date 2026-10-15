@@ -2700,6 +2700,10 @@ export const projectInteractions = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     deletedAt: text("deleted_at"),
+    /** The daily log this contact was recorded on, if any. */
+    dailyLogId: text("daily_log_id").references(() => dailyLogs.id, {
+      onDelete: "set null",
+    }),
   },
   (table) => [
     index("project_interactions_project_occurred_idx").on(
@@ -2865,6 +2869,44 @@ export const scheduleTaskLinks = sqliteTable(
       table.resourceType
     ),
   ]
+)
+
+/**
+ * A to-do's history: created (from a daily log or by hand), worked on in a
+ * daily log, still blocked or cleared on a log, and status changes. Daily
+ * logs only ever record activity here; finishing a to-do is a person's choice.
+ */
+export const projectTodoEvents = sqliteTable(
+  "project_todo_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    todoId: text("todo_id")
+      .notNull()
+      .references(() => projectOperations.id, { onDelete: "cascade" }),
+    /** "created" | "worked" | "still_blocked" | "unblocked" | "status" */
+    kind: text("kind").notNull(),
+    dailyLogId: text("daily_log_id").references(() => dailyLogs.id, {
+      onDelete: "set null",
+    }),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    note: text("note"),
+    actorId: text("actor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("project_todo_events_todo_idx").on(table.todoId, table.createdAt),
+    index("project_todo_events_project_idx").on(table.projectId, table.createdAt),
+    index("project_todo_events_daily_log_idx").on(table.dailyLogId),
+  ],
 )
 
 export const dailyLogTaskLinks = sqliteTable("daily_log_task_links", {

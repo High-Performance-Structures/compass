@@ -334,7 +334,17 @@ export async function getFieldProjectPacket(
         role: userRoleLabel(contact.role),
       })),
     // Only short lists (H/O labor codes, internal duties) go to phones.
-    dailyLogForm: phoneDailyLogForm(dailyLogWorkspace.form),
+    dailyLogForm: {
+      ...phoneDailyLogForm(dailyLogWorkspace.form),
+      followUps: dailyLogWorkspace.followUps
+        ? {
+            rules: { ...dailyLogWorkspace.followUps.rules, todoTypes: [...dailyLogWorkspace.followUps.rules.todoTypes] },
+            openTodos: dailyLogWorkspace.followUps.openTodos.map((todo) => ({ ...todo })),
+            clientContacts: dailyLogWorkspace.followUps.clientContacts.map((contact) => ({ ...contact })),
+            assignees: dailyLogWorkspace.followUps.assignees.map((person) => ({ ...person })),
+          }
+        : null,
+    },
     machines: await machinesPromise,
     notifications: notificationResult.success
       ? notificationResult.data.items.map((item) => ({
@@ -371,6 +381,7 @@ export async function submitFieldDailyLog(
     visitorLog: draft.visitorLog,
     notes: draft.notes,
     workLines: draft.workLines,
+    ...(draft.followUps ? { followUps: draft.followUps } : {}),
     // Saved on a phone, maybe before a code was taken off the list.
     queuedOnDevice: true,
   })

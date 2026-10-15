@@ -22,6 +22,8 @@ export type DailyLogWorkLineView = {
   readonly costCodeLabel: string
   readonly hours: number | null
   readonly description: string
+  /** The to-do these hours went to, if any. */
+  readonly todoId: string | null
 }
 
 export const ON_BUDGET_GROUP = "On this job's budget"
@@ -195,6 +197,7 @@ export async function loadDailyLogWorkLines(
         description: internalDutyEntries.notes,
         sortOrder: internalDutyEntries.sortOrder,
         createdAt: internalDutyEntries.createdAt,
+        todoId: internalDutyEntries.todoId,
       })
       .from(internalDutyEntries)
       .where(inArray(internalDutyEntries.dailyLogId, dailyLogIds.slice(start, start + 90)))
@@ -207,6 +210,7 @@ export async function loadDailyLogWorkLines(
         costCodeLabel: row.costCodeLabel,
         hours: row.hours,
         description: row.description ?? "",
+        todoId: row.todoId,
       })
       lines.set(row.dailyLogId, list)
     }
@@ -258,6 +262,7 @@ export async function replaceDailyLogWorkLines(
       relatedProjectId: null,
       dailyLogId: input.dailyLogId,
       sortOrder: index,
+      todoId: line.todoId,
       createdBy: input.createdBy,
       createdAt: now,
       updatedAt: now,

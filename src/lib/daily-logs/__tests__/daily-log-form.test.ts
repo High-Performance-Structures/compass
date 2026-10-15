@@ -29,7 +29,7 @@ describe("validateDailyLogForm", () => {
   it("accepts a complete log and cleans its lines", () => {
     const result = validateDailyLogForm(values(), { requireCostCodeTime: true, requiredFields: [] }, codes)
     expect(result.errors).toEqual([])
-    expect(result.workLines).toEqual([{ costCode: "01 71 13", hours: 2.5, description: "Moved in" }])
+    expect(result.workLines).toEqual([{ costCode: "01 71 13", hours: 2.5, description: "Moved in", todoId: null }])
   })
 
   it("requires a cost code line when the company does, ignoring blank rows", () => {

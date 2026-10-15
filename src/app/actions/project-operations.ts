@@ -29,6 +29,16 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import {
+  loadProjectTodoHistory,
+  loadTodoHours,
+  loadTodoWorkedLogCounts,
+  recordTodoEvent,
+  type ProjectTodoHistoryItem,
+} from "@/lib/daily-logs/log-followups-server"
+import { dailyLogCostCodeOptions } from "@/lib/daily-logs/cost-code-lines"
+import type { DailyLogCostCodeOption } from "@/lib/daily-logs/daily-log-form"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import {
   PROJECT_TODO_RECORD_TYPES,
   type ProjectTodoStatus,
   isArchivedProjectTodoStatus,
@@ -353,7 +363,20 @@ export type UpdateProjectTodoInput = {
   readonly companyName: string | null
   readonly startDate: string | null
   readonly dueDate: string | null
+  /** Left out to keep the current cost code. */
+  readonly costCode?: string | null
   readonly expectedUpdatedAt: string
+}
+
+/** A to-do's history from daily logs and status changes, with hours logged against it. */
+export type ProjectTodoDetail = {
+  readonly history: readonly ProjectTodoHistoryItem[]
+  readonly hours: number
+  readonly workedLogCount: number
+  /** Ask "Is it finished?" once worked on in this many logs. */
+  readonly finishNudgeAfterLogs: number
+  /** Cost codes a to-do can carry; empty when the company turned that off. */
+  readonly costCodes: readonly DailyLogCostCodeOption[]
 }
 
 export type ProjectTodoActionResult =
@@ -1149,6 +1172,29 @@ export async function getProjectTodos(
   return operations.map((operation) =>
     toOperationItem(operation, scheduleTaskIds)
   )
+}
+
+export async function getProjectTodoDetail(
+  projectId: string,
+  todoId: string
+): Promise<ProjectTodoDetail> {
+  const user = await requireAuth()
+  const organizationId = requireOrg(user)
+  const db = await verifyProjectAccess(projectId, "tasks")
+  const [history, hours, workedCounts, settings, costCodes] = await Promise.all([
+    loadProjectTodoHistory(db, projectId, todoId),
+    loadTodoHours(db, projectId),
+    loadTodoWorkedLogCounts(db, projectId),
+    readFeatureSettings(db, organizationId, "daily-log-followups"),
+    dailyLogCostCodeOptions(db, organizationId, projectId),
+  ])
+  return {
+    history,
+    hours: hours.get(todoId) ?? 0,
+    workedLogCount: workedCounts.get(todoId) ?? 0,
+    finishNudgeAfterLogs: settings.finishNudgeAfterLogs,
+    costCodes: settings.todoCostCodes ? costCodes : [],
+  }
 }
 
 export async function getScheduleTaskTodos(
@@ -2736,6 +2782,7 @@ export async function createProjectTask(
       createdAt: now,
       updatedAt: now,
     })
+    await recordTodoEvent(db, { organizationId, projectId, todoId: id, kind: "created", dailyLogId: null, fromStatus: null, toStatus: "open", note: null, actorId: user.id, createdAt: now })
 
     try {
       await notifyProjectAssignment({
@@ -2847,6 +2894,7 @@ export async function updateProjectTodo(
         companyName,
         startDate,
         dueDate,
+        ...(input.costCode !== undefined ? { costCode: cleanText(input.costCode) } : {}),
         updatedAt,
       })
       .where(
@@ -2867,6 +2915,9 @@ export async function updateProjectTodo(
         error:
           "This to-do changed while you were saving. Refresh and review the latest version.",
       }
+    }
+    if (input.status !== operation.status) {
+      await recordTodoEvent(db, { organizationId, projectId, todoId, kind: "status", dailyLogId: null, fromStatus: operation.status, toStatus: input.status, note: null, actorId: user.id, createdAt: updatedAt })
     }
 
     if (assigneeName && assigneeName !== operation.assigneeName) {
@@ -2909,7 +2960,9 @@ export async function setProjectTodoStatus(
     if (!isProjectTodoStatus(status)) {
       return { success: false, error: "Choose a valid to-do status." }
     }
-    const { db } = await findEditableProjectTodo(
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
+    const { db, operation } = await findEditableProjectTodo(
       projectId,
       todoId,
       expectedUpdatedAt
@@ -2936,6 +2989,10 @@ export async function setProjectTodoStatus(
         error:
           "This to-do changed while you were saving. Refresh and review the latest version.",
       }
+    }
+
+    if (status !== operation.status) {
+      await recordTodoEvent(db, { organizationId, projectId, todoId, kind: "status", dailyLogId: null, fromStatus: operation.status, toStatus: status, note: null, actorId: user.id, createdAt: updatedAt })
     }
 
     revalidateProjectTodoPaths(projectId)

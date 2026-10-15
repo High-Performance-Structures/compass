@@ -53,12 +53,15 @@ export type DailyLogWorkLineDraft = {
   readonly costCode: string
   readonly hours: string
   readonly description: string
+  /** The to-do these hours went to, when the line came from ticking one. */
+  readonly todoId?: string
 }
 
 export type DailyLogWorkLine = {
   readonly costCode: string
   readonly hours: number
   readonly description: string
+  readonly todoId: string | null
 }
 
 export type DailyLogFormValues = {
@@ -128,7 +131,9 @@ export function validateDailyLogForm(
     else if (knownCodes.size > 0 && !knownCodes.has(costCode)) errors.push({ key: `workLines.${index}.costCode`, message: "That cost code isn't on the list." })
     const hours = parseWorkLineHours(line.hours)
     if (!hours.ok) errors.push({ key: `workLines.${index}.hours`, message: hours.error })
-    if (costCode && hours.ok) workLines.push({ costCode, hours: hours.hours, description: line.description.trim() })
+    if (costCode && hours.ok) {
+      workLines.push({ costCode, hours: hours.hours, description: line.description.trim(), todoId: line.todoId?.trim() || null })
+    }
   })
   if (requirements.requireCostCodeTime && values.workLines.every(isBlankLine)) {
     errors.push({ key: "workLines", message: "Add at least one cost code and its time." })

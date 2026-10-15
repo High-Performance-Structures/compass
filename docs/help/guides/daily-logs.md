@@ -7,12 +7,12 @@
   "summary": "Create, edit, review, and approve daily logs with weather, photos, and attachments.",
   "contextSummary": "Daily Logs are the factual project record of work, crews, conditions, issues, and next steps. Approval and owner visibility are separate decisions.",
   "category": "Field & Project Work",
-  "tags": ["daily logs", "weather", "photos", "attachments", "field", "review"],
+  "tags": ["daily logs", "weather", "photos", "attachments", "field", "review", "to-dos", "client contact", "cost codes"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/daily-logs"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-09"
+  "lastReviewed": "2026-10-15"
 }
 ---
 
@@ -21,6 +21,17 @@
 Open the project's **Daily Logs**, confirm the project and log date, and create a new log. Use **Fill weather** when available, then review the retrieved conditions. Record work completed, crews, materials, deliveries, inspections, delays, safety information, visitors, and specific next steps as applicable.
 
 Write facts another team member can understand later. Avoid unexplained abbreviations, personal commentary, and unapproved promises.
+
+## To-dos and Client Contact on a Log {#todos-client-contact}
+
+A new log ties into the job's to-dos and client contact:
+
+- **Blocked to-dos** from earlier logs ask whether each is **Still blocked** or **Cleared today**.
+- **Open to-dos on this job** lists the job's open to-dos. Tick what was worked on today. Ticking adds a note to the to-do's history and can move an Open to-do to In progress. It never marks a to-do finished; a person does that on the to-do. When a to-do has a cost code, ticking it adds a cost code line for its hours, so the hours add up on the to-do.
+- **Issues** and **Notes / next steps**: write one item per line. Choose **Make to-do** on a line to create a staff, sub or supplier to-do from it, with an assignee and cost code if you know them.
+- **Client contact**: if you talked with, texted or met the client, log it here. It is saved as a client interaction and counts as client contact for follow-up. When Visitors names a client contact, Compass offers to fill it in. Tick **Make a follow-up to-do from this** when something needs doing.
+
+Each to-do's history shows the logs that created and worked on it and the hours logged against it. After several logs, the to-do asks whether it is finished. Admins choose these rules in **Settings → Workflows → Daily logs**.
 
 ## Add Files {#add-files}
 
@@ -48,6 +59,8 @@ Filter logs to the intended reporting period, review the visible results, select
 
 - [ ] The project, date, and weather are correct.
 - [ ] Work and next steps are specific.
+- [ ] To-dos worked on are ticked, and follow-ups are made into to-dos.
+- [ ] Client contact made today is logged.
 - [ ] Files belong to this log and project.
 - [ ] Approval and owner visibility were reviewed separately.
 

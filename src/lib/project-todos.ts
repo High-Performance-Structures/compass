@@ -23,6 +23,7 @@ export type ProjectTodoStatus = (typeof PROJECT_TODO_STATUSES)[number]
 export const PROJECT_TODO_SELECTABLE_STATUSES = [
   "open",
   "in_progress",
+  "blocked",
   "complete",
   "archived",
 ] as const

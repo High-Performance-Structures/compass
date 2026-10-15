@@ -41,6 +41,7 @@ export function DailyLogWorkLines({
   required,
   errors,
   onChange,
+  todoTitles,
 }: {
   readonly idPrefix: string
   readonly lines: readonly DailyLogWorkLineDraft[]
@@ -49,6 +50,8 @@ export function DailyLogWorkLines({
   /** Error messages keyed like "workLines" or "workLines.0.hours". */
   readonly errors: ReadonlyMap<string, string>
   readonly onChange: (lines: readonly DailyLogWorkLineDraft[]) => void
+  /** Titles of to-dos lines can belong to, to label those lines. */
+  readonly todoTitles?: ReadonlyMap<string, string>
 }): React.ReactElement {
   const options = React.useMemo(
     () =>
@@ -85,11 +88,15 @@ export function DailyLogWorkLines({
         {lines.map((line, index) => {
           const codeError = errors.get(`workLines.${index}.costCode`)
           const hoursError = errors.get(`workLines.${index}.hours`)
+          const todoTitle = line.todoId ? todoTitles?.get(line.todoId) : undefined
           return (
             <div
               key={index}
               className="grid gap-2 border-b pb-2 md:grid-cols-[minmax(0,1.4fr)_6rem_minmax(0,1.6fr)_auto] md:items-start"
             >
+              {todoTitle && (
+                <p className="text-xs text-info md:col-span-4">For the to-do: {todoTitle}</p>
+              )}
               <div className="grid gap-1">
                 <Label htmlFor={`${idPrefix}-line-${index}-code`} className="sr-only">
                   Cost code {index + 1}

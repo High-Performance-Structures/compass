@@ -34,6 +34,8 @@ import {
 import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
 import { localDateInputValue, validateDailyLogForm } from "../src/lib/daily-logs/daily-log-form"
+import { followUpsFromDraft, validateDailyLogFollowUps, workLinesAfterTick } from "../src/lib/daily-logs/log-followups"
+import { followUpAction, FOLLOW_UP_REDRAW_CONTROLS, storedFollowUpDraft, summaryHintText } from "./daily-log-followups"
 import { validateMachineLog } from "../src/lib/equipment/model"
 import {
   hoursChargeLabel,
@@ -1257,13 +1259,66 @@ function showSaveState(state: LogSaveState): void {
   button.classList.toggle("saved", state !== "idle")
 }
 
+/** Applies a to-do or client contact control; redraws when the form's shape changes. */
+function applyFollowUpControl(control: string, key: string, value: string): void {
+  const setup = packet?.dailyLogForm?.followUps
+  if (!setup) return
+  const before = logDraft.followUps
+  const followUps = storedFollowUpDraft(followUpAction(before, setup.rules, { control, key, value }, () => crypto.randomUUID()))
+  logDraft = { ...logDraft, followUps }
+  if (control === "worked" && setup.rules.tickAddsLine) {
+    const todo = setup.openTodos.find((item) => item.id === key)
+    // Only codes the phone has can go on a line here; the office adds others.
+    const phoneCodes = new Set((packet?.dailyLogForm?.costCodes ?? []).map((option) => option.code))
+    if (todo && (!todo.costCode || phoneCodes.has(todo.costCode))) {
+      logDraft = { ...logDraft, workLines: [...workLinesAfterTick(logDraft.workLines, todo, followUps.worked.includes(key))] }
+    }
+  }
+  if (control.startsWith("contact-") && logErrors.size > 0) {
+    logErrors = new Map([...logErrors].filter(([errorKey]) => !errorKey.startsWith("clientContacts.")))
+  }
+  persistLogDraft()
+  if (logSaveState !== "idle") showSaveState("idle")
+  if (FOLLOW_UP_REDRAW_CONTROLS.has(control) || control === "contact-todo" || control === "worked") {
+    render()
+    return
+  }
+  if (control === "contact-summary") {
+    const hint = document.querySelector<HTMLElement>(`[data-fu-hint="${CSS.escape(key)}"]`)
+    const row = followUps.contacts.find((contact) => contact.key === key)
+    if (hint && row) hint.textContent = summaryHintText(row.summary, setup.rules.minimumSummaryCharacters)
+  }
+}
+
 function bindDailyLogForm(): void {
   const formElement = document.querySelector<HTMLFormElement>("#daily-log-form")
   if (!formElement) return
   formElement.addEventListener("submit", (event) => void queueDailyLog(event))
+  formElement.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-fu]") : null
+    if (!target) return
+    event.preventDefault()
+    applyFollowUpControl(target.dataset.fu ?? "", target.dataset.fuKey ?? "", target.dataset.fuValue ?? "")
+  })
   const handleEdit = (event: Event): void => {
     const target = event.target
     if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return
+    const followUpControl = target.dataset.fu
+    if (followUpControl) {
+      // Checkboxes and pickers act once, on change; typed text on input.
+      const typed = target instanceof HTMLTextAreaElement || (target instanceof HTMLInputElement && target.type !== "checkbox")
+      if ((event.type === "input") !== typed) return
+      const value = target instanceof HTMLInputElement && target.type === "checkbox" ? String(target.checked) : target.value
+      applyFollowUpControl(followUpControl, target.dataset.fuKey ?? "", value)
+      return
+    }
+    // Issue, next-step and visitor lines feed the to-do and client contact parts.
+    if (event.type === "change" && packet?.dailyLogForm?.followUps && ["issues", "notes", "visitorLog"].includes(target.name)) {
+      logDraft = updateLogDraft(logDraft, target.name, target.value)
+      persistLogDraft()
+      render()
+      return
+    }
     if (!target.name || target.type === "file") return
     logDraft = updateLogDraft(logDraft, target.name, target.value)
     persistLogDraft()
@@ -1299,7 +1354,10 @@ async function queueDailyLog(event: SubmitEvent): Promise<void> {
   event.preventDefault()
   if (!packet) return
   const form = packet.dailyLogForm
-  const { errors } = validateDailyLogForm(logDraft, logRequirements(form), form?.costCodes ?? [])
+  const setup = form?.followUps ?? null
+  const followUps = setup ? followUpsFromDraft(logDraft.followUps, logDraft, setup.rules) : null
+  const { errors: formErrors } = validateDailyLogForm(logDraft, logRequirements(form), form?.costCodes ?? [])
+  const errors = [...formErrors, ...(setup && followUps ? validateDailyLogFollowUps(followUps, setup.rules) : [])]
   logErrors = errorMap(errors)
   const [first] = errors
   if (first) {
@@ -1325,7 +1383,16 @@ async function queueDailyLog(event: SubmitEvent): Promise<void> {
       materialsUsed: logDraft.materialsUsed,
       safetyIncidents: logDraft.safetyIncidents,
       visitorLog: logDraft.visitorLog,
-      workLines,
+      workLines: workLines.map((line) => ({ ...line })),
+      ...(followUps
+        ? {
+            followUps: {
+              todoUpdates: followUps.todoUpdates.map((update) => ({ ...update })),
+              newTodos: followUps.newTodos.map((todo) => ({ ...todo })),
+              clientContacts: followUps.clientContacts.map((contact) => ({ ...contact })),
+            },
+          }
+        : {}),
     },
     remoteDailyLogId: null,
     attachments: draftAttachments,
