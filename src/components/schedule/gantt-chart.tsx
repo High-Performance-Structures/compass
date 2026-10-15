@@ -533,6 +533,9 @@ export function GanttChart({
           "--schedule-item-color",
           getScheduleItemDisplayColor(task, displayColorPalette)
         )
+        // Frappe takes one custom class per bar, so the conflict outline is
+        // added here with the other classes.
+        if (task.hasConflict) wrapper.classList.add("has-conflict")
         if (task.projectColor) {
           wrapper.classList.add("project-color")
           wrapper.style.setProperty(

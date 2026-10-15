@@ -1,6 +1,13 @@
 "use client"
 
 import {
+  conflictSummary,
+  NO_CONFLICT_SETTINGS,
+  primaryParty,
+  type ScheduleConflict,
+  type ScheduleConflictSettings,
+} from "@/lib/schedule/conflicts"
+import {
   useState,
   useCallback,
   useEffect,
@@ -38,6 +45,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  IconAlertTriangle,
   IconPencil,
   IconPlus,
   IconChevronRight,
@@ -124,8 +132,15 @@ interface ScheduleGanttViewProps {
   readonly projects?: readonly ScheduleProjectData[]
   readonly ganttScrollMode?: GanttScrollMode
   readonly groupByPhase?: boolean
+  /** One group per crew or company (the item's first "Assigned to" name). */
+  readonly groupByCrew?: boolean
+  readonly conflictSettings?: ScheduleConflictSettings
+  /** Items whose crew is booked on another job over the same days. */
+  readonly conflicts?: ReadonlyMap<string, readonly ScheduleConflict[]>
   readonly onGroupByPhaseChange?: (grouped: boolean) => void
 }
+
+const NO_CONFLICTS: ReadonlyMap<string, readonly ScheduleConflict[]> = new Map()
 
 // Local calendar date (YYYY-MM-DD) so "today" matches the viewer's day.
 function localIsoDate(date: Date): string {
@@ -181,6 +196,9 @@ export function ScheduleGanttView({
   assigneeOptions,
   projects = [],
   groupByPhase = false,
+  groupByCrew = false,
+  conflictSettings = NO_CONFLICT_SETTINGS,
+  conflicts = NO_CONFLICTS,
   onGroupByPhaseChange,
 }: ScheduleGanttViewProps) {
   const router = useRouter()
@@ -599,7 +617,14 @@ export function ScheduleGanttView({
   const filteredTasks = tasks
 
   const { frappeTasks, displayItems } = useMemo(() => {
-    const transformed = phaseGrouping
+    const transformed = groupByCrew
+      ? transformWithPhaseGroups(
+          filteredTasks as ScheduleTaskData[],
+          dependencies as TaskDependencyData[],
+          collapsedPhases,
+          (task) => primaryParty(task.assignedTo, conflictSettings),
+        )
+      : phaseGrouping
       ? transformWithPhaseGroups(
           filteredTasks as ScheduleTaskData[],
           dependencies as TaskDependencyData[],
@@ -618,11 +643,22 @@ export function ScheduleGanttView({
           ),
         }
 
-    if (!multipleProjects) return transformed
+    // A double-booked crew outlines the bar in the destructive color.
+    const marked = conflicts.size === 0
+      ? transformed
+      : {
+          ...transformed,
+          frappeTasks: transformed.frappeTasks.map((task) =>
+            conflicts.has(task.id)
+              ? { ...task, hasConflict: true }
+              : task
+          ),
+        }
+    if (!multipleProjects) return marked
     const taskById = new Map(filteredTasks.map((task) => [task.id, task]))
     return {
-      ...transformed,
-      frappeTasks: transformed.frappeTasks.map((task) => {
+      ...marked,
+      frappeTasks: marked.frappeTasks.map((task) => {
         const scheduleTask = taskById.get(task.id)
         const project = scheduleTask
           ? projectById.get(scheduleTask.projectId)
@@ -631,6 +667,9 @@ export function ScheduleGanttView({
       }),
     }
   }, [
+    conflictSettings,
+    conflicts,
+    groupByCrew,
     collapsedPhases,
     dependencies,
     filteredTasks,
@@ -792,8 +831,8 @@ export function ScheduleGanttView({
                 >
                   <span className="flex items-center gap-1">
                     {collapsed
-                      ? <IconChevronRight className="size-3.5" />
-                      : <IconChevronDown className="size-3.5" />}
+                      ? <IconChevronRight className="size-3.5 shrink-0" />
+                      : <IconChevronDown className="size-3.5 shrink-0" />}
                     {group.label}
                     <span className="text-muted-foreground font-normal ml-1">
                       ({group.tasks.length})
@@ -836,12 +875,12 @@ export function ScheduleGanttView({
                 <span
                   className={cn(
                     "flex min-w-0 items-center gap-1.5",
-                    phaseGrouping && "pl-4"
+                    (phaseGrouping || groupByCrew) && "pl-4"
                   )}
                 >
                   {multipleProjects && taskProject && (
                     <span
-                      className="inline-flex max-w-[72px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-xs font-medium"
+                      className="inline-flex max-w-[104px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-xs font-medium"
                       title={projectScheduleLabel(taskProject)}
                     >
                       <span
@@ -853,6 +892,22 @@ export function ScheduleGanttView({
                       </span>
                     </span>
                   )}
+                  {conflicts.has(task.id) ? (
+                    <span
+                      className="shrink-0 text-destructive"
+                      title={(conflicts.get(task.id) ?? [])
+                        .map((conflict) =>
+                          conflictSummary(conflict, (id) => {
+                            const other = projectById.get(id)
+                            return other ? projectScheduleLabel(other) : "another job"
+                          })
+                        )
+                        .join("\n")}
+                    >
+                      <IconAlertTriangle className="size-3.5" aria-hidden="true" />
+                      <span className="sr-only">Crew double-booked</span>
+                    </span>
+                  ) : null}
                   {/* Two lines fit the 48px row, which must stay level with its bar. */}
                   <span className="line-clamp-2 break-words leading-tight" title={task.title}>
                     {task.title}
