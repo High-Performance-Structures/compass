@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-15"
 }
 ---
 
@@ -77,6 +77,14 @@ In an estimate's cost breakdown, choose the cost code and use **From rate book**
 ## Customize Report Phases and Duplicate Estimates {#estimate-phases}
 
 Use **Work on → Group descriptions & report phases** to customize client report phase names and grouping across departments. Keep report grouping separate from the division and cost-code identities used for accounting.
+
+A report phase can gather lines from any division, like a scope package ("Footer Labor & Materials" with its mobilization, forming, rebar and concrete lines). The division you choose for a phase only sets where it sorts in the report. Leave **Itemize** off to show just the package description and total, the way H proposals usually read.
+
+### Import a Buildertrend estimate
+
+On a draft estimate, choose **Import Buildertrend estimate** and pick the estimate report exported from Buildertrend as a spreadsheet. Each Buildertrend row becomes an estimate line, and each parent group becomes a report phase with its description, shown as a package total. Amounts are kept exactly as exported, so check the import total against the signed proposal before you continue. Rows marked as options, or rows with tax, can't be imported yet.
+
+To bring in a contract that was already signed in Buildertrend, start a new version of the job's estimate, import the export, mark it signed outside Compass, and record the acceptance with the signed document. Accepting it builds the contract budget.
 
 ### Several estimates on one job
 

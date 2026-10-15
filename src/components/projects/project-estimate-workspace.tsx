@@ -66,6 +66,7 @@ import {
   type ProjectEstimateSignerValue,
 } from "@/components/projects/project-estimate-signer-picker"
 import { ProjectEstimatePlanSwiftImport } from "@/components/projects/project-estimate-planswift-import"
+import { ProjectEstimateBuildertrendImport } from "@/components/projects/project-estimate-buildertrend-import"
 import { ProjectEstimateVersionControls } from "@/components/projects/project-estimate-version-controls"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -1434,6 +1435,11 @@ export function ProjectEstimateWorkspacePanel({
                 projectId={projectId}
                 estimateId={estimate.id}
                 costCodes={workspace.costCodes}
+                existingLineCount={workspace.lines.length}
+              />
+              <ProjectEstimateBuildertrendImport
+                projectId={projectId}
+                estimateId={estimate.id}
                 existingLineCount={workspace.lines.length}
               />
               <Button
