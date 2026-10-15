@@ -3,6 +3,7 @@ import { DAILY_LOG_OPTIONAL_FIELDS } from "@/lib/daily-logs/daily-log-form"
 import { DEFAULT_LABOR_CODE_DEPARTMENTS, DEFAULT_LABOR_COST_CODES } from "@/lib/daily-logs/labor-cost-codes"
 import { DAILY_LOG_TODO_MODES, DAILY_LOG_TODO_TYPES } from "@/lib/daily-logs/log-followups"
 import { PROJECT_TIMELINE_KINDS } from "@/lib/project-timeline/model"
+import { DAILY_LOG_REMINDER_AUDIENCES, TIME_PATTERN } from "@/lib/daily-logs/reminders"
 import {
   DEFAULT_CLIENT_FOLLOW_UP_SETTINGS,
   clientFollowUpSettingsSchema,
@@ -453,10 +454,29 @@ export const projectTimelineSettingsSchema = z.object({
 
 export type ProjectTimelineSettings = z.infer<typeof projectTimelineSettingsSchema>
 
+/** Reminding staff who haven't written a daily log by the end of the day. */
+export const dailyLogReminderSettingsSchema = z.object({
+  enabled: z.boolean(),
+  audience: z.enum(DAILY_LOG_REMINDER_AUDIENCES),
+  officeTime: z.string().regex(TIME_PATTERN, "Enter a time like 16:30."),
+  fieldTime: z.string().regex(TIME_PATTERN, "Enter a time like 16:30."),
+  /** Days people are expected to log, 0 = Sunday. */
+  workDays: z.array(z.number().int().min(0).max(6)).max(7),
+  /** Skip someone on an Absence on the work calendar. */
+  skipAbsences: z.boolean(),
+  /** The next morning, list who is still missing in Office alerts and on admins' dashboards. */
+  adminMissingList: z.boolean(),
+  /** Each person may set their own time in their preferences. */
+  staffPickOwnTime: z.boolean(),
+})
+
+export type DailyLogReminderSettings = z.infer<typeof dailyLogReminderSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
   readonly "project-timeline": ProjectTimelineSettings
+  readonly "daily-log-reminders": DailyLogReminderSettings
   readonly "internal-duties": InternalDutySettings
   readonly "client-interactions": ClientInteractionSettings
   readonly "client-follow-up": ClientFollowUpSettings
@@ -525,6 +545,21 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       days: 14,
     },
     schema: projectTimelineSettingsSchema,
+  },
+  "daily-log-reminders": {
+    label: "Daily log reminders",
+    description: "Remind staff who haven't written a daily log today, on a job or in their workspace. Clients, subs and suppliers never get it.",
+    defaults: {
+      enabled: true,
+      audience: "all_staff",
+      officeTime: "16:30",
+      fieldTime: "16:30",
+      workDays: [1, 2, 3, 4, 5],
+      skipAbsences: true,
+      adminMissingList: true,
+      staffPickOwnTime: false,
+    },
+    schema: dailyLogReminderSettingsSchema,
   },
   "internal-duties": {
     label: "Internal duties",

@@ -16,6 +16,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { canFeature } from "@/lib/permission-enforcement"
 import { dailyLogPhotoCollectionEligibility } from "@/lib/photos/collection-eligibility"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
+import { recentMissingDailyLogs } from "@/lib/daily-logs/reminders-server"
 
 export type OfficeAlertRfi = {
   readonly id: string
@@ -56,6 +57,8 @@ export type OfficeAlertQueue = {
   readonly rfis: readonly OfficeAlertRfi[]
   readonly photos: readonly OfficeAlertPhoto[]
   readonly ownerUpdates: readonly OfficeAlertOwnerUpdate[]
+  /** Recent work days with staff who wrote no daily log (company-wide view only). */
+  readonly missingDailyLogs: readonly OfficeAlertMissingDay[]
 }
 
 type AccessibleProject = {
@@ -79,10 +82,22 @@ type OfficeAlertOwnerUpdateRow = Omit<
   "projectLabel" | "projectName"
 >
 
+export type OfficeAlertMissingDay = {
+  readonly date: string
+  readonly people: readonly {
+    readonly userId: string
+    readonly name: string
+    readonly projectId: string | null
+    readonly projectLabel: string | null
+    readonly scheduled: boolean
+  }[]
+}
+
 const EMPTY_QUEUE: OfficeAlertQueue = {
   rfis: [],
   photos: [],
   ownerUpdates: [],
+  missingDailyLogs: [],
 }
 
 function isClosedStatus(status: string): boolean {
@@ -298,5 +313,19 @@ export async function getOfficeAlertQueue(): Promise<OfficeAlertQueue> {
     })
   }
 
-  return { rfis, photos, ownerUpdates }
+  // Who missed a log is company-wide, so only people who see every project get it.
+  const missingDailyLogs = hasOrganizationScope
+    ? (await recentMissingDailyLogs(db, orgId)).map((day) => ({
+        date: day.date,
+        people: day.people.map((person) => ({
+          userId: person.userId,
+          name: person.name,
+          projectId: person.projectId,
+          projectLabel: person.projectLabel,
+          scheduled: person.scheduled,
+        })),
+      }))
+    : []
+
+  return { rfis, photos, ownerUpdates, missingDailyLogs }
 }

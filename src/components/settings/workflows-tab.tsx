@@ -22,6 +22,7 @@ import { EstimateSettingsSection } from "@/components/settings/estimate-settings
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
 import { DailyLogFollowUpSettingsSection } from "@/components/settings/daily-log-followup-settings-section"
 import { ProjectTimelineSettingsSection } from "@/components/settings/project-timeline-settings-section"
+import { DailyLogReminderSettingsSection } from "@/components/settings/daily-log-reminder-settings-section"
 import { ClientInteractionSettingsSection } from "@/components/settings/client-interaction-settings-section"
 import { ClientFollowUpSettingsSection } from "@/components/settings/client-follow-up-settings-section"
 import { NuTechEmailSettingsSection } from "@/components/settings/nutech-email-settings-section"
@@ -198,7 +199,7 @@ function NuTechCatalogLink(): React.ReactElement {
 
 const WORKFLOW_AREAS = [
   { value: "job-workflows", label: "Job workflows", description: "Steps and checklists on each department's job overview." },
-  { value: "daily-logs", label: "Daily logs", description: "Required fields, cost codes, and how logs create to-dos and record client contact." },
+  { value: "daily-logs", label: "Daily logs", description: "Required fields, cost codes, to-dos and client contact on logs, and missing log reminders." },
   { value: "project-timeline", label: "Project timeline", description: "What each job's Overview shows under What's happening." },
   { value: "estimates", label: "Estimates", description: "One contract estimate per job, or several at once, by department." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
@@ -255,6 +256,7 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
         <>
           <DailyLogSettingsSection />
           <DailyLogFollowUpSettingsSection />
+          <DailyLogReminderSettingsSection />
         </>
       )
     case "client-interactions":

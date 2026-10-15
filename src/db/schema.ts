@@ -344,6 +344,8 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
   pushEnabled: integer("push_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  /** A personal time (HH:MM) for the missing daily log reminder, when the company allows it. */
+  dailyLogReminderTime: text("daily_log_reminder_time"),
   mentionEmailEnabled: integer("mention_email_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
@@ -2869,6 +2871,25 @@ export const scheduleTaskLinks = sqliteTable(
       table.resourceType
     ),
   ]
+)
+
+/** One missing daily log reminder per person per day. */
+export const dailyLogReminders = sqliteTable(
+  "daily_log_reminders",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reminderDate: text("reminder_date").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    remindedAt: text("reminded_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.reminderDate] }),
+    index("daily_log_reminders_org_date_idx").on(table.organizationId, table.reminderDate),
+  ],
 )
 
 /**

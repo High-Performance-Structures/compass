@@ -3,6 +3,7 @@ import {
   IconArrowRight,
   IconClipboardText,
   IconMessageCircleQuestion,
+  IconNotebook,
   IconPhoto,
 } from "@tabler/icons-react"
 
@@ -14,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/page-header"
 
-type AlertQueue = "rfis" | "photos" | "owner-updates"
+type AlertQueue = "rfis" | "photos" | "owner-updates" | "daily-logs"
 
 type AlertTab = {
   readonly id: AlertQueue
@@ -24,7 +25,7 @@ type AlertTab = {
 }
 
 function alertQueueFrom(value: string | undefined): AlertQueue {
-  if (value === "photos" || value === "owner-updates") return value
+  if (value === "photos" || value === "owner-updates" || value === "daily-logs") return value
   return "rfis"
 }
 
@@ -53,6 +54,7 @@ function EmptyQueue({ queue }: { readonly queue: AlertQueue }): React.ReactEleme
     rfis: "There are no open RFIs across your projects.",
     photos: "There are no field photos waiting for review.",
     "owner-updates": "There are no draft owner updates waiting for review.",
+    "daily-logs": "Everyone on staff wrote a daily log on recent work days.",
   }
 
   return (
@@ -164,6 +166,33 @@ function OwnerUpdateQueue({
   )
 }
 
+function MissingDailyLogQueue({ queue }: { readonly queue: OfficeAlertQueue }): React.ReactElement {
+  if (queue.missingDailyLogs.length === 0) return <EmptyQueue queue="daily-logs" />
+  return (
+    <div className="space-y-4">
+      {queue.missingDailyLogs.map((day) => (
+        <section key={day.date} aria-label={formatDate(day.date)} className="space-y-1">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {formatDate(day.date)} · {day.people.length} {day.people.length === 1 ? "person" : "people"}
+          </h3>
+          <ul className="divide-y border-y">
+            {day.people.map((person) => (
+              <li key={person.userId} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                <span className="font-medium">{person.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {person.projectLabel
+                    ? `${person.scheduled ? "Scheduled on" : "Last logged on"} ${person.projectLabel}`
+                    : "No recent logs"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export default async function OfficeAlertsPage({
   searchParams,
 }: {
@@ -193,6 +222,12 @@ export default async function OfficeAlertsPage({
       count: alerts.ownerUpdates.length,
       href: "/dashboard/office-alerts?queue=owner-updates",
     },
+    {
+      id: "daily-logs",
+      label: "Missing daily logs",
+      count: alerts.missingDailyLogs.reduce((sum, day) => sum + day.people.length, 0),
+      href: "/dashboard/office-alerts?queue=daily-logs",
+    },
   ]
 
   return (
@@ -204,6 +239,8 @@ export default async function OfficeAlertsPage({
             <IconMessageCircleQuestion className="size-5 text-brand-nutech-gold" />
           ) : activeQueue === "photos" ? (
             <IconPhoto className="size-5 text-brand-compass-blue" />
+          ) : activeQueue === "daily-logs" ? (
+            <IconNotebook className="size-5 text-brand-hps-field" />
           ) : (
             <IconClipboardText className="size-5 text-brand-hps-field" />
           )
@@ -211,7 +248,7 @@ export default async function OfficeAlertsPage({
         title="Office alerts"
       />
 
-      <nav className="grid gap-px border bg-border sm:grid-cols-3" aria-label="Office alert queues">
+      <nav className="grid gap-px border bg-border sm:grid-cols-2 lg:grid-cols-4" aria-label="Office alert queues">
         {tabs.map((tab) => (
           <Link
             key={tab.id}
@@ -236,13 +273,17 @@ export default async function OfficeAlertsPage({
             {tabs.find((tab) => tab.id === activeQueue)?.label}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Select an item to open it in the correct project workspace.
+            {activeQueue === "daily-logs"
+              ? "Staff with no daily log or duty log entry on the last five work days. Change reminders in Settings → Workflows → Daily logs."
+              : "Select an item to open it in the correct project workspace."}
           </p>
         </div>
         {activeQueue === "rfis" ? (
           <RfiQueue queue={alerts} />
         ) : activeQueue === "photos" ? (
           <PhotoQueue queue={alerts} />
+        ) : activeQueue === "daily-logs" ? (
+          <MissingDailyLogQueue queue={alerts} />
         ) : (
           <OwnerUpdateQueue queue={alerts} />
         )}

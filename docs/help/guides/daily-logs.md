@@ -7,7 +7,7 @@
   "summary": "Create, edit, review, and approve daily logs with weather, photos, and attachments.",
   "contextSummary": "Daily Logs are the factual project record of work, crews, conditions, issues, and next steps. Approval and owner visibility are separate decisions.",
   "category": "Field & Project Work",
-  "tags": ["daily logs", "weather", "photos", "attachments", "field", "review", "to-dos", "client contact", "cost codes"],
+  "tags": ["daily logs", "weather", "photos", "attachments", "field", "review", "to-dos", "client contact", "cost codes", "reminders"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/projects/[id]/daily-logs"],
@@ -32,6 +32,12 @@ A new log ties into the job's to-dos and client contact:
 - **Client contact**: if you talked with, texted or met the client, log it here. It is saved as a client interaction and counts as client contact for follow-up. When Visitors names a client contact, Compass offers to fill it in. Tick **Make a follow-up to-do from this** when something needs doing.
 
 Each to-do's history shows the logs that created and worked on it and the hours logged against it. After several logs, the to-do asks whether it is finished. Admins choose these rules in **Settings → Workflows → Daily logs**.
+
+## Missing Daily Log Reminders {#reminders}
+
+On work days, staff who haven't written a daily log get a reminder at the company's time: one for office staff and one for field staff. A log on any job or workspace, or time entered on the duty log, counts. People on an Absence on the work calendar are skipped. Tapping the reminder opens a new log on the job you were scheduled on, or where you last logged.
+
+When the company allows it, you can choose your own reminder time in **Settings → Preferences**. Admins see who didn't log on the last work day on their dashboard, and the last five work days under **Office alerts → Missing daily logs**. Admins set the times, work days and who is reminded in **Settings → Workflows → Daily logs**.
 
 ## Add Files {#add-files}
 

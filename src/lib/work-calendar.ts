@@ -214,6 +214,13 @@ export function instantForLocalDateTime(
   }
 }
 
+/** The local clock time (HH:MM, 24-hour) of an instant in a time zone. */
+export function timeKeyInTimeZone(instant: Date, timeZone: string): string {
+  const iso = instant.toISOString()
+  const local = localDateTimeInZone(iso, timeZone)
+  return local?.slice(11, 16) ?? iso.slice(11, 16)
+}
+
 export function dateKeyInTimeZone(
   instant: Date,
   timeZone: string
