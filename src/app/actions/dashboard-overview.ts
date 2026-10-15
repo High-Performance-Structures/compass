@@ -1,5 +1,7 @@
 "use server"
 
+import { recentMissingDailyLogs } from "@/lib/daily-logs/reminders-server"
+import { canEditFeatureSettings } from "@/lib/feature-settings/registry"
 import { and, asc, desc, eq, gte, isNull, not, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
@@ -136,6 +138,8 @@ export type DashboardOverview = {
     readonly projectLabel: string | null
     readonly setupRequired: boolean
   }
+  /** Admins: staff who wrote no daily log on the last work day; null when none or not shown. */
+  readonly missingDailyLogs: { readonly date: string; readonly names: readonly string[] } | null
   readonly sageBridge: {
     readonly configured: boolean
     readonly online: boolean
@@ -184,6 +188,7 @@ function emptyOverview(): DashboardOverview {
       projectLabel: null,
       setupRequired: false,
     },
+    missingDailyLogs: null,
     sageBridge: {
       configured: false,
       online: false,
@@ -678,6 +683,16 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
           ? `The private Sage bridge has been offline since ${bridgeLastSeenAt}.`
           : "The private Sage bridge has not reported a heartbeat."
 
+    // The morning after: admins see who didn't log on the last work day.
+    const missingDailyLogs = canEditFeatureSettings(user.role, "daily-log-reminders")
+      ? await recentMissingDailyLogs(db, orgId, { workDays: 1 })
+          .then((days) => {
+            const day = days[0]
+            return day ? { date: day.date, names: day.people.map((person) => person.name) } : null
+          })
+          .catch(() => null)
+      : null
+
     return {
       today,
       timeZone,
@@ -698,6 +713,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         draftOwnerUpdates,
         socialPostsThisWeek: socialRowsThisWeek.length,
       },
+      missingDailyLogs,
       socialReminder: {
         needed: socialRowsThisWeek.length === 0,
         projectId: suggestedSocialProject?.id ?? null,

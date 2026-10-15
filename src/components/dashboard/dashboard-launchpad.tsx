@@ -99,6 +99,7 @@ type LaunchpadTask = {
     | "Invoice"
     | "Owner update"
     | "Field review"
+    | "Daily logs"
     | "Social"
 }
 
@@ -711,6 +712,16 @@ function OfficeTaskList({
             category: "Field review",
           }]
         : []
+    const missing = overview.missingDailyLogs
+    const missingLogTasks: readonly LaunchpadTask[] = missing
+      ? [{
+          id: "missing-daily-logs",
+          title: `${missing.names.length} ${missing.names.length === 1 ? "person" : "people"} didn't write a daily log ${formatMonthDay(missing.date)}`,
+          detail: missing.names.join(", "),
+          href: "/dashboard/office-alerts?queue=daily-logs",
+          category: "Daily logs",
+        }]
+      : []
     const socialTasks: readonly LaunchpadTask[] =
       overview.socialReminder.needed && overview.socialReminder.projectId
         ? [{
@@ -727,6 +738,7 @@ function OfficeTaskList({
         : []
 
     return [
+      ...missingLogTasks,
       ...eventTasks,
       ...socialTasks,
       ...ownerUpdateTasks,

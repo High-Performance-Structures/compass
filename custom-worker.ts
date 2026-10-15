@@ -18,6 +18,8 @@ const STAFF_MESSAGE_STALE_REMINDER_TARGET =
   "/api/operations/staff-message-desk/stale-reminders"
 const PROJECT_OVERDUE_REMINDER_TARGET =
   "/api/operations/project-follow-up/overdue-reminders"
+const DAILY_LOG_REMINDER_TARGET =
+  "/api/operations/daily-logs/missing-reminders"
 const PAPER_TRAIL_TARGET = "/api/operations/paper-trail/run"
 const SAGE_SQUARE_RECEIPT_RECONCILIATION_TARGET =
   "/api/operations/sage/square-receipts"
@@ -305,6 +307,10 @@ export default {
         ),
         runMaintenanceJob("Project follow-up overdue reminders", () =>
           checkBridgeHealth(env, PROJECT_OVERDUE_REMINDER_TARGET)
+        ),
+        // Every 10 minutes; each person is reminded once a day at their time.
+        runMaintenanceJob("Missing daily log reminders", () =>
+          checkBridgeHealth(env, DAILY_LOG_REMINDER_TARGET)
         ),
       ]).then(() => undefined)
     )

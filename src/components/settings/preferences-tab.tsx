@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { DailyLogReminderPreferenceRow } from "@/components/settings/daily-log-reminder-preference"
 import {
   Select,
   SelectContent,
@@ -319,6 +320,8 @@ export function PreferencesTab() {
               className="shrink-0"
             />
           </div>
+
+          <DailyLogReminderPreferenceRow />
 
           <div className="flex items-center justify-between gap-4">
             <div>
