@@ -17,6 +17,7 @@ import {
 } from "@/db/schema-estimates"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { chunkD1Rows } from "@/lib/d1-query"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
@@ -927,6 +928,18 @@ export async function createProjectRfqDraft(
   }
 }
 
+async function discardPartialPayApplication(
+  db: ReturnType<typeof getDb>,
+  applicationId: string
+): Promise<void> {
+  await db
+    .delete(projectBudgetLines)
+    .where(eq(projectBudgetLines.applicationId, applicationId))
+  await db
+    .delete(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, applicationId))
+}
+
 export async function createProjectOwnerPayApplicationDraft(
   projectId: string,
   input: CreateProjectOwnerPayApplicationInput
@@ -969,7 +982,10 @@ export async function createProjectOwnerPayApplicationDraft(
       throw new Error("The current contract budget has no lines.")
     }
     const duplicateRows = await db
-      .select({ id: projectBudgetApplications.id })
+      .select({
+        id: projectBudgetApplications.id,
+        status: projectBudgetApplications.status,
+      })
       .from(projectBudgetApplications)
       .where(
         and(
@@ -978,8 +994,27 @@ export async function createProjectOwnerPayApplicationDraft(
         )
       )
       .limit(1)
-    if (duplicateRows[0]) {
-      throw new Error("That pay application number already exists.")
+    const duplicate = duplicateRows[0]
+    if (duplicate) {
+      // A "building" row with no workflow operation is left over from a
+      // create that failed partway; clear it so the number can be reused.
+      const operationRows =
+        duplicate.status === "building"
+          ? await db
+              .select({ id: projectOperations.id })
+              .from(projectOperations)
+              .where(
+                and(
+                  eq(projectOperations.projectId, projectId),
+                  eq(projectOperations.sourceRecordId, duplicate.id)
+                )
+              )
+              .limit(1)
+          : []
+      if (duplicate.status !== "building" || operationRows[0]) {
+        throw new Error("That pay application number already exists.")
+      }
+      await discardPartialPayApplication(db, duplicate.id)
     }
     const priorApplications = await db
       .select()
@@ -1050,55 +1085,61 @@ export async function createProjectOwnerPayApplicationDraft(
       updatedAt: now,
     })
 
-    await db.insert(projectBudgetLines).values(
-      revisionLines.map((line) => {
-        const originalEstimate = line.originalEstimateCents / 100
-        const totalChanges = line.approvedChangeCents / 100
-        const adjustedEstimate = line.adjustedBudgetCents / 100
-        const prior = priorByCostCode.get(line.costCode)
-        const priorCosts = prior?.totalCompletedStored ?? 0
-        return {
-          id: crypto.randomUUID(),
-          projectId,
-          applicationId,
-          budgetRevisionLineId: line.id,
-          sourceSystem: "compass_contract_budget",
-          sourceRecordId: line.id,
-          sourceRecordNumber: line.costCode,
-          costCode: line.costCode,
-          csiDivision: line.divisionCode,
-          csiDivisionName: line.divisionName,
-          description: line.description,
-          notes: null,
-          originalEstimate,
-          priorChanges: totalChanges,
-          currentChanges: 0,
-          totalChanges,
-          adjustedEstimate,
-          previousWorkCompleted: priorCosts,
-          currentWorkCompleted: 0,
-          storedMaterials: 0,
-          priorCosts,
-          currentCosts: 0,
-          totalCosts: priorCosts,
-          percentComplete:
-            adjustedEstimate > 0
-              ? Math.round((priorCosts / adjustedEstimate) * 1_000) / 10
-              : 0,
-          balanceToFinish: adjustedEstimate - priorCosts,
-          retainageHeld: prior?.retainageHeld ?? 0,
-          vendorName: null,
-          ownerLabel: line.description,
-          ownerVisible: line.ownerVisible,
-          internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
-          sortOrder: line.sortOrder,
-          syncStatus: "compass_only",
-          lastSyncedAt: null,
-          createdAt: now,
-          updatedAt: now,
-        }
-      })
-    )
+    const applicationLineRows = revisionLines.map((line) => {
+      const originalEstimate = line.originalEstimateCents / 100
+      const totalChanges = line.approvedChangeCents / 100
+      const adjustedEstimate = line.adjustedBudgetCents / 100
+      const prior = priorByCostCode.get(line.costCode)
+      const priorCosts = prior?.totalCompletedStored ?? 0
+      return {
+        id: crypto.randomUUID(),
+        projectId,
+        applicationId,
+        budgetRevisionLineId: line.id,
+        sourceSystem: "compass_contract_budget",
+        sourceRecordId: line.id,
+        sourceRecordNumber: line.costCode,
+        costCode: line.costCode,
+        csiDivision: line.divisionCode,
+        csiDivisionName: line.divisionName,
+        description: line.description,
+        notes: null,
+        originalEstimate,
+        priorChanges: totalChanges,
+        currentChanges: 0,
+        totalChanges,
+        adjustedEstimate,
+        previousWorkCompleted: priorCosts,
+        currentWorkCompleted: 0,
+        storedMaterials: 0,
+        priorCosts,
+        currentCosts: 0,
+        totalCosts: priorCosts,
+        percentComplete:
+          adjustedEstimate > 0
+            ? Math.round((priorCosts / adjustedEstimate) * 1_000) / 10
+            : 0,
+        balanceToFinish: adjustedEstimate - priorCosts,
+        retainageHeld: prior?.retainageHeld ?? 0,
+        vendorName: null,
+        ownerLabel: line.description,
+        ownerVisible: line.ownerVisible,
+        internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
+        sortOrder: line.sortOrder,
+        syncStatus: "compass_only",
+        lastSyncedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    try {
+      for (const rows of chunkD1Rows(applicationLineRows)) {
+        await db.insert(projectBudgetLines).values(rows)
+      }
+    } catch (error) {
+      await discardPartialPayApplication(db, applicationId)
+      throw error
+    }
 
     await db.insert(projectOperations).values({
       id,
