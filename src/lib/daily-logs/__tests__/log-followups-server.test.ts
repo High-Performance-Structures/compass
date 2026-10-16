@@ -12,6 +12,7 @@ import {
   loadProjectTodoHistory,
   loadTodoHours,
   loadTodoWorkedLogCounts,
+  withoutTodosAlreadyMade,
 } from "@/lib/daily-logs/log-followups-server"
 import { d1, migratedSqlite, type Sqlite } from "./sqlite-d1"
 
@@ -136,4 +137,16 @@ describe("daily log follow-ups on the server", () => {
     const lenient = await checkDailyLogFollowUps(db, "org-1", "p1", "2026-10-14", followUps, true)
     expect(lenient.ok && lenient.followUps.clientContacts).toEqual([])
   })
+
+  it("skips lines that are already to-dos on the log, and repeats within one save", async () => {
+    sqlite.exec(`
+      INSERT INTO project_operations (id, project_id, source_system, source_record_type, source_record_id, title, status, priority, sage_write_status, sync_direction, sync_status, created_at, updated_at)
+        VALUES ('t4', 'p1', 'compass', 'staff_task', 'log-1', 'Order more Simpson ties', 'open', 'normal', 'not_ready', 'write', 'compass_only', '${NOW}', '${NOW}');
+    `)
+    const line = (title: string) => ({ source: "notes" as const, title, recordType: "staff_task" as const, assigneeName: "", costCode: "" })
+    const kept = await withoutTodosAlreadyMade(db, "log-1", [line("order more simpson ties"), line("Call the inspector"), line("Call the inspector ")])
+    expect(kept.map((todo) => todo.title)).toEqual(["Call the inspector"])
+    expect(await withoutTodosAlreadyMade(db, "log-other", [line("Order more Simpson ties")])).toHaveLength(1)
+  })
 })
+

@@ -31,10 +31,11 @@ import {
   users,
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
-import type { DailyLogFollowUps } from "@/lib/daily-logs/log-followups"
+import { EMPTY_DAILY_LOG_FOLLOW_UPS, type DailyLogFollowUps } from "@/lib/daily-logs/log-followups"
 import {
   applyDailyLogFollowUps,
   checkDailyLogFollowUps,
+  withoutTodosAlreadyMade,
   dailyLogFollowUpSetup,
   linkedWorkLines,
   type DailyLogFollowUpSetup,
@@ -1723,7 +1724,7 @@ export async function updateProjectDailyLog(
   input: UpdateDailyLogInput
 ): Promise<UpdateDailyLogResult> {
   try {
-    const { db, userId, orgId } = await verifyDailyLogStaffMutationAccess(projectId)
+    const { db, userId, orgId, user } = await verifyDailyLogStaffMutationAccess(projectId)
     const dailyLogId = input.dailyLogId.trim()
     const targetProjectId = input.targetProjectId.trim()
 
@@ -1752,6 +1753,13 @@ export async function updateProjectDailyLog(
       ? await checkDailyLogForm(db, orgId, targetProjectId, dailyLogFormValues(input, input.workLines), dailyLogId, false)
       : null
     if (checked && !checked.ok) return { success: false, error: checked.error }
+    // Editing adds to-dos from Issues and Notes lines only; the rest of a
+    // log's follow-ups (worked, blocked, client contact) happen when it's written.
+    const newTodos = await withoutTodosAlreadyMade(db, dailyLogId, input.followUps?.newTodos ?? [])
+    const lineTodos = newTodos.length > 0
+      ? await checkDailyLogFollowUps(db, orgId, targetProjectId, logDate, { ...EMPTY_DAILY_LOG_FOLLOW_UPS, newTodos })
+      : null
+    if (lineTodos && !lineTodos.ok) return { success: false, error: lineTodos.error }
 
     if (targetProjectId !== projectId) {
       await verifyDailyLogStaffMutationAccess(targetProjectId)
@@ -1870,6 +1878,19 @@ export async function updateProjectDailyLog(
         .update(internalDutyEntries)
         .set({ projectId: targetProjectId, updatedAt: now })
         .where(eq(internalDutyEntries.dailyLogId, dailyLogId))
+    }
+    if (lineTodos?.ok) {
+      await applyDailyLogFollowUps(db, {
+        organizationId: orgId,
+        projectId: targetProjectId,
+        dailyLogId,
+        logDate,
+        creator: user,
+        workCompleted,
+        lines: [],
+        checked: lineTodos,
+      })
+      revalidatePath(`/dashboard/projects/${targetProjectId}/todos`)
     }
 
     revalidatePath(`/dashboard/projects/${projectId}`)

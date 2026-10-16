@@ -19,10 +19,13 @@ import {
   clientContactFollowUpTitle,
   DAILY_LOG_TODO_TYPES,
   EMPTY_DAILY_LOG_FOLLOW_UPS,
+  madeTodoTitles,
+  todoTitleKey,
   validateDailyLogFollowUps,
   type DailyLogClientContactOption,
   type DailyLogFollowUpRules,
   type DailyLogFollowUps,
+  type DailyLogNewTodoDraft,
   type DailyLogOpenTodo,
   type DailyLogTodoType,
 } from "@/lib/daily-logs/log-followups"
@@ -245,6 +248,26 @@ export async function checkDailyLogFollowUps(
     if (problem) return { ok: false, error: problem }
   }
   return { ok: true, followUps: cleaned, rules, todos, contacts, timeZone }
+}
+
+/** Drops lines that already became to-dos on this log, so saving twice doesn't duplicate them. */
+export async function withoutTodosAlreadyMade(
+  db: Db,
+  dailyLogId: string,
+  newTodos: readonly DailyLogNewTodoDraft[],
+): Promise<readonly DailyLogNewTodoDraft[]> {
+  if (newTodos.length === 0) return newTodos
+  const existing = await db
+    .select({ title: projectOperations.title })
+    .from(projectOperations)
+    .where(and(eq(projectOperations.sourceRecordId, dailyLogId), inArray(projectOperations.sourceRecordType, [...PROJECT_TODO_RECORD_TYPES])))
+  const made = new Set(madeTodoTitles(existing))
+  return newTodos.filter((todo) => {
+    const key = todoTitleKey(todo.title)
+    if (made.has(key)) return false
+    made.add(key)
+    return true
+  })
 }
 
 /** Work lines whose to-do link points at a to-do on this project; others lose the link. */

@@ -61,6 +61,10 @@ type ProjectTaskCreateButtonProps = {
   readonly defaultTaskType?: ProjectTaskRecordType
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   readonly compact?: boolean
+  /** A small text button with this label instead of the usual "To-do" button. */
+  readonly triggerLabel?: string
+  /** Names the trigger for screen readers when the label alone is ambiguous. */
+  readonly triggerAriaLabel?: string
   readonly quickAddEnabled?: boolean
   readonly defaultOpen?: boolean
   readonly onCreated?: (todoId: string) => void
@@ -111,6 +115,8 @@ export function ProjectTaskCreateButton({
   defaultTaskType = "staff_task",
   assigneeOptions = [],
   compact = false,
+  triggerLabel,
+  triggerAriaLabel,
   defaultOpen = false,
   quickAddEnabled = false,
   onCreated,
@@ -232,6 +238,12 @@ export function ProjectTaskCreateButton({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
+        {triggerLabel ? (
+          <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" aria-label={triggerAriaLabel}>
+            <IconListCheck className="size-3.5" />
+            {triggerLabel}
+          </Button>
+        ) : (
         <Button
           type="button"
           variant={compact ? "ghost" : "outline"}
@@ -246,6 +258,7 @@ export function ProjectTaskCreateButton({
             "To-do"
           )}
         </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <form onSubmit={submitTask} className="space-y-5">

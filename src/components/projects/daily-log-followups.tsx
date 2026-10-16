@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconBan, IconInfoCircle, IconPlus, IconUserCheck } from "@tabler/icons-react"
+import { IconBan, IconCheck, IconInfoCircle, IconPlus, IconUserCheck } from "@tabler/icons-react"
 
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { FieldError } from "@/components/projects/daily-log-work-lines"
@@ -22,6 +22,7 @@ import {
   lineChoice,
   lineTodoKey,
   summaryCountHint,
+  todoTitleKey,
   toggleLineTodo,
   type DailyLogClientContactOption,
   type DailyLogClientContactRow,
@@ -165,6 +166,7 @@ export function DailyLogLineTodos({
   assignees,
   costCodes,
   onChange,
+  madeTitles,
 }: {
   readonly idPrefix: string
   readonly source: "issues" | "notes"
@@ -174,6 +176,8 @@ export function DailyLogLineTodos({
   readonly assignees: readonly Assignee[]
   readonly costCodes: readonly DailyLogCostCodeOption[]
   readonly onChange: (draft: DailyLogFollowUpDraft) => void
+  /** On a saved log: lines that are already to-dos, by todoTitleKey. */
+  readonly madeTitles?: ReadonlySet<string>
 }): React.ReactElement | null {
   const lines = followUpLines(text)
   const codeOptions = React.useMemo(
@@ -200,6 +204,17 @@ export function DailyLogLineTodos({
           .filter((person) => person.kind === choice.recordType)
           .map((person) => ({ value: person.name, label: person.name }))
         const base = `${idPrefix}-${source}-line-${index}`
+        if (madeTitles?.has(todoTitleKey(line))) {
+          return (
+            <li key={key} className="flex items-start justify-between gap-3 border-b pb-2">
+              <p className="min-w-0 text-sm break-words whitespace-pre-wrap">{line}</p>
+              <span className="inline-flex shrink-0 items-center gap-1 pt-1 text-xs text-muted-foreground">
+                <IconCheck className="size-3.5 text-success" aria-hidden="true" />
+                To-do made
+              </span>
+            </li>
+          )
+        }
         return (
           <li key={key} className={cn("grid gap-2 border-b pb-2", flagged && "border-success/30")}>
             <div className="flex items-start justify-between gap-3">

@@ -29,6 +29,7 @@ A new log ties into the job's to-dos and client contact:
 - **Blocked to-dos** from earlier logs ask whether each is **Still blocked** or **Cleared today**.
 - **Open to-dos on this job** lists the job's open to-dos. Tick what was worked on today. Ticking adds a note to the to-do's history and can move an Open to-do to In progress. It never marks a to-do finished; a person does that on the to-do. When a to-do has a cost code, ticking it adds a cost code line for its hours, so the hours add up on the to-do.
 - **Issues** and **Notes / next steps**: write one item per line. Choose **Make to-do** on a line to create a staff, sub or supplier to-do from it, with an assignee and cost code if you know them.
+- **After a log is saved**: each line of Issues and Notes / next steps has its own **Make to-do**, both on the saved log and in its edit form. A line that is already a to-do shows **To-do made**, so it can't be made twice. Editing a log never turns lines into to-dos by itself, even when new logs do.
 - **Client contact**: if you talked with, texted or met the client, log it here. It is saved as a client interaction and counts as client contact for follow-up. When Visitors names a client contact, Compass offers to fill it in. Tick **Make a follow-up to-do from this** when something needs doing.
 
 Each to-do's history shows the logs that created and worked on it and the hours logged against it. After several logs, the to-do asks whether it is finished. Admins choose these rules in **Settings → Workflows → Daily logs**.

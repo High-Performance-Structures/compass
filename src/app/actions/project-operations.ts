@@ -9,6 +9,7 @@ import { projectSelectionProcurementLinks } from "@/db/schema-selection-decision
 import { chunkD1Values } from "@/lib/d1-query"
 import { specificationJson } from "@/lib/selections/decisions"
 import {
+  dailyLogs,
   projectFinishSelections,
   projectBudgetApplications,
   projectBudgetLines,
@@ -2782,7 +2783,16 @@ export async function createProjectTask(
       createdAt: now,
       updatedAt: now,
     })
-    await recordTodoEvent(db, { organizationId, projectId, todoId: id, kind: "created", dailyLogId: null, fromStatus: null, toStatus: "open", note: null, actorId: user.id, createdAt: now })
+    // Made from a daily log on this job: the history links back to it.
+    const sourceRecordId = cleanText(input.sourceRecordId)
+    const [sourceLog] = sourceRecordId
+      ? await db
+          .select({ id: dailyLogs.id })
+          .from(dailyLogs)
+          .where(and(eq(dailyLogs.id, sourceRecordId), eq(dailyLogs.projectId, projectId)))
+          .limit(1)
+      : []
+    await recordTodoEvent(db, { organizationId, projectId, todoId: id, kind: "created", dailyLogId: sourceLog?.id ?? null, fromStatus: null, toStatus: "open", note: null, actorId: user.id, createdAt: now })
 
     try {
       await notifyProjectAssignment({
