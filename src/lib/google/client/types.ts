@@ -81,6 +81,11 @@ export type UploadOptions = {
   readonly driveId?: string
   readonly size?: number
   readonly appProperties?: Readonly<Record<string, string>>
+  /**
+   * Web origin that will PUT the file from a browser. Google only returns
+   * CORS headers on the session URI when the initiating request names it.
+   */
+  readonly browserOrigin?: string
 }
 
 export type UploadFileOptions = UploadOptions & {

@@ -3,6 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
 import { getDb } from "@/db"
 import { projects, users } from "@/db/schema"
 import { googleAuth, googleStarredFiles } from "@/db/schema-google"
@@ -1112,6 +1113,17 @@ export async function getDriveStorageQuota(): Promise<
   }
 }
 
+/** The calling page's origin (scheme + host), from the request headers. */
+async function requestOrigin(): Promise<string | undefined> {
+  const requestHeaders = await headers()
+  const origin = requestHeaders.get("origin")
+  if (origin && /^https?:\/\/[^/]+$/.test(origin)) return origin
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host")
+  if (!host) return undefined
+  const proto = requestHeaders.get("x-forwarded-proto") ?? "https"
+  return `${proto}://${host}`
+}
+
 export async function getUploadSessionUrl(
   fileName: string,
   mimeType: string,
@@ -1150,6 +1162,9 @@ export async function getUploadSessionUrl(
         mimeType,
         parentId: parentId ?? auth.sharedDriveId ?? undefined,
         driveId: auth.sharedDriveId ?? undefined,
+        // The browser uploads to this session directly, so Google must allow
+        // this site's origin; without it the PUT fails with "Failed to fetch".
+        browserOrigin: await requestOrigin(),
       }
     )
 
