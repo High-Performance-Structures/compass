@@ -19,6 +19,7 @@ import { PortfolioMapSettingsSection } from "@/components/settings/portfolio-map
 import { LinkedJobSettingsSection } from "@/components/settings/linked-job-settings-section"
 import { SquareAlertSettingsSection } from "@/components/settings/square-alert-settings-section"
 import { EstimateSettingsSection } from "@/components/settings/estimate-settings-section"
+import { ContractDepositSettingsSection } from "@/components/settings/contract-deposit-settings-section"
 import { ScheduleConflictSettingsSection } from "@/components/settings/schedule-conflict-settings-section"
 import { DailyLogSettingsSection } from "@/components/settings/daily-log-settings-section"
 import { DailyLogFollowUpSettingsSection } from "@/components/settings/daily-log-followup-settings-section"
@@ -204,6 +205,7 @@ const WORKFLOW_AREAS = [
   { value: "project-timeline", label: "Project timeline", description: "What each job's Overview shows under What's happening." },
   { value: "schedule-conflicts", label: "Schedule conflicts", description: "Crews or companies never flagged as double-booked, and other spellings of the same name." },
   { value: "estimates", label: "Estimates", description: "One contract estimate per job, or several at once, by department." },
+  { value: "contract-deposits", label: "Contract deposits", description: "Whether received deposits are applied to new pay applications automatically." },
   { value: "square-payments", label: "Square and Sage payments", description: "Who is alerted about the Square connection and Square payments that need attention in Sage." },
   { value: "linked-jobs", label: "Linked jobs", description: "Shortcuts for creating a linked job in another department for the same customer and site." },
   { value: "job-emails", label: "Job emails", description: "Emails offered on HPS, ORC and Design job overviews." },
@@ -251,6 +253,8 @@ function WorkflowAreaSection({ area }: { readonly area: WorkflowArea }): React.R
       return <SquareAlertSettingsSection />
     case "estimates":
       return <EstimateSettingsSection />
+    case "contract-deposits":
+      return <ContractDepositSettingsSection />
     case "schedule-conflicts":
       return <ScheduleConflictSettingsSection />
     case "project-timeline":

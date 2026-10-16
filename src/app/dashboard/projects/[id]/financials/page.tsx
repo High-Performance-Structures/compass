@@ -13,11 +13,16 @@ import {
   getSageSquareReceipts,
   type SquareReceiptListItem,
 } from "@/app/actions/sage-square-receipts"
+import {
+  getProjectContractDeposits,
+  type ProjectContractDepositSummary,
+} from "@/app/actions/project-contract-deposits"
 import { getProjects } from "@/app/actions/projects"
 import { SquareReceiptsTable } from "@/components/financials/square-receipts-table"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
+import { ProjectContractDepositsPanel } from "@/components/projects/project-contract-deposits-panel"
 import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
 
 export default async function ProjectFinancialsPage({
@@ -59,6 +64,12 @@ export default async function ProjectFinancialsPage({
   } catch (error) {
     console.warn("Project Square receipts unavailable", error)
   }
+  let deposits: ProjectContractDepositSummary | null = null
+  try {
+    deposits = await getProjectContractDeposits(id)
+  } catch (error) {
+    console.warn("Project contract deposits unavailable", error)
+  }
   const selectedSquareReceipt = Array.isArray(query.squareReceipt)
     ? (query.squareReceipt[0] ?? null)
     : (query.squareReceipt ?? null)
@@ -85,6 +96,7 @@ export default async function ProjectFinancialsPage({
             receipts={squareReceipts}
             selectedReceiptId={selectedSquareReceipt}
           />
+          {deposits && <ProjectContractDepositsPanel projectId={id} summary={deposits} />}
           <ProjectFinancialWorkspace
             projectId={id}
             items={items}

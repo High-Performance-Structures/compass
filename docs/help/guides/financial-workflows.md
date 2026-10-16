@@ -12,7 +12,7 @@
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
   "owner": "Accounting operations",
-  "lastReviewed": "2026-10-15"
+  "lastReviewed": "2026-10-16"
 }
 ---
 
@@ -68,6 +68,12 @@ Admins can tick **Use this selection as the default for new contract packets** t
 ## Budget and G703 {#budget-g703}
 
 Review original and adjusted estimates, approved changes, scheduled value, prior and current applications, stored materials, completed work, balance to finish, and retainage where applicable. Detail and owner visibility depend on the project, contract, department, and role.
+
+## Contract Deposits {#contract-deposits}
+
+Record deposits on a project's **Financials** page under **Contract deposits**. Choose **Record deposit**, then save it as **Requested** (amount and due date) or **Received** (amount, date, how it was paid and the check or reference number). If the contract packet sets a deposit percentage, the amount starts from that. Open a requested deposit and choose **Record payment** when the money arrives. **Void** removes a deposit you entered by mistake.
+
+A received deposit is applied to pay applications before the client pays the balance. By default Compass applies as much of the unapplied deposit as each new draft pay application can take, starting with the oldest draft. On the pay application, **Less deposit applied** shows the amount; type a different amount and choose **Apply amount**, or **Apply automatically** to go back. Admins can turn automatic application off in Settings under **Contract deposits**.
 
 ## Pay Applications {#pay-applications}
 

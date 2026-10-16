@@ -494,7 +494,16 @@ export const contractPacketSettingsSchema = z.object({
 
 export type ContractPacketSettings = z.infer<typeof contractPacketSettingsSchema>
 
+/** Contract deposits: how a received deposit reaches pay applications. */
+export const contractDepositSettingsSchema = z.object({
+  /** New pay applications apply the unapplied deposit balance automatically. */
+  autoApplyToPayApplications: z.boolean(),
+})
+
+export type ContractDepositSettings = z.infer<typeof contractDepositSettingsSchema>
+
 type FeatureSettingsTypes = {
+  readonly "contract-deposits": ContractDepositSettings
   readonly "contract-packets": ContractPacketSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "daily-logs": DailyLogSettings
@@ -620,6 +629,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
       ],
     },
     schema: internalDutySettingsSchema,
+  },
+  "contract-deposits": {
+    label: "Contract deposits",
+    description: "Whether new pay applications automatically apply the contract deposit that hasn't been applied yet. Staff can change the amount on any draft pay application.",
+    defaults: { autoApplyToPayApplications: true },
+    schema: contractDepositSettingsSchema,
   },
   "contract-packets": {
     label: "Contract packets",

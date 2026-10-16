@@ -6,6 +6,7 @@ import { IconCircleCheck, IconDeviceFloppy } from "@tabler/icons-react"
 
 import {
   markProjectOwnerPayApplicationReady,
+  setProjectOwnerPayApplicationDeposit,
   updateProjectOwnerPayApplicationLine,
   type ProjectOwnerPayApplicationDraft,
   type ProjectOwnerPayApplicationLine,
@@ -129,6 +130,77 @@ function PayApplicationLineEditor({
   )
 }
 
+/** G702 "less deposit applied": the contract deposit taken off this draw. */
+function PayApplicationDeposit({
+  projectId,
+  application,
+  editable,
+  onMessage,
+}: {
+  readonly projectId: string
+  readonly application: ProjectOwnerPayApplicationDraft
+  readonly editable: boolean
+  readonly onMessage: (message: string) => void
+}): React.ReactElement {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const beforeDeposit = Math.max(0, application.totalEarnedLessRetainage - application.previousCertificates)
+
+  function apply(mode: "auto" | "manual", amount: number | null): void {
+    startTransition(async () => {
+      const result = await setProjectOwnerPayApplicationDeposit(projectId, application.id, { mode, amount })
+      onMessage(result.success ? "Deposit applied." : result.error)
+      router.refresh()
+    })
+  }
+
+  function save(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const amount = fieldNumber(new FormData(event.currentTarget), "depositApplied")
+    if (amount === null) {
+      onMessage("Enter the deposit to apply as a dollar amount.")
+      return
+    }
+    apply("manual", amount)
+  }
+
+  return (
+    <section className="clarity-panel px-4 py-3">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1 text-sm">
+          <h3 className="font-semibold">Less deposit applied</h3>
+          <p className="text-xs text-muted-foreground">
+            Earned this draw before the deposit {money(beforeDeposit)} · deposit available {money(application.depositAvailable)} ·{" "}
+            {application.depositAppliedMode === "auto" ? "applied automatically" : "set by hand"}
+          </p>
+        </div>
+        {editable ? (
+          <form onSubmit={save} className="flex flex-wrap items-center gap-2">
+            <Input
+              key={application.depositApplied}
+              name="depositApplied"
+              inputMode="decimal"
+              defaultValue={application.depositApplied ? application.depositApplied.toFixed(2) : ""}
+              className="w-36 text-right"
+              aria-label="Deposit applied to this pay application"
+            />
+            <Button type="submit" variant="outline" size="sm" disabled={isPending}>
+              Apply amount
+            </Button>
+            {application.depositAppliedMode === "manual" && (
+              <Button type="button" variant="ghost" size="sm" disabled={isPending} onClick={() => apply("auto", null)}>
+                Apply automatically
+              </Button>
+            )}
+          </form>
+        ) : (
+          <p className="text-lg font-semibold tabular-nums">{money(application.depositApplied)}</p>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export function ProjectOwnerPayApplicationEditor({
   projectId,
   application,
@@ -176,7 +248,7 @@ export function ProjectOwnerPayApplicationEditor({
             </p>
           </div>
           {editable && (
-            <Button onClick={readyForReview} disabled={isPending || application.currentPaymentDue <= 0}>
+            <Button onClick={readyForReview} disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
               <IconCircleCheck className="size-4" />
               {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
             </Button>
@@ -196,6 +268,15 @@ export function ProjectOwnerPayApplicationEditor({
           ))}
         </div>
       </section>
+
+      {(application.depositApplied > 0 || application.depositAvailable > 0) && (
+        <PayApplicationDeposit
+          projectId={projectId}
+          application={application}
+          editable={editable}
+          onMessage={setMessage}
+        />
+      )}
 
       <section className="clarity-panel overflow-x-auto">
         <div className="min-w-[1080px]">
