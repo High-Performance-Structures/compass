@@ -34,6 +34,8 @@ export function OwnerUpdateActions({
   projectId,
   updateId,
   status,
+  revision,
+  updatedAt,
   emailSubject,
   emailPreview,
   updatePath,
@@ -45,6 +47,8 @@ export function OwnerUpdateActions({
   readonly projectId: string
   readonly updateId: string
   readonly status: string
+  readonly revision: number
+  readonly updatedAt: string
   readonly emailSubject: string
   readonly emailPreview: string
   readonly updatePath: string
@@ -128,7 +132,10 @@ export function OwnerUpdateActions({
     setPublishError(null)
     setIsDeleting(true)
     try {
-      const result = await deleteOwnerProjectUpdateDraft(projectId, updateId)
+      const result = await deleteOwnerProjectUpdateDraft(projectId, updateId, {
+        revision,
+        updatedAt,
+      })
       if (!result.success) {
         setPublishError(result.error)
         return
@@ -147,7 +154,10 @@ export function OwnerUpdateActions({
     setPublishError(null)
     setIsRecalling(true)
     try {
-      const result = await recallOwnerProjectUpdate(projectId, updateId)
+      const result = await recallOwnerProjectUpdate(projectId, updateId, {
+        revision,
+        updatedAt,
+      })
       if (!result.success) {
         setPublishError(result.error)
         return
