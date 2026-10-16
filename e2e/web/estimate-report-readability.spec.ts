@@ -101,7 +101,7 @@ test("estimate reports save optional breakdowns and show readable group scopes a
       .getByRole("button", { name: "Save draft details", exact: true })
       .click()
     await expect(
-      page.getByText("Estimate details saved.", { exact: true })
+      page.getByRole("main").getByText("Estimate details saved.", { exact: true })
     ).toBeVisible()
     await page.reload()
     await chooseArea(/^Introduction & closing/)
@@ -168,7 +168,7 @@ test("estimate reports save optional breakdowns and show readable group scopes a
       .getByRole("button", { name: "Save report view", exact: true })
       .click()
     await expect(
-      page.getByText("Client report view saved.", { exact: true })
+      page.getByRole("main").getByText("Client report view saved.", { exact: true })
     ).toBeVisible()
     await page.reload()
     await workOn.click()
@@ -203,7 +203,7 @@ test("estimate reports save optional breakdowns and show readable group scopes a
         .getByRole("button", { name: "Save report view", exact: true })
         .click()
       await expect(
-        page.getByText("Client report view saved.", { exact: true })
+        page.getByRole("main").getByText("Client report view saved.", { exact: true })
       ).toBeVisible()
       await expect(
         page.getByRole("button", { name: "Save report view", exact: true })
@@ -241,7 +241,7 @@ test("estimate reports save optional breakdowns and show readable group scopes a
       .getByRole("button", { name: "Save report view", exact: true })
       .click()
     await expect(
-      page.getByText("Client report view saved.", { exact: true })
+      page.getByRole("main").getByText("Client report view saved.", { exact: true })
     ).toBeVisible()
     await page.reload()
     await workOn.click()
