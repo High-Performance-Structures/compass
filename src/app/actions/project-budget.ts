@@ -9,6 +9,12 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { FEATURE_SETTINGS } from "@/lib/feature-settings/registry"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
+import {
+  isPayApplicationOwnerDetail,
+  type PayApplicationOwnerDetail,
+} from "@/lib/financials/pay-application-detail"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
@@ -24,7 +30,8 @@ import {
 } from "@/lib/project-budget-snapshot"
 
 export type { ProjectBudgetAudience } from "@/lib/project-budget-audience"
-export type ProjectBudgetDetailMode = "cost_code" | "category"
+/** "category_percent" shows divisions by percent complete with no amounts. */
+export type ProjectBudgetDetailMode = "cost_code" | "category" | "category_percent"
 
 export type ProjectBudgetApplicationItem = {
   readonly id: string
@@ -114,7 +121,7 @@ export type ProjectBudgetSummary = {
 
 type ProjectAccess = {
   readonly db: ReturnType<typeof getDb>
-  readonly projectNumber: string | null
+  readonly organizationId: string | null
   readonly viewerRole: string
 }
 
@@ -128,7 +135,7 @@ async function verifyProjectAccess(projectId: string): Promise<ProjectAccess> {
 
   return {
     db,
-    projectNumber: project.projectNumber,
+    organizationId: project.organizationId,
     viewerRole: user.role,
   }
 }
@@ -201,12 +208,48 @@ function percent(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 1000) / 10
 }
 
-function ownerDetailMode(projectNumber: string | null): ProjectBudgetDetailMode {
-  if (projectNumber?.slice(0, 1).toUpperCase() === "H") {
-    return "category"
-  }
+const OWNER_DETAIL_MODES: Readonly<Record<PayApplicationOwnerDetail, ProjectBudgetDetailMode>> = {
+  division_percent: "category_percent",
+  division: "category",
+  cost_code: "cost_code",
+}
 
-  return "cost_code"
+/** The draw's own client detail, else the company's pay application default. */
+async function ownerDetailMode(
+  access: ProjectAccess,
+  applicationId: string | null
+): Promise<ProjectBudgetDetailMode> {
+  if (applicationId) {
+    const row = await access.db
+      .select({ ownerDetail: projectBudgetApplications.ownerDetail })
+      .from(projectBudgetApplications)
+      .where(eq(projectBudgetApplications.id, applicationId))
+      .get()
+    if (isPayApplicationOwnerDetail(row?.ownerDetail)) {
+      return OWNER_DETAIL_MODES[row.ownerDetail]
+    }
+  }
+  const fallback = FEATURE_SETTINGS["pay-applications"].defaults.ownerDetail
+  if (!access.organizationId) return OWNER_DETAIL_MODES[fallback]
+  const settings = await readFeatureSettings(access.db, access.organizationId, "pay-applications")
+  return OWNER_DETAIL_MODES[settings.ownerDetail]
+}
+
+/** Percent-only client view: keep names and percent complete, drop every amount. */
+function withoutAmounts<T extends ProjectBudgetLineItem | ProjectBudgetDivision>(row: T): T {
+  return {
+    ...row,
+    originalEstimate: 0,
+    priorChanges: 0,
+    currentChanges: 0,
+    totalChanges: 0,
+    adjustedEstimate: 0,
+    priorCosts: 0,
+    currentCosts: 0,
+    totalCosts: 0,
+    balanceToFinish: 0,
+    retainageHeld: 0,
+  }
 }
 
 function buildDivisions(
@@ -326,11 +369,6 @@ export async function getProjectBudgetSummary(
     audience,
     access.viewerRole
   )
-  const detailMode =
-    effectiveAudience === "owner"
-      ? ownerDetailMode(access.projectNumber)
-      : "cost_code"
-
   const applications =
     effectiveAudience === "owner"
       ? (
@@ -404,6 +442,10 @@ export async function getProjectBudgetSummary(
     applications,
     applicationId
   )
+  const detailMode: ProjectBudgetDetailMode =
+    effectiveAudience === "owner"
+      ? await ownerDetailMode(access, currentApplication?.id ?? null)
+      : "cost_code"
 
   const sourceLines: readonly ProjectBudgetLineItem[] = currentApplication
     ? effectiveAudience === "owner"
@@ -476,9 +518,21 @@ export async function getProjectBudgetSummary(
           currentApplication.id
         )
     : []
-  const allLines =
-    detailMode === "category" ? buildOwnerCategoryLines(sourceLines) : sourceLines
-  const divisions = buildDivisions(allLines)
+  const rolledUpLines =
+    detailMode === "cost_code" ? sourceLines : buildOwnerCategoryLines(sourceLines)
+  const rolledUpDivisions = buildDivisions(rolledUpLines)
+  const percentOnly = detailMode === "category_percent"
+  const allLines = percentOnly ? rolledUpLines.map(withoutAmounts) : rolledUpLines
+  const divisions = percentOnly
+    ? rolledUpDivisions.map((division) => ({
+        ...withoutAmounts(division),
+        lines: division.lines.map(withoutAmounts),
+      }))
+    : rolledUpDivisions
+  const visiblePercentComplete = percent(
+    rolledUpLines.reduce((sum, line) => sum + line.totalCosts, 0),
+    rolledUpLines.reduce((sum, line) => sum + line.adjustedEstimate, 0)
+  )
   const originalEstimate = allLines.reduce(
     (sum, line) => sum + line.originalEstimate,
     0
@@ -517,7 +571,7 @@ export async function getProjectBudgetSummary(
       currentCosts,
       retainageHeld,
       balanceToFinish,
-      percentComplete: percent(totalCosts, adjustedEstimate),
+      percentComplete: visiblePercentComplete,
       overBudgetAmount: Math.max(0, totalCosts - adjustedEstimate),
       ownerVisibleLineCount: allLines.filter((line) => line.ownerVisible).length,
     },

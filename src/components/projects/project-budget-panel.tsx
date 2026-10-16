@@ -60,8 +60,9 @@ export function ProjectBudgetPanel({
     )
   }
 
-  const visibleDivisions = summary.divisions.filter(
-    (division) => division.adjustedEstimate > 0
+  const percentOnly = summary.detailMode === "category_percent"
+  const visibleDivisions = summary.divisions.filter((division) =>
+    percentOnly ? division.lineCount > 0 : division.adjustedEstimate > 0
   )
   const displayedDivisions =
     divisionLimit === null
@@ -91,7 +92,7 @@ export function ProjectBudgetPanel({
               : "Budget snapshot"}
           </Badge>
           <Badge variant="secondary">
-            {summary.detailMode === "category"
+            {summary.detailMode !== "cost_code"
               ? `${summary.divisions.length} owner categories`
               : `${summary.totals.ownerVisibleLineCount} owner-visible lines`}
           </Badge>
@@ -120,6 +121,32 @@ export function ProjectBudgetPanel({
             {formatDate(summary.currentApplication?.periodTo ?? null)}
           </p>
         </div>
+        {percentOnly ? (
+          <>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Complete</p>
+              <p className="mt-1 truncate text-xl font-semibold leading-none">
+                {pct(summary.totals.percentComplete)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Work completed to date</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Payment due</p>
+              <p className="mt-1 truncate text-xl font-semibold leading-none">
+                {money(summary.currentApplication?.currentPaymentDue ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">This pay request</p>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">Remaining</p>
+              <p className="mt-1 truncate text-xl font-semibold leading-none">
+                {pct(Math.max(0, 100 - summary.totals.percentComplete))}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Work left to complete</p>
+            </div>
+          </>
+        ) : (
+          <>
         <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Complete + stored</p>
           <p className="mt-1 truncate text-xl font-semibold leading-none">
@@ -149,6 +176,8 @@ export function ProjectBudgetPanel({
               : "Tracking within the current budget"}
           </p>
         </div>
+          </>
+        )}
       </div>
 
       <div className="mt-4 space-y-3 print:hidden">
@@ -159,11 +188,13 @@ export function ProjectBudgetPanel({
                 <p className="text-sm font-medium">
                   {division.csiDivision} - {division.csiDivisionName}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {division.lineCount} line items · {money(division.totalCosts)}
-                  {" of "}
-                  {money(division.adjustedEstimate)}
-                </p>
+                {!percentOnly && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {division.lineCount} line items · {money(division.totalCosts)}
+                    {" of "}
+                    {money(division.adjustedEstimate)}
+                  </p>
+                )}
               </div>
               <Badge variant="outline">{pct(division.percentComplete)}</Badge>
             </div>
@@ -180,8 +211,8 @@ export function ProjectBudgetPanel({
       <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground print:hidden">
         <IconLock className="mt-0.5 size-4 shrink-0" />
         <p>
-          Internal view shows all budget detail. Owner view uses approved
-          detail, with H jobs rolled up to category level.
+          Internal view shows all budget detail. Owner view uses the detail
+          chosen on the pay application, or the company default in Settings.
         </p>
       </div>
     </section>
@@ -196,6 +227,9 @@ export function ProjectBudgetG703Table({
   readonly showVisibility?: boolean
 }): React.ReactElement {
   const showLineDetail = summary.detailMode === "cost_code"
+  if (summary.detailMode === "category_percent") {
+    return <ProjectBudgetPercentTable summary={summary} />
+  }
 
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -341,6 +375,46 @@ export function ProjectBudgetG703Table({
               {money(summary.totals.balanceToFinish)}
             </td>
             {showVisibility && <td className="px-3 py-3" />}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
+/** Client view of a pay request by division, percent complete only. */
+function ProjectBudgetPercentTable({
+  summary,
+}: {
+  readonly summary: ProjectBudgetSummary
+}): React.ReactElement {
+  return (
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full border-collapse text-sm">
+        <thead className="bg-muted/60 text-xs text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium">Division</th>
+            <th className="px-3 py-2 text-right font-medium">% complete</th>
+          </tr>
+        </thead>
+        <tbody>
+          {summary.divisions.map((division) => (
+            <tr key={division.csiDivision} className="border-t">
+              <td className="px-3 py-2 font-medium">
+                {division.csiDivision} - {division.csiDivisionName}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                {pct(division.percentComplete)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="border-t-2 bg-muted/50">
+          <tr>
+            <td className="px-3 py-3 font-semibold">Project</td>
+            <td className="px-3 py-3 text-right font-semibold tabular-nums">
+              {pct(summary.totals.percentComplete)}
+            </td>
           </tr>
         </tfoot>
       </table>

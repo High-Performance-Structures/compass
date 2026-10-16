@@ -2321,6 +2321,8 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
   depositApplied: real("deposit_applied").notNull().default(0),
   /** auto: Compass applies the unapplied deposit balance; manual: staff set it. */
   depositAppliedMode: text("deposit_applied_mode").notNull().default("auto"),
+  /** Client detail for this draw; null uses the company default. */
+  ownerDetail: text("owner_detail"),
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
