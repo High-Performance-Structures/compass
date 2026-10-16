@@ -2237,7 +2237,7 @@ export function ProjectEstimateWorkspacePanel({
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="acceptanceMethod">Signature method</Label>
-                      <Select name="acceptanceMethod" required>
+                      <Select name="acceptanceMethod">
                         <SelectTrigger id="acceptanceMethod"><SelectValue placeholder="Choose method" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="wet_signature">Printed and signed document</SelectItem>
