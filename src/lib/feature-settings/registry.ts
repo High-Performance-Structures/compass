@@ -12,6 +12,7 @@ import {
 import { DEFAULT_DEPARTMENT_PROFILES } from "@/lib/department-profiles"
 import { PORTFOLIO_DEPARTMENT_VIEWS, PORTFOLIO_PHASE_IDS } from "@/lib/portfolio-map/phases"
 import { ESTIMATE_MODES } from "@/lib/estimates/estimate-modes"
+import { PAY_APPLICATION_OWNER_DETAILS } from "@/lib/financials/pay-application-detail"
 
 /**
  * Company-editable feature settings. Each feature registers one group with
@@ -502,9 +503,17 @@ export const contractDepositSettingsSchema = z.object({
 
 export type ContractDepositSettings = z.infer<typeof contractDepositSettingsSchema>
 
+export const payApplicationSettingsSchema = z.object({
+  /** What the client sees on a pay application unless the draw overrides it. */
+  ownerDetail: z.enum(PAY_APPLICATION_OWNER_DETAILS),
+})
+
+export type PayApplicationSettings = z.infer<typeof payApplicationSettingsSchema>
+
 type FeatureSettingsTypes = {
   readonly "contract-deposits": ContractDepositSettings
   readonly "contract-packets": ContractPacketSettings
+  readonly "pay-applications": PayApplicationSettings
   readonly "schedule-conflicts": ScheduleConflictSettingsValue
   readonly "daily-logs": DailyLogSettings
   readonly "daily-log-followups": DailyLogFollowUpSettings
@@ -635,6 +644,12 @@ export const FEATURE_SETTINGS: { readonly [K in FeatureSettingsKey]: FeatureSett
     description: "Whether new pay applications automatically apply the contract deposit that hasn't been applied yet. Staff can change the amount on any draft pay application.",
     defaults: { autoApplyToPayApplications: true },
     schema: contractDepositSettingsSchema,
+  },
+  "pay-applications": {
+    label: "Pay applications",
+    description: "How much detail the client sees on a pay application. Staff can choose a different level on any draw.",
+    defaults: { ownerDetail: "division_percent" },
+    schema: payApplicationSettingsSchema,
   },
   "contract-packets": {
     label: "Contract packets",

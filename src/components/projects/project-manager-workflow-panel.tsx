@@ -160,6 +160,9 @@ function budgetDetail(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) {
     return "Add the budget/G703 snapshot."
   }
+  if (summary.detailMode === "category_percent") {
+    return "Owner view shows divisions by percent complete."
+  }
   return summary.detailMode === "category"
     ? "Owner view is rolled up by category."
     : "Internal detail and owner-visible cost codes."

@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useTransition, type FormEvent } from "react"
+import { Fragment, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { IconCircleCheck, IconDeviceFloppy } from "@tabler/icons-react"
 
 import {
   markProjectOwnerPayApplicationReady,
   setProjectOwnerPayApplicationDeposit,
+  setProjectOwnerPayApplicationOwnerDetail,
+  setProjectOwnerPayApplicationPercentComplete,
   updateProjectOwnerPayApplicationLine,
   type ProjectOwnerPayApplicationDraft,
   type ProjectOwnerPayApplicationLine,
@@ -17,6 +19,18 @@ import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  PAY_APPLICATION_OWNER_DETAILS,
+  PAY_APPLICATION_OWNER_DETAIL_LABELS,
+  isPayApplicationOwnerDetail,
+} from "@/lib/financials/pay-application-detail"
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -31,6 +45,13 @@ function fieldNumber(formData: FormData, name: string): number | null {
   if (!raw) return 0
   const value = Number(raw)
   return Number.isFinite(value) ? value : null
+}
+
+const LINE_GRID =
+  "lg:grid-cols-[minmax(14rem,1.6fr)_repeat(8,minmax(6.5rem,.7fr))_auto]"
+
+function percentOf(part: number, whole: number): number {
+  return whole > 0 ? Math.round((part / whole) * 1_000) / 10 : 0
 }
 
 function PayApplicationLineEditor({
@@ -57,6 +78,9 @@ function PayApplicationLineEditor({
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
+    const percent = fieldNumber(formData, "percentComplete")
+    const percentChanged =
+      percent !== null && Math.abs(percent - percentOf(line.totalCompletedStored, line.adjustedEstimate)) > 0.05
     startTransition(async () => {
       const result = await updateProjectOwnerPayApplicationLine(
         projectId,
@@ -69,7 +93,17 @@ function PayApplicationLineEditor({
           ownerVisible,
         }
       )
-      onMessage(result.success ? `${line.costCode} saved.` : result.error)
+      if (!result.success || !percentChanged) {
+        onMessage(result.success ? `${line.costCode} saved.` : result.error)
+        router.refresh()
+        return
+      }
+      const billed = await setProjectOwnerPayApplicationPercentComplete(projectId, applicationId, {
+        scope: "line",
+        key: line.id,
+        percentComplete: percent,
+      })
+      onMessage(billed.success ? `${line.costCode} billed to ${percent}% complete.` : billed.error)
       router.refresh()
     })
   }
@@ -77,7 +111,7 @@ function PayApplicationLineEditor({
   return (
     <form
       onSubmit={save}
-      className="grid gap-2 border-b px-3 py-3 text-sm lg:grid-cols-[minmax(14rem,1.6fr)_repeat(7,minmax(7rem,.7fr))_auto] lg:items-center"
+      className={`grid gap-2 border-b px-3 py-3 text-sm ${LINE_GRID} lg:items-center`}
     >
       <div className="min-w-0">
         <p className="font-medium">{line.costCode} · {line.description}</p>
@@ -88,6 +122,7 @@ function PayApplicationLineEditor({
       <span className="text-right">{money(line.adjustedEstimate)}</span>
       <span className="text-right">{money(line.previousWorkCompleted)}</span>
       <Input
+        key={line.currentWorkCompleted}
         name="currentWorkCompleted"
         inputMode="decimal"
         defaultValue={line.currentWorkCompleted || ""}
@@ -108,6 +143,14 @@ function PayApplicationLineEditor({
         disabled={!editable}
         aria-label={`Retainage percent for ${line.costCode}`}
       />
+      <Input
+        key={line.totalCompletedStored}
+        name="percentComplete"
+        inputMode="decimal"
+        defaultValue={percentOf(line.totalCompletedStored, line.adjustedEstimate) || ""}
+        disabled={!editable}
+        aria-label={`Percent complete to date for ${line.costCode}`}
+      />
       <span className="text-right">{money(line.totalCompletedStored)}</span>
       <span className="text-right">{money(line.balanceToFinish)}</span>
       <div className="flex items-center justify-end gap-2">
@@ -127,6 +170,121 @@ function PayApplicationLineEditor({
         )}
       </div>
     </form>
+  )
+}
+
+/** Division row: bill every cost code in the division to one percent complete. */
+function PayApplicationDivisionRow({
+  projectId,
+  applicationId,
+  divisionCode,
+  divisionName,
+  lines,
+  editable,
+  onMessage,
+}: {
+  readonly projectId: string
+  readonly applicationId: string
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly lines: readonly ProjectOwnerPayApplicationLine[]
+  readonly editable: boolean
+  readonly onMessage: (message: string) => void
+}): React.ReactElement {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const scheduled = lines.reduce((sum, line) => sum + line.adjustedEstimate, 0)
+  const completed = lines.reduce((sum, line) => sum + line.totalCompletedStored, 0)
+  const current = percentOf(completed, scheduled)
+
+  function bill(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const percent = fieldNumber(new FormData(event.currentTarget), "divisionPercent")
+    if (percent === null) {
+      onMessage("Enter the division's percent complete as a number.")
+      return
+    }
+    startTransition(async () => {
+      const result = await setProjectOwnerPayApplicationPercentComplete(projectId, applicationId, {
+        scope: "division",
+        key: divisionCode,
+        percentComplete: percent,
+      })
+      onMessage(result.success ? `Division ${divisionCode} billed to ${percent}% complete.` : result.error)
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2 text-sm">
+      <div>
+        <p className="font-semibold">{divisionCode} · {divisionName}</p>
+        <p className="text-xs text-muted-foreground">
+          {money(completed)} of {money(scheduled)} · {current}% complete to date
+        </p>
+      </div>
+      {editable && (
+        <form onSubmit={bill} className="flex items-center gap-2">
+          <Input
+            key={current}
+            name="divisionPercent"
+            inputMode="decimal"
+            defaultValue={current || ""}
+            className="w-24 text-right"
+            aria-label={`Percent complete to date for division ${divisionCode}`}
+          />
+          <span className="text-xs text-muted-foreground">%</span>
+          <Button type="submit" variant="outline" size="sm" disabled={isPending}>
+            Bill division
+          </Button>
+        </form>
+      )}
+    </div>
+  )
+}
+
+/** What the client sees on this pay application. */
+function PayApplicationClientDetail({
+  projectId,
+  application,
+  onMessage,
+}: {
+  readonly projectId: string
+  readonly application: ProjectOwnerPayApplicationDraft
+  readonly onMessage: (message: string) => void
+}): React.ReactElement {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const value = application.ownerDetailOverride ?? "default"
+
+  function change(next: string): void {
+    const detail = isPayApplicationOwnerDetail(next) ? next : null
+    startTransition(async () => {
+      const result = await setProjectOwnerPayApplicationOwnerDetail(projectId, application.id, detail)
+      onMessage(result.success ? "Client detail saved." : result.error)
+      router.refresh()
+    })
+  }
+
+  return (
+    <label className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted-foreground">Client sees</span>
+      <Select value={value} onValueChange={change} disabled={isPending}>
+        <SelectTrigger className="w-64" aria-label="Client detail for this pay application">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="default">
+            Company default ({PAY_APPLICATION_OWNER_DETAIL_LABELS[application.ownerDetail]})
+          </SelectItem>
+          {PAY_APPLICATION_OWNER_DETAILS.map((detail) => (
+            <SelectItem key={detail} value={detail}>
+              {PAY_APPLICATION_OWNER_DETAIL_LABELS[detail]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
   )
 }
 
@@ -201,6 +359,20 @@ function PayApplicationDeposit({
   )
 }
 
+function divisionGroups(lines: readonly ProjectOwnerPayApplicationLine[]): readonly {
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly lines: readonly ProjectOwnerPayApplicationLine[]
+}[] {
+  const groups = new Map<string, { divisionCode: string; divisionName: string; lines: ProjectOwnerPayApplicationLine[] }>()
+  for (const line of lines) {
+    const group = groups.get(line.divisionCode) ?? { divisionCode: line.divisionCode, divisionName: line.divisionName, lines: [] }
+    group.lines.push(line)
+    groups.set(line.divisionCode, group)
+  }
+  return [...groups.values()]
+}
+
 export function ProjectOwnerPayApplicationEditor({
   projectId,
   application,
@@ -246,6 +418,9 @@ export function ProjectOwnerPayApplicationEditor({
             <p className="mt-1 text-xs text-muted-foreground">
               Period to {application.periodTo ?? "not set"} · Contract budget revision locked to this draw
             </p>
+            <div className="mt-2">
+              <PayApplicationClientDetail projectId={projectId} application={application} onMessage={setMessage} />
+            </div>
           </div>
           {editable && (
             <Button onClick={readyForReview} disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
@@ -279,27 +454,41 @@ export function ProjectOwnerPayApplicationEditor({
       )}
 
       <section className="clarity-panel overflow-x-auto">
-        <div className="min-w-[1080px]">
-          <div className="grid grid-cols-[minmax(14rem,1.6fr)_repeat(7,minmax(7rem,.7fr))_auto] gap-2 border-b bg-muted/35 px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
+        <div className="min-w-[1180px]">
+          <div className={`grid gap-2 border-b bg-muted/35 px-3 py-2 text-xs font-medium uppercase text-muted-foreground grid-cols-[minmax(14rem,1.6fr)_repeat(8,minmax(6.5rem,.7fr))_auto]`}>
             <span>Cost code</span>
             <span className="text-right">Adjusted</span>
             <span className="text-right">Previous</span>
             <span>Current work</span>
             <span>Stored</span>
             <span>Retainage %</span>
+            <span>% to date</span>
             <span className="text-right">Total</span>
             <span className="text-right">Balance</span>
             <span className="text-right">Visibility</span>
           </div>
-          {application.lines.map((line) => (
-            <PayApplicationLineEditor
-              key={line.id}
-              projectId={projectId}
-              applicationId={application.id}
-              line={line}
-              editable={editable}
-              onMessage={setMessage}
-            />
+          {divisionGroups(application.lines).map((group) => (
+            <Fragment key={group.divisionCode}>
+              <PayApplicationDivisionRow
+                projectId={projectId}
+                applicationId={application.id}
+                divisionCode={group.divisionCode}
+                divisionName={group.divisionName}
+                lines={group.lines}
+                editable={editable}
+                onMessage={setMessage}
+              />
+              {group.lines.map((line) => (
+                <PayApplicationLineEditor
+                  key={line.id}
+                  projectId={projectId}
+                  applicationId={application.id}
+                  line={line}
+                  editable={editable}
+                  onMessage={setMessage}
+                />
+              ))}
+            </Fragment>
           ))}
         </div>
       </section>

@@ -77,6 +77,10 @@ A received deposit is applied to pay applications before the client pays the bal
 
 ## Pay Applications {#pay-applications}
 
+Bill a draft pay application by dollars or by percent complete. Each division row has a percent box: type the division's percent complete to date and choose **Bill division**, and every cost code in it is billed to that percent of its scheduled value, less previous work and stored materials. To bill one cost code, type its **% to date** or its current work in dollars and save the line. Compass refuses a percent lower than what is already billed.
+
+**Client sees** sets how much of this pay application the client sees: **Division, % complete only** (each division's percent complete and the payment due, with no line amounts), **Division with amounts**, or **Cost code with amounts**. **Company default** follows the setting admins choose in Settings under **Pay applications**.
+
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
 
 ## Sage Status {#sage-status}

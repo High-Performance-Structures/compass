@@ -19,6 +19,11 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { chunkD1Rows } from "@/lib/d1-query"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import {
+  currentWorkForPercent,
+  isPayApplicationOwnerDetail,
+  type PayApplicationOwnerDetail,
+} from "@/lib/financials/pay-application-detail"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import {
@@ -139,6 +144,10 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly depositAvailable: number
   readonly currentPaymentDue: number
   readonly balanceToFinish: number
+  /** What the client sees on this draw. */
+  readonly ownerDetail: PayApplicationOwnerDetail
+  /** Detail chosen for this draw; null follows the company default. */
+  readonly ownerDetailOverride: PayApplicationOwnerDetail | null
   readonly lines: readonly ProjectOwnerPayApplicationLine[]
 }
 
@@ -181,6 +190,7 @@ async function verifyProjectUpdateAccess(projectId: string): Promise<{
 
 async function verifyProjectReadAccess(projectId: string): Promise<{
   readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
@@ -195,7 +205,7 @@ async function verifyProjectReadAccess(projectId: string): Promise<{
     .limit(1)
 
   if (!project) throw new Error("Project not found")
-  return { db }
+  return { db, organizationId: orgId }
 }
 
 function cleanText(value: string | null): string | null {
@@ -396,7 +406,7 @@ export async function getProjectOwnerPayApplicationDraft(
   projectId: string,
   applicationId: string
 ): Promise<ProjectOwnerPayApplicationDraft | null> {
-  const { db } = await verifyProjectReadAccess(projectId)
+  const { db, organizationId } = await verifyProjectReadAccess(projectId)
   const applicationRows = await db
     .select()
     .from(projectBudgetApplications)
@@ -442,6 +452,12 @@ export async function getProjectOwnerPayApplicationDraft(
     depositAvailable: await availableDepositForApplication(db, projectId, applicationId),
     currentPaymentDue: application.currentPaymentDue,
     balanceToFinish: application.balanceToFinish,
+    ownerDetail: isPayApplicationOwnerDetail(application.ownerDetail)
+      ? application.ownerDetail
+      : (await readFeatureSettings(db, organizationId, "pay-applications")).ownerDetail,
+    ownerDetailOverride: isPayApplicationOwnerDetail(application.ownerDetail)
+      ? application.ownerDetail
+      : null,
     lines: lines.map((line) => ({
       id: line.id,
       costCode: line.costCode,
@@ -562,6 +578,126 @@ export async function updateProjectOwnerPayApplicationLine(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to update pay application.",
+    }
+  }
+}
+
+/**
+ * Bill a whole division, or one cost code, to a percent complete to date.
+ * Each line's current work becomes that percent of its scheduled value less
+ * previous work and stored materials; retainage keeps each line's rate.
+ */
+export async function setProjectOwnerPayApplicationPercentComplete(
+  projectId: string,
+  applicationId: string,
+  input: {
+    readonly scope: "division" | "line"
+    /** Division code, or the pay application line id. */
+    readonly key: string
+    readonly percentComplete: number | null
+  }
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const application = await db
+      .select({ id: projectBudgetApplications.id })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
+          eq(projectBudgetApplications.status, "draft")
+        )
+      )
+      .get()
+    if (!application) throw new Error("Only a draft pay application can be edited.")
+    if (input.percentComplete === null) throw new Error("Enter a percent complete.")
+    const percentComplete = input.percentComplete
+    const lines = await db
+      .select()
+      .from(projectBudgetLines)
+      .where(
+        and(
+          eq(projectBudgetLines.projectId, projectId),
+          eq(projectBudgetLines.applicationId, applicationId),
+          input.scope === "division"
+            ? eq(projectBudgetLines.csiDivision, input.key)
+            : eq(projectBudgetLines.id, input.key)
+        )
+      )
+    if (lines.length === 0) throw new Error("No pay application lines match.")
+    const now = new Date().toISOString()
+    const updates = lines.map((line) => {
+      const result = currentWorkForPercent(line, percentComplete)
+      if (!result.success) throw new Error(result.error)
+      const totalCompletedStored =
+        line.previousWorkCompleted + result.currentWorkCompleted + line.storedMaterials
+      const retainageRate = line.totalCosts > 0 ? line.retainageHeld / line.totalCosts : 0
+      return db
+        .update(projectBudgetLines)
+        .set({
+          currentWorkCompleted: result.currentWorkCompleted,
+          priorCosts: line.previousWorkCompleted,
+          currentCosts: result.currentWorkCompleted + line.storedMaterials,
+          totalCosts: totalCompletedStored,
+          percentComplete:
+            line.adjustedEstimate > 0
+              ? Math.round((totalCompletedStored / line.adjustedEstimate) * 1_000) / 10
+              : 0,
+          balanceToFinish: line.adjustedEstimate - totalCompletedStored,
+          retainageHeld: Math.round(totalCompletedStored * retainageRate * 100) / 100,
+          updatedAt: now,
+        })
+        .where(eq(projectBudgetLines.id, line.id))
+    })
+    const [first, ...rest] = updates
+    if (first) await db.batch([first, ...rest])
+    await refreshOwnerPayApplication(db, projectId, applicationId, now)
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to bill by percent complete.",
+    }
+  }
+}
+
+/** Choose what the client sees on one pay application; null follows the company default. */
+export async function setProjectOwnerPayApplicationOwnerDetail(
+  projectId: string,
+  applicationId: string,
+  ownerDetail: PayApplicationOwnerDetail | null
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    if (ownerDetail !== null && !isPayApplicationOwnerDetail(ownerDetail)) {
+      throw new Error("Choose a client detail level.")
+    }
+    const application = await db
+      .select({ id: projectBudgetApplications.id })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget")
+        )
+      )
+      .get()
+    if (!application) throw new Error("Pay application not found.")
+    await db
+      .update(projectBudgetApplications)
+      .set({ ownerDetail, updatedAt: new Date().toISOString() })
+      .where(eq(projectBudgetApplications.id, applicationId))
+      .run()
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to change the client detail.",
     }
   }
 }
