@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import {
   useEffect,
   useMemo,
@@ -227,6 +228,11 @@ export function ProjectEstimateWorkspacePanel({
     : null
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
+  // Also show each message where the person is working: the banner sits at the
+  // top of a long page, so errors from lower panels looked like nothing happened.
+  useEffect(() => {
+    if (message) toast(message)
+  }, [message])
   const [signatureMessage, setSignatureMessage] = useState<string | null>(null)
   const [manualAcceptanceAttested, setManualAcceptanceAttested] =
     useState(false)

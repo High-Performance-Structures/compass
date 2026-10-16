@@ -1,5 +1,6 @@
 "use client"
 
+import { statusLabel } from "@/lib/project-operations/status"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useTransition } from "react"
@@ -36,7 +37,9 @@ import {
 
 function versionLabel(estimate: ProjectEstimateSummary): string {
   const date = estimate.estimateDate ?? estimate.createdAt.slice(0, 10)
-  return `Version ${estimate.versionNumber} · ${date}`
+  // Number and status keep look-alike versions apart (e.g. an accepted
+  // contract estimate beside an unrelated imported draft).
+  return `${estimate.estimateNumber} · v${estimate.versionNumber} · ${statusLabel(estimate.status)} · ${date}`
 }
 
 export function ProjectEstimateVersionControls({
@@ -138,7 +141,7 @@ export function ProjectEstimateVersionControls({
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <Select value={activeEstimate.id} onValueChange={openVersion}>
-        <SelectTrigger className="w-[190px]" aria-label="Estimate version">
+        <SelectTrigger className="w-[min(100%,22rem)]" aria-label="Estimate version">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
