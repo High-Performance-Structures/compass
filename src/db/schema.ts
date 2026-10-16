@@ -2317,11 +2317,47 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
     .default(false),
   sourceUrl: text("source_url"),
   budgetRevisionId: text("budget_revision_id"),
+  /** Contract deposit applied to this draw (dollars, like the G702 fields). */
+  depositApplied: real("deposit_applied").notNull().default(0),
+  /** auto: Compass applies the unapplied deposit balance; manual: staff set it. */
+  depositAppliedMode: text("deposit_applied_mode").notNull().default("auto"),
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
+
+/**
+ * Deposits on contracts: requested from and received from the client, then
+ * applied to pay applications. Entered in Compass or read from accounting.
+ */
+export const projectContractDeposits = sqliteTable(
+  "project_contract_deposits",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** requested | received | void */
+    status: text("status").notNull().default("received"),
+    requestedAmountCents: integer("requested_amount_cents"),
+    requestedAt: text("requested_at"),
+    dueDate: text("due_date"),
+    receivedAmountCents: integer("received_amount_cents"),
+    receivedAt: text("received_at"),
+    paymentMethod: text("payment_method"),
+    reference: text("reference"),
+    evidenceUrl: text("evidence_url"),
+    evidenceLabel: text("evidence_label"),
+    notes: text("notes"),
+    sourceSystem: text("source_system").notNull().default("compass"),
+    sourceRecordId: text("source_record_id"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("project_contract_deposits_project_idx").on(table.projectId, table.status)]
+)
 
 export const projectBudgetLines = sqliteTable("project_budget_lines", {
   id: text("id").primaryKey(),

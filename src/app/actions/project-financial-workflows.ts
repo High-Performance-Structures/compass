@@ -17,8 +17,13 @@ import {
 } from "@/db/schema-estimates"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import {
+  availableDepositForApplication,
+  refreshOwnerPayApplication,
+} from "@/lib/financials/owner-pay-application-refresh"
 import {
   budgetPaymentBreakdown,
   type BudgetPaymentBreakdown,
@@ -126,6 +131,11 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly retainageHeld: number
   readonly totalEarnedLessRetainage: number
   readonly previousCertificates: number
+  /** Contract deposit applied to this draw. */
+  readonly depositApplied: number
+  readonly depositAppliedMode: "auto" | "manual"
+  /** Deposit received and not applied to other pay applications. */
+  readonly depositAvailable: number
   readonly currentPaymentDue: number
   readonly balanceToFinish: number
   readonly lines: readonly ProjectOwnerPayApplicationLine[]
@@ -140,6 +150,7 @@ type ProjectHeader = {
   readonly name: string
   readonly sageJobId: string | null
   readonly sageJobNumber: string | null
+  readonly organizationId: string
 }
 
 async function verifyProjectUpdateAccess(projectId: string): Promise<{
@@ -164,7 +175,7 @@ async function verifyProjectUpdateAccess(projectId: string): Promise<{
     .limit(1)
 
   if (!project) throw new Error("Project not found")
-  return { db, project }
+  return { db, project: { ...project, organizationId: orgId } }
 }
 
 async function verifyProjectReadAccess(projectId: string): Promise<{
@@ -425,6 +436,9 @@ export async function getProjectOwnerPayApplicationDraft(
     retainageHeld: application.retainageHeld,
     totalEarnedLessRetainage: application.totalEarnedLessRetainage,
     previousCertificates: application.previousCertificates,
+    depositApplied: application.depositApplied,
+    depositAppliedMode: application.depositAppliedMode === "manual" ? "manual" : "auto",
+    depositAvailable: await availableDepositForApplication(db, projectId, applicationId),
     currentPaymentDue: application.currentPaymentDue,
     balanceToFinish: application.balanceToFinish,
     lines: lines.map((line) => ({
@@ -452,65 +466,6 @@ function nonnegativeAmount(value: number | null, label: string): number {
     throw new Error(`${label} must be zero or greater.`)
   }
   return Math.round(value * 100) / 100
-}
-
-async function refreshOwnerPayApplication(
-  db: ReturnType<typeof getDb>,
-  projectId: string,
-  applicationId: string,
-  now: string
-): Promise<void> {
-  const applicationRows = await db
-    .select()
-    .from(projectBudgetApplications)
-    .where(eq(projectBudgetApplications.id, applicationId))
-    .limit(1)
-  const application = applicationRows[0]
-  if (!application) throw new Error("Pay application not found.")
-  const lines = await db
-    .select()
-    .from(projectBudgetLines)
-    .where(eq(projectBudgetLines.applicationId, applicationId))
-  const totalCompletedStoredToDate = lines.reduce(
-    (sum, line) => sum + line.totalCosts,
-    0
-  )
-  const retainageHeld = lines.reduce(
-    (sum, line) => sum + line.retainageHeld,
-    0
-  )
-  const totalEarnedLessRetainage =
-    Math.round((totalCompletedStoredToDate - retainageHeld) * 100) / 100
-  const currentPaymentDue =
-    Math.round(
-      (totalEarnedLessRetainage - application.previousCertificates) * 100
-    ) / 100
-  const balanceToFinish =
-    Math.round(
-      (application.contractSumToDate - totalEarnedLessRetainage) * 100
-    ) / 100
-  await db
-    .update(projectBudgetApplications)
-    .set({
-      totalCompletedStoredToDate,
-      retainageHeld,
-      totalEarnedLessRetainage,
-      currentPaymentDue,
-      balanceToFinish,
-      updatedAt: now,
-    })
-    .where(eq(projectBudgetApplications.id, applicationId))
-    .run()
-  await db
-    .update(projectOperations)
-    .set({ amount: currentPaymentDue, updatedAt: now })
-    .where(
-      and(
-        eq(projectOperations.projectId, projectId),
-        eq(projectOperations.sourceRecordId, applicationId)
-      )
-    )
-    .run()
 }
 
 export async function updateProjectOwnerPayApplicationLine(
@@ -610,6 +565,44 @@ export async function updateProjectOwnerPayApplicationLine(
   }
 }
 
+/**
+ * Set how much contract deposit a draft pay application applies: "auto"
+ * applies the available balance up to the draw; "manual" uses the amount.
+ */
+export async function setProjectOwnerPayApplicationDeposit(
+  projectId: string,
+  applicationId: string,
+  input: { readonly mode: "auto" | "manual"; readonly amount: number | null }
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const application = await db
+      .select({ id: projectBudgetApplications.id })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.status, "draft")
+        )
+      )
+      .get()
+    if (!application) throw new Error("Draft pay application not found.")
+    const amount = input.mode === "manual" ? nonnegativeAmount(input.amount, "Deposit applied") : 0
+    const now = new Date().toISOString()
+    await db
+      .update(projectBudgetApplications)
+      .set({ depositAppliedMode: input.mode, depositApplied: amount, updatedAt: now })
+      .where(eq(projectBudgetApplications.id, applicationId))
+      .run()
+    await refreshOwnerPayApplication(db, projectId, applicationId, now)
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to apply the deposit." }
+  }
+}
+
 export async function markProjectOwnerPayApplicationReady(
   projectId: string,
   applicationId: string
@@ -629,7 +622,8 @@ export async function markProjectOwnerPayApplicationReady(
       .limit(1)
     const application = rows[0]
     if (!application) throw new Error("Draft pay application not found.")
-    if (application.currentPaymentDue <= 0) {
+    // A draw fully covered by the deposit still needs review and entry.
+    if (application.currentPaymentDue <= 0 && application.depositApplied <= 0) {
       throw new Error("Enter current work or stored materials before Sage review.")
     }
     const lines = await db
@@ -660,6 +654,7 @@ export async function markProjectOwnerPayApplicationReady(
         retainageHeld: application.retainageHeld,
         totalEarnedLessRetainage: application.totalEarnedLessRetainage,
         previousCertificates: application.previousCertificates,
+        depositApplied: application.depositApplied,
         currentPaymentDue: application.currentPaymentDue,
         balanceToFinish: application.balanceToFinish,
       },
@@ -1023,6 +1018,7 @@ export async function createProjectOwnerPayApplicationDraft(
     const contractSumToDate = revision.revisedContractSumCents / 100
     const previousCertificates =
       priorApplication?.totalEarnedLessRetainage ?? 0
+    const depositSettings = await readFeatureSettings(db, project.organizationId, "contract-deposits")
     const priorCompletedStored =
       priorApplication?.totalCompletedStoredToDate ?? 0
     const priorRetainage = priorApplication?.retainageHeld ?? 0
@@ -1035,6 +1031,7 @@ export async function createProjectOwnerPayApplicationDraft(
       applicationNumber: recordNumber,
       periodTo,
       status: "building",
+      depositAppliedMode: depositSettings.autoApplyToPayApplications ? "auto" : "manual",
       originalContractSum,
       netChanges,
       contractSumToDate,
