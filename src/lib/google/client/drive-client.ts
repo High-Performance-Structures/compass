@@ -359,6 +359,7 @@ export class DriveClient {
             ...(options.size === undefined
               ? {}
               : { "X-Upload-Content-Length": String(options.size) }),
+            ...(options.browserOrigin ? { Origin: options.browserOrigin } : {}),
           },
           body: JSON.stringify(metadata),
         }
