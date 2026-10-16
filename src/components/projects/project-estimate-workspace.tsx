@@ -892,7 +892,7 @@ export function ProjectEstimateWorkspacePanel({
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            <div hidden={workSection !== "details"}>
+            <div>
               <ProjectEstimateVersionControls
               projectId={projectId}
               estimates={workspace.estimates}

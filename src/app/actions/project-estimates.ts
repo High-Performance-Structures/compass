@@ -864,16 +864,22 @@ function activeEstimate(
   if (estimateId) {
     return estimates.find((estimate) => estimate.id === estimateId) ?? null
   }
-  return (
-    estimates.find((estimate) =>
-      ["draft", "internal_review", "signature_pending"].includes(
-        estimate.status
-      )
-    ) ??
-    estimates.find((estimate) => estimate.status === "accepted") ??
-    estimates[0] ??
-    null
-  )
+  const inProgress = (estimate: ProjectEstimateSummary): boolean =>
+    ["draft", "internal_review", "signature_pending"].includes(estimate.status)
+  // Once an estimate is accepted, open it, or a newer version of it being
+  // revised. Unrelated drafts (e.g. an old import) don't take over the page.
+  const accepted = estimates.find((estimate) => estimate.status === "accepted")
+  if (accepted) {
+    return (
+      estimates.find(
+        (estimate) =>
+          inProgress(estimate) &&
+          estimate.estimateNumber === accepted.estimateNumber &&
+          estimate.versionNumber > accepted.versionNumber
+      ) ?? accepted
+    )
+  }
+  return estimates.find(inProgress) ?? estimates[0] ?? null
 }
 
 async function refreshEstimateTotals(
