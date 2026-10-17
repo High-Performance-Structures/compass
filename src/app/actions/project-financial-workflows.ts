@@ -28,6 +28,8 @@ import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import {
   availableDepositForApplication,
+  moveDraftPayApplicationsToRevision,
+  refreshAutoDepositPayApplications,
   refreshOwnerPayApplication,
 } from "@/lib/financials/owner-pay-application-refresh"
 import {
@@ -148,6 +150,8 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly ownerDetail: PayApplicationOwnerDetail
   /** Detail chosen for this draw; null follows the company default. */
   readonly ownerDetailOverride: PayApplicationOwnerDetail | null
+  /** A newer current contract budget revision this draft has not picked up. */
+  readonly newerBudgetRevision: { readonly id: string; readonly revisionNumber: number } | null
   readonly lines: readonly ProjectOwnerPayApplicationLine[]
 }
 
@@ -402,6 +406,27 @@ export async function getProjectFinancialWorkflowItems(
   })
 }
 
+async function newerBudgetRevision(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  budgetRevisionId: string | null
+): Promise<{ readonly id: string; readonly revisionNumber: number } | null> {
+  const current = await db
+    .select({
+      id: projectContractBudgetRevisions.id,
+      revisionNumber: projectContractBudgetRevisions.revisionNumber,
+    })
+    .from(projectContractBudgetRevisions)
+    .where(
+      and(
+        eq(projectContractBudgetRevisions.projectId, projectId),
+        eq(projectContractBudgetRevisions.status, "current")
+      )
+    )
+    .get()
+  return current && current.id !== budgetRevisionId ? current : null
+}
+
 export async function getProjectOwnerPayApplicationDraft(
   projectId: string,
   applicationId: string
@@ -458,6 +483,8 @@ export async function getProjectOwnerPayApplicationDraft(
     ownerDetailOverride: isPayApplicationOwnerDetail(application.ownerDetail)
       ? application.ownerDetail
       : null,
+    newerBudgetRevision:
+      application.status === "draft" ? await newerBudgetRevision(db, projectId, application.budgetRevisionId) : null,
     lines: lines.map((line) => ({
       id: line.id,
       costCode: line.costCode,
@@ -698,6 +725,87 @@ export async function setProjectOwnerPayApplicationOwnerDetail(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to change the client detail.",
+    }
+  }
+}
+
+/**
+ * Move a draft pay application onto the current contract budget revision,
+ * keeping the work already entered, so executed change orders are billed.
+ */
+export async function updateProjectOwnerPayApplicationBudget(
+  projectId: string,
+  applicationId: string
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const application = await db
+      .select({ budgetRevisionId: projectBudgetApplications.budgetRevisionId })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
+          eq(projectBudgetApplications.status, "draft")
+        )
+      )
+      .get()
+    if (!application) throw new Error("Only a draft pay application can be updated.")
+    const newer = await newerBudgetRevision(db, projectId, application.budgetRevisionId)
+    if (!newer) throw new Error("This pay application already uses the current contract budget.")
+    await moveDraftPayApplicationsToRevision(db, projectId, newer.id, new Date().toISOString())
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to update the pay application.",
+    }
+  }
+}
+
+/** Delete a draft pay application. Submitted ones are kept for the record. */
+export async function deleteProjectOwnerPayApplicationDraft(
+  projectId: string,
+  applicationId: string
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const application = await db
+      .select({ id: projectBudgetApplications.id })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
+          eq(projectBudgetApplications.status, "draft")
+        )
+      )
+      .get()
+    if (!application) throw new Error("Only a draft pay application can be deleted.")
+    await db.batch([
+      db.delete(projectBudgetLines).where(eq(projectBudgetLines.applicationId, applicationId)),
+      db
+        .delete(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "owner_pay_application"),
+            eq(projectOperations.sourceRecordId, applicationId)
+          )
+        ),
+      db.delete(projectBudgetApplications).where(eq(projectBudgetApplications.id, applicationId)),
+    ])
+    // Its applied deposit is free again for the other drafts.
+    await refreshAutoDepositPayApplications(db, projectId, new Date().toISOString())
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to delete the pay application.",
     }
   }
 }

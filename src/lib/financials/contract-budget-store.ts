@@ -21,6 +21,7 @@ import {
   type ContractAdjustment,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
+import { moveDraftPayApplicationsToRevision } from "@/lib/financials/owner-pay-application-refresh"
 import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
 
 export type ContractBudgetRebuildResult =
@@ -472,4 +473,6 @@ async function activateContractBudgetRevision(input: {
       })
       .where(eq(projectBudgetApplications.id, projectionId)),
   ])
+  // Draft draws follow the new revision so an executed change order reaches them.
+  await moveDraftPayApplicationsToRevision(input.db, input.projectId, input.revisionId, input.now)
 }
