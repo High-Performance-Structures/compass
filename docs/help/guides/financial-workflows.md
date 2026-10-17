@@ -89,6 +89,8 @@ When a change order is executed, draft pay applications move to the new contract
 
 **Delete draft** removes a draft pay application and the work entered on it, and frees any deposit it applied. Submitted pay applications can't be deleted.
 
+**Ready for review** locks the draw so it can be reviewed and entered in Sage; Compass asks you to confirm first. While it's in internal review, **Return to draft** unlocks it for more edits.
+
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
 
 ## Sage Status {#sage-status}
