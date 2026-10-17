@@ -1751,6 +1751,7 @@ export const ownerProjectUpdates = sqliteTable("owner_project_updates", {
   recalledBy: text("recalled_by").references(() => users.id, {
     onDelete: "set null",
   }),
+  revision: integer("revision").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
