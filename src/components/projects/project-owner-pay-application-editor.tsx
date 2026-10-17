@@ -2,10 +2,12 @@
 
 import { Fragment, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconCircleCheck, IconDeviceFloppy } from "@tabler/icons-react"
+import { IconCircleCheck, IconDeviceFloppy, IconRefresh, IconTrash } from "@tabler/icons-react"
 
 import {
+  deleteProjectOwnerPayApplicationDraft,
   markProjectOwnerPayApplicationReady,
+  updateProjectOwnerPayApplicationBudget,
   setProjectOwnerPayApplicationDeposit,
   setProjectOwnerPayApplicationOwnerDetail,
   setProjectOwnerPayApplicationPercentComplete,
@@ -14,6 +16,17 @@ import {
   type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
@@ -386,6 +399,27 @@ export function ProjectOwnerPayApplicationEditor({
   const [message, setMessage] = useState<string | null>(null)
   const editable = application.status === "draft"
 
+  function updateBudget(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await updateProjectOwnerPayApplicationBudget(projectId, application.id)
+      setMessage(result.success ? "Pay application updated to the current contract budget. Work already entered was kept." : result.error)
+      router.refresh()
+    })
+  }
+
+  function deleteDraft(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await deleteProjectOwnerPayApplicationDraft(projectId, application.id)
+      if (!result.success) {
+        setMessage(result.error)
+        return
+      }
+      router.push(`/dashboard/projects/${projectId}/financials`)
+    })
+  }
+
   function readyForReview(): void {
     setMessage(null)
     startTransition(async () => {
@@ -423,12 +457,45 @@ export function ProjectOwnerPayApplicationEditor({
             </div>
           </div>
           {editable && (
-            <Button onClick={readyForReview} disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
-              <IconCircleCheck className="size-4" />
-              {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={isPending}>
+                    <IconTrash className="size-4" />
+                    Delete draft
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete pay application {application.applicationNumber}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      The draft and the work entered on it are removed. Any deposit it applied becomes available to other drafts. This can&apos;t be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep it</AlertDialogCancel>
+                    <AlertDialogAction onClick={deleteDraft}>Delete draft</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Button onClick={readyForReview} disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
+                <IconCircleCheck className="size-4" />
+                {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
+              </Button>
+            </div>
           )}
         </div>
+        {application.newerBudgetRevision && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/35 px-4 py-3 text-sm">
+            <p>
+              Contract budget revision {application.newerBudgetRevision.revisionNumber} is current, with changes this draft doesn&apos;t include yet, such as executed change orders.
+            </p>
+            <Button size="sm" onClick={updateBudget} disabled={isPending}>
+              <IconRefresh className="size-4" />
+              Update to revision {application.newerBudgetRevision.revisionNumber}
+            </Button>
+          </div>
+        )}
         <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
           {[
             ["Contract to date", application.contractSumToDate],

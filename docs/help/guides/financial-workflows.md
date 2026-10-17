@@ -81,6 +81,10 @@ Bill a draft pay application by dollars or by percent complete. Each division ro
 
 **Client sees** sets how much of this pay application the client sees: **Division, % complete only** (each division's percent complete and the payment due, with no line amounts), **Division with amounts**, or **Cost code with amounts**. **Company default** follows the setting admins choose in Settings under **Pay applications**.
 
+When a change order is executed, draft pay applications move to the new contract budget revision on their own, and the change shows in the **Changes** column and the contract sum. Work already entered is kept. If a draft still shows an older revision, choose **Update to revision N** on it. Submitted pay applications keep the revision they were prepared against.
+
+**Delete draft** removes a draft pay application and the work entered on it, and frees any deposit it applied. Submitted pay applications can't be deleted.
+
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
 
 ## Sage Status {#sage-status}
