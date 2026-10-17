@@ -41,6 +41,8 @@ export type BuildertrendEstimatePhase = {
   readonly name: string
   readonly description: string
   readonly sortOrder: number
+  /** Named by a Buildertrend Parent Group, which also becomes an estimate assembly. */
+  readonly fromParentGroup: boolean
 }
 
 export type BuildertrendEstimateParseResult =
@@ -98,6 +100,7 @@ export function parseBuildertrendEstimateRows(rows: readonly Row[]): Buildertren
   const lines: BuildertrendEstimateLine[] = []
   const phaseOrder: string[] = []
   const phaseDescriptions = new Map<string, string>()
+  const parentGroupPhases = new Set<string>()
   for (const [index, row] of rows.entries()) {
     const rowNumber = index + 2
     // Fully blank rows (spreadsheet padding) are skipped.
@@ -110,7 +113,8 @@ export function parseBuildertrendEstimateRows(rows: readonly Row[]): Buildertren
     if (!costCode) return { success: false, error: `Row ${rowNumber} has no recognizable cost code (expected "03 21 00 - Name").` }
     const description = text(row, "Title")
     if (!description) return { success: false, error: `Row ${rowNumber} has no title.` }
-    const phaseName = text(row, "Parent Group") || costCode.name
+    const parentGroup = text(row, "Parent Group")
+    const phaseName = parentGroup || costCode.name
     const quantity = amount(row, "Quantity")
     const unitCost = amount(row, "Unit Cost")
     const builderCost = amount(row, "Builder Cost")
@@ -129,6 +133,7 @@ export function parseBuildertrendEstimateRows(rows: readonly Row[]): Buildertren
         : directCostCents > 0
           ? Math.round(((lineTotalCents - directCostCents) / directCostCents) * 10_000)
           : 0
+    if (parentGroup) parentGroupPhases.add(phaseName)
     if (!phaseDescriptions.has(phaseName)) {
       phaseOrder.push(phaseName)
       phaseDescriptions.set(phaseName, text(row, "Parent Group Description"))
@@ -160,6 +165,7 @@ export function parseBuildertrendEstimateRows(rows: readonly Row[]): Buildertren
       name: name.slice(0, 160),
       description: (phaseDescriptions.get(name) ?? "").slice(0, 6_000),
       sortOrder: index + 1,
+      fromParentGroup: parentGroupPhases.has(name),
     })),
     directCostCents: lines.reduce((sum, line) => sum + line.directCostCents, 0),
     totalCents: lines.reduce((sum, line) => sum + line.lineTotalCents, 0),

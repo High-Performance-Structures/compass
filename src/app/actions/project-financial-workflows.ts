@@ -28,10 +28,17 @@ import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import {
   availableDepositForApplication,
-  moveDraftPayApplicationsToRevision,
   refreshAutoDepositPayApplications,
+  draftSplitIsStale,
   refreshOwnerPayApplication,
+  shareLineRow,
+  syncDraftPayApplication,
 } from "@/lib/financials/owner-pay-application-refresh"
+import {
+  g703ByCostCode,
+  loadPayApplicationShares,
+  priorAmountsForShares,
+} from "@/lib/financials/pay-application-shares"
 import {
   budgetPaymentBreakdown,
   type BudgetPaymentBreakdown,
@@ -111,6 +118,10 @@ export type ProjectFinancialCodingOptions = {
 export type ProjectOwnerPayApplicationLine = {
   readonly id: string
   readonly costCode: string
+  /** Estimate assembly or change order this row bills; null when none. */
+  readonly assemblyKey: string | null
+  readonly assemblyName: string | null
+  readonly assemblySort: number
   readonly divisionCode: string
   readonly divisionName: string
   readonly description: string
@@ -152,6 +163,8 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly ownerDetailOverride: PayApplicationOwnerDetail | null
   /** A newer current contract budget revision this draft has not picked up. */
   readonly newerBudgetRevision: { readonly id: string; readonly revisionNumber: number } | null
+  /** The contract budget's assembly split changed since this draft was made. */
+  readonly assemblySplitStale: boolean
   readonly lines: readonly ProjectOwnerPayApplicationLine[]
 }
 
@@ -485,9 +498,16 @@ export async function getProjectOwnerPayApplicationDraft(
       : null,
     newerBudgetRevision:
       application.status === "draft" ? await newerBudgetRevision(db, projectId, application.budgetRevisionId) : null,
+    assemblySplitStale:
+      application.status === "draft" && application.budgetRevisionId
+        ? draftSplitIsStale(lines, await loadPayApplicationShares(db, application.budgetRevisionId))
+        : false,
     lines: lines.map((line) => ({
       id: line.id,
       costCode: line.costCode,
+      assemblyKey: line.assemblyKey,
+      assemblyName: line.assemblyName,
+      assemblySort: line.assemblySort,
       divisionCode: line.csiDivision,
       divisionName: line.csiDivisionName,
       description: line.description,
@@ -618,8 +638,8 @@ export async function setProjectOwnerPayApplicationPercentComplete(
   projectId: string,
   applicationId: string,
   input: {
-    readonly scope: "division" | "line"
-    /** Division code, or the pay application line id. */
+    readonly scope: "division" | "assembly" | "cost_code" | "line"
+    /** Division code, assembly key ("" for work outside any assembly), cost code, or line id. */
     readonly key: string
     readonly percentComplete: number | null
   }
@@ -650,7 +670,13 @@ export async function setProjectOwnerPayApplicationPercentComplete(
           eq(projectBudgetLines.applicationId, applicationId),
           input.scope === "division"
             ? eq(projectBudgetLines.csiDivision, input.key)
-            : eq(projectBudgetLines.id, input.key)
+            : input.scope === "assembly"
+              ? input.key
+                ? eq(projectBudgetLines.assemblyKey, input.key)
+                : isNull(projectBudgetLines.assemblyKey)
+              : input.scope === "cost_code"
+                ? eq(projectBudgetLines.costCode, input.key)
+                : eq(projectBudgetLines.id, input.key)
         )
       )
     if (lines.length === 0) throw new Error("No pay application lines match.")
@@ -752,9 +778,12 @@ export async function updateProjectOwnerPayApplicationBudget(
       )
       .get()
     if (!application) throw new Error("Only a draft pay application can be updated.")
+    // The newer current revision, or the draft's own revision when only its
+    // assembly split changed.
     const newer = await newerBudgetRevision(db, projectId, application.budgetRevisionId)
-    if (!newer) throw new Error("This pay application already uses the current contract budget.")
-    await moveDraftPayApplicationsToRevision(db, projectId, newer.id, new Date().toISOString())
+    const targetRevisionId = newer?.id ?? application.budgetRevisionId
+    if (!targetRevisionId) throw new Error("This pay application has no contract budget revision.")
+    await syncDraftPayApplication(db, projectId, applicationId, targetRevisionId, new Date().toISOString())
     revalidateFinancialPaths(projectId)
     return { success: true, id: applicationId }
   } catch (error) {
@@ -903,8 +932,8 @@ export async function markProjectOwnerPayApplicationReady(
         currentPaymentDue: application.currentPaymentDue,
         balanceToFinish: application.balanceToFinish,
       },
-      g703: lines.map((line) => ({
-        sourceLineId: line.id,
+      // Sage keeps one G703 line per cost code; assembly detail travels alongside.
+      g703: g703ByCostCode(lines).map((line) => ({
         budgetRevisionLineId: line.budgetRevisionLineId,
         divisionCode: line.csiDivision,
         costCode: line.costCode,
@@ -918,6 +947,16 @@ export async function markProjectOwnerPayApplicationReady(
         totalCompletedStored: line.totalCosts,
         retainageHeld: line.retainageHeld,
         balanceToFinish: line.balanceToFinish,
+      })),
+      g703Assemblies: lines.map((line) => ({
+        sourceLineId: line.id,
+        costCode: line.costCode,
+        assemblyKey: line.assemblyKey,
+        assemblyName: line.assemblyName,
+        adjustedEstimate: line.adjustedEstimate,
+        currentWorkCompleted: line.currentWorkCompleted,
+        storedMaterials: line.storedMaterials,
+        totalCompletedStored: line.totalCosts,
       })),
     })
     await db
@@ -1283,15 +1322,6 @@ export async function createProjectOwnerPayApplicationDraft(
           .from(projectBudgetLines)
           .where(eq(projectBudgetLines.applicationId, priorApplication.id))
       : []
-    const priorByCostCode = new Map(
-      priorLines.map((line) => [
-        line.costCode,
-        {
-          totalCompletedStored: line.totalCosts,
-          retainageHeld: line.retainageHeld,
-        },
-      ])
-    )
     const originalContractSum = revision.originalContractSumCents / 100
     const netChanges = revision.approvedChangesCents / 100
     const contractSumToDate = revision.revisedContractSumCents / 100
@@ -1329,53 +1359,21 @@ export async function createProjectOwnerPayApplicationDraft(
       updatedAt: now,
     })
 
-    const applicationLineRows = revisionLines.map((line) => {
-      const originalEstimate = line.originalEstimateCents / 100
-      const totalChanges = line.approvedChangeCents / 100
-      const adjustedEstimate = line.adjustedBudgetCents / 100
-      const prior = priorByCostCode.get(line.costCode)
-      const priorCosts = prior?.totalCompletedStored ?? 0
-      return {
-        id: crypto.randomUUID(),
-        projectId,
-        applicationId,
-        budgetRevisionLineId: line.id,
-        sourceSystem: "compass_contract_budget",
-        sourceRecordId: line.id,
-        sourceRecordNumber: line.costCode,
-        costCode: line.costCode,
-        csiDivision: line.divisionCode,
-        csiDivisionName: line.divisionName,
-        description: line.description,
-        notes: null,
-        originalEstimate,
-        priorChanges: totalChanges,
-        currentChanges: 0,
-        totalChanges,
-        adjustedEstimate,
-        previousWorkCompleted: priorCosts,
-        currentWorkCompleted: 0,
-        storedMaterials: 0,
-        priorCosts,
-        currentCosts: 0,
-        totalCosts: priorCosts,
-        percentComplete:
-          adjustedEstimate > 0
-            ? Math.round((priorCosts / adjustedEstimate) * 1_000) / 10
-            : 0,
-        balanceToFinish: adjustedEstimate - priorCosts,
-        retainageHeld: prior?.retainageHeld ?? 0,
-        vendorName: null,
-        ownerLabel: line.description,
-        ownerVisible: line.ownerVisible,
-        internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
-        sortOrder: line.sortOrder,
-        syncStatus: "compass_only",
-        lastSyncedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      }
-    })
+    const shares = await loadPayApplicationShares(db, revision.id)
+    const priorAmounts = priorAmountsForShares(shares, priorLines)
+    const applicationLineRows = shares.map((share, index) =>
+      shareLineRow(
+        share,
+        { projectId, applicationId, revisionNumber: revision.revisionNumber, now },
+        {
+          previousWorkCompletedCents: priorAmounts[index]?.previousCents ?? 0,
+          currentWorkCompletedCents: 0,
+          storedMaterialsCents: 0,
+          retainageHeldCents: priorAmounts[index]?.retainageCents ?? 0,
+          priorChangesCents: priorAmounts[index]?.priorChangesCents ?? 0,
+        }
+      )
+    )
     try {
       for (const rows of chunkD1Rows(applicationLineRows)) {
         await db.insert(projectBudgetLines).values(rows)

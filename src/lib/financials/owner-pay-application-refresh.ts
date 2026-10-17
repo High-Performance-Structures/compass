@@ -7,10 +7,7 @@ import {
   projectContractDeposits,
   projectOperations,
 } from "@/db/schema"
-import {
-  projectContractBudgetLines,
-  projectContractBudgetRevisions,
-} from "@/db/schema-estimates"
+import { projectContractBudgetRevisions } from "@/db/schema-estimates"
 import { chunkD1Rows } from "@/lib/d1-query"
 import {
   currentPaymentDueAfterDeposit,
@@ -18,6 +15,13 @@ import {
   drawAmountBeforeDeposit,
   unappliedDeposit,
 } from "@/lib/financials/contract-deposits"
+import {
+  distributeCents,
+  loadPayApplicationShares,
+  shareKey,
+  splitNeedsSpreading,
+  type PayApplicationShare,
+} from "@/lib/financials/pay-application-shares"
 
 /** Pay applications that can carry an applied deposit (not projections). */
 const DEPOSIT_EXCLUDED_APPLICATION_STATUSES = ["budget_current", "budget_superseded", "void"] as const
@@ -195,12 +199,219 @@ export function lineAmountsOnRevision(
   }
 }
 
+type ShareLineAmounts = {
+  readonly previousWorkCompletedCents: number
+  readonly currentWorkCompletedCents: number
+  readonly storedMaterialsCents: number
+  readonly retainageHeldCents: number
+  readonly priorChangesCents: number
+}
+
+/** A new pay application G703 row for one share of the contract budget. */
+export function shareLineRow(
+  share: PayApplicationShare,
+  context: {
+    readonly projectId: string
+    readonly applicationId: string
+    readonly revisionNumber: number
+    readonly now: string
+  },
+  amounts: ShareLineAmounts
+): typeof projectBudgetLines.$inferInsert {
+  const previous = amounts.previousWorkCompletedCents / 100
+  const current = amounts.currentWorkCompletedCents / 100
+  const stored = amounts.storedMaterialsCents / 100
+  const total = roundCents(previous + current + stored)
+  const adjustedEstimate = share.adjustedBudgetCents / 100
+  const totalChanges = share.approvedChangeCents / 100
+  const priorChanges = amounts.priorChangesCents / 100
+  return {
+    id: crypto.randomUUID(),
+    projectId: context.projectId,
+    applicationId: context.applicationId,
+    budgetRevisionLineId: share.budgetRevisionLineId,
+    sourceSystem: "compass_contract_budget",
+    sourceRecordId: share.budgetRevisionLineId,
+    sourceRecordNumber: share.costCode,
+    costCode: share.costCode,
+    csiDivision: share.divisionCode,
+    csiDivisionName: share.divisionName,
+    description: share.description,
+    notes: null,
+    originalEstimate: share.originalEstimateCents / 100,
+    priorChanges,
+    currentChanges: roundCents(totalChanges - priorChanges),
+    totalChanges,
+    adjustedEstimate,
+    previousWorkCompleted: previous,
+    currentWorkCompleted: current,
+    storedMaterials: stored,
+    priorCosts: previous,
+    currentCosts: roundCents(current + stored),
+    totalCosts: total,
+    percentComplete: adjustedEstimate > 0 ? Math.round((total / adjustedEstimate) * 1_000) / 10 : 0,
+    balanceToFinish: roundCents(adjustedEstimate - total),
+    retainageHeld: amounts.retainageHeldCents / 100,
+    vendorName: null,
+    ownerLabel: share.assemblyName ? `${share.description} · ${share.assemblyName}` : share.description,
+    ownerVisible: share.ownerVisible,
+    internalNotes: `Contract budget revision ${context.revisionNumber}.`,
+    sortOrder: share.sortOrder,
+    assemblyKey: share.assemblyKey,
+    assemblyName: share.assemblyName,
+    assemblySort: share.assemblySort,
+    syncStatus: "compass_only",
+    lastSyncedAt: null,
+    createdAt: context.now,
+    updatedAt: context.now,
+  }
+}
+
+function cents(value: number): number {
+  return Math.round(value * 100)
+}
+
+/**
+ * Bring a draft pay application onto a contract budget revision and its
+ * assembly split, keeping the work already entered. A cost code whose shares
+ * are unchanged is updated in place; one whose split changed has its entered
+ * amounts spread across the new shares by scheduled value.
+ */
+export async function syncDraftPayApplication(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  applicationId: string,
+  revisionId: string,
+  now: string
+): Promise<void> {
+  const revision = await db
+    .select()
+    .from(projectContractBudgetRevisions)
+    .where(eq(projectContractBudgetRevisions.id, revisionId))
+    .get()
+  if (!revision) throw new Error("Contract budget revision not found.")
+  const [shares, existing] = await Promise.all([
+    loadPayApplicationShares(db, revisionId),
+    db.select().from(projectBudgetLines).where(eq(projectBudgetLines.applicationId, applicationId)),
+  ])
+  const oldByCode = new Map<string, (typeof existing)[number][]>()
+  for (const line of existing) oldByCode.set(line.costCode, [...(oldByCode.get(line.costCode) ?? []), line])
+  const sharesByCode = new Map<string, PayApplicationShare[]>()
+  for (const share of shares) sharesByCode.set(share.costCode, [...(sharesByCode.get(share.costCode) ?? []), share])
+
+  const statements = []
+  const inserts: (typeof projectBudgetLines.$inferInsert)[] = []
+  const context = { projectId, applicationId, revisionNumber: revision.revisionNumber, now }
+  for (const [costCode, codeShares] of sharesByCode) {
+    const olds = oldByCode.get(costCode) ?? []
+    const oldByKey = new Map(olds.map((line) => [shareKey(line.costCode, line.assemblyKey), line]))
+    const spreadAmounts = splitNeedsSpreading(
+      olds.map((line) => ({
+        assemblyKey: line.assemblyKey,
+        hasAmounts:
+          line.previousWorkCompleted !== 0 || line.currentWorkCompleted !== 0 || line.storedMaterials !== 0 || line.retainageHeld !== 0,
+      })),
+      codeShares
+    )
+    if (!spreadAmounts) {
+      // Row by row: matching shares update in place, new shares start empty,
+      // and rows with no share (and no amounts) are removed.
+      const matchedIds = new Set<string>()
+      for (const share of codeShares) {
+        const line = oldByKey.get(shareKey(share.costCode, share.assemblyKey))
+        if (!line) {
+          inserts.push(
+            shareLineRow(share, context, {
+              previousWorkCompletedCents: 0,
+              currentWorkCompletedCents: 0,
+              storedMaterialsCents: 0,
+              retainageHeldCents: 0,
+              priorChangesCents: 0,
+            })
+          )
+          continue
+        }
+        matchedIds.add(line.id)
+        statements.push(
+          db
+            .update(projectBudgetLines)
+            .set({
+              budgetRevisionLineId: share.budgetRevisionLineId,
+              sourceRecordId: share.budgetRevisionLineId,
+              ...lineAmountsOnRevision(line, share),
+              assemblyName: share.assemblyName,
+              assemblySort: share.assemblySort,
+              ownerLabel: share.assemblyName ? `${share.description} · ${share.assemblyName}` : share.description,
+              internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
+              updatedAt: now,
+            })
+            .where(eq(projectBudgetLines.id, line.id))
+        )
+      }
+      for (const line of olds) {
+        if (!matchedIds.has(line.id)) statements.push(db.delete(projectBudgetLines).where(eq(projectBudgetLines.id, line.id)))
+      }
+      continue
+    }
+    const weights = codeShares.map((share) => Math.max(0, share.adjustedBudgetCents))
+    const spread = (total: number): readonly number[] => distributeCents(total, weights)
+    const previous = spread(olds.reduce((sum, line) => sum + cents(line.previousWorkCompleted), 0))
+    const current = spread(olds.reduce((sum, line) => sum + cents(line.currentWorkCompleted), 0))
+    const stored = spread(olds.reduce((sum, line) => sum + cents(line.storedMaterials), 0))
+    const retainage = spread(olds.reduce((sum, line) => sum + cents(line.retainageHeld), 0))
+    const priorChanges = distributeCents(
+      olds.reduce((sum, line) => sum + cents(line.priorChanges), 0),
+      codeShares.map((share) => Math.max(0, share.approvedChangeCents))
+    )
+    codeShares.forEach((share, index) => {
+      inserts.push(
+        shareLineRow(share, context, {
+          previousWorkCompletedCents: previous[index] ?? 0,
+          currentWorkCompletedCents: current[index] ?? 0,
+          storedMaterialsCents: stored[index] ?? 0,
+          retainageHeldCents: retainage[index] ?? 0,
+          priorChangesCents: priorChanges[index] ?? 0,
+        })
+      )
+    })
+    for (const line of olds) statements.push(db.delete(projectBudgetLines).where(eq(projectBudgetLines.id, line.id)))
+  }
+  for (const rows of chunkD1Rows(inserts)) statements.push(db.insert(projectBudgetLines).values(rows))
+  statements.push(
+    db
+      .update(projectBudgetApplications)
+      .set({
+        budgetRevisionId: revisionId,
+        sourceRecordId: revisionId,
+        originalContractSum: revision.originalContractSumCents / 100,
+        netChanges: revision.approvedChangesCents / 100,
+        contractSumToDate: revision.revisedContractSumCents / 100,
+        updatedAt: now,
+      })
+      .where(eq(projectBudgetApplications.id, applicationId))
+  )
+  const [first, ...rest] = statements
+  if (first) await db.batch([first, ...rest])
+  await refreshOwnerPayApplication(db, projectId, applicationId, now)
+}
+
+/** Whether a draft's rows no longer match the revision's cost code and assembly split. */
+export function draftSplitIsStale(
+  rows: readonly { readonly costCode: string; readonly assemblyKey: string | null; readonly adjustedEstimate: number }[],
+  shares: readonly PayApplicationShare[]
+): boolean {
+  const rowsByKey = new Map(rows.map((row) => [shareKey(row.costCode, row.assemblyKey), row]))
+  if (rowsByKey.size !== shares.length) return true
+  return shares.some((share) => {
+    const row = rowsByKey.get(shareKey(share.costCode, share.assemblyKey))
+    return !row || cents(row.adjustedEstimate) !== share.adjustedBudgetCents
+  })
+}
+
 /**
  * Move draft pay applications onto a newly current contract budget revision,
- * so an executed change order reaches the draw being prepared. Work, stored
- * materials, retainage rate and visibility already entered on each cost code
- * are kept; the change since the draft's revision counts as a current change.
- * Submitted pay applications keep the revision they were prepared against.
+ * so an executed change order reaches the draw being prepared. Submitted pay
+ * applications keep the revision they were prepared against.
  */
 export async function moveDraftPayApplicationsToRevision(
   db: ReturnType<typeof getDb>,
@@ -208,14 +419,8 @@ export async function moveDraftPayApplicationsToRevision(
   revisionId: string,
   now: string
 ): Promise<number> {
-  const revision = await db
-    .select()
-    .from(projectContractBudgetRevisions)
-    .where(eq(projectContractBudgetRevisions.id, revisionId))
-    .get()
-  if (!revision) return 0
   const drafts = await db
-    .select()
+    .select({ id: projectBudgetApplications.id })
     .from(projectBudgetApplications)
     .where(
       and(
@@ -226,98 +431,6 @@ export async function moveDraftPayApplicationsToRevision(
       )
     )
     .orderBy(projectBudgetApplications.createdAt)
-  if (drafts.length === 0) return 0
-  const revisionLines = await db
-    .select()
-    .from(projectContractBudgetLines)
-    .where(eq(projectContractBudgetLines.revisionId, revisionId))
-    .orderBy(projectContractBudgetLines.divisionCode, projectContractBudgetLines.sortOrder)
-
-  for (const draft of drafts) {
-    const existing = await db
-      .select()
-      .from(projectBudgetLines)
-      .where(eq(projectBudgetLines.applicationId, draft.id))
-    const byCostCode = new Map(existing.map((line) => [line.costCode, line]))
-    const inserts: (typeof projectBudgetLines.$inferInsert)[] = []
-    const statements = []
-    for (const revisionLine of revisionLines) {
-      const originalEstimate = revisionLine.originalEstimateCents / 100
-      const totalChanges = revisionLine.approvedChangeCents / 100
-      const adjustedEstimate = revisionLine.adjustedBudgetCents / 100
-      const line = byCostCode.get(revisionLine.costCode)
-      if (line) {
-        statements.push(
-          db
-            .update(projectBudgetLines)
-            .set({
-              budgetRevisionLineId: revisionLine.id,
-              sourceRecordId: revisionLine.id,
-              ...lineAmountsOnRevision(line, revisionLine),
-              internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
-              updatedAt: now,
-            })
-            .where(eq(projectBudgetLines.id, line.id))
-        )
-        continue
-      }
-      inserts.push({
-        id: crypto.randomUUID(),
-        projectId,
-        applicationId: draft.id,
-        budgetRevisionLineId: revisionLine.id,
-        sourceSystem: "compass_contract_budget",
-        sourceRecordId: revisionLine.id,
-        sourceRecordNumber: revisionLine.costCode,
-        costCode: revisionLine.costCode,
-        csiDivision: revisionLine.divisionCode,
-        csiDivisionName: revisionLine.divisionName,
-        description: revisionLine.description,
-        notes: null,
-        originalEstimate,
-        priorChanges: 0,
-        currentChanges: totalChanges,
-        totalChanges,
-        adjustedEstimate,
-        previousWorkCompleted: 0,
-        currentWorkCompleted: 0,
-        storedMaterials: 0,
-        priorCosts: 0,
-        currentCosts: 0,
-        totalCosts: 0,
-        percentComplete: 0,
-        balanceToFinish: adjustedEstimate,
-        retainageHeld: 0,
-        vendorName: null,
-        ownerLabel: revisionLine.description,
-        ownerVisible: revisionLine.ownerVisible,
-        internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
-        sortOrder: revisionLine.sortOrder,
-        syncStatus: "compass_only",
-        lastSyncedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-    }
-    for (const rows of chunkD1Rows(inserts)) {
-      statements.push(db.insert(projectBudgetLines).values(rows))
-    }
-    statements.push(
-      db
-        .update(projectBudgetApplications)
-        .set({
-          budgetRevisionId: revisionId,
-          sourceRecordId: revisionId,
-          originalContractSum: revision.originalContractSumCents / 100,
-          netChanges: revision.approvedChangesCents / 100,
-          contractSumToDate: revision.revisedContractSumCents / 100,
-          updatedAt: now,
-        })
-        .where(eq(projectBudgetApplications.id, draft.id))
-    )
-    const [first, ...rest] = statements
-    if (first) await db.batch([first, ...rest])
-    await refreshOwnerPayApplication(db, projectId, draft.id, now)
-  }
+  for (const draft of drafts) await syncDraftPayApplication(db, projectId, draft.id, revisionId, now)
   return drafts.length
 }

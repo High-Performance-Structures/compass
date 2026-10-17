@@ -2902,6 +2902,20 @@ export async function importBuildertrendEstimateExport(
       }
     })
     const phaseIdByName = new Map(phaseRows.map((phase) => [phase.name, phase.id]))
+    // Buildertrend Parent Groups are the estimate's assemblies too, so the
+    // contract budget and pay applications can bill and report by them.
+    const assemblyRows = input.phases
+      .filter((phase) => phase.fromParentGroup)
+      .map((phase) => ({
+        id: crypto.randomUUID(),
+        estimateId,
+        name: requiredText(phase.name.slice(0, 160), "Assembly name"),
+        description: cleanText(phase.description.slice(0, 6_000)),
+        sortOrder: Math.max(1, Math.round(phase.sortOrder)),
+        createdAt: now,
+        updatedAt: now,
+      }))
+    const assemblyIdByName = new Map(assemblyRows.map((assembly) => [assembly.name, assembly.id]))
     const lineValues = input.lines.map((line, index) => {
       const cost = costCodeMap.get(line.costCode)
       if (!cost) throw new Error(`Cost code ${line.costCode} is unavailable.`)
@@ -2911,7 +2925,7 @@ export async function importBuildertrendEstimateExport(
         projectId,
         estimateId,
         templateLineId: null,
-        assemblyId: null,
+        assemblyId: assemblyIdByName.get(line.phaseName.slice(0, 160)) ?? null,
         reportPhaseId: phaseIdByName.get(line.phaseName) ?? null,
         divisionCode: cost.divisionCode,
         divisionName: cost.divisionDescription,
@@ -2954,9 +2968,15 @@ export async function importBuildertrendEstimateExport(
     for (let index = 0; index < phaseRows.length; index += 8) {
       phaseInserts.push(access.db.insert(projectEstimateReportPhases).values(phaseRows.slice(index, index + 8)))
     }
+    const assemblyInserts = []
+    for (let index = 0; index < assemblyRows.length; index += 12) {
+      assemblyInserts.push(access.db.insert(projectEstimateAssemblies).values(assemblyRows.slice(index, index + 12)))
+    }
     await access.db.batch([
       access.db.delete(projectEstimateLines).where(eq(projectEstimateLines.estimateId, estimateId)),
       access.db.delete(projectEstimateReportPhases).where(eq(projectEstimateReportPhases.estimateId, estimateId)),
+      access.db.delete(projectEstimateAssemblies).where(eq(projectEstimateAssemblies.estimateId, estimateId)),
+      ...assemblyInserts,
       ...phaseInserts,
       ...lineInserts,
       access.db.update(projectEstimates).set({ ...totals, updatedAt: now }).where(eq(projectEstimates.id, estimateId)),

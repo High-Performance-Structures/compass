@@ -27,6 +27,23 @@ function formatDate(value: string | null): string {
   })
 }
 
+function isAssemblyMode(summary: ProjectBudgetSummary): boolean {
+  return (
+    summary.detailMode === "assembly" ||
+    summary.detailMode === "assembly_percent"
+  )
+}
+
+/** Assemblies show by name; divisions by code and name. */
+function groupLabel(
+  summary: ProjectBudgetSummary,
+  division: { readonly csiDivision: string; readonly csiDivisionName: string }
+): string {
+  return isAssemblyMode(summary)
+    ? division.csiDivisionName
+    : `${division.csiDivision} - ${division.csiDivisionName}`
+}
+
 function pct(value: number): string {
   return `${Math.round(value)}%`
 }
@@ -60,7 +77,9 @@ export function ProjectBudgetPanel({
     )
   }
 
-  const percentOnly = summary.detailMode === "category_percent"
+  const percentOnly =
+    summary.detailMode === "category_percent" ||
+    summary.detailMode === "assembly_percent"
   const visibleDivisions = summary.divisions.filter((division) =>
     percentOnly ? division.lineCount > 0 : division.adjustedEstimate > 0
   )
@@ -186,7 +205,7 @@ export function ProjectBudgetPanel({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">
-                  {division.csiDivision} - {division.csiDivisionName}
+                  {groupLabel(summary, division)}
                 </p>
                 {!percentOnly && (
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -227,7 +246,10 @@ export function ProjectBudgetG703Table({
   readonly showVisibility?: boolean
 }): React.ReactElement {
   const showLineDetail = summary.detailMode === "cost_code"
-  if (summary.detailMode === "category_percent") {
+  if (
+    summary.detailMode === "category_percent" ||
+    summary.detailMode === "assembly_percent"
+  ) {
     return <ProjectBudgetPercentTable summary={summary} />
   }
 
@@ -258,7 +280,7 @@ export function ProjectBudgetG703Table({
                 className="border-t bg-muted/25"
               >
                 <td className="px-3 py-2 font-semibold" colSpan={2}>
-                  {division.csiDivision} - {division.csiDivisionName}
+                  {groupLabel(summary, division)}
                 </td>
                 <td className="px-3 py-2 text-right font-semibold">
                   {money(division.originalEstimate)}
@@ -393,7 +415,9 @@ function ProjectBudgetPercentTable({
       <table className="w-full border-collapse text-sm">
         <thead className="bg-muted/60 text-xs text-muted-foreground">
           <tr>
-            <th className="px-3 py-2 text-left font-medium">Division</th>
+            <th className="px-3 py-2 text-left font-medium">
+              {isAssemblyMode(summary) ? "Assembly" : "Division"}
+            </th>
             <th className="px-3 py-2 text-right font-medium">% complete</th>
           </tr>
         </thead>
@@ -401,7 +425,7 @@ function ProjectBudgetPercentTable({
           {summary.divisions.map((division) => (
             <tr key={division.csiDivision} className="border-t">
               <td className="px-3 py-2 font-medium">
-                {division.csiDivision} - {division.csiDivisionName}
+                {groupLabel(summary, division)}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
                 {pct(division.percentComplete)}

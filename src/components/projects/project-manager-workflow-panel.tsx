@@ -163,6 +163,12 @@ function budgetDetail(summary: ProjectBudgetSummary | null): string {
   if (summary.detailMode === "category_percent") {
     return "Owner view shows divisions by percent complete."
   }
+  if (summary.detailMode === "assembly_percent") {
+    return "Owner view shows assemblies by percent complete."
+  }
+  if (summary.detailMode === "assembly") {
+    return "Owner view is rolled up by assembly."
+  }
   return summary.detailMode === "category"
     ? "Owner view is rolled up by category."
     : "Internal detail and owner-visible cost codes."
