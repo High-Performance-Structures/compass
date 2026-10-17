@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
   const track = { stop: vi.fn(), getSettings: () => ({ deviceId: "camera" }) }
   const transformed = { stop: vi.fn() }
   const self = {
+    id: "self",
     permissions: { canProduceAudio: "ALLOWED", kickParticipant: false, addListener: vi.fn(), removeListener: vi.fn() },
     config: { pipMode: true },
     stageStatus: "ON_STAGE",
@@ -154,7 +155,31 @@ describe("Talk joining workflow", () => {
     mocks.self.roomJoined = false
     mocks.self.backgroundActive = false
     mocks.supported = true
+    const storage = new Map<string, string>()
+    vi.stubGlobal("localStorage", {
+      clear: () => storage.clear(),
+      getItem: (key: string) => storage.get(key) ?? null,
+      removeItem: (key: string) => { storage.delete(key) },
+      setItem: (key: string, value: string) => { storage.set(key, value) }
+    })
     localStorage.clear()
+    Object.defineProperty(document, "pictureInPictureEnabled", {
+      configurable: true,
+      value: true
+    })
+    Object.defineProperty(document, "pictureInPictureElement", {
+      configurable: true,
+      value: null
+    })
+    Object.defineProperty(document, "exitPictureInPicture", {
+      configurable: true,
+      value: vi.fn(async () => {
+        Object.defineProperty(document, "pictureInPictureElement", {
+          configurable: true,
+          value: null
+        })
+      })
+    })
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true)
     vi.stubGlobal("BroadcastChannel", undefined)
     mocks.meeting.participants.audioSubscribed.clear()
@@ -336,25 +361,64 @@ describe("Talk joining workflow", () => {
     expect(container.querySelector('textarea[aria-label="Meeting notes"]')).not.toBeNull()
   })
 
-  it("opens SDK PiP without needing light-DOM camera videos and tracks browser close", async () => {
+  it("opens browser PiP from a loaded SDK tile and tracks browser close", async () => {
     await render()
     await click("Join meeting")
-    expect(document.querySelector("video")).toBeNull()
+
+    const meetingRenderer = container.querySelector<HTMLElement>("[data-meeting-mode]")
+    const meetingUi = meetingRenderer?.parentElement?.parentElement
+    if (!meetingUi) throw new Error("Missing joined meeting UI")
+    const video = document.createElement("video")
+    const requestPictureInPicture = vi.fn(async () => {
+      Object.defineProperty(document, "pictureInPictureElement", {
+        configurable: true,
+        value: video
+      })
+      return video
+    })
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 1280 },
+      videoHeight: { configurable: true, value: 720 },
+      requestPictureInPicture: { configurable: true, value: requestPictureInPicture }
+    })
+    meetingUi.appendChild(video)
+    video.dispatchEvent(new CustomEvent("tileLoad", {
+      bubbles: true,
+      composed: true,
+      detail: {
+        participant: { id: mocks.self.id },
+        videoElement: video
+      }
+    }))
+
     await click("PiP")
-    expect(mocks.meeting.participants.pip.init).toHaveBeenCalledOnce()
-    expect(mocks.meeting.participants.pip.enable).toHaveBeenCalledOnce()
+    expect(requestPictureInPicture).toHaveBeenCalledOnce()
+    expect(mocks.meeting.participants.pip.init).not.toHaveBeenCalled()
+    expect(mocks.meeting.participants.pip.enable).not.toHaveBeenCalled()
     await act(async () => {
-      mocks.meeting.participants.pip.isActive = true
       document.dispatchEvent(new Event("enterpictureinpicture"))
     })
     await click("Exit PiP")
-    expect(mocks.meeting.participants.pip.disable).toHaveBeenCalledOnce()
+    expect(document.exitPictureInPicture).toHaveBeenCalledOnce()
     await act(async () => {
-      mocks.meeting.participants.pip.isActive = false
       document.dispatchEvent(new Event("leavepictureinpicture"))
     })
     expect(container.textContent).toContain("PiP")
     expect(mocks.meeting.leave).not.toHaveBeenCalled()
+  })
+
+  it("removes PiP tile listeners when the joined meeting unmounts", async () => {
+    await render()
+    await click("Join meeting")
+
+    const meetingRenderer = container.querySelector<HTMLElement>("[data-meeting-mode]")
+    const meetingUi = meetingRenderer?.parentElement?.parentElement
+    if (!meetingUi) throw new Error("Missing joined meeting UI")
+    const removeEventListener = vi.spyOn(meetingUi, "removeEventListener")
+
+    await act(async () => root.render(null))
+    expect(removeEventListener).toHaveBeenCalledWith("tileLoad", expect.any(Function))
+    expect(removeEventListener).toHaveBeenCalledWith("tileUnload", expect.any(Function))
   })
 
   it("asks before leaving and lets a participant cancel or leave only themselves", async () => {
