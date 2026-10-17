@@ -2,11 +2,12 @@
 
 import { Fragment, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconCircleCheck, IconDeviceFloppy, IconRefresh, IconTrash } from "@tabler/icons-react"
+import { IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconRefresh, IconTrash } from "@tabler/icons-react"
 
 import {
   deleteProjectOwnerPayApplicationDraft,
   markProjectOwnerPayApplicationReady,
+  returnProjectOwnerPayApplicationToDraft,
   updateProjectOwnerPayApplicationBudget,
   setProjectOwnerPayApplicationDeposit,
   setProjectOwnerPayApplicationOwnerDetail,
@@ -444,6 +445,15 @@ export function ProjectOwnerPayApplicationEditor({
     })
   }
 
+  function returnToDraft(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await returnProjectOwnerPayApplicationToDraft(projectId, application.id)
+      setMessage(result.success ? "Pay application is a draft again and can be edited." : result.error)
+      router.refresh()
+    })
+  }
+
   function readyForReview(): void {
     setMessage(null)
     startTransition(async () => {
@@ -480,6 +490,12 @@ export function ProjectOwnerPayApplicationEditor({
               <PayApplicationClientDetail projectId={projectId} application={application} onMessage={setMessage} />
             </div>
           </div>
+          {application.status === "internal_review" && (
+            <Button variant="outline" onClick={returnToDraft} disabled={isPending}>
+              <IconArrowBackUp className="size-4" />
+              Return to draft
+            </Button>
+          )}
           {editable && (
             <div className="flex flex-wrap items-center gap-2">
               <AlertDialog>
@@ -502,10 +518,26 @@ export function ProjectOwnerPayApplicationEditor({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-              <Button onClick={readyForReview} disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
-                <IconCircleCheck className="size-4" />
-                {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
+                    <IconCircleCheck className="size-4" />
+                    {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Mark pay application {application.applicationNumber} ready for review?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This locks the draw so it can be reviewed and entered in Sage. You can send it back to draft while it&apos;s in review.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep editing</AlertDialogCancel>
+                    <AlertDialogAction onClick={readyForReview}>Mark ready</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           )}
         </div>

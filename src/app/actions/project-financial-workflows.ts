@@ -995,6 +995,56 @@ export async function markProjectOwnerPayApplicationReady(
   }
 }
 
+/**
+ * Send a pay application in internal review back to draft so it can be edited
+ * again. Only before anyone has moved it past internal review.
+ */
+export async function returnProjectOwnerPayApplicationToDraft(
+  projectId: string,
+  applicationId: string
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const application = await db
+      .select({ id: projectBudgetApplications.id })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget"),
+          eq(projectBudgetApplications.status, "internal_review")
+        )
+      )
+      .get()
+    if (!application) throw new Error("Only a pay application in internal review can go back to draft.")
+    const now = new Date().toISOString()
+    await db.batch([
+      db
+        .update(projectBudgetApplications)
+        .set({ status: "draft", syncStatus: "compass_only", updatedAt: now })
+        .where(eq(projectBudgetApplications.id, applicationId)),
+      db
+        .update(projectOperations)
+        .set({ status: "draft", syncStatus: "compass_only", updatedAt: now })
+        .where(
+          and(
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "owner_pay_application"),
+            eq(projectOperations.sourceRecordId, applicationId)
+          )
+        ),
+    ])
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unable to return the pay application to draft.",
+    }
+  }
+}
+
 export async function getProjectFinancialCodingOptions(
   projectId: string
 ): Promise<ProjectFinancialCodingOptions> {
