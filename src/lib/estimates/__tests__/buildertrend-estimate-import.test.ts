@@ -42,8 +42,8 @@ describe("parseBuildertrendEstimateRows", () => {
     expect(result.lines).toHaveLength(3)
     expect(result.lines[0]).toMatchObject({ costCode: "03 21 00", directCostCents: 23_530, lineTotalCents: 29_648, markupRateBasisPoints: 2_600, notes: "Lower level", phaseName: "Footings" })
     expect(result.phases).toEqual([
-      { name: "Footings", description: "Labor and materials for footings", sortOrder: 1 },
-      { name: "Piers", description: "Concrete piers", sortOrder: 2 },
+      { name: "Footings", description: "Labor and materials for footings", sortOrder: 1, fromParentGroup: true },
+      { name: "Piers", description: "Concrete piers", sortOrder: 2, fromParentGroup: true },
     ])
     expect(result.totalCents).toBe(29_648 + 12_600 + 5_000)
     expect(result.directCostCents).toBe(23_530 + 10_000 + 5_000)

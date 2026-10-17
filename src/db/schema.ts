@@ -2387,6 +2387,10 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
   previousWorkCompleted: real("previous_work_completed").notNull().default(0),
   currentWorkCompleted: real("current_work_completed").notNull().default(0),
   storedMaterials: real("stored_materials").notNull().default(0),
+  /** Estimate assembly ("asm:<id>") or change order ("co:<id>") this row bills; null when none. */
+  assemblyKey: text("assembly_key"),
+  assemblyName: text("assembly_name"),
+  assemblySort: integer("assembly_sort").notNull().default(0),
   priorCosts: real("prior_costs").notNull().default(0),
   currentCosts: real("current_costs").notNull().default(0),
   totalCosts: real("total_costs").notNull().default(0),

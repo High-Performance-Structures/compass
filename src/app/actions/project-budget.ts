@@ -15,6 +15,10 @@ import {
   isPayApplicationOwnerDetail,
   type PayApplicationOwnerDetail,
 } from "@/lib/financials/pay-application-detail"
+import {
+  UNASSIGNED_ASSEMBLY_NAME,
+  loadPayApplicationShares,
+} from "@/lib/financials/pay-application-shares"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
@@ -31,7 +35,12 @@ import {
 
 export type { ProjectBudgetAudience } from "@/lib/project-budget-audience"
 /** "category_percent" shows divisions by percent complete with no amounts. */
-export type ProjectBudgetDetailMode = "cost_code" | "category" | "category_percent"
+export type ProjectBudgetDetailMode =
+  | "cost_code"
+  | "category"
+  | "category_percent"
+  | "assembly"
+  | "assembly_percent"
 
 export type ProjectBudgetApplicationItem = {
   readonly id: string
@@ -210,6 +219,8 @@ function percent(numerator: number, denominator: number): number {
 
 const OWNER_DETAIL_MODES: Readonly<Record<PayApplicationOwnerDetail, ProjectBudgetDetailMode>> = {
   division_percent: "category_percent",
+  assembly_percent: "assembly_percent",
+  assembly: "assembly",
   division: "category",
   cost_code: "cost_code",
 }
@@ -357,6 +368,174 @@ function buildOwnerCategoryLines(
       internalNotes: null,
     }
   })
+}
+
+/** Pay application rows split by assembly, combined back to one per cost code. */
+function combineByCostCode(lines: readonly ProjectBudgetLineItem[]): readonly ProjectBudgetLineItem[] {
+  const byCode = new Map<string, ProjectBudgetLineItem>()
+  for (const line of lines) {
+    const current = byCode.get(line.costCode)
+    if (!current) {
+      byCode.set(line.costCode, { ...line, ownerLabel: line.description })
+      continue
+    }
+    const totalCosts = current.totalCosts + line.totalCosts
+    const adjustedEstimate = current.adjustedEstimate + line.adjustedEstimate
+    byCode.set(line.costCode, {
+      ...current,
+      originalEstimate: current.originalEstimate + line.originalEstimate,
+      priorChanges: current.priorChanges + line.priorChanges,
+      currentChanges: current.currentChanges + line.currentChanges,
+      totalChanges: current.totalChanges + line.totalChanges,
+      adjustedEstimate,
+      priorCosts: current.priorCosts + line.priorCosts,
+      currentCosts: current.currentCosts + line.currentCosts,
+      totalCosts,
+      percentComplete: percent(totalCosts, adjustedEstimate),
+      balanceToFinish: current.balanceToFinish + line.balanceToFinish,
+      retainageHeld: current.retainageHeld + line.retainageHeld,
+      ownerVisible: current.ownerVisible || line.ownerVisible,
+    })
+  }
+  return [...byCode.values()]
+}
+
+type LineAssembly = { readonly key: string; readonly name: string; readonly sort: number }
+
+async function assemblyByLine(
+  access: ProjectAccess,
+  applicationId: string
+): Promise<ReadonlyMap<string, LineAssembly>> {
+  const rows = await access.db
+    .select({
+      id: projectBudgetLines.id,
+      assemblyKey: projectBudgetLines.assemblyKey,
+      assemblyName: projectBudgetLines.assemblyName,
+      assemblySort: projectBudgetLines.assemblySort,
+    })
+    .from(projectBudgetLines)
+    .where(eq(projectBudgetLines.applicationId, applicationId))
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        key: row.assemblyKey ?? "",
+        name: row.assemblyName ?? UNASSIGNED_ASSEMBLY_NAME,
+        sort: row.assemblyKey ? row.assemblySort : 1_000_000,
+      },
+    ])
+  )
+}
+
+/**
+ * Assembly rows for the owner view. Pay application rows carry their
+ * assembly; the contract budget projection (one row per cost code, no
+ * progress yet) is split using the revision's assembly shares.
+ */
+async function assemblyLines(
+  access: ProjectAccess,
+  applicationId: string,
+  lines: readonly ProjectBudgetLineItem[]
+): Promise<readonly ProjectBudgetLineItem[]> {
+  const assemblies = await assemblyByLine(access, applicationId)
+  if ([...assemblies.values()].some((assembly) => assembly.key !== "")) {
+    return buildAssemblyLines(lines, assemblies)
+  }
+  const application = await access.db
+    .select({ budgetRevisionId: projectBudgetApplications.budgetRevisionId })
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, applicationId))
+    .get()
+  if (!application?.budgetRevisionId) return buildAssemblyLines(lines, assemblies)
+  const visibleCostCodes = new Set(lines.map((line) => line.costCode))
+  const shares = (await loadPayApplicationShares(access.db, application.budgetRevisionId)).filter((share) =>
+    visibleCostCodes.has(share.costCode)
+  )
+  const shareLines: ProjectBudgetLineItem[] = shares.map((share, index) => ({
+    id: `budget-share-${index}`,
+    sourceSystem: "compass_contract_budget_projection",
+    costCode: share.costCode,
+    csiDivision: share.divisionCode,
+    csiDivisionName: share.divisionName,
+    description: share.description,
+    notes: null,
+    originalEstimate: share.originalEstimateCents / 100,
+    priorChanges: share.approvedChangeCents / 100,
+    currentChanges: 0,
+    totalChanges: share.approvedChangeCents / 100,
+    adjustedEstimate: share.adjustedBudgetCents / 100,
+    priorCosts: 0,
+    currentCosts: 0,
+    totalCosts: 0,
+    percentComplete: 0,
+    balanceToFinish: share.adjustedBudgetCents / 100,
+    retainageHeld: 0,
+    vendorName: null,
+    ownerLabel: share.description,
+    ownerVisible: share.ownerVisible,
+    internalNotes: null,
+  }))
+  const shareAssemblies = new Map(
+    shares.map((share, index) => [
+      `budget-share-${index}`,
+      {
+        key: share.assemblyKey ?? "",
+        name: share.assemblyName ?? UNASSIGNED_ASSEMBLY_NAME,
+        sort: share.assemblyKey ? share.assemblySort : 1_000_000,
+      },
+    ])
+  )
+  return buildAssemblyLines(shareLines, shareAssemblies)
+}
+
+/**
+ * One row per assembly (or change order). Each becomes its own group in the
+ * owner view: the division fields carry the assembly's position and name.
+ */
+function buildAssemblyLines(
+  lines: readonly ProjectBudgetLineItem[],
+  assemblies: ReadonlyMap<string, LineAssembly>
+): readonly ProjectBudgetLineItem[] {
+  const groups = new Map<string, { readonly assembly: LineAssembly; readonly lines: ProjectBudgetLineItem[] }>()
+  for (const line of lines) {
+    const assembly = assemblies.get(line.id) ?? { key: "", name: UNASSIGNED_ASSEMBLY_NAME, sort: 1_000_000 }
+    const group = groups.get(assembly.key) ?? { assembly, lines: [] }
+    group.lines.push(line)
+    groups.set(assembly.key, group)
+  }
+  return [...groups.values()]
+    .sort((left, right) => left.assembly.sort - right.assembly.sort || left.assembly.name.localeCompare(right.assembly.name))
+    .map((group, index) => {
+      const sum = (pick: (line: ProjectBudgetLineItem) => number): number =>
+        group.lines.reduce((total, line) => total + pick(line), 0)
+      const adjustedEstimate = sum((line) => line.adjustedEstimate)
+      const totalCosts = sum((line) => line.totalCosts)
+      const position = String(index + 1).padStart(2, "0")
+      return {
+        id: `owner-budget-assembly-${group.assembly.key || "other"}`,
+        sourceSystem: group.lines[0]?.sourceSystem ?? "compass",
+        costCode: position,
+        csiDivision: position,
+        csiDivisionName: group.assembly.name,
+        description: group.assembly.name,
+        notes: null,
+        originalEstimate: sum((line) => line.originalEstimate),
+        priorChanges: sum((line) => line.priorChanges),
+        currentChanges: sum((line) => line.currentChanges),
+        totalChanges: sum((line) => line.totalChanges),
+        adjustedEstimate,
+        priorCosts: sum((line) => line.priorCosts),
+        currentCosts: sum((line) => line.currentCosts),
+        totalCosts,
+        percentComplete: percent(totalCosts, adjustedEstimate),
+        balanceToFinish: sum((line) => line.balanceToFinish),
+        retainageHeld: sum((line) => line.retainageHeld),
+        vendorName: null,
+        ownerLabel: group.assembly.name,
+        ownerVisible: true,
+        internalNotes: null,
+      }
+    })
 }
 
 export async function getProjectBudgetSummary(
@@ -518,10 +697,15 @@ export async function getProjectBudgetSummary(
           currentApplication.id
         )
     : []
+  const assemblyMode = detailMode === "assembly" || detailMode === "assembly_percent"
   const rolledUpLines =
-    detailMode === "cost_code" ? sourceLines : buildOwnerCategoryLines(sourceLines)
+    detailMode === "cost_code"
+      ? combineByCostCode(sourceLines)
+      : assemblyMode && currentApplication
+        ? await assemblyLines(access, currentApplication.id, sourceLines)
+        : buildOwnerCategoryLines(sourceLines)
   const rolledUpDivisions = buildDivisions(rolledUpLines)
-  const percentOnly = detailMode === "category_percent"
+  const percentOnly = detailMode === "category_percent" || detailMode === "assembly_percent"
   const allLines = percentOnly ? rolledUpLines.map(withoutAmounts) : rolledUpLines
   const divisions = percentOnly
     ? rolledUpDivisions.map((division) => ({

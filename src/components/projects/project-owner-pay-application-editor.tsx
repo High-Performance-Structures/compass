@@ -129,7 +129,7 @@ function PayApplicationLineEditor({
       <div className="min-w-0">
         <p className="font-medium">{line.costCode} · {line.description}</p>
         <p className="text-xs text-muted-foreground">
-          {line.divisionCode} · {line.divisionName}
+          {line.assemblyName ?? `${line.divisionCode} · ${line.divisionName}`}
         </p>
       </div>
       <span className="text-right">{money(line.adjustedEstimate)}</span>
@@ -186,44 +186,80 @@ function PayApplicationLineEditor({
   )
 }
 
-/** Division row: bill every cost code in the division to one percent complete. */
-function PayApplicationDivisionRow({
+const GROUP_BY_OPTIONS = ["division", "assembly", "cost_code"] as const
+
+type GroupBy = (typeof GROUP_BY_OPTIONS)[number]
+
+const GROUP_BY_LABELS: Readonly<Record<GroupBy, string>> = {
+  division: "Division",
+  assembly: "Assembly",
+  cost_code: "Cost code",
+}
+
+type LineGroup = {
+  readonly scope: GroupBy
+  /** Division code, assembly key ("" = outside any assembly), or cost code. */
+  readonly key: string
+  readonly label: string
+  readonly lines: readonly ProjectOwnerPayApplicationLine[]
+}
+
+function lineGroups(lines: readonly ProjectOwnerPayApplicationLine[], groupBy: GroupBy): readonly LineGroup[] {
+  const groups = new Map<string, { label: string; sort: number; lines: ProjectOwnerPayApplicationLine[] }>()
+  lines.forEach((line, index) => {
+    const key =
+      groupBy === "division" ? line.divisionCode : groupBy === "assembly" ? line.assemblyKey ?? "" : line.costCode
+    const label =
+      groupBy === "division"
+        ? `${line.divisionCode} · ${line.divisionName}`
+        : groupBy === "assembly"
+          ? line.assemblyName ?? "Other work"
+          : `${line.costCode} · ${line.description}`
+    const sort = groupBy === "assembly" ? (line.assemblyKey ? line.assemblySort : 1_000_000) : index
+    const group = groups.get(key) ?? { label, sort, lines: [] }
+    group.lines.push(line)
+    groups.set(key, group)
+  })
+  return [...groups.entries()]
+    .sort(([, left], [, right]) => left.sort - right.sort)
+    .map(([key, group]) => ({ scope: groupBy, key, label: group.label, lines: group.lines }))
+}
+
+/** Group row: bill every line in a division, assembly or cost code to one percent complete. */
+function PayApplicationGroupRow({
   projectId,
   applicationId,
-  divisionCode,
-  divisionName,
-  lines,
+  group,
   editable,
   onMessage,
 }: {
   readonly projectId: string
   readonly applicationId: string
-  readonly divisionCode: string
-  readonly divisionName: string
-  readonly lines: readonly ProjectOwnerPayApplicationLine[]
+  readonly group: LineGroup
   readonly editable: boolean
   readonly onMessage: (message: string) => void
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const scheduled = lines.reduce((sum, line) => sum + line.adjustedEstimate, 0)
-  const completed = lines.reduce((sum, line) => sum + line.totalCompletedStored, 0)
+  const scheduled = group.lines.reduce((sum, line) => sum + line.adjustedEstimate, 0)
+  const completed = group.lines.reduce((sum, line) => sum + line.totalCompletedStored, 0)
   const current = percentOf(completed, scheduled)
+  const noun = GROUP_BY_LABELS[group.scope].toLowerCase()
 
   function bill(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
-    const percent = fieldNumber(new FormData(event.currentTarget), "divisionPercent")
+    const percent = fieldNumber(new FormData(event.currentTarget), "groupPercent")
     if (percent === null) {
-      onMessage("Enter the division's percent complete as a number.")
+      onMessage(`Enter the ${noun}'s percent complete as a number.`)
       return
     }
     startTransition(async () => {
       const result = await setProjectOwnerPayApplicationPercentComplete(projectId, applicationId, {
-        scope: "division",
-        key: divisionCode,
+        scope: group.scope,
+        key: group.key,
         percentComplete: percent,
       })
-      onMessage(result.success ? `Division ${divisionCode} billed to ${percent}% complete.` : result.error)
+      onMessage(result.success ? `${group.label} billed to ${percent}% complete.` : result.error)
       router.refresh()
     })
   }
@@ -231,7 +267,7 @@ function PayApplicationDivisionRow({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/20 px-3 py-2 text-sm">
       <div>
-        <p className="font-semibold">{divisionCode} · {divisionName}</p>
+        <p className="font-semibold">{group.label}</p>
         <p className="text-xs text-muted-foreground">
           {money(completed)} of {money(scheduled)} · {current}% complete to date
         </p>
@@ -240,15 +276,15 @@ function PayApplicationDivisionRow({
         <form onSubmit={bill} className="flex items-center gap-2">
           <Input
             key={current}
-            name="divisionPercent"
+            name="groupPercent"
             inputMode="decimal"
             defaultValue={current || ""}
             className="w-24 text-right"
-            aria-label={`Percent complete to date for division ${divisionCode}`}
+            aria-label={`Percent complete to date for ${group.label}`}
           />
           <span className="text-xs text-muted-foreground">%</span>
           <Button type="submit" variant="outline" size="sm" disabled={isPending}>
-            Bill division
+            Bill {noun}
           </Button>
         </form>
       )}
@@ -372,20 +408,6 @@ function PayApplicationDeposit({
   )
 }
 
-function divisionGroups(lines: readonly ProjectOwnerPayApplicationLine[]): readonly {
-  readonly divisionCode: string
-  readonly divisionName: string
-  readonly lines: readonly ProjectOwnerPayApplicationLine[]
-}[] {
-  const groups = new Map<string, { divisionCode: string; divisionName: string; lines: ProjectOwnerPayApplicationLine[] }>()
-  for (const line of lines) {
-    const group = groups.get(line.divisionCode) ?? { divisionCode: line.divisionCode, divisionName: line.divisionName, lines: [] }
-    group.lines.push(line)
-    groups.set(line.divisionCode, group)
-  }
-  return [...groups.values()]
-}
-
 export function ProjectOwnerPayApplicationEditor({
   projectId,
   application,
@@ -397,6 +419,8 @@ export function ProjectOwnerPayApplicationEditor({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
+  const hasAssemblies = application.lines.some((line) => line.assemblyKey !== null)
+  const [groupBy, setGroupBy] = useState<GroupBy>(hasAssemblies ? "assembly" : "division")
   const editable = application.status === "draft"
 
   function updateBudget(): void {
@@ -485,14 +509,18 @@ export function ProjectOwnerPayApplicationEditor({
             </div>
           )}
         </div>
-        {application.newerBudgetRevision && (
+        {(application.newerBudgetRevision || application.assemblySplitStale) && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/35 px-4 py-3 text-sm">
             <p>
-              Contract budget revision {application.newerBudgetRevision.revisionNumber} is current, with changes this draft doesn&apos;t include yet, such as executed change orders.
+              {application.newerBudgetRevision
+                ? `Contract budget revision ${application.newerBudgetRevision.revisionNumber} is current, with changes this draft doesn't include yet, such as executed change orders.`
+                : "The estimate's assemblies changed since this draft was made. Update it to bill by the current assemblies."}
             </p>
             <Button size="sm" onClick={updateBudget} disabled={isPending}>
               <IconRefresh className="size-4" />
-              Update to revision {application.newerBudgetRevision.revisionNumber}
+              {application.newerBudgetRevision
+                ? `Update to revision ${application.newerBudgetRevision.revisionNumber}`
+                : "Update assemblies"}
             </Button>
           </div>
         )}
@@ -521,6 +549,21 @@ export function ProjectOwnerPayApplicationEditor({
       )}
 
       <section className="clarity-panel overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Bill by</span>
+          {GROUP_BY_OPTIONS.map((option) => (
+            <Button
+              key={option}
+              type="button"
+              size="sm"
+              variant={groupBy === option ? "default" : "outline"}
+              disabled={option === "assembly" && !hasAssemblies}
+              onClick={() => setGroupBy(option)}
+            >
+              {GROUP_BY_LABELS[option]}
+            </Button>
+          ))}
+        </div>
         <div className="min-w-[1180px]">
           <div className={`grid gap-2 border-b bg-muted/35 px-3 py-2 text-xs font-medium uppercase text-muted-foreground grid-cols-[minmax(14rem,1.6fr)_repeat(8,minmax(6.5rem,.7fr))_auto]`}>
             <span>Cost code</span>
@@ -534,14 +577,12 @@ export function ProjectOwnerPayApplicationEditor({
             <span className="text-right">Balance</span>
             <span className="text-right">Visibility</span>
           </div>
-          {divisionGroups(application.lines).map((group) => (
-            <Fragment key={group.divisionCode}>
-              <PayApplicationDivisionRow
+          {lineGroups(application.lines, groupBy).map((group) => (
+            <Fragment key={`${group.scope}:${group.key}`}>
+              <PayApplicationGroupRow
                 projectId={projectId}
                 applicationId={application.id}
-                divisionCode={group.divisionCode}
-                divisionName={group.divisionName}
-                lines={group.lines}
+                group={group}
                 editable={editable}
                 onMessage={setMessage}
               />

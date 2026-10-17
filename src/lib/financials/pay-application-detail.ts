@@ -2,6 +2,8 @@
 export const PAY_APPLICATION_OWNER_DETAILS = [
   "division_percent",
   "division",
+  "assembly_percent",
+  "assembly",
   "cost_code",
 ] as const
 
@@ -13,6 +15,8 @@ export const PAY_APPLICATION_OWNER_DETAIL_LABELS: Readonly<
 > = {
   division_percent: "Division, % complete only",
   division: "Division with amounts",
+  assembly_percent: "Assembly, % complete only",
+  assembly: "Assembly with amounts",
   cost_code: "Cost code with amounts",
 }
 
