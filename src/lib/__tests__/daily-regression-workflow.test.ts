@@ -96,6 +96,30 @@ function containsCall(
   return found
 }
 
+function hasInitialDemoNavigationContract(): boolean {
+  return containsCall(productionSmokeSourceFile, (call) => {
+    if (
+      !ts.isIdentifier(call.expression) ||
+      call.expression.text !== "expectHealthyNavigation" ||
+      call.arguments.length !== 4
+    ) {
+      return false
+    }
+
+    const [page, response, path, expectedPath] = call.arguments
+    return (
+      ts.isIdentifier(page) &&
+      page.text === "page" &&
+      ts.isIdentifier(response) &&
+      response.text === "demoResponse" &&
+      ts.isStringLiteral(path) &&
+      path.text === "/demo" &&
+      ts.isStringLiteral(expectedPath) &&
+      expectedPath.text === "/dashboard"
+    )
+  })
+}
+
 function hasResponseStatusAssertion(body: ts.Block): boolean {
   return containsCall(body, (call) => {
     if (
@@ -253,9 +277,15 @@ describe("daily regression workflow", () => {
   })
 
   it("models the approved people legacy-route redirect", () => {
-    expect(productionSmoke).toMatch(
-      /path: "\/dashboard\/people",\s*expectedPath: "\/dashboard\/contacts\?tab=internal"/,
+    expect(productionSmoke).toContain('path: "/dashboard/people"')
+    expect(productionSmoke).toContain(
+      'expectedPath: "/dashboard/contacts?tab=internal"',
     )
+  })
+
+  it("applies the full navigation contract to the initial demo redirect", () => {
+    expect(productionSmoke).toContain('const demoResponse = await page.goto("/demo")')
+    expect(hasInitialDemoNavigationContract()).toBe(true)
   })
 
   it("keeps production smoke navigation read-only", () => {
@@ -266,19 +296,20 @@ describe("daily regression workflow", () => {
     expect(productionSmoke).not.toMatch(/request\.(post|put|patch|delete)\(/)
   })
 
-  it("aborts ambient Next server-action writes before network dispatch", () => {
-    expect(productionSmoke).toMatch(
-      /await context\.route\("\*\*\/\*",\s*async \(route\) =>/,
-    )
+  it("blocks and proves zero attempted POST requests before network dispatch", () => {
+    expect(productionSmoke).toContain('await context.route("**/*", async (route) =>')
+    expect(productionSmoke).toContain("let attemptedPostRequests = 0")
     expect(productionSmoke).toContain("const request = route.request()")
-    expect(productionSmoke).toContain('request.method() === "POST"')
-    expect(productionSmoke).toContain('request.headers()["next-action"]')
+    expect(productionSmoke).toContain('if (request.method() === "POST") {')
+    expect(productionSmoke).toContain("attemptedPostRequests += 1")
     expect(productionSmoke).toContain('await route.abort("blockedbyclient")')
+    expect(productionSmoke).toContain(
+      'expect(\n      attemptedPostRequests,\n      "production smoke must not attempt POST requests",\n    ).toBe(0)',
+    )
+    expect(productionSmoke).not.toContain('request.headers()["next-action"]')
+    expect(productionSmoke).not.toContain('request.method() === "POST" &&')
     expect(productionSmoke).not.toContain("context.addInitScript")
     expect(productionSmoke).not.toContain("window.fetch")
-    expect(productionSmoke).not.toContain(
-      "expect(serverActionRequests).toEqual([])",
-    )
   })
 
   it("compares every navigation using the exact pathname and search", () => {
