@@ -111,17 +111,16 @@ Run against the deployed demo without starting a local server:
 
 ```bash
 PLAYWRIGHT_BASE_URL=https://compass.openrangeconstruction.ltd \
-  PLAYWRIGHT_REQUIRE_PROJECT=false \
-  bunx playwright test e2e/web --project=chromium
+  bunx playwright test e2e/web/production-smoke.spec.ts --project=chromium
 ```
 
 Run the native build checks:
 
 ```bash
-bunx cap sync android
+bun run mobile:build && bunx cap sync android
 (cd android && ./gradlew testDebugUnitTest lintDebug assembleDebug)
 
-bunx cap sync ios
+bun run mobile:build && bunx cap sync ios
 xcodebuild -project ios/App/App.xcodeproj -scheme App \
   -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
