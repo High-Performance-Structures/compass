@@ -2321,6 +2321,11 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
   depositApplied: real("deposit_applied").notNull().default(0),
   /** auto: Compass applies the unapplied deposit balance; manual: staff set it. */
   depositAppliedMode: text("deposit_applied_mode").notNull().default("auto"),
+  /** When staff approved this Compass draw for billing (status "billed"). */
+  billedAt: text("billed_at"),
+  billedBy: text("billed_by"),
+  /** Sage invoice number, entered by staff once the draw is invoiced in Sage. */
+  sageInvoiceNumber: text("sage_invoice_number"),
   /** Client detail for this draw; null uses the company default. */
   ownerDetail: text("owner_detail"),
   syncStatus: text("sync_status").notNull().default("synced"),
@@ -2352,6 +2357,8 @@ export const projectContractDeposits = sqliteTable(
     evidenceUrl: text("evidence_url"),
     evidenceLabel: text("evidence_label"),
     notes: text("notes"),
+    /** A deposit request's message to the client, printed on the request. */
+    requestMessage: text("request_message"),
     sourceSystem: text("source_system").notNull().default("compass"),
     sourceRecordId: text("source_record_id"),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),

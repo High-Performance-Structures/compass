@@ -6,6 +6,7 @@
 export const PRINT_DOCUMENTS = {
   "purchase-order": { title: "Purchase order", render: "page", params: ["purchaseOrderId"], landscape: false },
   "shop-ticket": { title: "Shop ticket", render: "page", params: ["ticketId"], landscape: false },
+  "deposit-request": { title: "Deposit request", render: "page", params: ["depositId"], landscape: false },
   "change-order": { title: "Change order", render: "pdf", params: ["changeOrderId"], landscape: false },
   rfq: { title: "Request for quote", render: "pdf", params: ["rfqId"], landscape: false },
   "owner-update": { title: "Owner update", render: "pdf", params: ["updateId"], landscape: false },

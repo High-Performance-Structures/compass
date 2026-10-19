@@ -17,6 +17,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import { refreshAutoDepositPayApplications } from "@/lib/financials/owner-pay-application-refresh"
 import { requireOrg } from "@/lib/org-scope"
+import { projectDepositRequests, type DepositRequestSummary } from "@/lib/deposits/deposit-requests"
+import { assertProjectAccess } from "@/lib/project-access"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -35,6 +37,8 @@ export type ProjectContractDepositItem = {
   readonly evidenceUrl: string | null
   readonly evidenceLabel: string | null
   readonly notes: string | null
+  /** Message to the client printed on a deposit request. */
+  readonly requestMessage: string | null
   readonly sourceSystem: string
 }
 
@@ -126,6 +130,7 @@ function httpsUrl(value: string | null): string | null {
 function revalidateDeposits(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/financials`)
   revalidatePath(`/dashboard/projects/${projectId}/budget`)
+  revalidatePath(`/preview/projects/${projectId}/owner/budget`)
 }
 
 /** Dollars of deposit already applied to the project's pay applications. */
@@ -186,6 +191,7 @@ export async function getProjectContractDeposits(projectId: string): Promise<Pro
       evidenceUrl: row.evidenceUrl,
       evidenceLabel: row.evidenceLabel,
       notes: row.notes,
+      requestMessage: row.requestMessage,
       sourceSystem: row.sourceSystem,
     })),
     requestedCents,
@@ -256,6 +262,58 @@ export async function saveProjectContractDeposit(
     return { success: true, id }
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : "Unable to save the deposit." }
+  }
+}
+
+/** Deposit requests the project's client can see (any project viewer). */
+export async function getProjectDepositRequests(projectId: string): Promise<readonly DepositRequestSummary[]> {
+  const user = await requireAuth()
+  requirePermission(user, "project", "read")
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  await assertProjectAccess(db, user, projectId)
+  return projectDepositRequests(db, projectId)
+}
+
+export type ProjectContractDepositRequestInput = {
+  readonly amount: number | null
+  readonly dueDate: string | null
+  readonly message: string | null
+}
+
+/**
+ * Requests a deposit from the client: a requested deposit with a printable
+ * Deposit Request, shown to the owner. Record payment on it when it arrives;
+ * void it to withdraw the request.
+ */
+export async function requestProjectContractDeposit(
+  projectId: string,
+  input: ProjectContractDepositRequestInput
+): Promise<DepositActionResult> {
+  try {
+    const { db, user } = await depositAccess(projectId, true)
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    await db
+      .insert(projectContractDeposits)
+      .values({
+        id,
+        projectId,
+        status: "requested",
+        requestedAmountCents: cents(input.amount, "Deposit amount", true),
+        requestedAt: now.slice(0, 10),
+        dueDate: isoDate(input.dueDate, "Due date", false),
+        requestMessage: cleanText(input.message, 2_000),
+        sourceSystem: "compass",
+        createdBy: user.id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    revalidateDeposits(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Unable to request the deposit." }
   }
 }
 

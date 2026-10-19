@@ -131,6 +131,7 @@ export async function printDocumentSource(
       return dailyLogsSource(projectId, query)
     case "purchase-order":
     case "shop-ticket":
+    case "deposit-request":
     case "estimate-compare":
       return null
   }

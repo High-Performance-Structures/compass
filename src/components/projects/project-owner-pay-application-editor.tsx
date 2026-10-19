@@ -17,6 +17,7 @@ import {
   type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
 import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
+import { PayApplicationBillingControls, payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -481,7 +482,7 @@ export function ProjectOwnerPayApplicationEditor({
             <div className="flex items-center gap-2">
               <h2 className="font-semibold">Pay application {application.applicationNumber}</h2>
               <ContextualHelpBeacon topicId="financials.pay-applications" />
-              <Badge>{application.status.replaceAll("_", " ")}</Badge>
+              <Badge>{payApplicationStatusLabel(application.status)}</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               Period to {application.periodTo ?? "not set"} · Contract budget revision locked to this draw
@@ -497,6 +498,7 @@ export function ProjectOwnerPayApplicationEditor({
                 Print Preview
               </a>
             </Button>
+            <PayApplicationBillingControls projectId={projectId} application={application} onMessage={setMessage} />
             {application.status === "internal_review" && (
               <Button variant="outline" onClick={returnToDraft} disabled={isPending}>
                 <IconArrowBackUp className="size-4" />
