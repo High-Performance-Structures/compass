@@ -49,7 +49,7 @@ export async function renderPrintPagePdf(input: PrintPdfRequest): Promise<PrintP
 }
 
 /** A PDF shown in the browser's own viewer tab, not downloaded. */
-export function inlinePdfResponse(pdf: ArrayBuffer | Uint8Array, fileName: string): Response {
+export function inlinePdfResponse(pdf: ArrayBuffer | Uint8Array<ArrayBuffer>, fileName: string): Response {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "-")
   return new Response(pdf, {
     headers: {
