@@ -37,6 +37,8 @@ export async function GET(
       path: `/print/projects/${projectId}/estimate`,
       searchParams: { estimateId },
       waitForSelector: ".estimate-signature-page",
+      // The signature preparation numbers estimate pages.
+      pageNumbers: false,
     })
     if (!rendered.ok) {
       return new Response(`Estimate: ${rendered.error}`, { status: rendered.status })
