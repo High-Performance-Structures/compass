@@ -30,7 +30,7 @@ Before synchronizing an approved estimate workbook, verify the project, source t
 
 ### Work on one estimate area at a time
 
-Use **Work on** to choose **Estimate costs**, **Builder fee & markup**, **Customer report format**, **Group descriptions & report phases**, **Introduction & closing**, **Contract terms & acknowledgements**, **Contract signers**, **Approval and accounting handoff**, **Estimate details & versions**, or **Plans, specifications, and estimate basis**. Only the selected area is shown. The estimate totals and **Client report preview** remain available. Switching areas keeps unfinished entries in place; select the area's save action to persist changes. **Save draft details** saves the estimate details, text, terms, and signer fields together.
+Use **Work on** to choose **Estimate costs**, **Builder fee & markup**, **Customer report format**, **Group descriptions & report phases**, **Introduction & closing**, **Contract terms & acknowledgements**, **Contract signers**, **Approval and accounting handoff**, **Estimate details & versions**, or **Plans, specifications, and estimate basis**. Only the selected area is shown. The estimate totals and **Print Preview** remain available. Switching areas keeps unfinished entries in place; select the area's save action to persist changes. **Save draft details** saves the estimate details, text, terms, and signer fields together.
 
 ### Build and report by assembly
 
@@ -50,7 +50,7 @@ Division and assembly reports use grey group headings and subtotal bands, with c
 
 ## Price a Change Order with an Estimate {#change-order-estimates}
 
-On a change order, choose **Build change-order estimate**. It opens a full estimate for just that change, numbered after the change order (for example H-430-1900-CO-001). It has the same lines, assemblies, report phases, client report preview, printing and signature options as the contract estimate. The client, signers, terms and report style start from the accepted contract estimate.
+On a change order, choose **Build change-order estimate**. It opens a full estimate for just that change, numbered after the change order (for example H-430-1900-CO-001). It has the same lines, assemblies, report phases, Print Preview, printing and signature options as the contract estimate. The client, signers, terms and report style start from the accepted contract estimate.
 
 Send it for signature with Foxit, or mark it signed outside Compass and record the acceptance with the signed document, exactly as for the contract estimate. Accepting it executes the change order:
 
@@ -91,7 +91,7 @@ When a change order is executed, draft pay applications move to the new contract
 
 **Ready for review** locks the draw so it can be reviewed and entered in Sage; Compass asks you to confirm first. While it's in internal review, **Return to draft** unlocks it for more edits.
 
-Every Compass document prints the same way: **Print Preview** opens it in a new tab with **Print / Save PDF** (the PDF opens in a browser tab) and **Email report link**. That covers estimates and version comparisons, pay applications, the budget G703, change orders, contract packets, P.O.s, RFQs, shop tickets, owner updates, daily logs, selections, schedules, warranty requests, RFIs and directories. Documents built from the filters on your screen (schedules, selections, the budget and client-portal reports) are saved as a private preview only you can open, so they have no **Email report link**.
+Every Compass document prints the same way: **Print Preview** opens it in a new tab with **Print / Save PDF** (the PDF opens in a browser tab) and **Email report link**. An accepted estimate, including an accepted change-order estimate, previews its signed document the same way. That covers estimates and version comparisons, pay applications, the budget G703, change orders, contract packets, P.O.s, RFQs, shop tickets, owner updates, daily logs, selections, schedules, warranty requests, RFIs and directories. Documents built from the filters on your screen (schedules, selections, the budget and client-portal reports) are saved as a private preview only you can open, so they have no **Email report link**.
 
 **Print Preview** opens the client copy in a new tab at any status, without changing the draw. It prints in landscape: page 1 is the G702 application and certificate for payment, with the contractor certification and a **Reviewed and approved** block for the reviewer's amount certified, signature, printed name and date. The G703 continuation sheet follows, with columns for original contract sum, prior and current changes, adjusted estimate, prior and current costs, completed to date, percent complete and balance. Its first column follows **Client sees**: the percent levels print one combined row per assembly or division, Assembly and Division also list the cost codes under each group, and Cost code lists every cost code. **Print / Save PDF** opens the PDF in a browser tab; **Email report link** starts an email with the preview link.
 

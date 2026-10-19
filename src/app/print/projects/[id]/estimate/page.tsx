@@ -6,6 +6,8 @@ import { redirect } from "next/navigation"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { EstimateClientReport } from "@/components/projects/estimate-client-report"
+import { PdfDocumentPreview } from "@/components/print/pdf-document-preview"
+import { signedDocumentEmbeddable } from "@/lib/contracts/serve-signed-document"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { projectBrandFor, projectLegalEntityName } from "@/lib/project-branding"
 
@@ -30,7 +32,19 @@ export default async function ProjectEstimatePrintPage({
     return <main className="p-8">Estimate not found.</main>
   }
   const acceptedDocumentUrl = acceptedEstimateDocumentUrl(estimate)
-  if (acceptedDocumentUrl) redirect(acceptedDocumentUrl)
+  if (acceptedDocumentUrl) {
+    // An accepted estimate prints as its signed document. Compass shows it in
+    // the standard preview when it can serve the file; otherwise it opens there.
+    if (!signedDocumentEmbeddable(acceptedDocumentUrl)) redirect(acceptedDocumentUrl)
+    return (
+      <PdfDocumentPreview
+        title={estimate.changeOrderId ? "Accepted change order" : "Accepted proposal"}
+        documentNumber={estimate.estimateNumber}
+        pdfHref={`/api/projects/${id}/estimates/${estimate.id}/accepted-document`}
+        preparingLabel="Opening the signed document..."
+      />
+    )
+  }
 
   return (
     <EstimateClientReport
