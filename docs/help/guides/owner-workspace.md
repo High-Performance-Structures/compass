@@ -26,7 +26,7 @@ The navigation shows only the areas available for the active project and your as
 
 **Dashboard** uses the same overall layout as the office workspace while showing only information shared with you. Open your project's map panel for site context and use **Messages** to find your unread items when available. Counts, summaries, and links remain limited to your project assignment and published owner information.
 
-Use the left navigation on a larger screen or project controls on a smaller screen. **Print** creates a point-in-time copy; it does not change or approve a record. A shared layout does not expose staff financials or internal messages.
+Use the left navigation on a larger screen or project controls on a smaller screen. **Print Preview** opens a point-in-time copy in a new tab, with **Print / Save PDF**; it does not change or approve a record. A shared layout does not expose staff financials or internal messages.
 
 ## Review Selections and Decisions {#selections}
 
@@ -38,7 +38,7 @@ Use **Request pricing / alternative** when you need another option or clarificat
 
 **Owner Updates** contains the project stories and progress summaries published to owners. Open an update to read the full entry and its approved attachments.
 
-**Schedule** shows the owner-visible plan. Switch between the available list, phase, or calendar presentations and use **Print** when you need a point-in-time copy. Dates can change as work is coordinated. If a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise.
+**Schedule** shows the owner-visible plan. Switch between the available list, phase, or calendar presentations and use **Print Preview** when you need a point-in-time copy. Dates can change as work is coordinated. If a date affects a decision, delivery, or commitment, confirm it with the project team rather than treating a printed copy as a new promise.
 
 ## Read Budget and Pay Applications {#budget}
 

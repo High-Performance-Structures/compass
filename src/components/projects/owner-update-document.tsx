@@ -19,7 +19,7 @@ import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
-import { projectBrandFor } from "@/lib/project-branding"
+import { projectBrandFor, type ProjectBrand } from "@/lib/project-branding"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 
@@ -48,7 +48,7 @@ function statusLabel(value: string): string {
     .join(" ")
 }
 
-function projectLabel(document: OwnerProjectUpdateDocument): string {
+export function ownerUpdateProjectLabel(document: OwnerProjectUpdateDocument): string {
   return document.project.projectNumber ?? document.project.name
 }
 
@@ -73,7 +73,7 @@ export function OwnerUpdateDocument({
     readonly photosHref: string
   }
 }): React.ReactElement {
-  const label = projectLabel(document)
+  const label = ownerUpdateProjectLabel(document)
   const updateUrl =
     `/dashboard/projects/${document.project.id}` +
     `/owner-updates/${document.update.id}`
@@ -124,8 +124,31 @@ export function OwnerUpdateDocument({
           <OwnerUpdateDraftEditor document={document} />
         )}
 
+        <OwnerUpdatePrintable document={document} brand={brand} label={label} previewMode={previewMode} />
+      </div>
+    </main>
+  )
+}
+
+/** The owner update as it prints; the page shows it under its controls. */
+export function OwnerUpdatePrintable({
+  document,
+  brand,
+  label,
+  previewMode,
+  printRoot = false,
+}: {
+  readonly document: OwnerProjectUpdateDocument
+  readonly brand: ProjectBrand
+  readonly label: string
+  readonly previewMode?: { readonly homeHref: string; readonly photosHref: string }
+  /** Marks the article as the page's only printed element (print source pages). */
+  readonly printRoot?: boolean
+}): React.ReactElement {
+  return (
         <article
           data-owner-update-id={document.update.id}
+          data-owner-update-print-root={printRoot ? "true" : undefined}
           className="owner-update-printable bg-background p-5 shadow-sm sm:p-8 print:bg-white print:p-0 print:text-black print:shadow-none"
         >
           <div className="hidden print:mb-6 print:flex print:items-start print:justify-between print:border-b-2 print:border-black print:pb-4">
@@ -511,7 +534,5 @@ export function OwnerUpdateDocument({
           )}
 
         </article>
-      </div>
-    </main>
   )
 }

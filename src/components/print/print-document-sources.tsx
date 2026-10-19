@@ -1,8 +1,13 @@
 import type * as React from "react"
 
 import { getProjectChangeOrder } from "@/app/actions/project-change-orders"
+import { getOwnerProjectUpdateDocument, getProjectDailyLogWorkspace } from "@/app/actions/project-field"
 import { getProjectRfqs } from "@/app/actions/project-operations"
+import { DepartmentProfilesProvider } from "@/components/branding/department-profiles-provider"
 import { PrintSourceMode } from "@/components/print/print-source-mode"
+import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
+import { OwnerUpdatePrintable, ownerUpdateProjectLabel } from "@/components/projects/owner-update-document"
+import { ALL_DAILY_LOG_AUTHORS, matchesDailyLogPrintFilters } from "@/lib/daily-logs/print-selection"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
 import { changeOrderCopyData } from "@/lib/paper-trail/record-copy-data"
 import { changeOrderReport } from "@/lib/print/audience-record-reports"
@@ -65,6 +70,49 @@ async function rfqSource(projectId: string, query: Query, origin: string): Promi
   )
 }
 
+async function ownerUpdateSource(projectId: string, query: Query): Promise<React.ReactElement | null> {
+  if (!query.updateId) return null
+  // The owner update read checks the viewer's access, staff or client.
+  const document = await getOwnerProjectUpdateDocument(projectId, query.updateId).catch(() => null)
+  if (!document) return null
+  const brand = projectBrandFor({
+    projectId: document.project.id,
+    projectNumber: document.project.projectNumber,
+    profiles: await currentDepartmentProfiles(),
+  })
+  return (
+    <>
+      <OwnerUpdatePrintable document={document} brand={brand} label={ownerUpdateProjectLabel(document)} printRoot />
+      <PrintSourceMode bodyClass="owner-update-printing-selected" />
+    </>
+  )
+}
+
+async function dailyLogsSource(projectId: string, query: Query): Promise<React.ReactElement | null> {
+  const workspace = await getProjectDailyLogWorkspace(projectId)
+  const ids = query.logIds ? new Set(query.logIds.split(",")) : null
+  const logs = workspace.logs.filter((log) =>
+    ids
+      ? ids.has(log.id)
+      : matchesDailyLogPrintFilters(log, query.start ?? "", query.end ?? "", query.author ?? ALL_DAILY_LOG_AUTHORS)
+  )
+  if (logs.length === 0) return null
+  const { project } = workspace
+  return (
+    <DepartmentProfilesProvider profiles={await currentDepartmentProfiles()}>
+      <DailyLogPrintDocument
+        clientName={project.clientName}
+        logs={logs}
+        projectId={project.id}
+        projectLabel={project.projectNumber ?? project.name}
+        projectName={project.name}
+        projectNumber={project.projectNumber}
+      />
+      <PrintSourceMode bodyClass="daily-log-printing" />
+    </DepartmentProfilesProvider>
+  )
+}
+
 /** The print-only markup for a document, or null when it isn't found. */
 export async function printDocumentSource(
   projectId: string,
@@ -77,8 +125,13 @@ export async function printDocumentSource(
       return changeOrderSource(projectId, query)
     case "rfq":
       return rfqSource(projectId, query, origin)
+    case "owner-update":
+      return ownerUpdateSource(projectId, query)
+    case "daily-logs":
+      return dailyLogsSource(projectId, query)
     case "purchase-order":
     case "shop-ticket":
+    case "estimate-compare":
       return null
   }
 }

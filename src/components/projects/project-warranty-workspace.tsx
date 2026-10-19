@@ -497,7 +497,7 @@ export function ProjectWarrantyWorkspace({
         title="Warranty claims"
         actions={
           <>
-            <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} label="Print warranty requests" /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
+            <div className="flex flex-wrap gap-2"><ProjectPortalPrintButton project={workspace.project} report={warrantyReport(workspace.claims)} /><ClaimCreateSheet projectId={workspace.project.id} viewerIsInternal={workspace.viewerIsInternal} /></div>
           </>
         }
       />

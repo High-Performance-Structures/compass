@@ -40,7 +40,7 @@ Delete only an unneeded record when authorized and after reviewing dependencies.
 
 ## Filter and Share {#filter-share}
 
-Filter by room, division, cost code, or status for owner review, room sheets, RFQ scope, or a project packet. Review the filtered result before printing, copying, or sharing.
+Filter by room, division, cost code, or status for owner review, room sheets, RFQ scope, or a project packet. Review the filtered result before printing, copying, or sharing. Choose **Packet** or **Room sheets**, then **Print Preview** opens the filtered packet in a new tab with **Print / Save PDF**.
 
 ## Quick Check {#quick-check}
 

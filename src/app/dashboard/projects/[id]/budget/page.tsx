@@ -164,7 +164,7 @@ export default async function ProjectBudgetPage({
               </p>
             </div>
             <div className="print:hidden">
-              <ProjectBudgetPrintButton />
+              <ProjectBudgetPrintButton projectId={id} documentNumber={project?.projectNumber ?? project?.name ?? "Project"} />
             </div>
           </div>
           <ProjectBudgetG703Table summary={internalBudget} />

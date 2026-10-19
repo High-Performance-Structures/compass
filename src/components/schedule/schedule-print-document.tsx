@@ -16,12 +16,7 @@ import { ProjectBrandContactDetails } from "@/components/projects/project-brand-
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import type { ProjectBrand } from "@/lib/project-branding"
-import { requiresSynchronousPrint } from "@/lib/print/ios-print"
-import {
-  IOS_PRINT_STATE_TIMEOUT_MS,
-  PRINT_STATE_TIMEOUT_MS,
-  waitForPrintLayout,
-} from "@/lib/print/readiness"
+import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 import {
   filterScheduleItemsForPrint,
@@ -336,31 +331,25 @@ function SchedulePrintCalendar({
   )
 }
 
-export async function printScheduleDocument(): Promise<void> {
-  const printRoot = document.querySelector(
-    '[data-project-schedule-print-document="true"]'
-  )
+/**
+ * Print Preview for the schedule document currently rendered on the page
+ * (its filters, timeframe, layout and colors as the viewer sees them).
+ */
+export async function previewScheduleDocument(input: {
+  readonly projectId: string | null
+  readonly title: string
+}): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
+  const printRoot = document.querySelector('[data-project-schedule-print-document="true"]')
   if (!(printRoot instanceof HTMLElement)) {
-    window.print()
-    return
+    return { success: false, error: "There is nothing to print yet." }
   }
-
-  document.body.classList.add("schedule-printing")
-  const resetPrintState = (): void => {
-    document.body.classList.remove("schedule-printing")
-    window.removeEventListener("afterprint", resetPrintState)
-  }
-
-  if (requiresSynchronousPrint(window.navigator)) {
-    window.print()
-    window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
-    return
-  }
-
-  window.addEventListener("afterprint", resetPrintState)
-  await waitForPrintLayout(printRoot)
-  window.print()
-  window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
+  return openPrintSnapshot({
+    projectId: input.projectId,
+    kind: "schedule",
+    title: "Schedule",
+    documentNumber: input.title,
+    html: printRoot.innerHTML,
+  })
 }
 
 export function SchedulePrintDocument({

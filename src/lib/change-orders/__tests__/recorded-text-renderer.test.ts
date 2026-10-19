@@ -134,7 +134,7 @@ describe("recorded historical CO text is preserved without evidentiary claims", 
       for (const changeOrderId of ["synthetic-co0007", undefined]) {
         const markup = renderToStaticMarkup(await ProjectAudienceChangeOrders({ projectId: "cedar", audience, changeOrderId }))
         expectHistoricalContext(markup)
-        expect(markup).toContain("Print / Save PDF")
+        expect(markup).toContain("Print Preview")
       }
       expect(readers.detail).toHaveBeenCalledWith("cedar", "synthetic-co0007", audience)
       expect(readers.list).toHaveBeenCalledWith("cedar", audience)

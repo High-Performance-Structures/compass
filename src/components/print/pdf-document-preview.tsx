@@ -87,12 +87,15 @@ export function PdfDocumentPreview({
   pdfHref,
   leading,
   preparingLabel = "Preparing the preview...",
+  emailLink = true,
 }: {
   readonly title: string
   readonly documentNumber: string
   readonly pdfHref: string
   readonly leading?: React.ReactNode
   readonly preparingLabel?: string
+  /** Off for previews only their creator can open. */
+  readonly emailLink?: boolean
 }): React.ReactElement {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -138,7 +141,7 @@ export function PdfDocumentPreview({
           .pdf-preview-page:last-child { break-after: auto; }
         }
       `}</style>
-      <DocumentReportActions title={title} documentNumber={documentNumber} pdfHref={pdfHref} leading={leading} />
+      <DocumentReportActions title={title} documentNumber={documentNumber} pdfHref={pdfHref} leading={leading} emailLink={emailLink} />
 
       {error && (
         <main className="mx-auto max-w-2xl p-8 text-center">

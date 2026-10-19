@@ -26,6 +26,7 @@ import {
   IconTrash,
   IconPhoto,
   IconPlus,
+  IconEye,
   IconPrinter,
   IconShieldCheck,
   IconUpload,
@@ -69,7 +70,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Textarea } from "@/components/ui/textarea"
-import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
 import {
   DailyLogWorkLines,
   FieldError,
@@ -127,7 +127,7 @@ import {
   MAX_PHOTO_UPLOAD_FILE_BYTES,
   PHOTO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/photos/upload-limits"
-import { waitForPrintLayout } from "@/lib/print/readiness"
+import { printPreviewHref } from "@/lib/print/print-documents"
 import { cn } from "@/lib/utils"
 import { PageHeader } from "@/components/page-header"
 
@@ -1011,8 +1011,6 @@ export function ProjectDailyLogWorkspace({
   const [printStartDate, setPrintStartDate] = React.useState("")
   const [printEndDate, setPrintEndDate] = React.useState("")
   const [printAuthor, setPrintAuthor] = React.useState(ALL_DAILY_LOG_AUTHORS)
-  const [printLogs, setPrintLogs] =
-    React.useState<readonly ProjectDailyLogItem[]>([])
   const [message, setMessage] = React.useState<string | null>(null)
   // Logs waiting on delete confirmation (one from the edit form, or the selection).
   const [pendingDeleteIds, setPendingDeleteIds] = React.useState<readonly string[]>([])
@@ -1038,19 +1036,6 @@ export function ProjectDailyLogWorkspace({
     setEditProjectId(workspace.project.id)
     setUploadingLogId(null)
   }, [workspace.logs, workspace.project.id])
-
-  React.useEffect(() => {
-    function finishPrinting(): void {
-      document.body.classList.remove("daily-log-printing")
-      setPrintLogs([])
-    }
-
-    window.addEventListener("afterprint", finishPrinting)
-    return () => {
-      window.removeEventListener("afterprint", finishPrinting)
-      document.body.classList.remove("daily-log-printing")
-    }
-  }, [])
 
   const filteredLogs = React.useMemo(
     () => logs.filter((log) => matchesFilter(log, filter)),
@@ -1204,24 +1189,21 @@ export function ProjectDailyLogWorkspace({
     setUploadMessage(null)
   }
 
-  function printDailyLogs(targetLogs: readonly ProjectDailyLogItem[]): void {
+  /** Opens Print Preview for the chosen logs, or for the date and author filters. */
+  function printDailyLogs(
+    targetLogs: readonly ProjectDailyLogItem[],
+    params: Readonly<Record<string, string>>
+  ): void {
     if (targetLogs.length === 0) {
       setMessage("Choose at least one daily log to print.")
       return
     }
-
     setMessage(null)
-    setPrintLogs(targetLogs)
-    document.body.classList.add("daily-log-printing")
-    window.setTimeout(async () => {
-      const printRoot = document.querySelector(
-        '[data-daily-log-print-root="true"]'
-      )
-      if (printRoot instanceof HTMLElement) {
-        await waitForPrintLayout(printRoot)
-      }
-      window.print()
-    }, 50)
+    window.open(
+      printPreviewHref({ projectId: workspace.project.id, document: "daily-logs", params, number: `${projectLabel} daily logs` }),
+      "_blank",
+      "noopener"
+    )
   }
 
   function chooseUploadFiles(fileList: FileList | null): void {
@@ -1809,10 +1791,10 @@ export function ProjectDailyLogWorkspace({
                 variant="outline"
                 size="sm"
                 disabled={selectedLogs.length === 0}
-                onClick={() => printDailyLogs(selectedLogs)}
+                onClick={() => printDailyLogs(selectedLogs, { logIds: selectedLogs.map((log) => log.id).join(",") })}
               >
-                <IconPrinter className="size-4" />
-                Print selected ({selectedLogs.length})
+                <IconEye className="size-4" />
+                Print Preview ({selectedLogs.length} selected)
               </Button>
             </div>
 
@@ -1865,10 +1847,12 @@ export function ProjectDailyLogWorkspace({
                 <Button
                   type="button"
                   disabled={dateAuthorPrintLogs.length === 0}
-                  onClick={() => printDailyLogs(dateAuthorPrintLogs)}
+                  onClick={() =>
+                    printDailyLogs(dateAuthorPrintLogs, { start: printStartDate, end: printEndDate, author: printAuthor })
+                  }
                 >
-                  <IconPrinter className="size-4" />
-                  Print matches ({dateAuthorPrintLogs.length})
+                  <IconEye className="size-4" />
+                  Print Preview ({dateAuthorPrintLogs.length} matching)
                 </Button>
               </div>
             </div>
@@ -2522,14 +2506,6 @@ export function ProjectDailyLogWorkspace({
         )}
       </div>
     </main>
-    <DailyLogPrintDocument
-      clientName={workspace.project.clientName}
-      logs={printLogs}
-      projectId={workspace.project.id}
-      projectLabel={projectLabel}
-      projectName={workspace.project.name}
-      projectNumber={workspace.project.projectNumber}
-    />
     </>
   )
 }
