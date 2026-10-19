@@ -6,6 +6,7 @@ import {
   prepareContractPacketPdf,
 } from "@/lib/contracts/packet-pdf"
 import { getCloudflareContext } from "@/lib/db"
+import { numberPdfPages } from "@/lib/print/page-numbers"
 
 async function renderEstimatePdf(input: {
   readonly env: CloudflareEnv
@@ -90,9 +91,7 @@ export async function GET(
       brand,
       estimatePdf,
     })
-    const bytes = base64PdfBytes(prepared.pdfBase64)
-    const body = new Uint8Array(bytes.byteLength)
-    body.set(bytes)
+    const body = await numberPdfPages(base64PdfBytes(prepared.pdfBase64))
     return new Response(body.buffer, {
       headers: {
         "Content-Type": "application/pdf",
