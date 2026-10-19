@@ -99,7 +99,6 @@ function DecisionCard({
           <ProjectPortalPrintButton
             project={reportProject}
             report={selectionReport([item], workspace.audience)}
-            label="Print selection"
           />
         </div>
       )}
@@ -563,13 +562,12 @@ export function SelectionDecisionWorkspace({
           <ProjectPortalPrintButton
             project={reportProject}
             report={selectionReport(items, workspace.audience)}
-            label="Print selections / Save PDF"
           />
           <ProjectPortalPrintButton
             project={reportProject}
             report={selectionReport(items, workspace.audience)}
             roomSheets
-            label="Print room sheets"
+            label="Print Preview (room sheets)"
           />
         </div>
       )}

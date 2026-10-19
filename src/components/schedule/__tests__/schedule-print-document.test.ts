@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
-  printScheduleDocument,
+  previewScheduleDocument,
   SchedulePrintDocument,
   type SchedulePrintItem,
 } from "@/components/schedule/schedule-print-document"
@@ -16,15 +16,10 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   value: true,
 })
 
-vi.mock("@/lib/print/ios-print", () => ({
-  requiresSynchronousPrint: () => false,
+const snapshots = vi.hoisted(() => ({
+  open: vi.fn<(input: { readonly html: string }) => Promise<{ readonly success: true }>>(async () => ({ success: true })),
 }))
-
-vi.mock("@/lib/print/readiness", () => ({
-  IOS_PRINT_STATE_TIMEOUT_MS: 120_000,
-  PRINT_STATE_TIMEOUT_MS: 5_000,
-  waitForPrintLayout: vi.fn(async () => undefined),
-}))
+vi.mock("@/lib/print/open-print-snapshot", () => ({ openPrintSnapshot: snapshots.open }))
 
 function scheduleItems(count: number): readonly SchedulePrintItem[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -83,7 +78,7 @@ describe("SchedulePrintDocument", () => {
     ).toHaveLength(75)
   })
 
-  it("isolates the print document until the browser finishes printing", async () => {
+  it("saves the rendered print document for Print Preview", async () => {
     await act(async () => {
       root.render(
         React.createElement(SchedulePrintDocument, {
@@ -96,15 +91,13 @@ describe("SchedulePrintDocument", () => {
         })
       )
     })
-    const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined)
 
-    await printScheduleDocument()
+    await previewScheduleDocument({ projectId: "project-202", title: "O-202-595" })
 
-    expect(document.body.classList.contains("schedule-printing")).toBe(true)
-    expect(printSpy).toHaveBeenCalledOnce()
-
-    window.dispatchEvent(new Event("afterprint"))
-    expect(document.body.classList.contains("schedule-printing")).toBe(false)
+    expect(snapshots.open).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "project-202", kind: "schedule", documentNumber: "O-202-595" })
+    )
+    expect(snapshots.open.mock.calls[0]?.[0]?.html).toContain("Schedule item 2")
   })
 
   it("renders only overlapping items in the selected Gantt timeframe", async () => {

@@ -796,7 +796,7 @@ export function ProjectAudiencePreview({
                 <IconUsers className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Commitments</h2>
               </div>
-              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.operations.length} assigned</Badge><ProjectPortalPrintButton project={data.project} report={commitmentReport(data.operations)} label="Print commitments" /></div>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.operations.length} assigned</Badge><ProjectPortalPrintButton project={data.project} report={commitmentReport(data.operations)} /></div>
             </div>
             {data.operations.length > 0 ? (
               <div className="mt-4 grid gap-3">
@@ -831,7 +831,7 @@ export function ProjectAudiencePreview({
                   <h2 className="text-sm font-semibold">RFIs</h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{data.rfis.length} visible</Badge><ProjectPortalPrintButton project={data.project} report={rfiReport(data.rfis)} label="Print RFIs" />
+                  <Badge variant="outline">{data.rfis.length} visible</Badge><ProjectPortalPrintButton project={data.project} report={rfiReport(data.rfis)} />
                   <ProjectAudienceRfiCreateDialog
                     projectId={data.project.id}
                     recipients={messageShortcut?.recipients ?? []}
@@ -867,7 +867,7 @@ export function ProjectAudiencePreview({
                   internal project team.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.rfqs.length} assigned</Badge><ProjectPortalPrintButton project={data.project} report={rfqReport(data.rfqs)} label="Print RFQs" /></div>
+              <div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{data.rfqs.length} assigned</Badge><ProjectPortalPrintButton project={data.project} report={rfqReport(data.rfqs)} /></div>
             </div>
             {data.rfqs.length > 0 ? (
               <div className="grid gap-3">

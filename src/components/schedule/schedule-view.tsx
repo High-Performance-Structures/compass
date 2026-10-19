@@ -98,7 +98,7 @@ import { ScheduleTemplateDialog } from "./schedule-template-dialog"
 import { ScheduleTemplateBulkImportDialog } from "./schedule-template-bulk-import-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import {
-  printScheduleDocument,
+  previewScheduleDocument,
   SchedulePrintDocument,
 } from "./schedule-print-document"
 import {
@@ -767,13 +767,16 @@ export function ScheduleView({
   }
 
   function printSchedule(selection: SchedulePrintSelection): void {
-    // Commit the selected print layout before invoking the synchronous iOS
-    // print path. Keep the chooser mounted so it returns after print preview
-    // and only closes when the user explicitly dismisses it.
+    // Commit the selected layout and timeframe so the print document holds
+    // them before its markup is saved for the preview.
     flushSync(() => {
       setPrintSelection(selection)
     })
-    void printScheduleDocument().finally(() => setPrintSelection(null))
+    void previewScheduleDocument({ projectId: projectId ?? null, title: projectName })
+      .then((result) => {
+        if (!result.success) toast.error(result.error)
+      })
+      .finally(() => setPrintSelection(null))
   }
 
   return (
@@ -1308,7 +1311,7 @@ export function ScheduleView({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
                 <IconPrinter className="size-4 mr-2" />
-                Print timeframe…
+                Print Preview…
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setBaselinesOpen(true)}>

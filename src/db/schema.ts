@@ -3595,3 +3595,24 @@ export const pushTokens = sqliteTable("push_tokens", {
 
 export type PushToken = typeof pushTokens.$inferSelect
 export type NewPushToken = typeof pushTokens.$inferInsert
+
+// Print Preview snapshots of documents assembled in the browser; see
+// src/lib/print/snapshots.ts. Only the creator can open one.
+export const printSnapshots = sqliteTable(
+  "print_snapshots",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    projectId: text("project_id"),
+    title: text("title").notNull(),
+    documentNumber: text("document_number"),
+    html: text("html").notNull(),
+    kind: text("kind").notNull(),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    index("print_snapshots_user_idx").on(table.userId, table.createdAt),
+    index("print_snapshots_expires_idx").on(table.expiresAt),
+  ]
+)

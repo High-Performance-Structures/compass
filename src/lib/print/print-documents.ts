@@ -10,6 +10,13 @@ export const PRINT_DOCUMENTS = {
   rfq: { title: "Request for quote", render: "pdf", params: ["rfqId"], landscape: false },
   "owner-update": { title: "Owner update", render: "pdf", params: ["updateId"], landscape: false },
   "daily-logs": { title: "Daily logs", render: "pdf", params: ["logIds", "start", "end", "author"], landscape: false },
+  "estimate-compare": {
+    title: "Estimate version comparison",
+    render: "page",
+    params: ["baseEstimateId", "revisedEstimateId"],
+    landscape: true,
+    path: "estimate/compare",
+  },
 } as const satisfies Record<
   string,
   {
@@ -17,6 +24,8 @@ export const PRINT_DOCUMENTS = {
     readonly render: "page" | "pdf"
     readonly params: readonly string[]
     readonly landscape: boolean
+    /** Print page path under the project when it isn't the document's name. */
+    readonly path?: string
   }
 >
 
@@ -52,9 +61,14 @@ export type PrintDocumentLink = {
   readonly number?: string
 }
 
+function documentPath(document: PrintDocument): string {
+  const config = PRINT_DOCUMENTS[document]
+  return "path" in config ? config.path : document
+}
+
 /** The Print Preview tab for a document. */
 export function printPreviewHref(link: PrintDocumentLink): string {
-  return withQuery(`/print/projects/${encodeURIComponent(link.projectId)}/${link.document}`, {
+  return withQuery(`/print/projects/${encodeURIComponent(link.projectId)}/${documentPath(link.document)}`, {
     ...printDocumentParams(link.document, link.params),
     ...(link.number ? { number: link.number } : {}),
   })
@@ -70,7 +84,7 @@ export function printPdfHref(link: PrintDocumentLink): string {
 
 /** The page the PDF renderer opens. */
 export function printSourcePath(projectId: string, document: PrintDocument): string {
-  const base = `/print/projects/${projectId}/${document}`
+  const base = `/print/projects/${projectId}/${documentPath(document)}`
   return PRINT_DOCUMENTS[document].render === "page" ? base : `${base}/source`
 }
 

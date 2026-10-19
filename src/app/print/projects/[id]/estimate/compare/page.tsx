@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic"
 
 import { requireProjectRouteId } from "@/lib/project-route-id"
 import { getProjectEstimateVersionComparison } from "@/app/actions/project-estimates"
-import { ProjectEstimateReportActions } from "@/components/projects/project-estimate-report-actions"
+import { DocumentReportActions } from "@/components/projects/document-report-actions"
+import { printPdfHref } from "@/lib/print/print-documents"
 import { ProjectEstimateVersionComparisonDocument } from "@/components/projects/project-estimate-version-comparison"
 
 export default async function ProjectEstimateComparisonPrintPage({
@@ -29,6 +30,7 @@ export default async function ProjectEstimateComparisonPrintPage({
     return <main className="p-8">Two estimate versions are required.</main>
   }
 
+  const number = `${baseEstimate.estimateNumber} v${baseEstimate.versionNumber}-v${revisedEstimate.versionNumber}`
   return (
     <>
       <style>{`
@@ -42,12 +44,19 @@ export default async function ProjectEstimateComparisonPrintPage({
       <title>
         {data.projectName} Estimate Versions {baseEstimate.versionNumber} and {revisedEstimate.versionNumber}
       </title>
-      <ProjectEstimateReportActions
+      <DocumentReportActions
         title={`${data.projectName} estimate version comparison`}
-        estimateNumber={`${baseEstimate.estimateNumber} v${baseEstimate.versionNumber}–v${revisedEstimate.versionNumber}`}
+        documentNumber={number}
+        pdfHref={printPdfHref({
+          projectId: id,
+          document: "estimate-compare",
+          params: { baseEstimateId: baseEstimate.id, revisedEstimateId: revisedEstimate.id },
+          number,
+        })}
       />
       <main className="mx-auto max-w-[11in] bg-white p-5 text-black print:max-w-none print:p-0">
         <ProjectEstimateVersionComparisonDocument data={data} />
+        <span data-print-ready="true" hidden />
       </main>
     </>
   )

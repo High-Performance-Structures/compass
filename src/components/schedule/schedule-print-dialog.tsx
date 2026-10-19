@@ -4,7 +4,7 @@ import * as React from "react"
 import {
   IconCalendar,
   IconList,
-  IconPrinter,
+  IconEye,
   IconTimeline,
 } from "@tabler/icons-react"
 
@@ -204,8 +204,8 @@ export function SchedulePrintDialog({
             Cancel
           </Button>
           <Button type="button" onClick={submit} disabled={!range}>
-            <IconPrinter className="size-4" />
-            Print
+            <IconEye className="size-4" />
+            Print Preview
           </Button>
         </DialogFooter>
       </DialogContent>

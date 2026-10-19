@@ -14,6 +14,7 @@ export function DocumentReportActions({
   documentNumber,
   pdfHref,
   leading,
+  emailLink = true,
 }: {
   readonly title: string
   readonly documentNumber: string
@@ -21,6 +22,7 @@ export function DocumentReportActions({
   readonly pdfHref?: string
   /** Shown at the start of the bar, such as a link back to the record. */
   readonly leading?: React.ReactNode
+  readonly emailLink?: boolean
 }): React.ReactElement {
   function emailReport(): void {
     const href = trackedMailtoHref({
@@ -48,10 +50,12 @@ export function DocumentReportActions({
           Print / Save PDF
         </Button>
       )}
-      <Button type="button" variant="outline" onClick={emailReport}>
-        <IconMail className="size-4" />
-        Email report link
-      </Button>
+      {emailLink ? (
+        <Button type="button" variant="outline" onClick={emailReport}>
+          <IconMail className="size-4" />
+          Email report link
+        </Button>
+      ) : null}
     </div>
   )
 }

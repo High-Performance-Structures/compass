@@ -7,7 +7,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconList,
-  IconPrinter,
+  IconEye,
   IconTimeline,
 } from "@tabler/icons-react"
 
@@ -17,7 +17,7 @@ import type {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  printScheduleDocument,
+  previewScheduleDocument,
   SchedulePrintDocument,
 } from "@/components/schedule/schedule-print-document"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
@@ -158,10 +158,10 @@ export function ProjectAudienceSchedule({
             variant="outline"
             size="sm"
             disabled={!isPublished || items.length === 0}
-            onClick={() => void printScheduleDocument()}
+            onClick={() => void previewScheduleDocument({ projectId, title: projectNumber ?? projectName })}
           >
-            <IconPrinter className="size-4" />
-            Print
+            <IconEye className="size-4" />
+            Print Preview
           </Button>
           <div className="flex items-center border">
             <Button

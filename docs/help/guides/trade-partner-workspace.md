@@ -26,11 +26,11 @@ Compass shows only records assigned or published to your company and audience. I
 
 **Dashboard** summarizes your assigned work using the same overall layout as the office workspace. **Your jobs** provides a map of projects available to you; select a job for its panel and links. The **Messages** layer highlights your unread items when available. Counts and status labels reflect your permitted project and company audience.
 
-Use navigation to move between assigned work. **Print** creates a point-in-time copy of the visible report; it does not acknowledge, accept, or update a record. The map does not grant access to another company's work.
+Use navigation to move between assigned work. **Print Preview** opens a point-in-time copy of the visible report in a new tab, with **Print / Save PDF**; it does not acknowledge, accept, or update a record. The map does not grant access to another company's work.
 
 ## Review Schedule and Selections {#schedule-selections}
 
-**Schedule** shows items published for trade partners. Review dates, phases, and assignments, and use **Print** if a field copy is useful. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.
+**Schedule** shows items published for trade partners. Review dates, phases, and assignments, and use **Print Preview** if a field copy is useful. Coordinate a conflict through an RFI or project message; do not assume that a printed date overrides a later update.
 
 **Approved Selections** shows current owner-approved specifications that have been published to your project audience. Review these before procurement and installation. Raise a conflict or missing decision through an RFI instead of changing the specification based on a private note or an older download.
 

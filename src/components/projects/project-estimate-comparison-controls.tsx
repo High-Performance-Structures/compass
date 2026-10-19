@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { IconArrowLeft, IconPrinter } from "@tabler/icons-react"
+import { IconArrowLeft, IconEye } from "@tabler/icons-react"
 
 import type { ProjectEstimateSummary } from "@/app/actions/project-estimates"
 import { Button } from "@/components/ui/button"
@@ -101,8 +101,8 @@ export function ProjectEstimateComparisonControls({
           href={`/print/projects/${projectId}/estimate/compare?${query}`}
           target="_blank"
         >
-          <IconPrinter className="size-4" />
-          Print comparison
+          <IconEye className="size-4" />
+          Print Preview
         </Link>
       </Button>
     </div>

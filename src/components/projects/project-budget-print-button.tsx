@@ -1,63 +1,52 @@
 "use client"
 
-import type * as React from "react"
-import { IconPrinter } from "@tabler/icons-react"
+import * as React from "react"
+import { IconEye } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
-import { requiresSynchronousPrint } from "@/lib/print/ios-print"
-import {
-  IOS_PRINT_STATE_TIMEOUT_MS,
-  PRINT_STATE_TIMEOUT_MS,
-  waitForPrintLayout,
-} from "@/lib/print/readiness"
+import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
 
-export function ProjectBudgetPrintButton(): React.ReactElement {
-  async function printBudget(): Promise<void> {
-    const selected = document.querySelector(
-      '[data-project-budget-print-source="true"]'
-    )
-    if (!(selected instanceof HTMLElement)) {
-      window.print()
+/** Print Preview for the G703 budget exactly as shown on this page. */
+export function ProjectBudgetPrintButton({
+  projectId,
+  documentNumber,
+}: {
+  readonly projectId: string
+  readonly documentNumber: string
+}): React.ReactElement {
+  const [pending, setPending] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+
+  async function preview(): Promise<void> {
+    const source = document.querySelector('[data-project-budget-print-source="true"]')
+    if (!(source instanceof HTMLElement)) {
+      setError("There is nothing to print yet.")
       return
     }
-
-    const printRoot = selected.cloneNode(true)
-    if (!(printRoot instanceof HTMLElement)) {
-      window.print()
-      return
-    }
-
-    printRoot.setAttribute("data-project-budget-print-root", "true")
-    printRoot.classList.add("owner-budget-print-root")
-    document.body.classList.add("owner-budget-printing")
-    document.body.appendChild(printRoot)
-
-    const resetPrintState = (): void => {
-      printRoot.remove()
-      document.body.classList.remove("owner-budget-printing")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    if (requiresSynchronousPrint(window.navigator)) {
-      // iPad Safari drops the tap's user activation after the first await,
-      // causing window.print() to be ignored entirely. Its print sheet also
-      // renders asynchronously, so keep the isolated document alive while the
-      // preview is generated instead of relying on afterprint or a short timer.
-      window.print()
-      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
-      return
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    await waitForPrintLayout(printRoot)
-    window.print()
-    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
+    setError(null)
+    setPending(true)
+    const result = await openPrintSnapshot({
+      projectId,
+      kind: "budget",
+      title: "Budget G703",
+      documentNumber: `${documentNumber} G703`,
+      html: source.innerHTML,
+    })
+    setPending(false)
+    if (!result.success) setError(result.error)
   }
 
   return (
-    <Button type="button" size="sm" onClick={printBudget}>
-      <IconPrinter className="size-4" />
-      Print / Save G703
-    </Button>
+    <div>
+      <Button type="button" size="sm" disabled={pending} onClick={() => void preview()}>
+        <IconEye className="size-4" />
+        {pending ? "Preparing preview…" : "Print Preview"}
+      </Button>
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }

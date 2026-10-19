@@ -6,7 +6,7 @@ import {
   IconCopy,
   IconFileSpreadsheet,
   IconMail,
-  IconPrinter,
+  IconEye,
   IconSparkles,
 } from "@tabler/icons-react"
 
@@ -20,12 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { ProjectBrand } from "@/lib/project-branding"
-import { requiresSynchronousPrint } from "@/lib/print/ios-print"
-import {
-  IOS_PRINT_STATE_TIMEOUT_MS,
-  PRINT_STATE_TIMEOUT_MS,
-  waitForPrintLayout,
-} from "@/lib/print/readiness"
+import { openPrintSnapshot } from "@/lib/print/open-print-snapshot"
 
 type CopiedState = "link" | "email" | "html" | "sheet" | null
 type PrintMode = "packet" | "room_sheets"
@@ -210,6 +205,7 @@ export function ProjectSelectionShareActions({
 }): React.ReactElement {
   const [copied, setCopied] = React.useState<CopiedState>(null)
   const [printMode, setPrintMode] = React.useState<PrintMode>("packet")
+  const [previewError, setPreviewError] = React.useState<string | null>(null)
   const promptCount = selectionPromptCount(summary)
   const emailSubject = `${projectLabel} - Finish selections${
     filterLabel ? ` - ${filterLabel}` : ""
@@ -363,39 +359,24 @@ export function ProjectSelectionShareActions({
     setCopied("sheet")
   }
 
-  async function printPacket(): Promise<void> {
-    const printRoot = document.createElement("article")
-    printRoot.setAttribute("data-selection-print-root", "true")
-    printRoot.className = "selection-printable bg-white text-black"
-    printRoot.innerHTML = packetHtml({
-      brand,
-      projectLabel,
-      clientName,
-      filterLabel,
-      mode: printMode,
-      selectionUrl: absoluteSelectionUrl(),
-      summary,
+  async function previewPacket(): Promise<void> {
+    setPreviewError(null)
+    const result = await openPrintSnapshot({
+      projectId,
+      kind: "selection-packet",
+      title: printMode === "room_sheets" ? "Room finish schedules" : "Finish selections",
+      documentNumber: `${projectLabel} ${printMode === "room_sheets" ? "room sheets" : "selections"}`,
+      html: packetHtml({
+        brand,
+        projectLabel,
+        clientName,
+        filterLabel,
+        mode: printMode,
+        selectionUrl: absoluteSelectionUrl(),
+        summary,
+      }),
     })
-
-    document.body.classList.add("selection-printing-selected")
-    document.body.appendChild(printRoot)
-
-    const resetPrintState = (): void => {
-      printRoot.remove()
-      document.body.classList.remove("selection-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    if (requiresSynchronousPrint(window.navigator)) {
-      window.print()
-      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
-      return
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    await waitForPrintLayout(printRoot)
-    window.print()
-    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
+    if (!result.success) setPreviewError(result.error)
   }
 
   return (
@@ -416,9 +397,9 @@ export function ProjectSelectionShareActions({
           <SelectItem value="room_sheets">Room sheets</SelectItem>
         </SelectContent>
       </Select>
-      <Button size="sm" onClick={printPacket}>
-        <IconPrinter className="size-4" />
-        Save PDF
+      <Button size="sm" onClick={() => void previewPacket()}>
+        <IconEye className="size-4" />
+        Print Preview
       </Button>
       <Button size="sm" variant="outline" onClick={copyLink}>
         {copied === "link" ? (
@@ -452,6 +433,11 @@ export function ProjectSelectionShareActions({
         )}
         {copied === "sheet" ? "Copied" : "Copy sheet"}
       </Button>
+      {previewError && (
+        <p role="alert" className="w-full text-right text-sm text-destructive">
+          {previewError}
+        </p>
+      )}
     </div>
   )
 }

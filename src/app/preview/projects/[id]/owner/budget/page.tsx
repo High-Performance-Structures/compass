@@ -319,7 +319,7 @@ export default async function OwnerBudgetPage({
                     </p>
                   </div>
                   <div className="print:hidden">
-                    <ProjectBudgetPrintButton />
+                    <ProjectBudgetPrintButton projectId={id} documentNumber={preview.project.projectNumber ?? preview.project.name} />
                   </div>
                 </div>
                 <ProjectBudgetG703Table
