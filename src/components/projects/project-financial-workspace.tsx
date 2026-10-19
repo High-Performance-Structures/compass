@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { payApplicationStatusLabel } from "@/components/projects/pay-application-billing-controls"
 
 function textField(formData: FormData, name: string): string | null {
   const value = String(formData.get(name) ?? "").trim()
@@ -438,7 +439,9 @@ export function ProjectFinancialWorkspace({
                     </div>
                     <span>{dateText(item.dueDate)}</span>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{item.status}</Badge>
+                      <Badge variant="outline">
+                        {item.type === "owner_pay_application" ? payApplicationStatusLabel(item.status) : item.status}
+                      </Badge>
                       {item.readOnly && (
                         <Badge variant="outline">Read only</Badge>
                       )}

@@ -7,10 +7,14 @@ import { notFound } from "next/navigation"
 import {
   IconDownload,
   IconExternalLink,
+  IconEye,
   IconFileDollar,
   IconLock,
 } from "@tabler/icons-react"
 
+import { getProjectDepositRequests } from "@/app/actions/project-contract-deposits"
+import type { DepositRequestSummary } from "@/lib/deposits/deposit-requests"
+import { printPreviewHref } from "@/lib/print/print-documents"
 import {
   getProjectBudgetSummary,
   type ProjectBudgetSummary,
@@ -95,6 +99,8 @@ export default async function OwnerBudgetPage({
     notFound()
   }
 
+  // Deposit requests are extra; the page still shows without them.
+  const depositRequests: readonly DepositRequestSummary[] = await getProjectDepositRequests(id).catch(() => [])
   const brand = projectBrandFor({ profiles: await currentDepartmentProfiles(),
     projectId: preview.project.id,
     projectNumber: preview.project.projectNumber,
@@ -155,6 +161,38 @@ export default async function OwnerBudgetPage({
               </p>
             }
           />
+
+          {depositRequests.length > 0 && (
+            <section className="mt-5 border bg-background p-4">
+              <h2 className="text-sm font-semibold">Deposit requests</h2>
+              <div className="mt-3 divide-y border">
+                {depositRequests.map((request) => (
+                  <article key={request.id} className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{request.number}</p>
+                        <Badge variant={request.status === "received" ? "default" : "outline"}>
+                          {request.status === "received" ? "Paid" : "Requested"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {money(request.amountCents / 100)}
+                        {request.status === "received"
+                          ? request.receivedAt ? ` · paid ${formatDate(request.receivedAt)}` : ""
+                          : ` · due ${request.dueDate ? formatDate(request.dueDate) : "upon receipt"}`}
+                      </p>
+                    </div>
+                    <Button asChild size="sm" variant="outline">
+                      <a href={printPreviewHref({ projectId: id, document: "deposit-request", params: { depositId: request.id } })} target="_blank" rel="noopener">
+                        <IconEye className="size-4" />
+                        Print Preview
+                      </a>
+                    </Button>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
 
           {budget.applications.length > 0 && (
             <section className="mt-5 border bg-background p-4">
@@ -228,6 +266,17 @@ export default async function OwnerBudgetPage({
                             </a>
                           </Button>
                         </div>
+                      ) : application.sourceSystem === "compass_contract_budget" ? (
+                        <Button asChild size="sm" variant="outline">
+                          <a
+                            href={`/print/projects/${encodeURIComponent(id)}/pay-application?applicationId=${encodeURIComponent(application.id)}`}
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            <IconEye className="size-4" />
+                            Print Preview
+                          </a>
+                        </Button>
                       ) : (
                         <Badge variant="secondary">Document unavailable</Badge>
                       )}

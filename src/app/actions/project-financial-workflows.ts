@@ -25,6 +25,8 @@ import {
   type PayApplicationOwnerDetail,
 } from "@/lib/financials/pay-application-detail"
 import { requireOrg } from "@/lib/org-scope"
+import { assertProjectAccess } from "@/lib/project-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { requirePermission } from "@/lib/permissions"
 import {
   availableDepositForApplication,
@@ -144,6 +146,9 @@ export type ProjectOwnerPayApplicationDraft = {
   readonly applicationNumber: string
   readonly periodTo: string | null
   readonly status: string
+  /** Set once staff approve the draw for billing. */
+  readonly billedAt: string | null
+  readonly sageInvoiceNumber: string | null
   readonly budgetRevisionId: string | null
   readonly originalContractSum: number
   readonly netChanges: number
@@ -225,6 +230,28 @@ async function verifyProjectReadAccess(projectId: string): Promise<{
 
   if (!project) throw new Error("Project not found")
   return { db, organizationId: orgId }
+}
+
+/**
+ * Read access to one pay application. Staff read any; a client can read a
+ * draw only once it is billed and visible to the owner (checked by the caller).
+ */
+async function payApplicationReadAccess(projectId: string): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly internal: boolean
+}> {
+  const user = await requireAuth()
+  if (isInternalStaffRole(user.role)) {
+    const { db, organizationId } = await verifyProjectReadAccess(projectId)
+    return { db, organizationId, internal: true }
+  }
+  requirePermission(user, "project", "read")
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const project = await assertProjectAccess(db, user, projectId)
+  if (!project.organizationId) throw new Error("Project not found")
+  return { db, organizationId: project.organizationId, internal: false }
 }
 
 function cleanText(value: string | null): string | null {
@@ -446,7 +473,7 @@ export async function getProjectOwnerPayApplicationDraft(
   projectId: string,
   applicationId: string
 ): Promise<ProjectOwnerPayApplicationDraft | null> {
-  const { db, organizationId } = await verifyProjectReadAccess(projectId)
+  const { db, organizationId, internal } = await payApplicationReadAccess(projectId)
   const applicationRows = await db
     .select()
     .from(projectBudgetApplications)
@@ -460,6 +487,7 @@ export async function getProjectOwnerPayApplicationDraft(
     .limit(1)
   const application = applicationRows[0]
   if (!application) return null
+  if (!internal && !(application.ownerVisible && application.status === "billed")) return null
   const lines = await db
     .select()
     .from(projectBudgetLines)
@@ -479,6 +507,8 @@ export async function getProjectOwnerPayApplicationDraft(
     applicationNumber: application.applicationNumber,
     periodTo: application.periodTo,
     status: application.status,
+    billedAt: application.billedAt,
+    sageInvoiceNumber: application.sageInvoiceNumber,
     budgetRevisionId: application.budgetRevisionId,
     originalContractSum: application.originalContractSum,
     netChanges: application.netChanges,
@@ -548,7 +578,7 @@ export async function getProjectOwnerPayApplicationReport(
 ): Promise<ProjectOwnerPayApplicationReport | null> {
   const draft = await getProjectOwnerPayApplicationDraft(projectId, applicationId)
   if (!draft) return null
-  const { db } = await verifyProjectReadAccess(projectId)
+  const { db } = await payApplicationReadAccess(projectId)
   const project = await db
     .select({
       name: projects.name,

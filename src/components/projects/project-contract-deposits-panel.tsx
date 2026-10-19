@@ -2,7 +2,7 @@
 
 import { useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconCash, IconExternalLink, IconPlus } from "@tabler/icons-react"
+import { IconCash, IconExternalLink, IconEye, IconPlus, IconSend } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
@@ -11,7 +11,9 @@ import {
   type ProjectContractDepositItem,
   type ProjectContractDepositSummary,
 } from "@/app/actions/project-contract-deposits"
+import { DepositRequestDialog } from "@/components/projects/deposit-request-dialog"
 import { Badge } from "@/components/ui/badge"
+import { printPreviewHref } from "@/lib/print/print-documents"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -228,6 +230,7 @@ export function ProjectContractDepositsPanel({
   const [editing, setEditing] = useState<ProjectContractDepositItem | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogKey, setDialogKey] = useState(0)
+  const [requestOpen, setRequestOpen] = useState(false)
 
   function openDialog(deposit: ProjectContractDepositItem | null): void {
     setEditing(deposit)
@@ -268,10 +271,16 @@ export function ProjectContractDepositsPanel({
           </p>
         </div>
         {summary.canEdit && (
-          <Button size="sm" onClick={() => openDialog(null)}>
-            <IconPlus className="size-4" />
-            Record deposit
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>
+              <IconSend className="size-4" />
+              Request deposit
+            </Button>
+            <Button size="sm" onClick={() => openDialog(null)}>
+              <IconPlus className="size-4" />
+              Record deposit
+            </Button>
+          </div>
         )}
       </div>
       <div className="grid divide-y sm:grid-cols-4 sm:divide-x sm:divide-y-0">
@@ -313,6 +322,18 @@ export function ProjectContractDepositsPanel({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {deposit.sourceSystem === "compass" && deposit.status !== "void" && deposit.requestedAt && deposit.requestedAmountCents !== null && (
+                  <Button variant="ghost" size="sm" asChild>
+                    <a
+                      href={printPreviewHref({ projectId, document: "deposit-request", params: { depositId: deposit.id } })}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      <IconEye className="size-4" />
+                      Deposit request
+                    </a>
+                  </Button>
+                )}
                 {deposit.evidenceUrl && (
                   <Button variant="ghost" size="sm" asChild>
                     <a href={deposit.evidenceUrl} target="_blank" rel="noreferrer">
@@ -336,6 +357,12 @@ export function ProjectContractDepositsPanel({
           ))}
         </ul>
       )}
+      <DepositRequestDialog
+        projectId={projectId}
+        suggestedCents={summary.contractDeposit?.cents ?? null}
+        open={requestOpen}
+        onOpenChange={setRequestOpen}
+      />
       <DepositDialog
         key={dialogKey}
         projectId={projectId}
