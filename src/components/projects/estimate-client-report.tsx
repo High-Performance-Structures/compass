@@ -10,6 +10,7 @@ import {
   clientEstimateTaxSummary,
 } from "@/lib/estimates/client-report"
 import { assemblyBuilderFeeAllocation } from "@/lib/estimates/assembly-builder-fee"
+import { estimateReportSection, estimateReportSectionOptions } from "@/lib/estimates/report-sections"
 import type { projectBrandFor } from "@/lib/project-branding"
 
 function money(cents: number): string {
@@ -43,7 +44,8 @@ type ActiveEstimate = NonNullable<ProjectEstimateWorkspace["activeEstimate"]>
 /**
  * The client estimate report with the department's logo. The estimate print
  * page shows it with print actions; the project paper trail saves the same
- * report to Drive without them.
+ * report to Drive without them. With a section, it prints one assembly or
+ * division as an excerpt: its share of the builder fee, no signature page.
  */
 export function EstimateClientReport({
   id,
@@ -52,6 +54,7 @@ export function EstimateClientReport({
   brand,
   legalEntityName,
   showActions,
+  sectionId = null,
 }: {
   readonly id: string
   readonly workspace: ProjectEstimateWorkspace
@@ -59,6 +62,7 @@ export function EstimateClientReport({
   readonly brand: ReturnType<typeof projectBrandFor>
   readonly legalEntityName: string
   readonly showActions: boolean
+  readonly sectionId?: string | null
 }): React.ReactElement {
   const phaseDescriptions = Object.fromEntries(
     workspace.phaseDescriptions.map((item) => [
@@ -66,7 +70,7 @@ export function EstimateClientReport({
       item.description,
     ])
   )
-  const phases = clientEstimateReportGroups({
+  const allPhases = clientEstimateReportGroups({
     mode: workspace.reportMode,
     assemblies: workspace.assemblies,
     lines: workspace.lines,
@@ -74,15 +78,23 @@ export function EstimateClientReport({
     reportPhases: workspace.reportPhases,
     defaultItemize: workspace.reportMode === "line_items",
   })
+  const section = estimateReportSection({
+    phases: allPhases,
+    lines: workspace.lines,
+    mode: workspace.reportMode,
+    builderFeeCents: estimate.builderFeeCents,
+    sectionId,
+  })
+  const phases = section ? [section.phase] : allPhases
   const assemblyFees = estimate.showAssemblyBuilderFee && (workspace.reportMode === "assembly_summary" || workspace.reportMode === "assembly_items")
-    ? assemblyBuilderFeeAllocation({ groups: phases, lines: workspace.lines, builderFeeCents: estimate.builderFeeCents })
+    ? assemblyBuilderFeeAllocation({ groups: allPhases, lines: workspace.lines, builderFeeCents: estimate.builderFeeCents })
     : null
-  const clientSubtotalCents = phases.reduce(
+  const clientSubtotalCents = allPhases.reduce(
     (total, phase) => total + phase.subtotalCents,
     0
   )
   const taxSummary = clientEstimateTaxSummary(
-    phases.flatMap((phase) => phase.lines)
+    allPhases.flatMap((phase) => phase.lines)
   )
   const clientPreTaxSubtotalCents = clientSubtotalCents - taxSummary.taxCents
   const clientTotalCents = clientSubtotalCents + estimate.builderFeeCents
@@ -90,6 +102,7 @@ export function EstimateClientReport({
     estimate.overheadRateBasisPoints +
     estimate.marginRateBasisPoints +
     estimate.contingencyRateBasisPoints
+  // An excerpt lists only its own exclusions.
   const builderFeeExclusions = clientEstimateBuilderFeeExclusionSummary(
     phases.flatMap((phase) => phase.lines)
   )
@@ -117,9 +130,11 @@ export function EstimateClientReport({
           estimateNumber={estimate.estimateNumber}
           projectId={id}
           estimateId={estimate.id}
+          sections={estimateReportSectionOptions(allPhases, workspace.reportMode)}
+          sectionId={section?.phase.id ?? null}
         />
       ) : null}
-      <main className="estimate-report mx-auto max-w-[8.5in] bg-report-paper p-4 text-report-ink sm:p-8 print:max-w-none print:p-0">
+      <main data-estimate-report="true" className="estimate-report mx-auto max-w-[8.5in] bg-report-paper p-4 text-report-ink sm:p-8 print:max-w-none print:p-0">
         <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-5">
           <div className="flex items-center gap-4">
             <ProjectBrandLogo
@@ -141,6 +156,18 @@ export function EstimateClientReport({
             <p className="text-sm">Version {estimate.versionNumber}</p>
           </div>
         </header>
+
+        {section && (
+          <section className="mt-4 border-2 border-report-rule bg-report-subtotal px-3 py-2 text-sm">
+            <p className="font-semibold">
+              {section.kind}: {section.label}
+            </p>
+            <p className="text-xs">
+              This printout covers one part of estimate {estimate.estimateNumber}, version{" "}
+              {estimate.versionNumber}. The entire estimate totals {money(clientTotalCents)}.
+            </p>
+          </section>
+        )}
 
         <section className="mt-5 grid grid-cols-2 gap-6 text-sm">
           <div>
@@ -182,6 +209,16 @@ export function EstimateClientReport({
         <ProjectEstimateReportPhases phases={phases} reportMode={workspace.reportMode} assemblyBuilderFees={assemblyFees?.byGroup} showCostBreakdowns={estimate.showCostBreakdowns} />
         {assemblyFees && <p className="mt-3 text-xs text-muted-foreground">The project builder-fee summary below recaps the fees included in assembly totals; these fees are charged once.</p>}
 
+        {section ? (
+          <EstimateSectionTotals
+            label={section.label}
+            subtotalCents={section.subtotalCents}
+            taxCents={section.phase.taxCents}
+            builderFeeCents={section.builderFeeCents}
+            builderFeeRateBasisPoints={builderFeeRateBasisPoints}
+            totalCents={section.totalCents}
+          />
+        ) : (
         <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
           {taxSummary.taxCents > 0 ? (
             <>
@@ -265,6 +302,7 @@ export function EstimateClientReport({
             <span>{money(clientTotalCents)}</span>
           </div>
         </section>
+        )}
 
         {builderFeeExclusions.lines.length > 0 && (
           <section className="mt-6 break-inside-avoid text-sm">
@@ -335,7 +373,7 @@ export function EstimateClientReport({
           </section>
         )}
 
-        {workspace.selectedAcknowledgements.map((acknowledgement) => (
+        {!section && workspace.selectedAcknowledgements.map((acknowledgement) => (
           <section
             key={acknowledgement.id}
             className="estimate-acknowledgement pt-2"
@@ -355,6 +393,7 @@ export function EstimateClientReport({
           </section>
         ))}
 
+        {!section && (
         <section className="estimate-signature-page break-inside-avoid pt-2">
           <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">
             Acceptance and authorization
@@ -395,6 +434,7 @@ export function EstimateClientReport({
             </div>
           </div>
         </section>
+        )}
 
         <footer className="mt-10 border-t pt-3 text-xs text-neutral-600">
           Estimate {estimate.estimateNumber}, version {estimate.versionNumber}, dated{" "}
@@ -403,5 +443,46 @@ export function EstimateClientReport({
 
       </main>
     </>
+  )
+}
+
+function EstimateSectionTotals({
+  label,
+  subtotalCents,
+  taxCents,
+  builderFeeCents,
+  builderFeeRateBasisPoints,
+  totalCents,
+}: {
+  readonly label: string
+  readonly subtotalCents: number
+  readonly taxCents: number
+  readonly builderFeeCents: number
+  readonly builderFeeRateBasisPoints: number
+  readonly totalCents: number
+}): React.ReactElement {
+  return (
+    <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
+      <div className="flex justify-between border-t border-black py-2 font-semibold">
+        <span>{label} subtotal{taxCents > 0 ? " including sales tax" : ""}</span>
+        <span>{money(subtotalCents)}</span>
+      </div>
+      {taxCents > 0 && (
+        <div className="flex justify-between py-1 text-xs">
+          <span>Includes sales tax</span>
+          <span>{money(taxCents)}</span>
+        </div>
+      )}
+      {builderFeeCents !== 0 && (
+        <div className="flex justify-between border-t py-2">
+          <span>Company Overhead &amp; Margin ({percent(builderFeeRateBasisPoints)} Builder Fee)</span>
+          <span>{money(builderFeeCents)}</span>
+        </div>
+      )}
+      <div className="flex justify-between border-y-2 border-report-rule bg-report-total px-3 py-2 text-base font-bold">
+        <span>{label} total:</span>
+        <span>{money(totalCents)}</span>
+      </div>
+    </section>
   )
 }
