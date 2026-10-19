@@ -649,6 +649,8 @@ function recipientSourceLabel(option: GreetingCardRecipientOption): string {
   switch (option.sourceType) {
     case "customer":
       return "Client"
+    case "customer_contact":
+      return "Client contact"
     case "vendor":
       return option.recipientType === "subcontractor"
         ? "Subcontractor company"

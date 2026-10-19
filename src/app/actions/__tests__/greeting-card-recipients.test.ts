@@ -82,12 +82,32 @@ describe("getGreetingCardRecipientOptions", () => {
         role: "developer",
       },
     ])
+    const clientPeopleQuery = selectQuery([
+      {
+        id: "client-person-1",
+        name: "Casey Homeowner",
+        email: "casey@example.com",
+        customerName: "Jamie Client",
+        customerCompany: "Client Co",
+        customerAddress: "10 Oak Lane, Colorado Springs, CO 80903",
+      },
+    ])
+    const employeeContactQuery = selectQuery([
+      // Already listed through their login.
+      { id: "internal-employee-1", userId: "employee-1", name: "Taylor Teammate", email: "taylor@example.com" },
+      // A login that isn't staff stays off the list.
+      { id: "internal-developer-1", userId: "developer-1", name: "Outside Developer", email: "developer@example.com" },
+      // In the directory without a Compass login.
+      { id: "internal-sage-1", userId: null, name: "Avery Crew", email: null },
+    ])
     const select = vi
       .fn()
       .mockReturnValueOnce(customerQuery)
       .mockReturnValueOnce(vendorQuery)
       .mockReturnValueOnce(vendorContactQuery)
       .mockReturnValueOnce(teamQuery)
+      .mockReturnValueOnce(clientPeopleQuery)
+      .mockReturnValueOnce(employeeContactQuery)
     mocks.getDb.mockReturnValue({ select })
 
     const result = await getGreetingCardRecipientOptions()
@@ -95,11 +115,19 @@ describe("getGreetingCardRecipientOptions", () => {
     expect(result.success).toBe(true)
     if (!result.success) return
     expect(result.data.map((option) => option.id)).toEqual([
+      "team:internal-sage-1",
+      "customer_contact:client-person-1",
       "customer:customer-1",
       "vendor_contact:vendor-contact-1",
       "vendor:vendor-1",
       "team:employee-1",
     ])
+    expect(result.data.find((option) => option.id === "customer_contact:client-person-1"))
+      .toEqual(expect.objectContaining({
+        recipientType: "client",
+        companyName: "Client Co",
+        recipient: expect.objectContaining({ firstName: "Casey", lastName: "Homeowner", city: "Colorado Springs" }),
+      }))
     expect(result.data.find((option) => option.id === "team:employee-1"))
       .toEqual(expect.objectContaining({
         recipientType: "employee",
