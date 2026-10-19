@@ -36,6 +36,7 @@ const VALID_FEATURE_IDS = new Set([
   "project-hub",
   "project-contacts",
   "daily-logs",
+  "equipment",
   "project-photos",
   "schedule",
   "rfis",

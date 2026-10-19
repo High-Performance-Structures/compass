@@ -12,6 +12,7 @@ export const MONITORED_HELP_WORKFLOW_ROUTES: readonly string[] = [
   "/dashboard/cards",
   "/dashboard/settings",
   "/dashboard/account",
+  "/dashboard/equipment",
   "/dashboard/nutech/catalog",
   "/dashboard/projects/[id]/nutech",
   "/dashboard/projects/[id]/social",
