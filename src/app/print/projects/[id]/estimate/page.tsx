@@ -16,7 +16,7 @@ export default async function ProjectEstimatePrintPage({
   searchParams,
 }: {
   readonly params: Promise<{ id: string }>
-  readonly searchParams: Promise<{ estimateId?: string }>
+  readonly searchParams: Promise<{ estimateId?: string; section?: string }>
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = await requireProjectRouteId(rawProjectId)
@@ -31,7 +31,10 @@ export default async function ProjectEstimatePrintPage({
   if (!estimate) {
     return <main className="p-8">Estimate not found.</main>
   }
-  const acceptedDocumentUrl = acceptedEstimateDocumentUrl(estimate)
+  const sectionId = query.section?.trim() || null
+  // One assembly or division prints from the estimate itself, even after
+  // acceptance; the signed document is the whole estimate.
+  const acceptedDocumentUrl = sectionId ? null : acceptedEstimateDocumentUrl(estimate)
   if (acceptedDocumentUrl) {
     // An accepted estimate prints as its signed document. Compass shows it in
     // the standard preview when it can serve the file; otherwise it opens there.
@@ -54,6 +57,7 @@ export default async function ProjectEstimatePrintPage({
       brand={brand}
       legalEntityName={legalEntityName}
       showActions
+      sectionId={sectionId}
     />
   )
 }

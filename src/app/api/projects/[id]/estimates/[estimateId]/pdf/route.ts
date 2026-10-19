@@ -25,6 +25,20 @@ export async function GET(
     if (!estimate || estimate.id !== estimateId) {
       return new Response("Estimate not found.", { status: 404 })
     }
+    const sectionId = new URL(request.url).searchParams.get("section")?.trim() || null
+    if (sectionId) {
+      // One assembly or division is an excerpt: no signature page to prepare.
+      const rendered = await renderPrintPagePdf({
+        request,
+        path: `/print/projects/${projectId}/estimate`,
+        searchParams: { estimateId, section: sectionId },
+        waitForSelector: "[data-estimate-report=\"true\"]",
+      })
+      if (!rendered.ok) {
+        return new Response(`Estimate: ${rendered.error}`, { status: rendered.status })
+      }
+      return inlinePdfResponse(rendered.pdf, `${estimate.estimateNumber}-v${estimate.versionNumber}-excerpt.pdf`)
+    }
     const acceptedDocumentUrl = acceptedEstimateDocumentUrl(estimate)
     if (acceptedDocumentUrl) {
       const signedDocument = signedDocumentEmbeddable(acceptedDocumentUrl)
