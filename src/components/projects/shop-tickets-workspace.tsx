@@ -3,7 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { IconPlus, IconPrinter } from "@tabler/icons-react"
+import { IconEye, IconPlus } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { voidShopTicket, type ShopTicketWorkspace } from "@/app/actions/shop-tickets"
@@ -126,8 +126,8 @@ export function ShopTicketsWorkspace({
                       {ticket.status !== "draft" ? (
                         <Button asChild size="sm" variant="ghost">
                           <Link href={`/print/projects/${projectId}/shop-ticket?ticketId=${ticket.id}`} target="_blank">
-                            <IconPrinter className="size-4" />
-                            Print
+                            <IconEye className="size-4" />
+                            Print Preview
                           </Link>
                         </Button>
                       ) : null}

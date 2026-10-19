@@ -4,8 +4,9 @@ import { notFound } from "next/navigation"
 
 import { getShopTicketWorkspace } from "@/app/actions/shop-tickets"
 import { ShopTicketDocument } from "@/components/projects/shop-ticket-document"
-import { ShopTicketPrintButton } from "@/components/projects/shop-ticket-print-button"
+import { DocumentReportActions } from "@/components/projects/document-report-actions"
 import { currentDepartmentProfiles } from "@/lib/department-profiles-server"
+import { printPdfHref } from "@/lib/print/print-documents"
 import { brandForDepartment } from "@/lib/project-branding"
 import { requireProjectRouteId } from "@/lib/project-route-id"
 
@@ -23,11 +24,14 @@ export default async function ShopTicketPrintPage({
   if (!workspace || !ticket) notFound()
   const brand = brandForDepartment(workspace.settings.issuingDepartment, await currentDepartmentProfiles())
   return (
-    <main className="mx-auto max-w-[8.5in] bg-white p-8 text-black print:p-0">
+    <>
+    <DocumentReportActions
+      title={workspace.settings.title}
+      documentNumber={ticket.ticketNumber}
+      pdfHref={printPdfHref({ projectId: id, document: "shop-ticket", params: { ticketId: ticket.id }, number: ticket.ticketNumber })}
+    />
+    <main className="mx-auto my-4 max-w-[8.5in] border bg-white p-8 text-black print:my-0 print:border-0 print:p-0">
       <style>{"@page { size: letter; margin: 0.5in; }"}</style>
-      <div className="mb-6 flex justify-end print:hidden">
-        <ShopTicketPrintButton />
-      </div>
       <ShopTicketDocument
         brand={brand}
         title={workspace.settings.title}
@@ -39,6 +43,8 @@ export default async function ShopTicketPrintPage({
           address: workspace.project.address,
         }}
       />
+      <span data-print-ready="true" hidden />
     </main>
+    </>
   )
 }

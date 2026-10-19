@@ -7,6 +7,7 @@ import type {
   ProjectChangeOrderFormOptions,
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
+import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { ProjectChangeOrderExecutedDocument } from "@/components/projects/project-change-order-executed-document"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
 import {
@@ -77,6 +78,9 @@ export function ProjectChangeOrderDetail({
         }
         actions={
           <>
+                <PrintPreviewButton
+                  link={{ projectId: item.projectId, document: "change-order", params: { changeOrderId: item.id }, number: item.changeOrderNumber }}
+                />
                 <Badge>{changeOrderDisplayStatus(item.status, item.sourceType)}</Badge>
                 <Badge variant="outline">{money(item.amountCents)}</Badge>
                 <Badge variant="outline">
