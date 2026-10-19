@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -17,12 +17,14 @@ import {
 } from "@/db/schema-estimates"
 import {
   buildContractBudget,
+  calculateEstimateTotals,
   contractBudgetSourceHash,
   type ContractAdjustment,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
 import { moveDraftPayApplicationsToRevision } from "@/lib/financials/owner-pay-application-refresh"
 import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 export type ContractBudgetRebuildResult =
   | {
@@ -62,7 +64,7 @@ function estimateLedgerLine(
 }
 
 function builderFeeLedgerLines(
-  estimate: typeof projectEstimates.$inferSelect,
+  estimate: Pick<typeof projectEstimates.$inferSelect, "overheadCents" | "marginCents" | "contingencyCents">,
   sageRows: readonly {
     readonly code: string
     readonly description: string
@@ -98,6 +100,27 @@ function builderFeeLedgerLines(
   })
 }
 
+/** Sage cost codes for the builder-fee lines. */
+function builderFeeSageRows(db: CompassDb) {
+  return db
+    .select({
+      code: sageCostCodes.code,
+      description: sageCostCodes.description,
+      divisionCode: sageCostCodes.divisionCode,
+      divisionDescription: sageCostCodes.divisionDescription,
+    })
+    .from(sageCostCodes)
+    .where(
+      and(
+        eq(sageCostCodes.active, true),
+        inArray(
+          sageCostCodes.description,
+          CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.description)
+        )
+      )
+    )
+}
+
 /**
  * An estimate's lines as budget ledger lines, plus its builder-fee lines
  * (overhead, margin, contingency) mapped to their Sage cost codes. Used for
@@ -107,24 +130,8 @@ export async function estimateBudgetLedgerLines(
   db: CompassDb,
   estimate: typeof projectEstimates.$inferSelect
 ): Promise<{ readonly lines: readonly EstimateLedgerLine[]; readonly estimateLineCount: number }> {
-  const [builderFeeSageRows, estimateRows] = await Promise.all([
-    db
-      .select({
-        code: sageCostCodes.code,
-        description: sageCostCodes.description,
-        divisionCode: sageCostCodes.divisionCode,
-        divisionDescription: sageCostCodes.divisionDescription,
-      })
-      .from(sageCostCodes)
-      .where(
-        and(
-          eq(sageCostCodes.active, true),
-          inArray(
-            sageCostCodes.description,
-            CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.description)
-          )
-        )
-      ),
+  const [feeSageRows, estimateRows] = await Promise.all([
+    builderFeeSageRows(db),
     db
       .select()
       .from(projectEstimateLines)
@@ -132,9 +139,24 @@ export async function estimateBudgetLedgerLines(
       .orderBy(projectEstimateLines.divisionCode, projectEstimateLines.sortOrder),
   ])
   return {
-    lines: [...estimateRows.map(estimateLedgerLine), ...builderFeeLedgerLines(estimate, builderFeeSageRows)],
+    lines: [...estimateRows.map(estimateLedgerLine), ...builderFeeLedgerLines(estimate, feeSageRows)],
     estimateLineCount: estimateRows.length,
   }
+}
+
+/**
+ * Some of an estimate's lines as budget ledger lines, plus the builder fee
+ * those lines carry at the estimate's rates. Used to price a deduct change
+ * order for scope leaving a signed estimate.
+ */
+export async function estimateLinesBudgetLedgerLines(
+  db: CompassDb,
+  estimate: typeof projectEstimates.$inferSelect,
+  rows: readonly (typeof projectEstimateLines.$inferSelect)[]
+): Promise<readonly EstimateLedgerLine[]> {
+  const lines = rows.map(estimateLedgerLine)
+  const totals = calculateEstimateTotals(lines, estimate)
+  return [...lines, ...builderFeeLedgerLines(totals, await builderFeeSageRows(db))]
 }
 
 export async function rebuildProjectContractBudget(input: {
@@ -153,7 +175,7 @@ export async function rebuildProjectContractBudget(input: {
         eq(projectEstimates.projectId, input.projectId),
         eq(projectEstimates.status, "accepted"),
         // Change-order estimates feed the budget through their change order.
-        isNull(projectEstimates.changeOrderId)
+        ...contractEstimateConditions()
       )
   const acceptedRows = await input.db
     .select()

@@ -23,6 +23,7 @@ import { nuTechEstimateLineDescription } from "@/lib/nutech/estimate-wording"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 type Result<T> = { readonly success: true; readonly data: T } | { readonly success: false; readonly error: string }
 
@@ -121,7 +122,7 @@ export async function createNuTechEstimateFromOrder(
             .where(
               linked
                 ? and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.estimateNumber, linked.number))
-                : and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)),
+                : and(eq(projectEstimates.projectId, projectId), ...contractEstimateConditions()),
             )
             .orderBy(desc(projectEstimates.versionNumber))
             .limit(1)

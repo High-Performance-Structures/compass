@@ -18,6 +18,7 @@ import { projectFamilyPhases } from "@/db/schema-project-families"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
 import type { WorkflowCheck, WorkflowFacts, WorkflowLayout, WorkflowOverrides } from "@/lib/job-workflows/engine"
 import { resolvedProjectDepartment, type ProjectDepartment } from "@/lib/project-branding"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 type Db = ReturnType<typeof getDb>
 
@@ -93,7 +94,7 @@ export async function jobWorkflowFacts(
     db
       .select({ status: projectEstimates.status })
       .from(projectEstimates)
-      .where(and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId), ne(projectEstimates.status, "void"), ne(projectEstimates.status, "superseded")))
+      .where(and(eq(projectEstimates.projectId, projectId), ...contractEstimateConditions(), ne(projectEstimates.status, "void"), ne(projectEstimates.status, "superseded")))
       .orderBy(desc(projectEstimates.updatedAt))
       .limit(1)
       .get(),

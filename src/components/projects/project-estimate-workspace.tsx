@@ -56,6 +56,8 @@ import { ProjectEstimateLineOrder } from "@/components/projects/project-estimate
 import { compareEstimateLineOrder } from "@/lib/estimates/line-order"
 import { groupEstimateAssemblies } from "@/lib/estimates/assemblies"
 import { ProjectEstimateAssemblyEditor } from "@/components/projects/project-estimate-assembly-editor"
+import { EstimatePhaseExportButton, ProjectEstimatePhaseProposals } from "@/components/projects/project-estimate-phase-proposals"
+import type { ProjectPhaseProposalSummary } from "@/app/actions/estimate-phase-proposals"
 import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -210,11 +212,13 @@ export function ProjectEstimateWorkspacePanel({
   workspace,
   estimateTemplates,
   family,
+  phaseProposals = [],
 }: {
   readonly projectId: string
   readonly workspace: ProjectEstimateWorkspace
   readonly estimateTemplates: readonly EstimateTemplateOption[]
   readonly family: ProjectFamilySummary | null
+  readonly phaseProposals?: readonly ProjectPhaseProposalSummary[]
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
@@ -877,6 +881,14 @@ export function ProjectEstimateWorkspacePanel({
           </Button>
         </div>
       )}
+
+      <ProjectEstimatePhaseProposals
+        projectId={projectId}
+        proposals={phaseProposals}
+        activeEstimate={estimate}
+        canEdit={workspace.canEdit}
+        canDelete={workspace.canDelete}
+      />
 
       <section className="clarity-panel-strong overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3">
@@ -1606,6 +1618,14 @@ export function ProjectEstimateWorkspacePanel({
                           </span>
                           {money(subtotal)}
                         </p>
+                        {workspace.canEdit && buildView === "assembly" && group.assemblyId && !estimate.changeOrderId && !estimate.phaseProposalId && (
+                          <EstimatePhaseExportButton
+                            projectId={projectId}
+                            estimateId={estimate.id}
+                            assemblyId={group.assemblyId}
+                            assemblyName={workspace.assemblies.find((assembly) => assembly.id === group.assemblyId)?.name ?? "Assembly"}
+                          />
+                        )}
                         {editable && buildView === "assembly" && (
                           <>
                             {group.assemblyId && (

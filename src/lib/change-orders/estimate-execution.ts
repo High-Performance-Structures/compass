@@ -14,11 +14,11 @@ const CLOSED_CHANGE_ORDER_STATUSES: ReadonlySet<string> = new Set(["declined", "
 /**
  * Which accepted estimates an acceptance replaces. A contract estimate
  * replaces the job's other accepted contract estimates (or, on several-estimate
- * jobs, older versions of the same estimate); a change-order estimate only
- * replaces an older accepted version for the same change order.
+ * jobs, older versions of the same estimate); a change-order or phase
+ * estimate only replaces an older accepted version of itself.
  */
 export function estimateSupersedeConditions(
-  estimate: Pick<EstimateRow, "id" | "projectId" | "estimateNumber" | "changeOrderId">,
+  estimate: Pick<EstimateRow, "id" | "projectId" | "estimateNumber" | "changeOrderId" | "phaseProposalId">,
   mode: "single" | "multiple"
 ): readonly SQL[] {
   const base = [
@@ -27,9 +27,11 @@ export function estimateSupersedeConditions(
     ne(projectEstimates.id, estimate.id),
   ]
   if (estimate.changeOrderId) return [...base, eq(projectEstimates.changeOrderId, estimate.changeOrderId)]
+  if (estimate.phaseProposalId) return [...base, eq(projectEstimates.phaseProposalId, estimate.phaseProposalId)]
   return [
     ...base,
     isNull(projectEstimates.changeOrderId),
+    isNull(projectEstimates.phaseProposalId),
     ...(mode === "multiple" ? [eq(projectEstimates.estimateNumber, estimate.estimateNumber)] : []),
   ]
 }

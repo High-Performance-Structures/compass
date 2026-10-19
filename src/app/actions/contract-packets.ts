@@ -41,6 +41,7 @@ import {
   type ProjectDepartment,
 } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -450,7 +451,7 @@ export async function getProjectContractPacketWorkspace(
       })
       .from(projectEstimates)
       // Contract packets are for the contract estimate, not change orders.
-      .where(and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)))
+      .where(and(eq(projectEstimates.projectId, projectId), ...contractEstimateConditions()))
       .orderBy(desc(projectEstimates.versionNumber)),
     access.db
       .select({

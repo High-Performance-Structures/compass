@@ -65,6 +65,8 @@ import {
 import { assertProjectAccess } from "@/lib/project-access"
 import type { ProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import { changeOrderNumber } from "@/lib/change-orders/numbering"
 
 export type ChangeOrderAudience = "internal" | "owner" | "sub_vendor"
 export type ChangeOrderDocumentInput = {
@@ -336,7 +338,7 @@ async function requireRebaselineSelection(input: {
         and(
           eq(projectEstimates.projectId, input.projectId),
           eq(projectEstimates.status, "accepted"),
-          isNull(projectEstimates.changeOrderId)
+          ...contractEstimateConditions()
         )
       )
       .orderBy(desc(projectEstimates.versionNumber))
@@ -459,13 +461,6 @@ function revalidateChangeOrderPaths(projectId: string): void {
   revalidatePath(`/preview/projects/${projectId}/sub-vendor/change-orders`)
 }
 
-function changeOrderNumber(
-  projectNumber: string | null,
-  count: number
-): string {
-  const prefix = cleanText(projectNumber) ?? "PROJECT"
-  return `${prefix}-CO-${String(count + 1).padStart(3, "0")}`
-}
 
 function actorName(user: AuthUser): string {
   return user.displayName ?? user.email
@@ -559,7 +554,7 @@ async function rebaselineViewData(
         and(
           eq(projectEstimates.projectId, row.projectId),
           eq(projectEstimates.status, "accepted"),
-          isNull(projectEstimates.changeOrderId)
+          ...contractEstimateConditions()
         )
       )
       .orderBy(desc(projectEstimates.versionNumber))
@@ -929,7 +924,7 @@ export async function getProjectChangeOrderFormOptions(
       .select()
       .from(projectEstimates)
       // Only contract estimates can replace the contract baseline.
-      .where(and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)))
+      .where(and(eq(projectEstimates.projectId, projectId), ...contractEstimateConditions()))
       .orderBy(desc(projectEstimates.versionNumber)),
   ])
   const phaseMap = new Map<string, ProjectChangeOrderPhaseOption>()
