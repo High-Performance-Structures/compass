@@ -5,6 +5,7 @@ import type {
 
 export type GreetingCardRecipientSource =
   | "customer"
+  | "customer_contact"
   | "vendor"
   | "vendor_contact"
   | "team"

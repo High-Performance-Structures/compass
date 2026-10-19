@@ -4,7 +4,9 @@ import { and, eq, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
+  customerContacts,
   customers,
+  internalContacts,
   organizationMembers,
   users,
   vendorContacts,
@@ -51,7 +53,9 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
     }
     const db = getDb(env.DB)
 
-    const [customerRows, vendorRows, vendorContactRows, teamRows] =
+    // The same people as the Contacts directory: clients and their people,
+    // trade partners and their people, and employees.
+    const [customerRows, vendorRows, vendorContactRows, teamRows, clientPeopleRows, employeeContactRows] =
       await Promise.all([
         db
           .select({
@@ -113,6 +117,39 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
               eq(users.isActive, true),
             ),
           ),
+        db
+          .select({
+            id: customerContacts.id,
+            name: customerContacts.name,
+            email: customerContacts.email,
+            customerName: customers.name,
+            customerCompany: customers.company,
+            customerAddress: customers.address,
+          })
+          .from(customerContacts)
+          .innerJoin(customers, eq(customers.id, customerContacts.customerId))
+          .where(
+            and(
+              eq(customers.organizationId, organizationId),
+              isNull(customers.mergedIntoCustomerId),
+              eq(customerContacts.active, true),
+              isNull(customerContacts.mergedIntoPersonId),
+            ),
+          ),
+        db
+          .select({
+            id: internalContacts.id,
+            userId: internalContacts.userId,
+            name: internalContacts.name,
+            email: internalContacts.email,
+          })
+          .from(internalContacts)
+          .where(
+            and(
+              eq(internalContacts.organizationId, organizationId),
+              eq(internalContacts.active, true),
+            ),
+          ),
       ])
 
     const options: GreetingCardRecipientOption[] = []
@@ -156,6 +193,39 @@ export async function getGreetingCardRecipientOptions(): Promise<RecipientResult
           email: row.email,
           address: row.vendorAddress,
           recipientType: vendorRecipientType(row.vendorCategory),
+          personName: true,
+        }),
+      )
+    }
+    for (const row of clientPeopleRows) {
+      options.push(
+        buildGreetingCardRecipientOption({
+          id: row.id,
+          sourceType: "customer_contact",
+          displayName: row.name,
+          companyName: row.customerCompany ?? row.customerName,
+          email: row.email,
+          address: row.customerAddress,
+          recipientType: "client",
+          personName: true,
+        }),
+      )
+    }
+    // Employees with a Compass login come from their account; the directory
+    // adds employees without one. Logins that aren't staff stay off the list.
+    const memberIds = new Set(teamRows.map((row) => row.id))
+    for (const row of employeeContactRows) {
+      if (row.userId && memberIds.has(row.userId)) continue
+      options.push(
+        buildGreetingCardRecipientOption({
+          id: row.id,
+          sourceType: "team",
+          displayName: row.name,
+          companyName: null,
+          email: row.email,
+          // Residential addresses require a private permissioned workflow.
+          address: null,
+          recipientType: "employee",
           personName: true,
         }),
       )
