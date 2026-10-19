@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { notFound } from "next/navigation"
+import { PrintSourceMode } from "@/components/print/print-source-mode"
 
 import { getShopTicketWorkspace } from "@/app/actions/shop-tickets"
 import { ShopTicketDocument } from "@/components/projects/shop-ticket-document"
@@ -43,7 +44,7 @@ export default async function ShopTicketPrintPage({
           address: workspace.project.address,
         }}
       />
-      <span data-print-ready="true" hidden />
+      <PrintSourceMode />
     </main>
     </>
   )
