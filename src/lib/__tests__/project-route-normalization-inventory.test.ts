@@ -21,7 +21,7 @@ function routeFiles(root: string): readonly string[] {
 describe("project route ID normalization inventory", () => {
   it("normalizes every project page, API, print, and preview boundary", () => {
     const files = routeRoots.flatMap(routeFiles).sort()
-    expect(files).toHaveLength(90)
+    expect(files).toHaveLength(91)
 
     const missing = files.filter((file) => {
       const source = readFileSync(file, "utf8")

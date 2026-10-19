@@ -13,7 +13,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconFileDescription,
-  IconFileExport,
+  IconEye,
   IconPlus,
   IconReceiptTax,
   IconRefresh,
@@ -89,7 +89,6 @@ import {
 } from "@/lib/estimates/manual-acceptance"
 import {
   acceptedEstimateDateLabel,
-  acceptedEstimateDocumentUrl,
   acceptedEstimateEvidenceUrl,
 } from "@/lib/estimates/accepted-document"
 import { calculateEstimateLine } from "@/lib/financials/estimate-ledger"
@@ -220,9 +219,6 @@ export function ProjectEstimateWorkspacePanel({
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const estimate = workspace.activeEstimate
-  const acceptedDocumentUrl = estimate
-    ? acceptedEstimateDocumentUrl(estimate)
-    : null
   const acceptedEvidenceUrl = estimate
     ? acceptedEstimateEvidenceUrl(estimate)
     : null
@@ -911,16 +907,11 @@ export function ProjectEstimateWorkspacePanel({
             </div>
             <Button variant="outline" asChild>
               <Link
-                href={
-                  acceptedDocumentUrl ??
-                  `/print/projects/${projectId}/estimate?estimateId=${estimate.id}`
-                }
+                href={`/print/projects/${projectId}/estimate?estimateId=${estimate.id}`}
                 target="_blank"
               >
-                <IconFileExport className="size-4" />
-                {acceptedDocumentUrl
-                  ? "Accepted proposal PDF"
-                  : "Client report preview"}
+                <IconEye className="size-4" />
+                Print Preview
               </Link>
             </Button>
           </div>

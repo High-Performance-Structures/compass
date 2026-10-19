@@ -68,7 +68,7 @@ test("estimate reports save optional breakdowns and show readable group scopes a
       page.getByLabel("Client report introduction", { exact: true })
     ).not.toBeVisible()
     await expect(
-      page.getByRole("link", { name: "Client report preview", exact: true })
+      page.getByRole("link", { name: "Print Preview", exact: true })
     ).toBeVisible()
     await chooseArea(/^Introduction & closing/)
     await page

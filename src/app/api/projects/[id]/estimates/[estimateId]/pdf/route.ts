@@ -1,6 +1,7 @@
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { requireAuth } from "@/lib/auth"
+import { signedDocumentEmbeddable } from "@/lib/contracts/serve-signed-document"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
 import { inlinePdfResponse, renderPrintPagePdf } from "@/lib/print/render-pdf"
@@ -26,7 +27,10 @@ export async function GET(
     }
     const acceptedDocumentUrl = acceptedEstimateDocumentUrl(estimate)
     if (acceptedDocumentUrl) {
-      return Response.redirect(acceptedDocumentUrl, 307)
+      const signedDocument = signedDocumentEmbeddable(acceptedDocumentUrl)
+        ? new URL(`/api/projects/${projectId}/estimates/${estimateId}/accepted-document`, request.url).toString()
+        : acceptedDocumentUrl
+      return Response.redirect(signedDocument, 307)
     }
     const rendered = await renderPrintPagePdf({
       request,
