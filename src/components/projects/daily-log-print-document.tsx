@@ -6,6 +6,7 @@ import type * as React from "react"
 import type { ProjectDailyLogItem } from "@/app/actions/project-field"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
+import { resolvePhotoImageSource } from "@/lib/photo-sources"
 import { projectBrandFor } from "@/lib/project-branding"
 
 function formatPrintDate(value: string): string {
@@ -177,20 +178,40 @@ export function DailyLogPrintDocument({
               {log.photos.length > 0 && (
                 <div className="mt-4 border-t border-black/30 pt-3">
                   <h3 className="text-[9px] font-bold uppercase tracking-wide">
-                    Attachments ({log.photos.length})
+                    Photos ({log.photos.length})
                   </h3>
-                  <ul className="mt-1 columns-2 gap-6 text-[10px] leading-4">
-                    {log.photos.map((photo) => (
-                      <li key={photo.id} className="break-inside-avoid">
-                        {photo.driveUrl ? (
-                          <a href={photo.driveUrl} className="underline">
-                            {photo.caption ?? photo.fileName}
-                          </a>
-                        ) : (
-                          photo.caption ?? photo.fileName
-                        )}
-                      </li>
-                    ))}
+                  <ul className="mt-2 grid grid-cols-4 gap-2 text-[9px] leading-3">
+                    {log.photos.map((photo) => {
+                      const image = resolvePhotoImageSource(photo)
+                      const label = photo.caption ?? photo.fileName
+                      return (
+                        <li key={photo.id} className="break-inside-avoid">
+                          {image.src ? (
+                            // A plain eager <img>: print pages wait for every image before rendering.
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={image.src}
+                              alt={label}
+                              loading="eager"
+                              className="aspect-[4/3] w-full border border-black/30 object-cover"
+                            />
+                          ) : (
+                            <div className="flex aspect-[4/3] w-full items-center justify-center border border-black/30 p-1 text-center">
+                              Photo not available
+                            </div>
+                          )}
+                          <p className="mt-0.5 truncate">
+                            {photo.driveUrl ? (
+                              <a href={photo.driveUrl} className="underline">
+                                {label}
+                              </a>
+                            ) : (
+                              label
+                            )}
+                          </p>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )}

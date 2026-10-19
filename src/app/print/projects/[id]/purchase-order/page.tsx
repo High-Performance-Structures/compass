@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { notFound } from "next/navigation"
+import { PrintSourceMode } from "@/components/print/print-source-mode"
 
 import { getProjectPurchaseOrders } from "@/app/actions/project-operations"
 import { DocumentReportActions } from "@/components/projects/document-report-actions"
@@ -52,7 +53,7 @@ export default async function PurchaseOrderPrintPage({
           projectLabel={data.projectLabel}
           deliveryLocation={data.deliveryLocation}
         />
-        <span data-print-ready="true" hidden />
+        <PrintSourceMode />
       </main>
     </>
   )

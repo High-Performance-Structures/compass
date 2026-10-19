@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { requireProjectRouteId } from "@/lib/project-route-id"
+import { PrintSourceMode } from "@/components/print/print-source-mode"
 import { getProjectEstimateVersionComparison } from "@/app/actions/project-estimates"
 import { DocumentReportActions } from "@/components/projects/document-report-actions"
 import { printPdfHref } from "@/lib/print/print-documents"
@@ -56,7 +57,7 @@ export default async function ProjectEstimateComparisonPrintPage({
       />
       <main className="mx-auto max-w-[11in] bg-white p-5 text-black print:max-w-none print:p-0">
         <ProjectEstimateVersionComparisonDocument data={data} />
-        <span data-print-ready="true" hidden />
+        <PrintSourceMode />
       </main>
     </>
   )
