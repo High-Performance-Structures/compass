@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useTransition, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconRefresh, IconTrash } from "@tabler/icons-react"
+import { IconArrowBackUp, IconCircleCheck, IconDeviceFloppy, IconEye, IconRefresh, IconTrash } from "@tabler/icons-react"
 
 import {
   deleteProjectOwnerPayApplicationDraft,
@@ -490,56 +490,64 @@ export function ProjectOwnerPayApplicationEditor({
               <PayApplicationClientDetail projectId={projectId} application={application} onMessage={setMessage} />
             </div>
           </div>
-          {application.status === "internal_review" && (
-            <Button variant="outline" onClick={returnToDraft} disabled={isPending}>
-              <IconArrowBackUp className="size-4" />
-              Return to draft
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" asChild>
+              <a href={`/print/projects/${projectId}/pay-application?applicationId=${application.id}`} target="_blank" rel="noopener">
+                <IconEye className="size-4" />
+                Print Preview
+              </a>
             </Button>
-          )}
-          {editable && (
-            <div className="flex flex-wrap items-center gap-2">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" disabled={isPending}>
-                    <IconTrash className="size-4" />
-                    Delete draft
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete pay application {application.applicationNumber}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      The draft and the work entered on it are removed. Any deposit it applied becomes available to other drafts. This can&apos;t be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Keep it</AlertDialogCancel>
-                    <AlertDialogAction onClick={deleteDraft}>Delete draft</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
-                    <IconCircleCheck className="size-4" />
-                    {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Mark pay application {application.applicationNumber} ready for review?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This locks the draw so it can be reviewed and entered in Sage. You can send it back to draft while it&apos;s in review.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Keep editing</AlertDialogCancel>
-                    <AlertDialogAction onClick={readyForReview}>Mark ready</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          )}
+            {application.status === "internal_review" && (
+              <Button variant="outline" onClick={returnToDraft} disabled={isPending}>
+                <IconArrowBackUp className="size-4" />
+                Return to draft
+              </Button>
+            )}
+            {editable && (
+              <div className="flex flex-wrap items-center gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" disabled={isPending}>
+                      <IconTrash className="size-4" />
+                      Delete draft
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete pay application {application.applicationNumber}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        The draft and the work entered on it are removed. Any deposit it applied becomes available to other drafts. This can&apos;t be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep it</AlertDialogCancel>
+                      <AlertDialogAction onClick={deleteDraft}>Delete draft</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button disabled={isPending || (application.currentPaymentDue <= 0 && application.depositApplied <= 0)}>
+                      <IconCircleCheck className="size-4" />
+                      {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Mark pay application {application.applicationNumber} ready for review?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This locks the draw so it can be reviewed and entered in Sage. You can send it back to draft while it&apos;s in review.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep editing</AlertDialogCancel>
+                      <AlertDialogAction onClick={readyForReview}>Mark ready</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            )}
+          </div>
         </div>
         {(application.newerBudgetRevision || application.assemblySplitStale) && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/35 px-4 py-3 text-sm">

@@ -1,9 +1,9 @@
 import { resolveProjectRouteId } from "@/lib/project-route-id"
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { requireAuth } from "@/lib/auth"
-import { getCloudflareContext } from "@/lib/db"
 import { acceptedEstimateDocumentUrl } from "@/lib/estimates/accepted-document"
 import { prepareEstimateSignaturePdf } from "@/lib/estimates/signature-pdf"
+import { inlinePdfResponse, renderPrintPagePdf } from "@/lib/print/render-pdf"
 
 export async function GET(
   request: Request,
@@ -28,34 +28,17 @@ export async function GET(
     if (acceptedDocumentUrl) {
       return Response.redirect(acceptedDocumentUrl, 307)
     }
-    const { env } = await getCloudflareContext()
-    const quickAction = Reflect.get(env.BROWSER, "quickAction")
-    if (typeof quickAction !== "function") {
-      return new Response("Estimate PDF service is unavailable.", { status: 503 })
-    }
-    const origin = new URL(env.WORKOS_REDIRECT_URI).origin
-    const printUrl = new URL(`/print/projects/${projectId}/estimate`, origin)
-    printUrl.searchParams.set("estimateId", estimateId)
-    const rendered: unknown = await Reflect.apply(quickAction, env.BROWSER, [
-      "pdf",
-      {
-        url: printUrl.toString(),
-        setExtraHTTPHeaders: { Cookie: request.headers.get("Cookie") ?? "" },
-        gotoOptions: { waitUntil: "networkidle2", timeout: 60_000 },
-        waitForSelector: { selector: ".estimate-signature-page", timeout: 60_000 },
-        pdfOptions: {
-          format: "letter",
-          printBackground: true,
-          preferCSSPageSize: true,
-          margin: { top: "0", right: "0", bottom: "0", left: "0" },
-        },
-      },
-    ])
-    if (!(rendered instanceof Response) || !rendered.ok) {
-      return new Response("Unable to render estimate PDF.", { status: 502 })
+    const rendered = await renderPrintPagePdf({
+      request,
+      path: `/print/projects/${projectId}/estimate`,
+      searchParams: { estimateId },
+      waitForSelector: ".estimate-signature-page",
+    })
+    if (!rendered.ok) {
+      return new Response(`Estimate: ${rendered.error}`, { status: rendered.status })
     }
     const preparedPdf = await prepareEstimateSignaturePdf({
-      pdf: await rendered.arrayBuffer(),
+      pdf: rendered.pdf,
       signerLabels: [
         ...estimate.clientSigners.map((_, index) => `Client ${index + 1}`),
         "Company",
@@ -64,15 +47,7 @@ export async function GET(
     })
     const binary = atob(preparedPdf.pdfBase64)
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0))
-    const fileName = `${estimate.estimateNumber}-v${estimate.versionNumber}.pdf`
-      .replace(/[^a-zA-Z0-9._-]/g, "-")
-    return new Response(bytes, {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${fileName}"`,
-        "Cache-Control": "private, no-store",
-      },
-    })
+    return inlinePdfResponse(bytes, `${estimate.estimateNumber}-v${estimate.versionNumber}.pdf`)
   } catch {
     return new Response("Estimate not found.", { status: 404 })
   }

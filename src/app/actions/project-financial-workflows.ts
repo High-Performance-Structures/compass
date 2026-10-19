@@ -126,6 +126,8 @@ export type ProjectOwnerPayApplicationLine = {
   readonly divisionName: string
   readonly description: string
   readonly originalEstimate: number
+  readonly priorChanges: number
+  readonly currentChanges: number
   readonly totalChanges: number
   readonly adjustedEstimate: number
   readonly previousWorkCompleted: number
@@ -512,6 +514,8 @@ export async function getProjectOwnerPayApplicationDraft(
       divisionName: line.csiDivisionName,
       description: line.description,
       originalEstimate: line.originalEstimate,
+      priorChanges: line.priorChanges,
+      currentChanges: line.currentChanges,
       totalChanges: line.totalChanges,
       adjustedEstimate: line.adjustedEstimate,
       previousWorkCompleted: line.previousWorkCompleted,
@@ -523,6 +527,42 @@ export async function getProjectOwnerPayApplicationDraft(
       ownerVisible: line.ownerVisible,
     })),
   }
+}
+
+export type ProjectOwnerPayApplicationReport = {
+  readonly draft: ProjectOwnerPayApplicationDraft
+  readonly project: {
+    readonly name: string
+    readonly projectNumber: string | null
+    readonly department: string | null
+    readonly address: string | null
+    readonly clientName: string | null
+    readonly clientAddress: string | null
+  }
+}
+
+/** A pay application with the project details its G702/G703 print needs. */
+export async function getProjectOwnerPayApplicationReport(
+  projectId: string,
+  applicationId: string
+): Promise<ProjectOwnerPayApplicationReport | null> {
+  const draft = await getProjectOwnerPayApplicationDraft(projectId, applicationId)
+  if (!draft) return null
+  const { db } = await verifyProjectReadAccess(projectId)
+  const project = await db
+    .select({
+      name: projects.name,
+      projectNumber: projects.projectNumber,
+      department: projects.department,
+      address: projects.address,
+      clientName: projects.clientName,
+      clientAddress: projects.mailingAddress,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get()
+  if (!project) return null
+  return { draft, project }
 }
 
 function nonnegativeAmount(value: number | null, label: string): number {

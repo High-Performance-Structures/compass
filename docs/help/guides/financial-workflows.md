@@ -91,6 +91,8 @@ When a change order is executed, draft pay applications move to the new contract
 
 **Ready for review** locks the draw so it can be reviewed and entered in Sage; Compass asks you to confirm first. While it's in internal review, **Return to draft** unlocks it for more edits.
 
+**Print Preview** opens the client copy in a new tab at any status, without changing the draw. It prints in landscape: page 1 is the G702 application and certificate for payment, with the contractor certification and a **Reviewed and approved** block for the reviewer's amount certified, signature, printed name and date. The G703 continuation sheet follows, with columns for original contract sum, prior and current changes, adjusted estimate, prior and current costs, completed to date, percent complete and balance. Its first column follows **Client sees**: the percent levels print one combined row per assembly or division, Assembly and Division also list the cost codes under each group, and Cost code lists every cost code. **Print / Save PDF** opens the PDF in a browser tab; **Email report link** starts an email with the preview link.
+
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
 
 ## Sage Status {#sage-status}
