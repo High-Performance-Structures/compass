@@ -4,6 +4,7 @@ import { projectEstimates } from "@/db/schema-estimates"
 import type { CompassDb } from "@/lib/estimates/access"
 import { estimateModeFor, nextEstimateNumber, type EstimateMode } from "@/lib/estimates/estimate-modes"
 import { readFeatureSettings } from "@/lib/feature-settings/server"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 /** The company's estimate mode for a department; "single" if settings can't be read. */
 export async function readEstimateMode(db: CompassDb, organizationId: string | null, department: string | null): Promise<EstimateMode> {
@@ -29,7 +30,7 @@ export async function numberNewEstimate(
     .select({ estimateNumber: projectEstimates.estimateNumber, versionNumber: projectEstimates.versionNumber })
     .from(projectEstimates)
     // Change-order estimates are numbered after their change order.
-    .where(and(eq(projectEstimates.projectId, input.projectId), isNull(projectEstimates.changeOrderId)))
+    .where(and(eq(projectEstimates.projectId, input.projectId), ...contractEstimateConditions()))
     .orderBy(desc(projectEstimates.versionNumber))
   if (input.mode === "multiple") {
     return { estimateNumber: nextEstimateNumber(input.projectNumber, rows.map((row) => row.estimateNumber)), versionNumber: 1 }

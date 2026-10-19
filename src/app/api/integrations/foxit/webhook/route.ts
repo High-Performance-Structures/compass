@@ -10,6 +10,8 @@ import { projectDepartment } from "@/lib/project-branding"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import { verifyFoxitWebhook } from "@/lib/foxit/esign"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
+import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
 
 function objectValue(value: unknown): object | null {
   return value && typeof value === "object" ? value : null
@@ -143,7 +145,7 @@ export async function POST(request: Request): Promise<Response> {
               eq(projectEstimates.projectId, linkedEstimate.projectId),
               eq(projectEstimates.status, "accepted"),
               ne(projectEstimates.id, linkedEstimate.id),
-              isNull(projectEstimates.changeOrderId)
+              ...contractEstimateConditions()
             )
           ),
         db
@@ -282,6 +284,17 @@ export async function POST(request: Request): Promise<Response> {
         .where(eq(projectEstimates.id, estimate.id)),
       ...changeOrderExecution,
     ])
+  }
+  if (estimate.phaseProposalId) {
+    // A phase estimate sets up its family phase instead of a contract budget.
+    const phase = await completePhaseProposal({
+      db,
+      estimate: { ...estimate, signedAt: estimate.signedAt ?? now },
+      actor: { id: estimate.createdBy, name: "Foxit eSign", role: "system" },
+      now,
+    })
+    if (!phase.success) return Response.json({ success: false, error: phase.error }, { status: 500 })
+    return Response.json({ success: true })
   }
   if (mode === "multiple") return Response.json({ success: true })
   const budget = await rebuildProjectContractBudget({

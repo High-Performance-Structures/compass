@@ -15,6 +15,7 @@ import {
   projectTemplateVersions,
 } from "./schema-templates"
 import { projectDocuments } from "./schema-documents"
+import { projectFamilyPhases } from "./schema-project-families"
 
 export const sageTaxEntities = sqliteTable(
   "sage_tax_entities",
@@ -87,6 +88,12 @@ export const projectEstimates = sqliteTable(
      * 0138, without a foreign key; change orders are voided, never deleted.)
      */
     changeOrderId: text("change_order_id"),
+    /**
+     * Set for a phase proposal's estimate: one assembly offered as a later
+     * project family phase and approved on its own. Null for contract and
+     * change-order estimates. (Migration 0237, without a foreign key.)
+     */
+    phaseProposalId: text("phase_proposal_id"),
     estimateNumber: text("estimate_number").notNull(),
     versionNumber: integer("version_number").notNull().default(1),
     title: text("title").notNull().default("CA22 Construction Estimate"),
@@ -206,6 +213,7 @@ export const projectEstimates = sqliteTable(
       table.versionNumber
     ),
     index("project_estimates_change_order_idx").on(table.projectId, table.changeOrderId),
+    index("project_estimates_phase_proposal_idx").on(table.projectId, table.phaseProposalId),
     index("project_estimates_project_status_idx").on(
       table.projectId,
       table.status,
@@ -217,6 +225,39 @@ export const projectEstimates = sqliteTable(
       .on(table.projectId, table.estimateNumber)
       .where(sql`${table.status} = 'accepted'`),
   ]
+)
+
+/**
+ * One assembly of a contract estimate offered as a later project family
+ * phase. Its estimate (project_estimates.phase_proposal_id) is approved on its
+ * own. On acceptance the assembly leaves the contract estimate, or a deduct
+ * change order is drafted when that estimate is already signed, and the
+ * family phase is created, authorized at the accepted amount.
+ */
+export const projectPhaseProposals = sqliteTable(
+  "project_phase_proposals",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    phaseName: text("phase_name").notNull(),
+    assemblyName: text("assembly_name").notNull(),
+    sourceEstimateId: text("source_estimate_id"),
+    sourceEstimateNumber: text("source_estimate_number").notNull(),
+    sourceVersionNumber: integer("source_version_number").notNull(),
+    /** "proposed" until its estimate is accepted, then "accepted". */
+    status: text("status").notNull().default("proposed"),
+    familyPhaseId: text("family_phase_id").references(() => projectFamilyPhases.id, { onDelete: "set null" }),
+    /** How the assembly left the contract estimate; see PhaseProposalContractRemoval. */
+    contractRemoval: text("contract_removal"),
+    deductChangeOrderId: text("deduct_change_order_id"),
+    acceptedAt: text("accepted_at"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("project_phase_proposals_project_idx").on(table.projectId, table.createdAt)]
 )
 
 export const projectEstimatePhaseDescriptions = sqliteTable(

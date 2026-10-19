@@ -52,6 +52,7 @@ import {
   requireFeaturePermission,
 } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
+import { contractEstimateConditions } from "@/lib/estimates/estimate-family"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -531,7 +532,7 @@ export async function getProjectNuTechOrderWorkspace(
         ? orderRow.estimateId
           ? eq(projectEstimates.id, orderRow.estimateId)
           : sql`0`
-        : and(eq(projectEstimates.projectId, projectId), isNull(projectEstimates.changeOrderId)),
+        : and(eq(projectEstimates.projectId, projectId), ...contractEstimateConditions()),
     )
     .orderBy(desc(projectEstimates.updatedAt))
     .limit(1)

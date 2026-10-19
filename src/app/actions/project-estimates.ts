@@ -114,11 +114,15 @@ import {
   prepareEstimateSignaturePdf,
   type PreparedEstimateSignaturePdf,
 } from "@/lib/estimates/signature-pdf"
+import { contractEstimateConditions, estimateFamilyKey } from "@/lib/estimates/estimate-family"
+import { completePhaseProposal } from "@/lib/estimates/phase-proposals"
 
 export type ProjectEstimateSummary = {
   readonly id: string
   /** Set for a change-order estimate (see project_estimates.change_order_id). */
   readonly changeOrderId: string | null
+  /** Set for a phase proposal's estimate (see project_estimates.phase_proposal_id). */
+  readonly phaseProposalId: string | null
   readonly estimateNumber: string
   readonly versionNumber: number
   readonly title: string
@@ -686,6 +690,7 @@ function estimateSummary(
   return {
     id: row.id,
     changeOrderId: row.changeOrderId,
+    phaseProposalId: row.phaseProposalId,
     estimateNumber: row.estimateNumber,
     versionNumber: row.versionNumber,
     title: estimateTitleForDepartment({
@@ -1040,11 +1045,13 @@ async function loadProjectEstimateWorkspace(
   const allEstimates = estimateRows.map((row) =>
     estimateSummary(row, access.department, canEdit)
   )
-  // Contract estimates and each change order's estimates are separate
-  // families; only the open family's versions are listed.
+  // Contract estimates, each change order's estimates and each phase
+  // proposal's estimates are separate families; only the open family's
+  // versions are listed.
   const requested = estimateId ? allEstimates.find((estimate) => estimate.id === estimateId) ?? null : null
   const familyChangeOrderId = requested?.changeOrderId ?? null
-  const estimates = allEstimates.filter((estimate) => estimate.changeOrderId === familyChangeOrderId)
+  const familyKey = requested ? estimateFamilyKey(requested) : "contract"
+  const estimates = allEstimates.filter((estimate) => estimateFamilyKey(estimate) === familyKey)
   const selected = activeEstimate(estimates, estimateId)
   const changeOrder = familyChangeOrderId
     ? await access.db
@@ -1449,7 +1456,7 @@ export async function createChangeOrderEstimateDraft(
     const contract = await access.db
       .select()
       .from(projectEstimates)
-      .where(and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.status, "accepted"), isNull(projectEstimates.changeOrderId)))
+      .where(and(eq(projectEstimates.projectId, projectId), eq(projectEstimates.status, "accepted"), ...contractEstimateConditions()))
       .orderBy(desc(projectEstimates.versionNumber))
       .limit(1)
       .get()
@@ -1705,6 +1712,9 @@ export async function duplicateProjectEstimate(
     const separate = destination?.kind === "separate"
     if (source.changeOrderId && (separate || changingPhase)) {
       throw new Error("A change-order estimate can only get a new version on its own change order.")
+    }
+    if (source.phaseProposalId && (separate || changingPhase)) {
+      throw new Error("A phase estimate can only get a new version of itself.")
     }
     if (separate && changingPhase) {
       throw new Error("A separate estimate is made on this job; copy to another phase as a new version.")
@@ -2028,8 +2038,8 @@ export async function getProjectEstimateVersionComparison(
   // Compare within one family: the contract estimate's versions, or one
   // change order's estimate versions.
   const requestedRevised = allEstimates.find((estimate) => estimate.id === revisedEstimateId) ?? null
-  const familyChangeOrderId = requestedRevised?.changeOrderId ?? null
-  const estimates = allEstimates.filter((estimate) => estimate.changeOrderId === familyChangeOrderId)
+  const familyKey = requestedRevised ? estimateFamilyKey(requestedRevised) : "contract"
+  const estimates = allEstimates.filter((estimate) => estimateFamilyKey(estimate) === familyKey)
   const revisedEstimate =
     estimates.find((estimate) => estimate.id === revisedEstimateId) ??
     estimates[0] ??
@@ -4409,9 +4419,24 @@ async function acceptProjectEstimate(input: {
     ...changeOrderExecution,
   ])
 
+  // A phase estimate creates its family phase and takes its assembly out of
+  // the contract estimate; it never builds this job's contract budget.
+  if (input.estimate.phaseProposalId) {
+    const phase = await completePhaseProposal({
+      db: input.access.db,
+      estimate: { ...input.estimate, signedAt: input.signedAt },
+      actor: { id: input.access.user.id, name: recordedByName, role: input.access.user.role },
+      now,
+    })
+    if (!phase.success) {
+      revalidateEstimate(input.estimate.projectId)
+      return { success: false, error: `Estimate accepted, but the phase setup needs another try: ${phase.error}` }
+    }
+  }
+
   // Several-estimate jobs move on to orders, not a contract budget.
   const budget =
-    mode === "multiple"
+    mode === "multiple" || input.estimate.phaseProposalId
       ? ({ success: true } as const)
       : await rebuildProjectContractBudget({
           db: input.access.db,

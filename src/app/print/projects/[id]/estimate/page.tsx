@@ -41,7 +41,7 @@ export default async function ProjectEstimatePrintPage({
     if (!signedDocumentEmbeddable(acceptedDocumentUrl)) redirect(acceptedDocumentUrl)
     return (
       <PdfDocumentPreview
-        title={estimate.changeOrderId ? "Accepted change order" : "Accepted proposal"}
+        title={estimate.changeOrderId ? "Accepted change order" : estimate.phaseProposalId ? "Accepted phase estimate" : "Accepted proposal"}
         documentNumber={estimate.estimateNumber}
         pdfHref={`/api/projects/${id}/estimates/${estimate.id}/accepted-document`}
         preparingLabel="Opening the signed document..."

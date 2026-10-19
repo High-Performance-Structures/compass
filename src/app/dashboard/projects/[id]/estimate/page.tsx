@@ -7,6 +7,7 @@ import { IconCalculator, IconPackageExport } from "@tabler/icons-react"
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { getPublishedEstimateTemplateOptions } from "@/app/actions/estimate-templates"
 import { getProjectFamilySummary } from "@/app/actions/project-families"
+import { getProjectPhaseProposals } from "@/app/actions/estimate-phase-proposals"
 import { PageHeader } from "@/components/page-header"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectEstimateWorkspacePanel } from "@/components/projects/project-estimate-workspace"
@@ -24,11 +25,12 @@ export default async function ProjectEstimatePage({
 }): Promise<React.ReactElement> {
   const [{ id: rawProjectId }, query] = await Promise.all([params, searchParams])
   const id = decodeProjectRouteId(rawProjectId)
-  const [workspace, estimateTemplates, family, paperTrail] = await Promise.all([
+  const [workspace, estimateTemplates, family, paperTrail, phaseProposals] = await Promise.all([
     getProjectEstimateWorkspace(id, query.estimateId),
     getPublishedEstimateTemplateOptions(),
     getProjectFamilySummary(id),
     getProjectPaperTrail(id, "estimate"),
+    getProjectPhaseProposals(id),
   ])
   const activeEstimateId = workspace.activeEstimate?.id ?? null
   // Nu-Tech jobs show which order fills each estimate.
@@ -79,6 +81,7 @@ export default async function ProjectEstimatePage({
         workspace={workspace}
         estimateTemplates={estimateTemplates}
         family={family}
+        phaseProposals={phaseProposals}
       />
     </div>
   )
