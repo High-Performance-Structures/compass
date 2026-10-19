@@ -45,7 +45,8 @@ type ActiveEstimate = NonNullable<ProjectEstimateWorkspace["activeEstimate"]>
  * The client estimate report with the department's logo. The estimate print
  * page shows it with print actions; the project paper trail saves the same
  * report to Drive without them. With a section, it prints one assembly or
- * division as an excerpt: its share of the builder fee, no signature page.
+ * division as an excerpt: its share of the builder fee, no signature page and no
+ * full-estimate total.
  */
 export function EstimateClientReport({
   id,
@@ -164,7 +165,7 @@ export function EstimateClientReport({
             </p>
             <p className="text-xs">
               This printout covers one part of estimate {estimate.estimateNumber}, version{" "}
-              {estimate.versionNumber}. The entire estimate totals {money(clientTotalCents)}.
+              {estimate.versionNumber}.
             </p>
           </section>
         )}
