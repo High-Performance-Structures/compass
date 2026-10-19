@@ -4,6 +4,7 @@ import { useState } from "react"
 import Image from "next/image"
 import { IconExternalLink, IconPhoto } from "@tabler/icons-react"
 
+import { printImageSrc } from "@/lib/print/print-image"
 import {
   photoLinkHref,
   resolvePhotoImageSource,
@@ -35,7 +36,8 @@ export function OwnerUpdatePhotoTile({
     driveUrl,
     thumbnailUrl,
   })
-  const imageSrc = imageFailed ? null : resolvedImage.src
+  // Tiles are small, so the print-size copy serves both the page and the PDF.
+  const imageSrc = imageFailed || !resolvedImage.src ? null : printImageSrc(resolvedImage.src)
   const href = photoLinkHref(driveUrl, {
     allowExternalSource,
   })

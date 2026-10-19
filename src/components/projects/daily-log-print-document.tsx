@@ -7,6 +7,7 @@ import type { ProjectDailyLogItem } from "@/app/actions/project-field"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { printImageSrc } from "@/lib/print/print-image"
 import { projectBrandFor } from "@/lib/project-branding"
 
 function formatPrintDate(value: string): string {
@@ -190,7 +191,7 @@ export function DailyLogPrintDocument({
                             // A plain eager <img>: print pages wait for every image before rendering.
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={image.src}
+                              src={printImageSrc(image.src)}
                               alt={label}
                               loading="eager"
                               className="aspect-[4/3] w-full border border-black/30 object-cover"

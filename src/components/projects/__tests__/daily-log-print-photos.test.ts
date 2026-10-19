@@ -61,7 +61,7 @@ describe("DailyLogPrintDocument", () => {
         projectNumber: "H-100",
       })
     )
-    expect(markup).toContain('src="/api/google/download/drive-1"')
+    expect(markup).toContain('src="/api/google/download/drive-1?size=print"')
     expect(markup).toContain("Footing pour")
     expect(markup).toContain("Photo not available")
   })

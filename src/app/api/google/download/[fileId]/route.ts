@@ -22,6 +22,9 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 
+/** Longest side, in pixels, of photos on printed documents. */
+const PRINT_IMAGE_SIZE = 800
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ fileId: string }> }
@@ -112,6 +115,23 @@ export async function GET(
       if (!withinProject) {
         return new Response("Document is outside the selected project", {
           status: 403,
+        })
+      }
+    }
+
+    // Print pages ask for photos at print size so large photo sets stay small.
+    if (
+      request.nextUrl.searchParams.get("size") === "print" &&
+      fileMeta.mimeType.startsWith("image/") &&
+      fileMeta.thumbnailLink
+    ) {
+      const thumbnail = await client.downloadThumbnail(googleEmail, fileMeta.thumbnailLink, PRINT_IMAGE_SIZE)
+      if (thumbnail) {
+        return new Response(thumbnail.body, {
+          headers: {
+            "Content-Type": thumbnail.headers.get("Content-Type") ?? "image/jpeg",
+            "Cache-Control": "private, max-age=3600",
+          },
         })
       }
     }
