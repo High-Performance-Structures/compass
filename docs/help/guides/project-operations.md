@@ -34,7 +34,7 @@ Staff can email external bidders and record a response received outside Compass 
 
 Enter the vendor, scope, internal owner, ship-to details, dates, priority, and separately coded lines. Check quantities, units, costs, tax, and totals. A P.O. saved in Compass may still require approval or Sage synchronization; check status before representing it as processed.
 
-Use **Pickup copy** on a project P.O. when you need a printed vendor copy. Review the print preview across all pages, including repeated headings, line details, totals, and the vendor signature area. Printing is a document action; it does not approve the P.O. or confirm Sage processing.
+Use **Print Preview** on a project P.O. when you need a printed vendor copy. It opens the P.O. in a new tab with **Print / Save PDF**, which opens the PDF in a browser tab, and **Email report link**. Review every page, including repeated headings, line details, totals, and the vendor signature area. Printing is a document action; it does not approve the P.O. or confirm Sage processing. Nu-Tech orders keep **Pickup copy**, which prints on the manufacturer's own form.
 
 ## Vendor Bill Submissions {#bill-submissions}
 

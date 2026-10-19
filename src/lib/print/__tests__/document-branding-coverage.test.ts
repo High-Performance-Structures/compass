@@ -13,9 +13,11 @@ const REACT_PRINT_DOCUMENTS = [
 ] as const
 
 const GENERATED_PRINT_DOCUMENTS = [
-  "src/components/projects/project-rfq-share-actions.tsx",
   "src/components/projects/project-selection-share-actions.tsx",
 ] as const
+
+/** Print-only documents rendered to PDF on the server. */
+const SERVER_GENERATED_PRINT_DOCUMENTS = ["src/lib/print/rfq-print.ts"] as const
 
 function source(file: string): string {
   return readFileSync(join(process.cwd(), file), "utf8")
@@ -45,6 +47,16 @@ describe("project document branding coverage", () => {
       expect(contents).toContain("brand.contactLines")
       expect(contents).toContain("new window.Image()")
       expect(contents).toContain("waitForPrintLayout(printRoot)")
+    }
+  )
+
+  it.each(SERVER_GENERATED_PRINT_DOCUMENTS)(
+    "%s prints the department logo and contact lines",
+    (file) => {
+      const contents = source(file)
+      expect(contents).toContain('data-project-brand-logo="true"')
+      expect(contents).toContain('data-project-brand-contact="true"')
+      expect(contents).toContain("brand.contactLines")
     }
   )
 })

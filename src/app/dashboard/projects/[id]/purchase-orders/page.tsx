@@ -31,7 +31,7 @@ import {
   ProjectPurchaseOrderCreateForm,
   ProjectPurchaseOrderEditForm,
 } from "@/components/projects/project-purchase-order-create-form"
-import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-purchase-order-print-button"
+import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
@@ -259,7 +259,9 @@ function PurchaseOrderCard({
                 </a>
               </Button>
             ) : (
-              <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+              <PrintPreviewButton
+                link={{ projectId, document: "purchase-order", params: { purchaseOrderId: order.id }, number: order.sourceRecordNumber ?? "Purchase order" }}
+              />
             )}
           </div>
         </div>

@@ -5,7 +5,6 @@ import {
   IconCheck,
   IconCopy,
   IconMail,
-  IconPrinter,
   IconSparkles,
 } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
@@ -14,143 +13,12 @@ import {
   type ProjectRfqItem,
   updateProjectOperationStatus,
 } from "@/app/actions/project-operations"
+import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { Button } from "@/components/ui/button"
 import type { ProjectBrand } from "@/lib/project-branding"
-import { requiresSynchronousPrint } from "@/lib/print/ios-print"
-import {
-  IOS_PRINT_STATE_TIMEOUT_MS,
-  PRINT_STATE_TIMEOUT_MS,
-  waitForPrintLayout,
-} from "@/lib/print/readiness"
+import { escapeHtml, rfqLink } from "@/lib/print/rfq-print"
 
 type CopiedState = "link" | "email" | "html" | null
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;")
-}
-
-function plainText(value: string | null): string {
-  return value?.trim() ?? ""
-}
-
-function rfqLink(projectId: string, rfqId: string): string {
-  return (
-    `/preview/projects/${encodeURIComponent(projectId)}/sub-vendor/rfqs` +
-    `?rfq=${encodeURIComponent(rfqId)}#rfq-${encodeURIComponent(rfqId)}`
-  )
-}
-
-function rfqRows(rfq: ProjectRfqItem): string {
-  return rfq.scopeItems
-    .map(
-      (line) => `
-        <tr>
-          <td>${line.lineNumber}</td>
-          <td>${escapeHtml(line.description)}</td>
-          <td>${escapeHtml(plainText(line.phaseCode))}</td>
-          <td>${escapeHtml(plainText(line.costCode))}</td>
-          <td>${escapeHtml(plainText(line.notes))}</td>
-        </tr>`
-    )
-    .join("")
-}
-
-function documentRows(rfq: ProjectRfqItem): string {
-  return rfq.documentLinks
-    .map(
-      (link) => `
-        <li>
-          <a href="${escapeHtml(link.url)}">${escapeHtml(link.label)}</a>
-          ${link.notes ? `<span>${escapeHtml(link.notes)}</span>` : ""}
-        </li>`
-    )
-    .join("")
-}
-
-function printHtml({
-  brand,
-  projectLabel,
-  rfq,
-  url,
-}: {
-  readonly brand: ProjectBrand
-  readonly projectLabel: string
-  readonly rfq: ProjectRfqItem
-  readonly url: string
-}): string {
-  return `
-    <article class="rfq-printable">
-      <header class="rfq-print-header">
-        <div class="rfq-print-brand">
-          <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" loading="eager" decoding="sync" data-project-brand-logo="true" />
-          <div>
-            <p>${escapeHtml(brand.companyName)}</p>
-            <h1>${escapeHtml(rfq.title)}</h1>
-            <div data-project-brand-contact="true">
-              ${brand.contactLines
-                .map(
-                  (line) =>
-                    `<span style="display:block;margin-top:0.02in;text-align:left;text-transform:none;">${escapeHtml(line)}</span>`
-                )
-                .join("")}
-            </div>
-          </div>
-        </div>
-        <div>
-          <p>${escapeHtml(projectLabel)}</p>
-          <span>${escapeHtml(rfq.sourceRecordNumber ?? "RFQ")}</span>
-        </div>
-      </header>
-      <section class="rfq-print-meta">
-        <p><strong>Requested from:</strong> ${escapeHtml(
-          plainText(rfq.companyName)
-        )}</p>
-        <p><strong>Trade/category:</strong> ${escapeHtml(
-          plainText(rfq.vendorCategory)
-        )}</p>
-        <p><strong>Response needed by:</strong> ${escapeHtml(
-          plainText(rfq.dueDate)
-        )}</p>
-        <p><strong>Open in Compass:</strong> <a href="${escapeHtml(url)}">${escapeHtml(
-          url
-        )}</a></p>
-      </section>
-      ${
-        rfq.description
-          ? `<section class="rfq-print-scope"><h2>Overall scope</h2><p>${escapeHtml(
-              rfq.description
-            )}</p></section>`
-          : ""
-      }
-      <section class="rfq-print-scope">
-        <h2>Scope rows</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Description</th>
-              <th>Division</th>
-              <th>Cost code</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>${rfqRows(rfq)}</tbody>
-        </table>
-      </section>
-      ${
-        rfq.documentLinks.length > 0
-          ? `<section class="rfq-print-docs"><h2>Plans & specs package</h2><ul>${documentRows(
-              rfq
-            )}</ul></section>`
-          : ""
-      }
-    </article>`.trim()
-}
 
 export function ProjectRfqShareActions({
   brand,
@@ -282,42 +150,11 @@ export function ProjectRfqShareActions({
     setCopied("email")
   }
 
-  async function printRfq(): Promise<void> {
-    const printRoot = document.createElement("article")
-    printRoot.setAttribute("data-rfq-print-root", "true")
-    printRoot.innerHTML = printHtml({
-      brand,
-      projectLabel,
-      rfq,
-      url: absoluteUrl(),
-    })
-    document.body.classList.add("rfq-printing-selected")
-    document.body.appendChild(printRoot)
-
-    const resetPrintState = (): void => {
-      printRoot.remove()
-      document.body.classList.remove("rfq-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    if (requiresSynchronousPrint(window.navigator)) {
-      window.print()
-      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
-      return
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    await waitForPrintLayout(printRoot)
-    window.print()
-    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
-  }
-
   return (
     <div className="flex flex-wrap gap-1">
-      <Button type="button" variant="outline" size="sm" onClick={printRfq}>
-        <IconPrinter className="size-4" />
-        PDF
-      </Button>
+      <PrintPreviewButton
+        link={{ projectId, document: "rfq", params: { rfqId: rfq.id }, number: rfq.sourceRecordNumber ?? "RFQ" }}
+      />
       <Button type="button" variant="outline" size="sm" onClick={copyLink} disabled={requiresTemplateReview}>
         {copied === "link" ? (
           <IconCheck className="size-4" />

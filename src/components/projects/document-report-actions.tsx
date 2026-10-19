@@ -13,11 +13,14 @@ export function DocumentReportActions({
   title,
   documentNumber,
   pdfHref,
+  leading,
 }: {
   readonly title: string
   readonly documentNumber: string
   /** Server PDF for this document; without one the browser prints the page. */
   readonly pdfHref?: string
+  /** Shown at the start of the bar, such as a link back to the record. */
+  readonly leading?: React.ReactNode
 }): React.ReactElement {
   function emailReport(): void {
     const href = trackedMailtoHref({
@@ -30,7 +33,8 @@ export function DocumentReportActions({
   }
 
   return (
-    <div className="estimate-report-actions document-report-actions sticky top-0 z-10 flex justify-center gap-2 border-b bg-background/95 p-3 backdrop-blur print:hidden">
+    <div className="estimate-report-actions document-report-actions sticky top-0 z-10 flex flex-wrap items-center justify-center gap-2 border-b bg-background/95 p-3 backdrop-blur print:hidden">
+      {leading ? <div className="mr-auto flex min-w-0 items-center gap-3">{leading}</div> : null}
       {pdfHref ? (
         <Button asChild>
           <a href={pdfHref} target="_blank" rel="noopener">

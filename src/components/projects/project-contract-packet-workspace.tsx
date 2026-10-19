@@ -725,7 +725,7 @@ export function ProjectContractPacketWorkspacePanel({
               )
             ) : (
               <Button variant="outline" onClick={preview} disabled={pending}>
-                <IconPrinter className="size-4" />Preview PDF
+                <IconPrinter className="size-4" />Print Preview
               </Button>
             )}
           </div>
