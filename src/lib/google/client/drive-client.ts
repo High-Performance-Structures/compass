@@ -426,6 +426,26 @@ export class DriveClient {
     )
   }
 
+  /**
+   * A resized copy of an image from Drive's thumbnail service (longest side
+   * in pixels), or null when Drive has none. Used for printing photos.
+   */
+  async downloadThumbnail(
+    userEmail: string,
+    thumbnailLink: string,
+    size: number
+  ): Promise<Response | null> {
+    // Drive thumbnail links end in "=s<pixels>"; ask for the size we need.
+    const url = /=s\d+$/.test(thumbnailLink)
+      ? thumbnailLink.replace(/=s\d+$/, `=s${size}`)
+      : `${thumbnailLink}=s${size}`
+    const unsigned = await fetch(url)
+    if (unsigned.ok && unsigned.body) return unsigned
+    const token = await this.getToken(userEmail)
+    const signed = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    return signed.ok && signed.body ? signed : null
+  }
+
   async downloadFile(
     userEmail: string,
     fileId: string,

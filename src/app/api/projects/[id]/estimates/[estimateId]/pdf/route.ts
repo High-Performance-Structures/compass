@@ -42,7 +42,7 @@ export async function GET(
       return new Response(`Estimate: ${rendered.error}`, { status: rendered.status })
     }
     const preparedPdf = await prepareEstimateSignaturePdf({
-      pdf: rendered.pdf,
+      pdf: await rendered.bytes(),
       signerLabels: [
         ...estimate.clientSigners.map((_, index) => `Client ${index + 1}`),
         "Company",

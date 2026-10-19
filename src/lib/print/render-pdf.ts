@@ -12,7 +12,8 @@ export type PrintPdfRequest = {
 }
 
 export type PrintPdfResult =
-  | { readonly ok: true; readonly pdf: ArrayBuffer }
+  /** The rendered PDF, streamed so large documents never sit in memory. */
+  | { readonly ok: true; readonly pdf: ReadableStream<Uint8Array>; readonly bytes: () => Promise<ArrayBuffer> }
   | { readonly ok: false; readonly status: 502 | 503; readonly error: string }
 
 /** Renders an app print page to a letter PDF through the browser binding. */
@@ -42,14 +43,18 @@ export async function renderPrintPagePdf(input: PrintPdfRequest): Promise<PrintP
       },
     },
   ])
-  if (!(rendered instanceof Response) || !rendered.ok) {
+  if (!(rendered instanceof Response) || !rendered.ok || !rendered.body) {
     return { ok: false, status: 502, error: "Unable to render PDF." }
   }
-  return { ok: true, pdf: await rendered.arrayBuffer() }
+  const pdf = rendered.body
+  return { ok: true, pdf, bytes: () => new Response(pdf).arrayBuffer() }
 }
 
 /** A PDF shown in the browser's own viewer tab, not downloaded. */
-export function inlinePdfResponse(pdf: ArrayBuffer | Uint8Array<ArrayBuffer>, fileName: string): Response {
+export function inlinePdfResponse(
+  pdf: ArrayBuffer | Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>,
+  fileName: string
+): Response {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "-")
   return new Response(pdf, {
     headers: {
