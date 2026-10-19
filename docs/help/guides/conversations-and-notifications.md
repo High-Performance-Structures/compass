@@ -4,15 +4,15 @@
   "featureId": "conversations",
   "slug": "conversations-and-notifications",
   "title": "Conversations, Messages, and Notifications",
-  "summary": "Use project messages, private drafts, external email, Talk, Message Desk follow-up, texts, and notifications.",
-  "contextSummary": "Choose a project channel for durable project communication, use the department numbers for project-update texts, use HPS for text help and project lists, and reserve announcements for truly audience-wide information.",
+  "summary": "Use project channels, project email, private drafts, attachments, Talk, Message Desk follow-up, texts, and notifications.",
+  "contextSummary": "Choose the correct project or private communication lane, confirm who can see it, and keep project email drafts, sent history, attachments, and delivery status with the project record.",
   "category": "Communication",
-  "tags": ["conversations", "messages", "email", "drafts", "sent", "Talk", "video", "microphone", "transcript", "sms", "Message Desk", "notifications", "Jarvis"],
+  "tags": ["conversations", "messages", "project email", "drafts", "sent", "attachments", "Bcc", "Talk", "video", "microphone", "transcript", "Listening Room", "music", "queue", "playlists", "sms", "texting", "Message Desk", "announcements", "mentions", "notifications", "channels", "Jarvis"],
   "audiences": ["staff"],
   "permissions": ["help:read", "channels:read"],
-  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
+  "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/conversations/[channelId]/listening-room", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-19"
 }
 ---
 
@@ -30,11 +30,17 @@ Mentions may trigger in-app, email, push, or text notifications according to the
 
 In a project's **Messages** workspace, staff can choose **New email** to send a project update to people who do not have Compass accounts. Add recipients from active project contacts, search the owner/vendor/internal directory, or enter an email address directly. Use **To**, **Cc**, and **Bcc** according to who should see the address list, then review the recipient counts before sending.
 
-The email is saved in the project's message history. Replies to its tracked address appear in that project conversation and notify the internal team. Recipients do not gain Compass access. A reply written inside Compass does not send another external email; review its audience notice and use **New email** for another external update. If delivery fails, the original sender can retry the saved email. When delivery is uncertain, check its status before sending again.
+Compass saves a private draft while you compose. Use **Drafts** to reopen unfinished messages, replies, or emails; only the person who created a draft can see it. Leaving the composer waits for the current draft save. **Discard draft** removes it from Drafts and can be undone only before leaving that screen. Do not assume a draft was sent.
+
+The email is saved in the project's message history and appears under **Sent** after it is sent. Replies to its tracked project address return to that conversation. The sender and project staff can see external replies; active Compass recipients can also see and reply in the project conversation. A Bcc recipient has a private Compass view, and their address and replies stay hidden from other external recipients.
+
+Recipients do not gain Compass access merely because they receive email. A reply written inside Compass follows the audience notice shown above the composer: it may be private to project staff or shared with the active Compass recipients of that email. Use **New email** when you need a different external audience. If delivery fails, the original sender can retry the exact saved email. When delivery is uncertain, check the project history and provider outcome before attempting another send.
 
 ## Attachments {#attachments}
 
-Use the composer attachment control and open the result after sending. A project-channel file should live in the mapped project Drive location, and intended recipients must have permission to open it. A preview in a conversation does not change the file's project-wide visibility.
+Use **Upload files** for a new file or **Project files** to browse the project's existing Drive folders. Choosing a project file attaches a copy to the message; the original stays unchanged. Project email allows at most 10 attachments totaling 18 MB. Wait until every file says **Ready** before sending, then open the result from the saved message to verify it.
+
+Attachments saved with a private draft remain private with that draft. A preview in a conversation does not change the original file's project-wide visibility. For external email, Compass sends the attachments as files; project Drive viewer links included by another workflow may have their own access rules.
 
 ## Message Actions {#message-actions}
 
@@ -93,6 +99,16 @@ Read the call's recovery message when a device fails. Check browser and operatin
 ## Use the Notification Inbox {#notification-inbox}
 
 The bell is an inbox for unread and recent items. Open a notification to go to its source, or use its read control. Reading a supported message, RFI, or other linked item also clears its corresponding unread notification, so the bell and the dashboard's **Messages** layer reflect what still needs attention. An urgent unread reminder can turn the bell red. Reading the reminder clears its unread alert; completing the underlying work is a separate action.
+
+## Use the Listening Room {#listening-room}
+
+Open a supported conversation channel's **Listening Room** when the team wants synchronized music. If the room is quiet, paste an optional YouTube or SoundCloud link and choose **Start the music**; the first song starts the room. If another person already started it, choose **Join & listen**. The listener count and **In sync** indicator show the shared room state.
+
+Play, pause, restart, skip, and **Play now** change the music for everyone. **Your volume** changes only your device. Add a supported link to the queue, remove an incorrect item, add an alternate provider link, or use a song's menu to add it to a playlist. Drag a song's handle to change the shared queue order. If a YouTube item cannot play outside YouTube, Compass skips it and continues rather than leaving the room stuck.
+
+The room stays beside the page on larger screens and fills the screen on phones. Minimize it to the mini player, drag that player to a convenient corner, or use **Pop out into its own window** when offered. The Listening Room button in the sidebar shows when music is active so you can return without reopening the channel first. **Leave the room** exits only your session; a host or moderator's **Close the room for everyone** stops playback and clears the shared queue after confirmation.
+
+Use the **Playlists** tab to create an empty playlist or start one from the current queue. Open a playlist to play it now, add it to the queue, add or remove songs, drag songs into the saved order, or move songs between playlists. The playlist owner or a moderator can rename it, replace it with the current queue, or delete it. Replacement and deletion require confirmation; saved playlists remain when the room itself closes.
 
 ## Ask Jarvis About Conversations {#jarvis-messages}
 

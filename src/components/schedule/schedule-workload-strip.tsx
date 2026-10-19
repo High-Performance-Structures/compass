@@ -3,6 +3,7 @@
 import * as React from "react"
 import { IconAlertTriangle } from "@tabler/icons-react"
 
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { Button } from "@/components/ui/button"
 import {
   scheduleWorkload,
@@ -59,12 +60,15 @@ export function ScheduleWorkloadStrip({
   return (
     <section aria-labelledby="schedule-workload" className="mb-3 border-y py-2">
       <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <h2 id="schedule-workload" className="text-xs font-medium text-muted-foreground">
-          Workload across jobs, next 6 weeks
-          {conflictDays > 0 ? (
-            <span className="text-destructive"> · {conflictDays} {conflictDays === 1 ? "day" : "days"} with a double-booked crew</span>
-          ) : null}
-        </h2>
+        <div className="flex items-center gap-1.5">
+          <h2 id="schedule-workload" className="text-xs font-medium text-muted-foreground">
+            Workload across jobs, next 6 weeks
+            {conflictDays > 0 ? (
+              <span className="text-destructive"> · {conflictDays} {conflictDays === 1 ? "day" : "days"} with a double-booked crew</span>
+            ) : null}
+          </h2>
+          <ContextualHelpBeacon topicId="schedule.cross-job-workload" className="size-5" />
+        </div>
         <Button
           type="button"
           size="sm"

@@ -1,6 +1,7 @@
 import Link from "next/link"
 
 import type { PayApplicationShopTickets as Data } from "@/app/actions/shop-ticket-billing"
+import { ContextualHelpBeacon } from "@/components/help/contextual-help-beacon"
 import { formatCents } from "@/lib/shop-tickets/model"
 
 const STATUS_LABEL = { draft: "Draft", issued: "Issued", void: "Void" } as const
@@ -14,9 +15,12 @@ export function PayApplicationShopTickets({ projectId, data }: { readonly projec
   return (
     <section aria-labelledby="pay-app-shop-tickets" className="clarity-panel mt-5 grid gap-3 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="pay-app-shop-tickets" className="font-semibold">
-          Shop tickets
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 id="pay-app-shop-tickets" className="font-semibold">
+            Shop tickets
+          </h2>
+          <ContextualHelpBeacon topicId="shop.tickets.pay-application" />
+        </div>
         <Link href={href} className="text-sm underline underline-offset-2">
           Open shop tickets
         </Link>

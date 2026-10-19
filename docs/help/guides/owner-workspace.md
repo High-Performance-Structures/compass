@@ -7,12 +7,12 @@
   "summary": "Review approved project information, make owner decisions, contact the team, and follow warranty work.",
   "contextSummary": "Your Owner Workspace shows information the project team has published for owners. Confirm the active project and exact revision before approving or submitting anything.",
   "category": "Start Here",
-  "tags": ["owner", "client", "portal", "project dashboard", "selections", "G703", "pay applications", "change orders", "warranty"],
+  "tags": ["owner", "client", "portal", "project dashboard", "selections", "G703", "pay applications", "change orders", "executed contract", "signed documents", "warranty"],
   "audiences": ["owner"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/preview/projects/[id]/owner", "/preview/projects/[id]/owner/budget", "/preview/projects/[id]/owner/change-orders", "/preview/projects/[id]/owner/change-orders/[changeOrderId]", "/preview/projects/[id]/owner/conversations", "/preview/projects/[id]/owner/conversations/[channelId]", "/preview/projects/[id]/owner/documents", "/preview/projects/[id]/owner/photos", "/preview/projects/[id]/owner/schedule", "/preview/projects/[id]/owner/selections", "/preview/projects/[id]/owner/team", "/preview/projects/[id]/owner/updates", "/preview/projects/[id]/owner/updates/[updateId]", "/preview/projects/[id]/owner/warranty"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-12"
 }
 ---
 
@@ -52,6 +52,8 @@ Use **Open PDF** to review the published application in a new view or **Save** t
 
 When **Request change** is available, describe the requested scope and reason clearly and attach only relevant files. Submitting a request starts review; it does not approve work, authorize cost, or change the contract. Follow the recorded status and project-team instructions for any separate approval or signature step. Do not submit a second request simply because the first remains under review.
 
+For an executed owner-visible change order, use **Open executed change order** to review the authoritative signed PDF. Confirm the project, change-order number, scope, and signatures. If the displayed PDF appears incomplete or different from the approved terms, stop and contact the project team before acting.
+
 ## Message the Project Team {#conversations}
 
 **Conversations** is the project communication area available to owners. Use **New message** or a contact's **Message** action, choose the intended project-team recipient when offered, and keep related replies in the same conversation or thread. Attachments shared there become visible to the conversation participants.
@@ -60,7 +62,7 @@ When **Request change** is available, describe the requested scope and reason cl
 
 ## View Photos and Documents {#files}
 
-**Photos** contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. **Plans & Documents** contains files the team has published to the project workspace; open or download the displayed revision as needed.
+**Photos** contains images approved for owners. Use its date, phase, and sorting controls to find progress photos. **Plans & Documents** contains files the team has published to the project workspace and the current executed contract packet when available. Use **Open contract** to review that signed agreement, and open or download the displayed plan or specification revision as needed.
 
 These areas do not expose the team's entire photo library or Drive folder. A downloaded copy can become outdated, so return to Compass for the current published version before construction, purchasing, or approval decisions.
 

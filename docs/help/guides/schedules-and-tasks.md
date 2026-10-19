@@ -7,12 +7,12 @@
   "summary": "Work with schedules, Gantt items, tasks, predecessors, baselines, and workday exceptions.",
   "contextSummary": "The project schedule is the shared source for timing. Relationships, calendars, and baselines explain why dates move and what changed.",
   "category": "Field & Project Work",
-  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays"],
+  "tags": ["schedule", "tasks", "Gantt", "critical path", "predecessors", "baseline", "workdays", "publish", "move to draft", "workload", "crew", "double-booked", "conflicts"],
   "audiences": ["staff"],
   "permissions": ["help:read", "schedule:read"],
   "routes": ["/dashboard/schedule", "/dashboard/projects/[id]/schedule"],
   "owner": "Scheduling operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-19"
 }
 ---
 
@@ -23,6 +23,14 @@ Use **Schedules & Calendar** for a cross-project entry point or open a project's
 ## Gantt View {#gantt}
 
 The task list and timeline scroll together. The Gantt opens around **Today**; use **Today**, zoom, search, grouping, and color modes to focus the view. Selecting a row selects the schedule item without rebuilding the whole view or repeatedly jumping the timeline. Grouping by phase keeps list rows aligned with their bars. Colors are viewing aids; confirm actual phase, status, and completion data.
+
+## Cross-Job Workload and Crew Conflicts {#cross-job-workload}
+
+Open **All schedules** to compare active work across jobs. Above the List or Gantt, **Workload across jobs, next 6 weeks** shows how many incomplete items land on each day; a red portion marks items whose assigned crew or company is also scheduled on another job during overlapping dates. Choose **Conflicts** to filter to those items. In the list or Gantt, the warning icon identifies the affected row and its tooltip names the other job, activity, crew, and overlap. **By crew** grouping uses the first usable name in **Assigned to**.
+
+A conflict is a coordination warning, not proof that the plan is impossible. Confirm which crew is actually committed, whether the assignment text names several people, and whether dates are current before changing the schedule. Items on the same job and completed items are not flagged.
+
+Admins can use **Settings → Workflows → Schedule conflicts** to list companies that should never be flagged because they operate several crews, and to map alternate spellings to the same company or person. Common punctuation, capitalization, and company suffix differences already normalize automatically. Review the all-schedules view after changing these rules.
 
 ## Critical Path {#critical-path}
 
@@ -46,6 +54,8 @@ The first **Publish schedule** makes selected visible items available in owner a
 
 Authorized staff can choose **Move to draft** to hide the schedule from owners and subcontractors while retaining the internal tasks and publication history. Confirm the action and coordinate any commitments affected. Publish again when the schedule is ready. Item-level visibility changes also reach external workspaces only after publication.
 
+Use audience preview after publishing or moving to draft to verify what external users can see.
+
 ## Workday Exceptions {#workday-exceptions}
 
 Use a non-working exception for a holiday, closure, or shutdown and a working exception for an approved extra workday. Add a reason. Because the calendar can recalculate several dependent activities, review the affected schedule after saving.
@@ -68,5 +78,6 @@ Ask Jarvis to read the project's tasks, dependencies, workday exceptions, overal
 - [ ] Dependencies and lag represent the real sequence.
 - [ ] I reviewed downstream dates after changes.
 - [ ] Published schedule revisions include a change reason.
+- [ ] I verified audience visibility after publishing or moving to draft.
 - [ ] Workday exceptions have a reason.
 - [ ] Completed work retains accurate history.
