@@ -6,7 +6,6 @@ import {
   IconCheck,
   IconCopy,
   IconMail,
-  IconPrinter,
   IconRefresh,
   IconSparkles,
   IconTrash,
@@ -27,13 +26,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { PrintPreviewButton } from "@/components/print/print-preview-button"
 import { Button } from "@/components/ui/button"
-import {
-  IOS_PRINT_STATE_TIMEOUT_MS,
-  PRINT_STATE_TIMEOUT_MS,
-  waitForPrintLayout,
-} from "@/lib/print/readiness"
-import { requiresSynchronousPrint } from "@/lib/print/ios-print"
 
 export function OwnerUpdateActions({
   canManage,
@@ -125,45 +119,6 @@ export function OwnerUpdateActions({
     setCopied("email")
   }
 
-  async function printOwnerUpdate(): Promise<void> {
-    const selected = document.querySelector(
-      `[data-owner-update-id="${updateId}"]`
-    )
-    if (!(selected instanceof HTMLElement)) {
-      window.print()
-      return
-    }
-
-    const printRoot = selected.cloneNode(true)
-    if (!(printRoot instanceof HTMLElement)) {
-      window.print()
-      return
-    }
-
-    printRoot.setAttribute("data-owner-update-print-root", "true")
-    printRoot.setAttribute("data-print-selected", "true")
-    printRoot.classList.add("owner-update-print-root")
-
-    document.body.classList.add("owner-update-printing-selected")
-    document.body.appendChild(printRoot)
-
-    const resetPrintState = (): void => {
-      printRoot.remove()
-      document.body.classList.remove("owner-update-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    if (requiresSynchronousPrint(window.navigator)) {
-      window.print()
-      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
-      return
-    }
-    window.addEventListener("afterprint", resetPrintState)
-    await waitForPrintLayout(printRoot)
-    window.print()
-    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
-  }
-
   async function deleteDraft(): Promise<void> {
     const confirmed = window.confirm(
       "Delete this owner update draft? This cannot be undone."
@@ -206,7 +161,7 @@ export function OwnerUpdateActions({
     }
   }
 
-  if (printOnly) return <Button size="sm" onClick={printOwnerUpdate}><IconPrinter className="size-4" />Print / Save PDF</Button>
+  if (printOnly) return <PrintPreviewButton variant="default" link={{ projectId, document: "owner-update", params: { updateId }, number: updateTitle }} />
 
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -251,10 +206,7 @@ export function OwnerUpdateActions({
           </AlertDialogContent>
         </AlertDialog>
       )}
-      <Button size="sm" onClick={printOwnerUpdate}>
-        <IconPrinter className="size-4" />
-        Save PDF
-      </Button>
+      <PrintPreviewButton variant="default" link={{ projectId, document: "owner-update", params: { updateId }, number: updateTitle }} />
       <Button size="sm" variant="outline" onClick={copyLink}>
         {copied === "link" ? (
           <IconCheck className="size-4" />

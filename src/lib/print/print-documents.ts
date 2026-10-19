@@ -8,6 +8,8 @@ export const PRINT_DOCUMENTS = {
   "shop-ticket": { title: "Shop ticket", render: "page", params: ["ticketId"], landscape: false },
   "change-order": { title: "Change order", render: "pdf", params: ["changeOrderId"], landscape: false },
   rfq: { title: "Request for quote", render: "pdf", params: ["rfqId"], landscape: false },
+  "owner-update": { title: "Owner update", render: "pdf", params: ["updateId"], landscape: false },
+  "daily-logs": { title: "Daily logs", render: "pdf", params: ["logIds", "start", "end", "author"], landscape: false },
 } as const satisfies Record<
   string,
   {
