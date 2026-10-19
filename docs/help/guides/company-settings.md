@@ -7,7 +7,7 @@
   "summary": "Maintain department identity, workflow rules, account-deletion review, travel charges, and the project paper trail.",
   "contextSummary": "Settings changes affect company-wide workflows and future outputs. Review permissions, save deliberately, and verify the actual document, mailbox, or Drive copy.",
   "category": "Start Here",
-  "tags": ["settings", "Company", "Departments", "Workflows", "account deletion", "shop tickets", "bracing rentals", "paper trail", "Drive", "trusted addresses", "project aging", "travel", "zone charges"],
+  "tags": ["settings", "Company", "Departments", "Workflows", "account deletion", "shop tickets", "bracing rentals", "paper trail", "Drive", "trusted addresses", "project aging", "schedule conflicts", "Square", "Sage payments", "travel", "zone charges"],
   "audiences": ["staff"],
   "permissions": ["help:read"],
   "routes": ["/dashboard/settings"],
@@ -24,11 +24,13 @@ Save before choosing **Check sending mailbox**. This asks Google whether Compass
 
 ## Set Follow-Up and Ordering Rules {#workflows}
 
-Admins use **Settings → Workflows** for **Staff Message Desk** thresholds, stale reminders, **Project aging**, **Nu-Tech emails**, the catalog link, **Shop tickets**, **Bracing rentals**, and **Project paper trail**. Follow-up thresholds use business days. Project aging measures time since logged client contact and must have an overdue threshold later than its follow-up-due threshold.
+Admins use **Settings → Workflows** for **Staff Message Desk** thresholds, stale reminders, **Project aging**, daily-log requirements and reminders, the project timeline, schedule-conflict matching, estimate and pay-application presentation, contract deposits, Square and Sage payment alerts, linked-job shortcuts, **Nu-Tech emails**, the catalog link, **Shop tickets**, **Bracing rentals**, and **Project paper trail**. Follow-up thresholds use business days. Project aging measures time since logged client contact and must have an overdue threshold later than its follow-up-due threshold.
 
 Nu-Tech settings supply manufacturer, warehouse, dealer, and template details. Department profiles supply the sending mailbox and office identity. Use [Conversations and notifications](/dashboard/help/conversations-and-notifications#message-desk), [Navigating projects](/dashboard/help/navigating-projects#project-follow-up), and [Nu-Tech orders](/dashboard/help/nutech-orders) for the operational steps.
 
 **Shop tickets** sets the numbering prefix and starting number, ticket heading, subtitle, and letterhead. Numbers continue from the highest one used and issued numbers are never reused. **Bracing rentals** sets owned equipment and sizes, the item counted as a brace, daily rate, deposit rule, and ID-copy requirement. Verify the next ticket or rental after changing either configuration; settings do not rewrite issued tickets or existing rental history.
+
+**Schedule conflicts** defines companies that may work multiple jobs without a warning and maps alternate spellings to one crew or company. **Square and Sage payments** chooses staff-only alert recipients, maps exact Sage logins to Compass people, and sets missing-receipt reminder timing. Verify the schedule conflict list and the next routed alert after changing either area. See [Schedules and Tasks](/dashboard/help/schedules-and-tasks#cross-job-workload) and [Financial Workflows](/dashboard/help/financial-workflows#square-receipts).
 
 ## Review Travel Charges and Rates {#travel}
 

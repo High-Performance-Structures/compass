@@ -7,12 +7,12 @@
   "summary": "Prepare the field app for offline use and safely synchronize queued work.",
   "contextSummary": "Open needed projects and files while online. Offline work remains queued on this device until Compass confirms synchronization.",
   "category": "Field & Project Work",
-  "tags": ["offline", "field app", "mobile", "sync", "documents", "queue"],
+  "tags": ["offline", "field app", "mobile", "sync", "documents", "queue", "machines", "equipment", "machine log"],
   "audiences": ["staff"],
   "permissions": ["help:read", "project:read"],
   "routes": ["/dashboard/field"],
   "owner": "Field operations",
-  "lastReviewed": "2026-10-10"
+  "lastReviewed": "2026-10-19"
 }
 ---
 
@@ -22,13 +22,19 @@ Before service is lost, sign in, open and refresh every active project you expec
 
 ## Available Field Work {#available-work}
 
-Field Mode focuses on active projects, today's work, daily logs, documents, messages, notifications, and basic settings. Administrative controls, broad financials, developer tools, and unrelated projects are intentionally excluded.
+Field Mode focuses on active projects, today's work, daily logs, machine logs, documents, messages, notifications, and basic settings. Administrative controls, broad financials, developer tools, and unrelated projects are intentionally excluded.
 
 ## Create Work Offline {#create-work}
 
 Confirm the project, then create a supported log or message and choose the available save/queue action. Attach supported photos or files as needed. Queued work stays on the device until confirmed by the server.
 
 Do not uninstall Compass, clear app storage, or sign out while an unresolved queue exists unless support directs you to do so.
+
+## Log Machine Work {#machine-log}
+
+For internal staff, Field Mode keeps the company's active machines with the project packet. Choose the correct machine and project, then record supported hours, fuel, maintenance, repair, or other cost details. Include the operator, cost code, running/standby/idle split, hour meter, vendor, and notes that apply. Review the displayed rate and service-due information before saving.
+
+An offline machine entry stays in this device's queue. After reconnecting, wait for the queue to clear and verify the entry under **Office Tools → Equipment**. Do not enter it again merely because it has not appeared while the device is offline. See [Equipment and Machine Logs](/dashboard/help/equipment-and-machine-logs#machine-log) for approval and accounting handoff.
 
 ## Synchronize After Reconnecting {#sync}
 
@@ -48,4 +54,5 @@ Field Mode has roomier tabs, readable message content, and date controls that wo
 - [ ] The correct project is active.
 - [ ] I kept Compass open after reconnecting.
 - [ ] The waiting count reached zero.
+- [ ] Machine entries appeared in Equipment before I retried.
 - [ ] I verified server records before retrying.

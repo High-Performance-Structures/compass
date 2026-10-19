@@ -23,9 +23,9 @@ describe("help registry", () => {
   })
 
   it("provides the canonical guide set with unique stable IDs", () => {
-    expect(HELP_GUIDES).toHaveLength(22)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(22)
-    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(22)
+    expect(HELP_GUIDES).toHaveLength(23)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.id)).size).toBe(23)
+    expect(new Set(HELP_GUIDES.map((guide) => guide.slug)).size).toBe(23)
     expect(HELP_GUIDES.map((guide) => guide.id)).toEqual(
       expect.arrayContaining([
         "audience.owner",
@@ -33,6 +33,7 @@ describe("help registry", () => {
         "my.compass.calendar",
         "audience.trade",
         "change.orders",
+        "equipment",
         "greeting.cards",
         "jarvis",
         "nutech.orders",
@@ -94,6 +95,9 @@ describe("help registry", () => {
     expect(
       getHelpGuidesForRoute("/dashboard/cards").map((guide) => guide.id)
     ).toContain("greeting.cards")
+    expect(
+      getHelpGuidesForRoute("/dashboard/equipment").map((guide) => guide.id)
+    ).toContain("equipment")
     expect(
       getHelpGuidesForRoute("/dashboard/projects/project-123/schedule").map(
         (guide) => guide.id
@@ -291,6 +295,26 @@ describe("help registry", () => {
     )
     expect(searchHelpGuides("bracing rental sign out deposit")[0]?.guide.id)
       .toBe("nutech.orders")
+  })
+
+  it("documents equipment, cross-job conflicts, and Square receipt follow-through", () => {
+    expect(getHelpTopic("equipment.machine-log")?.href).toBe(
+      "/dashboard/help/equipment-and-machine-logs#machine-log"
+    )
+    expect(getHelpGuide("equipment-and-machine-logs")?.content).toContain(
+      "**Waiting for approval**"
+    )
+    expect(getHelpTopic("schedule.cross-job-workload")?.href).toBe(
+      "/dashboard/help/schedules-and-tasks#cross-job-workload"
+    )
+    expect(getHelpGuide("schedules-and-tasks")?.content).toContain(
+      "**By crew**"
+    )
+    expect(getHelpTopic("financials.square-receipts")?.href).toBe(
+      "/dashboard/help/financial-workflows#square-receipts"
+    )
+    expect(searchHelpGuides("machine maintenance hour meter approval")[0]?.guide.id)
+      .toBe("equipment")
   })
 
   it("retains canonical audience and resource-permission metadata", () => {

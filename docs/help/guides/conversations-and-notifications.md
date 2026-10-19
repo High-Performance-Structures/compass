@@ -12,7 +12,7 @@
   "permissions": ["help:read", "channels:read"],
   "routes": ["/dashboard/conversations", "/dashboard/conversations/[channelId]", "/dashboard/conversations/[channelId]/listening-room", "/dashboard/projects/[id]/conversations", "/dashboard/projects/[id]/messages", "/dashboard/settings", "/dashboard/office-maintenance/message-desk"],
   "owner": "Compass product team",
-  "lastReviewed": "2026-10-12"
+  "lastReviewed": "2026-10-19"
 }
 ---
 
@@ -104,9 +104,11 @@ The bell is an inbox for unread and recent items. Open a notification to go to i
 
 Open a supported conversation channel's **Listening Room** when the team wants synchronized music. If the room is quiet, paste an optional YouTube or SoundCloud link and choose **Start the music**; the first song starts the room. If another person already started it, choose **Join & listen**. The listener count and **In sync** indicator show the shared room state.
 
-Play, pause, restart, skip, and **Play now** change the music for everyone. **Your volume** changes only your device. Add a supported link to the queue, remove an incorrect item, add an alternate provider link, or use a song's menu to add it to a playlist. The room stays beside the page on larger screens and fills the screen on phones. Minimize it to the mini player or use **Pop out into its own window** when offered. **Leave the room** exits only your session; a host or moderator's **Close the room for everyone** stops playback and clears the shared queue after confirmation.
+Play, pause, restart, skip, and **Play now** change the music for everyone. **Your volume** changes only your device. Add a supported link to the queue, remove an incorrect item, add an alternate provider link, or use a song's menu to add it to a playlist. Drag a song's handle to change the shared queue order. If a YouTube item cannot play outside YouTube, Compass skips it and continues rather than leaving the room stuck.
 
-Use the **Playlists** tab to create an empty playlist or start one from the current queue. Open a playlist to play it now, add it to the queue, add or remove songs, or move songs between playlists. The playlist owner or a moderator can rename it, replace it with the current queue, or delete it. Replacement and deletion require confirmation; saved playlists remain when the room itself closes.
+The room stays beside the page on larger screens and fills the screen on phones. Minimize it to the mini player, drag that player to a convenient corner, or use **Pop out into its own window** when offered. The Listening Room button in the sidebar shows when music is active so you can return without reopening the channel first. **Leave the room** exits only your session; a host or moderator's **Close the room for everyone** stops playback and clears the shared queue after confirmation.
+
+Use the **Playlists** tab to create an empty playlist or start one from the current queue. Open a playlist to play it now, add it to the queue, add or remove songs, drag songs into the saved order, or move songs between playlists. The playlist owner or a moderator can rename it, replace it with the current queue, or delete it. Replacement and deletion require confirmation; saved playlists remain when the room itself closes.
 
 ## Ask Jarvis About Conversations {#jarvis-messages}
 

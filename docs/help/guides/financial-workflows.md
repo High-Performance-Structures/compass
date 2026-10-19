@@ -7,7 +7,7 @@
   "summary": "Understand estimates, client report phases, contract packets, budgets, pay applications, and Sage synchronization.",
   "contextSummary": "Use custom report phases to control an estimate's client-facing presentation without changing CSI codes or costs. A saved, approved, or queued record is not posted or paid until Sage confirms that state.",
   "category": "Financial Workflows",
-  "tags": ["estimates", "assemblies", "customer report", "client report", "report phases", "cost breakdown", "rate book", "accepted rates", "contract packets", "executed contracts", "budget", "G703", "pay applications", "Sage", "sync", "accounting"],
+  "tags": ["estimates", "assemblies", "customer report", "client report", "report phases", "cost breakdown", "rate book", "accepted rates", "contract packets", "executed contracts", "budget", "G703", "pay applications", "Square", "receipts", "Sage", "sync", "accounting"],
   "audiences": ["staff"],
   "permissions": ["help:read", "finance:read"],
   "routes": ["/dashboard/financials", "/dashboard/projects/[id]/estimate", "/dashboard/projects/[id]/contracts", "/dashboard/projects/[id]/budget", "/dashboard/projects/[id]/financials", "/dashboard/settings"],
@@ -152,6 +152,14 @@ Every Compass document prints the same way: **Print Preview** opens it in a new 
 **Print Preview** opens the client copy in a new tab at any status, without changing the draw. It prints in landscape: page 1 is the G702 application and certificate for payment, with the contractor certification and a **Reviewed and approved** block for the reviewer's amount certified, signature, printed name and date. The G703 continuation sheet follows, with columns for original contract sum, prior and current changes, adjusted estimate, prior and current costs, completed to date, percent complete and balance. Its first column follows **Client sees**: the percent levels print one combined row per assembly or division, Assembly and Division also list the cost codes under each group, and Cost code lists every cost code. **Print / Save PDF** opens the PDF in a browser tab; **Email report link** starts an email with the preview link.
 
 Before marking a pay application ready, verify period and draw number, prior applications and payments, current work, stored materials, approved changes, retainage, balance, backup, and required approval. Do not call it invoiced, posted, or paid until Sage confirms that state.
+
+## Square Receipts and Sage Follow-Through {#square-receipts}
+
+The **Square receipts** table shows project-linked Square payments matched to an exact Compass project and Sage invoice. Review the project/client, Sage invoice, Square payment identifier and time, amount received, processing fee, and the separate receipt and fee statuses. A matched Square payment does not need another business approval, but it still needs the correct Sage result.
+
+**Awaiting Sage receipt** means the customer receipt still needs to be entered or confirmed in Sage. **Queued** or **Processing** means an automated operation is not finished. **Posted in Sage** or **Already in Sage** is the positive read-back. **Needs review** requires investigation. Do not retry a payment or fee blindly; first confirm the Square identifier, Sage invoice, current status, and whether somebody entered the same receipt directly.
+
+Admins configure staff-only alerts under **Settings → Workflows → Square and Sage payments**. Choose who receives connection alerts, payment problems, and missing-receipt reminders; map each exact Sage login to the responsible Compass staff member; and set the reminder interval, business-hours rule, and time zone. Compass checks Sage and stops missing-receipt reminders after the receipt is found. An unmatched Sage login is routed to the configured payment-alert group.
 
 ## Sage Status {#sage-status}
 
